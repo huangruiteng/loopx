@@ -67,11 +67,29 @@ def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, e
         ),
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
+    detailed = build_scheduler_hint(
+        deepcopy(base_payload),
+        user_action_required=bool(
+            base_payload.get("interaction_contract", {})
+            .get("user_channel", {})
+            .get("action_required")
+        ),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        include_detail=True,
+    )
     assert extracted == quota_wrapper, (name, extracted, quota_wrapper)
     assert extracted["schema_version"] == "scheduler_hint_v0", (name, extracted)
     assert extracted["source"] == "quota.should-run", (name, extracted)
     assert extracted["action"] == expected_action, (name, extracted)
     assert extracted["codex_app"]["recommended_rrule"] == expected_rrule, (name, extracted)
+    assert "local_scheduler" not in extracted, (name, extracted)
+    assert "codex_cli_tui" not in extracted, (name, extracted)
+    assert "claude_code_loop" not in extracted, (name, extracted)
+    assert "cold_path_detail" not in extracted, (name, extracted)
+    assert extracted["detail_ref"]["request"] == "loopx quota should-run --include-scheduler-detail", (name, extracted)
+    assert detailed["cold_path_detail"]["local_scheduler"]["recommended_interval_minutes"], (name, detailed)
+    assert detailed["cold_path_detail"]["codex_cli_tui"]["final_quota_replan_check"], (name, detailed)
+    assert detailed["cold_path_detail"]["claude_code_loop"]["after_limit"], (name, detailed)
     reset = extracted["reset_policy"]
     assert reset["schema_version"] == "scheduler_reset_policy_v0", (name, reset)
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, (name, reset)

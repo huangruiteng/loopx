@@ -12,8 +12,8 @@ creating a browser-side source of truth.
 | Operator concept | Source fields | Meaning in the dashboard |
 | --- | --- | --- |
 | Budget | `quota.compute`, `quota.allowed_slots`, `quota.spent_slots`, `quota.state` | How much automatic agent time this goal may consume in the current quota window, and whether it can run now. |
-| Cadence | `scheduler_hint.codex_app`, `scheduler_hint.local_scheduler`, `scheduler_hint.reset_policy` | How often the host should wake the agent, when backoff applies, and when user feedback or new work resets the interval. |
-| Spend rule | `interaction_contract.cli_channel.spend_policy`, `scheduler_hint.*.no_spend_*`, `work_lane_contract` | Which transitions spend quota and which lifecycle checks are no-spend. |
+| Cadence | `scheduler_hint.codex_app`, `scheduler_hint.unchanged_poll`, `scheduler_hint.reset_policy`; opt-in cold detail from `scheduler_hint.cold_path_detail.local_scheduler` | How often the host should wake the agent, when backoff applies, and when user feedback or new work resets the interval. |
+| Spend rule | `interaction_contract.cli_channel.spend_policy`, `scheduler_hint.unchanged_poll.spend_policy`, `work_lane_contract` | Which transitions spend quota and which lifecycle checks are no-spend. |
 | Human controls | user todos, operator gates, `local_dashboard_api`, future control-plane dry-run/apply paths | What a human can approve, pause, override, or resume, and whether the browser is allowed to preview or apply a change. |
 | Evidence | todo ids, run ids, quota spend events, compact artifacts, source warnings | Why the dashboard believes the current budget/governance state and where to audit it. |
 

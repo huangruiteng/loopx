@@ -8,6 +8,7 @@ from typing import Any
 
 SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
+SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 
 
 def build_scheduler_hint(
@@ -15,6 +16,7 @@ def build_scheduler_hint(
     *,
     user_action_required: bool = False,
     agent_scope_frontier_actions: Collection[str] = (),
+    include_detail: bool = False,
 ) -> dict[str, Any]:
     """Project host-runtime cadence/backoff policy from a quota decision.
 
@@ -160,7 +162,29 @@ def build_scheduler_hint(
             "codex_app_apply": "update_rrule_to_initial_and_clear_unchanged_state_on_token_change",
             "no_spend_for_reset": True,
         }
-        return {
+        local_scheduler = {
+            "recommended_interval_minutes": codex_interval,
+            "max_interval_minutes": codex_max,
+            "unchanged_poll_backoff_multiplier": multiplier,
+            "example_progression_minutes": cadence_progression,
+            "unchanged_poll_limit": cli_limit,
+            "after_limit": "stop_tick_loop" if cli_limit is not None else "continue",
+            "final_quota_replan_check": final_replan_check,
+            "no_spend_for_cadence_change": True,
+        }
+        codex_cli_tui = {
+            "unchanged_poll_limit": cli_limit,
+            "after_limit": "exit_goal_loop" if cli_limit is not None else "continue",
+            "final_quota_replan_check": final_replan_check,
+            "no_spend_for_exit": True,
+        }
+        claude_code_loop = {
+            "unchanged_poll_limit": claude_limit,
+            "after_limit": "stop_loop" if claude_limit is not None else "continue",
+            "final_quota_replan_check": final_replan_check,
+            "no_spend_for_stop": True,
+        }
+        scheduler_hint = {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
             "source": "quota.should-run",
             "action": action,
@@ -176,31 +200,47 @@ def build_scheduler_hint(
                 "apply": "update_automation_cadence_if_possible",
                 "no_spend_for_cadence_change": True,
             },
-            "local_scheduler": {
-                "recommended_interval_minutes": codex_interval,
-                "max_interval_minutes": codex_max,
-                "unchanged_poll_backoff_multiplier": multiplier,
-                "example_progression_minutes": cadence_progression,
-                "unchanged_poll_limit": cli_limit,
-                "after_limit": "stop_tick_loop" if cli_limit is not None else "continue",
-                "final_quota_replan_check": final_replan_check,
-                "no_spend_for_cadence_change": True,
-            },
-            "codex_cli_tui": {
-                "unchanged_poll_limit": cli_limit,
-                "after_limit": "exit_goal_loop" if cli_limit is not None else "continue",
-                "final_quota_replan_check": final_replan_check,
-                "no_spend_for_exit": True,
-            },
-            "claude_code_loop": {
-                "unchanged_poll_limit": claude_limit,
-                "after_limit": "stop_loop" if claude_limit is not None else "continue",
-                "final_quota_replan_check": final_replan_check,
-                "no_spend_for_stop": True,
+            "unchanged_poll": {
+                "limits": {
+                    "local_scheduler": cli_limit,
+                    "codex_cli_tui": cli_limit,
+                    "claude_code_loop": claude_limit,
+                },
+                "after_limits": {
+                    "local_scheduler": local_scheduler["after_limit"],
+                    "codex_cli_tui": codex_cli_tui["after_limit"],
+                    "claude_code_loop": claude_code_loop["after_limit"],
+                },
+                "final_quota_replan_check_enabled": final_replan_check["enabled"],
+                "final_quota_replan_check_action": (
+                    final_replan_check["action"] if final_replan_check["enabled"] else None
+                ),
+                "spend_policy": final_replan_check["spend_policy"],
             },
             "unchanged_identity_keys": identity_keys,
             "reset_policy": reset_policy,
+            "detail_ref": {
+                "schema_version": SCHEDULER_HINT_DETAIL_SCHEMA_VERSION,
+                "omitted_by_default": True,
+                "request": "loopx quota should-run --include-scheduler-detail",
+                "contains": [
+                    "local_scheduler",
+                    "codex_cli_tui",
+                    "claude_code_loop",
+                    "final_quota_replan_check",
+                ],
+            },
         }
+        if include_detail:
+            scheduler_hint["cold_path_detail"] = {
+                "schema_version": SCHEDULER_HINT_DETAIL_SCHEMA_VERSION,
+                "source": "quota.should-run",
+                "local_scheduler": local_scheduler,
+                "codex_cli_tui": codex_cli_tui,
+                "claude_code_loop": claude_code_loop,
+                "final_quota_replan_check": final_replan_check,
+            }
+        return scheduler_hint
 
     if (
         recommended_mode in {"mapped_noop_if_unchanged", "post_handoff_observe_if_unchanged"}

@@ -67,6 +67,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
             "capabilities; basic local shell/filesystem capabilities are assumed."
         ),
     )
+    quota_parser.add_argument(
+        "--include-scheduler-detail",
+        action="store_true",
+        help=(
+            "Include cold-path scheduler detail for local scheduler, Codex CLI, "
+            "and Claude loop runtimes in `quota should-run` JSON."
+        ),
+    )
     quota_parser.add_argument("--slots", type=int, default=1, help="Slots to account for `quota spend-slot`.")
     quota_parser.add_argument("--source", choices=["heartbeat", "controller", "adapter"], default="heartbeat", help="Source label for `quota spend-slot`.")
     quota_parser.add_argument("--void-generated-at", help="generated_at timestamp of the quota_slot_spent run to void.")
@@ -125,6 +133,7 @@ def handle_quota_command(
                 goal_id=args.goal_id,
                 agent_id=args.agent_id,
                 available_capabilities=args.available_capabilities,
+                include_scheduler_detail=bool(args.include_scheduler_detail),
             )
         elif args.quota_command == "monitor-poll":
             if not args.goal_id:

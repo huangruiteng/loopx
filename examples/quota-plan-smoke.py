@@ -49,16 +49,16 @@ def _nested_value(payload: dict, path: str):
 
 def scheduler_reset_profile_snapshot(scheduler: dict) -> dict:
     codex_app = scheduler["codex_app"]
-    local_scheduler = scheduler["local_scheduler"]
-    claude_code_loop = scheduler["claude_code_loop"]
+    unchanged_poll = scheduler["unchanged_poll"]
+    limits = unchanged_poll["limits"]
     return {
         "cadence_class": scheduler["cadence_class"],
         "codex_app_initial_interval_minutes": codex_app["recommended_interval_minutes"],
         "codex_app_initial_rrule": codex_app["recommended_rrule"],
         "codex_app_max_interval_minutes": codex_app["max_interval_minutes"],
         "unchanged_poll_backoff_multiplier": codex_app["unchanged_poll_backoff_multiplier"],
-        "local_scheduler_unchanged_poll_limit": local_scheduler["unchanged_poll_limit"],
-        "claude_code_loop_unchanged_poll_limit": claude_code_loop["unchanged_poll_limit"],
+        "local_scheduler_unchanged_poll_limit": limits["local_scheduler"],
+        "claude_code_loop_unchanged_poll_limit": limits["claude_code_loop"],
     }
 
 
@@ -1604,8 +1604,12 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert scheduler["codex_app"]["recommended_interval_minutes"] == 60, mapped_decision
     assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=60", mapped_decision
     assert scheduler["codex_app"]["example_progression_minutes"] == [60, 120, 240], mapped_decision
-    assert scheduler["codex_cli_tui"]["unchanged_poll_limit"] == 3, mapped_decision
-    assert scheduler["codex_cli_tui"]["final_quota_replan_check"]["enabled"] is True, mapped_decision
+    assert scheduler["unchanged_poll"]["limits"]["codex_cli_tui"] == 3, mapped_decision
+    assert scheduler["unchanged_poll"]["final_quota_replan_check_enabled"] is True, mapped_decision
+    assert "local_scheduler" not in scheduler, scheduler
+    assert "codex_cli_tui" not in scheduler, scheduler
+    assert "claude_code_loop" not in scheduler, scheduler
+    assert "cold_path_detail" not in scheduler, scheduler
     reset = scheduler["reset_policy"]
     assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
     assert reset["reset_to"] == "profile_initial_interval", reset

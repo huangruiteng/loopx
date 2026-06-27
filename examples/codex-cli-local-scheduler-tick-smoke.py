@@ -115,23 +115,25 @@ QUOTA_HINT_FIXTURE = {
         "schema_version": "scheduler_hint_v0",
         "action": "backoff_until_reassigned",
         "cadence_class": "agent_scope_wait",
-        "local_scheduler": {
+        "codex_app": {
             "recommended_interval_minutes": 10,
             "max_interval_minutes": 60,
+            "unchanged_poll_backoff_multiplier": 2,
             "example_progression_minutes": [10, 20, 30, 60],
-            "unchanged_poll_limit": 3,
-            "after_limit": "stop_tick_loop",
-            "final_quota_replan_check": {"enabled": True},
         },
-        "codex_cli_tui": {
-            "unchanged_poll_limit": 3,
-            "after_limit": "exit_goal_loop",
-            "final_quota_replan_check": {"enabled": True},
-        },
-        "claude_code_loop": {
-            "unchanged_poll_limit": 3,
-            "after_limit": "stop_loop",
-            "final_quota_replan_check": {"enabled": True},
+        "unchanged_poll": {
+            "limits": {
+                "local_scheduler": 3,
+                "codex_cli_tui": 3,
+                "claude_code_loop": 3,
+            },
+            "after_limits": {
+                "local_scheduler": "stop_tick_loop",
+                "codex_cli_tui": "exit_goal_loop",
+                "claude_code_loop": "stop_loop",
+            },
+            "final_quota_replan_check_enabled": True,
+            "final_quota_replan_check_action": "rerun_quota_should_run_once",
         },
         "reset_policy": {
             "schema_version": "scheduler_reset_policy_v0",
@@ -237,8 +239,8 @@ def main() -> int:
     assert hinted_tick["launchd"]["reset_token"] == "fixture-reset-001", hinted_tick
     assert hinted_tick["launchd"]["reset_interval_seconds"] == 600, hinted_tick
     assert hinted_tick["launchd"]["reset_policy"]["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=10", hinted_tick
-    assert hinted_tick["scheduler_hint"]["local_scheduler"]["example_progression_minutes"] == [10, 20, 30, 60], hinted_tick
-    assert hinted_tick["scheduler_hint"]["codex_cli_tui"]["final_quota_replan_check"]["enabled"] is True, hinted_tick
+    assert hinted_tick["scheduler_hint"]["codex_app"]["example_progression_minutes"] == [10, 20, 30, 60], hinted_tick
+    assert hinted_tick["scheduler_hint"]["unchanged_poll"]["final_quota_replan_check_enabled"] is True, hinted_tick
 
     with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-scheduler-tick-") as tmp:
         tmp_path = Path(tmp)

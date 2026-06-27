@@ -4212,11 +4212,12 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
+def _scheduler_hint(payload: dict[str, Any], *, include_detail: bool = False) -> dict[str, Any]:
     return build_scheduler_hint(
         payload,
         user_action_required=_user_channel_action_required(payload),
         agent_scope_frontier_actions=[action.value for action in AgentScopeFrontierAction],
+        include_detail=include_detail,
     )
 
 
@@ -5907,6 +5908,7 @@ def build_quota_should_run(
     goal_id: str,
     agent_id: str | None = None,
     available_capabilities: Any = None,
+    include_scheduler_detail: bool = False,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     plan = build_quota_plan(status_payload, mode="should-run")
@@ -6610,7 +6612,7 @@ def build_quota_should_run(
             payload["agent_command"] = item.get("agent_command")
         payload["automation_liveness"] = _automation_liveness(payload)
         payload["interaction_contract"] = _interaction_contract(payload)
-        payload["scheduler_hint"] = _scheduler_hint(payload)
+        payload["scheduler_hint"] = _scheduler_hint(payload, include_detail=include_scheduler_detail)
         payload["protocol_action_packet"] = _protocol_action_packet(payload)
         return payload
 
@@ -8786,6 +8788,12 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             if isinstance(scheduler_hint.get("codex_app"), dict)
             else {}
         )
+        unchanged_poll = (
+            scheduler_hint.get("unchanged_poll")
+            if isinstance(scheduler_hint.get("unchanged_poll"), dict)
+            else {}
+        )
+        limits = unchanged_poll.get("limits") if isinstance(unchanged_poll.get("limits"), dict) else {}
         codex_cli_tui = (
             scheduler_hint.get("codex_cli_tui")
             if isinstance(scheduler_hint.get("codex_cli_tui"), dict)
@@ -8796,6 +8804,16 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             if isinstance(scheduler_hint.get("claude_code_loop"), dict)
             else {}
         )
+        cli_unchanged_limit = (
+            limits.get("codex_cli_tui")
+            if "codex_cli_tui" in limits
+            else codex_cli_tui.get("unchanged_poll_limit")
+        )
+        claude_unchanged_limit = (
+            limits.get("claude_code_loop")
+            if "claude_code_loop" in limits
+            else claude_code_loop.get("unchanged_poll_limit")
+        )
         lines.append(
             "- scheduler_hint: "
             f"action={scheduler_hint.get('action')} "
@@ -8803,8 +8821,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"codex_app_minutes={codex_app.get('recommended_interval_minutes')} "
             f"codex_app_rrule={codex_app.get('recommended_rrule')} "
             f"codex_app_progression={codex_app.get('example_progression_minutes')} "
-            f"cli_unchanged_limit={codex_cli_tui.get('unchanged_poll_limit')} "
-            f"claude_unchanged_limit={claude_code_loop.get('unchanged_poll_limit')}"
+            f"cli_unchanged_limit={cli_unchanged_limit} "
+            f"claude_unchanged_limit={claude_unchanged_limit}"
         )
         if scheduler_hint.get("reason"):
             lines.append(f"- scheduler_hint_reason: {scheduler_hint.get('reason')}")
