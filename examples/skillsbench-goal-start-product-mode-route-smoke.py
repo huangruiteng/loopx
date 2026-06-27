@@ -231,6 +231,26 @@ def _assert_control_score_surface() -> None:
     assert compacted_prerequisites["goal_start_planned_todo_count_expected"] == 3
 
 
+def _assert_host_local_acp_return_arity_compat() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.skillsbench_automation_loop import (
+        _benchflow_connect_acp_return_arity,
+    )
+
+    async def current_benchflow_shape() -> tuple[object, object, str]:
+        raise AssertionError("signature-only helper should not call target")
+
+    async def legacy_adapter_shape() -> tuple[object, object, object, str]:
+        raise AssertionError("signature-only helper should not call target")
+
+    async def unannotated_shape():
+        raise AssertionError("signature-only helper should not call target")
+
+    assert _benchflow_connect_acp_return_arity(current_benchflow_shape) == 3
+    assert _benchflow_connect_acp_return_arity(legacy_adapter_shape) == 4
+    assert _benchflow_connect_acp_return_arity(unannotated_shape) == 3
+
+
 def main() -> int:
     result = subprocess.run(
         [
@@ -263,6 +283,7 @@ def main() -> int:
     assert plan["public_boundary"]["public_raw_trajectory"] is False, plan
     _assert_adapter_route_contract_surface()
     _assert_control_score_surface()
+    _assert_host_local_acp_return_arity_compat()
     print("skillsbench-goal-start-product-mode-route-smoke ok")
     return 0
 
