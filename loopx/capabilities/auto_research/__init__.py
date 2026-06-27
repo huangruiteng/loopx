@@ -3,6 +3,7 @@ from __future__ import annotations
 from .core import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+    AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION,
     AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION,
     AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
     AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION,
@@ -18,6 +19,7 @@ from .core import (
     RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
     AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION,
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
+    build_auto_research_demo_supervisor_plan,
     build_auto_research_quickstart,
     build_auto_research_projection,
     build_auto_research_evidence_packet,
@@ -43,6 +45,7 @@ from .core import (
 __all__ = [
     "AUTO_RESEARCH_DEFAULT_GOAL_ID",
     "AUTO_RESEARCH_DEFAULT_OBJECTIVE",
+    "AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION",
     "AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION",
     "AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION",
     "AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION",
@@ -58,6 +61,7 @@ __all__ = [
     "RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION",
     "AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION",
     "AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION",
+    "build_auto_research_demo_supervisor_plan",
     "build_auto_research_quickstart",
     "build_auto_research_projection",
     "build_auto_research_evidence_packet",

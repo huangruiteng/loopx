@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import shlex
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -20,10 +21,33 @@ AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projectio
 AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION = "auto_research_evidence_packet_v0"
 AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = "auto_research_rollout_append_v0"
 AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION = "auto_research_quickstart_v0"
+AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_plan_v0"
 AUTO_RESEARCH_DEFAULT_GOAL_ID = "loopx-auto-research-knn"
 AUTO_RESEARCH_DEFAULT_OBJECTIVE = "Improve exact k-nearest-neighbor inference under a protected evaluator."
 AUTO_RESEARCH_QUICKSTART_TEMPLATE = "knn-exact"
 ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND = "loopx_rollout_event_log"
+AUTO_RESEARCH_DEMO_DEFAULT_LANES = (
+    (
+        "codex-side-bypass",
+        "hypothesis-runner",
+        "Claim the next runnable hypothesis and run dev evidence without owning promotion.",
+    ),
+    (
+        "codex-product-capability",
+        "evidence-promoter",
+        "Read scored evidence, promotion candidates, and product metric gaps.",
+    ),
+    (
+        "codex-main-control",
+        "control-plane-guard",
+        "Guard repo, review, merge, and user-gate boundaries without acting as a research leader.",
+    ),
+    (
+        "codex-value-explorer",
+        "research-narrator",
+        "Turn accepted evidence into public-safe showcase and value-metric summaries.",
+    ),
+)
 
 HYPOTHESIS_STATUSES = {
     "proposed",
@@ -521,6 +545,217 @@ def _relative_pack_dir(value: Any) -> Path:
     if any(part in {"", ".", ".."} for part in path.parts):
         raise ValueError("output_dir must not contain current or parent-directory markers")
     return path
+
+
+def _shell_arg(value: str) -> str:
+    return shlex.quote(value)
+
+
+def _demo_lane_specs(agent_specs: Iterable[str] | None) -> list[dict[str, str]]:
+    raw_specs = list(agent_specs or [])
+    parsed_specs: list[tuple[str, str, str]] = []
+    if raw_specs:
+        for index, raw in enumerate(raw_specs, start=1):
+            text = _compact_public_text(raw, field="agent[]", max_len=180)
+            if ":" in text:
+                agent_id, lane_id = text.split(":", 1)
+            else:
+                agent_id = text
+                lane_id = f"research-lane-{index}"
+            parsed_specs.append(
+                (
+                    _compact_public_token(agent_id, field="agent_id"),
+                    _compact_public_token(lane_id, field="lane_id"),
+                    "Work from the shared LoopX frontier for this lane; do not assume a leader agent.",
+                )
+            )
+    else:
+        parsed_specs = list(AUTO_RESEARCH_DEMO_DEFAULT_LANES)
+
+    lanes: list[dict[str, str]] = []
+    seen_agents: set[str] = set()
+    seen_lanes: set[str] = set()
+    for agent_id, lane_id, responsibility in parsed_specs:
+        if agent_id in seen_agents:
+            raise ValueError(f"duplicate agent_id in demo supervisor lane plan: {agent_id}")
+        if lane_id in seen_lanes:
+            raise ValueError(f"duplicate lane_id in demo supervisor lane plan: {lane_id}")
+        seen_agents.add(agent_id)
+        seen_lanes.add(lane_id)
+        lanes.append(
+            {
+                "agent_id": agent_id,
+                "lane_id": lane_id,
+                "responsibility": _compact_public_text(
+                    responsibility,
+                    field="lane.responsibility",
+                    max_len=180,
+                ),
+            }
+        )
+    return lanes
+
+
+def _env_quota_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
+    return (
+        f"{_shell_arg(cli_bin)} --format json "
+        "--registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" "
+        f"quota should-run --goal-id {_shell_arg(goal_id)} --agent-id {_shell_arg(agent_id)}"
+    )
+
+
+def _env_frontier_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
+    return (
+        f"{_shell_arg(cli_bin)} --format json "
+        "--registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" "
+        f"auto-research frontier --goal-id {_shell_arg(goal_id)} --agent-id {_shell_arg(agent_id)}"
+    )
+
+
+def _env_bootstrap_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
+    return (
+        f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
+        "--project \"$LOOPX_PROJECT\" "
+        f"--goal-id {_shell_arg(goal_id)} --agent-id {_shell_arg(agent_id)}"
+    )
+
+
+def build_auto_research_demo_supervisor_plan(
+    *,
+    goal_id: str = AUTO_RESEARCH_DEFAULT_GOAL_ID,
+    agent_specs: Iterable[str] | None = None,
+    session_name: str = "loopx-auto-research",
+    cli_bin: str = "loopx",
+    codex_bin: str = "codex",
+    tmux_bin: str = "tmux",
+) -> dict[str, Any]:
+    """Build a dry-run tmux/Codex-CLI supervisor plan for auto research.
+
+    The supervisor is a host convenience packet, not a leader agent. It gives a
+    user one place to inspect the shell script that would open visible panes for
+    several decentralized lanes. The default packet does not start tmux, launch
+    Codex, read session files, write LoopX state, or spend quota.
+    """
+
+    goal = _compact_public_token(goal_id, field="goal_id")
+    session = _compact_public_token(session_name, field="session_name")
+    cli = _compact_public_token(cli_bin, field="cli_bin")
+    codex = _compact_public_token(codex_bin, field="codex_bin")
+    tmux = _compact_public_token(tmux_bin, field="tmux_bin")
+    lanes = _demo_lane_specs(agent_specs)
+
+    pane_plans: list[dict[str, Any]] = []
+    for lane in lanes:
+        agent_id = lane["agent_id"]
+        lane_id = lane["lane_id"]
+        quota_command = _env_quota_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
+        frontier_command = _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
+        bootstrap_command = _env_bootstrap_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
+        pane_plans.append(
+            {
+                "lane_id": lane_id,
+                "agent_id": agent_id,
+                "responsibility": lane["responsibility"],
+                "window_name": lane_id,
+                "quota_guard": quota_command,
+                "frontier": frontier_command,
+                "bootstrap_message": bootstrap_command,
+                "visible_codex_tui": codex,
+                "start_sequence": [
+                    "run quota_guard and stop when user_channel.action_required=true",
+                    "render the lane frontier from LoopX state",
+                    "print the public-safe bootstrap message for this visible TUI",
+                    "start Codex CLI visibly; do not inject hidden prompts into an existing session",
+                ],
+            }
+        )
+
+    env_lines = [
+        "set -euo pipefail",
+        ": ${LOOPX_PROJECT:?set LOOPX_PROJECT to the repo root before running}",
+        ": ${LOOPX_REGISTRY:?set LOOPX_REGISTRY to the LoopX registry path before running}",
+        ": ${LOOPX_RUNTIME_ROOT:?set LOOPX_RUNTIME_ROOT to the LoopX runtime root before running}",
+    ]
+    start_script = [
+        *env_lines,
+        f"{_shell_arg(tmux)} new-session -d -s {_shell_arg(session)} -n frontier",
+        (
+            f"{_shell_arg(tmux)} send-keys -t {_shell_arg(session)}:frontier "
+            f"{_shell_arg(_env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=lanes[0]['agent_id']))} C-m"
+        ),
+    ]
+    for pane in pane_plans:
+        lane_id = str(pane["lane_id"])
+        lane_command = (
+            f"cd \"$LOOPX_PROJECT\"; {pane['quota_guard']}; {pane['frontier']}; "
+            f"{pane['bootstrap_message']}; {pane['visible_codex_tui']}"
+        )
+        start_script.extend(
+            [
+                f"{_shell_arg(tmux)} new-window -d -t {_shell_arg(session)} -n {_shell_arg(lane_id)}",
+                f"{_shell_arg(tmux)} send-keys -t {_shell_arg(session)}:{_shell_arg(lane_id)} {_shell_arg(lane_command)} C-m",
+            ]
+        )
+    attach_command = f"{_shell_arg(tmux)} attach -t {_shell_arg(session)}"
+
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION,
+        "mode": "dry_run",
+        "goal_id": goal,
+        "session_name": session,
+        "coordination_model": {
+            "leader_agent_required": False,
+            "supervisor_role": "host_shell_layout_only",
+            "source_of_truth": [
+                "quota_should_run",
+                "todo_claims",
+                "auto_research_frontier",
+                "research_evidence_graph",
+            ],
+            "decentralized_rule": "each lane reads its own quota/frontier projection and writes back through normal LoopX todo/evidence APIs",
+        },
+        "lanes": pane_plans,
+        "commands": {
+            "start_script": start_script,
+            "attach": attach_command,
+            "stop": f"{_shell_arg(tmux)} kill-session -t {_shell_arg(session)}",
+        },
+        "future_gates": [
+            {
+                "capability": "execute_start_script",
+                "state": "future_gated",
+                "required_contract": "explicit user shell authority plus visible tmux attach before Codex starts",
+            },
+            {
+                "capability": "same_session_prompt_injection",
+                "state": "blocked_without_visible_attach_proof",
+                "required_contract": "codex_cli_visible_attach_acceptance_v0 with fresh idle guard",
+            },
+            {
+                "capability": "state_write_from_supervisor",
+                "state": "not_allowed",
+                "required_contract": "normal LoopX CLI todo/evidence/writeback commands only",
+            },
+        ],
+        "boundary": {
+            "dry_run_plan_only": True,
+            "starts_tmux": False,
+            "runs_codex": False,
+            "reads_raw_transcripts": False,
+            "reads_session_files": False,
+            "reads_credentials": False,
+            "mutates_codex_session": False,
+            "writes_loopx_state": False,
+            "spends_loopx_quota": False,
+            "external_service_call": False,
+        },
+        "operator_notes": [
+            "Set LOOPX_PROJECT, LOOPX_REGISTRY, and LOOPX_RUNTIME_ROOT in the user shell before running the script.",
+            "Attach to tmux before accepting any Codex prompt so every lane stays visible and interruptible.",
+            "Use the printed quota/frontier packet in each pane to decide whether that lane should continue, ask, or stop.",
+        ],
+    }
 
 
 def _quickstart_contract(*, goal_id: str, objective: str) -> dict[str, Any]:
@@ -1758,6 +1993,44 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             if not isinstance(item, dict):
                 continue
             lines.append(f"- {item.get('label')}: `{item.get('command')}`")
+        return "\n".join(lines) + "\n"
+    if payload.get("schema_version") == AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION:
+        lanes = payload.get("lanes") or []
+        commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+        coordination = (
+            payload.get("coordination_model")
+            if isinstance(payload.get("coordination_model"), dict)
+            else {}
+        )
+        lines = [
+            "# LoopX Auto Research Demo Supervisor",
+            "",
+            f"- schema: `{payload.get('schema_version')}`",
+            f"- mode: `{payload.get('mode')}`",
+            f"- goal_id: `{payload.get('goal_id')}`",
+            f"- session: `{payload.get('session_name')}`",
+            f"- leader_agent_required: `{coordination.get('leader_agent_required')}`",
+            f"- lanes: `{len(lanes)}`",
+            "",
+            "## Lanes",
+        ]
+        for item in lanes:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"- `{item.get('lane_id')}` / `{item.get('agent_id')}`: {item.get('responsibility')}"
+            )
+        lines.extend(["", "## Shell Plan", ""])
+        for line in commands.get("start_script") or []:
+            lines.append(f"- `{line}`")
+        lines.extend(
+            [
+                "",
+                "## Attach",
+                "",
+                f"`{commands.get('attach')}`",
+            ]
+        )
         return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION:
         summary = payload["summary"]  # type: ignore[index]
