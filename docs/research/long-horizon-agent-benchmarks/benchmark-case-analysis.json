@@ -1891,6 +1891,44 @@
           }
         }
       },
+      "goal_start_transport_monitor": {
+        "schema_version": "skillsbench_goal_start_transport_monitor_v0",
+        "observed_at": "2026-06-27T23:32:28Z",
+        "run_group_id": "skillsbench-raw-new-goal-start-20260627T0420Z",
+        "arm_id": "raw_codex_autonomous_max5",
+        "route": "raw_codex_autonomous_max5",
+        "monitor_todo_id": "todo_45357c108d81",
+        "monitor_target_key": "skillsbench-goalstart-remote-public-compact-poll",
+        "source_artifact_count": 3,
+        "source_artifacts": [
+          "benchmark_run.compact.json",
+          "loopx_controller_trace.public.json",
+          "runner_prerequisites.public.json"
+        ],
+        "official_score_status": "missing",
+        "official_task_score_passed": false,
+        "score_failure_attribution": "skillsbench_codex_acp_provider_zero_activity",
+        "first_blocker": "skillsbench_codex_acp_provider_zero_activity",
+        "last_decision": "break_after_agent_round_preserve_final_verify",
+        "benchflow_user_loop_final_verify_recovery_triggered": true,
+        "benchflow_user_loop_recovery_exception_type": "timeouterror",
+        "benchflow_user_loop_recovery_stage": "soft_verify",
+        "codex_acp_text_bytes": 0,
+        "loopx_cli_call_count": 0,
+        "max_round_observed": 0,
+        "tool_call_count": 0,
+        "loopx_controller_trace_present": true,
+        "loopx_lifecycle_observed": false,
+        "goal_start_product_mode": false,
+        "matrix_unblocked": false,
+        "semantic_unblock_condition": "not_met_no_solver_output_no_goal_start_new_arm_compact",
+        "conclusion": "The current host-local goal-start transport monitor observed only raw-arm compact/public artifacts. The compact result still attributes the raw arm to provider zero activity with zero ACP text bytes, so it does not unblock the raw/new matrix or contradict the existing citation-check product-mode solution-quality attribution.",
+        "raw_logs_read": false,
+        "raw_task_text_read": false,
+        "raw_trajectory_read": false,
+        "raw_verifier_output_read": false,
+        "local_paths_recorded": false
+      },
       "canonical_product_mode_every_round_recheck": {
         "schema_version": "skillsbench_canonical_product_mode_recheck_v0",
         "protocol": "canonical_loopx_product_mode_lifecycle_driver",
@@ -4014,7 +4052,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-24T12:31:00Z",
+  "updated_at": "2026-06-27T23:32:28Z",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",
