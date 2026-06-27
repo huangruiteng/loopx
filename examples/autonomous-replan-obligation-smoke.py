@@ -100,6 +100,7 @@ def write_fixture(
     *,
     include_replan_signals: bool,
     include_run_history_stalls: bool = False,
+    monitor_poll_repeat_count: int = 0,
     periodic_run_count: int = 0,
     include_recent_replan_ack: bool = False,
 ) -> tuple[Path, Path]:
@@ -181,7 +182,7 @@ def write_fixture(
         + "\n",
         encoding="utf-8",
     )
-    if include_run_history_stalls or periodic_run_count or include_recent_replan_ack:
+    if include_run_history_stalls or monitor_poll_repeat_count or periodic_run_count or include_recent_replan_ack:
         runs_dir = runtime / "goals" / GOAL_ID / "runs"
         if include_recent_replan_ack:
             append_run_record(
@@ -204,6 +205,27 @@ def write_fixture(
                             "auto_evidence": [],
                             "accepted_without_delta": False,
                         },
+                    },
+                },
+            )
+    if monitor_poll_repeat_count:
+        runs_dir = runtime / "goals" / GOAL_ID / "runs"
+        for offset in range(monitor_poll_repeat_count):
+            minute = monitor_poll_repeat_count - offset
+            append_run_record(
+                runs_dir,
+                {
+                    "generated_at": f"2026-01-01T00:{minute:02d}:00+00:00",
+                    "classification": "quota_monitor_poll",
+                    "recommended_action": "monitor poll unchanged; no material transition",
+                    "health_check": "quota monitor poll unchanged; no material transition",
+                    "delivery_outcome": "surface_only",
+                    "monitor_target": {
+                        "schema_version": "quota_monitor_target_v0",
+                        "target_id": "repeat-monitor-target",
+                        "monitor_mode": "due_monitor_observed_without_material_transition",
+                        "effective_action": "normal_run",
+                        "agent_id": "codex-product-capability",
                     },
                 },
             )
@@ -311,6 +333,49 @@ def assert_replan_obligation_projected_from_run_history() -> None:
         assert guard["execution_obligation"]["kind"] == "autonomous_replan_required", guard
         assert guard["automation_liveness"]["automation_action"] == "execute_bounded_work", guard
         assert guard["automation_liveness"]["pause_allowed"] is False, guard
+
+
+def assert_dead_monitor_repeat_requires_six_same_target_polls() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-dead-monitor-repeat-") as tmp:
+        registry_path, runtime = write_fixture(
+            Path(tmp),
+            include_replan_signals=False,
+            monitor_poll_repeat_count=5,
+        )
+        status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)
+        item = attention_item(status_payload)
+        assert "autonomous_replan_obligation" not in item, item
+        assert "autonomous_replan_obligation" not in item["project_asset"], item
+        guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
+        assert "autonomous_replan_obligation" not in guard, guard
+        assert guard["heartbeat_recommendation"]["recommended_mode"] != "autonomous_replan_required", guard
+
+    with tempfile.TemporaryDirectory(prefix="loopx-dead-monitor-repeat-") as tmp:
+        registry_path, runtime = write_fixture(
+            Path(tmp),
+            include_replan_signals=False,
+            monitor_poll_repeat_count=6,
+        )
+        status_payload = run_cli("status", registry_path=registry_path, runtime=runtime)
+        item = attention_item(status_payload)
+        obligation = item["project_asset"]["autonomous_replan_obligation"]
+        detector = obligation["dead_monitor_detector"]
+        assert obligation["schema_version"] == "autonomous_replan_obligation_v0", obligation
+        assert obligation["required"] is True, obligation
+        assert obligation["stall_threshold"] == 6, obligation
+        assert obligation["trigger_count"] == 1, obligation
+        assert obligation["triggers"][0]["kind"] == "dead_monitor_repeat", obligation
+        assert obligation["triggers"][0]["run_count"] == 6, obligation
+        assert detector["schema_version"] == "dead_monitor_repeat_v0", detector
+        assert detector["monitor_target_id"] == "repeat-monitor-target", detector
+        assert detector["run_count"] == 6, detector
+        assert detector["threshold"] == 6, detector
+
+        guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
+        assert guard["autonomous_replan_obligation"] == obligation, guard
+        assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+        assert guard["execution_obligation"]["kind"] == "autonomous_replan_required", guard
+        assert guard["execution_obligation"]["stall_threshold"] == 6, guard
 
 
 def assert_periodic_replan_obligation_projected_from_run_history() -> None:
@@ -519,6 +584,7 @@ def main() -> int:
     USE_SUBPROCESS_CLI = "--subprocess-cli" in argv
     assert_replan_obligation_projected()
     assert_replan_obligation_projected_from_run_history()
+    assert_dead_monitor_repeat_requires_six_same_target_polls()
     assert_periodic_replan_obligation_projected_from_run_history()
     assert_no_periodic_replan_before_threshold_or_after_ack()
     assert_validated_classification_without_ack_does_not_clear_replan()

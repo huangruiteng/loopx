@@ -167,6 +167,19 @@ def find_todo(state_file: Path, todo_id: str) -> dict:
     raise AssertionError(f"missing todo {todo_id}")
 
 
+def run_index_records(registry_path: Path) -> list[dict]:
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    runtime = Path(str(registry["common_runtime_root"]))
+    index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+    if not index_path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
 def assert_due_monitor_selected(registry_path: Path, *, due_count: int = 1) -> None:
     quota = run_cli(
         registry_path,
@@ -215,6 +228,11 @@ def assert_unchanged_writeback() -> None:
         assert item["last_checked_at"], item
         assert item["next_due_at"] != "2026-01-01T00:00:00+00:00", item
         assert item["material_change"] == "false", item
+        assert payload["classification"] == "quota_monitor_poll", payload
+        assert payload["delivery_outcome"] == "surface_only", payload
+        assert "no quota spend" in payload["health_check"], payload
+        records = run_index_records(registry_path)
+        assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
 
 
 def assert_material_transition_followup() -> None:
@@ -255,6 +273,9 @@ def assert_material_transition_followup() -> None:
         ]
         assert successors, agent_todos(state_file)
         assert successors[0]["task_class"] == "advancement_task", successors[0]
+        records = run_index_records(registry_path)
+        assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
+        assert records[0]["delivery_outcome"] == "outcome_progress", records[0]
 
 
 def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
@@ -266,7 +287,7 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         )
         assert_due_monitor_selected(registry_path, due_count=2)
 
-        run_cli_expect_error(
+        result = run_cli_expect_error(
             registry_path,
             "quota",
             "monitor-poll",
@@ -280,10 +301,14 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
             "new",
             "--execute",
         )
+        payload = json.loads(result.stdout)
+        assert payload["ok"] is False, payload
+        assert "monitor-poll requires" in payload["reason"], payload
         selected = find_todo(state_file, TODO_ID)
         other = find_todo(state_file, "todo_monitorpoll111")
         assert selected["result_hash"] == "old", selected
         assert other["result_hash"] == "old", other
+        assert run_index_records(registry_path) == [], run_index_records(registry_path)
 
 
 def main() -> int:

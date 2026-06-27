@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Smoke-test scheduled monitor lane routing without growing the large lane smoke."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.status import compact_todo_group  # noqa: E402
+
+
+GOAL_ID = "monitor-scheduler-fixture"
+AGENT_ID = "codex-product-capability"
+PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
+FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
+
+
+def status_payload(*, agent_todo_items: list[dict], status: str = "monitor_scheduler_fixture") -> dict:
+    agent_todos = compact_todo_group(
+        agent_todo_items,
+        source_section="Agent Todo",
+        role="agent",
+    )
+    return {
+        "ok": True,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": status,
+                    "waiting_on": "codex",
+                    "severity": "info",
+                    "source": "project_asset",
+                    "recommended_action": "Route scheduled monitor todos from structured metadata.",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                        "spent_slots": 0,
+                        "state": "eligible",
+                        "reason": "eligible fixture",
+                    },
+                    "project_asset": {
+                        "next_action": "Route scheduled monitor todos from structured metadata.",
+                        "stop_condition": "stop on private material",
+                        "agent_todos": agent_todos,
+                    },
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": status,
+                    "adapter_kind": "harness_self_improvement",
+                    "adapter_status": "connected-read-only",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                    "coordination": {
+                        "registered_agents": [AGENT_ID],
+                        "primary_agent": AGENT_ID,
+                    },
+                }
+            ]
+        },
+    }
+
+
+def monitor_item(
+    *,
+    index: int,
+    todo_id: str,
+    priority: str,
+    next_due_at: str,
+    target_key: str,
+) -> dict:
+    return {
+        "index": index,
+        "text": f"[{priority}] Monitor {target_key} and write back only material transitions.",
+        "todo_id": todo_id,
+        "role": "agent",
+        "status": "open",
+        "priority": priority,
+        "task_class": "continuous_monitor",
+        "action_kind": "monitor",
+        "claimed_by": AGENT_ID,
+        "target_key": target_key,
+        "cadence": "15m",
+        "next_due_at": next_due_at,
+    }
+
+
+def advancement_item(*, index: int, priority: str = "P1") -> dict:
+    return {
+        "index": index,
+        "text": f"[{priority}] Advance the runtime contract slice with validation.",
+        "todo_id": f"todo_adv_{index}",
+        "role": "agent",
+        "status": "open",
+        "priority": priority,
+        "task_class": "advancement_task",
+        "claimed_by": AGENT_ID,
+    }
+
+
+def guard_for(items: list[dict]) -> dict:
+    return build_quota_should_run(
+        status_payload(agent_todo_items=items),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+
+
+def assert_not_due_monitor_waits_quietly() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_monitor_wait",
+                priority="P1",
+                next_due_at=FUTURE_DUE_AT,
+                target_key="update-note-draft-pr",
+            )
+        ]
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
+    assert lane["must_attempt_work"] is False, lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
+
+
+def assert_due_monitor_requires_explicit_attempt() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_monitor_due",
+                priority="P1",
+                next_due_at=PAST_DUE_AT,
+                target_key="update-note-draft-pr",
+            )
+        ]
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert lane["monitor_kind"] == "todo_monitor_due", lane
+    assert lane["obligation"] == "attempt_due_monitor", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["selected_todo_id"] == "todo_monitor_due", lane
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, guard
+
+
+def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_monitor_due_p2",
+                priority="P2",
+                next_due_at=PAST_DUE_AT,
+                target_key="low-priority-watch",
+            ),
+            advancement_item(index=2, priority="P1"),
+        ]
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["reason_codes"] == ["open_agent_todo", "due_monitor_context"], lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
+
+
+def assert_multiple_due_monitor_cap_and_order() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=5,
+                todo_id="todo_monitor_due_p1",
+                priority="P1",
+                next_due_at=PAST_DUE_AT,
+                target_key="p1-watch",
+            ),
+            monitor_item(
+                index=9,
+                todo_id="todo_monitor_due_p0_late",
+                priority="P0",
+                next_due_at=PAST_DUE_AT,
+                target_key="p0-late-watch",
+            ),
+            monitor_item(
+                index=3,
+                todo_id="todo_monitor_due_p0_first",
+                priority="P0",
+                next_due_at=PAST_DUE_AT,
+                target_key="p0-first-watch",
+            ),
+        ]
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["obligation"] == "attempt_due_monitor", lane
+    assert lane["monitor_due_count"] == 3, lane
+    assert len(lane["monitor_due_items"]) == 1, lane
+    assert lane["monitor_due_items"][0]["todo_id"] == "todo_monitor_due_p0_first", lane
+    assert lane["selected_todo_id"] == "todo_monitor_due_p0_first", lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 3, guard
+    assert len(guard["agent_todo_summary"]["monitor_due_items"]) == 1, guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "work_lane_monitor_due: count=3" in markdown, markdown
+
+
+def main() -> int:
+    assert_not_due_monitor_waits_quietly()
+    assert_due_monitor_requires_explicit_attempt()
+    assert_due_monitor_priority_does_not_steal_advancement_lane()
+    assert_multiple_due_monitor_cap_and_order()
+    print("monitor-scheduler-contract-smoke ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

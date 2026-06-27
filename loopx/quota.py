@@ -8181,8 +8181,8 @@ def record_quota_monitor_poll(
             "appended": False,
             "registry_mutated": False,
             "reason": (
-                before.get("reason")
-                or "monitor-poll requires monitor_quiet_skip, due monitor todo, or external monitor observation"
+                "monitor-poll requires monitor_quiet_skip, due monitor todo, "
+                "or external monitor observation"
             ),
             "before": before,
             "after": None,
