@@ -45,6 +45,9 @@ runtime contract, benchmark route, or launch draft.
 - [Release readiness](release-readiness.md): the v0.x maintainer mental model
   for install/update paths, compatibility smoke gates, release-note checklist,
   and safe-to-depend-on surfaces.
+- [Public adoption loop](public-adoption-loop.md): a docs-first public feedback
+  loop with issue/discussion template copy, triage labels, and lightweight
+  external-attempt metrics before any `.github` template write scope is needed.
 - [Frontstage dashboard interaction baseline](frontstage-dashboard-interaction-baseline.md):
   the two-surface frontend rule for keeping public showcase/homepage work fancy
   and case-driven while the real ops control-plane route stays dense, calm,

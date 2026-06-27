@@ -14,6 +14,9 @@ incident report, or launch draft.
 - [Product vision](product/vision.md): long-term product direction, Loop Agent
   definition, maintainer-first management surface, and open-source anchor
   strategy.
+- [Public adoption loop](product/public-adoption-loop.md): docs-first issue
+  and discussion template copy, triage labels, and lightweight external-attempt
+  metrics before any `.github` template write.
 - [Codex CLI TUI-first loop](product/codex-cli-tui-loop.md): first-class
   Codex CLI onboarding target where one visible TUI message starts LoopX, with
   session-attached automation as the preferred follow-up.
@@ -93,6 +96,7 @@ incident report, or launch draft.
 
 - [Product vision](product/vision.md)
 - [Release readiness](product/release-readiness.md)
+- [Public adoption loop](product/public-adoption-loop.md)
 - [Codex CLI TUI-first loop](product/codex-cli-tui-loop.md)
 - [Reward-style replanning hints](product/reward-style-replanning.md)
 - [Frontstage channel and lease roadmap](frontstage-channel-lease-roadmap.md)
