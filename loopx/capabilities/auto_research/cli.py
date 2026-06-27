@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+from pathlib import Path
 
-from ..auto_research import (
+from . import (
+    build_live_auto_research_projection,
     build_auto_research_projection,
     load_auto_research_fixture,
     render_auto_research_projection_markdown,
 )
+from ...quota import build_quota_should_run
+from ...status import collect_status
 
 
 PrintPayload = Callable[
@@ -24,7 +28,7 @@ def register_auto_research_commands(
 ) -> None:
     auto_research_parser = subparsers.add_parser(
         "auto-research",
-        help="Project public-safe decentralized auto-research fixtures.",
+        help="Project public-safe decentralized auto-research frontiers.",
     )
     auto_research_sub = auto_research_parser.add_subparsers(
         dest="auto_research_command",
@@ -32,13 +36,16 @@ def register_auto_research_commands(
     )
     frontier_parser = auto_research_sub.add_parser(
         "frontier",
-        help="Render a per-agent decentralized research frontier from a public fixture.",
+        help="Render a per-agent decentralized research frontier from a public fixture or live LoopX state.",
     )
     add_subcommand_format(frontier_parser)
     frontier_parser.add_argument(
         "--fixture",
-        required=True,
         help="Path to a decentralized_auto_research_fixture_v0 JSON file.",
+    )
+    frontier_parser.add_argument(
+        "--goal-id",
+        help="Goal id for live LoopX quota/status input. Mutually exclusive with --fixture.",
     )
     frontier_parser.add_argument(
         "--agent-id",
@@ -50,17 +57,39 @@ def register_auto_research_commands(
 def handle_auto_research_command(
     args: argparse.Namespace,
     *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int:
     try:
         if args.auto_research_command != "frontier":
             raise ValueError("auto-research requires the `frontier` subcommand")
-        fixture = load_auto_research_fixture(args.fixture)
-        payload = build_auto_research_projection(
-            fixture,
-            agent_id=args.agent_id,
-        )
+        if bool(args.fixture) == bool(args.goal_id):
+            raise ValueError("auto-research frontier requires exactly one of --fixture or --goal-id")
+        if args.fixture:
+            fixture = load_auto_research_fixture(args.fixture)
+            payload = build_auto_research_projection(
+                fixture,
+                agent_id=args.agent_id,
+            )
+        else:
+            status_payload = collect_status(
+                registry_path=registry_path,
+                runtime_root_override=runtime_root_arg,
+                scan_roots=[Path.cwd()],
+                limit=5,
+            )
+            quota_payload = build_quota_should_run(
+                status_payload,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+            )
+            payload = build_live_auto_research_projection(
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+                quota_payload=quota_payload,
+            )
     except Exception as exc:
         payload = {
             "ok": False,

@@ -344,6 +344,221 @@ def build_auto_research_projection(
     }
 
 
+def _compact_optional_token(value: Any, *, field: str, default: str) -> str:
+    if value is None or str(value).strip() == "":
+        return default
+    return _compact_public_token(value, field=field)
+
+
+def _compact_optional_text(value: Any, *, field: str, default: str, max_len: int = 240) -> str:
+    if value is None or str(value).strip() == "":
+        return default
+    text = " ".join(str(value).strip().split())
+    _compact_public_text(text, field=field, max_len=max(len(text), max_len))
+    if len(text) > max_len:
+        text = text[: max_len - 1].rstrip() + "."
+    return _compact_public_text(text, field=field, max_len=max_len)
+
+
+def _live_hypothesis_id(todo_id: str) -> str:
+    suffix = re.sub(r"[^A-Za-z0-9_:-]+", "_", todo_id.replace("todo_", "", 1))
+    return _compact_public_token(f"hyp_{suffix}", field="live.hypothesis_id")
+
+
+def _todo_frontier_item(
+    item: dict[str, Any],
+    *,
+    default_agent_id: str,
+    blocked_by: str | None = None,
+) -> dict[str, Any]:
+    todo_id = _compact_public_token(item.get("todo_id"), field="live.todo_id")
+    claimed_by = _compact_optional_token(
+        item.get("claimed_by"),
+        field="live.claimed_by",
+        default=default_agent_id,
+    )
+    status = _compact_optional_token(item.get("status"), field="live.status", default="open")
+    mechanism_family = _compact_optional_text(
+        item.get("action_kind") or item.get("task_class") or "advancement_task",
+        field="live.mechanism_family",
+        default="advancement_task",
+        max_len=96,
+    )
+    summary = {
+        "hypothesis_id": _live_hypothesis_id(todo_id),
+        "todo_id": todo_id,
+        "claimed_by": claimed_by,
+        "status": "active" if status == "open" else status,
+        "mechanism_family": mechanism_family,
+        "source_kind": "todo_item_v0",
+        "title": _compact_optional_text(
+            item.get("title") or item.get("text"),
+            field="live.title",
+            default=todo_id,
+            max_len=220,
+        ),
+    }
+    if blocked_by:
+        summary["blocked_by"] = _compact_public_text(blocked_by, field="live.blocked_by", max_len=160)
+    else:
+        summary["allowed_action"] = _compact_optional_text(
+            item.get("action_kind") or "advance_todo",
+            field="live.allowed_action",
+            default="advance_todo",
+            max_len=96,
+        )
+    return summary
+
+
+def _claimed_by_current_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> bool:
+    claimed_by = str(item.get("claimed_by") or "").strip()
+    return not claimed_by or claimed_by == agent_id
+
+
+def build_live_auto_research_projection(
+    *,
+    goal_id: str,
+    agent_id: str,
+    quota_payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Render a read-only auto-research frontier from live LoopX quota state.
+
+    This intentionally consumes the existing quota/status projection instead of
+    parsing ACTIVE_GOAL_STATE.md directly. The source of truth stays in the
+    LoopX control plane; auto-research only reframes todo-backed work as a
+    decentralized research frontier.
+    """
+
+    goal = _compact_public_token(goal_id, field="goal_id")
+    agent = _compact_public_token(agent_id, field="agent_id")
+    if not quota_payload.get("ok"):
+        raise ValueError("quota payload must be ok for live auto-research projection")
+
+    gate = quota_payload.get("capability_gate")
+    if not isinstance(gate, dict):
+        gate = {}
+    runnable_candidates = [
+        item for item in gate.get("runnable_candidates") or [] if isinstance(item, dict)
+    ]
+    blocked_candidates = [
+        item for item in gate.get("blocked_candidates") or [] if isinstance(item, dict)
+    ]
+    selected_raw = quota_payload.get("agent_lane_next_action")
+    selected = None
+    if (
+        isinstance(selected_raw, dict)
+        and selected_raw.get("todo_id")
+        and _claimed_by_current_or_unclaimed(selected_raw, agent_id=agent)
+    ):
+        selected = _todo_frontier_item(selected_raw, default_agent_id=agent)
+    else:
+        for item in runnable_candidates:
+            if _claimed_by_current_or_unclaimed(item, agent_id=agent):
+                selected = _todo_frontier_item(item, default_agent_id=agent)
+                break
+
+    runnable: list[dict[str, Any]] = []
+    seen_todos: set[str] = set()
+    for item in runnable_candidates:
+        if not item.get("todo_id"):
+            continue
+        if not _claimed_by_current_or_unclaimed(item, agent_id=agent):
+            continue
+        summary = _todo_frontier_item(item, default_agent_id=agent)
+        if summary["todo_id"] in seen_todos:
+            continue
+        seen_todos.add(summary["todo_id"])
+        runnable.append(summary)
+
+    blocked: list[dict[str, Any]] = []
+    other_claimed_context = [
+        item
+        for item in runnable_candidates
+        if item.get("todo_id") and not _claimed_by_current_or_unclaimed(item, agent_id=agent)
+    ]
+    for item in [*other_claimed_context, *blocked_candidates][:12]:
+        if not item.get("todo_id"):
+            continue
+        claimed_by = item.get("claimed_by")
+        status = item.get("status") or "blocked"
+        reason = f"claimed_by:{claimed_by}" if claimed_by and claimed_by != agent else f"status:{status}"
+        blocked.append(_todo_frontier_item(item, default_agent_id=agent, blocked_by=reason))
+
+    nodes = [
+        {
+            "hypothesis_id": item["hypothesis_id"],
+            "parent_hypothesis_id": None,
+            "todo_id": item["todo_id"],
+            "claimed_by": item["claimed_by"],
+            "status": item["status"],
+            "source_kind": item["source_kind"],
+        }
+        for item in [*runnable, *blocked]
+    ]
+    agent_ids = sorted({item["claimed_by"] for item in [*runnable, *blocked]})
+    todo_ids = sorted({item["todo_id"] for item in [*runnable, *blocked]})
+    evidence_graph = {
+        "schema_version": RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
+        "goal_id": goal,
+        "hypothesis_count": len(nodes),
+        "evidence_event_count": 0,
+        "todo_ids": todo_ids,
+        "agent_ids": agent_ids,
+        "baseline_metric": None,
+        "best_dev_metric": None,
+        "best_holdout_metric": None,
+        "holdout_improved": False,
+        "negative_evidence_count": 0,
+        "needs_retry_count": 0,
+        "nodes": nodes,
+        "source_kind": "loopx_live_quota_status",
+    }
+    frontier = {
+        "schema_version": RESEARCH_FRONTIER_SCHEMA_VERSION,
+        "goal_id": goal,
+        "agent_id": agent,
+        "selected": selected,
+        "runnable": runnable,
+        "blocked": blocked,
+        "promotion_candidates": [],
+        "source_kind": "loopx_live_quota_status",
+    }
+    selected_title = selected.get("title") if isinstance(selected, dict) else "No runnable hypothesis"
+    showcase_projection = {
+        "schema_version": RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
+        "title": "LoopX Live Auto Research Frontier",
+        "goal_id": goal,
+        "objective": selected_title,
+        "metric": {
+            "name": "runnable_hypotheses",
+            "direction": "maximize",
+            "baseline": 0.0,
+        },
+        "baseline_metric": None,
+        "best_dev_metric": None,
+        "best_holdout_metric": None,
+        "holdout_improved": False,
+        "promoted_hypotheses": [],
+        "retired_or_contradicted_hypotheses": [],
+        "negative_evidence_count": 0,
+        "decentralized_pattern": "todo_backed_live_frontier_agent_scoped_quota_projection",
+        "source_kind": "loopx_live_quota_status",
+    }
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
+        "source_schema_version": "loopx_live_quota_status_v0",
+        "frontier": frontier,
+        "evidence_graph": evidence_graph,
+        "showcase_projection": showcase_projection,
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "source": "live_quota_status_projection",
+        },
+    }
+
+
 def _best_metric(events: list[dict[str, Any]], *, split: str, direction: str) -> float | None:
     values = [
         event["metric"]["value"]

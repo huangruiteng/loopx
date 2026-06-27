@@ -14,6 +14,10 @@ from .capabilities.issue_fix.cli import (
     handle_issue_fix_command,
     register_issue_fix_commands,
 )
+from .capabilities.auto_research.cli import (
+    handle_auto_research_command,
+    register_auto_research_commands,
+)
 from .capabilities.value_connectors.cli import (
     handle_value_connector_command,
     register_value_connector_commands,
@@ -21,7 +25,6 @@ from .capabilities.value_connectors.cli import (
 from .cli_commands import (
     handle_benchmark_command,
     handle_bootstrap_connect_command,
-    handle_auto_research_command,
     handle_capability_command,
     handle_check_command,
     handle_diagnose_command,
@@ -44,7 +47,6 @@ from .cli_commands import (
     handle_worker_bridge_command,
     register_benchmark_command_group,
     register_bootstrap_connect_command,
-    register_auto_research_commands,
     register_capability_commands,
     register_doctor_command,
     register_dreaming_commands,
@@ -251,7 +253,13 @@ def main(argv: list[str] | None = None) -> int:
         return handle_ml_experiment_command(args, output_format=output_format, print_payload=print_payload)
 
     if args.command == "auto-research":
-        return handle_auto_research_command(args, output_format=output_format, print_payload=print_payload)
+        return handle_auto_research_command(
+            args,
+            registry_path=registry_path,
+            runtime_root_arg=args.runtime_root,
+            output_format=output_format,
+            print_payload=print_payload,
+        )
 
     if args.command == "content-ops":
         return handle_content_ops_command(args, output_format=output_format, print_payload=print_payload)

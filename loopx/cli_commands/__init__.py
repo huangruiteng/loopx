@@ -44,7 +44,6 @@ from .agentissue_runner_flow import (
     handle_agentissue_runner_flow_command,
     register_agentissue_runner_flow_commands,
 )
-from .auto_research import handle_auto_research_command, register_auto_research_commands
 from .benchmark_boundary import (
     handle_benchmark_boundary_command,
     register_benchmark_boundary_commands,
@@ -170,7 +169,6 @@ __all__ = [
     "handle_agents_last_exam_task_material_command",
     "handle_agents_last_exam_validation_gate_command",
     "handle_agentissue_runner_flow_command",
-    "handle_auto_research_command",
     "handle_benchmark_boundary_command",
     "handle_benchmark_command",
     "handle_benchmark_review_lifecycle_command",
@@ -234,7 +232,6 @@ __all__ = [
     "register_agents_last_exam_task_material_commands",
     "register_agents_last_exam_validation_gate_commands",
     "register_agentissue_runner_flow_commands",
-    "register_auto_research_commands",
     "register_benchmark_boundary_commands",
     "register_benchmark_command_group",
     "register_benchmark_review_lifecycle_commands",

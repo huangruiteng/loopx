@@ -15,12 +15,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.auto_research import (  # noqa: E402
+from loopx.capabilities.auto_research import (  # noqa: E402
     AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
     RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
     RESEARCH_FRONTIER_SCHEMA_VERSION,
     RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
     build_auto_research_projection,
+    build_live_auto_research_projection,
     load_auto_research_fixture,
 )
 
@@ -124,6 +125,65 @@ def main() -> None:
     )
     assert "decentralized_research_frontier_v0" in docs, docs
     assert "research_showcase_projection_v0" in docs, docs
+
+    live_payload = build_live_auto_research_projection(
+        goal_id="loopx-meta",
+        agent_id="codex-side-bypass",
+        quota_payload={
+            "ok": True,
+            "agent_lane_next_action": {
+                "todo_id": "todo_auto_live_001",
+                "title": "Try partial selection for exact k-NN",
+                "claimed_by": "codex-side-bypass",
+                "status": "open",
+                "task_class": "advancement_task",
+                "action_kind": "run_dev_attempt",
+            },
+            "capability_gate": {
+                "runnable_candidates": [
+                    {
+                        "todo_id": "todo_auto_live_001",
+                        "title": "Try partial selection for exact k-NN",
+                        "claimed_by": "codex-side-bypass",
+                        "status": "open",
+                        "task_class": "advancement_task",
+                        "action_kind": "run_dev_attempt",
+                    },
+                    {
+                        "todo_id": "todo_auto_live_003",
+                        "title": "Other lane candidate must remain context",
+                        "claimed_by": "codex-main-control",
+                        "status": "open",
+                        "task_class": "advancement_task",
+                        "action_kind": "holdout_eval",
+                    }
+                ],
+                "blocked_candidates": [
+                    {
+                        "todo_id": "todo_auto_live_002",
+                        "title": "Audit alternate batch query path",
+                        "claimed_by": "codex-product-capability",
+                        "status": "open",
+                        "task_class": "advancement_task",
+                        "action_kind": "novelty_audit",
+                    }
+                ],
+            },
+        },
+    )
+    assert live_payload["ok"], live_payload
+    assert live_payload["source_schema_version"] == "loopx_live_quota_status_v0", live_payload
+    assert live_payload["frontier"]["selected"]["todo_id"] == "todo_auto_live_001", live_payload
+    assert live_payload["frontier"]["selected"]["source_kind"] == "todo_item_v0", live_payload
+    assert [item["todo_id"] for item in live_payload["frontier"]["runnable"]] == [
+        "todo_auto_live_001"
+    ], live_payload
+    assert live_payload["frontier"]["blocked"][0]["blocked_by"] == "claimed_by:codex-main-control", live_payload
+    assert live_payload["frontier"]["blocked"][1]["blocked_by"] == "claimed_by:codex-product-capability", live_payload
+    assert live_payload["evidence_graph"]["hypothesis_count"] == 3, live_payload
+    assert live_payload["showcase_projection"]["decentralized_pattern"].startswith("todo_backed_live_frontier"), live_payload
+    assert live_payload["public_boundary"]["source"] == "live_quota_status_projection", live_payload
+    assert_no_private_surface(live_payload)
 
     print("decentralized-auto-research-frontier-smoke ok")
 
