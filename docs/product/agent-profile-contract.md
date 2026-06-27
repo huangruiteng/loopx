@@ -146,6 +146,12 @@ change is small, public-safe, and low risk. Otherwise the side agent should add
 or update a todo claimed by the primary agent for review, verification, and
 merge.
 
+`review_policy.handoff_agent` is the per-agent override for broad side-agent
+completion. It wins over the goal-level `coordination.side_agent_handoff_agent`
+when the completing `claimed_by` matches this profile, so projects can route one
+side-agent lane to a reviewer while another lane returns directly to the
+primary control agent.
+
 ## Projection
 
 `agent_member_v0` should be a read-only status/review-packet projection derived

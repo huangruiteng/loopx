@@ -108,9 +108,11 @@ other registered agents are side agents. Side agents should do repository edits
 only in an independent git worktree/branch, never in the primary checkout. Small
 AGENTS-eligible validated changes may be self-merged when the side agent records
 public-safe evidence; higher-risk or unclear work should create a successor
-handoff todo claimed by the primary agent by default or by
-`coordination.side_agent_handoff_agent` when configured. First register the
-agent ids and primary agent in the goal registry:
+handoff todo claimed by the primary agent by default. A project may route all
+side-agent handoffs through `coordination.side_agent_handoff_agent`, or route a
+specific side-agent through
+`coordination.agent_profiles.<agent_id>.review_policy.handoff_agent`. First
+register the agent ids and primary agent in the goal registry:
 
 `quota should-run --agent-id <side-agent-id>` enforces this as a preflight: when
 the side agent is running from the registered primary checkout, a non-git
@@ -277,13 +279,14 @@ loopx todo complete \
 
 If `--claimed-by` names a side agent, broad side-agent completion defaults to
 requiring a successor handoff todo. By default that successor is claimed by the
-goal's `primary_agent`. A goal may instead set
-`coordination.side_agent_handoff_agent` to another registered agent; in that
-case the successor handoff todo defaults to that agent and `--next-claimed-by`
-is allowed only when it matches the configured handoff owner. Existing
-registry fields named for review are not aliases for this route. This keeps
-broad side-agent handoff visible to the shared control plane without hard-coding
-the primary agent as the only follow-up surface.
+goal's `primary_agent`. A goal may set
+`coordination.side_agent_handoff_agent` to another registered agent for the
+shared default route, and may override that default for a specific side agent
+with `coordination.agent_profiles.<agent_id>.review_policy.handoff_agent`.
+`--next-claimed-by` is allowed only when it matches the resolved handoff owner.
+Existing registry fields named for review are not aliases for this route. This
+keeps broad side-agent handoff visible to the shared control plane without
+hard-coding a single follow-up surface for every side-agent lane.
 
 LoopX does not model "review" as a separate kernel object. Review, verification,
 or continuation are product-level names for a successor todo. The machine
