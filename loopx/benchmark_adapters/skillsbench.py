@@ -1353,6 +1353,16 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
         label = "skillsbench_result_json_missing_after_runner_exit"
         return label, label, [label, "skillsbench_runner_setup_error"]
     if (
+        "skillsbench task source preflight blocked" in text
+        or "task missing from canonical tasks source" in text
+    ):
+        label = "skillsbench_task_source_preflight_blocked"
+        return label, label, [
+            label,
+            "skillsbench_runner_setup_error",
+            "skillsbench_task_source_preflight",
+        ]
+    if (
         "could not find the file /app" in text
         or "main:/app/skills" in text
         or "/app/skills" in text
