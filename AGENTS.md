@@ -53,6 +53,21 @@ submission behavior, permission boundaries, or launch new benchmark jobs.
 After self-merging, sync local `main`, leave unrelated untracked local artifacts
 alone, and continue with the next safe project batch.
 
+## First-Screen Review Gate
+
+Treat the first visible screen of public product surfaces as owner-reviewed
+presentation, not as ordinary copy. Before committing, pushing, or self-merging
+changes that alter the first viewport, hero block, primary CTA, or opening
+navigation of README, hosted frontstage, showcase index pages, product home
+pages, or similarly prominent public entry points, show the user a preview
+first and wait for approval.
+
+The preview should be concrete enough to judge the presentation: provide the
+local URL and, when the surface is visual HTML, a screenshot or browser view of
+the first viewport. Do not move the review gate into a PR comment, todo note, or
+final summary after the fact. It must happen before the public first-screen
+change is finalized.
+
 ## Public And Private Boundary
 
 Do not commit internal department, team, customer, meeting, reporting,
