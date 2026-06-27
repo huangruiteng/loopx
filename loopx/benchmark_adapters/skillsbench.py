@@ -86,7 +86,6 @@ SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_SCOPES = (
 )
 SKILLSBENCH_LOCAL_DRIVER_A2A_PAIR_ROUTES = (
     SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
-    SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
     SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
 )
 
@@ -3200,6 +3199,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
         and agent_bridge_refresh_state_count > 0
         and agent_bridge_quota_spend_slot_count > 0
     )
+    agent_bridge_task_facing_operation_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_operation_count"
+    )
     agent_bridge_activity_observed = bool(
         _controller_public_count("remote_command_file_bridge_agent_request_count") > 0
         or _controller_public_count(
@@ -3240,8 +3242,18 @@ def build_skillsbench_benchflow_result_benchmark_run(
     product_mode_solver_activity_gap_observed = bool(
         controller_counters.get("product_mode_solver_activity_gap") is True
     )
+    product_mode_solver_activity_gap_superseded = bool(
+        product_mode_solver_activity_gap_observed
+        and agent_bridge_task_facing_operation_count > 0
+        and agent_bridge_final_closeout_satisfied
+    )
+    if product_mode_solver_activity_gap_superseded:
+        controller_counters[
+            "product_mode_solver_activity_gap_superseded_by_final_activity"
+        ] = True
     product_mode_solver_activity_gap_corroborated = bool(
         product_mode_solver_activity_gap_observed
+        and not product_mode_solver_activity_gap_superseded
         and (
             controller_counters.get("product_mode_solver_activity_missing_reason")
             == "missing_task_facing_activity_or_agent_closeout_before_declared_done"
@@ -3393,7 +3405,19 @@ def build_skillsbench_benchflow_result_benchmark_run(
     host_local_acp_codex_exec_failure_category = str(
         controller_counters.get("host_local_acp_codex_exec_failure_category") or ""
     )
-    if host_local_acp_codex_exec_failure_present and not official_passed:
+    host_local_acp_idle_timeout_after_countable_closeout = bool(
+        host_local_acp_codex_exec_failure_present
+        and host_local_acp_codex_exec_failure_category == "codex_exec_bridge_idle_timeout"
+        and reward_value is not None
+        and product_mode_lifecycle_satisfied
+        and agent_bridge_task_facing_operation_count > 0
+        and agent_bridge_final_closeout_satisfied
+    )
+    if (
+        host_local_acp_codex_exec_failure_present
+        and not official_passed
+        and not host_local_acp_idle_timeout_after_countable_closeout
+    ):
         host_failure_label = "skillsbench_host_local_acp_codex_exec_failed"
         if host_local_acp_codex_exec_failure_category:
             host_failure_label = (
@@ -3434,6 +3458,30 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             if item and item not in failure_labels:
                 failure_labels.append(item)
+    elif host_local_acp_idle_timeout_after_countable_closeout:
+        warning_label = (
+            "skillsbench_host_local_acp_idle_timeout_after_countable_closeout"
+        )
+        failure_labels = [
+            item for item in failure_labels if item != "skillsbench_runner_error"
+        ]
+        if reward_value == 0 and score_failure_attribution in {
+            "",
+            "none",
+            "skillsbench_runner_error",
+            "official_score_zero_case_failure",
+        }:
+            exception_type = warning_label
+            score_failure_attribution = "official_score_zero_case_failure"
+            runner_score_failure_attribution = warning_label
+            if "official_score_zero_case_failure" not in failure_labels:
+                failure_labels.append("official_score_zero_case_failure")
+        for item in (
+            warning_label,
+            "skillsbench_host_local_acp_codex_exec_failed",
+        ):
+            if item not in warning_labels:
+                warning_labels.append(item)
     if trajectory_summary:
         evidence_files.append("loopx:acp_trajectory_summary")
     runner_failure: dict[str, Any] | None = None

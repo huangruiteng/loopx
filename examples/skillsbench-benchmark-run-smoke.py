@@ -1000,7 +1000,7 @@ def test_skillsbench_local_driver_a2a_contract_keeps_codex_local() -> None:
     assert payload["boundary"]["submit_allowed"] is False, payload
     assert payload["mini_pair"]["routes"] == [
         "raw-codex-autonomous-max5",
-        "loopx-product-mode",
+        "loopx-goal-start-product-mode",
     ], payload
     text = json.dumps(payload, sort_keys=True)
     for forbidden in (
@@ -4857,7 +4857,7 @@ def test_product_mode_case_state_seed_runs_after_host_local_sandbox_install() ->
     assert "benchflow_rollout_module._snapshot_build_config" in source
     assert "benchflow_rollout_module.deploy_skills" in source
     assert (
-        'if args.route == "loopx-product-mode" and not args.host_local_acp_launch:'
+        "if _is_loopx_product_mode_route(args.route) and not args.host_local_acp_launch:"
         in source
     )
 
@@ -4922,10 +4922,13 @@ def test_host_local_acp_connect_contract_matches_benchflow_runtime() -> None:
     source = (REPO_ROOT / "scripts" / "skillsbench_automation_loop.py").read_text(
         encoding="utf-8"
     )
+    assert "def _benchflow_connect_acp_return_arity(target: Any) -> int:" in source
     assert "from benchflow.agents.protocol import ACPSessionAdapter" in source
-    assert ") -> tuple[Any, Any, Any, str]:" in source
+    assert ") -> tuple[Any, ...]:" in source
     assert "session_adapter = ACPSessionAdapter(client)" in source
+    assert "return client, session, agent_name" in source
     assert "return client, session, session_adapter, agent_name" in source
+    assert 'host_local_acp_connect_return_arity"] = return_arity' in source
     assert 'if "mcp_servers" in inspect.signature(client.session_new).parameters:' in source
     assert "client.session_new(cwd=agent_cwd, mcp_servers=mcp_servers)" not in source
 
@@ -6626,6 +6629,95 @@ def test_skillsbench_product_mode_first_action_timeout_is_uncountable() -> None:
         assert failure["exception_type"] == expected_label, failure
         assert failure["failure_class"] == expected_label, failure
         assert failure["raw_error_recorded"] is False
+
+
+def test_skillsbench_host_local_idle_timeout_after_closeout_is_countable() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-host-acp-closeout-") as tmp:
+        root = Path(tmp)
+        result_path = write_official_skillsbench_result(root, reward=0.0)
+        result = json.loads(result_path.read_text())
+        result["error"] = "synthetic codex_exec_bridge_idle_timeout"
+        write_json(result_path, result)
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-goal-start-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "reward_observation_count": 13,
+            "round_rewards": [
+                {"agent_round": 13, "reward_present": True, "reward": 0.0}
+            ],
+            "agent_declared_done": True,
+            "agent_declared_no_remaining_goals": True,
+            "declared_done_round": 13,
+            "product_mode_solver_activity_gap": True,
+            "product_mode_solver_activity_gap_count": 1,
+            "product_mode_solver_activity_gap_round": 7,
+            "product_mode_solver_activity_missing_reason": (
+                "missing_task_facing_activity_or_agent_closeout_before_declared_done"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_trace_count": 14,
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 14,
+            "remote_command_file_bridge_driver_lifecycle_request_count": 56,
+            "remote_command_file_bridge_driver_lifecycle_success_count": 56,
+            "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+            "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 56,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 14,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 42,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_count": 14,
+            "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+            "remote_command_file_bridge_agent_request_count": 47,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 34,
+            "remote_command_file_bridge_agent_loopx_state_read_count": 7,
+            "remote_command_file_bridge_agent_loopx_state_write_count": 5,
+            "remote_command_file_bridge_agent_todo_closeout_count": 2,
+            "remote_command_file_bridge_agent_refresh_state_count": 2,
+            "remote_command_file_bridge_agent_quota_spend_slot_count": 1,
+            "host_local_acp_codex_exec_failure_trace_present": True,
+            "host_local_acp_codex_exec_failure_trace_count": 1,
+            "host_local_acp_codex_exec_failure_category": (
+                "codex_exec_bridge_idle_timeout"
+            ),
+            "host_local_acp_codex_exec_failure_categories": [
+                "codex_exec_bridge_idle_timeout"
+            ],
+            "host_local_acp_codex_exec_failure_raw_material_recorded": False,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-goal-start-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        assert compact["official_score"] == 0.0, compact
+        assert compact["score_failure_attribution"] == (
+            "official_score_zero_case_failure"
+        ), compact
+        labels = compact["failure_attribution_labels"]
+        assert "skillsbench_product_mode_solver_activity_gap" not in labels, compact
+        assert "skillsbench_runner_setup_error" not in labels, compact
+        warnings = compact["runner_warning_labels"]
+        assert (
+            "skillsbench_host_local_acp_idle_timeout_after_countable_closeout"
+            in warnings
+        ), compact
+        accounting = compact["attempt_accounting"]
+        assert accounting["case_attempt_countable"] is True, accounting
+        assert accounting["solver_attempt_countable"] is True, accounting
+        assert accounting["verifier_attempt_countable"] is True, accounting
+        assert accounting["official_score_attempt_countable"] is True, accounting
+        assert accounting["failure_class"] == "solver_failed", accounting
 
 
 def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted() -> None:
@@ -9726,6 +9818,7 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_solver_activity_gap_is_compacted()
     test_skillsbench_product_mode_solver_activity_gap_overrides_zero_score()
     test_skillsbench_product_mode_first_action_timeout_is_uncountable()
+    test_skillsbench_host_local_idle_timeout_after_closeout_is_countable()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()
     test_skillsbench_declared_done_missing_reward_status_is_compacted()
     test_skillsbench_product_mode_declared_done_without_closeout_overrides_verifier_error()
