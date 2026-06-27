@@ -54,6 +54,11 @@ The executable product contract is split in two:
   hypothesis proposer, executor, evaluator/promoter, and product narrator. Each
   lane contributes typed records through claims and gates; none owns the whole
   graph.
+- [Auto-research product metrics](auto-research-product-metrics.md) defines
+  which user-value metrics the product surface should show. It intentionally
+  favors scored attempts, held-out lift, negative-evidence reuse, retry
+  recovery, and human promotion decisions over implementation counters such as
+  file count, smoke count, or dashboard row count.
 
 ## Showcase Candidate
 
@@ -82,7 +87,10 @@ preserving exact output.
    status.
 4. Promotion decision: what got promoted, which alternatives were retired, and
    which evidence proves the boundary.
-5. Report: concise public-safe final summary with commands and artifacts.
+5. Product metrics: time to first scored attempt, useful hypotheses per active
+   day, held-out lift, negative-evidence reuse, retry recovery, and human
+   promotion decisions required.
+6. Report: concise public-safe final summary with commands and artifacts.
 
 ## Candidate Hypothesis Graph
 
