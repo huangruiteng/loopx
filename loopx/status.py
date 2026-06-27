@@ -775,6 +775,350 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
     return compact
 
 
+def _benchmark_case_timeline_events_by_name(
+    timeline: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    events = timeline.get("events") if isinstance(timeline.get("events"), list) else []
+    result: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        name = public_safe_compact_text(event.get("event"), limit=120)
+        if name and name not in result:
+            result[name] = event
+    return result
+
+
+def _benchmark_positive_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 0
+
+
+def build_skillsbench_post_run_debug_gate(
+    run: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the public-safe SkillsBench post-run debug gate packet."""
+
+    if not isinstance(run, dict):
+        return {}
+    benchmark_id = public_safe_compact_text(run.get("benchmark_id"), limit=120) or ""
+    timeline = _compact_benchmark_case_event_timeline(run.get("case_event_timeline"))
+    if not benchmark_id.startswith("skillsbench"):
+        return {}
+
+    counters = (
+        run.get("interaction_counters")
+        if isinstance(run.get("interaction_counters"), dict)
+        else {}
+    )
+    lifecycle = (
+        run.get("product_mode_lifecycle_contract")
+        if isinstance(run.get("product_mode_lifecycle_contract"), dict)
+        else {}
+    )
+    official = (
+        run.get("official_task_score")
+        if isinstance(run.get("official_task_score"), dict)
+        else {}
+    )
+    runner_failure = (
+        run.get("runner_failure")
+        if isinstance(run.get("runner_failure"), dict)
+        else {}
+    )
+    events = _benchmark_case_timeline_events_by_name(timeline)
+    missing_fields: list[str] = []
+    if not timeline:
+        missing_fields.append("case_event_timeline")
+
+    product_mode_required = bool(
+        run.get("product_mode") is True
+        or counters.get("product_mode") is True
+        or lifecycle.get("required") is True
+    )
+    required_events = [
+        "controller_decision_loop",
+        "official_score_closeout",
+    ]
+    if product_mode_required:
+        required_events.extend(
+            [
+                "case_goal_state_init",
+                "orchestrated_loopx_lifecycle",
+                "remote_command_bridge_consumption",
+                "task_facing_activity",
+                "agent_bridge_closeout",
+            ]
+        )
+    for event_name in required_events:
+        if timeline and event_name not in events:
+            missing_fields.append(f"case_event_timeline.events.{event_name}")
+
+    official_event = events.get("official_score_closeout", {})
+    closeout_event = events.get("agent_bridge_closeout", {})
+    controller_event = events.get("controller_decision_loop", {})
+    driver_event = events.get("orchestrated_loopx_lifecycle", {})
+    recovery_event = events.get("timeout_or_failure_closeout", {})
+    activity_event = events.get("task_facing_activity", {})
+
+    official_status = (
+        public_safe_compact_text(
+            official_event.get("status") or run.get("official_score_status"),
+            limit=120,
+        )
+        or "unknown"
+    )
+    official_passed = official.get("passed")
+    if not isinstance(official_passed, bool):
+        official_passed = official_event.get("official_score_passed")
+    official_score_value = official.get("value")
+    if not isinstance(official_score_value, (int, float)) or isinstance(
+        official_score_value,
+        bool,
+    ):
+        official_score_value = run.get("official_score")
+    closeout_status = public_safe_compact_text(
+        closeout_event.get("status"),
+        limit=120,
+    ) or ("not_required" if not product_mode_required else "unknown")
+    activity_status = (
+        public_safe_compact_text(activity_event.get("status"), limit=120)
+        or "unknown"
+    )
+    recovery_status = (
+        public_safe_compact_text(recovery_event.get("status"), limit=120)
+        or "not_observed"
+    )
+    agent_operation_trace_missing = bool(
+        activity_status == "missing_agent_operation_trace"
+        or lifecycle.get("agent_operation_trace_missing") is True
+    )
+    runner_recovery_blocked = recovery_status in {
+        "user_loop_recovery_triggered",
+        "runner_failure_recorded",
+    }
+    lifecycle_required = lifecycle.get("required") is True or product_mode_required
+    lifecycle_state_read_count = _benchmark_positive_int(
+        lifecycle.get("state_read_count")
+    ) or _benchmark_positive_int(driver_event.get("state_read_count"))
+    lifecycle_state_write_count = _benchmark_positive_int(
+        lifecycle.get("state_write_count")
+    ) or _benchmark_positive_int(driver_event.get("state_write_count"))
+    lifecycle_satisfied = lifecycle.get("satisfied")
+    closeout_satisfied = bool(
+        closeout_status in {"satisfied", "not_required"}
+        or lifecycle.get("closeout_satisfied") is True
+    )
+    timeline_lifecycle_satisfied = bool(
+        closeout_satisfied
+        and (
+            not lifecycle_required
+            or (lifecycle_state_read_count > 0 and lifecycle_state_write_count > 0)
+        )
+    )
+    effective_lifecycle_satisfied = bool(
+        lifecycle_satisfied is True or timeline_lifecycle_satisfied
+    )
+    case_closeout_complete = bool(
+        not missing_fields
+        and (not lifecycle_required or effective_lifecycle_satisfied)
+        and official_status not in {"unknown", ""}
+        and not agent_operation_trace_missing
+        and not (official_status == "missing" and runner_recovery_blocked)
+    )
+
+    first_blocker = "none"
+    attribution_layer = "solution_level_unknown"
+    if missing_fields:
+        attribution_layer = "incomplete_public_debug_packet"
+        first_blocker = missing_fields[0]
+    elif lifecycle_required and (
+        not effective_lifecycle_satisfied or agent_operation_trace_missing
+    ):
+        attribution_layer = "loopx_lifecycle"
+        first_blocker = public_safe_compact_text(
+            lifecycle.get("missing_reason"),
+            limit=140,
+        ) or ""
+        if agent_operation_trace_missing and not first_blocker:
+            first_blocker = "remote_command_file_bridge_agent_operation_trace_missing"
+        if not first_blocker:
+            first_blocker = (
+                public_safe_compact_text(lifecycle.get("missing_reason"), limit=140)
+                or "loopx_lifecycle_incomplete"
+            )
+    elif closeout_status in {"missing", "partial"}:
+        attribution_layer = "loopx_lifecycle"
+        first_blocker = "loopx_closeout_incomplete"
+    elif runner_recovery_blocked:
+        attribution_layer = "timeout_or_runner"
+        first_blocker = (
+            public_safe_compact_text(
+                recovery_event.get("recovery_exception_type")
+                or recovery_event.get("runner_failure_class"),
+                limit=140,
+            )
+            or "runner_or_timeout_closeout"
+        )
+    elif official_status == "missing":
+        attribution_layer = "verifier_or_scorer"
+        first_blocker = (
+            public_safe_compact_text(run.get("score_failure_attribution"), limit=140)
+            or "official_score_missing"
+        )
+    elif official_passed is True:
+        attribution_layer = "clean_pass"
+    elif isinstance(official_score_value, (int, float)) and official_score_value == 0:
+        attribution_layer = "solution_level_unknown"
+        first_blocker = (
+            public_safe_compact_text(run.get("score_failure_attribution"), limit=140)
+            or "official_score_zero_case_failure"
+        )
+    elif official_passed is False:
+        attribution_layer = "solution_level_unknown"
+        first_blocker = (
+            public_safe_compact_text(run.get("score_failure_attribution"), limit=140)
+            or "official_score_nonpassing"
+        )
+
+    packet_complete = not missing_fields
+    if not packet_complete:
+        next_case_gate = "blocked_missing_debug_packet"
+        next_action = "write_public_safe_case_debug_packet_before_next_case"
+    elif not case_closeout_complete:
+        next_case_gate = "blocked_incomplete_case_closeout"
+        next_action = "record_or_repair_case_closeout_before_next_case"
+    elif attribution_layer == "clean_pass":
+        next_case_gate = "open"
+        next_action = "upsert_ledger_and_continue_or_compare_pair"
+    else:
+        next_case_gate = "open_with_attribution"
+        next_action = "use_debug_packet_attribution_before_rotating_or_rerunning"
+
+    labels = public_safe_compact_list(
+        run.get("failure_attribution_labels"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    gate: dict[str, Any] = {
+        "schema_version": "skillsbench_post_run_debug_gate_v0",
+        "source": "compact_public_signals",
+        "packet_complete": packet_complete,
+        "case_closeout_complete": case_closeout_complete,
+        "next_case_gate": next_case_gate,
+        "normal_progress_allowed": bool(packet_complete and case_closeout_complete),
+        "first_blocker": first_blocker,
+        "next_action": next_action,
+        "attribution_layer": attribution_layer,
+        "raw_material_recorded": False,
+        "missing_field_count": len(missing_fields),
+        "missing_fields": missing_fields[:MAX_BENCHMARK_RUN_LIST_ITEMS],
+        "scorer_verifier": {
+            "official_score_status": official_status,
+            "official_score_passed": (
+                official_passed if isinstance(official_passed, bool) else None
+            ),
+            "official_score_value": (
+                official_score_value
+                if isinstance(official_score_value, (int, float))
+                and not isinstance(official_score_value, bool)
+                else None
+            ),
+            "score_failure_attribution": (
+                public_safe_compact_text(
+                    run.get("score_failure_attribution"),
+                    limit=140,
+                )
+                or "none"
+            ),
+        },
+        "loopx_lifecycle": {
+            "required": lifecycle_required,
+            "satisfied": effective_lifecycle_satisfied,
+            "closeout_status": closeout_status,
+            "state_read_count": lifecycle_state_read_count,
+            "state_write_count": lifecycle_state_write_count,
+            "todo_closeout_count": _benchmark_positive_int(
+                lifecycle.get("agent_bridge_todo_closeout_count")
+            )
+            or _benchmark_positive_int(closeout_event.get("todo_closeout_count")),
+            "refresh_state_count": _benchmark_positive_int(
+                lifecycle.get("agent_bridge_refresh_state_count")
+            )
+            or _benchmark_positive_int(closeout_event.get("refresh_state_count")),
+            "quota_spend_slot_count": _benchmark_positive_int(
+                lifecycle.get("agent_bridge_quota_spend_slot_count")
+            )
+            or _benchmark_positive_int(closeout_event.get("quota_spend_slot_count")),
+        },
+        "todo_flow": {
+            "case_todo_seeded_or_init_observed": (
+                events.get("case_goal_state_init", {}).get("status")
+                in {"passed", "satisfied", "not_required"}
+            ),
+            "task_facing_activity_status": activity_status,
+            "open_todo_count_public": _benchmark_positive_int(
+                counters.get("open_todo_count")
+            ),
+        },
+        "controller": {
+            "status": (
+                public_safe_compact_text(controller_event.get("status"), limit=120)
+                or "unknown"
+            ),
+            "action_decision_count": _benchmark_positive_int(
+                controller_event.get("action_decision_count")
+            ),
+            "initial_prompt_count": _benchmark_positive_int(
+                controller_event.get("initial_prompt_count")
+            ),
+            "followup_prompt_count": _benchmark_positive_int(
+                controller_event.get("followup_prompt_count")
+            ),
+            "stop_decision_count": _benchmark_positive_int(
+                controller_event.get("stop_decision_count")
+            ),
+            "max_rounds_budget": _benchmark_positive_int(
+                controller_event.get("max_rounds_budget")
+            ),
+            "last_decision": (
+                public_safe_compact_text(
+                    controller_event.get("last_decision"),
+                    limit=140,
+                )
+                or "unknown"
+            ),
+        },
+        "timeout_fairness": {
+            "runner_recovery_status": recovery_status,
+            "recovery_exception_type": (
+                public_safe_compact_text(
+                    recovery_event.get("recovery_exception_type"),
+                    limit=140,
+                )
+                or "none"
+            ),
+            "benchflow_agent_timeout_effective_sec": _benchmark_positive_int(
+                recovery_event.get("benchflow_agent_timeout_effective_sec")
+            ),
+        },
+        "boundary": {
+            "task_text_read": False,
+            "logs_read": False,
+            "trajectory_read": False,
+            "verifier_output_tail_public": False,
+        },
+    }
+    if labels:
+        gate["failure_attribution_labels"] = labels
+    if runner_failure:
+        gate["runner_failure_class"] = (
+            public_safe_compact_text(runner_failure.get("failure_class"), limit=140)
+            or "unknown"
+        )
+    return gate
+
+
 def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -3168,6 +3512,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if case_event_timeline:
         compact["case_event_timeline"] = case_event_timeline
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
+    if post_run_debug_gate:
+        compact["post_run_debug_gate"] = post_run_debug_gate
 
     preflight_guard = _compact_benchmark_preflight_guard(source.get("preflight_guard"))
     if preflight_guard:

@@ -4934,15 +4934,32 @@ def test_skillsbench_case_event_timeline_is_compacted() -> None:
         )
         assert events["official_score_closeout"]["status"] == "passed"
         assert events["agent_bridge_closeout"]["status"] == "satisfied"
+        gate = compact["post_run_debug_gate"]
+        assert gate["schema_version"] == "skillsbench_post_run_debug_gate_v0"
+        assert gate["packet_complete"] is True, gate
+        assert gate["case_closeout_complete"] is True, gate
+        assert gate["next_case_gate"] == "open", gate
+        assert gate["normal_progress_allowed"] is True, gate
+        assert gate["scorer_verifier"]["official_score_passed"] is True, gate
+        assert gate["loopx_lifecycle"]["todo_closeout_count"] == 1, gate
+        assert gate["boundary"]["task_text_read"] is False, gate
 
         compact_again = compact_benchmark_run(compact)
         assert compact_again is not None
         assert compact_again["case_event_timeline"]["event_count"] == (
             timeline["event_count"]
         )
+        assert compact_again["post_run_debug_gate"]["packet_complete"] is True
         compact_text = json.dumps(compact_again, sort_keys=True)
         assert "raw_task_text" not in compact_text
         assert "raw_trajectory" not in compact_text
+        non_skillsbench = dict(compact_again)
+        non_skillsbench["benchmark_id"] = "terminal-bench@2.0"
+        non_skillsbench.pop("post_run_debug_gate", None)
+        terminal_compact = compact_benchmark_run(non_skillsbench)
+        assert terminal_compact is not None
+        assert "case_event_timeline" in terminal_compact
+        assert "post_run_debug_gate" not in terminal_compact
 
 
 def test_skillsbench_runner_plan_supports_product_mode_routes() -> None:
@@ -8019,10 +8036,25 @@ def test_skillsbench_runner_failure_case_event_timeline_is_compacted() -> None:
         assert recovery["benchflow_agent_timeout_effective_sec"] == 21660
         assert recovery["local_codex_exec_timeout_sec"] == 21600
         assert events["official_score_closeout"]["status"] == "missing"
+        gate = compact["post_run_debug_gate"]
+        assert gate["schema_version"] == "skillsbench_post_run_debug_gate_v0"
+        assert gate["packet_complete"] is True, gate
+        assert gate["case_closeout_complete"] is False, gate
+        assert gate["next_case_gate"] == "blocked_incomplete_case_closeout", gate
+        assert gate["normal_progress_allowed"] is False, gate
+        assert gate["attribution_layer"] == "loopx_lifecycle", gate
+        assert gate["first_blocker"] in {
+            "remote_command_file_bridge_agent_operation_trace_missing",
+            "loopx_lifecycle_incomplete",
+        }, gate
+        assert gate["timeout_fairness"]["recovery_exception_type"] == (
+            "AgentPromptTimeoutError"
+        )
 
         compact_again = compact_benchmark_run(compact)
         assert compact_again is not None
         assert compact_again["case_event_timeline"]["raw_material_recorded"] is False
+        assert compact_again["post_run_debug_gate"]["packet_complete"] is True
         assert "PRIVATE_TIMEOUT_DETAIL_SHOULD_NOT_ESCAPE" not in json.dumps(
             compact_again
         ), compact_again

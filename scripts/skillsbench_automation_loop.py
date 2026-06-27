@@ -8554,7 +8554,10 @@ def reduce_result(
     from loopx.benchmark import (
         build_skillsbench_benchflow_result_benchmark_run,
     )
-    from loopx.status import compact_benchmark_run
+    from loopx.status import (
+        build_skillsbench_post_run_debug_gate,
+        compact_benchmark_run,
+    )
 
     controller_trace = _read_controller_trace(plan)
     _merge_acp_trajectory_summary(plan, controller_trace)
@@ -8681,6 +8684,7 @@ def reduce_result(
     if goal_start_control_score:
         compact["goal_start_product_mode_control_score"] = goal_start_control_score
     compact["case_event_timeline"] = _build_case_event_timeline(compact, plan)
+    compact["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(compact)
     return compact
 
 
@@ -8756,7 +8760,10 @@ def build_runner_failure_compact(
         skillsbench_runner_error_attribution,
         skillsbench_runner_error_fingerprint,
     )
-    from loopx.status import compact_benchmark_run
+    from loopx.status import (
+        build_skillsbench_post_run_debug_gate,
+        compact_benchmark_run,
+    )
 
     plan.setdefault("runner_prerequisites", {})
     _ensure_runner_interruption_prerequisites(plan, exc)
@@ -8886,6 +8893,7 @@ def build_runner_failure_compact(
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
+    reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
     return reduced
 
 
