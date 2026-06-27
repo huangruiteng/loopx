@@ -54,6 +54,7 @@ from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .renderers.status_markdown import (
+    append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
     append_human_reward_markdown as _append_human_reward_markdown,
     append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
     authority_registry_markdown_summary as _authority_registry_markdown_summary,
@@ -9752,13 +9753,6 @@ def collect_status(
     }
 
 
-def _event_class_count_text(counts: dict[str, Any]) -> str:
-    return " ".join(
-        f"{event_class}={counts.get(event_class, 0)}"
-        for event_class in EVENT_LEDGER_CLASSES
-    )
-
-
 def render_status_markdown(payload: dict[str, Any]) -> str:
     lines = [
         "# LoopX Status",
@@ -9816,60 +9810,11 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         if isinstance(payload.get("event_ledger_summary"), dict)
         else {}
     )
-    event_totals = (
-        event_ledger.get("totals")
-        if isinstance(event_ledger.get("totals"), dict)
-        else {}
+    _append_event_ledger_summary_markdown(
+        lines,
+        event_ledger,
+        event_classes=EVENT_LEDGER_CLASSES,
     )
-    if event_ledger.get("available") and event_totals:
-        by_class_24h = (
-            event_totals.get("by_class_24h")
-            if isinstance(event_totals.get("by_class_24h"), dict)
-            else {}
-        )
-        by_class_7d = (
-            event_totals.get("by_class_7d")
-            if isinstance(event_totals.get("by_class_7d"), dict)
-            else {}
-        )
-        lines.extend(
-            [
-                "",
-                "## Event Ledger Summary",
-                "- summary: "
-                f"source={_markdown_scalar(event_ledger.get('source') or '')} "
-                f"samples={event_ledger.get('sample_run_count')} "
-                f"events_24h={event_totals.get('events_24h')} "
-                f"events_7d={event_totals.get('events_7d')} "
-                f"benchmark_runs_24h={event_totals.get('benchmark_runs_24h', 0)} "
-                f"benchmark_runs_7d={event_totals.get('benchmark_runs_7d', 0)} "
-                f"classes_24h={_event_class_count_text(by_class_24h)} "
-                f"classes_7d={_event_class_count_text(by_class_7d)}",
-            ]
-        )
-        event_goals = (
-            event_ledger.get("goals")
-            if isinstance(event_ledger.get("goals"), list)
-            else []
-        )
-        for goal in event_goals[:3]:
-            if not isinstance(goal, dict):
-                continue
-            goal_by_class_24h = (
-                goal.get("by_class_24h")
-                if isinstance(goal.get("by_class_24h"), dict)
-                else {}
-            )
-            lines.append(
-                "- "
-                f"`{_markdown_scalar(goal.get('goal_id') or '')}`: "
-                f"events_24h={goal.get('events_24h')} "
-                f"events_7d={goal.get('events_7d')} "
-                f"benchmark_runs_24h={goal.get('benchmark_runs_24h', 0)} "
-                f"benchmark_runs_7d={goal.get('benchmark_runs_7d', 0)} "
-                f"latest={_markdown_scalar(goal.get('latest_event_class') or '')} "
-                f"classes_24h={_event_class_count_text(goal_by_class_24h)}"
-            )
 
     promotion_readiness = (
         payload.get("promotion_readiness_summary")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any
 
 
@@ -96,3 +97,75 @@ def append_operator_gate_resume_contract_markdown(lines: list[str], contract: di
         value = contract.get(field)
         if value:
             lines.append(f"      - {field}: {markdown_scalar(value)}")
+
+
+def event_class_count_text(counts: dict[str, Any], event_classes: Collection[str]) -> str:
+    return " ".join(
+        f"{event_class}={counts.get(event_class, 0)}"
+        for event_class in event_classes
+    )
+
+
+def append_event_ledger_summary_markdown(
+    lines: list[str],
+    event_ledger: dict[str, Any],
+    *,
+    event_classes: Collection[str],
+) -> None:
+    event_totals = (
+        event_ledger.get("totals")
+        if isinstance(event_ledger.get("totals"), dict)
+        else {}
+    )
+    if not event_ledger.get("available") or not event_totals:
+        return
+
+    by_class_24h = (
+        event_totals.get("by_class_24h")
+        if isinstance(event_totals.get("by_class_24h"), dict)
+        else {}
+    )
+    by_class_7d = (
+        event_totals.get("by_class_7d")
+        if isinstance(event_totals.get("by_class_7d"), dict)
+        else {}
+    )
+    lines.extend(
+        [
+            "",
+            "## Event Ledger Summary",
+            "- summary: "
+            f"source={markdown_scalar(event_ledger.get('source') or '')} "
+            f"samples={event_ledger.get('sample_run_count')} "
+            f"events_24h={event_totals.get('events_24h')} "
+            f"events_7d={event_totals.get('events_7d')} "
+            f"benchmark_runs_24h={event_totals.get('benchmark_runs_24h', 0)} "
+            f"benchmark_runs_7d={event_totals.get('benchmark_runs_7d', 0)} "
+            f"classes_24h={event_class_count_text(by_class_24h, event_classes)} "
+            f"classes_7d={event_class_count_text(by_class_7d, event_classes)}",
+        ]
+    )
+
+    event_goals = (
+        event_ledger.get("goals")
+        if isinstance(event_ledger.get("goals"), list)
+        else []
+    )
+    for goal in event_goals[:3]:
+        if not isinstance(goal, dict):
+            continue
+        goal_by_class_24h = (
+            goal.get("by_class_24h")
+            if isinstance(goal.get("by_class_24h"), dict)
+            else {}
+        )
+        lines.append(
+            "- "
+            f"`{markdown_scalar(goal.get('goal_id') or '')}`: "
+            f"events_24h={goal.get('events_24h')} "
+            f"events_7d={goal.get('events_7d')} "
+            f"benchmark_runs_24h={goal.get('benchmark_runs_24h', 0)} "
+            f"benchmark_runs_7d={goal.get('benchmark_runs_7d', 0)} "
+            f"latest={markdown_scalar(goal.get('latest_event_class') or '')} "
+            f"classes_24h={event_class_count_text(goal_by_class_24h, event_classes)}"
+        )
