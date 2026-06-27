@@ -651,12 +651,18 @@ the evidence needed to decide whether the goal is working.
 
 The agent may append at most one no-spend monitor poll, rerun the guard, and
 then stay quiet. The automation remains alive; monitor-only quiet skips are not
-completion or deletion signals.
+completion or deletion signals. The poll records `quota_monitor_target_v0` so
+the next guard can distinguish a harmless unchanged watch from the same target
+repeating.
 
 Status and diagnose should display unchanged monitor-only work as
 `waiting_on=monitor_signal` with `severity=watch`, while retaining the quota
 decision `effective_action=monitor_quiet_skip`. This keeps the monitor visible
 without making it look like immediate Codex work or a user/controller gate.
+Six consecutive no-spend polls for the same target should project a
+`dead_monitor_repeat` autonomous replan obligation; the agent must write a
+watch-lane expiry, concrete blocker, todo supersede, or successor runnable todo
+before another quiet poll.
 
 **Visual Model**
 
@@ -666,7 +672,9 @@ flowchart TD
   M -->|"no"| C["follow concrete contract"]
   M -->|"yes"| P["append no-spend poll"]
   P --> R["rerun quota guard"]
-  R --> Q["quiet; keep automation active"]
+  R --> D{"same target repeated?"}
+  D -->|"no"| Q["quiet; keep automation active"]
+  D -->|"yes"| A["dead-monitor repair required"]
 ```
 
 **Bad smell**
@@ -679,6 +687,7 @@ watch lane instead of staying quiet or writing a concrete blocker.
 **Validation**
 
 - `examples/heartbeat-quota-flow-smoke.py`
+- `examples/quota-plan-smoke.py`
 - `docs/heartbeat-automation-prompt.md`
 - `docs/archive/incidents/monitor-only-replan-stall-incident-20260621.md`
 
@@ -2120,6 +2129,7 @@ resolved repair; it is an unclosed control-plane loop with better narration.
 
 - `docs/archive/incidents/monitor-only-replan-stall-incident-20260621.md`
 - `skills/loopx-self-repair/references/repair-patterns.md`
+- `examples/heartbeat-quota-flow-smoke.py`
 - future regression that compares before/after frontier fields for repair and
   replan closeout runs.
 

@@ -82,6 +82,19 @@ commit-backed self-iteration case, and one contributor-approved interactive
 workflow case that shows how LoopX coordinates generated scripts and worker
 agents under a shared control plane.
 
+## Additional Public Evidence Cases
+
+| Case | Pattern | Status | Public Surface |
+| --- | --- | --- | --- |
+| [0623 agent-to-agent PR comment and fix loop](cases/0623-agent-to-agent-pr-comments.md) | Agent handoff, PR comment loop, review packet | Public-safe pattern case | Redacted lifecycle narrative |
+| [0623 overnight project refactor](cases/0623-overnight-project-refactor.md) | PR-sized slices, todo follow-up, supersede | Public-safe pattern case | Redacted lifecycle narrative |
+| [0624 PR issue automatic fix loop](cases/0624-pr-issue-auto-fix.md) | Issue-fix workflow, repro smoke, reviewer handoff | Public-safe pattern case | Redacted workflow narrative |
+| [0627 overnight PR batch with reviewable control](cases/0627-overnight-pr-batch.md) | PR-sized slices, validation writeback, public-boundary discipline | Public Git evidence case | 22 merged commits over a 10-hour public Git window |
+
+Additional evidence cases stay in the catalog as appendix surfaces, but they
+are not part of the first three canonical PoC cards until they gain a
+reproducible demo or a deeper public evidence packet.
+
 ## Appendix Cases
 
 | Case | Pattern | Status | Public Surface |

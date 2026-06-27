@@ -1444,6 +1444,107 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert f"asset_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
 
 
+def assert_status_agent_lane_frontier_hint_projection() -> None:
+    goal_id = "agent-lane-frontier-status-fixture"
+    primary_action = "[P0] Continue the primary controller benchmark route."
+    primary_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_primary_route",
+        "index": 1,
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "advancement_task",
+        "claimed_by": "codex-main-control",
+        "text": primary_action,
+    }
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "open_count": 1,
+        "done_count": 0,
+        "total_count": 1,
+        "first_open_items": [primary_todo],
+        "items": [primary_todo],
+    }
+    coordination = {
+        "primary_agent": "codex-main-control",
+        "registered_agents": ["codex-main-control", "codex-side-bypass"],
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "contract": {"ok": True, "summary": {"errors": 0, "warnings": 0, "checks": 0}},
+        "global_registry": {"available": False, "summary": {}},
+        "attention_queue": {
+            "available": True,
+            "item_count": 1,
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "primary_route_active",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": primary_action,
+                    "source": "registry",
+                    "coordination": coordination,
+                    "quota": {
+                        "state": "eligible",
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                    "agent_todos": agent_todos,
+                    "project_asset": {
+                        "owner": "codex-main-control",
+                        "gate": "none",
+                        "stop_condition": "stop on unsafe workspace or user gate",
+                        "next_action": primary_action,
+                        "agent_todos": project_asset_todo_summary(agent_todos, role="agent"),
+                    },
+                }
+            ],
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "registry_member": True,
+                    "status": "primary_route_active",
+                    "coordination": coordination,
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                }
+            ]
+        },
+    }
+    attach_agent_lane_next_actions(payload, agent_id="codex-side-bypass")
+    item = payload["attention_queue"]["items"][0]
+    assert "agent_lane_next_action" not in item, item
+    frontier = item["agent_scope_frontier"]
+    assert frontier["action"] == "agent_scope_wait", frontier
+    hint = item["agent_lane_frontier_hint"]
+    assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
+    assert hint["decision"] == "quiet_noop_blocker", hint
+    assert hint["source"] == "agent_scope_frontier", hint
+    assert hint["target_todo_id"] == "todo_primary_route", hint
+    projection = payload["agent_lane_next_action_projection"]
+    assert projection["attached_count"] == 0, projection
+    assert projection["frontier_attached_count"] == 1, projection
+    assert projection["frontier_hint_attached_count"] == 1, projection
+    markdown = render_status_markdown(payload)
+    assert "agent_lane_frontier_hint: agent=codex-side-bypass" in markdown, markdown
+    assert "decision=quiet_noop_blocker" in markdown, markdown
+    assert "target_todo_id=todo_primary_route" in markdown, markdown
+
+
 def assert_quota_should_run(
     payload: dict,
     *,
@@ -2261,6 +2362,7 @@ def main() -> int:
     assert_promotion_readiness_full_scan_fallback()
     assert_promotion_readiness_warning_in_quota_guard()
     assert_status_agent_lane_next_action_projection()
+    assert_status_agent_lane_frontier_hint_projection()
     print("status-markdown-smoke ok")
     return 0
 

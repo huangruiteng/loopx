@@ -69,6 +69,16 @@ is defined in
 [`docs/reference/protocols/openviking-session-memory-adapter-v0.md`](reference/protocols/openviking-session-memory-adapter-v0.md);
 consumers should ignore the field when absent.
 
+Rows may also include an optional `local_agent_launch_plan` object with
+`schema_version=local_agent_launch_plan_v0`. This is a dry-run preview over
+configured agents, role assignments, non-executable launch preview rows,
+status projection, evidence projection, and future gates. It is read-only and
+must not start local workers, call external agent services, expose shell
+commands, write LoopX state, or grant host authority. The protocol is defined
+in
+[`docs/reference/protocols/local-agent-launch-plan-v0.md`](reference/protocols/local-agent-launch-plan-v0.md);
+consumers should ignore the field when absent.
+
 Loopback status exports include `status_contract.schema_version`. The dashboard
 uses that small protocol marker to detect when `127.0.0.1:8766` is still served
 by an older daemon or release snapshot after the checkout has moved forward. If
@@ -892,6 +902,13 @@ Item fields:
   counts to indicate when more claimed work exists than is expanded in the
   current payload, and richer frontstage views should use a future
   paged/filtered projection instead of forcing larger heartbeat payloads.
+  The canonical todo drill-down contract is
+  `docs/reference/protocols/todo-detail-cold-path-v0.md`: hot-path summaries
+  may carry only a compact `todo_detail_ref_v0` pointer for one selected item,
+  while full notes, evidence summaries, related lifecycle references, and page
+  tokens stay in `todo_detail_cold_path_v0` cold-path responses. Status,
+  quota, heartbeat, and handoff payloads must not inline full todo detail in
+  order to make hidden backlog visible.
   When claimed lanes exceed the cap, producers should avoid raw top-N
   truncation. Sort by priority and source position, group by `claimed_by`, take
   a fair per-claimant slice, then fill remaining slots from the sorted
@@ -1217,12 +1234,13 @@ subsequent unchanged intervals by `unchanged_poll_backoff_multiplier` until
 `max_interval_minutes`; `example_progression_minutes` exposes the compact
 human-readable sequence. The hint also includes
 `reset_policy.schema_version=scheduler_reset_policy_v0`: hosts compare its
-`identity_snapshot` between polls and clear the unchanged/backoff streak when
-that snapshot or scheduler action changes, or when a user reply,
-new/reassigned todo, resolved gate, or material transition makes the goal
-actionable again. The reset moves Codex App/local cadence back to the current
-profile's initial interval before unchanged backoff resumes, and does not spend
-quota.
+`reset_token` between polls and clear the unchanged/backoff streak when that
+token changes, or when a user reply, new/reassigned todo, resolved gate, or
+material transition makes the goal actionable again. The token is derived from
+scheduler action plus identity/profile inputs, while the hot path carries only
+short identity/profile signatures instead of full snapshots. The reset moves
+Codex App/local cadence back to the current profile's initial interval before
+unchanged backoff resumes, and does not spend quota.
 Codex App heartbeats should apply `codex_app.recommended_rrule` for ordinary
 cadence updates. They should cache only
 `reset_policy.reset_token` plus the automation id when possible; when that token
@@ -1230,8 +1248,8 @@ changes, or when user feedback/new work/reassignment/material evidence makes the
 goal active again, update the heartbeat RRULE to
 `reset_policy.codex_app_initial_rrule` and clear unchanged-poll state before
 starting a new backoff progression. The token is generated from scheduler
-action, `identity_snapshot`, and `profile_snapshot`, so hosts do not need to
-diff the whole payload to notice an initial-RRULE/profile generation change.
+action plus identity/profile inputs, so hosts do not need to diff the whole
+payload to notice an initial-RRULE/profile generation change.
 The payload also includes `execution_obligation`, which is the compatibility
 entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It

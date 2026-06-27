@@ -156,6 +156,8 @@ AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
 SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = AGENT_CLAIM_SCOPE_SCHEMA_VERSION
 AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
 AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
+AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION = "agent_lane_frontier_hint_v0"
+QUOTA_MONITOR_TARGET_SCHEMA_VERSION = "quota_monitor_target_v0"
 
 
 class AgentScopeFrontierAction(str, Enum):
@@ -163,6 +165,13 @@ class AgentScopeFrontierAction(str, Enum):
     AGENT_SCOPE_WAIT = "agent_scope_wait"
     REASSIGNMENT_REQUIRED = "reassignment_required"
     SUCCESSOR_REPLAN_REQUIRED = "successor_replan_required"
+
+
+class AgentLaneFrontierHintDecision(str, Enum):
+    CLAIM_UNOWNED_IN_SCOPE = "claim_unowned_in_scope"
+    ADD_NEXT_ADVANCEMENT = "add_next_advancement"
+    RECORD_NO_FOLLOWUP = "record_no_followup"
+    QUIET_NOOP_BLOCKER = "quiet_noop_blocker"
 
 
 DEFAULT_AVAILABLE_CAPABILITIES = (
@@ -2551,6 +2560,157 @@ def _agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
         return None
 
 
+def _first_compact_todo_id(items: Any) -> str | None:
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        todo_id = normalize_todo_id(item.get("todo_id"))
+        if todo_id:
+            return todo_id
+    return None
+
+
+def _agent_lane_frontier_hint(
+    *,
+    goal_id: str,
+    agent_identity: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    agent_lane_next_action: dict[str, Any] | None,
+    agent_scope_frontier: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return None
+    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+
+    def build_hint(
+        decision: AgentLaneFrontierHintDecision,
+        *,
+        source: str,
+        reason_code: str,
+        target_todo_id: str | None = None,
+        quiet_noop_allowed: bool,
+        next_cli_action: str | None = None,
+    ) -> dict[str, Any]:
+        hint: dict[str, Any] = {
+            "schema_version": AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION,
+            "decision": decision.value,
+            "agent_id": agent_id,
+            "primary_agent": primary_agent,
+            "source": source,
+            "reason_code": reason_code,
+            "quiet_noop_allowed": quiet_noop_allowed,
+            "uses_structured_frontier": True,
+        }
+        if target_todo_id:
+            hint["target_todo_id"] = target_todo_id
+        if next_cli_action:
+            hint["next_cli_action"] = next_cli_action
+        return hint
+
+    if isinstance(agent_lane_next_action, dict):
+        selected_by = str(agent_lane_next_action.get("selected_by") or "")
+        claim_required = agent_lane_next_action.get("claim_required_before_work") is True
+        target_todo_id = normalize_todo_id(agent_lane_next_action.get("todo_id"))
+        if selected_by == "unclaimed_todo" or claim_required:
+            action = None
+            if target_todo_id:
+                action = (
+                    f"loopx todo claim --goal-id {goal_id} --todo-id {target_todo_id} "
+                    f"--claimed-by {agent_id}"
+                )
+            return build_hint(
+                AgentLaneFrontierHintDecision.CLAIM_UNOWNED_IN_SCOPE,
+                source="agent_lane_next_action",
+                reason_code="unclaimed_advancement_selected",
+                target_todo_id=target_todo_id,
+                quiet_noop_allowed=False,
+                next_cli_action=action,
+            )
+
+    frontier = agent_scope_frontier if isinstance(agent_scope_frontier, dict) else {}
+    frontier_action = _agent_scope_frontier_action(frontier.get("action"))
+    if frontier_action == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED:
+        cleared_todo_id = _first_compact_todo_id(
+            frontier.get("cleared_without_successor_handoff_gates")
+        )
+        if cleared_todo_id:
+            return build_hint(
+                AgentLaneFrontierHintDecision.RECORD_NO_FOLLOWUP,
+                source="agent_scope_frontier",
+                reason_code="cleared_handoff_without_successor",
+                target_todo_id=cleared_todo_id,
+                quiet_noop_allowed=False,
+                next_cli_action=(
+                    f"loopx todo complete --goal-id {goal_id} --todo-id {cleared_todo_id} "
+                    "--no-follow-up --evidence '<public-safe rationale>'"
+                ),
+            )
+        deferred_todo_id = _first_compact_todo_id(frontier.get("deferred_resume_candidates"))
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="successor_replan_required",
+            target_todo_id=deferred_todo_id,
+            quiet_noop_allowed=False,
+        )
+
+    if frontier_action in {
+        AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
+        AgentScopeFrontierAction.REASSIGNMENT_REQUIRED,
+    }:
+        blocker_todo_id = _first_compact_todo_id(frontier.get("blocking_handoff_gates"))
+        if not blocker_todo_id:
+            blocker_todo_id = _first_compact_todo_id(frontier.get("other_agent_claimed_items"))
+        if blocker_todo_id:
+            return build_hint(
+                AgentLaneFrontierHintDecision.QUIET_NOOP_BLOCKER,
+                source="agent_scope_frontier",
+                reason_code="blocked_by_other_agent_frontier",
+                target_todo_id=blocker_todo_id,
+                quiet_noop_allowed=True,
+            )
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="no_current_agent_advancement_todo",
+            quiet_noop_allowed=True,
+        )
+
+    if frontier_action == AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED:
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="agent_scope_exhausted",
+            quiet_noop_allowed=True,
+        )
+
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    current_advancement_count = int(
+        agent_todo_summary.get("current_agent_claimed_advancement_count") or 0
+    )
+    current_monitor_count = int(agent_todo_summary.get("current_agent_claimed_monitor_count") or 0)
+    unclaimed_count = _count_advancement_items(
+        agent_todo_summary.get("unclaimed_priority_open_items"),
+        claimed_by="__unclaimed__",
+    )
+    lane = str(work_lane_contract.get("lane") or "") if isinstance(work_lane_contract, dict) else ""
+    if current_advancement_count == 0 and unclaimed_count == 0 and current_monitor_count > 0:
+        return build_hint(
+            AgentLaneFrontierHintDecision.QUIET_NOOP_BLOCKER,
+            source="agent_todo_summary",
+            reason_code="only_current_agent_monitor_work_remains",
+            quiet_noop_allowed=lane != TODO_TASK_CLASS_ADVANCEMENT,
+        )
+    return None
+
+
 def _agent_scope_deferred_resume_candidates(
     agent_todo_summary: dict[str, Any],
     *,
@@ -4235,6 +4395,22 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:16]
+        identity_signature = hashlib.sha256(
+            json.dumps(
+                identity_snapshot,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
+        profile_signature = hashlib.sha256(
+            json.dumps(
+                profile_snapshot,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
         reset_policy = {
             "schema_version": SCHEDULER_RESET_POLICY_SCHEMA_VERSION,
             "source": "quota.should-run",
@@ -4246,21 +4422,12 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
             "codex_app_initial_rrule": codex_rrule,
             "local_scheduler_initial_interval_minutes": codex_interval,
             "clear_unchanged_poll_state": True,
-            "identity_keys": identity_keys,
-            "identity_snapshot": identity_snapshot,
-            "profile_snapshot": profile_snapshot,
-            "reset_conditions": [
-                "reset_token_changed",
-                "quota_identity_snapshot_changed",
-                "scheduler_action_changed",
-                "user_feedback",
-                "new_or_reassigned_todo",
-                "gate_resolved",
-                "material_transition",
-                "active_work_projected",
-            ],
-            "after_reset": "apply the current profile initial interval before starting unchanged backoff again",
-            "codex_app_apply": "if a stored reset_token differs, update the heartbeat RRULE to codex_app_initial_rrule and clear unchanged poll state before applying new backoff",
+            "identity_key_count": len(identity_keys),
+            "identity_signature": identity_signature,
+            "profile_signature": profile_signature,
+            "reset_condition_summary": "token_changed|user_feedback|new_or_reassigned_todo|gate_or_material_transition|active_work_projected",
+            "after_reset": "apply_initial_interval_before_backoff",
+            "codex_app_apply": "update_rrule_to_initial_and_clear_unchanged_state_on_token_change",
             "no_spend_for_reset": True,
         }
         return {
@@ -6545,6 +6712,16 @@ def build_quota_should_run(
             work_lane_contract=work_lane_contract,
             candidate_should_run=bool(should_run and normal_delivery_allowed),
         )
+        agent_lane_frontier_hint = _agent_lane_frontier_hint(
+            goal_id=safe_goal_id,
+            agent_identity=agent_identity,
+            agent_todo_summary=agent_todo_summary,
+            agent_lane_next_action=agent_lane_next_action,
+            agent_scope_frontier=agent_scope_frontier,
+            work_lane_contract=work_lane_contract,
+        )
+        if agent_scope_frontier and agent_lane_frontier_hint:
+            agent_scope_frontier["frontier_hint"] = agent_lane_frontier_hint
         if agent_scope_frontier:
             frontier_action = str(agent_scope_frontier.get("effective_action") or "")
             successor_replan_required = (
@@ -6686,6 +6863,8 @@ def build_quota_should_run(
             payload["agent_identity"] = agent_identity
         if agent_lane_next_action:
             payload["agent_lane_next_action"] = agent_lane_next_action
+        if agent_lane_frontier_hint:
+            payload["agent_lane_frontier_hint"] = agent_lane_frontier_hint
         if agent_scope_frontier:
             payload["agent_scope_frontier"] = agent_scope_frontier
         if workspace_guard:
@@ -7153,6 +7332,41 @@ def _quota_decision_agent_id(decision: dict[str, Any]) -> str | None:
     return normalize_todo_claimed_by(agent_identity.get("agent_id"))
 
 
+def _monitor_target_summary(value: Any, *, limit: int = 160) -> str:
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _quota_monitor_target(before: dict[str, Any], *, monitor_mode: str) -> dict[str, Any]:
+    action_summary = _monitor_target_summary(
+        before.get("recommended_action") or before.get("reason") or "",
+        limit=160,
+    )
+    agent_id = _quota_decision_agent_id(before) or ""
+    parts = {
+        "goal_id": str(before.get("goal_id") or ""),
+        "agent_id": agent_id,
+        "monitor_mode": str(monitor_mode or ""),
+        "effective_action": str(before.get("effective_action") or ""),
+        "action_summary": action_summary,
+    }
+    target_id = hashlib.sha256(
+        json.dumps(parts, ensure_ascii=True, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+    target: dict[str, Any] = {
+        "schema_version": QUOTA_MONITOR_TARGET_SCHEMA_VERSION,
+        "target_id": target_id,
+        "monitor_mode": parts["monitor_mode"],
+        "effective_action": parts["effective_action"],
+        "action_summary": action_summary,
+    }
+    if agent_id:
+        target["agent_id"] = agent_id
+    return target
+
+
 def _work_lane_reason_codes(work_lane_contract: dict[str, Any]) -> set[str]:
     reason_codes = work_lane_contract.get("reason_codes")
     if not isinstance(reason_codes, list):
@@ -7216,6 +7430,7 @@ def build_quota_monitor_poll_event(
         if external_monitor_poll
         else "monitor_quiet_until_material_transition"
     )
+    monitor_target = _quota_monitor_target(before, monitor_mode=monitor_mode)
     safe_reason_summary = str(reason_summary or "").strip()
     if not safe_reason_summary:
         safe_reason_summary = (
@@ -7238,10 +7453,12 @@ def build_quota_monitor_poll_event(
             else "monitor-only poll unchanged; no quota spend; no material transition"
         ),
         "delivery_outcome": DeliveryOutcome.SURFACE_ONLY.value,
+        "monitor_target": monitor_target,
         "monitor_event": {
             "event_type": QUOTA_MONITOR_POLL_CLASSIFICATION,
             "source": safe_source,
             "monitor_mode": monitor_mode,
+            "monitor_target": monitor_target,
             "reason_summary": safe_reason_summary,
             "before": _compact_quota_decision(before),
         },
@@ -7468,6 +7685,7 @@ def record_quota_monitor_poll(
         "recommended_action": record["recommended_action"],
         "health_check": record["health_check"],
         "delivery_outcome": record["delivery_outcome"],
+        "monitor_target": record["monitor_target"],
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
@@ -7944,6 +8162,7 @@ def render_quota_monitor_poll_markdown(payload: dict[str, Any]) -> str:
         f"- agent_id: `{payload.get('agent_id') or event.get('agent_id') or ''}`",
         f"- source: `{event.get('source')}`",
         f"- effective_action: `{before.get('effective_action')}`",
+        f"- monitor_target: `{(event.get('monitor_target') or {}).get('target_id') if isinstance(event.get('monitor_target'), dict) else ''}`",
         f"- should_run: `{before.get('should_run')}`",
         f"- self_repair_allowed: `{before.get('self_repair_allowed')}`",
         f"- state: `{before.get('state')}`",
@@ -8005,6 +8224,19 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if agent_lane_next_action.get("text"):
             lines.append(f"- agent_lane_next_action_text: {agent_lane_next_action.get('text')}")
+    agent_lane_frontier_hint = (
+        payload.get("agent_lane_frontier_hint")
+        if isinstance(payload.get("agent_lane_frontier_hint"), dict)
+        else {}
+    )
+    if agent_lane_frontier_hint:
+        lines.append(
+            "- agent_lane_frontier_hint: "
+            f"decision={agent_lane_frontier_hint.get('decision')} "
+            f"source={agent_lane_frontier_hint.get('source')} "
+            f"reason_code={agent_lane_frontier_hint.get('reason_code')} "
+            f"target_todo_id={agent_lane_frontier_hint.get('target_todo_id')}"
+        )
     agent_scope_frontier = (
         payload.get("agent_scope_frontier")
         if isinstance(payload.get("agent_scope_frontier"), dict)
@@ -8643,8 +8875,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"initial_interval={reset_policy.get('codex_app_initial_interval_minutes')} "
                 f"initial_rrule={reset_policy.get('codex_app_initial_rrule')} "
                 f"reset_generation={reset_policy.get('reset_token')} "
-                f"identity_keys={reset_policy.get('identity_keys')} "
-                f"conditions={reset_policy.get('reset_conditions')}"
+                f"identity_key_count={reset_policy.get('identity_key_count')} "
+                f"identity_signature={reset_policy.get('identity_signature')} "
+                f"profile_signature={reset_policy.get('profile_signature')} "
+                f"conditions={reset_policy.get('reset_condition_summary')}"
             )
     protocol_action_packet = (
         payload.get("protocol_action_packet")

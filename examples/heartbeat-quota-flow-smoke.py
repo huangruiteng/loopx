@@ -659,10 +659,15 @@ def main() -> int:
         assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
         assert reset["codex_app_initial_interval_minutes"] == 15, reset
         assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
-        assert reset["identity_keys"] == first_guard["scheduler_hint"]["unchanged_identity_keys"], reset
-        assert "reset_token_changed" in reset["reset_conditions"], reset
-        assert "material_transition" in reset["reset_conditions"], reset
-        assert "active_work_projected" in reset["reset_conditions"], reset
+        assert reset["identity_key_count"] == len(first_guard["scheduler_hint"]["unchanged_identity_keys"]), reset
+        assert len(reset["identity_signature"]) == 12, reset
+        assert len(reset["profile_signature"]) == 12, reset
+        assert "identity_snapshot" not in reset, reset
+        assert "profile_snapshot" not in reset, reset
+        assert "identity_keys" not in reset, reset
+        assert "token_changed" in reset["reset_condition_summary"], reset
+        assert "material_transition" in reset["reset_condition_summary"], reset
+        assert "active_work_projected" in reset["reset_condition_summary"], reset
         assert reset["clear_unchanged_poll_state"] is True, reset
         first_reset_token = reset["reset_token"]
         assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
@@ -676,7 +681,7 @@ def main() -> int:
         assert interaction["cli_channel"]["spend_after_validation"] is False, interaction
         assert "quota monitor-poll" in interaction["cli_channel"]["next_cli_actions"][0], interaction
 
-        for index in range(2):
+        for index in range(5):
             poll_reason = f"fixture monitor poll no material transition {index}"
             poll = run_cli(
                 root,
@@ -703,6 +708,43 @@ def main() -> int:
             assert count_spend_events(runtime) == 0, poll
             assert count_events(runtime, "quota_monitor_poll") == index + 1, poll
 
+        intermediate_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert intermediate_guard["should_run"] is False, intermediate_guard
+        assert intermediate_guard["effective_action"] == "monitor_quiet_skip", intermediate_guard
+        assert "autonomous_replan_obligation" not in intermediate_guard, intermediate_guard
+
+        poll_reason = "fixture monitor poll no material transition 5"
+        poll = run_cli(
+            root,
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--source",
+            "heartbeat",
+            "--reason-summary",
+            poll_reason,
+            "--execute",
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert poll["ok"] is True, poll
+        assert poll["classification"] == "quota_monitor_poll", poll
+        assert count_spend_events(runtime) == 0, poll
+        assert count_events(runtime, "quota_monitor_poll") == 6, poll
+
         replan_guard = run_cli(
             root,
             "quota",
@@ -716,6 +758,26 @@ def main() -> int:
         )
         assert replan_guard["should_run"] is True, replan_guard
         assert replan_guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", replan_guard
+        obligation = replan_guard["autonomous_replan_obligation"]
+        assert obligation["triggers"][0]["kind"] == "dead_monitor_repeat", obligation
+        assert obligation["stall_threshold"] == 6, obligation
+        assert obligation["triggers"][0]["run_count"] == 6, obligation
+        assert obligation["triggers"][0]["threshold"] == 6, obligation
+        assert obligation["dead_monitor_detector"]["schema_version"] == "dead_monitor_repeat_v0", obligation
+        assert obligation["dead_monitor_detector"]["threshold"] == 6, obligation
+        assert obligation["dead_monitor_detector"]["required_resolution"] == [
+            "watch_lane_expiry",
+            "blocker",
+            "todo_supersede",
+            "successor_runnable_todo",
+        ], obligation
+        assert obligation["guidance_actions"] == [
+            "set_watch_expiry",
+            "write_blocker",
+            "supersede_monitor",
+            "create_successor",
+        ], obligation
+        assert "watch-lane continuation with expiry" in obligation["recommended_action"], obligation
         assert replan_guard["execution_obligation"]["kind"] == "autonomous_replan_required", replan_guard
         assert replan_guard["execution_obligation"]["must_attempt_work"] is True, replan_guard
         assert replan_guard["automation_liveness"]["automation_action"] == "execute_bounded_work", replan_guard
@@ -726,7 +788,7 @@ def main() -> int:
         replan_reset = replan_guard["scheduler_hint"]["reset_policy"]
         assert replan_reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=3", replan_reset
         assert replan_reset["reset_token"] != first_reset_token, replan_reset
-        assert "active_work_projected" in replan_reset["reset_conditions"], replan_reset
+        assert "active_work_projected" in replan_reset["reset_condition_summary"], replan_reset
         assert "automation=execute_bounded_work" in replan_guard["protocol_action_packet"]["summary"], replan_guard
         interaction = replan_guard["interaction_contract"]
         assert interaction["mode"] == "autonomous_replan", interaction
@@ -826,6 +888,7 @@ def main() -> int:
         assert ack["ok"] is True, ack
         assert ack.get("delivery_outcome") is None, ack
 
+        post_ack_poll_count = count_events(runtime, "quota_monitor_poll")
         for index in range(2):
             poll = run_cli(
                 root,
@@ -844,7 +907,7 @@ def main() -> int:
             assert poll["ok"] is True, poll
             assert poll["classification"] == "quota_monitor_poll", poll
             assert count_spend_events(runtime) == 1, poll
-            assert count_events(runtime, "quota_monitor_poll") == index + 3, poll
+            assert count_events(runtime, "quota_monitor_poll") == post_ack_poll_count + index + 1, poll
 
         post_ack_guard = run_cli(
             root,

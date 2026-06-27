@@ -38,21 +38,53 @@ from loopx.quota import (  # noqa: E402
 SCOPED_AGENT_ID = "codex-side-bypass"
 
 
-def expected_scheduler_reset_token(scheduler: dict) -> str:
-    reset = scheduler["reset_policy"]
-    token_payload = {
-        "action": scheduler["action"],
-        "identity_snapshot": reset["identity_snapshot"],
-        "profile_snapshot": reset["profile_snapshot"],
+def _nested_value(payload: dict, path: str):
+    current = payload
+    for part in path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def scheduler_reset_profile_snapshot(scheduler: dict) -> dict:
+    codex_app = scheduler["codex_app"]
+    local_scheduler = scheduler["local_scheduler"]
+    claude_code_loop = scheduler["claude_code_loop"]
+    return {
+        "cadence_class": scheduler["cadence_class"],
+        "codex_app_initial_interval_minutes": codex_app["recommended_interval_minutes"],
+        "codex_app_initial_rrule": codex_app["recommended_rrule"],
+        "codex_app_max_interval_minutes": codex_app["max_interval_minutes"],
+        "unchanged_poll_backoff_multiplier": codex_app["unchanged_poll_backoff_multiplier"],
+        "local_scheduler_unchanged_poll_limit": local_scheduler["unchanged_poll_limit"],
+        "claude_code_loop_unchanged_poll_limit": claude_code_loop["unchanged_poll_limit"],
     }
+
+
+def _short_hash(value: dict, length: int) -> str:
     return hashlib.sha256(
         json.dumps(
-            token_payload,
+            value,
             ensure_ascii=True,
             sort_keys=True,
             default=str,
         ).encode("utf-8")
-    ).hexdigest()[:16]
+    ).hexdigest()[:length]
+
+
+def expected_scheduler_reset_token(scheduler: dict, payload: dict) -> str:
+    identity_snapshot = {
+        key: _nested_value(payload, key)
+        for key in scheduler["unchanged_identity_keys"]
+    }
+    profile_snapshot = scheduler_reset_profile_snapshot(scheduler)
+    token_payload = {
+        "action": scheduler["action"],
+        "identity_snapshot": identity_snapshot,
+        "profile_snapshot": profile_snapshot,
+    }
+    return _short_hash(token_payload, 16)
 
 
 def goal(
@@ -1578,20 +1610,33 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
     assert reset["reset_to"] == "profile_initial_interval", reset
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
-    assert reset["reset_token"] == expected_scheduler_reset_token(scheduler), reset
+    assert reset["reset_token"] == expected_scheduler_reset_token(scheduler, mapped_decision), reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
     assert reset["codex_app_initial_interval_minutes"] == 60, reset
     assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", reset
-    assert reset["profile_snapshot"]["cadence_class"] == "unchanged_noop", reset
-    assert reset["profile_snapshot"]["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", reset
-    assert reset["profile_snapshot"]["codex_app_max_interval_minutes"] == 240, reset
-    assert reset["profile_snapshot"]["unchanged_poll_backoff_multiplier"] == 2, reset
-    assert reset["identity_keys"] == scheduler["unchanged_identity_keys"], reset
-    assert reset["identity_snapshot"]["recommended_action"] == mapped_decision["recommended_action"], reset
-    assert "reset_token_changed" in reset["reset_conditions"], reset
-    assert "user_feedback" in reset["reset_conditions"], reset
-    assert "new_or_reassigned_todo" in reset["reset_conditions"], reset
-    assert "active_work_projected" in reset["reset_conditions"], reset
+    assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
+    assert len(reset["identity_signature"]) == 12, reset
+    assert len(reset["profile_signature"]) == 12, reset
+    assert "identity_snapshot" not in reset, reset
+    assert "profile_snapshot" not in reset, reset
+    assert "identity_keys" not in reset, reset
+    assert "profile" not in reset, reset
+    profile_snapshot = scheduler_reset_profile_snapshot(scheduler)
+    assert profile_snapshot["cadence_class"] == "unchanged_noop", profile_snapshot
+    assert profile_snapshot["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", profile_snapshot
+    assert profile_snapshot["codex_app_max_interval_minutes"] == 240, profile_snapshot
+    assert profile_snapshot["unchanged_poll_backoff_multiplier"] == 2, profile_snapshot
+    assert reset["profile_signature"] == _short_hash(profile_snapshot, 12), reset
+    identity_snapshot = {
+        key: _nested_value(mapped_decision, key)
+        for key in scheduler["unchanged_identity_keys"]
+    }
+    assert identity_snapshot["recommended_action"] == mapped_decision["recommended_action"], identity_snapshot
+    assert reset["identity_signature"] == _short_hash(identity_snapshot, 12), reset
+    assert "token_changed" in reset["reset_condition_summary"], reset
+    assert "user_feedback" in reset["reset_condition_summary"], reset
+    assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
+    assert "active_work_projected" in reset["reset_condition_summary"], reset
     assert "do not run another dry-run" in mapped_rec["spend_policy"], mapped_rec
     assert "heartbeat_recommendation: mode=mapped_noop_if_unchanged notify=DONT_NOTIFY" in mapped_markdown
     assert "heartbeat_stop_if_unchanged: `True`" in mapped_markdown, mapped_markdown
@@ -1988,6 +2033,11 @@ def assert_monitor_poll_event_carries_agent_id() -> None:
 
     assert event["agent_id"] == SCOPED_AGENT_ID, event
     assert event["monitor_event"]["agent_id"] == SCOPED_AGENT_ID, event
+    target = event["monitor_target"]
+    assert target["schema_version"] == "quota_monitor_target_v0", target
+    assert target["target_id"] == event["monitor_event"]["monitor_target"]["target_id"], event
+    assert target["agent_id"] == SCOPED_AGENT_ID, target
+    assert target["effective_action"] == "monitor_quiet_skip", target
 
 
 def main() -> int:

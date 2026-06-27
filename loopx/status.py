@@ -416,6 +416,7 @@ MAX_SUBAGENT_SCOPE_ITEMS = 4
 MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = 3
 MAX_AUTONOMOUS_REPLAN_TRIGGERS = 3
 AUTONOMOUS_REPLAN_STALL_THRESHOLD = 2
+DEAD_MONITOR_REPEAT_THRESHOLD = 6
 AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD = 20
 AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = 30
 AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.IGNORECASE)
@@ -429,6 +430,7 @@ BACKLOG_HYGIENE_HINT_PATTERN = re.compile(
     r"(?i)(?:\[p[0-4]\]|todo|backlog|follow[- ]?up|queue|audit|regression|smoke|cadence|mirror|monitor|sub-?agent|待办|回归|审计|修复|检查|推进)"
 )
 AUTONOMOUS_REPLAN_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
+DEAD_MONITOR_REPEAT_SCHEMA_VERSION = "dead_monitor_repeat_v0"
 AUTONOMOUS_REPLAN_SECTION_HEADINGS = (
     "Next Action",
     "Operating Lessons",
@@ -5567,6 +5569,10 @@ def build_autonomous_replan_obligation(
     if not evidence:
         return None
 
+    dead_monitor_evidence = next(
+        (item for item in evidence if item.get("kind") == "dead_monitor_repeat"),
+        None,
+    )
     first_open: dict[str, Any] = {}
     if isinstance(agent_todos, dict):
         open_items = agent_todos.get("first_open_items")
@@ -5584,17 +5590,30 @@ def build_autonomous_replan_obligation(
         if first_open.get("priority"):
             action["priority"] = first_open.get("priority")
         todo_actions.append(action)
-    todo_actions.append(
-        {
-            "action": "add",
-            "role": "agent",
-            "priority": "P1",
-            "text": (
-                "write a compact replan record naming trigger, selected next slice, "
-                "validation command, and stop condition"
-            ),
-        }
-    )
+    if dead_monitor_evidence:
+        todo_actions.append(
+            {
+                "action": "add",
+                "role": "agent",
+                "priority": "P1",
+                "text": (
+                    "resolve the repeated monitor target with watch-lane expiry, "
+                    "a concrete blocker, todo supersede, or successor runnable todo"
+                ),
+            }
+        )
+    else:
+        todo_actions.append(
+            {
+                "action": "add",
+                "role": "agent",
+                "priority": "P1",
+                "text": (
+                    "write a compact replan record naming trigger, selected next slice, "
+                    "validation command, and stop condition"
+                ),
+            }
+        )
     if any(item.get("kind") in {"no_progress_streak", "repeated_action_loop"} for item in evidence):
         todo_actions.append(
             {
@@ -5617,7 +5636,13 @@ def build_autonomous_replan_obligation(
             }
         )
 
-    if any(item.get("kind") in {"periodic_review", "periodic_review_due"} for item in evidence):
+    if dead_monitor_evidence:
+        recommended_action = (
+            "resolve a dead monitor loop: record watch-lane continuation with expiry, "
+            "a concrete blocker, todo supersede, or successor runnable todo before "
+            "another quiet monitor poll"
+        )
+    elif any(item.get("kind") in {"periodic_review", "periodic_review_due"} for item in evidence):
         recommended_action = (
             "run a bounded autonomous periodic review: keep, split, add, retire, or ask for "
             "a decision; then update todos and select the next validated slice"
@@ -5628,13 +5653,21 @@ def build_autonomous_replan_obligation(
             "monitor-only or repeated action consumes the eligible turn"
         )
 
-    return {
+    result = {
         "schema_version": AUTONOMOUS_REPLAN_SCHEMA_VERSION,
         "required": True,
-        "stall_threshold": AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+        "stall_threshold": (
+            DEAD_MONITOR_REPEAT_THRESHOLD
+            if dead_monitor_evidence
+            else AUTONOMOUS_REPLAN_STALL_THRESHOLD
+        ),
         "trigger_count": len(evidence),
         "triggers": evidence,
-        "guidance_actions": ["keep", "split", "add", "retire", "ask_decision"],
+        "guidance_actions": (
+            ["set_watch_expiry", "write_blocker", "supersede_monitor", "create_successor"]
+            if dead_monitor_evidence
+            else ["keep", "split", "add", "retire", "ask_decision"]
+        ),
         "todo_actions": todo_actions[:3],
         "next_validation_command": "python3 examples/autonomous-replan-obligation-smoke.py",
         "stop_condition": (
@@ -5643,10 +5676,34 @@ def build_autonomous_replan_obligation(
         ),
         "recommended_action": recommended_action,
     }
+    if dead_monitor_evidence:
+        result["dead_monitor_detector"] = {
+            "schema_version": DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
+            "monitor_target_id": dead_monitor_evidence.get("monitor_target_id"),
+            "run_count": dead_monitor_evidence.get("run_count"),
+            "threshold": dead_monitor_evidence.get("threshold"),
+            "required_resolution": [
+                "watch_lane_expiry",
+                "blocker",
+                "todo_supersede",
+                "successor_runnable_todo",
+            ],
+        }
+    return result
 
 
 def _normalized_run_history_stall_signature(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip().lower())
+
+
+def _run_history_monitor_target(run: dict[str, Any]) -> dict[str, Any] | None:
+    target = run.get("monitor_target")
+    if isinstance(target, dict):
+        return target
+    event = run.get("monitor_event")
+    if isinstance(event, dict) and isinstance(event.get("monitor_target"), dict):
+        return event.get("monitor_target")
+    return None
 
 
 def _run_history_stall_signal(run: dict[str, Any]) -> dict[str, Any] | None:
@@ -5673,13 +5730,22 @@ def _run_history_stall_signal(run: dict[str, Any]) -> dict[str, Any] | None:
     if not combined or not AUTONOMOUS_RUN_HISTORY_STALL_PATTERN.search(combined):
         return None
     action_or_classification = recommended_action or classification
-    return {
+    signal = {
         "classification": classification,
         "generated_at": str(run.get("generated_at") or ""),
         "recommended_action": recommended_action,
         "delivery_outcome": delivery_outcome.value if delivery_outcome else None,
         "signature": _normalized_run_history_stall_signature(action_or_classification),
     }
+    monitor_target = _run_history_monitor_target(run)
+    if monitor_target:
+        signal["monitor_target_id"] = str(monitor_target.get("target_id") or "")
+        signal["monitor_target"] = {
+            key: monitor_target.get(key)
+            for key in ("schema_version", "target_id", "monitor_mode", "effective_action", "agent_id")
+            if monitor_target.get(key)
+        }
+    return signal
 
 
 def run_history_monitor_wait_already_acknowledged(
@@ -5761,6 +5827,7 @@ def autonomous_replan_obligation_from_runs(
     agent_todos: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     signals: list[dict[str, Any]] = []
+    signal_scan_limit = max(AUTONOMOUS_REPLAN_STALL_THRESHOLD, DEAD_MONITOR_REPEAT_THRESHOLD)
     for run in latest_runs or []:
         if not isinstance(run, dict):
             continue
@@ -5771,19 +5838,20 @@ def autonomous_replan_obligation_from_runs(
         if not signal:
             break
         signals.append(signal)
-        if len(signals) >= AUTONOMOUS_REPLAN_STALL_THRESHOLD:
+        if len(signals) >= signal_scan_limit:
             break
 
-    if len(signals) < AUTONOMOUS_REPLAN_STALL_THRESHOLD:
+    stall_signals = signals[:AUTONOMOUS_REPLAN_STALL_THRESHOLD]
+    if len(stall_signals) < AUTONOMOUS_REPLAN_STALL_THRESHOLD:
         return autonomous_replan_periodic_review_from_runs(
             latest_runs,
             agent_todos=agent_todos,
         )
 
-    signatures = {str(signal.get("signature") or "") for signal in signals if signal.get("signature")}
+    signatures = {str(signal.get("signature") or "") for signal in stall_signals if signal.get("signature")}
     classifications = {
         str(signal.get("classification") or "")
-        for signal in signals
+        for signal in stall_signals
         if signal.get("classification")
     }
     periodic_review = autonomous_replan_periodic_review_from_runs(
@@ -5792,14 +5860,49 @@ def autonomous_replan_obligation_from_runs(
     )
     if len(signatures) > 1 and len(classifications) > 1:
         return periodic_review
-    if classifications == {"quota_monitor_poll"} and run_history_monitor_wait_already_acknowledged(
-        latest_runs,
-        signal_count=len(signals),
-    ):
-        return periodic_review
+    if classifications == {"quota_monitor_poll"}:
+        monitor_signals = signals[:DEAD_MONITOR_REPEAT_THRESHOLD]
+        if len(monitor_signals) < DEAD_MONITOR_REPEAT_THRESHOLD:
+            return periodic_review
+        monitor_classifications = {
+            str(signal.get("classification") or "")
+            for signal in monitor_signals
+            if signal.get("classification")
+        }
+        if monitor_classifications != {"quota_monitor_poll"}:
+            return periodic_review
+        if run_history_monitor_wait_already_acknowledged(
+            latest_runs,
+            signal_count=len(monitor_signals),
+        ):
+            return periodic_review
+        monitor_target_ids = {
+            str(signal.get("monitor_target_id") or "")
+            for signal in monitor_signals
+            if signal.get("monitor_target_id")
+        }
+        if len(monitor_target_ids) != 1:
+            return periodic_review
+        monitor_target_id = next(iter(monitor_target_ids))
+        evidence = [
+            {
+                "kind": "dead_monitor_repeat",
+                "schema_version": DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
+                "section": "run_history",
+                "text": (
+                    f"latest {DEAD_MONITOR_REPEAT_THRESHOLD} monitor polls repeated "
+                    "the same monitor target without a material transition"
+                ),
+                "run_count": len(monitor_signals),
+                "threshold": DEAD_MONITOR_REPEAT_THRESHOLD,
+                "monitor_target_id": monitor_target_id,
+                "latest_generated_at": signals[0].get("generated_at"),
+            }
+        ]
+        return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
 
     action = public_safe_compact_text(
-        signals[0].get("recommended_action") or signals[0].get("classification"),
+        stall_signals[0].get("recommended_action") or stall_signals[0].get("classification"),
         limit=120,
     )
     evidence_text = (
@@ -5811,8 +5914,8 @@ def autonomous_replan_obligation_from_runs(
             "kind": "run_history_no_progress_repeat",
             "section": "run_history",
             "text": evidence_text,
-            "run_count": len(signals),
-            "latest_generated_at": signals[0].get("generated_at"),
+            "run_count": len(stall_signals),
+            "latest_generated_at": stall_signals[0].get("generated_at"),
         }
     ]
     return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
@@ -10028,6 +10131,13 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             if isinstance(item.get("agent_lane_next_action"), dict)
             else {}
         )
+        agent_lane_frontier_hint = (
+            project_asset.get("agent_lane_frontier_hint")
+            if isinstance(project_asset.get("agent_lane_frontier_hint"), dict)
+            else item.get("agent_lane_frontier_hint")
+            if isinstance(item.get("agent_lane_frontier_hint"), dict)
+            else {}
+        )
         goal_todo_scope_suffix = " scope=goal_all_agents" if agent_lane_next_action else ""
         lines.append(
             "  - project_asset_source: "
@@ -10082,6 +10192,15 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     "    - current_agent_todo: "
                     f"agent={agent} todo_id={todo_id} selected_by={selected_by} "
                     f"confidence={confidence} source=agent_lane_next_action action={action}"
+                )
+            if agent_lane_frontier_hint:
+                lines.append(
+                    "    - agent_lane_frontier_hint: "
+                    f"agent={_markdown_scalar(agent_lane_frontier_hint.get('agent_id') or '')} "
+                    f"decision={_markdown_scalar(agent_lane_frontier_hint.get('decision') or '')} "
+                    f"source={_markdown_scalar(agent_lane_frontier_hint.get('source') or '')} "
+                    f"reason_code={_markdown_scalar(agent_lane_frontier_hint.get('reason_code') or '')} "
+                    f"target_todo_id={_markdown_scalar(agent_lane_frontier_hint.get('target_todo_id') or '')}"
                 )
             dreaming_lane_badge = (
                 project_asset.get("dreaming_lane_badge")

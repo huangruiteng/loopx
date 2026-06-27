@@ -232,6 +232,15 @@ def assert_cleared_blocker_requires_successor_replan() -> None:
     assert frontier["quiet_noop_allowed"] is False, frontier
     assert frontier["cleared_without_successor_handoff_gates"][0]["todo_id"] == "todo_review_gate", frontier
     assert frontier["cleared_without_successor_handoff_gates"][0]["gate_state"] == "cleared_without_successor", frontier
+    hint = payload["agent_lane_frontier_hint"]
+    assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
+    assert hint["decision"] == "record_no_followup", hint
+    assert hint["source"] == "agent_scope_frontier", hint
+    assert hint["reason_code"] == "cleared_handoff_without_successor", hint
+    assert hint["target_todo_id"] == "todo_review_gate", hint
+    assert hint["quiet_noop_allowed"] is False, hint
+    assert "loopx todo complete" in hint["next_cli_action"], hint
+    assert frontier["frontier_hint"] == hint, frontier
     assert (
         payload["agent_todo_summary"]["current_agent_cleared_without_successor_handoff_count"] == 1
     ), payload
