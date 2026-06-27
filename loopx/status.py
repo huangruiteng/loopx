@@ -54,11 +54,13 @@ from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .renderers.status_markdown import (
+    append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
     append_human_reward_markdown as _append_human_reward_markdown,
     append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
+    append_usage_summary_markdown as _append_usage_summary_markdown,
     authority_registry_markdown_summary as _authority_registry_markdown_summary,
     goals_by_id as _goals_by_id,
     markdown_scalar as _markdown_scalar,
@@ -9837,78 +9839,10 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         if isinstance(payload.get("decision_freshness_summary"), dict)
         else {}
     )
-    decision_summary = (
-        decision_freshness.get("summary")
-        if isinstance(decision_freshness.get("summary"), dict)
-        else {}
-    )
-    if decision_freshness.get("available") and decision_summary:
-        lines.extend(
-            [
-                "",
-                "## Decision Freshness Summary",
-                "- summary: "
-                f"source={_markdown_scalar(decision_freshness.get('source') or '')} "
-                f"samples={decision_freshness.get('sample_run_count')} "
-                f"window_days={decision_freshness.get('window_days')} "
-                f"decisions={decision_summary.get('decision_count')} "
-                f"stale={decision_summary.get('stale_count')} "
-                f"rebase_required={decision_summary.get('rebase_required_count')} "
-                f"fresh={decision_summary.get('fresh_count')}",
-            ]
-        )
-        decision_items = (
-            decision_freshness.get("items")
-            if isinstance(decision_freshness.get("items"), list)
-            else []
-        )
-        for item in decision_items[:3]:
-            if not isinstance(item, dict):
-                continue
-            lines.append(
-                "- "
-                f"`{_markdown_scalar(item.get('goal_id') or '')}`: "
-                f"kind={_markdown_scalar(item.get('decision_kind') or '')} "
-                f"state={_markdown_scalar(item.get('freshness_state') or '')} "
-                f"age_days={item.get('age_days')} "
-                f"newer_7d={item.get('newer_event_count_7d')} "
-                f"decision_at={_markdown_scalar(item.get('decision_at') or '')}"
-            )
+    _append_decision_freshness_summary_markdown(lines, decision_freshness)
 
     usage = payload.get("usage_summary") if isinstance(payload.get("usage_summary"), dict) else {}
-    usage_totals = usage.get("totals") if isinstance(usage.get("totals"), dict) else {}
-    if usage.get("available") and usage_totals:
-        lines.extend(
-            [
-                "",
-                "## Usage Summary",
-                "- summary: "
-                f"source={_markdown_scalar(usage.get('source') or '')} "
-                f"samples={usage.get('sample_run_count')} "
-                f"runs_24h={usage_totals.get('runs_24h')} "
-                f"runs_7d={usage_totals.get('runs_7d')} "
-                f"quota_slots_24h={usage_totals.get('quota_spend_slots_24h')} "
-                f"quota_slots_7d={usage_totals.get('quota_spend_slots_7d')} "
-                f"automation_24h={usage_totals.get('automation_run_count_24h')} "
-                f"automation_7d={usage_totals.get('automation_run_count_7d')} "
-                f"progress_signals_24h={usage_totals.get('progress_signal_run_count_24h')} "
-                f"progress_signals_7d={usage_totals.get('progress_signal_run_count_7d')}",
-            ]
-        )
-        usage_goals = usage.get("goals") if isinstance(usage.get("goals"), list) else []
-        for goal in usage_goals[:3]:
-            if not isinstance(goal, dict):
-                continue
-            lines.append(
-                "- "
-                f"`{_markdown_scalar(goal.get('goal_id') or '')}`: "
-                f"runs_24h={goal.get('runs_24h')} "
-                f"runs_7d={goal.get('runs_7d')} "
-                f"quota_slots_24h={goal.get('quota_spend_slots_24h')} "
-                f"automation_24h={goal.get('automation_run_count_24h')} "
-                f"progress_signals_24h={goal.get('progress_signal_run_count_24h')} "
-                f"share_24h={goal.get('project_share_24h')}"
-            )
+    _append_usage_summary_markdown(lines, usage)
 
     queue = payload.get("attention_queue") if isinstance(payload.get("attention_queue"), dict) else {}
     lines.extend(
