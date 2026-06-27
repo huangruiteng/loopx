@@ -1078,6 +1078,19 @@ def _host_local_acp_codex_exec_preflight_command(
     return command
 
 
+def _host_local_acp_codex_exec_preflight_should_run(
+    args: argparse.Namespace,
+) -> bool:
+    """Return whether the host-local Codex exec path must be probed first."""
+
+    if bool(getattr(args, "host_local_acp_codex_exec_preflight", False)):
+        return True
+    return bool(
+        getattr(args, "host_local_acp_launch", False)
+        and _is_goal_start_product_mode_route(str(getattr(args, "route", "") or ""))
+    )
+
+
 def _host_local_acp_codex_exec_preflight_requires_bridge_action(
     args: argparse.Namespace,
 ) -> bool:
@@ -2962,7 +2975,78 @@ def _apply_agent_message_only_no_tool_calls_attribution(
     for item in extra_labels:
         if item not in existing_labels:
             existing_labels.append(item)
+        compact["failure_attribution_labels"] = existing_labels
+    return True
+
+
+def _apply_host_local_acp_prereq_failure_attribution(
+    compact: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+) -> bool:
+    """Prefer structured host-local Codex exec failures over zero-score labels."""
+
+    official_score = compact.get("official_score")
+    if (
+        isinstance(official_score, (int, float))
+        and not isinstance(official_score, bool)
+        and official_score >= 1.0
+    ):
+        return False
+
+    prereq_failure = _runner_prerequisite_failure_attribution(runner_prerequisites)
+    if prereq_failure is None:
+        return False
+    _exception_type, label, labels = prereq_failure
+    if not (
+        label.startswith("skillsbench_host_local_acp_codex_exec_failed")
+        or label.startswith("skillsbench_host_local_acp_codex_exec_preflight_failed")
+    ):
+        return False
+
+    compact["score_failure_attribution"] = label
+    compact["first_blocker"] = label
+    compact["official_score_comparable_to_native_codex"] = False
+    compact["official_score_comparable_to_loopx_treatment"] = False
+    existing_labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str)
+        and item
+        not in {
+            "official_score_zero_case_failure",
+            "official_verifier_solution_failure",
+            "verifier_infrastructure_failure",
+        }
+    ]
+    extra_labels = list(labels)
+    if compact.get("product_mode") is True:
+        extra_labels.append("skillsbench_product_mode_transport_failure")
+    for item in extra_labels:
+        if item and item not in existing_labels:
+            existing_labels.append(item)
     compact["failure_attribution_labels"] = existing_labels
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["exception_type"] = label
+        runner_failure["failure_class"] = label
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
+        for key in (
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+            "official_score_attempt_countable",
+        ):
+            attempt_accounting[key] = False
+        attempts = attempt_accounting.get("attempts")
+        if isinstance(attempts, dict):
+            for key in ("case", "solver", "verifier", "official_score"):
+                attempt = attempts.get(key)
+                if isinstance(attempt, dict):
+                    attempt["countable"] = False
     return True
 
 
@@ -4679,12 +4763,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 _is_goal_start_product_mode_route(args.route)
             ),
             "host_local_acp_codex_exec_preflight_requested": bool(
-                args.host_local_acp_codex_exec_preflight
+                _host_local_acp_codex_exec_preflight_should_run(args)
             ),
             "host_local_acp_codex_exec_preflight_ready": False,
             "host_local_acp_codex_exec_preflight_status": (
                 "pending"
-                if args.host_local_acp_codex_exec_preflight
+                if _host_local_acp_codex_exec_preflight_should_run(args)
                 else "not_requested"
             ),
             "host_local_acp_codex_exec_preflight_attempt_count": 0,
@@ -8392,6 +8476,10 @@ def reduce_result(
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
         _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
+        _apply_host_local_acp_prereq_failure_attribution(
+            compact,
+            runner_prerequisites,
+        )
     prereq_failure = _runner_prerequisite_failure_attribution(
         plan.get("runner_prerequisites")
     )
@@ -8860,8 +8948,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "loopx-blind-loop-treatment is the historical SkillsBench "
             "alias for the same polling semantics; codex-acp-blind-loop-baseline "
             "is the ordinary Codex no-goal baseline with the same loop budget; "
-            "raw-codex-autonomous-max5 and loopx-product-mode are the "
-            "main-table product-mode comparison routes; "
+            "raw-codex-autonomous-max5 and loopx-goal-start-product-mode are "
+            "the main-table raw/new comparison routes; "
             "loopx-goal-start-product-mode adds /loopx goal-start planning "
             "with a compact ranked todo plan before selected-P0 lifecycle; "
             "codex-app-server-goal-baseline is the native Codex Goal baseline "
@@ -9333,7 +9421,7 @@ async def async_main(
         )
 
     if (
-        args.host_local_acp_codex_exec_preflight
+        _host_local_acp_codex_exec_preflight_should_run(args)
         and args.host_local_acp_launch
         and not args.reduce_only
     ):

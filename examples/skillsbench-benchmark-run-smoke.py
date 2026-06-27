@@ -6755,6 +6755,101 @@ def test_skillsbench_host_local_idle_timeout_after_closeout_is_countable() -> No
         assert accounting["failure_class"] == "solver_failed", accounting
 
 
+def test_goal_start_host_local_requires_codex_exec_preflight_by_default() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-goal-start-preflight-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "loopx-goal-start-product-mode",
+                "--host-local-acp-launch",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-goal-start-preflight-fixture",
+            ]
+        )
+        plan = build_plan(args)
+        prereqs = plan["runner_prerequisites"]
+        assert (
+            prereqs["host_local_acp_codex_exec_preflight_requested"] is True
+        ), prereqs
+        assert prereqs["host_local_acp_codex_exec_preflight_status"] == "pending", (
+            prereqs
+        )
+
+
+def test_goal_start_host_exec_failure_overrides_zero_score_recovery() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-goal-start-host-failure-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "loopx-goal-start-product-mode",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-goal-start-host-failure-fixture",
+            ]
+        )
+        plan = build_plan(args)
+        plan["runner_prerequisites"].update(
+            {
+                "agent_execution_mode": "host_local_acp",
+                "host_local_acp_codex_exec_failure_trace_present": True,
+                "host_local_acp_codex_exec_failure_trace_count": 1,
+                "host_local_acp_codex_exec_failure_category": (
+                    "codex_exec_bridge_idle_timeout"
+                ),
+            }
+        )
+        result_path = Path(plan["result_json"])
+        write_json(
+            result_path,
+            {
+                "task_name": "citation-check",
+                "rollout_name": "citation-check__loopx_goal_start_product_mode",
+                "rewards": None,
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 0,
+                "n_prompts": 13,
+                "error": "ACP error -32002: local codex execution timeout",
+                "verifier_error": None,
+                "partial_trajectory": False,
+                "trajectory_source": "acp",
+            },
+        )
+        verifier_dir = result_path.with_name("verifier")
+        verifier_dir.mkdir(parents=True, exist_ok=True)
+        (verifier_dir / "reward.txt").write_text("0.0\n", encoding="utf-8")
+        compact = reduce_result(args, result_path, plan)
+        expected = (
+            "skillsbench_host_local_acp_codex_exec_failed_"
+            "codex_exec_bridge_idle_timeout"
+        )
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_score"] == 0.0, compact
+        assert compact["score_failure_attribution"] == expected, compact
+        assert compact["runner_failure"]["failure_class"] == expected, compact
+        assert "official_score_zero_case_failure" not in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "skillsbench_product_mode_transport_failure" in compact[
+            "failure_attribution_labels"
+        ], compact
+        accounting = compact["attempt_accounting"]
+        assert accounting["failure_class"] == "job_materialization_failed", accounting
+        assert accounting["failure_label"] == expected, accounting
+        assert accounting["case_attempt_countable"] is False, accounting
+        assert accounting["solver_attempt_countable"] is False, accounting
+        assert accounting["verifier_attempt_countable"] is False, accounting
+        assert accounting["official_score_attempt_countable"] is False, accounting
+
+
 def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-declared-done-low-score-") as tmp:
         root = Path(tmp)
@@ -9854,6 +9949,8 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_solver_activity_gap_overrides_zero_score()
     test_skillsbench_product_mode_first_action_timeout_is_uncountable()
     test_skillsbench_host_local_idle_timeout_after_closeout_is_countable()
+    test_goal_start_host_local_requires_codex_exec_preflight_by_default()
+    test_goal_start_host_exec_failure_overrides_zero_score_recovery()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()
     test_skillsbench_declared_done_missing_reward_status_is_compacted()
     test_skillsbench_product_mode_declared_done_without_closeout_overrides_verifier_error()
