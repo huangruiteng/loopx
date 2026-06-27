@@ -391,6 +391,7 @@ MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
 MAX_TODO_VISIBILITY_LANE_ITEMS = 16
 MAX_DEFERRED_TODO_VISIBILITY_ITEMS = 8
+MAX_MONITOR_DUE_ITEMS = 1
 MAX_ISSUE_META_SURFACE_ITEMS = 8
 MAX_ISSUE_META_LABELS = 8
 MAX_TODO_INDEX_ITEMS = 240
@@ -4780,6 +4781,14 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "resume_condition",
         "resume_ready",
         "no_followup",
+        "target_key",
+        "cadence",
+        "next_due_at",
+        "last_checked_at",
+        "result_hash",
+        "consecutive_no_change",
+        "material_change",
+        "max_no_change_before_replan",
         "note",
         "evidence",
         "reason",
@@ -4819,6 +4828,22 @@ def todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
         return False
     status = normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN
     return status == TODO_STATUS_OPEN
+
+
+def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
+    return parse_timestamp(item.get("next_due_at"))
+
+
+def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
+    if not todo_item_is_actionable_open(item):
+        return False
+    if todo_item_task_class(item) != TODO_TASK_CLASS_MONITOR:
+        return False
+    next_due_at = todo_item_next_due_at(item)
+    if next_due_at is None:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return next_due_at <= current_time
 
 
 def todo_priority_rank(priority: Any) -> int:
@@ -5067,6 +5092,11 @@ def compact_todo_group(
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
+    monitor_due_items = [
+        item
+        for item in monitor_items
+        if todo_item_is_due_monitor(item)
+    ]
     claimed_advancement_items = [
         item
         for item in claimed_open_items
@@ -5109,6 +5139,11 @@ def compact_todo_group(
         ],
         "monitor_open_items": [
             compact_todo_item(item) for item in monitor_items
+        ],
+        "monitor_due_count": len(monitor_due_items),
+        "monitor_due_items": [
+            compact_todo_item(item)
+            for item in monitor_due_items[:MAX_MONITOR_DUE_ITEMS]
         ],
         "unclaimed_priority_open_items": [
             compact_todo_item(item)

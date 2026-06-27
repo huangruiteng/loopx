@@ -193,6 +193,7 @@ CAPABILITY_OWNER_GATE_HINTS = {
 TODO_BACKLOG_ITEM_LIMIT = 8
 TODO_DEFERRED_VISIBILITY_LIMIT = 8
 TODO_VISIBILITY_LANE_LIMIT = 16
+MONITOR_DUE_ITEM_LIMIT = 1
 TODO_MISSING_PRIORITY_RANK = 50
 TODO_MISSING_INDEX = 999999
 EXTERNAL_EVIDENCE_OBSERVE_PATTERNS = (
@@ -536,10 +537,52 @@ def _work_lane_contract(
     has_advancement_todos = todo_counts["advancement"] > 0
     has_monitor_todos = todo_counts["monitor"] > 0
     monitor_only_todos = has_agent_todos and has_monitor_todos and not has_advancement_todos
+    due_monitor_items = _todo_summary_monitor_due_items(agent_todo_summary)
+    first_due_monitor = due_monitor_items[0] if due_monitor_items else None
+    first_advancement = _first_executable_todo_item(agent_todo_summary)
+    due_monitor_preempts_advancement = bool(
+        first_due_monitor
+        and (
+            first_advancement is None
+            or _todo_priority_rank(first_due_monitor) < _todo_priority_rank(first_advancement)
+        )
+    )
+
+    def due_monitor_contract(*, reason_codes: list[str]) -> dict[str, Any]:
+        due_count = _todo_summary_monitor_due_count(
+            agent_todo_summary,
+            due_items=due_monitor_items,
+        )
+        selected = first_due_monitor or {}
+        return {
+            "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+            "lane": "continuous_monitor",
+            "monitor_kind": "todo_monitor_due",
+            "next_lane": "advancement_task" if has_advancement_todos else "continuous_monitor",
+            "obligation": "attempt_due_monitor",
+            "must_attempt_work": True,
+            "reason_codes": reason_codes,
+            "monitor_policy": "attempt_due_monitor_once_then_writeback_or_no_spend_if_unchanged",
+            "monitor_due_count": due_count,
+            "monitor_due_items": due_monitor_items[:MONITOR_DUE_ITEM_LIMIT],
+            "selected_todo_id": selected.get("todo_id"),
+            "selected_next_due_at": selected.get("next_due_at"),
+            "action": (
+                "attempt the selected due continuous_monitor todo; write back only a "
+                "material transition, blocker, or compact reschedule/no-change note"
+            ),
+        }
+
     if progress_scope != "dependency_observation":
+        if has_advancement_todos and due_monitor_preempts_advancement:
+            return due_monitor_contract(
+                reason_codes=["monitor_due", "due_monitor_priority_preempts_advancement"]
+            )
         if has_advancement_todos:
             outcome_followthrough = _outcome_followthrough_hint(item)
             reason_codes = ["open_agent_todo"]
+            if first_due_monitor:
+                reason_codes.append("due_monitor_context")
             if external_poll_signal:
                 reason_codes.append("external_monitor_context")
             if outcome_followthrough:
@@ -588,6 +631,10 @@ def _work_lane_contract(
                 ),
             }
         if monitor_only_todos:
+            if first_due_monitor:
+                return due_monitor_contract(
+                    reason_codes=["monitor_todo_only", "monitor_due"]
+                )
             if _next_action_requires_advancement(item):
                 return {
                     "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
@@ -620,10 +667,16 @@ def _work_lane_contract(
     reason_codes = ["dependency_observation"]
     if has_advancement_todos:
         reason_codes.append("open_agent_todo")
+        if due_monitor_preempts_advancement:
+            reason_codes.append("due_monitor_priority_preempts_advancement")
     elif monitor_only_todos:
         reason_codes.append("monitor_todo_only")
+        if first_due_monitor:
+            reason_codes.append("monitor_due")
     else:
         reason_codes.append("no_open_agent_todo")
+    if due_monitor_preempts_advancement:
+        return due_monitor_contract(reason_codes=reason_codes)
     return {
         "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
         "lane": "continuous_monitor",
@@ -632,9 +685,11 @@ def _work_lane_contract(
         "obligation": (
             "advance_unless_material_monitor_transition"
             if has_advancement_todos
+            else "attempt_due_monitor"
+            if first_due_monitor
             else "quiet_until_material_monitor_transition"
         ),
-        "must_attempt_work": has_advancement_todos,
+        "must_attempt_work": has_advancement_todos or bool(first_due_monitor),
         "reason_codes": reason_codes,
         "monitor_policy": "write_once_per_material_transition_else_no_spend",
         "material_transition": (
@@ -1026,6 +1081,14 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "resume_condition",
         "resume_ready",
         "no_followup",
+        "target_key",
+        "cadence",
+        "next_due_at",
+        "last_checked_at",
+        "result_hash",
+        "consecutive_no_change",
+        "material_change",
+        "max_no_change_before_replan",
     ):
         if item.get(key) is not None:
             compact[key] = item.get(key)
@@ -1847,6 +1910,11 @@ def _summarize_user_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
+    monitor_due_items = [
+        item
+        for item in monitor_items
+        if _todo_item_is_due_monitor(item)
+    ]
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     gate_items = [
         item
@@ -1876,6 +1944,8 @@ def _summarize_user_todos(
         "first_executable_items": executable_items[:3],
         "gate_open_items": gate_items[:3],
         "monitor_open_items": monitor_items,
+        "monitor_due_count": len(monitor_due_items),
+        "monitor_due_items": monitor_due_items[:MONITOR_DUE_ITEM_LIMIT],
         "active_next_action_items": active_next_action_items,
         "active_next_action_executable_items": active_next_action_executable_items,
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
@@ -1977,6 +2047,11 @@ def _summarize_project_asset_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
+    monitor_due_items = [
+        item
+        for item in monitor_items
+        if _todo_item_is_due_monitor(item)
+    ]
     active_next_action_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
@@ -2000,6 +2075,8 @@ def _summarize_project_asset_todos(
         "first_open_items": open_items[:3],
         "first_executable_items": executable_items[:3],
         "monitor_open_items": monitor_items,
+        "monitor_due_count": len(monitor_due_items),
+        "monitor_due_items": monitor_due_items[:MONITOR_DUE_ITEM_LIMIT],
         "active_next_action_items": active_next_action_items,
         "active_next_action_executable_items": active_next_action_executable_items,
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
@@ -3117,6 +3194,23 @@ def _selected_recommended_action(
     raw_action = item.get("recommended_action")
     if (
         isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("monitor_kind") == "todo_monitor_due"
+        and work_lane_contract.get("must_attempt_work") is True
+    ):
+        due_items = (
+            work_lane_contract.get("monitor_due_items")
+            if isinstance(work_lane_contract.get("monitor_due_items"), list)
+            else []
+        )
+        for due_item in due_items:
+            if not isinstance(due_item, dict):
+                continue
+            text = _protocol_action_text(due_item.get("text"), limit=320)
+            if text:
+                return text
+        return raw_action
+    if (
+        isinstance(work_lane_contract, dict)
         and work_lane_contract.get("lane") == "advancement_task"
         and "open_agent_todo" in (
             work_lane_contract.get("reason_codes")
@@ -3126,6 +3220,14 @@ def _selected_recommended_action(
     ):
         return _first_executable_todo_text(agent_todo_summary) or raw_action
     return raw_action
+
+
+def _work_lane_due_monitor_attempt(work_lane_contract: dict[str, Any] | None) -> bool:
+    return bool(
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("monitor_kind") == "todo_monitor_due"
+        and work_lane_contract.get("must_attempt_work") is True
+    )
 
 
 def _selected_action_with_agent_lane(
@@ -3560,6 +3662,25 @@ def _protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
     if text:
         return text
 
+    work_lane = (
+        payload.get("work_lane_contract")
+        if isinstance(payload.get("work_lane_contract"), dict)
+        else {}
+    )
+    if work_lane.get("monitor_kind") == "todo_monitor_due":
+        due_items = (
+            work_lane.get("monitor_due_items")
+            if isinstance(work_lane.get("monitor_due_items"), list)
+            else []
+        )
+        for item in due_items:
+            if not isinstance(item, dict):
+                continue
+            text = _protocol_action_label(item.get("text"))
+            if text:
+                todo_id = str(item.get("todo_id") or "").strip()
+                return f"{todo_id}: {text}" if todo_id else text
+
     agent_todos = (
         payload.get("agent_todo_summary")
         if isinstance(payload.get("agent_todo_summary"), dict)
@@ -3593,11 +3714,6 @@ def _protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
         if text:
             return text
 
-    work_lane = (
-        payload.get("work_lane_contract")
-        if isinstance(payload.get("work_lane_contract"), dict)
-        else {}
-    )
     reason_codes = (
         work_lane.get("reason_codes")
         if isinstance(work_lane.get("reason_codes"), list)
@@ -5003,6 +5119,77 @@ def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
     return status == TODO_STATUS_OPEN
 
 
+def _todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
+    return _parse_timestamp(item.get("next_due_at"))
+
+
+def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
+    if not _todo_item_is_actionable_open(item):
+        return False
+    if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+        return False
+    next_due_at = _todo_item_next_due_at(item)
+    if next_due_at is None:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return next_due_at <= current_time
+
+
+def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return []
+    projected_items = summary.get("monitor_due_items")
+    if isinstance(projected_items, list):
+        due_items = [
+            item
+            for item in projected_items
+            if isinstance(item, dict)
+            if _todo_item_is_actionable_open(item)
+            if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+        ]
+    else:
+        raw_items = summary.get("monitor_open_items")
+        due_items = [
+            item
+            for item in (raw_items if isinstance(raw_items, list) else [])
+            if isinstance(item, dict)
+            if _todo_item_is_due_monitor(item)
+        ]
+    return sorted(due_items, key=_todo_projection_sort_key)
+
+
+def _todo_summary_monitor_due_count(
+    summary: dict[str, Any] | None,
+    *,
+    due_items: list[dict[str, Any]] | None = None,
+) -> int:
+    if not isinstance(summary, dict):
+        return 0
+    projected_count = summary.get("monitor_due_count")
+    if isinstance(projected_count, int):
+        return max(0, projected_count)
+    return len(due_items if due_items is not None else _todo_summary_monitor_due_items(summary))
+
+
+def _first_executable_todo_item(agent_todo_summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    items = (
+        agent_todo_summary.get("first_executable_items")
+        if isinstance(agent_todo_summary.get("first_executable_items"), list)
+        else []
+    )
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not _todo_item_is_actionable_open(item):
+            continue
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        return item
+    return None
+
+
 def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
     open_count = _open_todo_count(summary)
     classified_items: list[dict[str, Any]] = []
@@ -5040,12 +5227,14 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
         if _todo_item_is_actionable_open(item)
         and _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     )
+    monitor_due_count = _todo_summary_monitor_due_count(summary)
     hidden_count = max(0, open_count - visible_open)
     advancement_count = advancement_visible_count + hidden_count
     return {
         "open": open_count,
         "advancement": advancement_count,
         "monitor": monitor_visible_count,
+        "monitor_due": monitor_due_count,
         "hidden": hidden_count,
     }
 
@@ -6664,7 +6853,8 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
         )
-        if capability_gate:
+        due_monitor_attempt = _work_lane_due_monitor_attempt(work_lane_contract)
+        if capability_gate and not due_monitor_attempt:
             if capability_gate.get("action") in {"repair_bridge", "ask_owner", "skip"}:
                 selected_recommended_action = (
                     capability_gate.get("owner_action")
@@ -6688,23 +6878,25 @@ def build_quota_should_run(
                 or automation_prompt_upgrade.get("reason")
                 or selected_recommended_action
             )
-        agent_lane_next_action = _agent_lane_next_action(
-            agent_identity=agent_identity,
-            agent_todo_summary=agent_todo_summary,
-            capability_gate=capability_gate,
-            active_next_action=(
-                item.get("active_state_next_action")
-                or (
-                    item.get("project_asset", {}).get("next_action")
-                    if isinstance(item.get("project_asset"), dict)
-                    else None
-                )
-            ),
-        )
-        selected_recommended_action = _selected_action_with_agent_lane(
-            selected_recommended_action,
-            agent_lane_next_action=agent_lane_next_action,
-        )
+        agent_lane_next_action = None
+        if not due_monitor_attempt:
+            agent_lane_next_action = _agent_lane_next_action(
+                agent_identity=agent_identity,
+                agent_todo_summary=agent_todo_summary,
+                capability_gate=capability_gate,
+                active_next_action=(
+                    item.get("active_state_next_action")
+                    or (
+                        item.get("project_asset", {}).get("next_action")
+                        if isinstance(item.get("project_asset"), dict)
+                        else None
+                    )
+                ),
+            )
+            selected_recommended_action = _selected_action_with_agent_lane(
+                selected_recommended_action,
+                agent_lane_next_action=agent_lane_next_action,
+            )
         agent_scope_frontier = _agent_scope_no_candidate_frontier(
             agent_identity=agent_identity,
             agent_todo_summary=agent_todo_summary,
@@ -8553,6 +8745,13 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- work_lane_reason_codes: {','.join(str(code) for code in reason_codes)}")
         if work_lane_contract.get("monitor_policy"):
             lines.append(f"- work_lane_monitor_policy: {work_lane_contract.get('monitor_policy')}")
+        if work_lane_contract.get("monitor_due_count"):
+            lines.append(
+                "- work_lane_monitor_due: "
+                f"count={work_lane_contract.get('monitor_due_count')} "
+                f"selected={work_lane_contract.get('selected_todo_id') or ''} "
+                f"next_due_at={work_lane_contract.get('selected_next_due_at') or ''}"
+            )
         if work_lane_contract.get("action"):
             lines.append(f"- work_lane_action: {work_lane_contract.get('action')}")
         outcome_followthrough = (
@@ -8612,6 +8811,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         if summary.get("claimed_open_count"):
             summary_parts.insert(1, f"claimed={summary.get('claimed_open_count')}")
             summary_parts.insert(2, f"unclaimed={summary.get('unclaimed_open_count', 0)}")
+        if summary.get("monitor_due_count"):
+            summary_parts.append(f"monitor_due={summary.get('monitor_due_count')}")
         lines.append(f"- {label}_summary: {' '.join(summary_parts)}")
         first_open = summary.get("first_open_items") if isinstance(summary.get("first_open_items"), list) else []
         for todo in first_open[:3]:

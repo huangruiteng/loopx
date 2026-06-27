@@ -20,6 +20,16 @@ TODO_RESUME_PR_MERGED_PATTERN = re.compile(
     r"^pr_merged:(?:(?:[a-z0-9_.-]{1,80})/(?:[a-z0-9_.-]{1,100}))?#[1-9][0-9]{0,8}$"
 )
 TODO_WRITE_SCOPE_MAX_CHARS = 160
+TODO_MONITOR_METADATA_FIELDS = (
+    "target_key",
+    "cadence",
+    "next_due_at",
+    "last_checked_at",
+    "result_hash",
+    "consecutive_no_change",
+    "material_change",
+    "max_no_change_before_replan",
+)
 
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
@@ -376,6 +386,9 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             no_followup = normalize_todo_no_followup(value)
             if no_followup is not None:
                 metadata["no_followup"] = no_followup
+        elif key in TODO_MONITOR_METADATA_FIELDS:
+            if value:
+                metadata[key] = value
         elif key in {"note", "evidence", "reason", "completed_at", "updated_at"}:
             if value:
                 metadata[key] = value
@@ -401,6 +414,14 @@ def format_todo_metadata_line(
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     no_followup: bool | None = None,
+    target_key: str | None = None,
+    cadence: str | None = None,
+    next_due_at: str | None = None,
+    last_checked_at: str | None = None,
+    result_hash: str | None = None,
+    consecutive_no_change: str | None = None,
+    material_change: str | None = None,
+    max_no_change_before_replan: str | None = None,
     note: str | None = None,
     evidence: str | None = None,
     reason: str | None = None,
@@ -477,6 +498,18 @@ def format_todo_metadata_line(
         fields.append(f"resume_when={encode_metadata_value(normalized_resume_when)}")
     if no_followup is not None:
         fields.append(f"no_followup={encode_metadata_value('true' if no_followup else 'false')}")
+    for key, value in (
+        ("target_key", target_key),
+        ("cadence", cadence),
+        ("next_due_at", next_due_at),
+        ("last_checked_at", last_checked_at),
+        ("result_hash", result_hash),
+        ("consecutive_no_change", consecutive_no_change),
+        ("material_change", material_change),
+        ("max_no_change_before_replan", max_no_change_before_replan),
+    ):
+        if value:
+            fields.append(f"{key}={encode_metadata_value(value)}")
     for key, value in (
         ("note", note),
         ("evidence", evidence),
