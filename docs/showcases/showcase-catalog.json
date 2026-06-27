@@ -1,6 +1,6 @@
 {
   "schema_version": "loopx_showcase_catalog_v0",
-  "updated_at": "2026-06-22",
+  "updated_at": "2026-06-27",
   "redaction_policy": {
     "public_repo_may_include": [
       "sanitized domain labels",
@@ -225,6 +225,175 @@
           "Claude Code writes task-specific orchestration scripts under that contract",
           "hardware-agent workers perform bounded RTL, simulation, and validation work",
           "five public cases show closed tasks, DSE, flagship Fmax optimization, and convergence floors"
+        ]
+      }
+    },
+    {
+      "id": "2026-06-23-agent-to-agent-pr-comments",
+      "date": "2026-06-23",
+      "title": "Agent-to-agent PR comment and fix loop",
+      "status": "public_safe_pattern_case",
+      "case_page": "docs/showcases/cases/0623-agent-to-agent-pr-comments.md",
+      "demo_command": null,
+      "domain": "pull-request-review",
+      "audience": [
+        "operator",
+        "agent-platform-developer",
+        "open-source-maintainer"
+      ],
+      "pattern_tags": [
+        "agent_to_agent_handoff",
+        "pr_comment_loop",
+        "review_packet",
+        "claimed_todo",
+        "successor_todo"
+      ],
+      "headline": "PR review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder.",
+      "problem": "Multiple agent lanes can see or act on the same PR feedback, but without ownership and handoff state the comment-to-fix loop becomes hard to audit.",
+      "loopx_behavior": [
+        "turn review feedback into a claimed todo",
+        "route implementation through the owning agent lane",
+        "record fix and validation evidence in the review packet",
+        "keep successor work explicit after the comment is handled"
+      ],
+      "user_value": "The operator can let agents coordinate around PR comments without losing final review visibility or fix evidence.",
+      "evidence_boundary": "Public-safe pattern case only; no private screenshots, raw chats, internal review notes, local state, credentials, or unpublished artifacts.",
+      "appendix_surface": {
+        "reason": "Pattern is durable, but the original evidence included private screenshots; keep as appendix until a fully public PR-comment packet is curated.",
+        "public_surface": "appendix_only",
+        "links": [
+          "docs/showcases/cases/0623-agent-to-agent-pr-comments.md"
+        ]
+      }
+    },
+    {
+      "id": "2026-06-23-overnight-project-refactor",
+      "date": "2026-06-23",
+      "title": "Overnight project refactor as PR-sized slices",
+      "status": "public_safe_pattern_case",
+      "case_page": "docs/showcases/cases/0623-overnight-project-refactor.md",
+      "demo_command": null,
+      "domain": "repository-refactor",
+      "audience": [
+        "operator",
+        "agent-platform-developer",
+        "technical-lead"
+      ],
+      "pattern_tags": [
+        "long_unattended_goal",
+        "pr_sized_slices",
+        "todo_follow_up",
+        "supersede",
+        "validation_writeback"
+      ],
+      "headline": "A broad refactor can run overnight while staying split into human-sized review units.",
+      "problem": "Autonomous refactors become risky when discoveries, stale tasks, cleanup, and behavior changes collapse into one broad diff.",
+      "loopx_behavior": [
+        "keep the current refactor slice explicit",
+        "convert discoveries into follow-up todos",
+        "supersede stale tasks when the route changes",
+        "validate each slice before merge or handoff"
+      ],
+      "user_value": "The operator can wake up to reviewable PR-sized refactor slices instead of a single giant autonomous diff.",
+      "evidence_boundary": "Public-safe pattern case only; no private screenshots, raw chats, internal planning notes, local paths, credentials, raw logs, or unpublished project artifacts.",
+      "appendix_surface": {
+        "reason": "Pattern is durable, but keep outside canonical cards until public PR slices and validations are curated into a deeper packet.",
+        "public_surface": "appendix_only",
+        "links": [
+          "docs/showcases/cases/0623-overnight-project-refactor.md"
+        ]
+      }
+    },
+    {
+      "id": "2026-06-24-pr-issue-auto-fix",
+      "date": "2026-06-24",
+      "title": "PR issue automatic fix loop",
+      "status": "public_safe_pattern_case",
+      "case_page": "docs/showcases/cases/0624-pr-issue-auto-fix.md",
+      "demo_command": null,
+      "domain": "issue-fix-workflow",
+      "audience": [
+        "operator",
+        "agent-platform-developer",
+        "open-source-maintainer"
+      ],
+      "pattern_tags": [
+        "issue_fix_workflow",
+        "review_feedback",
+        "repro_smoke",
+        "command_pack",
+        "successor_todo"
+      ],
+      "headline": "Review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff.",
+      "problem": "PR comments and issues are often concrete enough to fix, but unsafe to feed into an agent as unstructured prompt text without routing, repro, and validation.",
+      "loopx_behavior": [
+        "classify the issue or review feedback",
+        "create ordered repair todos",
+        "keep gated source reads explicit",
+        "separate repro, implementation, validation, and reviewer handoff"
+      ],
+      "user_value": "The operator can turn a PR issue into a controlled fix loop without manually rewriting the review comment as an agent plan.",
+      "evidence_boundary": "Public-safe pattern case only; no private screenshots, raw gated issue bodies, internal review notes, local paths, raw logs, credentials, or unpublished repository artifacts.",
+      "appendix_surface": {
+        "reason": "Pattern is durable, but keep outside canonical cards until a public issue-fix PR packet and focused smoke are curated together.",
+        "public_surface": "appendix_only",
+        "links": [
+          "docs/showcases/cases/0624-pr-issue-auto-fix.md"
+        ]
+      }
+    },
+    {
+      "id": "2026-06-27-overnight-pr-batch",
+      "date": "2026-06-27",
+      "title": "Overnight PR batch with reviewable control",
+      "status": "public_evidence_case",
+      "case_page": "docs/showcases/cases/0627-overnight-pr-batch.md",
+      "demo_command": null,
+      "domain": "agent-platform-self-improvement",
+      "audience": [
+        "operator",
+        "agent-platform-developer",
+        "technical-lead"
+      ],
+      "pattern_tags": [
+        "high_throughput_reviewable_work",
+        "pr_sized_slices",
+        "self_merge_policy",
+        "validation_writeback",
+        "public_boundary"
+      ],
+      "headline": "An overnight LoopX run can produce many PR-sized slices while keeping review, validation, and public evidence boundaries visible.",
+      "problem": "High-throughput autonomous work is only useful if the resulting changes remain reviewable, validated, and safe to publish.",
+      "loopx_behavior": [
+        "keep work broken into PR-sized slices instead of a giant unreviewable diff",
+        "tie runtime, docs, and focused smoke updates together when a control-plane contract changes",
+        "limit self-merge to narrow validated changes while preserving broader review gates",
+        "record public evidence from Git history instead of raw agent logs or private screenshots",
+        "keep public/private boundary checks in the showcase path"
+      ],
+      "user_value": "The operator can wake up to a compact batch of merged public slices, see what changed, and still trust that gates, validation, and evidence boundaries were not bypassed.",
+      "workload_signal": {
+        "scope": "public_repository_window",
+        "window": {
+          "from": "2026-06-27T01:29:00+08:00",
+          "to": "2026-06-27T11:29:00+08:00",
+          "hours": 10
+        },
+        "public_git": {
+          "merged_commits": 22,
+          "files_touched": 60,
+          "insertions": 6695,
+          "deletions": 223,
+          "commit_messages_with_pr_numbers": 10
+        },
+        "claim_boundary": "public Git history only; contemporaneous private queue notes are not used as public evidence"
+      },
+      "evidence_boundary": "Public Git evidence only; no private documents, internal screenshots, raw chats, local active-state bodies, raw logs, credentials, or machine-specific paths.",
+      "appendix_surface": {
+        "reason": "Public Git evidence case for an overnight throughput window; keep outside the first canonical frontstage cards until each PR slice has a deeper public evidence packet or reproducible demo.",
+        "public_surface": "appendix_only",
+        "links": [
+          "docs/showcases/cases/0627-overnight-pr-batch.md"
         ]
       }
     },
