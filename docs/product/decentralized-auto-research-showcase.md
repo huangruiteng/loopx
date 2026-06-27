@@ -103,7 +103,33 @@ next agent does not rediscover them from scratch.
 
 ## Minimal Reproduction Plan
 
-First fixture-backed slice:
+The runnable pack now lives at `examples/auto_research_knn_pack/`. It provides
+an editable candidate solver, a protected evaluator, deterministic dev/held-out
+splits, and a no-upload boundary.
+
+Run the candidate on the dev split:
+
+```bash
+python3 examples/auto_research_knn_pack/protected_eval.py \
+  --solution examples/auto_research_knn_pack/solution_candidate.py \
+  --split dev
+```
+
+Run the candidate on the held-out split:
+
+```bash
+python3 examples/auto_research_knn_pack/protected_eval.py \
+  --solution examples/auto_research_knn_pack/solution_candidate.py \
+  --split holdout
+```
+
+The current public pack reports exact neighbor identity with deterministic
+protected speedup `4.0x` on dev and `4.5x` on holdout for the partial-selection
+candidate. The metric is a protected ranking-work proxy rather than wall-clock
+time, so it is stable enough for smoke tests while still preserving the product
+shape: dev evidence, held-out promotion evidence, and a clean boundary.
+
+The fixture-backed projection remains the read-only showcase state slice:
 
 ```bash
 loopx --format json auto-research frontier \
@@ -118,19 +144,17 @@ can present a per-agent frontier without one leader agent.
 
 Next reproduction steps:
 
-1. Replace the fixture-only k-NN records with a small runnable benchmark pack
-   owned by LoopX.
-2. Keep `research_contract_v0`, `research_hypothesis_v0`, and
+1. Keep `research_contract_v0`, `research_hypothesis_v0`, and
    `research_evidence_event_v0` as the public-safe record boundary.
-3. Connect projection input to live todo/quota state after the fixture contract
-   is stable.
-4. Keep one local smoke that proves:
+2. Append real run outputs from the runnable pack as `research_evidence_event_v0`
+   records instead of editing fixture numbers by hand.
+3. Keep one local smoke that proves:
    - protected files are not editable;
    - each hypothesis is todo-linked;
    - each evidence event names split and metric;
    - no leader agent owns the graph;
    - held-out promotion is required.
-5. Build the showcase page from fixture evidence, then replace fixture numbers
+4. Build the showcase page from fixture evidence, then replace fixture numbers
    with a real run when available.
 
 ## Kernel/Capability Improvements
