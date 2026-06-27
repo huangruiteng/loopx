@@ -137,7 +137,7 @@ dated research note, candidate ranking packet, temporary run review, or
 transitional benchmark decision. Preserve that information in the research doc
 itself, and cover shared invariants with a data-driven aggregate smoke.
 
-When a smoke grows beyond roughly 300 lines, re-check whether it is really one
+When a smoke grows beyond roughly 500 lines, re-check whether it is really one
 test. Prefer splitting reusable logic into product modules and keeping the
 smoke as a thin public behavior check. Large integration smokes are acceptable
 only when they cover a real end-to-end adapter contract that smaller unit tests
