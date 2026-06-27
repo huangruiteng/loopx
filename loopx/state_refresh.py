@@ -22,6 +22,9 @@ from .todo_contract import (
     TODO_TASK_CLASS_BLOCKER,
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
+    normalize_todo_claimed_by,
+    normalize_todo_id,
+    parse_todo_metadata_line,
 )
 
 
@@ -38,6 +41,7 @@ CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
 ACTIVE_STATE_NEXT_ACTION_UPDATE_SCHEMA_VERSION = "active_state_next_action_update_v0"
 REPAIR_DELTA_CONTRACT_SCHEMA_VERSION = "repair_delta_contract_v0"
 REPAIR_NOOP_SCHEMA_VERSION = "repair_noop_v0"
+TODO_ID_REFERENCE_RE = re.compile(r"\btodo_[a-z0-9_-]{3,64}\b", flags=re.IGNORECASE)
 REPAIR_DELTA_KIND_CHOICES = (
     "effective_action",
     "interaction_contract",
@@ -139,6 +143,117 @@ def normalize_repair_delta_kinds(values: list[str] | None) -> list[str]:
         seen.add(item)
         normalized.append(item)
     return normalized
+
+
+def registered_agents_for_goal(registry_goal: dict[str, Any] | None) -> list[str]:
+    coordination = (
+        registry_goal.get("coordination")
+        if registry_goal and isinstance(registry_goal.get("coordination"), dict)
+        else {}
+    )
+    registered_raw = coordination.get("registered_agents") if isinstance(coordination, dict) else []
+    registered_values = registered_raw if isinstance(registered_raw, list) else []
+    registered_agents: list[str] = []
+    for value in registered_values:
+        candidate = value.get("id") if isinstance(value, dict) else value
+        normalized = normalize_todo_claimed_by(candidate)
+        if normalized:
+            registered_agents.append(normalized)
+    return registered_agents
+
+
+def primary_agent_for_goal(registry_goal: dict[str, Any] | None) -> str | None:
+    coordination = (
+        registry_goal.get("coordination")
+        if registry_goal and isinstance(registry_goal.get("coordination"), dict)
+        else {}
+    )
+    return normalize_todo_claimed_by(coordination.get("primary_agent") if coordination else None)
+
+
+def todo_claims_by_id(state_text: str) -> dict[str, str]:
+    claims: dict[str, str] = {}
+    for line in state_text.splitlines():
+        metadata = parse_todo_metadata_line(line)
+        if not metadata:
+            continue
+        todo_id = normalize_todo_id(metadata.get("todo_id"))
+        claimed_by = normalize_todo_claimed_by(metadata.get("claimed_by"))
+        if todo_id and claimed_by:
+            claims[todo_id] = claimed_by
+    return claims
+
+
+def referenced_todo_ids(*values: str | None) -> list[str]:
+    todo_ids: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for match in TODO_ID_REFERENCE_RE.findall(str(value or "")):
+            todo_id = normalize_todo_id(match)
+            if todo_id and todo_id not in seen:
+                seen.add(todo_id)
+                todo_ids.append(todo_id)
+    return todo_ids
+
+
+def referenced_non_primary_agent(
+    *,
+    registered_agents: list[str],
+    primary_agent: str,
+    values: list[str | None],
+) -> str | None:
+    for value in values:
+        text = str(value or "")
+        for agent_id in registered_agents:
+            if agent_id == primary_agent:
+                continue
+            pattern = rf"(?<![a-z0-9_.:@-]){re.escape(agent_id)}(?![a-z0-9_.:@-])"
+            if re.search(pattern, text):
+                return agent_id
+    return None
+
+
+def infer_agent_lane_scope(
+    *,
+    registry_goal: dict[str, Any] | None,
+    state_text: str,
+    recommended_action: str | None,
+    next_action: str | None,
+) -> dict[str, Any] | None:
+    registered_agents = registered_agents_for_goal(registry_goal)
+    primary_agent = primary_agent_for_goal(registry_goal)
+    if not registered_agents or not primary_agent:
+        return None
+    claims_by_id = todo_claims_by_id(state_text)
+    for todo_id in referenced_todo_ids(recommended_action, next_action):
+        claimed_by = claims_by_id.get(todo_id)
+        if not claimed_by or claimed_by == primary_agent or claimed_by not in registered_agents:
+            continue
+        return {
+            "schema_version": "refresh_state_agent_lane_scope_inference_v0",
+            "inferred": True,
+            "agent_id": claimed_by,
+            "agent_lane": claimed_by,
+            "todo_id": todo_id,
+            "primary_agent": primary_agent,
+            "source": "referenced_claimed_todo",
+        }
+    agent_id = referenced_non_primary_agent(
+        registered_agents=registered_agents,
+        primary_agent=primary_agent,
+        values=[recommended_action, next_action],
+    )
+    if agent_id:
+        return {
+            "schema_version": "refresh_state_agent_lane_scope_inference_v0",
+            "inferred": True,
+            "agent_id": agent_id,
+            "agent_lane": agent_id,
+            "todo_id": None,
+            "primary_agent": primary_agent,
+            "source": "referenced_registered_non_primary_agent",
+        }
+    return None
 
 
 def _noop_classification_for(classification: str) -> str:
@@ -606,25 +721,35 @@ def refresh_state_run(
         project_override=project,
         state_file_override=state_file,
     )
-    if normalized_agent_id and registry_goal:
-        coordination = registry_goal.get("coordination") if isinstance(registry_goal.get("coordination"), dict) else {}
-        registered_raw = coordination.get("registered_agents") if isinstance(coordination, dict) else []
-        registered_agents = []
-        registered_values = registered_raw if isinstance(registered_raw, list) else []
-        for value in registered_values:
-            if isinstance(value, dict):
-                registered_agents.append(str(value.get("id") or ""))
-            else:
-                registered_agents.append(str(value or ""))
-        registered_agents = [value for value in registered_agents if value]
-        if registered_agents and normalized_agent_id not in registered_agents:
-            raise ValueError(
-                f"agent_id {normalized_agent_id!r} is not registered for goal {safe_goal_id!r}"
-            )
     if not resolved_state_file.exists():
         raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
     state_text = resolved_state_file.read_text(encoding="utf-8")
     normalized_next_action = normalize_next_action_text(next_action) if next_action else None
+    agent_lane_scope_inference: dict[str, Any] | None = None
+    if not normalized_agent_id:
+        inferred_scope = infer_agent_lane_scope(
+            registry_goal=registry_goal,
+            state_text=state_text,
+            recommended_action=recommended_action,
+            next_action=normalized_next_action,
+        )
+        if inferred_scope:
+            if normalized_next_action:
+                raise ValueError(
+                    "unscoped refresh-state inferred non-primary agent-lane scope "
+                    f"from todo_id={inferred_scope.get('todo_id')!r}; rerun with "
+                    f"--agent-id {inferred_scope.get('agent_id')} without --next-action, "
+                    "or have the primary agent update the durable active-state Next Action"
+                )
+            normalized_agent_id = str(inferred_scope["agent_id"])
+            normalized_agent_lane = str(inferred_scope["agent_lane"])
+            agent_lane_scope_inference = inferred_scope
+    if normalized_agent_id and registry_goal:
+        registered_agents = registered_agents_for_goal(registry_goal)
+        if registered_agents and normalized_agent_id not in registered_agents:
+            raise ValueError(
+                f"agent_id {normalized_agent_id!r} is not registered for goal {safe_goal_id!r}"
+            )
     generated_at = now_local()
     active_state_next_action_update: dict[str, Any] | None = None
     if normalized_next_action:
@@ -684,6 +809,8 @@ def refresh_state_run(
         autonomous_replan_recorded=effective_autonomous_replan_recorded,
         repair_delta_contract=repair_delta_contract,
     )
+    if agent_lane_scope_inference:
+        record["agent_lane_scope_inference"] = agent_lane_scope_inference
     if autonomous_replan_recorded:
         if "autonomous_replan_ack" not in record:
             record["autonomous_replan_ack"] = {
