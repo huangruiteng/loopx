@@ -30,18 +30,8 @@ The first creator-operator storyboard is
 [creator-ops-fake-data-storyboard.md](creator-ops-fake-data-storyboard.md).
 Its feedback and source-status contract is
 [creator-ops-feedback-boundary-contract.md](creator-ops-feedback-boundary-contract.md).
-The generated showcase gallery lives at [index.html](index.html), with an
-English sibling at [index.en.html](index.en.html). Every current showcase case
-has a Chinese default page plus an English `.en.html` page. Regenerate those
-pages after changing `showcase-catalog.json`:
-
-```bash
-python3 examples/showcase-html-pages.py
-python3 examples/showcase-html-pages.py --check
-```
-
-An older static frontstage prototype can still be generated from the catalog
-with `python3 examples/showcase-frontstage-prototype.py --output /tmp/loopx-showcases.html`.
+The first static frontstage prototype is generated from the catalog with
+`python3 examples/showcase-frontstage-prototype.py --output /tmp/loopx-showcases.html`.
 
 The dashboard frontstage now has a separate public-safe share-bundle path for
 showing a live-looking control-plane board without exposing local state:
@@ -78,28 +68,38 @@ the artifact with `python3 examples/showcase-animation-prototype-smoke.py`.
 
 ![Hosted LoopX frontstage showing public-safe showcase cases](../assets/frontstage-showcase-first-screen.png)
 
-## Current Showcase Pages
+## Canonical PoC Cards
 
 | Case | Pattern | Status | Public Surface |
 | --- | --- | --- | --- |
-| [0627 overnight PR batch with reviewable control](cases/0627-overnight-pr-batch.html) ([EN](cases/0627-overnight-pr-batch.en.html)) | PR-sized slices, validation writeback, public-boundary discipline | Public Git evidence case | 22 merged commits over a 10-hour public Git window |
-| [0624 PR issue automatic fix loop](cases/0624-pr-issue-auto-fix.html) ([EN](cases/0624-pr-issue-auto-fix.en.html)) | Issue-fix workflow, repro smoke, reviewer handoff | Public-safe pattern case | Redacted workflow narrative |
-| [0623 agent-to-agent PR comment and fix loop](cases/0623-agent-to-agent-pr-comments.html) ([EN](cases/0623-agent-to-agent-pr-comments.en.html)) | Agent handoff, PR comment loop, review packet | Public-safe pattern case | Redacted lifecycle narrative |
-| [0623 overnight project refactor](cases/0623-overnight-project-refactor.html) ([EN](cases/0623-overnight-project-refactor.en.html)) | PR-sized slices, todo follow-up, supersede | Public-safe pattern case | Redacted lifecycle narrative |
-| [0619 dynamic workflow for hardware-agent development](cases/0619-dynamic-workflow-hardware-agent.html) ([EN](cases/0619-dynamic-workflow-hardware-agent.en.html)) | Dynamic workflow, multi-agent convergence, shared control plane | Public-safe interactive case | Five hardware-agent public anchors plus companion notes |
-| [0619 LoopX self-iteration loop](cases/0619-loopx-self-iteration.html) ([EN](cases/0619-loopx-self-iteration.en.html)) | Self-iteration, side-agent scope, evidence writeback | Public Git evidence case | Commit-backed narrative and workload signal |
-| [0617 blocked P0 with safe P1/P2 rotation](cases/0617-blocked-p0-safe-rotation.html) ([EN](cases/0617-blocked-p0-safe-rotation.en.html)) | Blocked priority fallback, concrete user gate, quota discipline | Reproducible synthetic demo | `python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` |
+| [0617 blocked P0 with safe P1/P2 rotation](cases/0617-blocked-p0-safe-rotation.md) | Blocked priority fallback, concrete user gate, quota discipline | Reproducible synthetic demo | `python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` |
+| [0619 LoopX self-iteration loop](cases/0619-loopx-self-iteration.md) | Self-iteration, side-agent scope, evidence writeback | Public Git evidence case | Commit-backed narrative and workload signal |
+| [0619 dynamic workflow for hardware-agent development](cases/0619-dynamic-workflow-hardware-agent.html) | Dynamic workflow, multi-agent convergence, shared control plane | Public-safe interactive case | Five hardware-agent cases plus companion notes |
 
-The order above mirrors the current Showcase & Good Case packet. The frontend
-page for each case uses the same dark control-plane style as the 0619 hardware
-agent showcase: a first-viewport proof frame, visible LoopX intervention, story
-beats, language switch, and explicit public evidence boundary.
+The catalog order above is the canonical frontstage order for the PoC. It keeps
+the public homepage focused on one reproducible control-plane proof, one
+commit-backed self-iteration case, and one contributor-approved interactive
+workflow case that shows how LoopX coordinates generated scripts and worker
+agents under a shared control plane.
+
+## Additional Public Evidence Cases
+
+| Case | Pattern | Status | Public Surface |
+| --- | --- | --- | --- |
+| [0623 agent-to-agent PR comment and fix loop](cases/0623-agent-to-agent-pr-comments.md) | Agent handoff, PR comment loop, review packet | Public-safe pattern case | Redacted lifecycle narrative |
+| [0623 overnight project refactor](cases/0623-overnight-project-refactor.md) | PR-sized slices, todo follow-up, supersede | Public-safe pattern case | Redacted lifecycle narrative |
+| [0624 PR issue automatic fix loop](cases/0624-pr-issue-auto-fix.md) | Issue-fix workflow, repro smoke, reviewer handoff | Public-safe pattern case | Redacted workflow narrative |
+| [0627 overnight PR batch with reviewable control](cases/0627-overnight-pr-batch.md) | PR-sized slices, validation writeback, public-boundary discipline | Public Git evidence case | 22 merged commits over a 10-hour public Git window |
+
+Additional evidence cases stay in the catalog as appendix surfaces, but they
+are not part of the first three canonical PoC cards until they gain a
+reproducible demo or a deeper public evidence packet.
 
 ## Appendix Cases
 
 | Case | Pattern | Status | Public Surface |
 | --- | --- | --- | --- |
-| [0620 creator-operator long-running agent case](cases/0620-creator-operator-case-spec.html) ([EN](cases/0620-creator-operator-case-spec.en.html)) | Creator-operator workflow, user gate, feedback capture, material library | Synthetic product case spec | [Fake-data storyboard](creator-ops-fake-data-storyboard.md), [feedback contract](creator-ops-feedback-boundary-contract.md) |
+| [0620 creator-operator long-running agent case](cases/0620-creator-operator-case-spec.md) | Creator-operator workflow, user gate, feedback capture, material library | Synthetic product case spec | [Fake-data storyboard](creator-ops-fake-data-storyboard.md), [feedback contract](creator-ops-feedback-boundary-contract.md) |
 
 Appendix cases are useful product direction, but they should not appear as
 frontstage top cards until there is real public evidence or an approved
@@ -146,10 +146,10 @@ Do commit:
 - synthetic demos that exercise public LoopX contracts;
 - explicit `evidence_boundary` notes that keep future authors honest.
 
-## Frontend Shape
+## Future Frontend Shape
 
-The committed gallery and generated case pages render directly from the
-catalog. A good showcase view should keep:
+The catalog is intentionally small enough for a static website to render.
+A good first website view would show:
 
 - a card grid of cases grouped by pattern family;
 - a visual timeline for each case: trigger, LoopX state, agent action,

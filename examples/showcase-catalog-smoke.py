@@ -4,25 +4,13 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG = REPO_ROOT / "docs" / "showcases" / "showcase-catalog.json"
 SHOWCASES = REPO_ROOT / "docs" / "showcases" / "README.md"
-SHOWCASE_GALLERY = REPO_ROOT / "docs" / "showcases" / "index.html"
-SHOWCASE_GALLERY_EN = REPO_ROOT / "docs" / "showcases" / "index.en.html"
 POC_FEEDBACK_LOOP = REPO_ROOT / "docs" / "showcases" / "poc-feedback-case-report-loop.md"
-PRIMARY_CASE_ORDER = [
-    "2026-06-27-overnight-pr-batch",
-    "2026-06-24-pr-issue-auto-fix",
-    "2026-06-23-agent-to-agent-pr-comments",
-    "2026-06-23-overnight-project-refactor",
-    "2026-06-19-dynamic-workflow-hardware-agent",
-    "2026-06-19-loopx-self-iteration",
-    "2026-06-17-blocked-p0-safe-rotation",
-]
 PRIVATE_MARKERS = tuple(
     "".join(parts)
     for parts in (
@@ -49,33 +37,26 @@ def assert_public_safe(path: Path) -> None:
         assert marker not in text, f"{path}: private marker {marker!r}"
 
 
-def run_generated_html_check() -> None:
-    subprocess.run(
-        ["python3", "examples/showcase-html-pages.py", "--check"],
-        cwd=REPO_ROOT,
-        check=True,
-    )
-
-
 def main() -> int:
-    run_generated_html_check()
     catalog = json.loads(read(CATALOG))
     assert catalog["schema_version"] == "loopx_showcase_catalog_v0", catalog
     cases = catalog.get("cases")
     assert isinstance(cases, list) and len(cases) >= 2, catalog
 
     case_ids = {case.get("id") for case in cases}
-    assert set(PRIMARY_CASE_ORDER).issubset(case_ids), case_ids
+    assert "2026-06-17-blocked-p0-safe-rotation" in case_ids, case_ids
+    assert "2026-06-19-dynamic-workflow-hardware-agent" in case_ids, case_ids
+    assert "2026-06-19-loopx-self-iteration" in case_ids, case_ids
     frontstage_ids = [case.get("id") for case in cases if isinstance(case.get("frontend_card"), dict)]
-    assert frontstage_ids[:7] == PRIMARY_CASE_ORDER, frontstage_ids
+    assert frontstage_ids[:3] == [
+        "2026-06-17-blocked-p0-safe-rotation",
+        "2026-06-19-loopx-self-iteration",
+        "2026-06-19-dynamic-workflow-hardware-agent",
+    ], frontstage_ids
 
     assert_public_safe(CATALOG)
     assert_public_safe(SHOWCASES)
-    assert_public_safe(SHOWCASE_GALLERY)
-    assert_public_safe(SHOWCASE_GALLERY_EN)
     assert_public_safe(POC_FEEDBACK_LOOP)
-    gallery_zh = read(SHOWCASE_GALLERY)
-    gallery_en = read(SHOWCASE_GALLERY_EN)
 
     for case in cases:
         case_id = str(case.get("id") or "")
@@ -96,33 +77,6 @@ def main() -> int:
         else:
             assert appendix.get("reason"), case
             assert appendix.get("public_surface") == "appendix_only", case
-
-        localized_pages = case.get("localized_pages")
-        assert isinstance(localized_pages, dict), case
-        zh_page = localized_pages.get("zh")
-        en_page = localized_pages.get("en")
-        assert zh_page == case.get("interactive_page"), case
-        for lang, page_path in (("zh", zh_page), ("en", en_page)):
-            assert isinstance(page_path, str), case
-            assert page_path.startswith("docs/showcases/"), case
-            assert page_path.endswith(".html"), case
-            path = REPO_ROOT / page_path
-            assert path.is_file(), case
-            assert_public_safe(path)
-            text = read(path)
-            if lang == "zh":
-                assert "English" in text, case_id
-                assert path.name in gallery_zh, case_id
-            else:
-                assert "中文" in text, case_id
-                assert path.name in gallery_en, case_id
-
-        if case_id in PRIMARY_CASE_ORDER:
-            interactive_page = case.get("interactive_page")
-            assert isinstance(interactive_page, str), case
-            interactive_path = REPO_ROOT / interactive_page
-            assert interactive_path.is_file(), case
-            assert_public_safe(interactive_path)
 
         demo_command = case.get("demo_command")
         if case.get("status") == "reproducible_synthetic_demo":

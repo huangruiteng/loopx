@@ -13,7 +13,6 @@ const defaultOutDir = resolve("/tmp", "loopx-frontstage-share-bundle");
 const statusFileName = "status.frontstage-share.json";
 const manifestFileName = "frontstage-share-manifest.json";
 const showcaseCatalogPath = "docs/showcases/showcase-catalog.json";
-const showcaseIndexPath = "docs/showcases/index.html";
 const projectionFixturePath = "examples/goal-channel-frontstage-fixture.py";
 
 function parseArgs(argv) {
@@ -91,23 +90,12 @@ function validateInteractivePagePath(path) {
   return path;
 }
 
-function addInteractivePage(pages, path) {
-  if (path) {
-    pages.add(validateInteractivePagePath(path));
-  }
-}
-
 async function copyInteractiveCasePages(siteDir) {
   const catalog = JSON.parse(await readFile(resolve(repoRoot, showcaseCatalogPath), "utf8"));
   const interactivePages = new Set();
   for (const item of catalog.cases ?? []) {
-    addInteractivePage(interactivePages, item.interactive_page);
-    addInteractivePage(interactivePages, item.interactive_page_zh);
-    addInteractivePage(interactivePages, item.interactive_page_en);
-    if (item.localized_pages && typeof item.localized_pages === "object") {
-      for (const pagePath of Object.values(item.localized_pages)) {
-        addInteractivePage(interactivePages, pagePath);
-      }
+    if (item.interactive_page) {
+      interactivePages.add(validateInteractivePagePath(item.interactive_page));
     }
   }
 
@@ -118,22 +106,6 @@ async function copyInteractiveCasePages(siteDir) {
     await copyFile(sourcePath, targetPath);
   }
   return Array.from(interactivePages).sort();
-}
-
-async function copyShowcaseIndexes(siteDir) {
-  const indexPaths = [showcaseIndexPath, "docs/showcases/index.en.html"];
-  const copied = [];
-  for (const indexPath of indexPaths) {
-    const sourcePath = resolve(repoRoot, indexPath);
-    if (!existsSync(sourcePath)) {
-      continue;
-    }
-    const targetPath = resolve(siteDir, indexPath);
-    await mkdir(dirname(targetPath), { recursive: true });
-    await copyFile(sourcePath, targetPath);
-    copied.push(indexPath);
-  }
-  return copied;
 }
 
 async function removeCopiedLiveStatusFiles(siteDir) {
@@ -203,7 +175,7 @@ function buildStatusFixture(projection) {
   };
 }
 
-async function writeShareReadme(outDir, base, interactivePages, showcaseIndexes) {
+async function writeShareReadme(outDir, base, interactivePages) {
   const siteDir = resolve(outDir, "site");
   const frontstageUrl = `${base}frontstage/`;
   const previewBlock = base === "/"
@@ -248,10 +220,9 @@ ${previewBlock}
 ## Publication Boundary
 
 - Includes: compiled dashboard assets, \`${statusFileName}\`, direct
-  \`/frontstage/\` static-route support, the generated showcase gallery, and
-  catalog-declared interactive case pages.
+  \`/frontstage/\` static route support, and catalog-declared interactive
+  case pages.
 - Primary case source: \`${showcaseCatalogPath}\`.
-- Showcase galleries: ${showcaseIndexes.length ? showcaseIndexes.map((path) => `\`${path}\``).join(", ") : "not generated"}.
 - Interactive case pages: ${interactivePages.length ? interactivePages.map((path) => `\`${path}\``).join(", ") : "none"}.
 - Demo shell fixture: \`${projectionFixturePath} --format json\`.
 - Excludes: live registry state, local paths, credentials, raw logs, raw
@@ -260,17 +231,15 @@ ${previewBlock}
   await writeFile(resolve(outDir, "README.md"), readme);
 }
 
-async function writeManifest(outDir, base, interactivePages, showcaseIndexes) {
+async function writeManifest(outDir, base, interactivePages) {
   const manifest = {
     schema_version: "loopx_frontstage_share_bundle_v0",
     base,
     site_dir: "site",
     status_fixture: `site/${statusFileName}`,
     frontstage_entry: "site/frontstage/index.html",
-    showcase_gallery_entries: showcaseIndexes.map((path) => `site/${path}`),
     content_sources: {
       primary_public_story: showcaseCatalogPath,
-      showcase_galleries: showcaseIndexes,
       interactive_case_pages: interactivePages,
       read_only_control_plane_shell: projectionFixturePath,
       live_status_feed: false,
@@ -359,7 +328,6 @@ async function main() {
 
   await removeCopiedLiveStatusFiles(siteDir);
   await copyIndexForFrontstage(siteDir);
-  const showcaseIndexes = await copyShowcaseIndexes(siteDir);
   const interactivePages = await copyInteractiveCasePages(siteDir);
 
   const projectionOutput = run("python3", [resolve(repoRoot, "examples/goal-channel-frontstage-fixture.py"), "--format", "json"], {
@@ -369,8 +337,8 @@ async function main() {
   const projection = sanitizeProjectionForShare(JSON.parse(projectionOutput));
   const statusFixture = buildStatusFixture(projection);
   await writeFile(resolve(siteDir, statusFileName), `${JSON.stringify(statusFixture, null, 2)}\n`);
-  await writeShareReadme(outDir, args.base, interactivePages, showcaseIndexes);
-  await writeManifest(outDir, args.base, interactivePages, showcaseIndexes);
+  await writeShareReadme(outDir, args.base, interactivePages);
+  await writeManifest(outDir, args.base, interactivePages);
   await scanPublicBoundary(outDir);
 
   console.log(JSON.stringify({
@@ -378,7 +346,6 @@ async function main() {
     out_dir: outDir,
     site_dir: siteDir,
     frontstage_url: `${args.base}frontstage/`,
-    showcase_galleries: showcaseIndexes.map((path) => `${args.base}${path}`),
     status_fixture: `site/${statusFileName}`,
   }, null, 2));
 }
