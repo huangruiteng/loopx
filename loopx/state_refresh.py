@@ -13,6 +13,7 @@ from .feedback import validate_public_safe_text
 from .file_lock import exclusive_file_lock
 from .global_registry import sync_project_registry_to_global
 from .history import load_registry, reserve_unique_run_paths, unique_run_paths
+from .local_state_write_correctness import build_local_state_write_correctness_dry_run_packet
 from .paths import resolve_runtime_root
 from .registry import registry_goals, resolve_state_file
 from .runtime import validate_goal_id_path_segment
@@ -533,6 +534,27 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
                 f"- active_state_next_action: {next_action_update.get('next_action')}"
             )
 
+    write_correctness = (
+        payload.get("local_state_write_correctness")
+        if isinstance(payload.get("local_state_write_correctness"), dict)
+        else {}
+    )
+    if write_correctness:
+        intent = write_correctness.get("write_intent") if isinstance(write_correctness.get("write_intent"), dict) else {}
+        preview = write_correctness.get("preview") if isinstance(write_correctness.get("preview"), dict) else {}
+        apply_result = (
+            write_correctness.get("apply_result")
+            if isinstance(write_correctness.get("apply_result"), dict)
+            else {}
+        )
+        lines.append(
+            "- local_state_write_correctness: "
+            f"schema={write_correctness.get('schema_version')} "
+            f"write_class={intent.get('write_class')} "
+            f"status={apply_result.get('status')} "
+            f"non_destructive={preview.get('non_destructive')}"
+        )
+
     global_sync = payload.get("global_sync") if isinstance(payload.get("global_sync"), dict) else {}
     if global_sync:
         lines.extend(
@@ -624,12 +646,14 @@ def refresh_state_run(
     if not resolved_state_file.exists():
         raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
     state_text = resolved_state_file.read_text(encoding="utf-8")
+    expected_write_state_text = state_text
     normalized_next_action = normalize_next_action_text(next_action) if next_action else None
     generated_at = now_local()
     active_state_next_action_update: dict[str, Any] | None = None
     if normalized_next_action:
         with exclusive_file_lock(resolved_state_file):
             locked_state_text = resolved_state_file.read_text(encoding="utf-8")
+            expected_write_state_text = locked_state_text
             updated_state_text, state_updated = replace_next_action_section(
                 locked_state_text,
                 next_action=normalized_next_action,
@@ -754,6 +778,36 @@ def refresh_state_run(
         "index_path": str(index_path),
         **record,
     }
+    if dry_run:
+        expected_write_scopes = ["runtime_history"]
+        if active_state_next_action_update and active_state_next_action_update.get("would_update"):
+            expected_write_scopes.insert(0, "active_state")
+        if sync_global:
+            expected_write_scopes.append("global_registry")
+        patch_parts = [f"append refresh-state run classification={classification}"]
+        if active_state_next_action_update:
+            if active_state_next_action_update.get("would_update"):
+                patch_parts.append("preview active-state Next Action update")
+            else:
+                patch_parts.append("preserve active-state Next Action")
+        if sync_global:
+            patch_parts.append("sync public-safe registry projection")
+        payload["local_state_write_correctness"] = build_local_state_write_correctness_dry_run_packet(
+            goal_id=safe_goal_id,
+            writer_id=normalized_agent_id or "loopx.refresh-state",
+            write_class="refresh_state",
+            state_text=expected_write_state_text,
+            target_refs={
+                "state_file_ref": "registry.goal.state_file",
+                "run_history_ref": "runtime.goal.runs",
+                "index_ref": "runtime.goal.runs.index",
+                "global_registry_ref": "runtime.registry.global" if sync_global else None,
+            },
+            patch_summary="; ".join(patch_parts),
+            expected_write_scopes=expected_write_scopes,
+            lease_ref=None,
+            projection_status_surface=f"refresh-state dry-run: {classification}",
+        )
     if not dry_run:
         runs_dir.mkdir(parents=True, exist_ok=True)
         json_path, markdown_path = reserve_unique_run_paths(runs_dir, generated_at)

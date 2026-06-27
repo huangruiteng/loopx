@@ -63,6 +63,9 @@ ordering, archive compaction, or shared summary update is affected.
 - Lease expired or held by a different writer: fail closed with
   `lease_conflict`; do not silently clear another agent's claim.
 - Unsafe payload: reject with `boundary_rejected` and write no local state.
+- Dry-run preview without mutation: return `preview_only` and include the same
+  write intent, lock boundary, revision, and expected write scopes that a real
+  apply would need.
 
 ## Example Packet
 

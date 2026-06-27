@@ -62,6 +62,7 @@ def main() -> int:
         "revision_conflict",
         "lease_conflict",
         "boundary_rejected",
+        "preview_only",
         "failed",
     }
 
