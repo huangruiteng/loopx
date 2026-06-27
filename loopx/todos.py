@@ -19,6 +19,7 @@ from .status import (
     compact_todo_group,
     normalize_todo_text,
     parse_active_state_todos,
+    parse_timestamp,
     todo_role_for_heading,
 )
 from .todo_contract import (
@@ -81,6 +82,11 @@ TODO_METADATA_FIELDS = (
     "superseded_by",
 )
 TODO_PRIORITY_PREFIX_PATTERN = re.compile(r"^\[(P[0-4])\]\s+", re.IGNORECASE)
+MONITOR_CADENCE_PATTERN = re.compile(
+    r"^\s*(?P<count>[1-9][0-9]{0,4})\s*"
+    r"(?P<unit>s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)\s*$",
+    re.IGNORECASE,
+)
 
 
 def normalize_new_todo(text: str) -> str:
@@ -105,6 +111,37 @@ def inherit_todo_priority(next_text: str, source_text: str | None) -> str:
     if not source_priority:
         return normalized
     return f"[{source_priority}] {normalized}"
+
+
+def normalize_monitor_metadata(metadata: dict[str, Any] | None) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for key, value in (metadata or {}).items():
+        if key not in {"target_key", "cadence", "next_due_at"}:
+            continue
+        candidate = str(value or "").strip()
+        if candidate:
+            normalized[key] = candidate
+    if "cadence" in normalized and not MONITOR_CADENCE_PATTERN.match(normalized["cadence"]):
+        raise ValueError("--cadence must look like 30m, 2h, or 1d")
+    if "next_due_at" in normalized and parse_timestamp(normalized["next_due_at"]) is None:
+        raise ValueError("--next-due-at must be an ISO timestamp")
+    return normalized
+
+
+def require_monitor_metadata_scope(
+    *,
+    monitor_metadata: dict[str, Any] | None,
+    role: str,
+    task_class: str | None,
+) -> dict[str, str]:
+    normalized = normalize_monitor_metadata(monitor_metadata)
+    if not normalized:
+        return {}
+    if role != "agent" or task_class != "continuous_monitor":
+        raise ValueError(
+            "monitor schedule metadata requires --role agent --task-class continuous_monitor"
+        )
+    return normalized
 
 
 def resolve_todo_state_path(
@@ -610,9 +647,15 @@ def add_todo_to_lines(
     global_gate: bool | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    monitor_metadata: dict[str, Any] | None = None,
     evidence: str | None = None,
 ) -> dict[str, Any]:
     todo_text = normalize_new_todo(text)
+    normalized_monitor_metadata = require_monitor_metadata_scope(
+        monitor_metadata=monitor_metadata,
+        role=role,
+        task_class=task_class,
+    )
     bounds = section_bounds(lines, role)
     section = bounds[2] if bounds else TODO_SECTION_HEADINGS[role]
     existing_blocks = (
@@ -651,6 +694,7 @@ def add_todo_to_lines(
             global_gate=global_gate,
             unblocks_todo_id=unblocks_todo_id,
             resume_when=resume_when,
+            **normalized_monitor_metadata,
             evidence=evidence,
         )
         todo_line = "\n".join([f"- [ ] {todo_text}", metadata_line] if metadata_line else [f"- [ ] {todo_text}"])
@@ -684,6 +728,7 @@ def add_todo_to_lines(
             updates["unblocks_todo_id"] = unblocks_todo_id
         if resume_when:
             updates["resume_when"] = resume_when
+        updates.update(normalized_monitor_metadata)
         if evidence:
             updates["evidence"] = evidence
         metadata_line = metadata_line_for_block(block, updates)
@@ -715,6 +760,9 @@ def add_todo_to_lines(
         "global_gate": normalize_todo_global_gate(effective_metadata.get("global_gate")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
+        "target_key": effective_metadata.get("target_key"),
+        "cadence": effective_metadata.get("cadence"),
+        "next_due_at": effective_metadata.get("next_due_at"),
         "evidence": effective_metadata.get("evidence") or evidence,
     }
 
@@ -765,6 +813,7 @@ def add_goal_todo(
     agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
+    monitor_metadata: dict[str, Any] | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -836,6 +885,11 @@ def add_goal_todo(
         normalized_resume_when = normalize_todo_resume_when(resume_when) if resume_when else None
         if resume_when and not normalized_resume_when:
             raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
+        normalized_monitor_metadata = require_monitor_metadata_scope(
+            monitor_metadata=monitor_metadata,
+            role=role,
+            task_class=task_class,
+        )
         add_result = add_todo_to_lines(
             lines,
             role=role,
@@ -850,6 +904,7 @@ def add_goal_todo(
             global_gate=True if global_gate else None,
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
+            monitor_metadata=normalized_monitor_metadata,
         )
         added = bool(add_result["added"])
         metadata_updated = bool(add_result["metadata_updated"])
@@ -882,6 +937,9 @@ def add_goal_todo(
         "global_gate": add_result.get("global_gate"),
         "unblocks_todo_id": add_result.get("unblocks_todo_id"),
         "resume_when": add_result.get("resume_when"),
+        "target_key": add_result.get("target_key"),
+        "cadence": add_result.get("cadence"),
+        "next_due_at": add_result.get("next_due_at"),
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if added or metadata_updated else None,
@@ -1029,6 +1087,9 @@ def apply_todo_update_to_lines(
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
         "resume_when": normalize_todo_resume_when(effective_metadata.get("resume_when")),
         "no_followup": normalize_todo_no_followup(effective_metadata.get("no_followup")),
+        "target_key": effective_metadata.get("target_key"),
+        "cadence": effective_metadata.get("cadence"),
+        "next_due_at": effective_metadata.get("next_due_at"),
     }
 
 
@@ -1155,6 +1216,11 @@ def update_goal_todo(
         normalized_resume_when = normalize_todo_resume_when(resume_when) if resume_when else None
         if resume_when and not normalized_resume_when:
             raise ValueError("resume_when must be public-safe, e.g. todo_done:todo_ab12cd34ef56 or pr_merged:#532")
+        normalized_monitor_metadata = require_monitor_metadata_scope(
+            monitor_metadata=monitor_metadata,
+            role=target_role,
+            task_class=target_task_class,
+        )
         update_result = apply_todo_update_to_lines(
             lines,
             todo_id=todo_id,
@@ -1175,7 +1241,7 @@ def update_goal_todo(
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
             no_followup=no_followup,
-            monitor_metadata=monitor_metadata,
+            monitor_metadata=normalized_monitor_metadata,
             clear_claim=clear_claim,
             claim_only=claim_only,
             updated_at=updated_at,
@@ -1638,7 +1704,16 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
                 marker = todo_marker_for_status(item.get("status") or TODO_STATUS_OPEN)
                 text = item.get("text") or item.get("title") or ""
                 metadata = []
-                for metadata_key in ("todo_id", "status", "task_class", "action_kind", "claimed_by"):
+                for metadata_key in (
+                    "todo_id",
+                    "status",
+                    "task_class",
+                    "action_kind",
+                    "claimed_by",
+                    "target_key",
+                    "cadence",
+                    "next_due_at",
+                ):
                     if item.get(metadata_key):
                         metadata.append(f"{metadata_key}={item.get(metadata_key)}")
                 suffix = f" <!-- {' '.join(metadata)} -->" if metadata else ""
@@ -1682,6 +1757,9 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
                 f"- blocks_agent: `{payload.get('blocks_agent')}`",
                 f"- global_gate: `{payload.get('global_gate')}`",
                 f"- resume_when: `{payload.get('resume_when')}`",
+                f"- target_key: `{payload.get('target_key')}`",
+                f"- cadence: `{payload.get('cadence')}`",
+                f"- next_due_at: `{payload.get('next_due_at')}`",
             ]
         )
     if payload.get("error"):

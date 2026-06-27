@@ -23,6 +23,9 @@ USER_TODO = "Review the owner decision checklist before approving delivery."
 SCOPED_USER_GATE = "Choose the side-agent publishing channel before posting externally."
 AGENT_TODO = "Summarize the read-only evidence after the user checklist is done."
 UPDATED_AGENT_TODO = "Publish the compact evidence summary after validation passes."
+MONITOR_TODO = "Monitor the release-note draft PR until the next scheduled check."
+MONITOR_DUE_AT = "2026-01-02T00:00:00+00:00"
+MONITOR_NEXT_DUE_AT = "2026-01-03T00:00:00+00:00"
 
 
 def write_fixture(root: Path, *, register_agents: bool = True) -> tuple[Path, Path]:
@@ -252,6 +255,72 @@ def main() -> int:
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
         assert fields["agent_todos"]["source_section"] == "Agent Todo", fields
 
+        monitor_payload = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            MONITOR_TODO,
+            "--task-class",
+            "continuous_monitor",
+            "--action-kind",
+            "release_note_draft_monitor",
+            "--monitor-target-key",
+            "release-note-draft-pr",
+            "--cadence",
+            "1d",
+            "--next-due-at",
+            MONITOR_DUE_AT,
+            "--claimed-by",
+            "codex-side-bypass",
+        )
+        assert monitor_payload["added"] is True, monitor_payload
+        assert monitor_payload["target_key"] == "release-note-draft-pr", monitor_payload
+        assert monitor_payload["cadence"] == "1d", monitor_payload
+        assert monitor_payload["next_due_at"] == MONITOR_DUE_AT, monitor_payload
+        monitor_update = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            monitor_payload["todo_id"],
+            "--cadence",
+            "2d",
+            "--next-due-at",
+            MONITOR_NEXT_DUE_AT,
+            "--note",
+            "Rescheduled after a quiet check.",
+        )
+        assert monitor_update["changed"] is True, monitor_update
+        assert monitor_update["cadence"] == "2d", monitor_update
+        assert monitor_update["next_due_at"] == MONITOR_NEXT_DUE_AT, monitor_update
+        invalid_monitor_schedule = run_cli_error(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            agent_payload["todo_id"],
+            "--cadence",
+            "1d",
+        )
+        assert "monitor schedule metadata requires" in invalid_monitor_schedule["error"], invalid_monitor_schedule
+        fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
+        monitor_item = next(
+            item for item in fields["agent_todos"]["items"] if item["text"] == MONITOR_TODO
+        )
+        assert monitor_item["task_class"] == "continuous_monitor", fields
+        assert monitor_item["target_key"] == "release-note-draft-pr", fields
+        assert monitor_item["cadence"] == "2d", fields
+        assert monitor_item["next_due_at"] == MONITOR_NEXT_DUE_AT, fields
+
         status_payload = {
             "ok": True,
             "goal_count": 1,
@@ -358,7 +427,9 @@ def main() -> int:
         claimed_fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
         claimed_item = claimed_fields["agent_todos"]["items"][0]
         assert claimed_item["claimed_by"] == "codex-main-control", claimed_item
-        assert claimed_fields["agent_todos"]["claimed_open_count"] == 1, claimed_fields
+        assert claimed_fields["agent_todos"]["claimed_open_count"] == 2, claimed_fields
+        assert claimed_fields["agent_todos"]["claimed_advancement_open_count"] == 1, claimed_fields
+        assert claimed_fields["agent_todos"]["claimed_monitor_open_count"] == 1, claimed_fields
         assert claimed_fields["agent_todos"]["unclaimed_open_count"] == 0, claimed_fields
 
         preserve_claim_payload = run_cli(
@@ -440,7 +511,11 @@ def main() -> int:
         assert "status=done" in after_update, after_update
         assert "Validated%20compact%20evidence%20summary." in after_update, after_update
         updated_fields = parse_active_state_todos(after_update)
-        updated_agent_item = updated_fields["agent_todos"]["items"][0]
+        updated_agent_item = next(
+            item
+            for item in updated_fields["agent_todos"]["items"]
+            if item["todo_id"] == metadata_payload["todo_id"]
+        )
         assert updated_agent_item["text"] == UPDATED_AGENT_TODO, updated_agent_item
         assert updated_agent_item["status"] == "done", updated_agent_item
         assert updated_agent_item["done"] is True, updated_agent_item
