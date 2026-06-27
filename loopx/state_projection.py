@@ -3,14 +3,37 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .todo_contract import TODO_TASK_PATTERN, todo_done_for_status, todo_status_from_marker
+from .todo_contract import (
+    TODO_TASK_PATTERN,
+    build_todo_id,
+    compact_todo_text,
+    normalize_required_capabilities,
+    normalize_required_write_scopes,
+    normalize_target_capabilities,
+    normalize_todo_action_kind,
+    normalize_todo_blocks_agent,
+    normalize_todo_claimed_by,
+    normalize_todo_global_gate,
+    normalize_todo_id,
+    normalize_todo_no_followup,
+    normalize_todo_resume_when,
+    normalize_todo_status,
+    normalize_todo_task_class,
+    parse_todo_metadata_line,
+    todo_done_for_status,
+    todo_status_from_marker,
+)
 
 
 STATE_PROJECTION_GAP_SCHEMA_VERSION = "state_projection_gap_v0"
 NEXT_ACTION_PROJECTION_WARNING_SCHEMA_VERSION = "next_action_projection_warning_v0"
+ACTIVE_STATE_STRUCTURED_PROJECTION_SCHEMA_VERSION = "active_state_structured_projection_v0"
+ACTIVE_STATE_PROJECTION_DIAGNOSTICS_SCHEMA_VERSION = "active_state_projection_diagnostics_v0"
+TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
 
 SECTION_HEADING_PATTERN = re.compile(r"^##+\s+(.+?)\s*$")
 BULLET_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$")
+PRIORITY_PATTERN = re.compile(r"^\[(P[0-4])\]\s+(.+)$", re.IGNORECASE)
 USER_TODO_HEADER_MARKERS = (
     "user todo",
     "owner review",
@@ -49,6 +72,32 @@ NEXT_ACTION_USER_WAIT_PATTERN = re.compile(
     r"请(?:用户|人工|owner).{0,40}(?:决策|审批|批准|确认)|"
     r"请(?:确认|审批|批准)|"
     r"待(?:用户|人工|owner)?(?:决策|审批|批准|确认)"
+)
+TODO_METADATA_KEYS = (
+    "action_kind",
+    "required_write_scopes",
+    "required_capabilities",
+    "target_capabilities",
+    "claimed_by",
+    "blocks_agent",
+    "global_gate",
+    "unblocks_todo_id",
+    "resume_when",
+    "no_followup",
+    "target_key",
+    "cadence",
+    "next_due_at",
+    "last_checked_at",
+    "result_hash",
+    "consecutive_no_change",
+    "material_change",
+    "max_no_change_before_replan",
+    "note",
+    "evidence",
+    "reason",
+    "completed_at",
+    "updated_at",
+    "superseded_by",
 )
 
 
@@ -217,6 +266,267 @@ def summarize_state_todo_open_counts(state_text: str) -> dict[str, int]:
         if not todo_done_for_status(todo_status_from_marker(marker)):
             counts[role] += 1
     return counts
+
+
+def _active_state_compact_text(value: Any, *, limit: int = 500) -> str:
+    text = compact_todo_text(value)
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def parse_active_state_frontmatter(state_text: str) -> dict[str, str]:
+    if not state_text.startswith("---"):
+        return {}
+    parts = state_text.split("---", 2)
+    if len(parts) < 3:
+        return {}
+    result: dict[str, str] = {}
+    for line in parts[1].splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        if key:
+            result[key] = value.strip().strip('"')
+    return result
+
+
+def _todo_priority_parts(text: str) -> tuple[str | None, str]:
+    match = PRIORITY_PATTERN.match(text)
+    if not match:
+        return None, text
+    return match.group(1).upper(), _active_state_compact_text(match.group(2))
+
+
+def _normalize_structured_todo_item(
+    item: dict[str, Any],
+    *,
+    role: str,
+    source_section: str,
+) -> dict[str, Any]:
+    text = _active_state_compact_text(item.get("text"))
+    marker_status = todo_status_from_marker(item.get("marker"))
+    metadata_status = normalize_todo_status(item.get("status"))
+    status = metadata_status or marker_status
+    todo_id = normalize_todo_id(item.get("todo_id"))
+    todo_id_source = "metadata" if todo_id else "generated"
+    todo_id = todo_id or build_todo_id(
+        role=role,
+        source_section=source_section,
+        index=item.get("index"),
+        text=text,
+    )
+    priority, title = _todo_priority_parts(text)
+    action_kind = normalize_todo_action_kind(item.get("action_kind"))
+    normalized: dict[str, Any] = {
+        "schema_version": TODO_ITEM_SCHEMA_VERSION,
+        "todo_id": todo_id,
+        "todo_id_source": todo_id_source,
+        "role": role,
+        "source_section": source_section,
+        "index": item.get("index"),
+        "status": status,
+        "done": todo_done_for_status(status),
+        "text": text,
+        "task_class": normalize_todo_task_class(
+            item.get("task_class"),
+            text=text,
+            action_kind=action_kind,
+        ),
+    }
+    if priority:
+        normalized["priority"] = priority
+        normalized["title"] = title
+    if action_kind:
+        normalized["action_kind"] = action_kind
+
+    write_scopes = normalize_required_write_scopes(item.get("required_write_scopes"))
+    if write_scopes:
+        normalized["required_write_scopes"] = write_scopes
+    required_capabilities = normalize_required_capabilities(item.get("required_capabilities"))
+    if required_capabilities:
+        normalized["required_capabilities"] = required_capabilities
+    target_capabilities = normalize_target_capabilities(item.get("target_capabilities"))
+    if target_capabilities:
+        normalized["target_capabilities"] = target_capabilities
+    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+    if claimed_by:
+        normalized["claimed_by"] = claimed_by
+    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    if blocks_agent:
+        normalized["blocks_agent"] = blocks_agent
+    global_gate = normalize_todo_global_gate(item.get("global_gate"))
+    if global_gate is not None:
+        normalized["global_gate"] = global_gate
+    unblocks_todo_id = normalize_todo_id(item.get("unblocks_todo_id"))
+    if unblocks_todo_id:
+        normalized["unblocks_todo_id"] = unblocks_todo_id
+    resume_when = normalize_todo_resume_when(item.get("resume_when"))
+    if resume_when:
+        normalized["resume_when"] = resume_when
+    no_followup = normalize_todo_no_followup(item.get("no_followup"))
+    if no_followup is not None:
+        normalized["no_followup"] = no_followup
+
+    for key in TODO_METADATA_KEYS:
+        if key in normalized or key not in item:
+            continue
+        value = item.get(key)
+        if value not in (None, "", []):
+            normalized[key] = value
+    return normalized
+
+
+def _parse_active_state_structured_todo_items(
+    state_text: str,
+) -> dict[str, list[dict[str, Any]]]:
+    role: str | None = None
+    source_sections: dict[str, str] = {}
+    raw_items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
+    current: dict[str, Any] | None = None
+
+    for line in state_text.splitlines():
+        heading = SECTION_HEADING_PATTERN.match(line)
+        if heading:
+            section = heading.group(1).strip()
+            role = _role_for_heading(section)
+            current = None
+            if role and role not in source_sections:
+                source_sections[role] = section
+            continue
+        if role is None:
+            continue
+        match = TODO_TASK_PATTERN.match(line)
+        if match:
+            marker, text = match.groups()
+            current = {
+                "index": len(raw_items[role]) + 1,
+                "marker": marker,
+                "text": _active_state_compact_text(text),
+            }
+            raw_items[role].append(current)
+            continue
+        if current is None or not line.startswith((" ", "\t")):
+            continue
+        metadata = parse_todo_metadata_line(line)
+        if metadata:
+            current.update(metadata)
+            continue
+        continuation = line.strip()
+        if continuation:
+            current["text"] = _active_state_compact_text(
+                f"{current.get('text', '')} {continuation}"
+            )
+
+    result: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
+    for item_role, items in raw_items.items():
+        source_section = source_sections.get(item_role) or f"{item_role.title()} Todo"
+        result[item_role] = [
+            _normalize_structured_todo_item(
+                item,
+                role=item_role,
+                source_section=source_section,
+            )
+            for item in items
+        ]
+    return result
+
+
+def _active_state_todo_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    open_items = [item for item in items if item.get("status") == "open"]
+    done_items = [item for item in items if item.get("done") is True]
+    implicit_items = [item for item in items if item.get("todo_id_source") == "generated"]
+    return {
+        "total_count": len(items),
+        "open_count": len(open_items),
+        "done_count": len(done_items),
+        "implicit_todo_id_count": len(implicit_items),
+        "items": items,
+    }
+
+
+def build_active_state_projection_diagnostics(
+    *,
+    frontmatter: dict[str, str],
+    next_action_entries: list[str],
+    todo_items: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    warnings: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    all_items = [item for items in todo_items.values() for item in items]
+    if not frontmatter:
+        warnings.append({"kind": "missing_frontmatter"})
+    if not next_action_entries:
+        warnings.append({"kind": "missing_next_action"})
+    if not all_items:
+        warnings.append({"kind": "missing_todo_sections"})
+    implicit_items = [item for item in all_items if item.get("todo_id_source") == "generated"]
+    if implicit_items:
+        warnings.append(
+            {
+                "kind": "implicit_todo_ids",
+                "count": len(implicit_items),
+                "recommendation": (
+                    "rewrite with loopx todo so every item carries explicit metadata"
+                ),
+            }
+        )
+
+    seen: dict[str, int] = {}
+    duplicates: list[str] = []
+    for item in all_items:
+        todo_id = str(item.get("todo_id") or "")
+        seen[todo_id] = seen.get(todo_id, 0) + 1
+        if seen[todo_id] == 2:
+            duplicates.append(todo_id)
+    if duplicates:
+        errors.append({"kind": "duplicate_todo_ids", "todo_ids": duplicates})
+
+    return {
+        "schema_version": ACTIVE_STATE_PROJECTION_DIAGNOSTICS_SCHEMA_VERSION,
+        "parseable": not errors,
+        "migration_ready": bool(all_items) and not errors and not implicit_items,
+        "warning_count": len(warnings),
+        "error_count": len(errors),
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
+def build_active_state_structured_projection(
+    state_text: str,
+    *,
+    goal_id: str | None = None,
+    source_ref: str = "ACTIVE_GOAL_STATE.md",
+) -> dict[str, Any]:
+    frontmatter = parse_active_state_frontmatter(state_text)
+    next_entries = active_state_next_action_entries(state_text, limit=None)
+    todo_items = _parse_active_state_structured_todo_items(state_text)
+    diagnostics = build_active_state_projection_diagnostics(
+        frontmatter=frontmatter,
+        next_action_entries=next_entries,
+        todo_items=todo_items,
+    )
+    projection: dict[str, Any] = {
+        "schema_version": ACTIVE_STATE_STRUCTURED_PROJECTION_SCHEMA_VERSION,
+        "source": "markdown_active_state",
+        "source_ref": source_ref,
+        "frontmatter": frontmatter,
+        "next_action": {
+            "count": len(next_entries),
+            "first": next_entries[0] if next_entries else None,
+            "entries": next_entries,
+        },
+        "todos": {
+            "user": _active_state_todo_summary(todo_items["user"]),
+            "agent": _active_state_todo_summary(todo_items["agent"]),
+        },
+        "diagnostics": diagnostics,
+    }
+    if goal_id:
+        projection["goal_id"] = goal_id
+    return projection
 
 
 def state_projection_gap_warning(
