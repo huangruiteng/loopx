@@ -6680,10 +6680,10 @@
             "baseline_failure_scope": "passed",
             "baseline_run_id": "5d3d505e21ca",
             "decision": "paired_treatment_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+            "failure_class": "skillsbench_host_local_acp_codex_exec_preflight_failed_codex_exec_exit_1",
             "official_score_delta": null,
             "treatment_failure_scope": "score_missing",
-            "treatment_run_id": "bf47fab7dcc0"
+            "treatment_run_id": "6df25b0a577c"
           },
           "runs": [
             {
@@ -7502,6 +7502,54 @@
                 "original_task_mutated": false,
                 "staged": true,
                 "task_skills_removed": true
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": "local-private/skillsbench-powerlifting-explicit-bridge-timeoutprobe-20260627T1048Z/powerlifting-coef-calc__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "powerlifting-coef-calc",
+              "case_ids": [
+                "powerlifting-coef-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_preflight_failed_codex_exec_exit_1",
+              "failure_labels": [
+                "skillsbench_host_local_acp_codex_exec_preflight_failed_codex_exec_exit_1",
+                "skillsbench_runner_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-powerlifting-explicit-bridge-timeoutprobe-20260627T1048Z",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "notes": "explicit bridge command probe: pre-case host-local Codex exec preflight failed with public-safe codex_exec_exit_1 classification; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-06-27T18:41:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-powerlifting-coef-calc-goal-start-explicit-bridge-preflight-20260627T1048Z",
+              "run_id": "6df25b0a577c",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "staged": false
               },
               "verifier_attempt_countable": false
             }
@@ -9032,7 +9080,7 @@
           ]
         }
       },
-      "run_count": 152
+      "run_count": 153
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -13084,5 +13132,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-27T17:55:18+08:00"
+  "updated_at": "2026-06-27T18:41:05+08:00"
 }
