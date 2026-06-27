@@ -741,6 +741,13 @@ def refresh_state_run(
                     f"--agent-id {inferred_scope.get('agent_id')} without --next-action, "
                     "or have the primary agent update the durable active-state Next Action"
                 )
+            if inferred_scope.get("source") == "referenced_registered_non_primary_agent":
+                raise ValueError(
+                    "unscoped refresh-state mentions registered non-primary agent "
+                    f"{inferred_scope.get('agent_id')!r}; rerun with explicit "
+                    f"--agent-id {inferred_scope.get('agent_id')} because text-only "
+                    "agent references are ambiguous"
+                )
             normalized_agent_id = str(inferred_scope["agent_id"])
             normalized_agent_lane = str(inferred_scope["agent_lane"])
             agent_lane_scope_inference = inferred_scope
@@ -749,6 +756,13 @@ def refresh_state_run(
         if registered_agents and normalized_agent_id not in registered_agents:
             raise ValueError(
                 f"agent_id {normalized_agent_id!r} is not registered for goal {safe_goal_id!r}"
+            )
+        primary_agent = primary_agent_for_goal(registry_goal)
+        if normalized_next_action and primary_agent and normalized_agent_id != primary_agent:
+            raise ValueError(
+                "non-primary agent "
+                f"{normalized_agent_id!r} cannot update the durable active-state Next Action; "
+                "rerun without --next-action or have the primary agent update the global Next Action"
             )
     generated_at = now_local()
     active_state_next_action_update: dict[str, Any] | None = None

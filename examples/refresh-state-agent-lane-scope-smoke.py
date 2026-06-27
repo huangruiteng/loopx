@@ -120,6 +120,29 @@ def main() -> None:
             assert side_payload["agent_id"] == "codex-side-bypass", side_payload
 
             unscoped_side_action = f"Continue todo_side: {SIDE_ACTION}"
+            side_next_action_error = None
+            try:
+                state_refresh.refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=str(runtime),
+                    goal_id=GOAL_ID,
+                    project=project,
+                    state_file=None,
+                    classification="frontstage_side_lane_explicit_next_action_write",
+                    recommended_action=unscoped_side_action,
+                    next_action=unscoped_side_action,
+                    delivery_batch_scale="single_surface",
+                    delivery_outcome="outcome_progress",
+                    agent_id="codex-side-bypass",
+                    dry_run=True,
+                    sync_global=False,
+                )
+            except ValueError as exc:
+                side_next_action_error = str(exc)
+            assert side_next_action_error and (
+                "cannot update the durable active-state Next Action" in side_next_action_error
+            )
+
             blocked_next_action_error = None
             try:
                 state_refresh.refresh_state_run(
@@ -164,6 +187,27 @@ def main() -> None:
                 "Primary review todo_primary should inspect the refactor before deeper splits; "
                 "codex-side-bypass should switch to another eligible product todo."
             )
+            ambiguous_agent_mention_error = None
+            try:
+                state_refresh.refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=str(runtime),
+                    goal_id=GOAL_ID,
+                    project=project,
+                    state_file=None,
+                    classification="side_lane_review_handoff_ambiguous",
+                    recommended_action=primary_review_handoff,
+                    delivery_batch_scale="single_surface",
+                    delivery_outcome="outcome_progress",
+                    dry_run=True,
+                    sync_global=False,
+                )
+            except ValueError as exc:
+                ambiguous_agent_mention_error = str(exc)
+            assert ambiguous_agent_mention_error and (
+                "text-only agent references are ambiguous" in ambiguous_agent_mention_error
+            )
+
             state_refresh.now_local = lambda: "2026-06-20T00:03:00+00:00"
             handoff_payload = state_refresh.refresh_state_run(
                 registry_path=registry_path,
@@ -175,14 +219,13 @@ def main() -> None:
                 recommended_action=primary_review_handoff,
                 delivery_batch_scale="single_surface",
                 delivery_outcome="outcome_progress",
+                agent_id="codex-side-bypass",
                 dry_run=False,
                 sync_global=False,
             )
             assert handoff_payload["progress_scope"] == "agent_lane", handoff_payload
             assert handoff_payload["agent_id"] == "codex-side-bypass", handoff_payload
-            assert handoff_payload["agent_lane_scope_inference"]["source"] == (
-                "referenced_registered_non_primary_agent"
-            )
+            assert "agent_lane_scope_inference" not in handoff_payload, handoff_payload
 
             history = collect_history(
                 registry_path=registry_path,
