@@ -4192,8 +4192,9 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
         cli_limit: int | None,
         claude_limit: int | None,
         multiplier: int = 2,
+        cadence_progression_override: list[int] | None = None,
     ) -> dict[str, Any]:
-        cadence_progression = [
+        cadence_progression = cadence_progression_override or [
             min(codex_interval * (multiplier**step), codex_max)
             for step in range(3)
         ]
@@ -4369,9 +4370,10 @@ def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
                 "progress, reassignment, or a current-agent todo"
             ),
             codex_interval=10,
-            codex_max=30,
+            codex_max=60,
             cli_limit=3,
             claude_limit=3,
+            cadence_progression_override=[10, 20, 30, 60],
         )
 
     if (

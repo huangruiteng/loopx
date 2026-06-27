@@ -117,8 +117,8 @@ QUOTA_HINT_FIXTURE = {
         "cadence_class": "agent_scope_wait",
         "local_scheduler": {
             "recommended_interval_minutes": 10,
-            "max_interval_minutes": 30,
-            "example_progression_minutes": [10, 20, 30],
+            "max_interval_minutes": 60,
+            "example_progression_minutes": [10, 20, 30, 60],
             "unchanged_poll_limit": 3,
             "after_limit": "stop_tick_loop",
             "final_quota_replan_check": {"enabled": True},
@@ -237,7 +237,7 @@ def main() -> int:
     assert hinted_tick["launchd"]["reset_token"] == "fixture-reset-001", hinted_tick
     assert hinted_tick["launchd"]["reset_interval_seconds"] == 600, hinted_tick
     assert hinted_tick["launchd"]["reset_policy"]["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=10", hinted_tick
-    assert hinted_tick["scheduler_hint"]["local_scheduler"]["example_progression_minutes"] == [10, 20, 30], hinted_tick
+    assert hinted_tick["scheduler_hint"]["local_scheduler"]["example_progression_minutes"] == [10, 20, 30, 60], hinted_tick
     assert hinted_tick["scheduler_hint"]["codex_cli_tui"]["final_quota_replan_check"]["enabled"] is True, hinted_tick
 
     with tempfile.TemporaryDirectory(prefix="loopx-codex-cli-scheduler-tick-") as tmp:
@@ -338,7 +338,7 @@ def main() -> int:
         )
         assert "# Codex CLI Local Scheduler Tick" in cli_markdown, cli_markdown
         assert "scheduler_action: `write_precise_blocker`" in cli_markdown, cli_markdown
-        assert "local_progression_minutes: `[10, 20, 30]`" in cli_markdown, cli_markdown
+        assert "local_progression_minutes: `[10, 20, 30, 60]`" in cli_markdown, cli_markdown
         assert "local_unchanged_poll_limit: `3`" in cli_markdown, cli_markdown
         assert "final_quota_replan_check:" in cli_markdown, cli_markdown
         assert "runs_codex: `False`" in cli_markdown, cli_markdown

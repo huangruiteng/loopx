@@ -663,7 +663,7 @@ host multiplies the applied interval by
 `unchanged_poll_backoff_multiplier` until `max_interval_minutes`. Human gates
 can move to `[30, 60, 120]` after the concrete user todo has been surfaced.
 Agent-scope waits use a more conservative adjustment curve such as
-`[10, 20, 30]`, so a 600-second local tick stays close to the existing
+`[10, 20, 30, 60]`, so a 600-second local tick stays close to the existing
 agent-to-agent interaction cadence before cooling further.
 Each hint also carries `reset_policy.schema_version=scheduler_reset_policy_v0`.
 Hosts should compare `reset_policy.identity_snapshot` across unchanged polls
