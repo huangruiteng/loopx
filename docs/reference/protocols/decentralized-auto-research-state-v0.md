@@ -255,13 +255,20 @@ Already available:
   with an editable candidate solver, protected evaluator, dev/held-out splits,
   exactness guard, deterministic speedup metric, no-upload boundary, and smoke
   coverage.
+- `loopx auto-research evidence --contract <research_contract.json>
+  --eval-result <eval.json>...` now builds an
+  `auto_research_evidence_packet_v0` containing a public-safe
+  `research_hypothesis_v0` and split-aware `research_evidence_event_v0`
+  records. It preserves `needs_retry`, negative evidence,
+  `protected_scope_clean`, and branch/artifact refs without recording raw logs
+  or private artifacts.
 
 Needed next:
 
 - expose `research_hypothesis_v0` as a public-safe rollout-event subtype
   beyond fixture projection;
-- append runnable pack outputs as `research_evidence_event_v0` records through
-  a write path rather than hand-maintained fixture evidence;
+- append `auto_research_evidence_packet_v0` into LoopX rollout/event state
+  rather than leaving it as a generated packet;
 - add a showcase page that reports baseline, dev result, held-out result,
   retired directions, and LoopX's decentralized coordination pattern.
 

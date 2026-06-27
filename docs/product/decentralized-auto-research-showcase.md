@@ -142,12 +142,35 @@ This renders `decentralized_research_frontier_v0`,
 public fixture. It does not launch experiments; it proves that the state shape
 can present a per-agent frontier without one leader agent.
 
+The protected evaluator outputs can also be converted into public-safe evidence
+records:
+
+```bash
+loopx --format json auto-research evidence \
+  --contract examples/auto_research_knn_pack/research_contract.json \
+  --eval-result dev-result.public.json \
+  --eval-result holdout-result.public.json \
+  --hypothesis-id hyp_pack_partial_selection \
+  --todo-id todo_auto_research_pack_001 \
+  --agent-id codex-side-bypass \
+  --claimed-by codex-side-bypass \
+  --mechanism-family partial_selection \
+  --hypothesis "Use exact partial selection to avoid full distance sorting." \
+  --branch-ref codex/auto-research-evidence-writer
+```
+
+The command emits an `auto_research_evidence_packet_v0` containing one
+`research_hypothesis_v0` and split-aware `research_evidence_event_v0` records.
+It preserves `needs_retry`, negative evidence, protected-scope clean flags, and
+branch/artifact refs while keeping raw logs, local paths, and private artifacts
+out of the public payload.
+
 Next reproduction steps:
 
 1. Keep `research_contract_v0`, `research_hypothesis_v0`, and
    `research_evidence_event_v0` as the public-safe record boundary.
-2. Append real run outputs from the runnable pack as `research_evidence_event_v0`
-   records instead of editing fixture numbers by hand.
+2. Append `auto_research_evidence_packet_v0` into LoopX rollout/event state
+   instead of editing fixture numbers by hand.
 3. Keep one local smoke that proves:
    - protected files are not editable;
    - each hypothesis is todo-linked;
