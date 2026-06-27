@@ -71,9 +71,13 @@ def assert_catalog_is_frontstage_ready() -> None:
         assert case.get("headline"), case
         assert case.get("evidence_boundary"), case
         frontend = case.get("frontend_card")
-        assert isinstance(frontend, dict), case
-        beats = frontend.get("story_beats")
-        assert isinstance(beats, list) and len(beats) >= 3, case
+        appendix = case.get("appendix_surface")
+        assert isinstance(frontend, dict) or isinstance(appendix, dict), case
+        if isinstance(frontend, dict):
+            beats = frontend.get("story_beats")
+            assert isinstance(beats, list) and len(beats) >= 3, case
+        else:
+            assert appendix.get("public_surface") == "appendix_only", case
 
 
 def assert_storyboard_uses_public_catalog() -> None:

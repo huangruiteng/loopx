@@ -25,6 +25,20 @@ PRIVATE_MARKERS = tuple(
         ("pass", "word="),
     )
 )
+PRIMARY_SHOWCASE_IDS = [
+    "2026-06-27-overnight-pr-batch",
+    "2026-06-24-pr-issue-auto-fix",
+    "2026-06-23-agent-to-agent-pr-comments",
+    "2026-06-23-overnight-project-refactor",
+    "2026-06-19-dynamic-workflow-hardware-agent",
+    "2026-06-19-loopx-self-iteration",
+    "2026-06-17-blocked-p0-safe-rotation",
+]
+FORBIDDEN_SHOWCASE_COPY = (
+    "故事" + "节奏",
+    "Story " + "beats",
+    "Website Story " + "Beats",
+)
 
 
 def read(path: Path) -> str:
@@ -48,11 +62,7 @@ def main() -> int:
     assert "2026-06-19-dynamic-workflow-hardware-agent" in case_ids, case_ids
     assert "2026-06-19-loopx-self-iteration" in case_ids, case_ids
     frontstage_ids = [case.get("id") for case in cases if isinstance(case.get("frontend_card"), dict)]
-    assert frontstage_ids[:3] == [
-        "2026-06-17-blocked-p0-safe-rotation",
-        "2026-06-19-loopx-self-iteration",
-        "2026-06-19-dynamic-workflow-hardware-agent",
-    ], frontstage_ids
+    assert frontstage_ids[:7] == PRIMARY_SHOWCASE_IDS, frontstage_ids
 
     assert_public_safe(CATALOG)
     assert_public_safe(SHOWCASES)
@@ -77,6 +87,23 @@ def main() -> int:
         else:
             assert appendix.get("reason"), case
             assert appendix.get("public_surface") == "appendix_only", case
+        localized_pages = case.get("localized_pages")
+        assert isinstance(localized_pages, dict), case
+        for lang in ("zh", "en"):
+            localized_page = localized_pages.get(lang)
+            assert isinstance(localized_page, str), case
+            assert localized_page.startswith("docs/showcases/"), case
+            assert localized_page.endswith(".html"), case
+            localized_path = REPO_ROOT / localized_page
+            assert localized_path.is_file(), case
+            assert_public_safe(localized_path)
+            localized_text = read(localized_path)
+            for phrase in FORBIDDEN_SHOWCASE_COPY:
+                assert phrase not in localized_text, f"{localized_page}: forbidden copy {phrase!r}"
+            if case_id != "2026-06-19-dynamic-workflow-hardware-agent" or lang == "en":
+                assert "Repository evidence" in localized_text or "仓库证据" in localized_text, localized_page
+                assert "Repository sources" in localized_text or "仓库来源" in localized_text, localized_page
+                assert str(case.get("evidence_boundary")) in localized_text, localized_page
 
         demo_command = case.get("demo_command")
         if case.get("status") == "reproducible_synthetic_demo":

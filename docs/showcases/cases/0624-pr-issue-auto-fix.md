@@ -50,7 +50,7 @@ internal review notes, local paths, raw logs, credentials, and unpublished
 repository artifacts. Public evidence should be the sanitized workflow plan,
 focused smoke, branch diff, and public PR review outcome.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A PR issue or review comment appears.
 2. LoopX classifies the issue and creates ordered repair todos.

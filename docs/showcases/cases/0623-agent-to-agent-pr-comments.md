@@ -49,7 +49,7 @@ state, credentials, and unpublished artifacts. The public-safe evidence shape
 is the PR comment/fix lifecycle itself: a visible PR surface, a claimed todo,
 the fix diff, validation output, and the resulting review packet.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A PR receives feedback that should become executable work.
 2. LoopX turns the feedback into an owned todo instead of a chat reminder.

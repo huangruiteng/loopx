@@ -549,6 +549,10 @@ def render(storyboard: dict[str, Any], catalog: dict[str, Any]) -> str:
 """
 
 
+def clean_html(value: str) -> str:
+    return "\n".join(line.rstrip() for line in value.splitlines()) + "\n"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storyboard", type=Path, default=DEFAULT_STORYBOARD)
@@ -561,7 +565,7 @@ def main() -> int:
     args = parse_args()
     storyboard = read_json(args.storyboard)
     catalog = read_json(args.catalog)
-    output = render(storyboard, catalog)
+    output = clean_html(render(storyboard, catalog))
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(output, encoding="utf-8")

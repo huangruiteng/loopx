@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoopX Showcase: Blocked P0 with safe P1/P2 rotation</title>
+  <link rel="icon" href="data:,">
+  <style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:#0b0b0c;color:#f1f2f3;font-family:'Geist',system-ui,-apple-system,BlinkMacSystemFont,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  ::selection{background:color-mix(in srgb,var(--accent,#6e79d6) 34%,transparent);color:#fff}
+  .gh{min-height:100vh;position:relative;overflow-x:hidden;--accent:#6e79d6}
+  .grain{position:fixed;inset:0;pointer-events:none;opacity:.025;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  article{position:relative;max-width:800px;margin:0 auto;padding:76px 28px 130px}
+  .mlab{font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;letter-spacing:.06em;color:#62666d;text-transform:uppercase}
+  h1{font-size:clamp(31px,4.6vw,46px);font-weight:600;line-height:1.12;letter-spacing:-.03em;margin:16px 0 14px;color:#fafafa;text-wrap:balance}
+  h2{font-size:22px;font-weight:600;letter-spacing:-.02em;color:#f1f2f3}
+  h3{font-size:21px;font-weight:600;letter-spacing:-.02em;color:#f1f2f3}
+  p{font-size:15.5px;line-height:1.75;color:#9ea3aa}
+  strong{color:#e9eaec;font-weight:600}
+  code{font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;color:#c4c7cc}
+  .accent{font-size:clamp(17px,2.1vw,21px);font-weight:500;color:var(--accent);letter-spacing:-.01em;margin-bottom:22px}
+  .nav{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 28px}
+  .nav a,.case-link{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.04em;text-decoration:none;color:#c4c7cc;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 10px;background:rgba(255,255,255,.025)}
+  .nav a:hover,.case-link:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent);color:#f4f4f5}
+  .section-head{margin-top:74px;display:flex;align-items:baseline;gap:13px;margin-bottom:20px}
+  .section-head span{font-family:'Geist Mono',ui-monospace,monospace;font-size:13px;color:var(--accent)}
+  .panel{border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;overflow:hidden}
+  .panel-row{display:grid;grid-template-columns:150px 1fr;border-top:1px solid rgba(255,255,255,.07)}
+  .panel-row:first-child{border-top:0}
+  .panel-key{padding:18px 20px;border-right:1px solid rgba(255,255,255,.07);font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent);letter-spacing:.04em}
+  .panel-val{padding:18px 20px;display:flex;align-items:center}
+  .panel-val p{font-size:14px;line-height:1.6;margin:0}
+  .diagram{border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:30px 24px 22px;background:#0e0e10;margin:22px 0}
+  .diagram svg{display:block;width:100%;height:auto}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
+  .chips span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#888d95;border:1px solid rgba(255,255,255,.12);padding:4px 8px;border-radius:5px}
+  .text-stack{display:flex;flex-direction:column;gap:16px}
+  .evidence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0 6px}
+  .evidence-card{border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 18px 17px;min-height:128px}
+  .evidence-label{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  .source-list{display:flex;flex-direction:column;gap:10px;margin-top:20px}
+  .source-ref{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0e0e10;padding:12px 14px}
+  .source-ref:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+  .source-ref span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
+  .source-ref code{color:#aeb3ba;word-break:break-word}
+  .boundary-box{border-left:2px solid var(--accent);background:#0e0e10;padding:18px 20px;margin-top:16px;border-radius:0 8px 8px 0}
+  .flow{display:flex;flex-direction:column}
+  .flow li{display:grid;grid-template-columns:28px 1fr;gap:14px;list-style:none}
+  .flow-num{width:24px;height:24px;border-radius:50%;border:1px solid color-mix(in srgb,var(--accent) 50%,transparent);display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:#0b0b0c}
+  .flow-body{padding-bottom:18px;border-left:1px solid rgba(255,255,255,.12);padding-left:14px;margin-left:-27px}
+  .flow-title{font-size:14.5px;color:#eceef0;font-weight:500;margin-bottom:7px}
+  .metric-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:22px}
+  .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
+  .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
+  .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
+  .cards{display:flex;flex-direction:column;gap:12px}
+  .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
+  .card:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+  .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
+  .card p{font-size:14px;margin-top:9px}
+  .hide{display:none}
+  footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+</style>
+</head>
+<body>
+<div class="gh">
+  <div class="grain"></div>
+  <article>
+
+    <nav class="nav" aria-label="Showcase navigation">
+      <a href="../index.en.html">Showcases</a>
+      <a href="../showcase-catalog.json">Catalog</a>
+      <a href="0617-blocked-p0-safe-rotation.html">中文</a>
+    </nav>
+
+    <div class="mlab">2026-06-17 · benchmark-rotation</div>
+    <h1>Blocked P0 with safe P1/P2 rotation</h1>
+    <div class="accent">A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.</div>
+    <p>The operator sees exactly what decision is needed while the agent can keep making bounded progress elsewhere.</p>
+    <div class="chips"><span>reproducible</span><span>user-gate</span><span>fallback</span></div>
+
+    <div class="diagram" aria-label="LoopX control-plane sketch">
+      <svg viewBox="0 0 760 320" role="img">
+        <rect width="760" height="320" fill="#0e0e10"></rect>
+        <rect x="285" y="34" width="190" height="58" rx="8" fill="none" stroke="#6e79d6" stroke-width="2"></rect>
+        <text x="380" y="68" text-anchor="middle" fill="#f1f2f3" font-size="15" font-weight="600">LoopX</text>
+        <line x1="380" y1="92" x2="380" y2="132" stroke="#3a3d42" stroke-width="2"></line>
+        <rect x="52" y="132" width="180" height="78" rx="8" fill="none" stroke="#6a6e76" stroke-width="2"></rect>
+        <rect x="290" y="124" width="180" height="94" rx="8" fill="#6e79d6" fill-opacity=".16" stroke="#6e79d6" stroke-width="2"></rect>
+        <rect x="528" y="132" width="180" height="78" rx="8" fill="none" stroke="#6a6e76" stroke-width="2"></rect>
+        <text x="142" y="166" text-anchor="middle" fill="#f1f2f3" font-size="13" font-weight="600">Blocked P0 with safe P</text>
+        <text x="380" y="163" text-anchor="middle" fill="#f1f2f3" font-size="13" font-weight="600">concrete user todo</text>
+        <text x="618" y="166" text-anchor="middle" fill="#f1f2f3" font-size="13" font-weight="600">reproducible synthetic d</text>
+        <text x="142" y="188" text-anchor="middle" fill="#62666d" font-size="11">goal / trigger</text>
+        <text x="380" y="185" text-anchor="middle" fill="#62666d" font-size="11">todo / gate / evidence</text>
+        <text x="618" y="188" text-anchor="middle" fill="#62666d" font-size="11">public outcome</text>
+        <line x1="232" y1="171" x2="282" y2="171" stroke="#6e79d6" stroke-width="2"></line>
+        <polygon points="290,171 280,165 280,177" fill="#6e79d6"></polygon>
+        <line x1="470" y1="171" x2="520" y2="171" stroke="#6e79d6" stroke-width="2"></line>
+        <polygon points="528,171 518,165 518,177" fill="#6e79d6"></polygon>
+        <path d="M618 210 L618 260 L142 260 L142 218" fill="none" stroke="#5a5e65" stroke-width="2"></path>
+        <polygon points="142,210 136,221 148,221" fill="#8a8088"></polygon>
+      </svg>
+    </div>
+
+
+    <div class="section-head"><span>01</span><h2>Case context</h2></div>
+    <div class="text-stack"><p>This case shows what should happen when a P0 route is blocked by a user decision: the system should neither keep forcing that lane nor stop the whole goal. The original shape was a benchmark rotation where one lane needed a large local image while other no-upload benchmark work remained safe.</p><p>The public repository does not expose raw benchmark tasks or local image names. It reproduces the control-plane behavior with a synthetic smoke.</p></div>
+
+    <div class="section-head"><span>02</span><h2>Repository evidence</h2></div>
+    <div class="panel">
+      <div class="panel-row"><div class="panel-key">Proof</div><div class="panel-val"><p>A user decision should not block all safe work.</p></div></div>
+      <div class="panel-row"><div class="panel-key">LoopX intervention</div><div class="panel-val"><p>concrete user todo, safe fallback, quota control</p></div></div>
+    </div>
+
+    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">Synthetic fixture</div><p>`examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` creates a P0 user gate, a P0 agent todo blocked by that gate, and a P1 no-upload fallback.</p></div><div class="evidence-card"><div class="evidence-label">Quota contract</div><p>The smoke asserts `should_run=True`, `requires_user_action=True`, `safe_bypass_allowed=True`, and `safe_bypass_kind=scoped_user_gate_fallback`.</p></div><div class="evidence-card"><div class="evidence-label">Selected fallback</div><p>The fixture selects `terminal_bench_no_upload` while preserving the `ale_image` gate as the user-visible blocker.</p></div><div class="evidence-card"><div class="evidence-label">Rendered evidence</div><p>The smoke checks markdown for `scoped_user_gate_fallback` and safe no-upload Terminal-Bench rotation.</p></div></div>
+
+    <div class="section-head"><span>03</span><h2>LoopX behavior</h2></div>
+    <ul class="flow"><li><span class="flow-num">1</span><div class="flow-body"><div class="flow-title">The user todo names the concrete P0 decision instead of saying only owner gate.</div></div></li><li><span class="flow-num">2</span><div class="flow-body"><div class="flow-title">The agent does not spend compute on the gated lane; it selects fallback work that does not depend on the decision.</div></div></li><li><span class="flow-num">3</span><div class="flow-body"><div class="flow-title">State records both the blocker and the fallback reason so P0 can resume later.</div></div></li></ul>
+
+    <div class="section-head"><span>04</span><h2>What the user sees</h2></div>
+    <div class="text-stack"><p>The user sees the exact decision they need to make while the project continues safely elsewhere.</p><p>Attention load drops: the user does not need to watch repeated idle polls and does not miss the real decision.</p></div>
+
+    <div class="section-head"><span>05</span><h2>Repository sources</h2></div>
+    <div class="source-list"><a class="source-ref" href="0617-blocked-p0-safe-rotation.md"><span>case narrative</span><code>docs/showcases/cases/0617-blocked-p0-safe-rotation.md</code></a><a class="source-ref" href="../../../examples/showcase-0617-blocked-p0-safe-rotation-smoke.py"><span>synthetic smoke</span><code>examples/showcase-0617-blocked-p0-safe-rotation-smoke.py</code></a></div>
+    <div class="boundary-box"><p><strong>Evidence boundary.</strong> Synthetic public fixture only; no private screenshots, raw tasks, internal links, local image names, or raw run logs.</p></div>
+    <div class="chips"><a class="case-link" href="0617-blocked-p0-safe-rotation.md">Case note</a></div>
+    <div class="metric"><strong>Demo</strong><span><code>python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py</code></span></div>
+    <footer>Generated from docs/showcases/showcase-catalog.json. Private links, raw chats, local state, and internal media are excluded.</footer>
+  </article>
+</div>
+</body>
+</html>

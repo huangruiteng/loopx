@@ -27,6 +27,15 @@ PRIVATE_MARKERS = tuple(
         ("pass", "word="),
     )
 )
+PRIMARY_SHOWCASE_IDS = [
+    "2026-06-27-overnight-pr-batch",
+    "2026-06-24-pr-issue-auto-fix",
+    "2026-06-23-agent-to-agent-pr-comments",
+    "2026-06-23-overnight-project-refactor",
+    "2026-06-19-dynamic-workflow-hardware-agent",
+    "2026-06-19-loopx-self-iteration",
+    "2026-06-17-blocked-p0-safe-rotation",
+]
 
 
 def main() -> int:
@@ -48,6 +57,13 @@ def main() -> int:
 
     for marker in PRIVATE_MARKERS:
         assert marker not in html, marker
+    forbidden_display_terms = (
+        "Story " + "beats",
+        "Website " + "Story " + "Beats",
+        "故事" + "节奏",
+    )
+    for marker in forbidden_display_terms:
+        assert marker not in html, marker
 
     for required in (
         '<section class="hero">',
@@ -67,11 +83,7 @@ def main() -> int:
     ):
         assert required in html, required
 
-    assert [case["id"] for case in frontstage_cases] == [
-        "2026-06-17-blocked-p0-safe-rotation",
-        "2026-06-19-loopx-self-iteration",
-        "2026-06-19-dynamic-workflow-hardware-agent",
-    ], frontstage_cases
+    assert [case["id"] for case in frontstage_cases] == PRIMARY_SHOWCASE_IDS, frontstage_cases
     assert any(case["id"] == "2026-06-20-creator-operator-case-spec" for case in appendix_cases), appendix_cases
 
     statuses = {str(case["status"]) for case in frontstage_cases}

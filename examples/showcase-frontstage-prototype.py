@@ -27,11 +27,7 @@ def esc(value: object) -> str:
 
 
 def repo_link(repo_relative: str, *, output: Path | None) -> str:
-    if output is None:
-        return repo_relative
-    target = (REPO_ROOT / repo_relative).resolve()
-    base = output.resolve().parent
-    return os.path.relpath(target, base).replace(os.sep, "/")
+    return repo_relative
 
 
 def render_badges(values: list[Any]) -> str:
@@ -166,7 +162,7 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
         if feedback_contract_href
         else ""
     )
-    story = "".join(f"<li>{esc(beat)}</li>" for beat in story_beats)
+    evidence_sequence = "".join(f"<li>{esc(beat)}</li>" for beat in story_beats)
     behavior_items = "".join(f"<li>{esc(item)}</li>" for item in behavior)
     efficiency_panel = render_efficiency_panel(case)
 
@@ -195,8 +191,8 @@ def render_case(case: dict[str, Any], *, output: Path | None) -> str:
             <ol>{behavior_items}</ol>
           </div>
           <div>
-            <h4>Story beats</h4>
-            <ol>{story}</ol>
+            <h4>Evidence sequence</h4>
+            <ol>{evidence_sequence}</ol>
           </div>
         </div>
         {demo}

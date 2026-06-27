@@ -179,7 +179,7 @@ This case is a synthetic product case spec. It intentionally excludes:
 Future demos should use fake data or public-domain sample material and should
 keep no-autopublish gates visible.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A creator-operator has a long-running research and content-planning goal.
 2. The agent proposes trend candidates, maps them to preferences, and drafts
