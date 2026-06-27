@@ -5076,6 +5076,8 @@ def test_host_local_acp_connect_contract_matches_benchflow_runtime() -> None:
         encoding="utf-8"
     )
     assert "def _benchflow_connect_acp_return_arity(target: Any) -> int:" in source
+    assert "return_arity = _benchflow_connect_acp_return_arity(" in source
+    assert "if return_arity >= 4:" in source
     assert "from benchflow.agents.protocol import ACPSessionAdapter" in source
     assert ") -> tuple[Any, ...]:" in source
     assert "session_adapter = ACPSessionAdapter(client)" in source
