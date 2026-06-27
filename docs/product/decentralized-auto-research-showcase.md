@@ -45,6 +45,16 @@ The important product phrase is:
 > the control plane, and each agent receives only the frontier it is allowed to
 > attempt.
 
+The executable product contract is split in two:
+
+- `decentralized_auto_research_state_v0` defines the records and projections:
+  contracts, todo-linked hypotheses, evidence events, frontier, evidence graph,
+  and showcase projection.
+- `auto_research_lane_contract_v1` defines decentralized lanes: curator,
+  hypothesis proposer, executor, evaluator/promoter, and product narrator. Each
+  lane contributes typed records through claims and gates; none owns the whole
+  graph.
+
 ## Showcase Candidate
 
 **Title:** Decentralized Auto Research: k-NN Speedup

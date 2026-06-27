@@ -14,6 +14,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = ROOT / "docs/reference/protocols/decentralized-auto-research-state-v0.md"
+LANE_CONTRACT = ROOT / "docs/reference/protocols/auto-research-lane-contract-v1.md"
+PROTOCOL_README = ROOT / "docs/reference/protocols/README.md"
 BLUEPRINT = ROOT / "docs/product/decentralized-auto-research-showcase.md"
 
 
@@ -42,9 +44,12 @@ def _assert_public_safe(text: str, label: str) -> None:
 
 def main() -> None:
     protocol = _read(PROTOCOL)
+    lane_contract = _read(LANE_CONTRACT)
+    protocol_readme = _read(PROTOCOL_README)
     blueprint = _read(BLUEPRINT)
-    combined = protocol + "\n" + blueprint
+    combined = protocol + "\n" + lane_contract + "\n" + protocol_readme + "\n" + blueprint
     compact_protocol = re.sub(r"\s+", " ", protocol)
+    compact_lane_contract = re.sub(r"\s+", " ", lane_contract)
 
     _assert_public_safe(combined, "decentralized auto-research docs")
 
@@ -66,6 +71,31 @@ def main() -> None:
     for term in required_protocol_terms:
         assert term in protocol, f"protocol missing {term!r}"
     assert "No agent owns the whole research tree" in compact_protocol
+    assert "auto_research_lane_contract_v1" in protocol
+    assert "auto_research_lane_contract_v1" in protocol_readme
+
+    required_lane_terms = [
+        "auto_research_lane_contract_v1",
+        "research_curator",
+        "hypothesis_proposer",
+        "research_executor",
+        "evaluator_promoter",
+        "product_narrator",
+        "auto_research_lane_claim_v1",
+        "research_contract_v0",
+        "research_hypothesis_v0",
+        "auto_research_evidence_packet_v0",
+        "research_evidence_event_v0",
+        "research_evidence_graph_v0",
+        "research_showcase_projection_v0",
+        "quota should-run --agent-id",
+        "first-screen review gate",
+    ]
+    for term in required_lane_terms:
+        assert term in lane_contract, f"lane contract missing {term!r}"
+    assert "No lane is privileged" in compact_lane_contract
+    assert "not a lock on the full graph" in compact_lane_contract
+    assert "no public surface needs a leader or coordinator agent" in compact_lane_contract
 
     required_blueprint_terms = [
         "Decentralized Auto Research: k-NN Speedup",
@@ -75,6 +105,12 @@ def main() -> None:
         "Evidence timeline",
         "Promotion decision",
         "no leader agent owns the graph",
+        "auto_research_lane_contract_v1",
+        "curator",
+        "hypothesis proposer",
+        "executor",
+        "evaluator/promoter",
+        "product narrator",
     ]
     for term in required_blueprint_terms:
         assert term in blueprint, f"blueprint missing {term!r}"

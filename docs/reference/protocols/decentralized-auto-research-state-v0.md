@@ -49,6 +49,13 @@ LoopX should preserve these product lessons, not Arbor's centralized topology.
 Source state is writable only through LoopX lifecycle commands, project-owned
 state files, or future narrow kernel APIs.
 
+The companion
+[`auto_research_lane_contract_v1`](auto-research-lane-contract-v1.md) defines
+which decentralized agent lanes may create, execute, evaluate, promote, retire,
+or narrate these records. This file defines the record shapes and projections;
+the lane contract defines capability ownership without introducing a leader
+agent.
+
 | Source state | Existing or proposed anchor | Purpose |
 | --- | --- | --- |
 | `research_contract_v0` | proposed packet, registry goal metadata | Public-safe objective, editable scope, protected scope, metric direction, dev/held-out commands, budget, and stopping condition. |
@@ -267,14 +274,17 @@ Already available:
   `research_hypothesis` event plus one `research_evidence` event per split.
   Re-running the same packet skips existing event ids, so heartbeat retries do
   not duplicate evidence.
+- `loopx auto-research frontier --goal-id <goal> --agent-id <agent>` reads
+  `research_hypothesis` and `research_evidence` rollout events back into
+  `research_evidence_graph_v0` and derives promotion/retirement candidates for
+  the live frontier and showcase projection.
 
 Needed next:
 
-- read `research_hypothesis` and `research_evidence` rollout events back into
-  `research_evidence_graph_v0` so live frontier/product surfaces no longer need
-  fixture-only evidence;
-- add a showcase page that reports baseline, dev result, held-out result,
-  retired directions, and LoopX's decentralized coordination pattern.
+- render the lane contract, per-agent frontier, promotion candidates, retirement
+  candidates, and retry candidates in a non-first-screen product board;
+- add a public showcase page that reports baseline, dev result, held-out
+  result, retired directions, and LoopX's decentralized coordination pattern.
 
 ## Acceptance Checks
 
