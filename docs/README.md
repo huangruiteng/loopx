@@ -25,6 +25,8 @@ incident report, or launch draft.
   including public-safe Lark or Feishu reply card payloads.
 - [Showcases](showcases/README.md): public-safe cases, reproducible demos, and
   frontend-ready case metadata.
+- [Update notes](update-notes/README.md): two-week public progress notes,
+  archive governance, and publication automation design.
 - [Benchmark developer workflow](benchmark-developer-workflow.md): how to run,
   observe, and ingest benchmark slices as a developer-facing product workflow.
 - [State interaction model](state-interaction-model.md): user, agent, and state
@@ -106,6 +108,7 @@ incident report, or launch draft.
 ### Outreach And Narrative Drafts
 
 - [Outreach index](outreach/README.md)
+- [Update notes](update-notes/README.md)
 
 ### Archive
 
