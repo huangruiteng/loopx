@@ -27,6 +27,9 @@ incident report, or launch draft.
   frontend-ready case metadata.
 - [Update notes](update-notes/README.md): two-week public progress notes,
   archive governance, and publication automation design.
+- [Release readiness](product/release-readiness.md): v0.x install/update paths,
+  compatibility smoke gate, release-note checklist, and safe-to-depend-on
+  surfaces.
 - [Benchmark developer workflow](benchmark-developer-workflow.md): how to run,
   observe, and ingest benchmark slices as a developer-facing product workflow.
 - [State interaction model](state-interaction-model.md): user, agent, and state
@@ -89,6 +92,7 @@ incident report, or launch draft.
 ### Product Direction
 
 - [Product vision](product/vision.md)
+- [Release readiness](product/release-readiness.md)
 - [Codex CLI TUI-first loop](product/codex-cli-tui-loop.md)
 - [Reward-style replanning hints](product/reward-style-replanning.md)
 - [Frontstage channel and lease roadmap](frontstage-channel-lease-roadmap.md)

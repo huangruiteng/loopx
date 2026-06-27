@@ -42,6 +42,9 @@ runtime contract, benchmark route, or launch draft.
   the compact release note and smoke contract that prove the packaged installer,
   fresh-project bootstrap message, bootstrap bundle, and proof fixtures stay
   aligned before no-clone install is advertised as the default user path.
+- [Release readiness](release-readiness.md): the v0.x maintainer mental model
+  for install/update paths, compatibility smoke gates, release-note checklist,
+  and safe-to-depend-on surfaces.
 - [Frontstage dashboard interaction baseline](frontstage-dashboard-interaction-baseline.md):
   the two-surface frontend rule for keeping public showcase/homepage work fancy
   and case-driven while the real ops control-plane route stays dense, calm,
