@@ -63,6 +63,15 @@ def register_status_commands(
             "to matching status queue items."
         ),
     )
+    status_parser.add_argument(
+        "--include-task-graph",
+        action="store_true",
+        help=(
+            "Include the optional task_graph_projection_v0 on status items. "
+            "Default status output keeps this graph on the cold path to stay "
+            "inside the dashboard hot-path budget."
+        ),
+    )
 
     diagnose_parser = subparsers.add_parser(
         "diagnose",
@@ -208,6 +217,7 @@ def handle_status_command(
             runtime_root_override=runtime_root_arg,
             scan_roots=_scan_roots(args),
             limit=max(0, args.limit),
+            include_task_graph=args.include_task_graph,
         )
         if args.agent_id:
             attach_agent_lane_next_actions(payload, agent_id=args.agent_id)
@@ -357,6 +367,7 @@ def handle_review_packet_command(
             runtime_root_override=runtime_root_arg,
             scan_roots=_scan_roots(args),
             limit=max(0, args.limit),
+            include_task_graph=not args.handoff_only,
         )
         payload = build_review_packet(
             status_payload,

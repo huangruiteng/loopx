@@ -8698,6 +8698,7 @@ def build_attention_queue(
     history: dict[str, Any],
     global_registry: dict[str, Any],
     runtime_root: Path | None = None,
+    include_task_graph: bool = False,
 ) -> dict[str, Any]:
     health_items: list[dict[str, Any]] = []
     history_items: list[dict[str, Any]] = []
@@ -8885,13 +8886,14 @@ def build_attention_queue(
                         interface_budget_cadence=interface_budget_cadence,
                     )
                 normalize_monitor_quiet_attention_display(item)
-            task_graph_projection = build_task_graph_projection(
-                item,
-                goal=goal,
-                goal_latest_runs=goal_latest_runs,
-            )
-            if task_graph_projection:
-                item["task_graph_projection"] = task_graph_projection
+            if include_task_graph:
+                task_graph_projection = build_task_graph_projection(
+                    item,
+                    goal=goal,
+                    goal_latest_runs=goal_latest_runs,
+                )
+                if task_graph_projection:
+                    item["task_graph_projection"] = task_graph_projection
             attach_goal_channel_projection(
                 item,
                 goal=goal,
@@ -9771,6 +9773,7 @@ def collect_status(
     runtime_root_override: str | None,
     scan_roots: list[Path],
     limit: int,
+    include_task_graph: bool = False,
 ) -> dict[str, Any]:
     display_limit = max(0, limit)
     control_plane_limit = max(display_limit, STATUS_CONTROL_PLANE_CONTEXT_LIMIT)
@@ -9800,6 +9803,7 @@ def collect_status(
         history=history,
         global_registry=global_registry,
         runtime_root=runtime_root,
+        include_task_graph=include_task_graph,
     )
     run_history = build_run_history(history, display_limit=display_limit)
     event_ledger_summary = build_event_ledger_summary(history)

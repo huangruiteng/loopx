@@ -15,7 +15,9 @@ The source of truth remains:
 - run-history evidence and blocker writebacks.
 
 The projection may appear under `attention_queue.items[].task_graph_projection`
-in `loopx --format json status`. Full
+in `loopx --format json status --include-task-graph`. Default status output
+keeps this object on the cold path so the dashboard hot path remains within its
+interface budget. Full
 `loopx --format json review-packet --goal-id <goal-id>` output may
 include the same object for operator review. The handoff-only review-packet
 surface should stay compact and omit the graph unless a future interface budget

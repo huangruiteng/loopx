@@ -279,6 +279,9 @@ def main() -> int:
             scan_roots=[project],
             limit=5,
         )
+        status_items = status_payload["attention_queue"]["items"]
+        assert status_items, status_payload
+        assert "task_graph_projection" not in status_items[0], status_items[0]
         quota_payload = build_quota_should_run(status_payload, goal_id=GOAL_ID)
         review_packet = build_review_packet(status_payload, goal_id=GOAL_ID, action_kind="codex")
         handoff_payload = review_packet_handoff_only_payload(review_packet)
