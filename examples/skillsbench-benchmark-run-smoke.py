@@ -4311,6 +4311,16 @@ def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> N
             / "benchmark_run.compact.json"
         )
         compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["task_id"] == "setup-fuzzing-py", compact
+        assert compact["case_id"] == "setup-fuzzing-py", compact
+        assert compact["route"] == "codex-acp-blind-loop-baseline", compact
+        assert compact["run_group_id"] == "setup-fuzzing-py-apt-risk-preflight", (
+            compact
+        )
+        assert compact["job_name"] == "setup-fuzzing-py-apt-risk-preflight", compact
+        assert compact["rollout_name"] == "setup-fuzzing-py__codex_acp_blind_loop", (
+            compact
+        )
         assert compact["score_failure_attribution"] == (
             "skillsbench_docker_apt_setup_risk_preflight_blocked"
         ), compact
@@ -7537,6 +7547,15 @@ def test_skillsbench_runner_failure_compact_closeout() -> None:
         assert compact["source_runner"] == (
             "official_skillsbench_benchflow_launch_failure"
         ), compact
+        assert compact["task_id"] == "debug-trl-grpo", compact
+        assert compact["case_id"] == "debug-trl-grpo", compact
+        assert compact["route"] == "codex-goal-mode-baseline", compact
+        assert compact["job_name"] == "skillsbench-debug-trl-grpo-failure-fixture", (
+            compact
+        )
+        assert compact["rollout_name"] == "debug-trl-grpo__codex_goal_mode_baseline", (
+            compact
+        )
         assert compact["mode"] == "codex_goal_mode_baseline", compact
         assert compact["real_run"] is True, compact
         assert compact["official_score_status"] == "missing", compact

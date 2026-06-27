@@ -4523,6 +4523,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else "codex-acp"
         ),
         "model": args.model,
+        "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "max_rounds": args.max_rounds,
         "treatment_prompt_style": args.treatment_prompt_style,
@@ -8622,6 +8623,15 @@ def build_runner_failure_compact(
     reduced = compact_benchmark_run(compact)
     if reduced is None:
         raise RuntimeError("SkillsBench runner failure reducer produced non-compact run")
+    closeout_metadata = {
+        "task_id": args.task_id,
+        "route": args.route,
+        "run_group_id": args.run_group_id or plan.get("run_group_id"),
+        "rollout_name": plan.get("rollout_name"),
+    }
+    for key, value in closeout_metadata.items():
+        if value:
+            reduced[key] = str(value)
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
