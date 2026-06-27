@@ -70,7 +70,7 @@ import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -238,6 +238,41 @@ def _filter_kwargs_for_signature(
         for key, value in kwargs.items()
         if key in signature.parameters
     }
+
+
+def _tuple_annotation_arity(annotation: Any) -> int | None:
+    args = get_args(annotation)
+    if args and args[-1] is not Ellipsis:
+        origin = get_origin(annotation)
+        if origin is tuple or str(origin) in {"tuple", "<class 'tuple'>"}:
+            return len(args)
+    text = str(annotation)
+    if "tuple[" not in text and "Tuple[" not in text:
+        return None
+    start = text.find("[")
+    end = text.rfind("]")
+    if start < 0 or end <= start:
+        return None
+    depth = 0
+    count = 1
+    for char in text[start + 1 : end]:
+        if char == "[":
+            depth += 1
+        elif char == "]" and depth > 0:
+            depth -= 1
+        elif char == "," and depth == 0:
+            count += 1
+    return count
+
+
+def _benchflow_connect_acp_return_arity(target: Any) -> int:
+    try:
+        annotation = inspect.signature(target).return_annotation
+    except (TypeError, ValueError):
+        return 3
+    if annotation is inspect.Signature.empty:
+        return 3
+    return _tuple_annotation_arity(annotation) or 3
 
 
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
@@ -1434,6 +1469,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
         "host_local_acp_sandbox_bridge_mode",
+        "host_local_acp_session_adapter_status",
         "host_local_acp_pwd_probe_status",
         "host_local_acp_pwd_probe_exception_type",
         "host_local_acp_pwd_probe_stdout_type",
@@ -1554,6 +1590,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_agent_timeout_effective_sec",
         "benchflow_agent_timeout_host_local_acp_exec_timeout_sec",
         "benchflow_agent_timeout_host_local_acp_margin_sec",
+        "host_local_acp_connect_return_arity",
         "benchflow_user_loop_recovery_round",
         "benchflow_user_loop_recovery_delta_events",
         "benchflow_user_loop_recovery_delta_tool_calls",
@@ -7472,7 +7509,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         reasoning_effort: str | None = None,
         mcp_servers: list[Any] | None = None,
         **_ignored: Any,
-    ) -> tuple[Any, Any, Any, str]:
+    ) -> tuple[Any, ...]:
         del (
             agent_launch,
             sandbox_user,
@@ -7482,7 +7519,6 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         )
         from benchflow.acp.client import ACPClient
         from benchflow.acp.transport import StdioTransport
-        from benchflow.agents.protocol import ACPSessionAdapter
 
         prerequisites = plan.setdefault("runner_prerequisites", {})
         prerequisites["host_local_acp_launch_status"] = "connecting"
@@ -7550,7 +7586,6 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             )
             if model:
                 await asyncio.wait_for(client.set_model(model), timeout=60)
-            session_adapter = ACPSessionAdapter(client)
             prerequisites["host_local_acp_launch_status"] = "connected"
             if isinstance(controller_trace, dict):
                 controller_trace["native_goal_worker_route"] = (
@@ -7563,7 +7598,25 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 controller_trace["last_decision"] = (
                     "host_app_server_goal_worker_connected"
                 )
-            return client, session, session_adapter, agent_name
+            return_arity = _benchflow_connect_acp_return_arity(
+                original_runtime_connect_acp
+            )
+            prerequisites["host_local_acp_connect_return_arity"] = return_arity
+            if return_arity >= 4:
+                try:
+                    from benchflow.agents.protocol import ACPSessionAdapter
+
+                    session_adapter = ACPSessionAdapter(client)
+                    prerequisites["host_local_acp_session_adapter_status"] = (
+                        "benchflow_agents_protocol"
+                    )
+                except ModuleNotFoundError:
+                    session_adapter = client
+                    prerequisites["host_local_acp_session_adapter_status"] = (
+                        "fallback_client"
+                    )
+                return client, session, session_adapter, agent_name
+            return client, session, agent_name
         except Exception:
             prerequisites["host_local_acp_launch_status"] = "failed"
             with contextlib.suppress(Exception):
