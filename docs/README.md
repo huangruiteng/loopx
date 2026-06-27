@@ -11,6 +11,9 @@ incident report, or launch draft.
 - [Getting started](guides/getting-started.md): agent-first start, manual
   installation, project connection, diagnosis, daily workflow, heartbeats,
   dashboard, development, and command reference.
+- [Newcomer command path](guides/newcomer-command-path.md): the minimal product
+  path for `/loopx`, `/loopx <goal>`, and one CLI quickstart before the full
+  command catalog.
 - [Product vision](product/vision.md): long-term product direction, Loop Agent
   definition, maintainer-first management surface, and open-source anchor
   strategy.
@@ -66,6 +69,7 @@ incident report, or launch draft.
 ### Operator Workflows
 
 - [Getting started](guides/getting-started.md)
+- [Newcomer command path](guides/newcomer-command-path.md)
 - [Integration guide](integration.md)
 - [Benchmark developer workflow](benchmark-developer-workflow.md)
 - [Attention queue](attention-queue.md)
