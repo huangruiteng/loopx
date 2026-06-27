@@ -586,6 +586,30 @@ def main() -> None:
     assert case_run_payload["boundary"]["model_api_expected"] is False, case_run_payload
     assert case_run_payload["boundary"]["raw_logs_read"] is False, case_run_payload
     assert case_run_payload["boundary"]["command_argv_recorded"] is False, case_run_payload
+    assert case_run_payload["run_permission_policy"]["schema_version"] == (
+        "run_permission_policy_v0"
+    ), case_run_payload
+    assert case_run_payload["run_permission_policy"]["policy_id"] == (
+        "terminal_bench_case_run_no_upload_policy"
+    ), case_run_payload
+    assert case_run_payload["run_permission_policy"]["no_upload_required"] is True, (
+        case_run_payload
+    )
+    assert case_run_payload["run_permission_policy"]["submit_allowed"] is False, (
+        case_run_payload
+    )
+    assert case_run_payload["run_permission_policy"][
+        "leaderboard_claim_allowed"
+    ] is False, case_run_payload
+    assert case_run_payload["run_permission_quota_projection"][
+        "schema_version"
+    ] == "run_permission_quota_projection_v0", case_run_payload
+    assert case_run_payload["run_permission_quota_projection"][
+        "delivery_allowed"
+    ] is True, case_run_payload
+    assert case_run_payload["run_permission_quota_projection"][
+        "compact_observation_only"
+    ] is True, case_run_payload
     assert case_run_payload["launch_summary"][
         "worker_materialization_probe_only"
     ] is False, case_run_payload
@@ -618,6 +642,12 @@ def main() -> None:
     assert managed_case_run_payload["boundary"]["task_solver_invoked"] is False, (
         managed_case_run_payload
     )
+    assert managed_case_run_payload["run_permission_policy"]["schema_version"] == (
+        "run_permission_policy_v0"
+    ), managed_case_run_payload
+    assert managed_case_run_payload["run_permission_quota_projection"][
+        "delivery_allowed"
+    ] is True, managed_case_run_payload
     assert managed_case_run_payload["launch_summary"][
         "loopx_agent_kwargs_present"
     ] is True, managed_case_run_payload
