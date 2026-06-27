@@ -7688,7 +7688,7 @@ def _allows_due_monitor_poll(
         return False
     if target_key:
         item_target_key = str(item.get("target_key") or "").strip()
-        if item_target_key and item_target_key != str(target_key).strip():
+        if item_target_key != str(target_key).strip():
             return False
     return True
 
