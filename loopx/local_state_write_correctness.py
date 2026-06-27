@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 
@@ -35,6 +36,8 @@ def build_local_state_write_correctness_dry_run_packet(
     patch_summary: str,
     expected_write_scopes: list[str],
     lease_ref: dict[str, Any] | None = None,
+    lease_projection: dict[str, Any] | None = None,
+    narrower_lock_allowed: str | None = None,
     projection_status_surface: str | None = None,
 ) -> dict[str, Any]:
     """Build the dry-run correctness envelope for a local state writer.
@@ -70,7 +73,7 @@ def build_local_state_write_correctness_dry_run_packet(
         "lock_boundary": {
             "kind": "per_goal",
             "lock_key": f"goal:{goal_id}",
-            "narrower_lock_allowed": "not_for_refresh_state",
+            "narrower_lock_allowed": narrower_lock_allowed or "not_for_refresh_state",
         },
         "preview": {
             "mode": "dry_run",
@@ -86,7 +89,7 @@ def build_local_state_write_correctness_dry_run_packet(
         },
         "projection": {
             "status_surface": projection_status_surface or patch_summary,
-            "lease_projection": None,
+            "lease_projection": lease_projection,
             "public_boundary": {
                 "raw_logs_copied": False,
                 "private_paths_copied": False,
@@ -95,3 +98,72 @@ def build_local_state_write_correctness_dry_run_packet(
             },
         },
     }
+
+
+def _todo_lease_ref(
+    *,
+    goal_id: str,
+    todo_id: str | None,
+    claimed_by: str | None,
+) -> dict[str, str] | None:
+    if not todo_id or not claimed_by:
+        return None
+    safe_todo_id = re.sub(r"[^A-Za-z0-9_]+", "_", todo_id).strip("_") or "todo"
+    safe_claimed_by = re.sub(r"[^A-Za-z0-9_]+", "_", claimed_by).strip("_") or "agent"
+    return {
+        "kind": "todo_claim",
+        "goal_id": goal_id,
+        "todo_id": todo_id,
+        "claimed_by": claimed_by,
+        "lease_id": f"lease_{safe_todo_id}_{safe_claimed_by}",
+    }
+
+
+def _todo_lease_projection(lease_ref: dict[str, str] | None) -> dict[str, str] | None:
+    if not lease_ref:
+        return None
+    return {
+        "todo_id": lease_ref["todo_id"],
+        "claimed_by": lease_ref["claimed_by"],
+        "lease_state": "preview_only",
+    }
+
+
+def build_todo_write_correctness_dry_run_packet(
+    *,
+    goal_id: str,
+    write_class: str,
+    state_text: str,
+    todo_id: str | None,
+    role: str | None,
+    section: str | None,
+    claimed_by: str | None,
+    changed: bool,
+) -> dict[str, Any]:
+    target = todo_id or "new_todo"
+    role_text = role or "unknown_role"
+    effect = "would change active state" if changed else "would leave active state unchanged"
+    patch_summary = f"preview {write_class} for {role_text} todo {target}: {effect}"
+    lease_ref = _todo_lease_ref(
+        goal_id=goal_id,
+        todo_id=todo_id,
+        claimed_by=claimed_by,
+    )
+    return build_local_state_write_correctness_dry_run_packet(
+        goal_id=goal_id,
+        writer_id="loopx.todo",
+        write_class=write_class,
+        state_text=state_text,
+        target_refs={
+            "state_file_ref": "registry.goal.state_file",
+            "todo_id": todo_id,
+            "role": role,
+            "section": section,
+        },
+        patch_summary=patch_summary,
+        expected_write_scopes=["active_state"],
+        lease_ref=lease_ref,
+        lease_projection=_todo_lease_projection(lease_ref),
+        narrower_lock_allowed="per_todo_when_patch_is_single_todo_and_order_independent",
+        projection_status_surface=patch_summary,
+    )

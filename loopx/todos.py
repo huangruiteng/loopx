@@ -12,6 +12,7 @@ from .agent_registry import (
 )
 from .file_lock import exclusive_file_lock
 from .history import load_registry
+from .local_state_write_correctness import build_todo_write_correctness_dry_run_packet
 from .state_refresh import now_local, resolve_goal_state
 from .status import (
     MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE,
@@ -81,6 +82,37 @@ TODO_METADATA_FIELDS = (
     "updated_at",
     "superseded_by",
 )
+
+
+def _attach_todo_write_correctness_dry_run_packet(
+    payload: dict[str, Any],
+    *,
+    goal_id: str,
+    write_class: str,
+    state_text: str,
+) -> dict[str, Any]:
+    if not payload.get("dry_run"):
+        return payload
+    todo_id = normalize_todo_id(str(payload.get("todo_id") or "")) or None
+    claimed_by = normalize_todo_claimed_by(payload.get("claimed_by"))
+    changed = bool(
+        payload.get("changed")
+        or payload.get("added")
+        or payload.get("metadata_updated")
+        or payload.get("completed")
+        or payload.get("superseded")
+    )
+    payload["local_state_write_correctness"] = build_todo_write_correctness_dry_run_packet(
+        goal_id=goal_id,
+        write_class=write_class,
+        state_text=state_text,
+        todo_id=todo_id,
+        role=str(payload.get("role") or ""),
+        section=str(payload.get("section") or ""),
+        claimed_by=claimed_by,
+        changed=changed,
+    )
+    return payload
 TODO_PRIORITY_PREFIX_PATTERN = re.compile(r"^\[(P[0-4])\]\s+", re.IGNORECASE)
 MONITOR_CADENCE_PATTERN = re.compile(
     r"^\s*(?P<count>[1-9][0-9]{0,4})\s*"
@@ -915,7 +947,7 @@ def add_goal_todo(
         if (added or metadata_updated) and not dry_run:
             resolved_state_file.write_text(new_text, encoding="utf-8")
 
-    return {
+    payload = {
         "ok": True,
         "dry_run": dry_run,
         "added": added,
@@ -944,6 +976,12 @@ def add_goal_todo(
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if added or metadata_updated else None,
     }
+    return _attach_todo_write_correctness_dry_run_packet(
+        payload,
+        goal_id=goal_id,
+        write_class="todo_add",
+        state_text=original,
+    )
 
 
 def resolve_todo_state(
@@ -1252,7 +1290,8 @@ def update_goal_todo(
             new_text = replace_updated_at(new_text, updated_at)
         if changed and not dry_run:
             resolved_state_file.write_text(new_text, encoding="utf-8")
-    return {
+    write_class = "todo_claim" if claim_only else "todo_update"
+    payload = {
         "ok": True,
         "dry_run": dry_run,
         "changed": changed,
@@ -1263,6 +1302,12 @@ def update_goal_todo(
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,
     }
+    return _attach_todo_write_correctness_dry_run_packet(
+        payload,
+        goal_id=goal_id,
+        write_class=write_class,
+        state_text=original,
+    )
 
 
 def complete_goal_todo(
@@ -1771,4 +1816,24 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
     elif "todo" in payload:
         marker = todo_marker_for_status(payload.get("status") or TODO_STATUS_OPEN)
         lines.extend(["", "## Todo", "", f"- [{marker}] {payload.get('todo')}"])
+    correctness = payload.get("local_state_write_correctness")
+    if isinstance(correctness, dict):
+        intent = correctness.get("write_intent") if isinstance(correctness.get("write_intent"), dict) else {}
+        apply_result = (
+            correctness.get("apply_result")
+            if isinstance(correctness.get("apply_result"), dict)
+            else {}
+        )
+        lines.extend(
+            [
+                "",
+                "## Local State Write Correctness",
+                "",
+                f"- schema_version: `{correctness.get('schema_version')}`",
+                f"- write_id: `{intent.get('write_id')}`",
+                f"- write_class: `{intent.get('write_class')}`",
+                f"- idempotency_key: `{intent.get('idempotency_key')}`",
+                f"- status: `{apply_result.get('status')}`",
+            ]
+        )
     return "\n".join(lines)
