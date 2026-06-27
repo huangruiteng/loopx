@@ -10,6 +10,12 @@ reveals a reusable interaction shape. Each pattern should be specific enough to
 drive implementation, tests, and dashboard copy without requiring future agents
 to mine chat history.
 
+For the short product map that keeps the catalog, state definitions, and state
+machine aligned, see
+[`docs/product/core-control-plane/`](product/core-control-plane/). The catalog
+below remains the detailed IP registry; the core map is the graph lens that
+connects those IPs to runtime states and legal transitions.
+
 ## Pattern Template
 
 Each pattern should answer:

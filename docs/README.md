@@ -17,6 +17,9 @@ incident report, or launch draft.
 - [Product vision](product/vision.md): long-term product direction, Loop Agent
   definition, maintainer-first management surface, and open-source anchor
   strategy.
+- [Core control-plane graphs](product/core-control-plane/README.md): the
+  interaction catalog lens, state definitions, and state machine in one
+  product/runtime map.
 - [Public adoption loop](product/public-adoption-loop.md): docs-first issue
   and discussion template copy, triage labels, and lightweight external-attempt
   metrics before any `.github` template write.
@@ -61,6 +64,7 @@ incident report, or launch draft.
 ### Concepts
 
 - [Architecture](architecture.md)
+- [Core control-plane graphs](product/core-control-plane/README.md)
 - [State interaction model](state-interaction-model.md)
 - [Interaction pattern catalog](interaction-pattern-catalog.md)
 - [Field-derived patterns](field-derived-patterns.md)

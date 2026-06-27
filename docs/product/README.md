@@ -8,6 +8,9 @@ runtime contract, benchmark route, or launch draft.
   long-running agent work, centered on Loop Agents, maintainer-first management,
   Agent Work Feed review, performance review, high-value open-source anchors,
   and office-operations connector showcases.
+- [Core control-plane graphs](core-control-plane/README.md): the paired
+  interaction catalog lens, state definitions, and state machine that keep
+  product explanation, runtime projection, and validation aligned.
 - [Server-client product shape](server-client-product-shape.md): the medium-term
   product model where the server owns durable state, signal inbox, selected
   anchors, delivery/planning queue boundaries, performance-review summaries,
