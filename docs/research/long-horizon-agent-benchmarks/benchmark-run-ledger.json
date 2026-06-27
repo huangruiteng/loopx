@@ -1694,11 +1694,14 @@
           "latest_decision": {
             "baseline_failure_scope": "passed",
             "baseline_run_id": "2297b9236dc2",
-            "decision": "paired_treatment_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
-            "official_score_delta": -1.0,
-            "treatment_failure_scope": "runner_or_setup",
-            "treatment_run_id": "d563af7a6ede"
+            "decision": "paired_treatment_verifier_or_infra_repair_required",
+            "failure_class": "verifier_infrastructure_failure",
+            "next_action": "repair verifier or infra attribution before comparing arms",
+            "official_score_delta": null,
+            "repair_class": "verifier_or_infra_repair",
+            "repair_priority": "P0",
+            "treatment_failure_scope": "score_missing",
+            "treatment_run_id": "e907196f7c85"
           },
           "runs": [
             {
@@ -2614,6 +2617,81 @@
                 "task_skills_removed": true
               },
               "verifier_attempt_countable": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z/remote-root/jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z-goalstart/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "verifier_failed",
+              "attempt_failure_label": "verifier_infrastructure_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "verifier_infrastructure_failure",
+              "failure_labels": [
+                "verifier_infrastructure_failure"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_citation_check_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "next_action": "repair verifier or infra attribution before comparing arms",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 1,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 1,
+                "state_write_count": 3
+              },
+              "recorded_at": "2026-06-27T22:10:04+08:00",
+              "repair_class": "verifier_or_infra_repair",
+              "repair_priority": "P0",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-citation-check-goal-start-post777-20260627T133638Z",
+              "run_id": "e907196f7c85",
+              "score_status": "missing",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
             }
           ]
         },
@@ -9422,7 +9500,7 @@
           ]
         }
       },
-      "run_count": 156
+      "run_count": 157
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -13474,5 +13552,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-27T21:16:06+08:00"
+  "updated_at": "2026-06-27T22:10:04+08:00"
 }

@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-27T21:16:06+08:00`
+- updated_at: `2026-06-27T22:10:04+08:00`
 
 ## Case Decisions
 
@@ -17,7 +17,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | - | `1` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `treatment_loopx_lifecycle_not_observed` | - | `10` |
 | `skillsbench@1.1` | `bike-rebalance` | `paired_baseline_solved_treatment_preserved` | - | - | `3` |
-| `skillsbench@1.1` | `citation-check` | `paired_treatment_runner_or_setup_repair_required` | - | - | `11` |
+| `skillsbench@1.1` | `citation-check` | `paired_treatment_verifier_or_infra_repair_required` | - | - | `12` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `paired_no_score_uplift` | - | - | `4` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_baseline_setup_preflight_selection_required` | - | - | `5` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | - | `9` |
@@ -70,6 +70,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `P0` | `skillsbench@1.1` | `setup-fuzzing-py` | `codex_goal_mode_baseline` | `skillsbench_codex_acp_runtime_preflight` | `skillsbench_codex_acp_runtime_libssl_missing` | required_preflight=codex_acp_runtime_dependency_preflight,codex_acp_runtime_launch_preflight,skillsbench_compact_failure_class | prove the Codex ACP runtime can start inside the SkillsBench sandbox before rerunning or launching treatment; require compact dependency and launch preflight evidence instead of... |
 | `P0` | `skillsbench@1.1` | `suricata-custom-exfil` | `codex_loopx_treatment` | `skillsbench_codex_acp_runtime_preflight` | `skillsbench_codex_acp_jsonrpc_internal_error` | required_preflight=codex_acp_runtime_dependency_preflight,codex_acp_runtime_launch_preflight,skillsbench_compact_failure_class | prove the Codex ACP runtime can start inside the SkillsBench sandbox before rerunning or launching treatment; require compact dependency and launch preflight evidence instead of... |
 | `P0` | `terminal-bench@2.0` | `make-doom-for-mips` | `codex_loopx_treatment` | `verifier_attribution_required` | `score_failure_unattributed` |  | collect finer compact failure attribution before launching treatment |
+| `P0` | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `verifier_or_infra_repair` | `verifier_infrastructure_failure` |  | repair verifier or infra attribution before comparing arms |
 | `P0` | `terminal-bench@2.0` | `install-windows-3.11` | `codex_loopx_treatment` | `worker_verifier_alignment` | `worker_validation_scope_ambiguous_official_score_failure` |  | align worker self-validation with verifier-facing compact evidence before repeating |
 | `P1` | `swe-marathon` | `zstd-decoder` | `swe_marathon_loopx_prompt_polling_treatment_10800` | `case_exception_research` | `agent_exception_before_solution_completion` |  | inspect compact exception attribution and form a case-level intervention hypothesis |
 | `P1` | `terminal-bench@2.0` | `pytorch-model-recovery` | `codex_goal_mode_baseline` | `case_exception_research` | `agent_exception_before_solution_completion` |  | inspect compact exception attribution and form a case-level intervention hypothesis |
@@ -118,6 +119,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0` | `official_score_zero_case_failure` | `` |
 | `skillsbench@1.1` | `citation-check` | `skillsbench_raw_codex_autonomous_max5_baseline` | `case_attempt` | `1.0` | `1` | `1:1*` | `none` | `` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0` | `skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout` | `.local/private-benchmark-jobs/skillsbench-citation-check-goal-start-local-20260627T0735Z/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `missing` | `` | `` | `verifier_infrastructure_failure` | `.local/private-benchmark-jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z/remote-root/jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z-goalstart/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `loopx_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-baseline-v0/civ6-adjacency-optimizer__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
