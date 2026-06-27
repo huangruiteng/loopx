@@ -5,6 +5,11 @@ README. The root README is now the short product landing page; this page is the
 hands-on path for installation, project connection, diagnosis, heartbeats,
 dashboard use, development checks, and command discovery.
 
+If you are new to LoopX, start with the shorter
+[Newcomer command path](newcomer-command-path.md): it reduces the product
+surface to `/loopx`, `/loopx <goal>`, and one manual CLI quickstart. This page
+keeps the full operator and contributor detail.
+
 ## Codex App And Other Agent Setup
 
 If you already use Codex, Claude Code, Cursor, or another terminal agent, paste
@@ -764,6 +769,11 @@ Start here:
 - [Benchmark long-run design](../research/long-horizon-agent-benchmarks/codex-cli-long-run-benchmark-design.md)
 
 ## Command Reference
+
+New users should start with the
+[Newcomer command path](newcomer-command-path.md). The catalog below is
+reference material for operators and contributors who already know which path
+they are debugging or extending.
 
 ```text
 bootstrap / connect     connect a project-local goal
