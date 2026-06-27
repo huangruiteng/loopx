@@ -43,6 +43,13 @@ focused public smokes, do not launch benchmark jobs, do not change scoring or
 runner behavior for an existing benchmark, and do not include temporary probes,
 raw evidence, private state, credentials, local paths, or generated logs.
 
+Benchmark helper/runtime PRs may also be self-merged after owner authorization
+when they are limited to public benchmark helper code, status/runtime
+observation, reducer/closeout plumbing, or benchmark developer workflow support;
+focused smokes or compile checks pass; public/private boundary scans are clean;
+and the PR does not change benchmark scoring, task semantics, leaderboard or
+submission behavior, permission boundaries, or launch new benchmark jobs.
+
 After self-merging, sync local `main`, leave unrelated untracked local artifacts
 alone, and continue with the next safe project batch.
 
