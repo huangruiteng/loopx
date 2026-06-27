@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -242,6 +243,31 @@ def _codex_exec_failure_category(
     if returncode is not None:
         return "codex_exec_exit_nonzero"
     return "codex_exec_failed"
+
+
+def _write_process_stdin_async(
+    proc: subprocess.Popen[str],
+    stdin_text: str | None,
+) -> None:
+    """Feed stdin without letting a full pipe bypass timeout watchdogs."""
+
+    if stdin_text is None or proc.stdin is None:
+        return
+    stdin_pipe = proc.stdin
+    proc.stdin = None
+
+    def _writer() -> None:
+        try:
+            stdin_pipe.write(stdin_text)
+            stdin_pipe.close()
+        except (BrokenPipeError, ValueError, OSError):
+            pass
+
+    threading.Thread(
+        target=_writer,
+        name="loopx-skillsbench-acp-stdin-writer",
+        daemon=True,
+    ).start()
 
 
 @dataclass(frozen=True)
@@ -501,12 +527,7 @@ class SkillsBenchLocalAcpRelay:
                         env=codex_env,
                         start_new_session=True,
                     )
-                    if proc.stdin is not None:
-                        try:
-                            proc.stdin.write(codex_stdin_prompt)
-                            proc.stdin.close()
-                        except BrokenPipeError:
-                            pass
+                    _write_process_stdin_async(proc, codex_stdin_prompt)
                     deadline = time.monotonic() + self._config.timeout_sec
                     first_action_deadline = 0.0
                     if (

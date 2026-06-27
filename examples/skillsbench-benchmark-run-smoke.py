@@ -162,6 +162,25 @@ def test_reverse_channel_first_action_timeout_stops_codex_process() -> None:
     assert response["credential_values_recorded"] is False
 
 
+def test_reverse_channel_timeout_survives_blocked_stdin_write() -> None:
+    start = time.monotonic()
+    response = _run_codex_payload(
+        {
+            "args": ["-c", "import time; time.sleep(30)"],
+            "stdin": "x" * 2_000_000,
+            "timeout_sec": 1,
+        },
+        codex_bin=sys.executable,
+        default_timeout_sec=1,
+        prompt_bridge_command=None,
+    )
+    assert time.monotonic() - start < 8
+    assert response["exit_code"] == 124
+    assert response["stderr"] == "codex_exec_timeout\n"
+    assert response["raw_task_text_recorded"] is False
+    assert response["credential_values_recorded"] is False
+
+
 def test_reverse_channel_raw_prompt_does_not_require_bridge_first_action() -> None:
     start = time.monotonic()
     response = _run_codex_payload(
@@ -10012,6 +10031,7 @@ if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_reverse_channel_first_action_timeout_stops_codex_process()
+    test_reverse_channel_timeout_survives_blocked_stdin_write()
     test_reverse_channel_raw_prompt_does_not_require_bridge_first_action()
     test_reverse_channel_bridge_idle_timeout_stops_codex_process()
     test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate()

@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -124,6 +125,31 @@ def _communicate_after_stop(proc: subprocess.Popen[str]) -> tuple[str, str]:
         _stop_process_group(proc, sig=signal.SIGKILL)
         stdout_text, stderr_text = proc.communicate(timeout=5)
     return stdout_text or "", stderr_text or ""
+
+
+def _write_process_stdin_async(
+    proc: subprocess.Popen[str],
+    stdin_text: str | None,
+) -> None:
+    """Feed stdin without blocking the watchdog loop on a full pipe."""
+
+    if stdin_text is None or proc.stdin is None:
+        return
+    stdin_pipe = proc.stdin
+    proc.stdin = None
+
+    def _writer() -> None:
+        try:
+            stdin_pipe.write(stdin_text)
+            stdin_pipe.close()
+        except (BrokenPipeError, ValueError, OSError):
+            pass
+
+    threading.Thread(
+        target=_writer,
+        name="loopx-reverse-channel-stdin-writer",
+        daemon=True,
+    ).start()
 
 
 def _read_agent_operations_jsonl(path: Path | None) -> str:
@@ -412,13 +438,7 @@ def _run_codex_payload(
                 env=env,
                 start_new_session=True,
             )
-            if stdin_prompt is not None and proc.stdin is not None:
-                try:
-                    proc.stdin.write(stdin_prompt)
-                    proc.stdin.close()
-                    proc.stdin = None
-                except BrokenPipeError:
-                    proc.stdin = None
+            _write_process_stdin_async(proc, stdin_prompt)
             deadline = time.monotonic() + timeout
             first_action_deadline = 0.0
             if (
