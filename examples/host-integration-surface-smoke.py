@@ -53,7 +53,7 @@ def main() -> int:
             "loopx todo complete",
             "loopx quota spend-slot",
             "task_graph_projection_v0",
-            "long_task_cadence_policy_v0",
+            "cadence_hint_v0",
             "do not add graph write authority",
             "task_lease_v0_when_shipped",
             "Browser/frontstage/server writes remain non-authoritative",

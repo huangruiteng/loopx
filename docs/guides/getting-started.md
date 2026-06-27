@@ -754,7 +754,7 @@ Start here:
 - [Project agent todo contract](../project-agent-todo-contract.md)
 - [Quota allocation](../quota-allocation.md)
 - [Heartbeat automation prompt](../heartbeat-automation-prompt.md)
-- [Long-task cadence policy](../long-task-cadence-policy.md)
+- [Long-task cadence hint](../long-task-cadence-policy.md)
 - [Public/private boundary](../public-private-boundary.md)
 - [Benchmark developer workflow](../benchmark-developer-workflow.md)
 - [Public launch narrative draft](../outreach/public-launch-narrative-draft.md)

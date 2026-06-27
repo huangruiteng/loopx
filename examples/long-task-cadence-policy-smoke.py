@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Smoke-test the long-task cadence policy contract."""
+"""Smoke-test the long-task cadence hint contract."""
 
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -12,23 +14,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.long_task_cadence import (  # noqa: E402
-    LONG_TASK_CADENCE_SCHEMA_VERSION,
-    build_long_task_cadence_policy,
+    LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+    build_long_task_cadence_hint,
 )
+from loopx.quota import build_quota_should_run  # noqa: E402
 
 POLICY_PATH = REPO_ROOT / "docs/long-task-cadence-policy.md"
 DOCS_INDEX = REPO_ROOT / "docs/README.md"
 GETTING_STARTED = REPO_ROOT / "docs/guides/getting-started.md"
 INTERACTION_PATTERN = REPO_ROOT / "docs/interaction-pattern-catalog.md"
-
-PRESETS = ["ultra-long", "long", "medium", "short"]
-GRANULARITIES = [
-    "status_only",
-    "single_surface",
-    "multi_surface",
-    "implementation_plus_validation",
-    "milestone",
-]
 
 
 def read(path: Path) -> str:
@@ -40,7 +34,7 @@ def compact(text: str) -> str:
 
 
 def assert_contains(text: str, needle: str, label: str) -> None:
-    if needle not in text:
+    if needle not in text and needle not in compact(text):
         raise AssertionError(f"{label} missing {needle!r}")
 
 
@@ -51,61 +45,55 @@ def extract_json_block(text: str) -> dict:
     return json.loads(text[body_start:end])
 
 
-def assert_runtime_projection() -> None:
-    recent_runs = [
-        {
-            "generated_at": "2026-06-26T00:02:00Z",
-            "delivery_batch_scale": "single_surface",
-            "delivery_outcome": "surface_only",
-            "delivery_turn_kind": "contract_only_preparation",
-            "duration_s": 660,
-        },
-        {
-            "generated_at": "2026-06-26T00:01:00Z",
-            "delivery_batch_scale": "single_surface",
-            "delivery_outcome": "surface_only",
-            "delivery_turn_kind": "contract_only_preparation",
-            "duration_s": 300,
-        },
-    ]
-    cadence = build_long_task_cadence_policy(
+def single_surface_run() -> dict:
+    return {
+        "generated_at": "2026-06-26T00:02:00Z",
+        "delivery_batch_scale": "single_surface",
+        "delivery_outcome": "surface_only",
+        "delivery_turn_kind": "contract_only_preparation",
+    }
+
+
+def assert_runtime_hint() -> None:
+    recent_runs = [single_surface_run(), single_surface_run()]
+    hint = build_long_task_cadence_hint(
         latest_runs=recent_runs,
         quota_state="eligible",
         user_todo_open_count=1,
     )
-    assert cadence["schema_version"] == LONG_TASK_CADENCE_SCHEMA_VERSION, cadence
-    assert cadence["cadence_preset"] == "long", cadence
-    assert cadence["preset_source"] == "connected_autonomous_default", cadence
-    assert cadence["turn_duration_minutes"] == 11, cadence
-    assert cadence["progress_granularity"] == "single_surface", cadence
-    assert cadence["small_step_streak"] == 2, cadence
-    assert cadence["too_small_heartbeat_batch"] is True, cadence
-    assert cadence["widen_next_turn"] is True, cadence
-    assert cadence["blocked_priority_fallback_visible"] is True, cadence
+    assert hint == {
+        "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+        "signal": "thin_progress",
+        "recommendation": "widen",
+        "reason_codes": ["repeated_surface_only"],
+    }, hint
 
-    gated = build_long_task_cadence_policy(
+    gated = build_long_task_cadence_hint(
         latest_runs=recent_runs,
         quota_state="operator_gate",
         user_todo_open_count=1,
     )
-    assert gated["too_small_heartbeat_batch"] is True, gated
-    assert gated["widen_next_turn"] is False, gated
+    assert gated == {
+        "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+        "signal": "blocked",
+        "recommendation": "wait",
+        "reason_codes": ["quota_state_operator_gate", "open_user_todos_visible"],
+    }, gated
 
-    custom_profile = {
-        "cadence": "short",
-        "degradation_policy": {"small_scale_streak_threshold": 3},
-    }
-    below_threshold = build_long_task_cadence_policy(
+    custom_profile = {"degradation_policy": {"small_scale_streak_threshold": 3}}
+    below_threshold = build_long_task_cadence_hint(
         execution_profile=custom_profile,
         latest_runs=recent_runs,
         quota_state="eligible",
     )
-    assert below_threshold["cadence_preset"] == "short", below_threshold
-    assert below_threshold["preset_source"] == "execution_profile.cadence", below_threshold
-    assert below_threshold["too_small_heartbeat_batch"] is False, below_threshold
-    assert below_threshold["recommended_batch_granularity"] == "single_surface", below_threshold
+    assert below_threshold == {
+        "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+        "signal": "thin_progress",
+        "recommendation": "keep",
+        "reason_codes": ["single_surface_latest_turn"],
+    }, below_threshold
 
-    progress = build_long_task_cadence_policy(
+    material = build_long_task_cadence_hint(
         latest_runs=[
             {
                 "delivery_batch_scale": "implementation",
@@ -115,65 +103,155 @@ def assert_runtime_projection() -> None:
         ],
         quota_state="eligible",
     )
-    assert progress["progress_granularity"] == "milestone", progress
-    assert progress["small_step_streak"] == 0, progress
-    assert progress["widen_next_turn"] is False, progress
+    assert material == {
+        "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+        "signal": "material_progress",
+        "recommendation": "keep",
+        "reason_codes": ["milestone_latest_turn"],
+    }, material
+
+    unknown = build_long_task_cadence_hint(latest_runs=[], quota_state="eligible")
+    assert unknown == {
+        "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+        "signal": "unknown",
+        "recommendation": "keep",
+        "reason_codes": ["missing_recent_runs"],
+    }, unknown
+
+
+def assert_status_and_quota_projection() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-cadence-hint-") as tmp:
+        root = Path(tmp)
+        runtime = root / "runtime"
+        project = root / "project"
+        registry = project / ".loopx" / "registry.json"
+        state = project / ".codex" / "goals" / "cadence" / "ACTIVE_GOAL_STATE.md"
+        state.parent.mkdir(parents=True)
+        registry.parent.mkdir(parents=True)
+        state.write_text(
+            "\n".join(
+                [
+                    "# Active Goal State",
+                    "",
+                    "- Goal ID: cadence",
+                    "- Status: active",
+                    "- Agent ID: codex-cadence",
+                    "",
+                    "## Objective",
+                    "Validate cadence hint projection.",
+                    "",
+                    "## Latest Run",
+                    "- Run ID: run_thin_2",
+                    "- Agent: codex-cadence",
+                    "- Generated At: 2026-06-26T00:02:00Z",
+                    "- Classification: heartbeat_refresh",
+                    "- Delivery Outcome: surface_only",
+                    "- Delivery Turn Kind: contract_only_preparation",
+                    "- Delivery Batch Scale: single_surface",
+                    "",
+                    "## Run History",
+                    "| run_id | agent | generated_at | classification | delivery_outcome | delivery_turn_kind | delivery_batch_scale | notes |",
+                    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+                    "| run_thin_2 | codex-cadence | 2026-06-26T00:02:00Z | heartbeat_refresh | surface_only | contract_only_preparation | single_surface | state writeback |",
+                    "| run_thin_1 | codex-cadence | 2026-06-26T00:01:00Z | heartbeat_refresh | surface_only | contract_only_preparation | single_surface | state writeback |",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        registry.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "updated_at": "2026-06-26T00:03:00Z",
+                    "common_runtime_root": str(runtime),
+                    "goals": [
+                        {
+                            "id": "cadence",
+                            "domain": "cadence-smoke",
+                            "status": "active",
+                            "repo": str(project),
+                            "state_file": ".codex/goals/cadence/ACTIVE_GOAL_STATE.md",
+                            "agent_id": "codex-cadence",
+                            "coordination": {
+                                "primary_agent": "codex-cadence",
+                                "registered_agents": ["codex-cadence"],
+                            },
+                            "adapter": {
+                                "kind": "cadence_hint_fixture_v0",
+                                "status": "active",
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        status = subprocess.check_output(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(registry),
+                "status",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+        )
+        status_payload = json.loads(status)
+        item = status_payload["attention_queue"]["items"][0]
+        hint = item["project_asset"]["long_task_cadence_hint"]
+        assert hint["schema_version"] == "cadence_hint_v0", hint
+        assert hint["signal"] == "blocked", hint
+        assert hint["recommendation"] == "wait", hint
+        assert hint["reason_codes"] == ["quota_state_operator_gate"], hint
+
+        quota_payload = build_quota_should_run(
+            status_payload,
+            goal_id="cadence",
+            agent_id="codex-cadence",
+        )
+        assert quota_payload["long_task_cadence_hint"] == hint, quota_payload
 
 
 def main() -> int:
     policy = read(POLICY_PATH)
-    policy_compact = compact(policy)
     docs_index = read(DOCS_INDEX)
     getting_started = read(GETTING_STARTED)
     interaction = read(INTERACTION_PATTERN)
 
-    for preset in PRESETS:
-        assert_contains(policy, f"`{preset}`", "policy preset table")
-
     for required in [
-        "connected autonomous goals default to `long`",
-        "visible TUI sessions default to `medium`",
-        "`ultra-long` requires an explicit user/controller opt-in",
-        "compact turn duration",
-        "progress granularity",
-        "Too-Small Batch Detection",
-        "too_small_heartbeat_batch=true",
-        "implementation_plus_validation_writeback",
-        "validated_artifact",
-        "state_writeback",
-        "blocked_priority_fallback_visible",
-        "They do not grant permissions",
+        "Long-Task Cadence Hint",
+        "not a scheduler policy",
+        "`cadence_hint_v0`",
+        "`blocked`, `thin_progress`, `material_progress`, `unknown`",
+        "`wait`, `widen`, `keep`",
+        "not a perfect measure of actual agent-loop runtime",
+        "conversation transcripts",
+        "raw local logs",
+        "credentials",
+        "local absolute paths",
     ]:
         assert_contains(policy, required, "policy")
 
-    for granularity in GRANULARITIES:
-        assert_contains(policy, granularity, "progress granularity")
-
     projection = extract_json_block(policy)
-    cadence = projection["long_task_cadence"]
-    assert cadence["schema_version"] == "long_task_cadence_policy_v0", cadence
-    assert cadence["cadence_preset"] == "long", cadence
-    assert cadence["preset_source"] == "connected_autonomous_default", cadence
-    assert isinstance(cadence["turn_duration_minutes"], int), cadence
-    assert cadence["progress_granularity"] in GRANULARITIES, cadence
-    assert cadence["small_step_streak"] >= 2, cadence
-    assert cadence["too_small_heartbeat_batch"] is True, cadence
-    assert cadence["widen_next_turn"] is True, cadence
+    hint = projection["long_task_cadence_hint"]
+    assert hint == {
+        "schema_version": "cadence_hint_v0",
+        "signal": "thin_progress",
+        "recommendation": "widen",
+        "reason_codes": ["repeated_surface_only"],
+    }, hint
 
-    for forbidden in [
-        "conversation transcript",
-        "raw local logs",
-        "credentials",
-        "production actions",
-        "still stop or ask",
-    ]:
-        assert_contains(policy_compact, forbidden, "safety boundary")
-
-    assert_contains(docs_index, "Long-task cadence policy", "docs index")
-    assert_contains(getting_started, "Long-task cadence policy", "getting started")
-    assert_contains(interaction, "IP-010 Cadence Widening", "interaction pattern")
-    assert_contains(interaction, "small-step streak", "interaction pattern")
-    assert_runtime_projection()
+    assert_contains(docs_index, "Long-task cadence hint", "docs index")
+    assert_contains(getting_started, "Long-task cadence hint", "getting started")
+    assert_contains(interaction, "IP-010 Cadence Hint", "interaction pattern")
+    assert_contains(interaction, "thin-progress streak", "interaction pattern")
+    assert_runtime_hint()
+    assert_status_and_quota_projection()
 
     print("long-task-cadence-policy-smoke ok")
     return 0

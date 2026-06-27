@@ -89,7 +89,7 @@ incident report, or launch draft.
 - [Reward-style replanning hints](product/reward-style-replanning.md)
 - [Frontstage channel and lease roadmap](frontstage-channel-lease-roadmap.md)
 - [Non-technical operator status model](product/nontechnical-operator-status-model.md)
-- [Long-task cadence policy](long-task-cadence-policy.md)
+- [Long-task cadence hint](long-task-cadence-policy.md)
 - [Dreaming exploration lane](dreaming-exploration-lane.md)
 - [Session runtime control-plane adapter](session-runtime-control-plane-adapter.md)
 - [Codex subagent orchestration](codex-subagent-orchestration.md)

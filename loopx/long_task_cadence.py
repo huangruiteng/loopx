@@ -12,19 +12,9 @@ from .delivery_outcome import (
 from .execution_profile import compact_execution_profile, execution_profile_threshold
 
 
-LONG_TASK_CADENCE_SCHEMA_VERSION = "long_task_cadence_policy_v0"
+LONG_TASK_CADENCE_HINT_SCHEMA_VERSION = "cadence_hint_v0"
 
-CADENCE_PRESETS = frozenset({"ultra-long", "long", "medium", "short"})
-DEFAULT_CADENCE_PRESET = "long"
-DEFAULT_PRESET_SOURCE = "connected_autonomous_default"
-
-RECOMMENDED_BATCH_GRANULARITY = {
-    "ultra-long": "milestone",
-    "long": "implementation_plus_validation_writeback",
-    "medium": "multi_surface",
-    "short": "single_surface",
-}
-NON_WIDENING_QUOTA_STATES = frozenset(
+BLOCKED_QUOTA_STATES = frozenset(
     {
         "blocked",
         "blocked_health",
@@ -38,42 +28,9 @@ NON_WIDENING_QUOTA_STATES = frozenset(
     }
 )
 SMALL_PROGRESS_GRANULARITIES = frozenset({"status_only", "single_surface"})
-RUN_DURATION_MINUTE_FIELDS = ("turn_duration_minutes", "duration_minutes", "elapsed_minutes")
-RUN_DURATION_SECOND_FIELDS = ("duration_s", "duration_seconds", "elapsed_s", "elapsed_seconds")
-RUN_DURATION_MILLISECOND_FIELDS = ("duration_ms", "elapsed_ms")
-
-
-def _positive_number(value: Any) -> float | None:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if parsed < 0:
-        return None
-    return parsed
-
-
-def _duration_minutes(run: dict[str, Any]) -> int | None:
-    for field in RUN_DURATION_MINUTE_FIELDS:
-        parsed = _positive_number(run.get(field))
-        if parsed is not None:
-            return max(1, round(parsed))
-    for field in RUN_DURATION_SECOND_FIELDS:
-        parsed = _positive_number(run.get(field))
-        if parsed is not None:
-            return max(1, round(parsed / 60))
-    for field in RUN_DURATION_MILLISECOND_FIELDS:
-        parsed = _positive_number(run.get(field))
-        if parsed is not None:
-            return max(1, round(parsed / 60000))
-    return None
-
-
-def _cadence_preset(profile: dict[str, Any]) -> tuple[str, str]:
-    cadence = str(profile.get("cadence") or "").strip()
-    if cadence in CADENCE_PRESETS:
-        return cadence, "execution_profile.cadence"
-    return DEFAULT_CADENCE_PRESET, DEFAULT_PRESET_SOURCE
+MATERIAL_PROGRESS_GRANULARITIES = frozenset(
+    {"multi_surface", "implementation_plus_validation", "milestone"}
+)
 
 
 def _progress_granularity(run: dict[str, Any] | None) -> str:
@@ -135,7 +92,18 @@ def _recent_runs(
     return []
 
 
-def build_long_task_cadence_policy(
+def _reason_from_granularity(granularity: str) -> str:
+    return f"{granularity}_latest_turn"
+
+
+def _blocked_reason(quota_state: str, user_todo_open_count: int | None) -> list[str]:
+    reasons = [f"quota_state_{quota_state}"]
+    if user_todo_open_count and user_todo_open_count > 0:
+        reasons.append("open_user_todos_visible")
+    return reasons
+
+
+def build_long_task_cadence_hint(
     *,
     execution_profile: dict[str, Any] | None = None,
     latest_runs: list[dict[str, Any]] | None = None,
@@ -143,52 +111,78 @@ def build_long_task_cadence_policy(
     quota_state: str | None = None,
     user_todo_open_count: int | None = None,
 ) -> dict[str, Any]:
-    """Build a compact, public-safe cadence hint from existing control signals."""
+    """Build a small, public-safe cadence hint from existing control signals."""
 
     profile = compact_execution_profile(execution_profile)
-    cadence_preset, preset_source = _cadence_preset(profile)
     runs = _recent_runs(latest_runs=latest_runs, handoff_readiness=handoff_readiness)
     latest_run = runs[0] if runs else {}
     threshold = execution_profile_threshold(profile)
     small_step_streak = _small_step_streak(runs)
-    too_small = small_step_streak >= threshold
     normalized_quota_state = str(quota_state or "").strip()
-    blocked_priority_fallback_visible = bool(user_todo_open_count and user_todo_open_count > 0)
 
-    cadence: dict[str, Any] = {
-        "schema_version": LONG_TASK_CADENCE_SCHEMA_VERSION,
-        "cadence_preset": cadence_preset,
-        "preset_source": preset_source,
-        "progress_granularity": _progress_granularity(latest_run),
-        "small_step_streak": small_step_streak,
-        "too_small_heartbeat_batch": too_small,
-        "recommended_batch_granularity": RECOMMENDED_BATCH_GRANULARITY[cadence_preset],
-        "widen_next_turn": too_small
-        and (
-            not normalized_quota_state
-            or normalized_quota_state not in NON_WIDENING_QUOTA_STATES
-        ),
-        "blocked_priority_fallback_visible": blocked_priority_fallback_visible,
+    if normalized_quota_state in BLOCKED_QUOTA_STATES:
+        return {
+            "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+            "signal": "blocked",
+            "recommendation": "wait",
+            "reason_codes": _blocked_reason(normalized_quota_state, user_todo_open_count),
+        }
+
+    if not runs:
+        return {
+            "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+            "signal": "unknown",
+            "recommendation": "keep",
+            "reason_codes": ["missing_recent_runs"],
+        }
+
+    granularity = _progress_granularity(latest_run)
+    if granularity in SMALL_PROGRESS_GRANULARITIES:
+        recommendation = "widen" if small_step_streak >= threshold else "keep"
+        reason = "repeated_surface_only" if recommendation == "widen" else _reason_from_granularity(granularity)
+        return {
+            "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+            "signal": "thin_progress",
+            "recommendation": recommendation,
+            "reason_codes": [reason],
+        }
+
+    if granularity in MATERIAL_PROGRESS_GRANULARITIES:
+        return {
+            "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+            "signal": "material_progress",
+            "recommendation": "keep",
+            "reason_codes": [_reason_from_granularity(granularity)],
+        }
+
+    return {
+        "schema_version": LONG_TASK_CADENCE_HINT_SCHEMA_VERSION,
+        "signal": "unknown",
+        "recommendation": "keep",
+        "reason_codes": [_reason_from_granularity(granularity)],
     }
-    duration = _duration_minutes(latest_run)
-    if duration is not None:
-        cadence["turn_duration_minutes"] = duration
-    return cadence
+
+
+def build_long_task_cadence_policy(**kwargs: Any) -> dict[str, Any]:
+    """Compatibility wrapper for older callers while this projection rolls out."""
+
+    return build_long_task_cadence_hint(**kwargs)
+
+
+def long_task_cadence_hint_summary(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    reason_codes = value.get("reason_codes")
+    if isinstance(reason_codes, list):
+        reason_text = ",".join(str(reason) for reason in reason_codes)
+    else:
+        reason_text = ""
+    return (
+        f"signal={value.get('signal')} "
+        f"recommendation={value.get('recommendation')} "
+        f"reasons={reason_text}"
+    )
 
 
 def long_task_cadence_summary(value: Any) -> str:
-    if not isinstance(value, dict):
-        return ""
-    duration = value.get("turn_duration_minutes")
-    duration_text = f" duration_min={duration}" if duration is not None else ""
-    return (
-        f"preset={value.get('cadence_preset')} "
-        f"source={value.get('preset_source')} "
-        f"granularity={value.get('progress_granularity')} "
-        f"small_streak={value.get('small_step_streak')} "
-        f"too_small={value.get('too_small_heartbeat_batch')} "
-        f"widen_next={value.get('widen_next_turn')} "
-        f"recommended={value.get('recommended_batch_granularity')} "
-        f"blocked_priority_visible={value.get('blocked_priority_fallback_visible')}"
-        f"{duration_text}"
-    )
+    return long_task_cadence_hint_summary(value)

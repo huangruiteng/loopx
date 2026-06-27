@@ -246,7 +246,7 @@ Replanning, dreaming, cadence, and future-work writeback.
 | --- | --- | --- | --- | --- | --- |
 | P0 | IP-013 | Autonomous Replan Vs Advisory Dreaming | Agent/controller plus user when promoted | ask only for promotion/decision | repair stalled delivery; keep dreaming proposal non-executable |
 | P1 | IP-024 | Repair Delta Contract | Agent/controller | no interruption unless repair creates a user todo | self-repair/replan must change the machine-visible frontier or record a no-op/blocker |
-| P1 | IP-010 | Cadence Widening | Agent/controller | no interruption by default | widen next work segment when turns become too small |
+| P1 | IP-010 | Cadence Hint | Agent/controller | no interruption by default | surface a low-confidence hint when turns look too thin |
 | P1 | IP-018 | Plan To Todo Writeback | Agent plus LoopX | no interruption unless a user todo is created | write user-facing plans into todos, Next Action, or refresh-state |
 
 ## Visual Model
@@ -2118,42 +2118,44 @@ resolved repair; it is an unclosed control-plane loop with better narration.
 - future regression that compares before/after frontier fields for repair and
   replan closeout runs.
 
-#### IP-010 Cadence Widening
+#### IP-010 Cadence Hint
 
 **Trigger**
 
-- recent eligible turns have a small-step streak;
+- recent eligible turns have a thin-progress streak;
 - delivery repeatedly lands as `single_surface`, status-only, or shallow docs
   without a coherent artifact;
 - no safety boundary prevents a larger segment.
 
 **Expected behavior**
 
-The controller widens the next eligible turn according to the configured
-cadence preset. For the default `long` preset, a turn should usually include an
-artifact, focused validation, and state writeback.
+The controller treats the derived cadence hint as a low-confidence steering
+signal. When the hint says `thin_progress` with recommendation `widen`, the
+next eligible turn should usually include an artifact, focused validation, and
+state writeback, or write a blocker explaining why widening is unsafe.
 
 **Visual Model**
 
 ```mermaid
 flowchart TD
-  R["recent turns"] --> S{"small-step streak >= threshold?"}
+  R["recent turns"] --> S{"thin-progress streak >= threshold?"}
   S -->|"no"| C["keep current cadence"]
   S -->|"yes"| B{"safe to widen?"}
   B -->|"no"| G["ask gate or write blocker"]
-  B -->|"yes"| W["widen next segment by preset"]
+  B -->|"yes"| W["widen next eligible segment"]
   W --> D["artifact + validation + writeback"]
 ```
 
 **Bad smell**
 
 The agent's native long-task ability is degraded because the control plane keeps
-asking it to do tiny heartbeat-shaped steps.
+asking it to do tiny heartbeat-shaped steps, or the host treats a derived hint
+as a hard permission or timing policy.
 
 **Validation**
 
 - `docs/long-task-cadence-policy.md`
-- future status/quota preset projection smoke.
+- `examples/long-task-cadence-policy-smoke.py`
 
 #### IP-018 Plan To Todo Writeback
 

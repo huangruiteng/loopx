@@ -68,7 +68,7 @@ Read methods return compact control facts. They must not return raw session
 logs, raw benchmark task text, raw trajectories, private document bodies,
 credentials, local absolute paths, or host auth material.
 Optional projections such as `task_graph_projection_v0` and
-`long_task_cadence_policy_v0` are read-only inputs to a host integration. They
+`cadence_hint_v0` are read-only inputs to a host integration. They
 do not add graph write authority, change quota gates, or create a new source of
 truth.
 
@@ -109,7 +109,7 @@ hooks, and MCP clients:
     "visible_surface_required": true
   },
   "lifecycle_reads": ["doctor", "status", "quota_should_run", "review_packet"],
-  "projection_inputs": ["task_graph_projection_v0", "long_task_cadence_policy_v0"],
+  "projection_inputs": ["task_graph_projection_v0", "cadence_hint_v0"],
   "write_capabilities": ["todo_lifecycle", "gate_decision"],
   "optional_write_capabilities": ["task_lease_v0_when_shipped"],
   "cli_fallback": {

@@ -45,7 +45,7 @@ from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
 from .history import STATUS_NEUTRAL_CLASSIFICATIONS as HISTORY_STATUS_NEUTRAL_CLASSIFICATIONS
 from .interface_budget import interface_budget_cadence_for_runs
-from .long_task_cadence import build_long_task_cadence_policy, long_task_cadence_summary
+from .long_task_cadence import build_long_task_cadence_hint, long_task_cadence_hint_summary
 from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
@@ -6859,7 +6859,7 @@ def enrich_project_asset(
             user_todo_open_count = int(project_asset["user_todos"].get("open_count"))
         except (TypeError, ValueError):
             user_todo_open_count = None
-    cadence = build_long_task_cadence_policy(
+    cadence_hint = build_long_task_cadence_hint(
         execution_profile=(
             project_asset.get("execution_profile")
             if isinstance(project_asset.get("execution_profile"), dict)
@@ -6870,8 +6870,8 @@ def enrich_project_asset(
         quota_state=quota_state or None,
         user_todo_open_count=user_todo_open_count,
     )
-    project_asset["long_task_cadence"] = cadence
-    item["long_task_cadence"] = cadence
+    project_asset["long_task_cadence_hint"] = cadence_hint
+    item["long_task_cadence_hint"] = cadence_hint
 
 
 def build_project_asset(
@@ -9712,15 +9712,15 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     "    - execution_profile: "
                     f"{_markdown_scalar(execution_profile_summary(asset_execution_profile))}"
                 )
-            long_task_cadence = (
-                project_asset.get("long_task_cadence")
-                if isinstance(project_asset.get("long_task_cadence"), dict)
+            long_task_cadence_hint = (
+                project_asset.get("long_task_cadence_hint")
+                if isinstance(project_asset.get("long_task_cadence_hint"), dict)
                 else None
             )
-            if long_task_cadence:
+            if long_task_cadence_hint:
                 lines.append(
-                    "    - long_task_cadence: "
-                    f"{_markdown_scalar(long_task_cadence_summary(long_task_cadence))}"
+                    "    - long_task_cadence_hint: "
+                    f"{_markdown_scalar(long_task_cadence_hint_summary(long_task_cadence_hint))}"
                 )
             asset_orchestration = (
                 project_asset.get("orchestration")
