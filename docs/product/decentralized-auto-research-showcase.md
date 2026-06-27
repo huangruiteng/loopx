@@ -113,6 +113,31 @@ next agent does not rediscover them from scratch.
 
 ## Minimal Reproduction Plan
 
+New users should not have to learn the full command matrix first. The
+quickstart path starts from one read-only command that returns the research
+contract, the files that would be created, and the first runnable hypothesis for
+the current agent:
+
+```bash
+loopx --format json auto-research quickstart \
+  --agent-id codex-side-bypass
+```
+
+When the preview is acceptable, explicitly create the protected starter pack:
+
+```bash
+loopx --format json auto-research quickstart \
+  --agent-id codex-side-bypass \
+  --output-dir auto_research_knn_pack \
+  --execute
+```
+
+This writes a k-NN research pack with one editable candidate file, a protected
+baseline/evaluator, and a `research_contract_v0`. The command also returns the
+next dev/holdout/evidence commands, so an agent can continue from a concrete
+hypothesis instead of choosing among `frontier`, `evidence`, and
+`append-evidence` manually.
+
 The runnable pack now lives at `examples/auto_research_knn_pack/`. It provides
 an editable candidate solver, a protected evaluator, deterministic dev/held-out
 splits, and a no-upload boundary.

@@ -6,7 +6,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import (
+    AUTO_RESEARCH_DEFAULT_GOAL_ID,
+    AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+    AUTO_RESEARCH_QUICKSTART_TEMPLATE,
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
+    build_auto_research_quickstart,
     build_auto_research_rollout_events,
     build_live_auto_research_projection,
     build_auto_research_projection,
@@ -46,6 +50,43 @@ def register_auto_research_commands(
         dest="auto_research_command",
         required=True,
     )
+    quickstart_parser = auto_research_sub.add_parser(
+        "quickstart",
+        help="Preview or create a protected starter pack for decentralized auto-research.",
+    )
+    add_subcommand_format(quickstart_parser)
+    quickstart_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="Agent id that should receive the first runnable hypothesis.",
+    )
+    quickstart_parser.add_argument(
+        "--goal-id",
+        default=AUTO_RESEARCH_DEFAULT_GOAL_ID,
+        help="Research goal id for the generated contract.",
+    )
+    quickstart_parser.add_argument(
+        "--objective",
+        default=AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+        help="Compact public-safe research objective for the generated contract.",
+    )
+    quickstart_parser.add_argument(
+        "--output-dir",
+        default="auto_research_knn_pack",
+        help="Relative output directory for --execute. Refuses to overwrite an existing pack.",
+    )
+    quickstart_parser.add_argument(
+        "--template",
+        choices=[AUTO_RESEARCH_QUICKSTART_TEMPLATE],
+        default=AUTO_RESEARCH_QUICKSTART_TEMPLATE,
+        help="Starter pack template.",
+    )
+    quickstart_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write the starter pack. Omit for a read-only preview.",
+    )
+
     frontier_parser = auto_research_sub.add_parser(
         "frontier",
         help="Render a per-agent decentralized research frontier from a public fixture or live LoopX state.",
@@ -164,7 +205,17 @@ def handle_auto_research_command(
     print_payload: PrintPayload,
 ) -> int:
     try:
-        if args.auto_research_command == "frontier":
+        if args.auto_research_command == "quickstart":
+            payload = build_auto_research_quickstart(
+                agent_id=args.agent_id,
+                goal_id=args.goal_id,
+                objective=args.objective,
+                output_dir=args.output_dir,
+                template=args.template,
+                execute=args.execute,
+                cwd=Path.cwd(),
+            )
+        elif args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):
                 raise ValueError("auto-research frontier requires exactly one of --fixture or --goal-id")
             if args.fixture:
@@ -220,7 +271,9 @@ def handle_auto_research_command(
                 dry_run=args.dry_run,
             )
         else:
-            raise ValueError("auto-research requires the `frontier`, `evidence`, or `append-evidence` subcommand")
+            raise ValueError(
+                "auto-research requires the `quickstart`, `frontier`, `evidence`, or `append-evidence` subcommand"
+            )
     except Exception as exc:
         payload = {
             "ok": False,
