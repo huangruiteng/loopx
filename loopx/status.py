@@ -65,6 +65,7 @@ from .todo_contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
+    TODO_TASK_CLASS_USER_GATE,
     TODO_TASK_PATTERN,
     build_todo_id,
     normalize_todo_action_kind,
@@ -8116,6 +8117,27 @@ def _task_graph_latest_run_node(
     return None
 
 
+def _task_graph_visible_user_gate_items(
+    user_todos: dict[str, Any] | None,
+    *,
+    limit: int,
+) -> tuple[list[dict[str, Any]], int]:
+    visible_items = open_todo_items(
+        user_todos,
+        limit=MAX_STATUS_TODOS_PER_ROLE,
+        text_limit=180,
+        source_keys=("gate_open_items", "first_open_items", "items"),
+    )
+    visible_gate_items = [
+        item for item in visible_items if todo_item_task_class(item) == TODO_TASK_CLASS_USER_GATE
+    ]
+    if visible_gate_items and len(visible_gate_items) == len(visible_items):
+        gate_open_count = max(len(visible_gate_items), todo_summary_open_count(user_todos))
+    else:
+        gate_open_count = len(visible_gate_items)
+    return visible_gate_items[:limit], gate_open_count
+
+
 def build_task_graph_projection(
     item: dict[str, Any],
     *,
@@ -8230,10 +8252,10 @@ def build_task_graph_projection(
                 refs=_task_graph_refs("lease_ids", lease_id),
             )
 
-    user_items = open_todo_items(
-        item.get("user_todos") if isinstance(item.get("user_todos"), dict) else None,
+    user_todo_summary = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else None
+    user_items, user_gate_open_count = _task_graph_visible_user_gate_items(
+        user_todo_summary,
         limit=TASK_GRAPH_MAX_USER_GATE_NODES,
-        text_limit=180,
     )
     for ordinal, todo in enumerate(user_items):
         todo_id = public_safe_compact_text(todo.get("todo_id"), limit=120)
@@ -8254,6 +8276,31 @@ def build_task_graph_projection(
             relation="blocks",
             reason="Open user gate blocks the gated delivery path.",
             refs=_task_graph_refs("gate_ids", gate_id),
+        )
+    user_gate_truncated_count = max(0, user_gate_open_count - len(user_items))
+    if user_gate_truncated_count:
+        summary_node_id = add_node(
+            {
+                "node_id": _task_graph_safe_id(
+                    "node_gate_summary",
+                    f"{goal_id}:{user_gate_truncated_count}:more_user_gates",
+                ),
+                "kind": "gate_summary",
+                "title": f"{user_gate_truncated_count} more open user gates not expanded",
+                "state": "waiting",
+                "refs": _task_graph_refs("goal_ids", goal_id),
+            }
+        )
+        add_edge(
+            edge_id=_task_graph_safe_id(
+                "edge_blocks",
+                f"{summary_node_id}:{selected_node_id}:user_gate_summary",
+            ),
+            from_node_id=summary_node_id,
+            to_node_id=selected_node_id,
+            relation="blocks",
+            reason="Additional open user gates stay on the cold path instead of expanding the task graph hot path.",
+            refs=_task_graph_refs("goal_ids", goal_id),
         )
 
     run_node_id = add_node(
@@ -8320,6 +8367,11 @@ def build_task_graph_projection(
             "projection_is_writable": False,
             "write_api": False,
             "recompute_rule": "Recompute from status, active state, gates, leases, and run history after each lifecycle event.",
+        },
+        "limits": {
+            "user_gate_node_limit": TASK_GRAPH_MAX_USER_GATE_NODES,
+            "user_gate_open_count": user_gate_open_count,
+            "user_gate_truncated_count": user_gate_truncated_count,
         },
         "nodes": nodes,
         "edges": edges,

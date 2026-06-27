@@ -40,6 +40,11 @@
             "write_api": false,
             "recompute_rule": "Recompute from status, active state, gates, leases, and run history after each lifecycle event."
           },
+          "limits": {
+            "user_gate_node_limit": 2,
+            "user_gate_open_count": 1,
+            "user_gate_truncated_count": 0
+          },
           "nodes": [
             {
               "node_id": "node_operator_gate_clear",

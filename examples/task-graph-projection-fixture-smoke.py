@@ -26,6 +26,7 @@ STATE_MODEL_PATH = REPO_ROOT / "docs/state-interaction-model.md"
 ALLOWED_NODE_KINDS = {
     "deliverable",
     "gate",
+    "gate_summary",
     "lease",
     "validation",
     "repair",
@@ -44,6 +45,7 @@ ALLOWED_EDGE_RELATIONS = {
 ALLOWED_REF_KEYS = {
     "todo_ids",
     "gate_ids",
+    "goal_ids",
     "lease_ids",
     "run_ids",
     "review_packet_ids",
@@ -108,6 +110,10 @@ def assert_projection_shape(
     assert truth["event_ledger_is_source_of_truth"] is True, (label, truth)
     assert truth["projection_is_writable"] is False, (label, truth)
     assert truth["write_api"] is False, (label, truth)
+    limits = projection["limits"]
+    assert limits["user_gate_node_limit"] == 2, (label, limits)
+    assert limits["user_gate_open_count"] >= 0, (label, limits)
+    assert limits["user_gate_truncated_count"] >= 0, (label, limits)
 
     nodes = projection["nodes"]
     edges = projection["edges"]
@@ -141,13 +147,38 @@ def assert_runtime_projection_builder() -> None:
         "waiting_on": "controller",
         "recommended_action": "Implement the task graph projection runtime seam.",
         "user_todos": {
+            "open_count": 5,
             "items": [
                 {
                     "todo_id": "todo_review_gate",
                     "text": "[P1] Review runtime projection before merge.",
                     "status": "open",
                     "task_class": "user_gate",
-                }
+                },
+                {
+                    "todo_id": "todo_policy_gate",
+                    "text": "[P1] Confirm task graph cap and truncation policy.",
+                    "status": "open",
+                    "task_class": "user_gate",
+                },
+                {
+                    "todo_id": "todo_dashboard_gate",
+                    "text": "[P2] Decide whether dashboard should expand graph details.",
+                    "status": "open",
+                    "task_class": "user_gate",
+                },
+                {
+                    "todo_id": "todo_packet_gate",
+                    "text": "[P2] Confirm review packet detail path for full gate list.",
+                    "status": "open",
+                    "task_class": "user_gate",
+                },
+                {
+                    "todo_id": "todo_cold_path_gate",
+                    "text": "[P2] Confirm cold path remains the full user todo list.",
+                    "status": "open",
+                    "task_class": "user_gate",
+                },
             ]
         },
         "agent_todos": {
@@ -178,6 +209,17 @@ def assert_runtime_projection_builder() -> None:
     assert_projection_shape(projection, goal_id=goal_id, label="runtime projection", min_nodes=5, min_edges=4)
     kinds = {node["kind"] for node in projection["nodes"]}
     assert {"deliverable", "gate", "lease", "validation", "repair"} <= kinds, projection
+    assert "gate_summary" in kinds, projection
+    gate_nodes = [node for node in projection["nodes"] if node["kind"] == "gate"]
+    summary_nodes = [node for node in projection["nodes"] if node["kind"] == "gate_summary"]
+    assert len(gate_nodes) == 2, projection
+    assert len(summary_nodes) == 1, projection
+    assert summary_nodes[0]["title"] == "3 more open user gates not expanded", summary_nodes
+    assert projection["limits"] == {
+        "user_gate_node_limit": 2,
+        "user_gate_open_count": 5,
+        "user_gate_truncated_count": 3,
+    }, projection["limits"]
     relations = {edge["relation"] for edge in projection["edges"]}
     assert {"blocks", "depends_on", "validates", "repairs"} <= relations, projection
     forbidden_keys = {"write_command", "agent_command", "raw_log", "raw_transcript"}

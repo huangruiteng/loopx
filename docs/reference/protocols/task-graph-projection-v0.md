@@ -48,10 +48,21 @@ explicitly allows it.
     "write_api": false,
     "recompute_rule": "Recompute from status, active state, gates, leases, and run history after each lifecycle event."
   },
+  "limits": {
+    "user_gate_node_limit": 2,
+    "user_gate_open_count": 5,
+    "user_gate_truncated_count": 3
+  },
   "nodes": [],
   "edges": []
 }
 ```
+
+`limits` explains hot-path truncation. The task graph may expand only the first
+`user_gate_node_limit` open user gate nodes. When more user gates are open,
+`user_gate_open_count` and `user_gate_truncated_count` must say so. Consumers
+that need the complete gate list should use the user todo detail path or full
+review packet fields instead of treating the graph as an exhaustive store.
 
 ## Nodes
 
@@ -60,6 +71,8 @@ Allowed `kind` values are:
 
 - `deliverable`: a todo-backed artifact or implementation step;
 - `gate`: a user, owner, or operator decision point;
+- `gate_summary`: a compact "more gates exist" node used when user gates are
+  truncated from the graph hot path;
 - `lease`: an active claim or worker ownership signal;
 - `validation`: a smoke, check, CI result, or review proof;
 - `repair`: a self-repair or blocker-recovery step;
@@ -73,7 +86,7 @@ Required node fields:
 - `title`;
 - `state`: one of `open`, `ready`, `blocked`, `done`, `waiting`, or `unknown`;
 - `refs`: compact references such as `todo_ids`, `gate_ids`, `lease_ids`,
-  `run_ids`, or `review_packet_ids`.
+  `goal_ids`, `run_ids`, or `review_packet_ids`.
 
 Nodes must not copy raw task text, transcripts, logs, credentials, private file
 paths, or large run artifacts. They should summarize only the relationship
@@ -118,6 +131,9 @@ A valid public fixture or implementation must prove:
 - `mode` is `read_only`;
 - `truth_contract.projection_is_writable=false`;
 - `truth_contract.write_api=false`;
+- `limits.user_gate_node_limit` is present;
+- `limits.user_gate_open_count` is present;
+- `limits.user_gate_truncated_count` is present;
 - every node id is unique;
 - every edge endpoint references an existing node;
 - every node and edge references existing LoopX ids rather than raw
