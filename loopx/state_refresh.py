@@ -340,9 +340,6 @@ def section_list_items(lines: list[str]) -> list[str]:
 
 
 def derive_recommended_action(state_text: str) -> str:
-    agent_todo_action = first_open_agent_todo_action(state_text)
-    if agent_todo_action:
-        return agent_todo_action
     lines = extract_section_lines(state_text, "Next Action", limit=RECOMMENDED_ACTION_SECTION_LINE_LIMIT)
     for index, line in enumerate(lines):
         action = first_action_item(lines, index)
@@ -353,6 +350,9 @@ def derive_recommended_action(state_text: str) -> str:
         except ValueError:
             continue
         return action
+    agent_todo_action = first_open_agent_todo_action(state_text)
+    if agent_todo_action:
+        return agent_todo_action
     return DEFAULT_REFRESH_ACTION
 
 

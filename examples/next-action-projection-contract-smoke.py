@@ -117,6 +117,20 @@ def main() -> None:
             registry_path, runtime, project, state_path = write_fixture(Path(raw_tmp))
 
             state_refresh.now_local = lambda: "2026-06-22T00:01:00+00:00"
+            implicit_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="state_refreshed",
+                recommended_action=None,
+                dry_run=True,
+                sync_global=False,
+            )
+            assert implicit_payload["recommended_action"] == ACTIVE_NEXT_ACTION, implicit_payload
+            assert implicit_payload.get("active_state_next_action_update") is None, implicit_payload
+
             default_payload = state_refresh.refresh_state_run(
                 registry_path=registry_path,
                 runtime_root_override=str(runtime),
