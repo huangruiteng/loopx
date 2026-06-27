@@ -160,6 +160,17 @@ Run:
 python3 examples/session-runtime-readonly-projection-smoke.py
 ```
 
+OpenViking-style issue-fix memory is covered by the public specialization
+[`openviking_session_memory_adapter_v0`](reference/protocols/openviking-session-memory-adapter-v0.md).
+That adapter keeps per-goal and per-issue session memory as compact refs and
+retrieval gates only: no live OpenViking retrieval, memory writeback, issue or
+comment body read, raw trajectory, or raw tool-output ingest is authorized by
+the public fixture. Validate it with:
+
+```bash
+python3 examples/openviking-session-memory-adapter-smoke.py
+```
+
 ## Metrics
 
 The integration is valuable if it improves:

@@ -70,6 +70,7 @@ incident report, or launch draft.
 
 - [Status data contract](status-data-contract.md)
 - [Session runtime to LoopX projection v0](reference/protocols/session-runtime-loopx-projection-v0.md)
+- [OpenViking session memory adapter v0](reference/protocols/openviking-session-memory-adapter-v0.md)
 - [Interface budget contract](interface-budget-contract.md)
 - [Host integration surface v0](reference/protocols/host-integration-surface-v0.md)
 - [Codex App host command registry v0](reference/protocols/codex-app-host-command-registry-v0.md)

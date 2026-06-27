@@ -58,6 +58,17 @@ The protocol is defined in
 [`docs/reference/protocols/task-graph-projection-v0.md`](reference/protocols/task-graph-projection-v0.md);
 consumers should ignore the field when absent.
 
+Rows may also include an optional `openviking_session_memory_adapter` object
+with `schema_version=openviking_session_memory_adapter_v0`. This is a
+public-safe session-runtime specialization for OpenViking-style issue memory:
+compact issue refs, session refs, memory refs, retrieval gates, status
+projection, and evidence projection. It is read-only and must not perform live
+OpenViking retrieval, write memory, read issue/comment bodies, ingest raw tool
+outputs or trajectories, or publish external issue comments/PRs. The protocol
+is defined in
+[`docs/reference/protocols/openviking-session-memory-adapter-v0.md`](reference/protocols/openviking-session-memory-adapter-v0.md);
+consumers should ignore the field when absent.
+
 Loopback status exports include `status_contract.schema_version`. The dashboard
 uses that small protocol marker to detect when `127.0.0.1:8766` is still served
 by an older daemon or release snapshot after the checkout has moved forward. If

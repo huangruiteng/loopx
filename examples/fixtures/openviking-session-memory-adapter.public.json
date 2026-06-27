@@ -1,0 +1,170 @@
+{
+  "fixture": "openviking_session_memory_adapter_public_v0",
+  "ok": true,
+  "attention_queue": {
+    "available": true,
+    "item_count": 1,
+    "items": [
+      {
+        "goal_id": "loopx-meta",
+        "status": "active",
+        "waiting_on": "codex",
+        "severity": "action",
+        "recommended_action": "Preview compact session memory routing before any live OpenViking retrieval or writeback.",
+        "openviking_session_memory_adapter": {
+          "schema_version": "openviking_session_memory_adapter_v0",
+          "mode": "read_only_projection",
+          "specializes": "session_runtime_loopx_projection_v0",
+          "goal_id": "loopx-meta",
+          "generated_at": "2026-06-27T06:25:00Z",
+          "issue_projection": {
+            "provider": "github",
+            "repo": "OpenViking/Viking",
+            "issue_number": 2792,
+            "issue_ref_id": "github_openviking_viking_issue_2792",
+            "title_summary": "Public issue metadata identifies the thread; body and comments stay gated.",
+            "issue_body_copied": false,
+            "comment_bodies_copied": false,
+            "provider_payload_copied": false
+          },
+          "session_projection": {
+            "runtime_id": "codex_cli_tui",
+            "session_refs": [
+              "session_public_ref_2792_a"
+            ],
+            "latest_event_ref": "event_validation_summary_2792",
+            "linked_todo_ids": [
+              "todo_cb9e4b9b339c"
+            ],
+            "outcome_refs": [
+              "outcome_memory_preview_ready"
+            ],
+            "raw_trajectory_copied": false,
+            "raw_transcripts_copied": false,
+            "raw_tool_outputs_copied": false
+          },
+          "memory_projection": {
+            "namespace": "openviking_issue_fix_public_preview",
+            "retrieval_mode": "preview_only",
+            "live_retrieval_performed": false,
+            "writeback_performed": false,
+            "query_summary": "Find compact prior issue-fix lessons for routing and validation gates.",
+            "top_k_preview": 3,
+            "candidate_refs": [
+              {
+                "memory_ref_id": "mem_prior_issue_fixture_001",
+                "source_kind": "prior_issue",
+                "score_bucket": "high",
+                "summary": "Prior fix required separating public issue metadata from gated body/comment reads.",
+                "raw_memory_copied": false
+              },
+              {
+                "memory_ref_id": "mem_session_outcome_fixture_002",
+                "source_kind": "session_outcome",
+                "score_bucket": "medium",
+                "summary": "Prior session validated a repo-relative change before publication gates.",
+                "raw_memory_copied": false
+              }
+            ]
+          },
+          "retrieval_gates": [
+            {
+              "capability": "live_openviking_retrieval",
+              "state": "future_gated",
+              "required_authority": "live_memory_adapter_contract",
+              "blocks": "live retrieval against the OpenViking memory store"
+            },
+            {
+              "capability": "memory_writeback",
+              "state": "future_gated",
+              "required_authority": "controlled_memory_writeback_contract",
+              "blocks": "writing new session memories"
+            },
+            {
+              "capability": "issue_body_read",
+              "state": "blocked_without_authority",
+              "required_authority": "explicit_issue_body_read_gate",
+              "blocks": "copying or summarizing issue body text"
+            },
+            {
+              "capability": "comment_body_read",
+              "state": "blocked_without_authority",
+              "required_authority": "explicit_comment_body_read_gate",
+              "blocks": "copying or summarizing gated comment content"
+            },
+            {
+              "capability": "raw_tool_output_ingest",
+              "state": "blocked_without_authority",
+              "required_authority": "raw_runtime_evidence_gate",
+              "blocks": "ingesting raw tool outputs or trajectories"
+            }
+          ],
+          "status_projection": {
+            "waiting_on": "agent",
+            "next_action": "Validate the public OpenViking session memory adapter fixture.",
+            "user_action_required": false,
+            "agent_can_continue": true,
+            "first_agent_todo": "todo_cb9e4b9b339c",
+            "gate_state": "clear",
+            "quota_state": "eligible",
+            "memory_state": "preview_only"
+          },
+          "evidence_projection": {
+            "source_refs": [
+              {
+                "kind": "goal",
+                "id": "loopx-meta"
+              },
+              {
+                "kind": "issue",
+                "id": "github_openviking_viking_issue_2792"
+              },
+              {
+                "kind": "session",
+                "id": "session_public_ref_2792_a"
+              },
+              {
+                "kind": "memory",
+                "id": "mem_prior_issue_fixture_001"
+              }
+            ],
+            "validation_refs": [
+              {
+                "kind": "smoke",
+                "id": "openviking_session_memory_adapter_smoke"
+              }
+            ],
+            "raw_trajectories_copied": false,
+            "comment_bodies_copied": false,
+            "raw_tool_outputs_copied": false,
+            "credentials_copied": false,
+            "private_paths_copied": false,
+            "public_safe_summary": "Compact memory routing preview is available without live retrieval, writeback, comments, trajectories, or tool outputs."
+          },
+          "future_gates": [
+            "live_openviking_retrieval",
+            "memory_writeback",
+            "issue_body_read",
+            "comment_body_read",
+            "raw_tool_output_ingest",
+            "external_issue_comment_or_pr_publish"
+          ],
+          "truth_contract": {
+            "source_of_truth": [
+              "loopx_goal_state",
+              "session_runtime_projection",
+              "public_issue_metadata",
+              "memory_system_refs"
+            ],
+            "adapter_is_writable": false,
+            "live_retrieval_allowed": false,
+            "memory_writeback_allowed": false,
+            "issue_body_read_allowed": false,
+            "comment_body_read_allowed": false,
+            "tool_output_ingest_allowed": false
+          }
+        }
+      }
+    ]
+  }
+}
