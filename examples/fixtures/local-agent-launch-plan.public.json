@@ -1,0 +1,185 @@
+{
+  "fixture": "local_agent_launch_plan_public_v0",
+  "ok": true,
+  "attention_queue": {
+    "available": true,
+    "item_count": 1,
+    "items": [
+      {
+        "goal_id": "loopx-meta",
+        "status": "active",
+        "waiting_on": "codex",
+        "severity": "action",
+        "recommended_action": "Preview local agent role assignment before any runtime launcher exists.",
+        "local_agent_launch_plan": {
+          "schema_version": "local_agent_launch_plan_v0",
+          "mode": "dry_run",
+          "goal_id": "loopx-meta",
+          "primary_agent_id": "codex-main-control",
+          "generated_at": "2026-06-27T04:00:00Z",
+          "configured_agents": [
+            {
+              "agent_id": "codex-main-control",
+              "role": "primary",
+              "source": "registry.coordination.registered_agents",
+              "scope_summary": "Primary controller reviews non-small changes and owns final merge decisions.",
+              "can_receive_work": true,
+              "blocked_by": []
+            },
+            {
+              "agent_id": "codex-side-bypass",
+              "role": "side_agent",
+              "source": "registry.coordination.registered_agents",
+              "scope_summary": "Side agent performs independent public-safe validation slices in an isolated worktree.",
+              "can_receive_work": true,
+              "blocked_by": []
+            },
+            {
+              "agent_id": "codex-product-capability",
+              "role": "reviewer",
+              "source": "registry.coordination.registered_agents",
+              "scope_summary": "Product capability agent owns product-surface validation and separate capability gates.",
+              "can_receive_work": false,
+              "blocked_by": [
+                "current_todo_claimed_by_another_agent"
+              ]
+            }
+          ],
+          "role_assignments": [
+            {
+              "agent_id": "codex-main-control",
+              "lane": "primary_control",
+              "responsibility": "Review and merge work that exceeds small self-merge rules.",
+              "claim_policy": "owns_primary_review_todos",
+              "handoff_target_agent_id": null
+            },
+            {
+              "agent_id": "codex-side-bypass",
+              "lane": "bounded_delivery",
+              "responsibility": "Deliver one verifiable public dry-run protocol slice.",
+              "claim_policy": "claim_current_agent_todo_before_delivery",
+              "handoff_target_agent_id": "codex-main-control"
+            },
+            {
+              "agent_id": "codex-product-capability",
+              "lane": "blocked",
+              "responsibility": "Wait for its own capability gate before product-surface validation.",
+              "claim_policy": "do_not_steal_other_agent_todos",
+              "handoff_target_agent_id": null
+            }
+          ],
+          "launch_preview": [
+            {
+              "preview_id": "preview_side_bypass_public_slice",
+              "agent_id": "codex-side-bypass",
+              "todo_id": "todo_a7ebeabb3c0c",
+              "next_step_label": "Build the public local-agent launch dry-run fixture and smoke.",
+              "worktree_policy": "independent_worktree_required",
+              "host_execution": {
+                "will_start_process": false,
+                "tool_call_allowed": false,
+                "shell_command": null,
+                "daemon_required": false,
+                "external_service_call": false
+              }
+            },
+            {
+              "preview_id": "preview_primary_review_handoff",
+              "agent_id": "codex-main-control",
+              "todo_id": "todo_primary_review_local_agent_launch_plan",
+              "next_step_label": "Review the protocol slice if it is not eligible for small self-merge.",
+              "worktree_policy": "no_launcher_worktree_change",
+              "host_execution": {
+                "will_start_process": false,
+                "tool_call_allowed": false,
+                "shell_command": null,
+                "daemon_required": false,
+                "external_service_call": false
+              }
+            }
+          ],
+          "status_projection": {
+            "waiting_on": "agent",
+            "next_action": "Create and validate the public local-agent launch dry-run contract.",
+            "user_action_required": false,
+            "agent_can_continue": true,
+            "first_agent_todo": "todo_a7ebeabb3c0c",
+            "gate_state": "clear",
+            "quota_state": "eligible",
+            "launch_state": "preview_only"
+          },
+          "evidence_projection": {
+            "source_refs": [
+              {
+                "kind": "registry",
+                "id": "registry_goal_loopx_meta"
+              },
+              {
+                "kind": "quota",
+                "id": "quota_should_run_current_agent"
+              },
+              {
+                "kind": "todo",
+                "id": "todo_a7ebeabb3c0c"
+              }
+            ],
+            "validation_refs": [
+              {
+                "kind": "smoke",
+                "id": "local_agent_launch_plan_smoke"
+              }
+            ],
+            "raw_logs_copied": false,
+            "raw_transcripts_copied": false,
+            "credentials_copied": false,
+            "private_paths_copied": false,
+            "public_safe_summary": "The plan previews configured agents, roles, and handoff status without launching a runtime."
+          },
+          "future_gates": [
+            {
+              "capability": "server_daemon_launch",
+              "state": "future_gated",
+              "required_contract": "local_runtime_daemon_launch_v0"
+            },
+            {
+              "capability": "external_agent_execution",
+              "state": "future_gated",
+              "required_contract": "external_agent_execution_gate_v0"
+            },
+            {
+              "capability": "credentialed_host_actions",
+              "state": "blocked_without_authority",
+              "required_contract": "explicit_host_auth_boundary_v0"
+            },
+            {
+              "capability": "state_write_from_preview",
+              "state": "future_gated",
+              "required_contract": "controlled_writeback_preview_v0"
+            }
+          ],
+          "truth_contract": {
+            "source_of_truth": [
+              "registry",
+              "quota_should_run",
+              "todo_projection",
+              "run_history"
+            ],
+            "plan_is_authoritative": false,
+            "plan_is_executable": false,
+            "write_api": false,
+            "launch_command_allowed": false,
+            "recompute_rule": "Recompute from registry, quota, todos, gates, and run history before each preview."
+          },
+          "boundary": {
+            "public_fixture": true,
+            "raw_transcripts_allowed": false,
+            "raw_logs_allowed": false,
+            "credentials_allowed": false,
+            "private_paths_allowed": false,
+            "runtime_launcher_enabled": false
+          }
+        }
+      }
+    ]
+  }
+}

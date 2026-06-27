@@ -58,6 +58,16 @@ The protocol is defined in
 [`docs/reference/protocols/task-graph-projection-v0.md`](reference/protocols/task-graph-projection-v0.md);
 consumers should ignore the field when absent.
 
+Rows may also include an optional `local_agent_launch_plan` object with
+`schema_version=local_agent_launch_plan_v0`. This is a dry-run preview over
+configured agents, role assignments, non-executable launch preview rows,
+status projection, evidence projection, and future gates. It is read-only and
+must not start local workers, call external agent services, expose shell
+commands, write LoopX state, or grant host authority. The protocol is defined
+in
+[`docs/reference/protocols/local-agent-launch-plan-v0.md`](reference/protocols/local-agent-launch-plan-v0.md);
+consumers should ignore the field when absent.
+
 Loopback status exports include `status_contract.schema_version`. The dashboard
 uses that small protocol marker to detect when `127.0.0.1:8766` is still served
 by an older daemon or release snapshot after the checkout has moved forward. If
