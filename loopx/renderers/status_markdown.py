@@ -385,3 +385,31 @@ def append_attention_queue_candidate_group_markdown(
             f"{priority_text} "
             f"text={markdown_scalar(candidate.get('text') or '')}"
         )
+
+
+def append_attention_queue_item_header_markdown(
+    lines: list[str],
+    item: dict[str, Any],
+    *,
+    authority_summary: str | None = None,
+) -> None:
+    action = str(item.get("recommended_action") or "").replace("|", "\\|")
+    lines.append(
+        "- "
+        f"`{item.get('goal_id')}`: "
+        f"status={item.get('status')} "
+        f"phase={item.get('lifecycle_phase')} "
+        f"waiting_on={item.get('waiting_on')} "
+        f"severity={item.get('severity')} "
+        f"source={item.get('source')}"
+    )
+    if action:
+        lines.append(f"  - action: {action}")
+    active_state_action = markdown_scalar(item.get("active_state_next_action") or "")
+    if active_state_action:
+        lines.append(f"  - active_state_next_action: {active_state_action}")
+    latest_run_action = markdown_scalar(item.get("latest_run_recommended_action") or "")
+    if latest_run_action:
+        lines.append(f"  - latest_run_recommended_action: {latest_run_action}")
+    if authority_summary:
+        lines.append(f"  - authority_material: {authority_summary}")

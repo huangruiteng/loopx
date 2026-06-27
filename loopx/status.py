@@ -54,6 +54,7 @@ from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .renderers.status_markdown import (
+    append_attention_queue_item_header_markdown as _append_attention_queue_item_header_markdown,
     append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
@@ -9854,27 +9855,12 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
     for item in items:
         if not isinstance(item, dict):
             continue
-        action = str(item.get("recommended_action") or "").replace("|", "\\|")
-        lines.append(
-            "- "
-            f"`{item.get('goal_id')}`: "
-            f"status={item.get('status')} "
-            f"phase={item.get('lifecycle_phase')} "
-            f"waiting_on={item.get('waiting_on')} "
-            f"severity={item.get('severity')} "
-            f"source={item.get('source')}"
-        )
-        if action:
-            lines.append(f"  - action: {action}")
-        active_state_action = _markdown_scalar(item.get("active_state_next_action") or "")
-        if active_state_action:
-            lines.append(f"  - active_state_next_action: {active_state_action}")
-        latest_run_action = _markdown_scalar(item.get("latest_run_recommended_action") or "")
-        if latest_run_action:
-            lines.append(f"  - latest_run_recommended_action: {latest_run_action}")
         authority_summary = _authority_registry_markdown_summary(goals.get(str(item.get("goal_id") or "")))
-        if authority_summary:
-            lines.append(f"  - authority_material: {authority_summary}")
+        _append_attention_queue_item_header_markdown(
+            lines,
+            item,
+            authority_summary=authority_summary,
+        )
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
         agent_lane_next_action = (
             project_asset.get("agent_lane_next_action")
