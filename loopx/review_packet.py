@@ -897,7 +897,11 @@ def project_agent_command(
 ) -> str:
     if kind == "reward":
         return build_history_command(status_payload, goal_id)
-    if isinstance(item, dict) and item.get("agent_command") and kind in {"controller", "codex"}:
+    if (
+        isinstance(item, dict)
+        and item.get("agent_command")
+        and (kind in {"controller", "codex"} or operator_gate_approved_handoff(item, goal))
+    ):
         return str(item.get("agent_command"))
     if kind == "controller":
         return build_read_only_map_command(status_payload, goal_id)
@@ -1115,8 +1119,9 @@ def build_review_packet(
         else None
     )
     stale_latest_run_lines = stale_latest_run_packet_lines(stale_latest_run_warning)
-    command = redact_local_absolute_paths(project_agent_command(status_payload, goal_id, kind, item, goal))
     approved_handoff = operator_gate_approved_handoff(item, goal)
+    command = redact_local_absolute_paths(project_agent_command(status_payload, goal_id, kind, item, goal))
+    effective_kind = "codex" if approved_handoff else kind
     delivery_handoff = connected_delivery_handoff(item, goal) and kind == "codex"
     gate_commands = operator_gate_decision_commands(status_payload, goal_id) if kind == "controller" else {}
     gate_command = gate_commands.get("approve") if gate_commands else None
@@ -1152,7 +1157,7 @@ def build_review_packet(
         "focus_wait": "Focus Wait",
         "evidence": "Evidence",
         "health": "Health",
-    }.get(kind, "Status")
+    }.get(effective_kind, "Status")
     lines = [
         "【LoopX Review Packet】",
         f"目标：{goal_id}",
@@ -1194,7 +1199,7 @@ def build_review_packet(
     return {
         "ok": True,
         "goal_id": goal_id,
-        "kind": kind,
+        "kind": effective_kind,
         "waiting_on": item.get("waiting_on") if isinstance(item, dict) else None,
         "status": item.get("status") if isinstance(item, dict) else goal.get("status") if isinstance(goal, dict) else None,
         "review_url": review_url,

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -202,7 +203,7 @@ def approved_command_with_local_paths(root: Path) -> str:
 def append_operator_gate_approval_fixture(root: Path) -> None:
     run_dir = root / "runtime" / "goals" / GOAL_ID / "runs"
     run_dir.mkdir(parents=True, exist_ok=True)
-    generated_at = "2026-01-01T00:01:00+00:00"
+    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     compact_time = generated_at.replace("-", "").replace(":", "")
     json_path = run_dir / f"{compact_time}-operator-gate.json"
     markdown_path = run_dir / f"{compact_time}-operator-gate.md"
@@ -235,6 +236,18 @@ def append_operator_gate_approval_fixture(root: Path) -> None:
             )
             + "\n"
         )
+
+
+def mark_owner_review_todo_done(root: Path) -> None:
+    state_path = root / "project" / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+    text = state_path.read_text(encoding="utf-8")
+    state_path.write_text(
+        text.replace(
+            "- [ ] Read owner review worksheet first.",
+            "- [x] Read owner review worksheet first.",
+        ),
+        encoding="utf-8",
+    )
 
 
 def run_cli(root: Path, registry_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -998,7 +1011,7 @@ def main() -> int:
         assert "类型：Controller" in packet, packet
         assert "材料：authority/material: topics=2, materials=4, repositories=2, owner_review_required=1, stale=1, current_authority=1, risk=low（仅脱敏计数；不含内部链接、路径或正文。）" in packet, packet
         assert "待办：Read owner review worksheet first.（先处理/暂缓再判 gate）" in packet, packet
-        assert f"建议判断：先确认待办；完成后：同意 {GOAL_ID} 先做 read-only map dry-run；不授权写入或生产动作。" in packet, packet
+        assert f"建议判断：先确认待办；完成后：同意 {GOAL_ID} 先做只读 controller dry-run；不授权写入或生产动作。" in packet, packet
         assert f"回复：同意 {GOAL_ID} 先做 read-only map dry-run / 暂不同意 + 一句话原因。" in packet, packet
         assert f"--reason-summary '同意 {GOAL_ID} 先做 read-only map dry-run，不授权写入或生产动作'" in packet, packet
         assert "【用户本地 Gate 记录草稿】" in packet, packet
@@ -1127,6 +1140,7 @@ def main() -> int:
             "controller handoff-only subcommand-format json",
         )
 
+        mark_owner_review_todo_done(root)
         append_operator_gate_approval_fixture(root)
         before_files = sorted(path.name for path in run_dir.iterdir())
         approved_markdown_result = run_cli(
