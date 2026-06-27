@@ -386,7 +386,7 @@ loopx --registry "$HOME/.codex/loopx/registry.global.json" quota monitor-poll --
 `recommended_mode=monitor_quiet_until_material_transition`. It appends a
 `quota_monitor_poll` run record, does not mutate the registry, and does not
 append `quota_slot_spent`. The run includes `quota_monitor_target_v0`, a compact
-hash of the public monitor identity. Two consecutive public stalled monitor
+hash of the public monitor identity. Six consecutive public stalled monitor
 records with the same target feed `autonomous_replan_obligation` as
 `dead_monitor_repeat`, so the next independent `quota should-run` may flip to
 `autonomous_replan_required` /

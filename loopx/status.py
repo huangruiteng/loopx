@@ -416,6 +416,7 @@ MAX_SUBAGENT_SCOPE_ITEMS = 4
 MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = 3
 MAX_AUTONOMOUS_REPLAN_TRIGGERS = 3
 AUTONOMOUS_REPLAN_STALL_THRESHOLD = 2
+DEAD_MONITOR_REPEAT_THRESHOLD = 6
 AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD = 20
 AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = 30
 AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.IGNORECASE)
@@ -5655,7 +5656,11 @@ def build_autonomous_replan_obligation(
     result = {
         "schema_version": AUTONOMOUS_REPLAN_SCHEMA_VERSION,
         "required": True,
-        "stall_threshold": AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+        "stall_threshold": (
+            DEAD_MONITOR_REPEAT_THRESHOLD
+            if dead_monitor_evidence
+            else AUTONOMOUS_REPLAN_STALL_THRESHOLD
+        ),
         "trigger_count": len(evidence),
         "triggers": evidence,
         "guidance_actions": (
@@ -5822,6 +5827,7 @@ def autonomous_replan_obligation_from_runs(
     agent_todos: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     signals: list[dict[str, Any]] = []
+    signal_scan_limit = max(AUTONOMOUS_REPLAN_STALL_THRESHOLD, DEAD_MONITOR_REPEAT_THRESHOLD)
     for run in latest_runs or []:
         if not isinstance(run, dict):
             continue
@@ -5832,19 +5838,20 @@ def autonomous_replan_obligation_from_runs(
         if not signal:
             break
         signals.append(signal)
-        if len(signals) >= AUTONOMOUS_REPLAN_STALL_THRESHOLD:
+        if len(signals) >= signal_scan_limit:
             break
 
-    if len(signals) < AUTONOMOUS_REPLAN_STALL_THRESHOLD:
+    stall_signals = signals[:AUTONOMOUS_REPLAN_STALL_THRESHOLD]
+    if len(stall_signals) < AUTONOMOUS_REPLAN_STALL_THRESHOLD:
         return autonomous_replan_periodic_review_from_runs(
             latest_runs,
             agent_todos=agent_todos,
         )
 
-    signatures = {str(signal.get("signature") or "") for signal in signals if signal.get("signature")}
+    signatures = {str(signal.get("signature") or "") for signal in stall_signals if signal.get("signature")}
     classifications = {
         str(signal.get("classification") or "")
-        for signal in signals
+        for signal in stall_signals
         if signal.get("classification")
     }
     periodic_review = autonomous_replan_periodic_review_from_runs(
@@ -5853,17 +5860,29 @@ def autonomous_replan_obligation_from_runs(
     )
     if len(signatures) > 1 and len(classifications) > 1:
         return periodic_review
-    if classifications == {"quota_monitor_poll"} and run_history_monitor_wait_already_acknowledged(
-        latest_runs,
-        signal_count=len(signals),
-    ):
-        return periodic_review
-    monitor_target_ids = {
-        str(signal.get("monitor_target_id") or "")
-        for signal in signals
-        if signal.get("monitor_target_id")
-    }
-    if classifications == {"quota_monitor_poll"} and len(monitor_target_ids) == 1:
+    if classifications == {"quota_monitor_poll"}:
+        monitor_signals = signals[:DEAD_MONITOR_REPEAT_THRESHOLD]
+        if len(monitor_signals) < DEAD_MONITOR_REPEAT_THRESHOLD:
+            return periodic_review
+        monitor_classifications = {
+            str(signal.get("classification") or "")
+            for signal in monitor_signals
+            if signal.get("classification")
+        }
+        if monitor_classifications != {"quota_monitor_poll"}:
+            return periodic_review
+        if run_history_monitor_wait_already_acknowledged(
+            latest_runs,
+            signal_count=len(monitor_signals),
+        ):
+            return periodic_review
+        monitor_target_ids = {
+            str(signal.get("monitor_target_id") or "")
+            for signal in monitor_signals
+            if signal.get("monitor_target_id")
+        }
+        if len(monitor_target_ids) != 1:
+            return periodic_review
         monitor_target_id = next(iter(monitor_target_ids))
         evidence = [
             {
@@ -5871,11 +5890,11 @@ def autonomous_replan_obligation_from_runs(
                 "schema_version": DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
                 "section": "run_history",
                 "text": (
-                    f"latest {AUTONOMOUS_REPLAN_STALL_THRESHOLD} monitor polls repeated "
+                    f"latest {DEAD_MONITOR_REPEAT_THRESHOLD} monitor polls repeated "
                     "the same monitor target without a material transition"
                 ),
-                "run_count": len(signals),
-                "threshold": AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+                "run_count": len(monitor_signals),
+                "threshold": DEAD_MONITOR_REPEAT_THRESHOLD,
                 "monitor_target_id": monitor_target_id,
                 "latest_generated_at": signals[0].get("generated_at"),
             }
@@ -5883,7 +5902,7 @@ def autonomous_replan_obligation_from_runs(
         return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
 
     action = public_safe_compact_text(
-        signals[0].get("recommended_action") or signals[0].get("classification"),
+        stall_signals[0].get("recommended_action") or stall_signals[0].get("classification"),
         limit=120,
     )
     evidence_text = (
@@ -5895,8 +5914,8 @@ def autonomous_replan_obligation_from_runs(
             "kind": "run_history_no_progress_repeat",
             "section": "run_history",
             "text": evidence_text,
-            "run_count": len(signals),
-            "latest_generated_at": signals[0].get("generated_at"),
+            "run_count": len(stall_signals),
+            "latest_generated_at": stall_signals[0].get("generated_at"),
         }
     ]
     return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)

@@ -659,7 +659,7 @@ Status and diagnose should display unchanged monitor-only work as
 `waiting_on=monitor_signal` with `severity=watch`, while retaining the quota
 decision `effective_action=monitor_quiet_skip`. This keeps the monitor visible
 without making it look like immediate Codex work or a user/controller gate.
-Two consecutive no-spend polls for the same target should project a
+Six consecutive no-spend polls for the same target should project a
 `dead_monitor_repeat` autonomous replan obligation; the agent must write a
 watch-lane expiry, concrete blocker, todo supersede, or successor runnable todo
 before another quiet poll.
