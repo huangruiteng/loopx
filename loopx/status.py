@@ -5321,6 +5321,7 @@ def active_state_event_projection_fields(
                 "source": "event_log",
                 "event_log": event_log_path.name,
                 "source_event_count": projection.get("source_event_count"),
+                "source_checksum": projection.get("source_checksum"),
                 "last_event_id": projection.get("last_event_id"),
                 "last_append_sequence": projection.get("last_append_sequence"),
                 "projection_version": projection.get("projection_version"),
