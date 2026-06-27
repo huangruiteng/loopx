@@ -7121,9 +7121,14 @@ def _allows_due_monitor_poll(
     todo_id: str | None = None,
     target_key: str | None = None,
 ) -> bool:
-    if decision.get("should_run") is not True:
+    contract = (
+        decision.get("work_lane_contract")
+        if isinstance(decision.get("work_lane_contract"), dict)
+        else {}
+    )
+    if contract.get("obligation") != "attempt_due_monitor":
         return False
-    if decision.get("requires_user_action") is True:
+    if contract.get("must_attempt_work") is not True:
         return False
     item = _quota_decision_due_monitor_item(decision)
     if not item:
@@ -7583,30 +7588,31 @@ def record_quota_monitor_poll(
     before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
     normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
     safe_target_key = str(target_key or "").strip() or None
+    safe_result_hash = str(result_hash or "").strip() or None
+
+    def failure(reason: str) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "mode": "monitor-poll",
+            "dry_run": not execute,
+            "goal_id": safe_goal_id,
+            "appended": False,
+            "registry_mutated": False,
+            "source": str(source or DEFAULT_SLOT_SPEND_SOURCE).strip() or DEFAULT_SLOT_SPEND_SOURCE,
+            "agent_id": normalize_todo_claimed_by(agent_id),
+            "todo_id": normalized_todo_id,
+            "target_key": safe_target_key,
+            "result_hash": safe_result_hash,
+            "material_change": material_change,
+            "reason": reason,
+            "before": before,
+            "after": None,
+        }
+
     if material_change and not (normalized_todo_id or safe_target_key):
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": "`quota monitor-poll --material-change` requires --todo-id or --target-key",
-            "before": before,
-            "after": None,
-        }
+        return failure("`quota monitor-poll --material-change` requires --todo-id or --target-key")
     if (next_agent_todo or next_user_todo) and not material_change:
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": "`--next-agent-todo` and `--next-user-todo` require --material-change",
-            "before": before,
-            "after": None,
-        }
+        return failure("`--next-agent-todo` and `--next-user-todo` require --material-change")
     due_monitor_poll = _allows_due_monitor_poll(
         before,
         todo_id=normalized_todo_id,
@@ -7617,20 +7623,10 @@ def record_quota_monitor_poll(
         and not _allows_no_spend_external_monitor_poll(before)
         and not due_monitor_poll
     ):
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": (
-                "monitor-poll requires monitor_quiet_skip, due monitor todo, "
-                "or external monitor observation"
-            ),
-            "before": before,
-            "after": None,
-        }
+        return failure(
+            "monitor-poll requires monitor_quiet_skip, due monitor todo, "
+            "or external monitor observation"
+        )
 
     generated_at = _now_local()
     todo_writeback = None
