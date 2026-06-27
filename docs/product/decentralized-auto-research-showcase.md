@@ -103,13 +103,28 @@ next agent does not rediscover them from scratch.
 
 ## Minimal Reproduction Plan
 
-1. Package a public-safe mini benchmark fixture under docs or examples, modeled
-   on Arbor's k-NN task but owned by LoopX.
-2. Add `research_contract_v0`, `research_hypothesis_v0`, and
-   `research_evidence_event_v0` fixture records.
-3. Add a CLI preview that reads the fixture and emits
-   `decentralized_research_frontier_v0` for two agents.
-4. Run one local smoke that proves:
+First fixture-backed slice:
+
+```bash
+loopx --format json auto-research frontier \
+  --fixture examples/fixtures/decentralized-auto-research-knn.public.json \
+  --agent-id codex-side-bypass
+```
+
+This renders `decentralized_research_frontier_v0`,
+`research_evidence_graph_v0`, and `research_showcase_projection_v0` from a
+public fixture. It does not launch experiments; it proves that the state shape
+can present a per-agent frontier without one leader agent.
+
+Next reproduction steps:
+
+1. Replace the fixture-only k-NN records with a small runnable benchmark pack
+   owned by LoopX.
+2. Keep `research_contract_v0`, `research_hypothesis_v0`, and
+   `research_evidence_event_v0` as the public-safe record boundary.
+3. Connect projection input to live todo/quota state after the fixture contract
+   is stable.
+4. Keep one local smoke that proves:
    - protected files are not editable;
    - each hypothesis is todo-linked;
    - each evidence event names split and metric;

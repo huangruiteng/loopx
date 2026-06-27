@@ -244,12 +244,19 @@ Already available:
   `dataset_window_contract_v0`, and advisory result packets.
 - `long_horizon_agent_state_protocol_v0` already defines source/projection
   separation and concurrent lane views.
+- `loopx auto-research frontier --fixture <public.json> --agent-id <agent>`
+  now renders a fixture-backed `decentralized_research_frontier_v0`,
+  `research_evidence_graph_v0`, and `research_showcase_projection_v0` without
+  launching experiments or depending on a leader agent.
 
 Needed next:
 
-- expose `research_hypothesis_v0` as a public-safe rollout-event subtype;
-- add a frontier projection that joins hypothesis status with agent/todo claim;
-- add a small auto-research benchmark fixture modeled on Arbor's k-NN zoo task;
+- expose `research_hypothesis_v0` as a public-safe rollout-event subtype
+  beyond fixture projection;
+- connect the frontier projection to live todo/quota status rather than only a
+  public fixture;
+- add a runnable auto-research benchmark fixture modeled on Arbor's k-NN zoo
+  task;
 - add a showcase page that reports baseline, dev result, held-out result,
   retired directions, and LoopX's decentralized coordination pattern.
 

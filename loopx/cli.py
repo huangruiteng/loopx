@@ -21,6 +21,7 @@ from .capabilities.value_connectors.cli import (
 from .cli_commands import (
     handle_benchmark_command,
     handle_bootstrap_connect_command,
+    handle_auto_research_command,
     handle_capability_command,
     handle_check_command,
     handle_diagnose_command,
@@ -43,6 +44,7 @@ from .cli_commands import (
     handle_worker_bridge_command,
     register_benchmark_command_group,
     register_bootstrap_connect_command,
+    register_auto_research_commands,
     register_capability_commands,
     register_doctor_command,
     register_dreaming_commands,
@@ -140,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     register_value_connector_commands(sub, add_subcommand_format)
 
     register_ml_experiment_commands(sub, add_subcommand_format)
+
+    register_auto_research_commands(sub, add_subcommand_format)
 
     register_registry_admin_commands(sub)
 
@@ -245,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ml-experiment":
         return handle_ml_experiment_command(args, output_format=output_format, print_payload=print_payload)
+
+    if args.command == "auto-research":
+        return handle_auto_research_command(args, output_format=output_format, print_payload=print_payload)
 
     if args.command == "content-ops":
         return handle_content_ops_command(args, output_format=output_format, print_payload=print_payload)
