@@ -169,3 +169,66 @@ def append_event_ledger_summary_markdown(
             f"latest={markdown_scalar(goal.get('latest_event_class') or '')} "
             f"classes_24h={event_class_count_text(goal_by_class_24h, event_classes)}"
         )
+
+
+def append_promotion_readiness_summary_markdown(
+    lines: list[str],
+    promotion_readiness: dict[str, Any],
+) -> None:
+    if not promotion_readiness:
+        return
+    lines.extend(
+        [
+            "",
+            "## Promotion Readiness Summary",
+            "- summary: "
+            f"source={markdown_scalar(promotion_readiness.get('source') or '')} "
+            f"available={promotion_readiness.get('available')} "
+            f"samples={promotion_readiness.get('sample_run_count')} "
+            f"freshness={markdown_scalar(promotion_readiness.get('freshness_status') or '')} "
+            f"age_hours={promotion_readiness.get('age_hours')} "
+            f"requires_readiness_run={promotion_readiness.get('requires_readiness_run')} "
+            f"window_hours={promotion_readiness.get('freshness_window_hours')}",
+            "- latest: "
+            f"goal={markdown_scalar(promotion_readiness.get('goal_id') or '')} "
+            f"generated_at={markdown_scalar(promotion_readiness.get('generated_at') or '')} "
+            f"classification={markdown_scalar(promotion_readiness.get('classification') or '')} "
+            f"outcome={markdown_scalar(promotion_readiness.get('delivery_outcome') or '')} "
+            f"artifacts={promotion_readiness.get('json_exists')}/{promotion_readiness.get('markdown_exists')}",
+        ]
+    )
+
+
+def append_promotion_gate_markdown(
+    lines: list[str],
+    promotion_gate: dict[str, Any],
+) -> None:
+    if not promotion_gate:
+        return
+    promotion_gate_readiness = (
+        promotion_gate.get("readiness")
+        if isinstance(promotion_gate.get("readiness"), dict)
+        else {}
+    )
+    lines.extend(
+        [
+            "",
+            "## Promotion Gate",
+            "- gate: "
+            f"state={markdown_scalar(promotion_gate.get('gate_state') or '')} "
+            f"can_promote={promotion_gate.get('can_promote')} "
+            f"should_warn={promotion_gate.get('should_warn')} "
+            f"non_blocking={promotion_gate.get('non_blocking')} "
+            f"freshness={markdown_scalar(promotion_gate_readiness.get('freshness_status') or '')} "
+            f"requires_readiness_run={promotion_gate_readiness.get('requires_readiness_run')}",
+            "- latest: "
+            f"generated_at={markdown_scalar(promotion_gate_readiness.get('generated_at') or '')} "
+            f"age_hours={promotion_gate_readiness.get('age_hours')} "
+            f"action={markdown_scalar(promotion_gate.get('recommended_action') or '')}",
+        ]
+    )
+    if promotion_gate.get("warning_message"):
+        lines.append(
+            "- warning: "
+            f"{markdown_scalar(promotion_gate.get('warning_message') or '')}"
+        )

@@ -57,6 +57,8 @@ from .renderers.status_markdown import (
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
     append_human_reward_markdown as _append_human_reward_markdown,
     append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
+    append_promotion_gate_markdown as _append_promotion_gate_markdown,
+    append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
     authority_registry_markdown_summary as _authority_registry_markdown_summary,
     goals_by_id as _goals_by_id,
     markdown_scalar as _markdown_scalar,
@@ -9821,61 +9823,14 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         if isinstance(payload.get("promotion_readiness_summary"), dict)
         else {}
     )
-    if promotion_readiness:
-        lines.extend(
-            [
-                "",
-                "## Promotion Readiness Summary",
-                "- summary: "
-                f"source={_markdown_scalar(promotion_readiness.get('source') or '')} "
-                f"available={promotion_readiness.get('available')} "
-                f"samples={promotion_readiness.get('sample_run_count')} "
-                f"freshness={_markdown_scalar(promotion_readiness.get('freshness_status') or '')} "
-                f"age_hours={promotion_readiness.get('age_hours')} "
-                f"requires_readiness_run={promotion_readiness.get('requires_readiness_run')} "
-                f"window_hours={promotion_readiness.get('freshness_window_hours')}",
-                "- latest: "
-                f"goal={_markdown_scalar(promotion_readiness.get('goal_id') or '')} "
-                f"generated_at={_markdown_scalar(promotion_readiness.get('generated_at') or '')} "
-                f"classification={_markdown_scalar(promotion_readiness.get('classification') or '')} "
-                f"outcome={_markdown_scalar(promotion_readiness.get('delivery_outcome') or '')} "
-                f"artifacts={promotion_readiness.get('json_exists')}/{promotion_readiness.get('markdown_exists')}",
-            ]
-        )
+    _append_promotion_readiness_summary_markdown(lines, promotion_readiness)
 
     promotion_gate = (
         payload.get("promotion_gate")
         if isinstance(payload.get("promotion_gate"), dict)
         else {}
     )
-    promotion_gate_readiness = (
-        promotion_gate.get("readiness")
-        if isinstance(promotion_gate.get("readiness"), dict)
-        else {}
-    )
-    if promotion_gate:
-        lines.extend(
-            [
-                "",
-                "## Promotion Gate",
-                "- gate: "
-                f"state={_markdown_scalar(promotion_gate.get('gate_state') or '')} "
-                f"can_promote={promotion_gate.get('can_promote')} "
-                f"should_warn={promotion_gate.get('should_warn')} "
-                f"non_blocking={promotion_gate.get('non_blocking')} "
-                f"freshness={_markdown_scalar(promotion_gate_readiness.get('freshness_status') or '')} "
-                f"requires_readiness_run={promotion_gate_readiness.get('requires_readiness_run')}",
-                "- latest: "
-                f"generated_at={_markdown_scalar(promotion_gate_readiness.get('generated_at') or '')} "
-                f"age_hours={promotion_gate_readiness.get('age_hours')} "
-                f"action={_markdown_scalar(promotion_gate.get('recommended_action') or '')}",
-            ]
-        )
-        if promotion_gate.get("warning_message"):
-            lines.append(
-                "- warning: "
-                f"{_markdown_scalar(promotion_gate.get('warning_message') or '')}"
-            )
+    _append_promotion_gate_markdown(lines, promotion_gate)
 
     decision_freshness = (
         payload.get("decision_freshness_summary")
