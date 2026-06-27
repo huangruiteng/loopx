@@ -1693,31 +1693,12 @@
           "case_id": "citation-check",
           "latest_decision": {
             "baseline_failure_scope": "passed",
-            "baseline_run_id": "3959b3bce1cf",
-            "decision": "paired_treatment_regressed",
+            "baseline_run_id": "2297b9236dc2",
+            "decision": "paired_treatment_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
             "official_score_delta": -1.0,
-            "product_mode_main_table_pair": {
-              "baseline_route_valid": true,
-              "benchmark_id": "skillsbench@1.1",
-              "case_id": "citation-check",
-              "claim_blocker": "none",
-              "comparison_id": "skillsbench_product_mode_main_table_v0",
-              "headline_metrics": [
-                "best_score",
-                "final_score",
-                "first_success_round",
-                "declared_done_score"
-              ],
-              "main_table_claim_allowed": true,
-              "max_rounds_budget": 8,
-              "official_feedback_blinded": true,
-              "product_mode_pair_complete": true,
-              "schema_version": "benchmark_product_mode_comparison_v0",
-              "treatment_loopx_lifecycle_observed": true,
-              "treatment_route_valid": true
-            },
-            "treatment_failure_scope": "case_or_solution",
-            "treatment_run_id": "ac6716eb1ae2"
+            "treatment_failure_scope": "runner_or_setup",
+            "treatment_run_id": "d563af7a6ede"
           },
           "runs": [
             {
@@ -2191,6 +2172,448 @@
                 "task_skills_removed": true
               },
               "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": true,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_score_zero_case_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": false,
+              "best_round_reward": 0.0,
+              "case_attempt_countable": true,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "declared_done_round": 13,
+              "declared_done_score": 0.0,
+              "failure_class": "official_score_zero_case_failure",
+              "failure_labels": [
+                "official_score_zero_case_failure",
+                "skillsbench_product_mode_declared_done_below_passing_reward",
+                "skillsbench_agent_premature_done_signal"
+              ],
+              "failure_scope": "case_or_solution",
+              "final_round": 13,
+              "final_round_passed": false,
+              "final_round_reward": 0.0,
+              "job_name": "skillsbench_1_1_citation_check_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "model_warning_labels": [
+                "skillsbench_host_local_acp_idle_timeout_after_countable_closeout",
+                "skillsbench_host_local_acp_codex_exec_failed"
+              ],
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 14,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 14,
+                "state_write_count": 42
+              },
+              "recorded_at": "2026-06-27T17:54:55+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 12,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 6,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 7,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 8,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 9,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 10,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 11,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 12,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-citation-check-raw-new-goal-start-local-20260627T0701Z",
+              "run_id": "0c5ac5e7b1b2",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": true,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_raw_codex_autonomous_max5_baseline",
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "none",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": true,
+              "best_round_reward": 1.0,
+              "case_attempt_countable": true,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "declared_done_round": 1,
+              "declared_done_score": 1.0,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "final_round": 1,
+              "final_round_passed": true,
+              "final_round_reward": 1.0,
+              "first_success_round": 1,
+              "job_name": "skillsbench_1_1_citation_check_raw_codex_autonomous_max5",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": false,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_raw_codex_autonomous_max5_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow raw Codex autonomous max5 baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_passed": true,
+              "official_score": 1.0,
+              "official_score_attempt_countable": true,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-27T17:55:18+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 1,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": true,
+                  "reward": 1.0,
+                  "reward_present": true,
+                  "tool_calls": 26
+                }
+              ],
+              "round_success_observed": true,
+              "run_group_id": "skillsbench-citation-check-raw-new-goal-start-local-20260627T0701Z",
+              "run_id": "2297b9236dc2",
+              "score_status": "passed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": true,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-citation-check-goal-start-local-20260627T0735Z/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": false,
+              "best_round_reward": 0.0,
+              "case_attempt_countable": false,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "declared_done_round": 13,
+              "declared_done_score": 0.0,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+              "failure_labels": [
+                "skillsbench_product_mode_declared_done_below_passing_reward",
+                "skillsbench_agent_premature_done_signal",
+                "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+                "skillsbench_host_local_acp_codex_exec_failed",
+                "skillsbench_runner_setup_error",
+                "skillsbench_product_mode_transport_failure"
+              ],
+              "failure_scope": "runner_or_setup",
+              "final_round": 13,
+              "final_round_passed": false,
+              "final_round_reward": 0.0,
+              "job_name": "skillsbench_1_1_citation_check_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "model_warning_labels": [
+                "skillsbench_host_local_acp_idle_timeout_after_countable_closeout",
+                "skillsbench_host_local_acp_codex_exec_failed"
+              ],
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": false,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 14,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 14,
+                "state_write_count": 42
+              },
+              "recorded_at": "2026-06-27T19:33:38+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 12,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 6,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 7,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 8,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 9,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 10,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 11,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 12,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-citation-check-goal-start-local-20260627T0735Z",
+              "run_id": "d563af7a6ede",
+              "score_status": "failed",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -6435,29 +6858,13 @@
         "powerlifting-coef-calc": {
           "case_id": "powerlifting-coef-calc",
           "latest_decision": {
-            "baseline_run_id": "4b981e33c040",
-            "decision": "product_mode_pair_incomplete",
-            "product_mode_main_table_pair": {
-              "baseline_route_valid": true,
-              "benchmark_id": "skillsbench@1.1",
-              "case_id": "powerlifting-coef-calc",
-              "claim_blocker": "treatment_loopx_lifecycle_not_observed",
-              "comparison_id": "skillsbench_product_mode_main_table_v0",
-              "headline_metrics": [
-                "best_score",
-                "final_score",
-                "first_success_round",
-                "declared_done_score"
-              ],
-              "main_table_claim_allowed": false,
-              "max_rounds_budget": 8,
-              "official_feedback_blinded": true,
-              "product_mode_pair_complete": false,
-              "schema_version": "benchmark_product_mode_comparison_v0",
-              "treatment_loopx_lifecycle_observed": false,
-              "treatment_route_valid": true
-            },
-            "treatment_run_id": "a8b78c82f2e9"
+            "baseline_failure_scope": "passed",
+            "baseline_run_id": "5d3d505e21ca",
+            "decision": "paired_treatment_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+            "official_score_delta": null,
+            "treatment_failure_scope": "score_missing",
+            "treatment_run_id": "e1ed1c1ff31b"
           },
           "runs": [
             {
@@ -7117,6 +7524,291 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": true,
+              "agent_model": "gpt-5.5",
+              "arm_id": "skillsbench_raw_codex_autonomous_max5_baseline",
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "none",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": true,
+              "best_round_reward": 1.0,
+              "case_attempt_countable": true,
+              "case_id": "powerlifting-coef-calc",
+              "case_ids": [
+                "powerlifting-coef-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "declared_done_round": 1,
+              "declared_done_score": 1.0,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "final_round": 1,
+              "final_round_passed": true,
+              "final_round_reward": 1.0,
+              "first_success_round": 1,
+              "job_name": "skillsbench_1_1_powerlifting_coef_calc_raw_codex_autonomous_max5",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": false,
+              "max_rounds_budget": 32,
+              "mode": "skillsbench_raw_codex_autonomous_max5_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow raw Codex autonomous max5 baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_passed": true,
+              "official_score": 1.0,
+              "official_score_attempt_countable": true,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-27T17:55:18+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 1,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": true,
+                  "reward": 1.0,
+                  "reward_present": true,
+                  "tool_calls": 8
+                }
+              ],
+              "round_success_observed": true,
+              "run_group_id": "skillsbench-powerlifting-coef-calc-raw-new-goal-start-local-20260627T0812Z",
+              "run_id": "5d3d505e21ca",
+              "score_status": "passed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "powerlifting-coef-calc",
+              "case_ids": [
+                "powerlifting-coef-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+              "failure_labels": [
+                "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+                "skillsbench_host_local_acp_codex_exec_failed",
+                "skillsbench_runner_setup_error",
+                "skillsbench_product_mode_transport_failure",
+                "skillsbench_acp_agent_message_only_no_tool_calls"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_powerlifting_coef_calc_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "max_rounds_budget": 32,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 1,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 1,
+                "state_write_count": 3
+              },
+              "recorded_at": "2026-06-27T17:55:18+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-powerlifting-coef-calc-raw-new-goal-start-local-20260627T0812Z",
+              "run_id": "bf47fab7dcc0",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": false,
+                "apt_retry_patch_applied": false,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": false,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": "local-private/skillsbench-powerlifting-explicit-bridge-timeoutprobe-20260627T1048Z/powerlifting-coef-calc__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "powerlifting-coef-calc",
+              "case_ids": [
+                "powerlifting-coef-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_preflight_failed_codex_exec_exit_1",
+              "failure_labels": [
+                "skillsbench_host_local_acp_codex_exec_preflight_failed_codex_exec_exit_1",
+                "skillsbench_runner_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-powerlifting-explicit-bridge-timeoutprobe-20260627T1048Z",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "notes": "explicit bridge command probe: pre-case host-local Codex exec preflight failed with public-safe codex_exec_exit_1 classification; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-06-27T18:41:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-powerlifting-coef-calc-goal-start-explicit-bridge-preflight-20260627T1048Z",
+              "run_id": "6df25b0a577c",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "staged": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-powerlifting-coef-calc-goal-start-local-20260627T0930Z-goalstart/powerlifting-coef-calc__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "powerlifting-coef-calc",
+              "case_ids": [
+                "powerlifting-coef-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+              "failure_labels": [
+                "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+                "skillsbench_host_local_acp_codex_exec_failed",
+                "skillsbench_runner_setup_error",
+                "skillsbench_product_mode_transport_failure",
+                "skillsbench_acp_agent_message_only_no_tool_calls"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_powerlifting_coef_calc_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "max_rounds_budget": 32,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 1,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 1,
+                "state_write_count": 3
+              },
+              "recorded_at": "2026-06-27T19:46:43+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-powerlifting-coef-calc-raw-new-goal-start-local-20260627T0812Z",
+              "run_id": "e1ed1c1ff31b",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": false,
+                "apt_retry_patch_applied": false,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": false,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -8645,7 +9337,7 @@
           ]
         }
       },
-      "run_count": 148
+      "run_count": 155
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -12697,5 +13389,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-24T21:00:41+08:00"
+  "updated_at": "2026-06-27T19:46:43+08:00"
 }

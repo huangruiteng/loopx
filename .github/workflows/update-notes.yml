@@ -1,0 +1,91 @@
+name: Biweekly Update Notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Optional window start date, YYYY-MM-DD"
+        required: false
+        type: string
+      until:
+        description: "Optional window end date, YYYY-MM-DD"
+        required: false
+        type: string
+      force:
+        description: "Generate even if the inferred window is not due yet"
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # Runs weekly; the generator is the biweekly gate and no-ops until a window closes.
+    - cron: "17 3 * * 0"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: biweekly-update-notes
+  cancel-in-progress: false
+
+jobs:
+  draft-update-note-pr:
+    if: github.repository == 'huangruiteng/loopx'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate update note draft
+        id: generate
+        env:
+          UPDATE_NOTES_SINCE: ${{ inputs.since }}
+          UPDATE_NOTES_UNTIL: ${{ inputs.until }}
+          UPDATE_NOTES_FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          cmd=(python3 scripts/update_notes_release_job.py)
+          if [[ -n "${UPDATE_NOTES_SINCE}" || -n "${UPDATE_NOTES_UNTIL}" ]]; then
+            cmd+=(--since "${UPDATE_NOTES_SINCE}" --until "${UPDATE_NOTES_UNTIL}")
+          fi
+          if [[ "${UPDATE_NOTES_FORCE}" == "true" ]]; then
+            cmd+=(--force)
+          fi
+          "${cmd[@]}"
+
+      - name: Validate update-note archive
+        if: steps.generate.outputs.changed == 'true'
+        run: |
+          python3 -m py_compile scripts/update_notes_release_job.py examples/update-notes-archive-smoke.py
+          python3 examples/update-notes-archive-smoke.py
+          git diff --check
+          python3 -m loopx.cli check \
+            --scan-path .github/workflows/update-notes.yml \
+            --scan-path scripts/update_notes_release_job.py \
+            --scan-path docs/update-notes \
+            --scan-path examples/update-notes-archive-smoke.py
+
+      - name: Open update-note PR
+        if: steps.generate.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: codex/biweekly-update-notes-${{ steps.generate.outputs.window_slug }}
+          delete-branch: true
+          draft: true
+          title: Add biweekly update note ${{ steps.generate.outputs.window }}
+          commit-message: Add biweekly update note ${{ steps.generate.outputs.window }}
+          body: |
+            ## Summary
+            - generated the next public-safe biweekly update-note source draft from public git history
+            - updated the update-note archive and latest pointer
+
+            This workflow does not use an LLM. Treat the generated note as a factual source packet and draft PR; a maintainer or LoopX agent should refine the narrative before marking this PR ready.
+
+            ## Validation
+            - python3 -m py_compile scripts/update_notes_release_job.py examples/update-notes-archive-smoke.py
+            - python3 examples/update-notes-archive-smoke.py
+            - git diff --check
+            - python3 -m loopx.cli check --scan-path .github/workflows/update-notes.yml --scan-path scripts/update_notes_release_job.py --scan-path docs/update-notes --scan-path examples/update-notes-archive-smoke.py

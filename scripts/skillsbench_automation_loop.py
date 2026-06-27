@@ -1078,6 +1078,19 @@ def _host_local_acp_codex_exec_preflight_command(
     return command
 
 
+def _host_local_acp_codex_exec_preflight_should_run(
+    args: argparse.Namespace,
+) -> bool:
+    """Return whether the host-local Codex exec path must be probed first."""
+
+    if bool(getattr(args, "host_local_acp_codex_exec_preflight", False)):
+        return True
+    return bool(
+        getattr(args, "host_local_acp_launch", False)
+        and _is_goal_start_product_mode_route(str(getattr(args, "route", "") or ""))
+    )
+
+
 def _host_local_acp_codex_exec_preflight_requires_bridge_action(
     args: argparse.Namespace,
 ) -> bool:
@@ -2962,7 +2975,78 @@ def _apply_agent_message_only_no_tool_calls_attribution(
     for item in extra_labels:
         if item not in existing_labels:
             existing_labels.append(item)
+        compact["failure_attribution_labels"] = existing_labels
+    return True
+
+
+def _apply_host_local_acp_prereq_failure_attribution(
+    compact: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+) -> bool:
+    """Prefer structured host-local Codex exec failures over zero-score labels."""
+
+    official_score = compact.get("official_score")
+    if (
+        isinstance(official_score, (int, float))
+        and not isinstance(official_score, bool)
+        and official_score >= 1.0
+    ):
+        return False
+
+    prereq_failure = _runner_prerequisite_failure_attribution(runner_prerequisites)
+    if prereq_failure is None:
+        return False
+    _exception_type, label, labels = prereq_failure
+    if not (
+        label.startswith("skillsbench_host_local_acp_codex_exec_failed")
+        or label.startswith("skillsbench_host_local_acp_codex_exec_preflight_failed")
+    ):
+        return False
+
+    compact["score_failure_attribution"] = label
+    compact["first_blocker"] = label
+    compact["official_score_comparable_to_native_codex"] = False
+    compact["official_score_comparable_to_loopx_treatment"] = False
+    existing_labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str)
+        and item
+        not in {
+            "official_score_zero_case_failure",
+            "official_verifier_solution_failure",
+            "verifier_infrastructure_failure",
+        }
+    ]
+    extra_labels = list(labels)
+    if compact.get("product_mode") is True:
+        extra_labels.append("skillsbench_product_mode_transport_failure")
+    for item in extra_labels:
+        if item and item not in existing_labels:
+            existing_labels.append(item)
     compact["failure_attribution_labels"] = existing_labels
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["exception_type"] = label
+        runner_failure["failure_class"] = label
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
+        for key in (
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+            "official_score_attempt_countable",
+        ):
+            attempt_accounting[key] = False
+        attempts = attempt_accounting.get("attempts")
+        if isinstance(attempts, dict):
+            for key in ("case", "solver", "verifier", "official_score"):
+                attempt = attempts.get(key)
+                if isinstance(attempt, dict):
+                    attempt["countable"] = False
     return True
 
 
@@ -4679,12 +4763,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 _is_goal_start_product_mode_route(args.route)
             ),
             "host_local_acp_codex_exec_preflight_requested": bool(
-                args.host_local_acp_codex_exec_preflight
+                _host_local_acp_codex_exec_preflight_should_run(args)
             ),
             "host_local_acp_codex_exec_preflight_ready": False,
             "host_local_acp_codex_exec_preflight_status": (
                 "pending"
-                if args.host_local_acp_codex_exec_preflight
+                if _host_local_acp_codex_exec_preflight_should_run(args)
                 else "not_requested"
             ),
             "host_local_acp_codex_exec_preflight_attempt_count": 0,
@@ -7016,6 +7100,27 @@ def _build_product_mode_user(
             "closeout."
         )
 
+    def workflow_bootstrap_prompt() -> str:
+        return (
+            "LoopX product-mode treatment round 1. "
+            "You are running inside the official SkillsBench sandbox transport, "
+            "but this local Codex process is outside the scored sandbox. No "
+            "official reward, pass/fail status, verifier error, verifier output, "
+            "or verifier tail will be shown during this run.\n\n"
+            "--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
+            "The canonical workflow lifecycle driver has already executed the "
+            "case-local quota/todo/update/refresh checkpoint through the sandbox "
+            "bridge before this prompt. This route simulates `/loopx <task "
+            "objective>` goal start: a compact ranked todo plan and selected P0 "
+            "todo have already been seeded in the case-local LoopX state. "
+            "Do not repeat setup lifecycle, do not solve from prose, and do not "
+            "declare done in this bootstrap round. Your only job in this round "
+            "is to prove task-facing sandbox access: copy and run the bridge "
+            "packet's FIRST ACTION REQUIRED shell command exactly, then briefly "
+            "report that bridge access is available. The benchmark task "
+            "instruction will be sent after that bridge action is observed."
+        )
+
     def solver_activity_prompt(round_number: int) -> str:
         return (
             f"Mandatory product-mode solver checkpoint before round {round_number} "
@@ -7180,7 +7285,7 @@ def _build_product_mode_user(
                             "LoopX lifecycle request before official verifier"
                         )
                     if (
-                        _product_mode_agent_lifecycle_gate_satisfied(trace)
+                        product_mode_entry_lifecycle_gate_satisfied()
                         and not self._task_instruction_sent
                     ):
                         self._task_instruction_sent = True
@@ -7323,12 +7428,23 @@ def _build_product_mode_user(
                     trace["persistent_constraint_protected_paths"] = protected_paths
                 if treatment:
                     prefix = "LoopX product-mode treatment round 1. "
+                    trace["case_goal_state_packet_present"] = True
+                    if workflow_lifecycle_driver and goal_start_product_mode:
+                        self._task_instruction_sent = False
+                        trace[
+                            "product_mode_task_instruction_deferred_until_agent_lifecycle"
+                        ] = True
+                        trace["product_mode_task_instruction_sent_initially"] = False
+                        trace["last_decision"] = (
+                            "send_goal_start_workflow_bridge_bootstrap_prompt"
+                        )
+                        return workflow_bootstrap_prompt()
+
                     self._task_instruction_sent = True
                     trace[
                         "product_mode_task_instruction_deferred_until_agent_lifecycle"
                     ] = False
                     trace["product_mode_task_instruction_sent_initially"] = True
-                    trace["case_goal_state_packet_present"] = True
                     control_clause = (
                         "Use LoopX as your product control plane: create "
                         "a compact goal state, maintain todos, replan when local "
@@ -8392,6 +8508,10 @@ def reduce_result(
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
         _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
+        _apply_host_local_acp_prereq_failure_attribution(
+            compact,
+            runner_prerequisites,
+        )
     prereq_failure = _runner_prerequisite_failure_attribution(
         plan.get("runner_prerequisites")
     )
@@ -8860,8 +8980,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "loopx-blind-loop-treatment is the historical SkillsBench "
             "alias for the same polling semantics; codex-acp-blind-loop-baseline "
             "is the ordinary Codex no-goal baseline with the same loop budget; "
-            "raw-codex-autonomous-max5 and loopx-product-mode are the "
-            "main-table product-mode comparison routes; "
+            "raw-codex-autonomous-max5 and loopx-goal-start-product-mode are "
+            "the main-table raw/new comparison routes; "
             "loopx-goal-start-product-mode adds /loopx goal-start planning "
             "with a compact ranked todo plan before selected-P0 lifecycle; "
             "codex-app-server-goal-baseline is the native Codex Goal baseline "
@@ -9333,7 +9453,7 @@ async def async_main(
         )
 
     if (
-        args.host_local_acp_codex_exec_preflight
+        _host_local_acp_codex_exec_preflight_should_run(args)
         and args.host_local_acp_launch
         and not args.reduce_only
     ):

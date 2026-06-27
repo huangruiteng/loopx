@@ -27,6 +27,10 @@ from .todo_contract import (
 
 DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 DEFAULT_REFRESH_ACTION = "inspect refreshed active goal state and continue the next bounded progress segment"
+RECOMMENDED_ACTION_SOURCE_EXPLICIT = "explicit_arg"
+RECOMMENDED_ACTION_SOURCE_ACTIVE_NEXT_ACTION = "active_state_next_action"
+RECOMMENDED_ACTION_SOURCE_AGENT_TODO_FALLBACK = "agent_todo_fallback"
+RECOMMENDED_ACTION_SOURCE_DEFAULT = "default_refresh_action"
 AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
@@ -339,10 +343,7 @@ def section_list_items(lines: list[str]) -> list[str]:
     return items
 
 
-def derive_recommended_action(state_text: str) -> str:
-    agent_todo_action = first_open_agent_todo_action(state_text)
-    if agent_todo_action:
-        return agent_todo_action
+def derive_recommended_action_with_source(state_text: str) -> tuple[str, str]:
     lines = extract_section_lines(state_text, "Next Action", limit=RECOMMENDED_ACTION_SECTION_LINE_LIMIT)
     for index, line in enumerate(lines):
         action = first_action_item(lines, index)
@@ -352,8 +353,15 @@ def derive_recommended_action(state_text: str) -> str:
             validate_public_safe_text("derived recommended_action", action)
         except ValueError:
             continue
-        return action
-    return DEFAULT_REFRESH_ACTION
+        return action, RECOMMENDED_ACTION_SOURCE_ACTIVE_NEXT_ACTION
+    agent_todo_action = first_open_agent_todo_action(state_text)
+    if agent_todo_action:
+        return agent_todo_action, RECOMMENDED_ACTION_SOURCE_AGENT_TODO_FALLBACK
+    return DEFAULT_REFRESH_ACTION, RECOMMENDED_ACTION_SOURCE_DEFAULT
+
+
+def derive_recommended_action(state_text: str) -> str:
+    return derive_recommended_action_with_source(state_text)[0]
 
 
 def resolve_goal_state(
@@ -387,6 +395,7 @@ def build_state_refresh_record(
     state_text: str,
     classification: str,
     recommended_action: str,
+    recommended_action_source: str,
     generated_at: str,
     registry_goal: dict[str, Any] | None,
     delivery_batch_scale: str | None = None,
@@ -409,6 +418,7 @@ def build_state_refresh_record(
         "goal_id": goal_id,
         "classification": classification,
         "recommended_action": recommended_action,
+        "recommended_action_source": recommended_action_source,
         "health_check": (
             f"state_file 1/1; registry_goal {1 if registry_goal else 0}/1; "
             f"authority_sources {len(authority_sources)}"
@@ -536,6 +546,7 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
         [
             "",
             "## Recommended Action",
+            f"- source: `{payload.get('recommended_action_source')}`",
             str(payload.get("recommended_action") or ""),
         ]
     )
@@ -637,7 +648,11 @@ def refresh_state_run(
                 resolved_state_file.write_text(updated_state_text, encoding="utf-8")
             state_text = updated_state_text if state_updated else locked_state_text
 
-    action = recommended_action or derive_recommended_action(state_text)
+    if recommended_action:
+        action = recommended_action
+        recommended_action_source = RECOMMENDED_ACTION_SOURCE_EXPLICIT
+    else:
+        action, recommended_action_source = derive_recommended_action_with_source(state_text)
     validate_public_safe_text("recommended_action", action)
     repair_delta_contract: dict[str, Any] | None = None
     requested_classification = classification
@@ -659,6 +674,7 @@ def refresh_state_run(
         state_text=state_text,
         classification=classification,
         recommended_action=action,
+        recommended_action_source=recommended_action_source,
         generated_at=generated_at,
         registry_goal=registry_goal,
         delivery_batch_scale=normalized_delivery_batch_scale,
@@ -696,6 +712,7 @@ def refresh_state_run(
         "goal_id": safe_goal_id,
         "classification": classification,
         "recommended_action": action,
+        "recommended_action_source": recommended_action_source,
         "health_check": record["health_check"],
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
@@ -728,6 +745,7 @@ def refresh_state_run(
         "autonomous_replan_recorded_requested": bool(autonomous_replan_recorded),
         "repair_delta_contract": repair_delta_contract,
         "recommended_action": action,
+        "recommended_action_source": recommended_action_source,
         "active_state_next_action_update": active_state_next_action_update,
         "generated_at": generated_at,
         "health_check": record["health_check"],

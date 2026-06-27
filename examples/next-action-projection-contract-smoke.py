@@ -23,7 +23,7 @@ UPDATED_RUN_RECOMMENDATION = "Validate the vliw repair slice and then write comp
 SIDE_AGENT_ACTION = "Polish the hosted frontstage public case card."
 
 
-def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
+def write_fixture(root: Path, *, include_next_action: bool = True) -> tuple[Path, Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
@@ -31,6 +31,12 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     registry_path = project / ".loopx" / "registry.json"
 
     state_path.parent.mkdir(parents=True)
+    next_action_section = (
+        "## Next Action\n\n"
+        f"- {ACTIVE_NEXT_ACTION}\n\n"
+        if include_next_action
+        else ""
+    )
     state_path.write_text(
         "---\n"
         "status: active\n"
@@ -46,8 +52,7 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
         f"- [ ] [P1] {SIDE_AGENT_ACTION}\n"
         "  <!-- loopx:todo todo_id=todo_side status=open "
         "task_class=advancement_task claimed_by=codex-side-bypass -->\n\n"
-        "## Next Action\n\n"
-        f"- {ACTIVE_NEXT_ACTION}\n\n"
+        f"{next_action_section}"
         "## Progress Ledger\n\n"
         "- Fixture initialized.\n",
         encoding="utf-8",
@@ -117,6 +122,23 @@ def main() -> None:
             registry_path, runtime, project, state_path = write_fixture(Path(raw_tmp))
 
             state_refresh.now_local = lambda: "2026-06-22T00:01:00+00:00"
+            implicit_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="state_refreshed",
+                recommended_action=None,
+                dry_run=True,
+                sync_global=False,
+            )
+            assert implicit_payload["recommended_action"] == ACTIVE_NEXT_ACTION, implicit_payload
+            assert (
+                implicit_payload["recommended_action_source"] == "active_state_next_action"
+            ), implicit_payload
+            assert implicit_payload.get("active_state_next_action_update") is None, implicit_payload
+
             default_payload = state_refresh.refresh_state_run(
                 registry_path=registry_path,
                 runtime_root_override=str(runtime),
@@ -129,6 +151,7 @@ def main() -> None:
                 sync_global=False,
             )
             assert default_payload["recommended_action"] == RUN_RECOMMENDATION, default_payload
+            assert default_payload["recommended_action_source"] == "explicit_arg", default_payload
             assert default_payload.get("active_state_next_action_update") is None, default_payload
             assert_state_next_action(state_path, ACTIVE_NEXT_ACTION)
             assert RUN_RECOMMENDATION not in state_text(state_path), state_text(state_path)
@@ -157,6 +180,7 @@ def main() -> None:
                 sync_global=False,
             )
             update = explicit_payload["active_state_next_action_update"]
+            assert explicit_payload["recommended_action_source"] == "explicit_arg", explicit_payload
             assert update["updated"] is True, explicit_payload
             assert update["next_action"] == UPDATED_NEXT_ACTION, explicit_payload
             assert_state_next_action(state_path, UPDATED_NEXT_ACTION)
@@ -185,6 +209,31 @@ def main() -> None:
             assert "latest_run_recommended_action" in status_markdown, status_markdown
             assert "active_state_next_action" in quota_markdown, quota_markdown
             assert "latest_run_recommended_action" in quota_markdown, quota_markdown
+
+        with tempfile.TemporaryDirectory(prefix="loopx-next-action-fallback-") as raw_tmp:
+            registry_path, runtime, project, _state_path = write_fixture(
+                Path(raw_tmp),
+                include_next_action=False,
+            )
+
+            fallback_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="state_refreshed",
+                recommended_action=None,
+                dry_run=True,
+                sync_global=False,
+            )
+            assert (
+                fallback_payload["recommended_action"]
+                == "[P0] Validate the primary public PoC control-plane lane."
+            ), fallback_payload
+            assert (
+                fallback_payload["recommended_action_source"] == "agent_todo_fallback"
+            ), fallback_payload
     finally:
         state_refresh.now_local = original_now_local
 

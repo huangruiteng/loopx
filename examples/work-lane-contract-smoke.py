@@ -20,6 +20,8 @@ from loopx.status import (
 
 
 GOAL_ID = "work-lane-fixture"
+PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
+FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
 
 
 def status_payload(
@@ -711,6 +713,152 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     assert f"agent_action={executable_todo}" in guard["protocol_action_packet"]["summary"], guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert [item["task_class"] for item in first_items] == ["advancement_task", "continuous_monitor"], guard
+
+
+def assert_not_due_monitor_only_waits_quietly() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            status="monitor_schedule_waiting",
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": "[P1] Monitor update-note draft PR until the next scheduled check.",
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "monitor",
+                    "next_due_at": FUTURE_DUE_AT,
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["monitor_kind"] == "todo_monitor", lane
+    assert lane["must_attempt_work"] is False, lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
+
+
+def assert_due_monitor_only_requires_attempt() -> None:
+    due_todo = "[P1] Monitor update-note draft PR and reschedule after checking."
+    guard = build_quota_should_run(
+        status_payload(
+            status="monitor_schedule_due",
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": due_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "monitor",
+                    "next_due_at": PAST_DUE_AT,
+                    "target_key": "update-note-draft-pr",
+                    "cadence": "14d",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["monitor_kind"] == "todo_monitor_due", lane
+    assert lane["obligation"] == "attempt_due_monitor", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "monitor_due"], lane
+    assert lane["monitor_due_count"] == 1, lane
+    assert lane["selected_next_due_at"] == PAST_DUE_AT, lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
+    assert guard["recommended_action"] == due_todo, guard
+    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == due_todo, guard
+    assert "agent_lane_next_action" not in guard, guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "work_lane_monitor_due: count=1" in markdown, markdown
+    assert "agent_todo_summary: open=1 total=1 monitor_due=1" in markdown, markdown
+
+
+def assert_due_monitor_lower_priority_does_not_preempt_advancement() -> None:
+    due_todo = "[P2] Monitor lower-priority release note draft on its schedule."
+    executable_todo = "[P1] Implement the bounded runtime repair slice."
+    guard = build_quota_should_run(
+        status_payload(
+            status="monitor_due_with_higher_priority_advancement",
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": due_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P2",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "monitor",
+                    "next_due_at": PAST_DUE_AT,
+                },
+                {
+                    "index": 2,
+                    "text": executable_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "advancement_task",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["reason_codes"] == ["open_agent_todo", "due_monitor_context"], lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
+    assert guard["recommended_action"] == executable_todo, guard
+    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == executable_todo, guard
+
+
+def assert_due_monitor_higher_priority_preempts_advancement() -> None:
+    due_todo = "[P0] Monitor the overdue update-note draft PR before feature work."
+    executable_todo = "[P1] Implement the bounded runtime repair slice."
+    guard = build_quota_should_run(
+        status_payload(
+            status="monitor_due_preempts_lower_priority_advancement",
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": due_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "monitor",
+                    "next_due_at": PAST_DUE_AT,
+                },
+                {
+                    "index": 2,
+                    "text": executable_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P1",
+                    "task_class": "advancement_task",
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["monitor_kind"] == "todo_monitor_due", lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["reason_codes"] == ["monitor_due", "due_monitor_priority_preempts_advancement"], lane
+    assert guard["recommended_action"] == due_todo, guard
+    assert guard["interaction_contract"]["agent_channel"]["primary_action"] == due_todo, guard
+    assert "agent_lane_next_action" not in guard, guard
 
 
 def assert_lower_priority_executable_before_higher_priority_is_reordered() -> None:
@@ -1881,6 +2029,10 @@ def main() -> int:
     assert_structured_todo_lane_registration_beats_text_fallback()
     assert_structured_monitor_registration_beats_action_text()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
+    assert_not_due_monitor_only_waits_quietly()
+    assert_due_monitor_only_requires_attempt()
+    assert_due_monitor_lower_priority_does_not_preempt_advancement()
+    assert_due_monitor_higher_priority_preempts_advancement()
     assert_lower_priority_executable_before_higher_priority_is_reordered()
     assert_external_monitor_context_recommends_executable_backlog()
     assert_benchmark_readiness_scan_routes_to_advancement()

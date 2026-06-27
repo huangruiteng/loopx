@@ -71,6 +71,15 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
     quota_parser.add_argument("--source", choices=["heartbeat", "controller", "adapter"], default="heartbeat", help="Source label for `quota spend-slot`.")
     quota_parser.add_argument("--void-generated-at", help="generated_at timestamp of the quota_slot_spent run to void.")
     quota_parser.add_argument("--reason-summary", help="Public-safe reason for `quota void-slot`.")
+    quota_parser.add_argument("--todo-id", help="Monitor todo id for `quota monitor-poll` metadata writeback.")
+    quota_parser.add_argument("--target-key", help="Stable monitor target key for `quota monitor-poll` metadata writeback.")
+    quota_parser.add_argument("--result-hash", help="Public-safe result hash observed by `quota monitor-poll`.")
+    quota_parser.add_argument("--material-change", action="store_true", help="Mark a monitor poll as a material transition instead of unchanged evidence.")
+    quota_parser.add_argument("--cadence", help="Monitor cadence used to compute the next due timestamp, e.g. 30m, 2h, or 1d.")
+    quota_parser.add_argument("--next-due-at", help="Explicit ISO timestamp for the next monitor poll.")
+    quota_parser.add_argument("--next-agent-todo", help="Agent follow-up todo to add when `--material-change` is set.")
+    quota_parser.add_argument("--next-user-todo", help="User gate todo to add when `--material-change` is set.")
+    quota_parser.add_argument("--next-claimed-by", help="Registered agent id to claim the `--next-agent-todo` follow-up.")
     quota_parser.add_argument("--dry-run", action="store_true", help="Keep quota accounting writes as preview-only. This is the default.")
     quota_parser.add_argument("--execute", action="store_true", help="Append the compact quota accounting runtime event for spend-slot or void-slot.")
     quota_parser.add_argument(
@@ -125,10 +134,20 @@ def handle_quota_command(
             payload = record_quota_monitor_poll(
                 status_payload,
                 goal_id=args.goal_id,
+                registry_path=registry_path,
                 execute=bool(args.execute),
                 source=args.source,
                 reason_summary=args.reason_summary,
                 agent_id=args.agent_id,
+                todo_id=args.todo_id,
+                target_key=args.target_key,
+                result_hash=args.result_hash,
+                material_change=bool(args.material_change),
+                cadence=args.cadence,
+                next_due_at=args.next_due_at,
+                next_agent_todo=args.next_agent_todo,
+                next_user_todo=args.next_user_todo,
+                next_claimed_by=args.next_claimed_by,
             )
         elif args.quota_command == "spend-slot":
             if not args.goal_id:
@@ -241,6 +260,8 @@ def handle_quota_command(
                 "appended": bool(payload.get("appended")),
                 "slots": payload.get("slots") or "",
                 "source": payload.get("source") or "",
+                "todo_id": payload.get("todo_id") or "",
+                "target_key": payload.get("target_key") or "",
             },
             allow_failed=args.quota_command == "should-run",
         )

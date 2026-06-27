@@ -32,6 +32,8 @@ LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地
 [Capability Surface](#capability-surface) ·
 [Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
+[Release Readiness](docs/product/release-readiness.md) ·
+[Update Notes](docs/update-notes/README.md) ·
 [Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
 [Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
 
@@ -494,6 +496,11 @@ contract.
   diagnose, daily workflow, heartbeats, dashboard, development, and command
   reference.
 - [Documentation index](docs/README.md): stable docs grouped by audience.
+- [Update notes](docs/update-notes/README.md): public-safe two-week progress
+  notes, archive, and publication automation plan.
+- [Release readiness](docs/product/release-readiness.md): v0.x install/update
+  paths, compatibility smoke gate, release-note checklist, and safe-to-depend-on
+  surfaces.
 - [Architecture](docs/architecture.md): lifetime-goal invariant and core
   control-plane shape.
 - [State interaction model](docs/state-interaction-model.md): actor boundaries,

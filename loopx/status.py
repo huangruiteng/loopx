@@ -131,7 +131,10 @@ REGISTRY_WAITING_ON_OVERRIDES = {
     "codex",
     "external_evidence",
 }
-WATCH_CLASSIFICATION_PREFIXES = ("await_", "monitor_", "external_evidence_observation_")
+LEGACY_EXTERNAL_EVIDENCE_CLASSIFICATION_PREFIXES = (
+    "await_",
+    "external_evidence_observation_",
+)
 MONITOR_SIGNAL_WAITING_ON = "monitor_signal"
 MONITOR_DISPLAY_SCHEMA_VERSION = "monitor_quiet_display_v0"
 MONITOR_DISPLAY_STOP_CONDITION = (
@@ -388,6 +391,7 @@ MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
 MAX_TODO_VISIBILITY_LANE_ITEMS = 16
 MAX_DEFERRED_TODO_VISIBILITY_ITEMS = 8
+MAX_MONITOR_DUE_ITEMS = 1
 MAX_ISSUE_META_SURFACE_ITEMS = 8
 MAX_ISSUE_META_LABELS = 8
 MAX_TODO_INDEX_ITEMS = 240
@@ -4777,6 +4781,14 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "resume_condition",
         "resume_ready",
         "no_followup",
+        "target_key",
+        "cadence",
+        "next_due_at",
+        "last_checked_at",
+        "result_hash",
+        "consecutive_no_change",
+        "material_change",
+        "max_no_change_before_replan",
         "note",
         "evidence",
         "reason",
@@ -4816,6 +4828,22 @@ def todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
         return False
     status = normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN
     return status == TODO_STATUS_OPEN
+
+
+def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
+    return parse_timestamp(item.get("next_due_at"))
+
+
+def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
+    if not todo_item_is_actionable_open(item):
+        return False
+    if todo_item_task_class(item) != TODO_TASK_CLASS_MONITOR:
+        return False
+    next_due_at = todo_item_next_due_at(item)
+    if next_due_at is None:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return next_due_at <= current_time
 
 
 def todo_priority_rank(priority: Any) -> int:
@@ -5064,6 +5092,11 @@ def compact_todo_group(
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
+    monitor_due_items = [
+        item
+        for item in monitor_items
+        if todo_item_is_due_monitor(item)
+    ]
     claimed_advancement_items = [
         item
         for item in claimed_open_items
@@ -5106,6 +5139,11 @@ def compact_todo_group(
         ],
         "monitor_open_items": [
             compact_todo_item(item) for item in monitor_items
+        ],
+        "monitor_due_count": len(monitor_due_items),
+        "monitor_due_items": [
+            compact_todo_item(item)
+            for item in monitor_due_items[:MAX_MONITOR_DUE_ITEMS]
         ],
         "unclaimed_priority_open_items": [
             compact_todo_item(item)
@@ -6615,6 +6653,33 @@ def is_handoff_ready_run(run: dict[str, Any]) -> bool:
     )
 
 
+def run_has_external_evidence_watch_signal(run: dict[str, Any]) -> bool:
+    """Return true only for explicit external-evidence watch state.
+
+    Feature names may legitimately start with words such as "monitor"; routing
+    to an external-evidence wait must come from structured state or explicit
+    legacy external-evidence classifications, not broad classification prefixes.
+    """
+
+    waiting_on = str(run.get("waiting_on") or "").strip()
+    execution_waiting_on = str(run.get("execution_waiting_on") or "").strip()
+    if waiting_on == "external_evidence" or execution_waiting_on == "external_evidence":
+        return True
+    if isinstance(run.get("external_evidence_observation"), dict):
+        return True
+    monitor_event = run.get("monitor_event")
+    if isinstance(monitor_event, dict):
+        event_waiting_on = str(monitor_event.get("waiting_on") or "").strip()
+        monitor_mode = str(monitor_event.get("monitor_mode") or "").strip()
+        monitor_kind = str(monitor_event.get("monitor_kind") or "").strip()
+        if event_waiting_on == "external_evidence":
+            return True
+        if monitor_mode.startswith("external_") or monitor_kind == "external_evidence":
+            return True
+    classification = str(run.get("classification") or "")
+    return classification.startswith(LEGACY_EXTERNAL_EVIDENCE_CLASSIFICATION_PREFIXES)
+
+
 def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
     classification = str(run.get("classification") or "")
     if not classification:
@@ -6625,7 +6690,7 @@ def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
         return False
     if classification in USER_OR_CONTROLLER_CLASSIFICATIONS or classification in BLOCKING_CLASSIFICATIONS:
         return False
-    if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
+    if run_has_external_evidence_watch_signal(run):
         return False
     return True
 
@@ -8110,7 +8175,7 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
             **attention_fields,
             **lifecycle_fields,
         )
-    if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
+    if run_has_external_evidence_watch_signal(current_run):
         return attention_item(
             goal_id=goal_id,
             status=classification,
@@ -9155,7 +9220,7 @@ def event_ledger_event_class(run: dict[str, Any]) -> str:
         return "decision"
     if classification in EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS:
         return "evidence"
-    if classification.startswith(WATCH_CLASSIFICATION_PREFIXES):
+    if run_has_external_evidence_watch_signal(run):
         return "evidence"
     if any(hint in classification for hint in EVENT_LEDGER_EVIDENCE_HINTS):
         return "evidence"

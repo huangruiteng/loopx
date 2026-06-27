@@ -70,7 +70,11 @@ def _prompt_requires_bridge_first_action(prompt: str) -> bool:
         SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER.lower(),
         "your first tool action should be a shell",
         "your first agent action must be a shell/tool call",
+        "your first agent action must be a task-facing shell/tool call",
         "first run the case-local quota/todo commands",
+        "this route simulates `/loopx <task objective>` goal start",
+        "compact ranked",
+        "selected runnable p0",
     )
     return any(marker in lowered for marker in required_markers)
 

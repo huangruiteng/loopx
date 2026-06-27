@@ -13,6 +13,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "heartbeat-flow-main-control"
 LONG_NEXT_ACTION_TAIL = "without truncating the final private-safe boundary sentence."
+EXPECTED_AGENT_TODO_ACTION = "[P1] Run one bounded heartbeat marker and validate the compact result."
+EXPECTED_NEXT_ACTION = (
+    "Run one bounded heartbeat marker, preserve the wrapped next-action "
+    "continuation across more than eight public-safe lines, keep the current "
+    "owner gate context intact, keep the validation context intact, keep the "
+    "quota accounting context intact, keep the project-agent handoff context "
+    "intact, keep the public/private boundary context intact, keep the "
+    "status-queue routing context intact, keep the review packet context "
+    "intact, and finish without truncating the final private-safe boundary sentence."
+)
 
 
 def run_cli(root: Path, *args: str, registry_path: Path, runtime: Path) -> dict:
@@ -545,8 +555,8 @@ def main() -> int:
         )
         assert refresh["ok"] is True, refresh
         assert refresh["appended"] is True, refresh
-        expected_action = "[P1] Run one bounded heartbeat marker and validate the compact result."
-        assert refresh["recommended_action"] == expected_action, refresh
+        assert refresh["recommended_action"] == EXPECTED_NEXT_ACTION, refresh
+        assert refresh["recommended_action_source"] == "active_state_next_action", refresh
         assert LONG_NEXT_ACTION_TAIL in " ".join(refresh["state"]["next_action"]), refresh
         assert count_spend_events(runtime) == 0
 
@@ -590,12 +600,17 @@ def main() -> int:
         assert follow_up["status"] == "state_refreshed", follow_up
         assert follow_up["quota"]["spent_slots"] == 1, follow_up
         assert follow_up["quota"]["allowed_slots"] == 2, follow_up
-        expected_action = "[P1] Run one bounded heartbeat marker and validate the compact result."
-        assert follow_up["recommended_action"] == expected_action, follow_up
+        assert follow_up["recommended_action"] == EXPECTED_AGENT_TODO_ACTION, follow_up
+        assert follow_up["active_state_next_action"].startswith(
+            "Run one bounded heartbeat marker, preserve the wrapped next-action"
+        ), follow_up
+        assert follow_up["latest_run_recommended_action"].startswith(
+            "Run one bounded heartbeat marker, preserve the wrapped next-action"
+        ), follow_up
         interaction = follow_up["interaction_contract"]
-        assert interaction["agent_channel"]["primary_action"] == expected_action, interaction
+        assert interaction["agent_channel"]["primary_action"] == EXPECTED_AGENT_TODO_ACTION, interaction
         assert "state_action_projection_warning" not in follow_up, follow_up
-        assert "agent_action=" + expected_action in follow_up["protocol_action_packet"]["summary"], follow_up
+        assert "agent_action=" + EXPECTED_AGENT_TODO_ACTION in follow_up["protocol_action_packet"]["summary"], follow_up
         assert registry_path.read_text(encoding="utf-8") == registry_before
 
     with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-operator-gate-") as tmp:

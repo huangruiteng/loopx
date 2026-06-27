@@ -22,6 +22,7 @@ from .status import (
     todo_role_for_heading,
 )
 from .todo_contract import (
+    TODO_MONITOR_METADATA_FIELDS,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_USER_GATE,
@@ -64,6 +65,14 @@ TODO_METADATA_FIELDS = (
     "unblocks_todo_id",
     "resume_when",
     "no_followup",
+    "target_key",
+    "cadence",
+    "next_due_at",
+    "last_checked_at",
+    "result_hash",
+    "consecutive_no_change",
+    "material_change",
+    "max_no_change_before_replan",
     "note",
     "evidence",
     "reason",
@@ -917,6 +926,7 @@ def apply_todo_update_to_lines(
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     no_followup: bool | None = None,
+    monitor_metadata: dict[str, Any] | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
     updated_at: str,
@@ -985,6 +995,9 @@ def apply_todo_update_to_lines(
         updates["resume_when"] = resume_when
     if no_followup is not None:
         updates["no_followup"] = no_followup
+    for key, value in (monitor_metadata or {}).items():
+        if key in TODO_MONITOR_METADATA_FIELDS:
+            updates[key] = value
     metadata_line = metadata_line_for_block(block, updates)
     semantic_metadata_changed = todo_metadata_would_change(lines, block, metadata_line)
     if status_changed or text_changed or semantic_metadata_changed:
@@ -1042,6 +1055,7 @@ def update_goal_todo(
     unblocks_todo_id: str | None = None,
     resume_when: str | None = None,
     no_followup: bool | None = None,
+    monitor_metadata: dict[str, Any] | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
     project: Path | None = None,
@@ -1161,6 +1175,7 @@ def update_goal_todo(
             unblocks_todo_id=normalized_unblocks_todo_id,
             resume_when=normalized_resume_when,
             no_followup=no_followup,
+            monitor_metadata=monitor_metadata,
             clear_claim=clear_claim,
             claim_only=claim_only,
             updated_at=updated_at,
