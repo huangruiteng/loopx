@@ -18,6 +18,10 @@ from loopx.status import collect_status
 GOAL_ID = "refresh-state-agent-lane-goal"
 PRIMARY_ACTION = "Run the primary benchmark bootstrap hardening slice."
 SIDE_ACTION = "Polish the hosted frontstage showcase for external developers."
+AUTO_RESEARCH_ACTION = (
+    "[P0-auto-research] Use rollout-backed research_evidence_graph_v0 to generate "
+    "live promotion and retirement candidates."
+)
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
@@ -42,6 +46,9 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         "task_class=advancement_task claimed_by=codex-main-control -->\n"
         f"- [ ] [P1] {SIDE_ACTION}\n"
         "  <!-- loopx:todo todo_id=todo_side status=open "
+        "task_class=advancement_task claimed_by=codex-side-bypass -->\n\n"
+        f"- [ ] {AUTO_RESEARCH_ACTION}\n"
+        "  <!-- loopx:todo todo_id=todo_auto_research status=open "
         "task_class=advancement_task claimed_by=codex-side-bypass -->\n\n"
         "## Next Action\n\n"
         f"- {PRIMARY_ACTION}\n",
@@ -182,6 +189,35 @@ def main() -> None:
             assert unscoped_side_payload["progress_scope"] == "agent_lane", unscoped_side_payload
             assert unscoped_side_payload["agent_id"] == "codex-side-bypass", unscoped_side_payload
             assert unscoped_side_payload["agent_lane_scope_inference"]["todo_id"] == "todo_side"
+            assert (
+                unscoped_side_payload["agent_lane_scope_inference"]["source"]
+                == "referenced_claimed_todo"
+            )
+
+            state_refresh.now_local = lambda: "2026-06-20T00:02:30+00:00"
+            unscoped_text_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="auto_research_rollout_read_path_merged",
+                recommended_action=AUTO_RESEARCH_ACTION,
+                delivery_batch_scale="single_surface",
+                delivery_outcome="outcome_progress",
+                dry_run=False,
+                sync_global=False,
+            )
+            assert unscoped_text_payload["progress_scope"] == "agent_lane", unscoped_text_payload
+            assert unscoped_text_payload["agent_id"] == "codex-side-bypass", unscoped_text_payload
+            assert (
+                unscoped_text_payload["agent_lane_scope_inference"]["source"]
+                == "matched_claimed_todo_text"
+            )
+            assert (
+                unscoped_text_payload["agent_lane_scope_inference"]["todo_id"]
+                == "todo_auto_research"
+            )
 
             primary_review_handoff = (
                 "Primary review todo_primary should inspect the refactor before deeper splits; "
