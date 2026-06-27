@@ -945,14 +945,21 @@ as Codex-ready work: the controller state changed, and the next agent turn
 should inspect the refreshed active state before continuing.
 If the refresh command was run without `--recommended-action`, the compact
 `recommended_action` should be the first public-safe item from the refreshed
-active state's `## Next Action`, including wrapped continuation lines;
-otherwise it falls back to a generic refresh notice.
+active state's `## Next Action`, including wrapped continuation lines; only when
+that durable section is absent should it fall back to the first open Agent Todo,
+and finally to a generic refresh notice. The record includes
+`recommended_action_source` (`explicit_arg`, `active_state_next_action`,
+`agent_todo_fallback`, or `default_refresh_action`) so consumers can distinguish
+run guidance from durable-state projection and last-resort compatibility
+fallback.
 `--recommended-action` describes the appended run record; it does not rewrite
 the active state's durable `## Next Action`. To intentionally change that
 durable route, run `refresh-state --next-action <public-safe action>`. Status
 projections may expose both `active_state_next_action` and
 `latest_run_recommended_action`; when they differ, `next_action_projection_warning`
 marks the drift instead of silently choosing one as the only truth.
+Executable dispatch should use `agent_lane_next_action` / todo projection rather
+than treating shared `## Next Action` as a per-agent work item.
 
 When a refresh is scoped with `--agent-id`, the run records
 `progress_scope=agent_lane`. This is a side-lane note, not a project-level

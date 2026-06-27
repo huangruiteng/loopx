@@ -593,6 +593,11 @@ slice. If the active-state and latest-run actions differ,
 `next_action_projection_warning` asks the executor to explicitly write back the
 intended durable route with `refresh-state --next-action` or keep treating the
 signals as distinct.
+`refresh-state` records `recommended_action_source` so hosts can tell whether a
+run recommendation came from an explicit argument, durable `## Next Action`, an
+Agent Todo compatibility fallback, or the generic default. Dispatch still comes
+from `agent_lane_next_action` / todo projection, not from shared `## Next Action`
+alone.
 When `agent_lane_next_action.selected_by=unclaimed_todo`, the payload marks
 `claim_required_before_work=true`; executors must claim the todo before editing
 or launching delivery work.

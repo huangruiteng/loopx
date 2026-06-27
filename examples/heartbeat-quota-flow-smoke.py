@@ -556,6 +556,7 @@ def main() -> int:
         assert refresh["ok"] is True, refresh
         assert refresh["appended"] is True, refresh
         assert refresh["recommended_action"] == EXPECTED_NEXT_ACTION, refresh
+        assert refresh["recommended_action_source"] == "active_state_next_action", refresh
         assert LONG_NEXT_ACTION_TAIL in " ".join(refresh["state"]["next_action"]), refresh
         assert count_spend_events(runtime) == 0
 
