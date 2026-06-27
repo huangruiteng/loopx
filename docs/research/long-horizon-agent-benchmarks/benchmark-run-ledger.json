@@ -6861,10 +6861,10 @@
             "baseline_failure_scope": "passed",
             "baseline_run_id": "5d3d505e21ca",
             "decision": "paired_treatment_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout",
+            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
             "official_score_delta": null,
             "treatment_failure_scope": "score_missing",
-            "treatment_run_id": "e1ed1c1ff31b"
+            "treatment_run_id": "4b73e2e07137"
           },
           "runs": [
             {
@@ -7791,6 +7791,91 @@
               "round_success_observed": false,
               "run_group_id": "skillsbench-powerlifting-coef-calc-raw-new-goal-start-local-20260627T0812Z",
               "run_id": "e1ed1c1ff31b",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": false,
+                "apt_retry_patch_applied": false,
+                "apt_retry_patch_required": false,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": false,
+                "codex_acp_runtime_tools_patch_applied": false,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-powerlifting-coef-calc-goal-start-local-20260627T1246Z-goalstart/powerlifting-coef-calc__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "powerlifting-coef-calc",
+              "case_ids": [
+                "powerlifting-coef-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+              "failure_labels": [
+                "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+                "skillsbench_host_local_acp_codex_exec_failed",
+                "skillsbench_runner_setup_error",
+                "skillsbench_product_mode_transport_failure"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_powerlifting_coef_calc_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 32,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_score_attempt_countable": false,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 2,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 2,
+                "state_write_count": 6
+              },
+              "recorded_at": "2026-06-27T21:16:06+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 1,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-powerlifting-coef-calc-raw-new-goal-start-local-20260627T0812Z",
+              "run_id": "4b73e2e07137",
               "score_status": "missing",
               "solver_attempt_countable": false,
               "source_event_schema": "benchmark_run_v0",
@@ -9337,7 +9422,7 @@
           ]
         }
       },
-      "run_count": 155
+      "run_count": 156
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -13389,5 +13474,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-27T19:46:43+08:00"
+  "updated_at": "2026-06-27T21:16:06+08:00"
 }
