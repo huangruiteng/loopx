@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-24T21:00:41+08:00`
+- updated_at: `2026-06-27T17:55:18+08:00`
 
 ## Case Decisions
 
@@ -17,7 +17,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | - | `1` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `treatment_loopx_lifecycle_not_observed` | - | `10` |
 | `skillsbench@1.1` | `bike-rebalance` | `paired_baseline_solved_treatment_preserved` | - | - | `3` |
-| `skillsbench@1.1` | `citation-check` | `paired_treatment_regressed` | `main_table_ready` | - | `8` |
+| `skillsbench@1.1` | `citation-check` | `paired_treatment_regressed` | - | - | `10` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `paired_no_score_uplift` | - | - | `4` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_baseline_setup_preflight_selection_required` | - | - | `5` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | - | `9` |
@@ -28,7 +28,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `organize-messy-files` | `paired_treatment_improved` | `main_table_ready` | - | `7` |
 | `skillsbench@1.1` | `paratransit-routing` | `product_mode_pair_incomplete` | `treatment_official_feedback_not_blinded,treatment_reward_feedback_forwarding_not_disabled,treatment_compact_metrics_m...` | - | `10` |
 | `skillsbench@1.1` | `pddl-airport-planning` | `paired_no_score_uplift` | - | - | `9` |
-| `skillsbench@1.1` | `powerlifting-coef-calc` | `product_mode_pair_incomplete` | `treatment_loopx_lifecycle_not_observed` | - | `11` |
+| `skillsbench@1.1` | `powerlifting-coef-calc` | `paired_treatment_runner_or_setup_repair_required` | - | - | `13` |
 | `skillsbench@1.1` | `react-performance-debugging` | `paired_baseline_runner_or_setup_repair_required` | - | - | `5` |
 | `skillsbench@1.1` | `setup-fuzzing-py` | `baseline_runner_or_setup_repair_required` | - | - | `3` |
 | `skillsbench@1.1` | `software-dependency-audit` | `paired_no_score_uplift` | - | - | `6` |
@@ -115,6 +115,8 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `` | `1.0` | `8` | `1:missing,2:missing,3:missing,4:missing,5:missing,6:missing,7:missing,8:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-citation-check-canonical-lifecycle-20260622T214741Z-test/citation-check__loopx_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `missing` | `` | `1:missing` | `skillsbench_acp_agent_message_only_no_tool_calls` | `cloud-ecs/skillsbench-citation-check-f737-canonical-20260624T044923Z/jobs/skillsbench-citation-check-f737-canonical-20260624T044923Z-treatment/citation-check__loopx_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `0.0` | `` | `1:0` | `official_verifier_solution_failure` | `` |
+| `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0` | `official_score_zero_case_failure` | `` |
+| `skillsbench@1.1` | `citation-check` | `skillsbench_raw_codex_autonomous_max5_baseline` | `case_attempt` | `1.0` | `1` | `1:1*` | `none` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `loopx_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-baseline-v0/civ6-adjacency-optimizer__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
@@ -203,6 +205,8 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `powerlifting-coef-calc` | `codex_loopx_treatment` | `` | `missing` | `` | `1:missing` | `skillsbench_runner_error` | `.local/private-benchmark-jobs/skillsbench-canonical-powerlifting-test-20260623T025759/skillsbench-canonical-powerlifting-test-20260623T025759/powerlifting-coef-calc__loopx_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `powerlifting-coef-calc` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `1.0` | `` | `1:missing` | `none` | `.local/private-benchmark-jobs/skillsbench-powerlifting-coef-calc-canonical-lifecycle-20260622T221910Z-base/powerlifting-coef-calc__raw_codex_autonomous_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `powerlifting-coef-calc` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:missing,2:missing,3:missing,4:missing,5:missing,6:missing,7:missing,8:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-powerlifting-coef-calc-canonical-lifecycle-20260622T221910Z-test/powerlifting-coef-calc__loopx_product_mode/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `powerlifting-coef-calc` | `skillsbench_raw_codex_autonomous_max5_baseline` | `case_attempt` | `1.0` | `1` | `1:1*` | `none` | `` |
+| `skillsbench@1.1` | `powerlifting-coef-calc` | `codex_loopx_treatment` | `` | `missing` | `` | `` | `skillsbench_host_local_acp_codex_exec_failed_codex_exec_first_action_timeout` | `` |
 | `skillsbench@1.1` | `react-performance-debugging` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `result.json` |
 | `skillsbench@1.1` | `react-performance-debugging` | `loopx_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `react-performance-debugging` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-react-performance-debugging-blind-baseline-v0/react-performance-debugging__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
