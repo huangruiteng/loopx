@@ -365,22 +365,23 @@ heavy, and which user gates or handoffs still disappeared from view.
 
 ## Core Workflows
 
-After a project is connected, the daily loop is intentionally small:
-
-```bash
-loopx status
-loopx history --goal-id your-project-goal
-loopx quota should-run --goal-id your-project-goal
-```
-
-Users should not need to diagnose LoopX by hand. Ask your agent to run
-the diagnostic packet and reason from it:
+After a project is connected, LoopX should feel like a small operator checklist,
+not a second job. Start by asking your agent to diagnose the loop instead of
+debugging the control plane by hand:
 
 ```text
 Diagnose LoopX for this project end to end. Do not ask me to run shell
 commands. Run loopx diagnose, tell me whether the project can
 self-drive, what blocks it, the exact user/controller question if one exists,
 and what you will do next.
+```
+
+For manual inspection, start with:
+
+```bash
+loopx status
+loopx history --goal-id your-project-goal
+loopx quota should-run --goal-id your-project-goal
 ```
 
 Common operator actions:
@@ -392,11 +393,12 @@ loopx refresh-state --goal-id your-project-goal
 ```
 
 Domain-specific helpers such as `issue-fix`, `content-ops`,
-`value-connectors`, `ml-experiment`, and `lark-kanban` are dry-run or advisory
-by default unless an explicit execute flag or external permission is present.
+`value-connectors`, `ml-experiment`, `benchmark`, and `lark-kanban` are dry-run,
+projection, or advisory lanes by default unless an explicit execute flag or
+external permission is present.
 
-Automatic turns should check quota before work and spend exactly once after
-validated writeback:
+Automatic turns should use the thin heartbeat prompt and treat quota as the
+source of truth:
 
 ```bash
 loopx quota should-run --goal-id your-project-goal
@@ -404,33 +406,24 @@ loopx heartbeat-prompt --thin --goal-id your-project-goal
 loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
 ```
 
-The `next_automatic_turn` reported by `quota plan` is only an advisory
-scheduling hint: it chooses the highest-compute eligible goal. operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked goals stay out of the eligible lane. When a control-plane repair is explicitly enabled,
-`control_plane.self_repair.enabled=true` lets `quota should-run` return a
-bounded `decision=self_repair` contract instead of normal delivery; missing
-policy defaults off.
+Three rules matter in daily use:
 
-If quota returns a `gate_prompt` or `operator_question`, the target heartbeat
-should proactively ask that concrete user/controller gate. If open user todos
-are projected, do not call the turn "no new user action" while they remain open;
-even during safe bypass, its report still has to list existing open user todos.
-When `notify_user_on_open_todo=true`, skip delivery work and quota spend for
-that blocker-push turn. With `safe_bypass_allowed=true`, the heartbeat may
-still do one bounded read-only steering or analysis step. See
-`docs/quota-allocation.md` for the full allocation contract.
+- surface concrete user gates instead of summarizing them as "waiting for
+  owner";
+- safe fallback work may continue, but it must not bypass the gate;
+- append spend only after a validated writeback, not for quiet skips,
+  preflights, or dry-run previews.
 
-After an automatic turn actually spends delivery compute, append one spend
-event. Do not append spend for quiet `should_run=false` skips, preflight
-failures, or pure dry-run previews.
-
-The dashboard is optional and local:
+Optional surfaces such as the local dashboard, Lark Kanban, and domain helpers
+should make the loop easier to inspect, but LoopX remains the source of truth:
 
 ```bash
 loopx serve-status --global-registry --port 8766 --limit 80
 cd ~/loopx/apps/dashboard && npm install && npm run dev
 ```
 
-Before publishing docs or examples, keep the public/private boundary explicit:
+Before publishing public docs or examples, keep the public/private boundary
+explicit:
 
 ```bash
 loopx check \
@@ -442,7 +435,8 @@ loopx check \
 More detail lives in [Getting Started](docs/guides/getting-started.md);
 contracts live in [Status Data](docs/status-data-contract.md),
 [Quota Allocation](docs/quota-allocation.md), and
-[Public/Private Boundary](docs/public-private-boundary.md).
+[Public/Private Boundary](docs/public-private-boundary.md). For the local UI,
+see the [dashboard guide](apps/dashboard/README.md).
 
 ## Product Vision
 
