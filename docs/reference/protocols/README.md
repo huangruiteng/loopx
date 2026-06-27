@@ -22,6 +22,7 @@ Current contracts:
 - [pr_review_command_v0](pr-review-command-v0.md)
 - [event_sourced_state_contract_v0](event-sourced-state-contract-v0.md)
 - [active_state_structured_projection_v0](active-state-structured-projection-v0.md)
+- [local_state_write_correctness_v0](local-state-write-correctness-v0.md)
 - [rollback_packet_v0](rollback-packet-v0.md)
 - [content_ops_surface_v0](content-ops-surface-v0.md)
 - [x_public_channel_ops_v0](x-public-channel-ops-v0.md)
