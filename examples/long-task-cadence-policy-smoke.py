@@ -4,10 +4,18 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.long_task_cadence import (  # noqa: E402
+    LONG_TASK_CADENCE_SCHEMA_VERSION,
+    build_long_task_cadence_policy,
+)
+
 POLICY_PATH = REPO_ROOT / "docs/long-task-cadence-policy.md"
 DOCS_INDEX = REPO_ROOT / "docs/README.md"
 GETTING_STARTED = REPO_ROOT / "docs/guides/getting-started.md"
@@ -41,6 +49,75 @@ def extract_json_block(text: str) -> dict:
     body_start = text.index("\n", start) + 1
     end = text.index("```", body_start)
     return json.loads(text[body_start:end])
+
+
+def assert_runtime_projection() -> None:
+    recent_runs = [
+        {
+            "generated_at": "2026-06-26T00:02:00Z",
+            "delivery_batch_scale": "single_surface",
+            "delivery_outcome": "surface_only",
+            "delivery_turn_kind": "contract_only_preparation",
+            "duration_s": 660,
+        },
+        {
+            "generated_at": "2026-06-26T00:01:00Z",
+            "delivery_batch_scale": "single_surface",
+            "delivery_outcome": "surface_only",
+            "delivery_turn_kind": "contract_only_preparation",
+            "duration_s": 300,
+        },
+    ]
+    cadence = build_long_task_cadence_policy(
+        latest_runs=recent_runs,
+        quota_state="eligible",
+        user_todo_open_count=1,
+    )
+    assert cadence["schema_version"] == LONG_TASK_CADENCE_SCHEMA_VERSION, cadence
+    assert cadence["cadence_preset"] == "long", cadence
+    assert cadence["preset_source"] == "connected_autonomous_default", cadence
+    assert cadence["turn_duration_minutes"] == 11, cadence
+    assert cadence["progress_granularity"] == "single_surface", cadence
+    assert cadence["small_step_streak"] == 2, cadence
+    assert cadence["too_small_heartbeat_batch"] is True, cadence
+    assert cadence["widen_next_turn"] is True, cadence
+    assert cadence["blocked_priority_fallback_visible"] is True, cadence
+
+    gated = build_long_task_cadence_policy(
+        latest_runs=recent_runs,
+        quota_state="operator_gate",
+        user_todo_open_count=1,
+    )
+    assert gated["too_small_heartbeat_batch"] is True, gated
+    assert gated["widen_next_turn"] is False, gated
+
+    custom_profile = {
+        "cadence": "short",
+        "degradation_policy": {"small_scale_streak_threshold": 3},
+    }
+    below_threshold = build_long_task_cadence_policy(
+        execution_profile=custom_profile,
+        latest_runs=recent_runs,
+        quota_state="eligible",
+    )
+    assert below_threshold["cadence_preset"] == "short", below_threshold
+    assert below_threshold["preset_source"] == "execution_profile.cadence", below_threshold
+    assert below_threshold["too_small_heartbeat_batch"] is False, below_threshold
+    assert below_threshold["recommended_batch_granularity"] == "single_surface", below_threshold
+
+    progress = build_long_task_cadence_policy(
+        latest_runs=[
+            {
+                "delivery_batch_scale": "implementation",
+                "delivery_outcome": "primary_goal_outcome",
+                "delivery_turn_kind": "product_path_execution",
+            }
+        ],
+        quota_state="eligible",
+    )
+    assert progress["progress_granularity"] == "milestone", progress
+    assert progress["small_step_streak"] == 0, progress
+    assert progress["widen_next_turn"] is False, progress
 
 
 def main() -> int:
@@ -96,6 +173,7 @@ def main() -> int:
     assert_contains(getting_started, "Long-task cadence policy", "getting started")
     assert_contains(interaction, "IP-010 Cadence Widening", "interaction pattern")
     assert_contains(interaction, "small-step streak", "interaction pattern")
+    assert_runtime_projection()
 
     print("long-task-cadence-policy-smoke ok")
     return 0
