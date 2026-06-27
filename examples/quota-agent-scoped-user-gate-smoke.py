@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test user gates scoped to a specific agent via blocks_agent."""
+"""Smoke-test agent-scoped user gates and exact gate-to-todo dependencies."""
 
 from __future__ import annotations
 
@@ -376,9 +376,20 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
         claimed_by="codex-main-control",
         action_kind="benchmark_run",
     )
+    external_publish_monitor = todo_item(
+        todo_id="todo_x_launch_monitor",
+        text=(
+            "[P0-revenue monitor] Monitor corrected X launch timing; surface an "
+            "exact publish gate, but do not post automatically."
+        ),
+        task_class="continuous_monitor",
+        claimed_by="codex-main-control",
+        action_kind="corrected_x_launch_timing_monitor",
+    )
     agent_items = [blocked_benchmark]
     if include_fallback:
         agent_items.append(independent_benchmark)
+    agent_items.append(external_publish_monitor)
     return {
         "ok": True,
         "goal_count": 1,
@@ -446,6 +457,12 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     selected = fallback["selected_executable"]
     assert selected["todo_id"] == "todo_benchmark_ledger_cleanup", fallback
     assert selected["todo_gate_relation"]["state"] == "independent", selected
+    monitor_ids = {
+        item["todo_id"]
+        for item in payload["agent_todo_summary"]["first_open_items"]
+        if item.get("task_class") == "continuous_monitor"
+    }
+    assert "todo_x_launch_monitor" in monitor_ids, payload["agent_todo_summary"]
 
     blocked_payload = build_quota_should_run(
         exact_todo_gate_status_payload(include_fallback=False),
@@ -455,6 +472,12 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     assert blocked_payload["should_run"] is False, blocked_payload
     assert blocked_payload["interaction_contract"]["mode"] == "user_gate", blocked_payload
     assert "scoped_user_gate_fallback" not in blocked_payload, blocked_payload
+    blocked_monitor_ids = {
+        item["todo_id"]
+        for item in blocked_payload["agent_todo_summary"]["first_open_items"]
+        if item.get("task_class") == "continuous_monitor"
+    }
+    assert "todo_x_launch_monitor" in blocked_monitor_ids, blocked_payload["agent_todo_summary"]
 
 
 def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
