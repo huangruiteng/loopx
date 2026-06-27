@@ -34,6 +34,10 @@ from .execution_profile import (
 from .long_task_cadence import long_task_cadence_hint_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .policies.scheduler_hint import build_scheduler_hint
+from .policies.work_lane import (
+    WORK_LANE_CONTRACT_SCHEMA_VERSION,
+    build_work_lane_contract as build_work_lane_contract_policy,
+)
 from .state_projection import is_user_wait_text, next_action_projection_warning
 from .todo_contract import (
     TODO_STATUS_DEFERRED,
@@ -144,7 +148,6 @@ DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
     "dependency_observation",
     "dependency_monitor",
 )
-WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v1"
 EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_obligation_v0"
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
@@ -532,11 +535,11 @@ def _work_lane_contract(
     progress_scope = _item_progress_scope(item)
     external_poll_signal = _external_evidence_poll_signal(item, agent_todo_summary=agent_todo_summary)
     todo_counts = _open_todo_task_counts(agent_todo_summary)
-    has_agent_todos = todo_counts["open"] > 0
-    has_advancement_todos = todo_counts["advancement"] > 0
-    has_monitor_todos = todo_counts["monitor"] > 0
-    monitor_only_todos = has_agent_todos and has_monitor_todos and not has_advancement_todos
     due_monitor_items = _todo_summary_monitor_due_items(agent_todo_summary)
+    due_monitor_count = _todo_summary_monitor_due_count(
+        agent_todo_summary,
+        due_items=due_monitor_items,
+    )
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None
     first_advancement = _first_executable_todo_item(agent_todo_summary)
     due_monitor_preempts_advancement = bool(
@@ -546,160 +549,18 @@ def _work_lane_contract(
             or _todo_priority_rank(first_due_monitor) < _todo_priority_rank(first_advancement)
         )
     )
-
-    def due_monitor_contract(*, reason_codes: list[str]) -> dict[str, Any]:
-        due_count = _todo_summary_monitor_due_count(
-            agent_todo_summary,
-            due_items=due_monitor_items,
-        )
-        selected = first_due_monitor or {}
-        return {
-            "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-            "lane": "continuous_monitor",
-            "monitor_kind": "todo_monitor_due",
-            "next_lane": "advancement_task" if has_advancement_todos else "continuous_monitor",
-            "obligation": "attempt_due_monitor",
-            "must_attempt_work": True,
-            "reason_codes": reason_codes,
-            "monitor_policy": "attempt_due_monitor_once_then_writeback_or_no_spend_if_unchanged",
-            "monitor_due_count": due_count,
-            "monitor_due_items": due_monitor_items[:MONITOR_DUE_ITEM_LIMIT],
-            "selected_todo_id": selected.get("todo_id"),
-            "selected_next_due_at": selected.get("next_due_at"),
-            "action": (
-                "attempt the selected due continuous_monitor todo; write back only a "
-                "material transition, blocker, or compact reschedule/no-change note"
-            ),
-        }
-
-    if progress_scope != "dependency_observation":
-        if has_advancement_todos and due_monitor_preempts_advancement:
-            return due_monitor_contract(
-                reason_codes=["monitor_due", "due_monitor_priority_preempts_advancement"]
-            )
-        if has_advancement_todos:
-            outcome_followthrough = _outcome_followthrough_hint(item)
-            reason_codes = ["open_agent_todo"]
-            if first_due_monitor:
-                reason_codes.append("due_monitor_context")
-            if external_poll_signal:
-                reason_codes.append("external_monitor_context")
-            if outcome_followthrough:
-                reason_codes.append("outcome_followthrough_required")
-            obligation = (
-                "advance_primary_outcome_or_write_blocker"
-                if outcome_followthrough
-                else "advance_one_bounded_segment"
-            )
-            action = (
-                "advance the first executable agent todo to product-path evidence, "
-                "benchmark/case evidence, or a precise blocker; do not spend for "
-                "another contract-only preparation layer"
-                if outcome_followthrough
-                else (
-                    "advance the first executable agent todo or write a concrete blocker; "
-                    "treat monitor todos as auxiliary observation context"
-                )
-            )
-            contract = {
-                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                "lane": "advancement_task",
-                "next_lane": "advancement_task",
-                "obligation": obligation,
-                "must_attempt_work": True,
-                "reason_codes": reason_codes,
-                "monitor_policy": "material_transition_only",
-                "action": action,
-            }
-            if outcome_followthrough:
-                contract["outcome_followthrough"] = outcome_followthrough
-            return contract
-        if external_poll_signal:
-            return {
-                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                "lane": "continuous_monitor",
-                "monitor_kind": "external_evidence",
-                "next_lane": "continuous_monitor",
-                "obligation": "observe_external_evidence_or_blocker",
-                "must_attempt_work": True,
-                "reason_codes": ["external_evidence_poll_signal"],
-                "monitor_policy": "read_only_observation_then_no_spend_if_unchanged",
-                "action": (
-                    "verify the observable external result handle; if it is absent, "
-                    "write a compact blocker instead of rerunning launched work"
-                ),
-            }
-        if monitor_only_todos:
-            if first_due_monitor:
-                return due_monitor_contract(
-                    reason_codes=["monitor_todo_only", "monitor_due"]
-                )
-            if _next_action_requires_advancement(item):
-                return {
-                    "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                    "lane": "advancement_task",
-                    "next_lane": "advancement_task",
-                    "obligation": "materialize_advancement_todo_or_blocker",
-                    "must_attempt_work": True,
-                    "reason_codes": ["monitor_todo_only", "next_action_requires_advancement"],
-                    "monitor_policy": "material_transition_only",
-                    "action": (
-                        "materialize the planning/self-repair advancement todo or write a concrete blocker"
-                    ),
-                }
-            return {
-                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                "lane": "continuous_monitor",
-                "monitor_kind": "todo_monitor",
-                "next_lane": "continuous_monitor",
-                "obligation": "quiet_until_material_monitor_transition",
-                "must_attempt_work": False,
-                "reason_codes": ["monitor_todo_only"],
-                "monitor_policy": "write_once_per_material_transition_else_no_spend",
-                "material_transition": (
-                    "a monitor todo may write back only material state transitions, regressions, or concrete blockers"
-                ),
-                "action": "wait quietly for material monitor evidence",
-            }
-        return None
-
-    reason_codes = ["dependency_observation"]
-    if has_advancement_todos:
-        reason_codes.append("open_agent_todo")
-        if due_monitor_preempts_advancement:
-            reason_codes.append("due_monitor_priority_preempts_advancement")
-    elif monitor_only_todos:
-        reason_codes.append("monitor_todo_only")
-        if first_due_monitor:
-            reason_codes.append("monitor_due")
-    else:
-        reason_codes.append("no_open_agent_todo")
-    if due_monitor_preempts_advancement:
-        return due_monitor_contract(reason_codes=reason_codes)
-    return {
-        "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-        "lane": "continuous_monitor",
-        "monitor_kind": "dependency_observation",
-        "next_lane": "advancement_task" if has_advancement_todos else "continuous_monitor",
-        "obligation": (
-            "advance_unless_material_monitor_transition"
-            if has_advancement_todos
-            else "attempt_due_monitor"
-            if first_due_monitor
-            else "quiet_until_material_monitor_transition"
-        ),
-        "must_attempt_work": has_advancement_todos or bool(first_due_monitor),
-        "reason_codes": reason_codes,
-        "monitor_policy": "write_once_per_material_transition_else_no_spend",
-        "material_transition": (
-            "a dependency-state transition may be written back once when it changes the selected goal decision"
-        ),
-        "action": (
-            "advance the first executable agent todo or write a concrete blocker"
-            if has_advancement_todos
-            else "wait quietly for new external evidence"
-        ),
-    }
+    return build_work_lane_contract_policy(
+        progress_scope=progress_scope,
+        external_poll_signal=external_poll_signal,
+        todo_counts=todo_counts,
+        monitor_due_count=due_monitor_count,
+        due_monitor_items=due_monitor_items,
+        first_advancement=first_advancement,
+        due_monitor_preempts_advancement=due_monitor_preempts_advancement,
+        outcome_followthrough=_outcome_followthrough_hint(item),
+        next_action_requires_advancement=_next_action_requires_advancement(item),
+        monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
+    )
 
 
 def _external_evidence_observation_obligation(
