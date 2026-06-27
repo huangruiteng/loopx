@@ -14,6 +14,11 @@ For concrete recurring situations, maintain
 defines actor boundaries and stores; the pattern catalog records good cases,
 bad cases, expected user/agent channels, and validation references.
 
+The compact product graph for this relationship lives in
+[`docs/product/core-control-plane/`](product/core-control-plane/). It keeps the
+interaction catalog lens, state definitions, and state machine together so new
+patterns can be refined without creating a second control-plane vocabulary.
+
 ## Actors
 
 ### Goal
