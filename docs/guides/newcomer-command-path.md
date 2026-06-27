@@ -40,11 +40,28 @@ The command pack is a bridge from manual shell setup back to the agent surface:
 paste the generated instruction into Codex, Claude Code, or another compatible
 agent that can run shell commands from the project root.
 
+## Multi-Project Manager Commands
+
+Keep these out of the first two commands, but do show them once a user has more
+than one LoopX project or agent lane:
+
+| Need | Use |
+| --- | --- |
+| See the cross-project progress digest. | `/loopx-global-summary` |
+| See only user or owner gates. | `/loopx-global-gates` |
+| See runnable project-agent work. | `/loopx-global-todos` |
+| See risks and blocked lanes. | `/loopx-global-risks` |
+
+These are manager views. They should summarize and route work across projects;
+they should not replace `/loopx <goal>` as the way to start useful work inside
+one repository.
+
 ## When To Use More Commands
 
 | If you are trying to... | Use this surface first | Only then reach for... |
 | --- | --- | --- |
 | Start work on a goal | `/loopx <goal text>` | `loopx bootstrap-command-pack --goal-text ...` when manually bootstrapping an agent. |
+| Understand several LoopX projects at once | `/loopx-global-summary` | `/loopx-global-gates`, `/loopx-global-todos`, or `/loopx-global-risks` when you need a focused manager view. |
 | Understand why work is paused | `/loopx` | `loopx diagnose --goal-id <goal-id>` when the agent needs a deeper evidence packet. |
 | Review a handoff or gate | The agent's LoopX status summary | `loopx review-packet --goal-id <goal-id>` for a copyable operator packet. |
 | Operate recurring work | Codex App heartbeat or visible Codex CLI goal | `loopx heartbeat-prompt --thin --goal-id <goal-id>` when installing or repairing the loop. |
