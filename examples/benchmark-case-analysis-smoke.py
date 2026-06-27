@@ -69,9 +69,9 @@ def test_case_analysis_json() -> None:
     assert trajectory_coverage["schema_version"] == (
         "trajectory_public_summary_coverage_v0"
     ), trajectory_coverage
-    assert trajectory_coverage["summary_count"] == 3, trajectory_coverage
-    assert trajectory_coverage["public_safe_count"] == 3, trajectory_coverage
-    assert trajectory_coverage["attribution_conclusion_count"] == 3, (
+    assert trajectory_coverage["summary_count"] == 5, trajectory_coverage
+    assert trajectory_coverage["public_safe_count"] == 5, trajectory_coverage
+    assert trajectory_coverage["attribution_conclusion_count"] == 5, (
         trajectory_coverage
     )
     coverage_rows = {
@@ -83,6 +83,31 @@ def test_case_analysis_json() -> None:
         "citation-check",
         "post_stop_policy_raw_rerun.trajectory_public_summary",
     ) in coverage_rows, trajectory_coverage
+    assert (
+        "skillsbench@1.1",
+        "3d-scan-calc",
+        (
+            "historical_final_only_lifecycle_trajectory_summaries"
+            ".baseline.trajectory_public_summary"
+        ),
+    ) in coverage_rows, trajectory_coverage
+    scan_treatment_trajectory = coverage_rows[
+        (
+            "skillsbench@1.1",
+            "3d-scan-calc",
+            (
+                "historical_final_only_lifecycle_trajectory_summaries"
+                ".treatment.trajectory_public_summary"
+            ),
+        )
+    ]
+    assert scan_treatment_trajectory["round_count"] == 8, scan_treatment_trajectory
+    assert scan_treatment_trajectory["tool_call_count"] == 138, (
+        scan_treatment_trajectory
+    )
+    assert scan_treatment_trajectory["loopx_cli_call_count"] == 73, (
+        scan_treatment_trajectory
+    )
     assert (
         "skillsbench@1.1",
         "debug-trl-grpo",
@@ -1245,6 +1270,8 @@ def test_case_analysis_markdown() -> None:
     assert "legacy_blind_loop_positive_result.trajectory_public_summary" in text, text
     assert "post_stop_policy_raw_rerun.trajectory_public_summary" in text, text
     assert "`citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary`" in text, text
+    assert "historical_final_only_lifecycle_trajectory_summaries" in text, text
+    assert "`3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.treatment.trajectory_public_summary`" in text, text
     assert "`debug-trl-grpo` | `trajectory_public_summary`" in text, text
     assert "current-protocol success-preservation guards" in text, text
     assert "cobol-modernization" in text, text

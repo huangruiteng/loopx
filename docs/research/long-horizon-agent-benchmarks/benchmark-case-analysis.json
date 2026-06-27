@@ -2062,6 +2062,102 @@
         "soft_verifier_timeout_sec": 180,
         "interpretation": "Canonical product-mode every-round rerun is a good driver proof and non-regression guard: both arms reached official 1.0 in round 1, the treatment produced full LoopX lifecycle closeout counters, and the controller stopped early on the private reward observation without forwarding reward, pass/fail, or verifier output to the agent.",
         "why_not_uplift": "Baseline also solved in round 1, so the pair proves treatment preservation and lifecycle correctness rather than score uplift."
+      },
+      "historical_final_only_lifecycle_trajectory_summaries": {
+        "schema_version": "skillsbench_final_only_lifecycle_trajectory_pair_v0",
+        "evidence_status": "public_controller_trace_counts_only_no_raw_task_text_no_verifier_output_no_local_paths",
+        "why_historical": "This pair predates the later every-round product-mode recheck. Use it for overhead and lifecycle-depth-gap diagnosis, not as the current stop-policy proof.",
+        "baseline": {
+          "route": "raw-codex-autonomous-max5",
+          "official_score": 1.0,
+          "official_feedback_blinded": true,
+          "reward_feedback_forwarded": false,
+          "case_semantics_changed_by_harness": false,
+          "trajectory_public_summary": {
+            "schema_version": "skillsbench_acp_trajectory_summary_v0",
+            "attribution_conclusion": "Historical final-only canonical lifecycle baseline solved 3d-scan-calc at official 1.0 after one agent round with 7 tool calls and no LoopX CLI calls; this confirms the case is baseline-solved rather than uplift evidence.",
+            "private_trajectory_present": true,
+            "raw_text_copied_to_public": false,
+            "raw_task_text_copied_to_public": false,
+            "raw_verifier_output_copied_to_public": false,
+            "host_path_recorded": false,
+            "round_count": 1,
+            "tool_call_count": 7,
+            "loopx_cli_call_count": 0,
+            "loopx_cli_calls": [],
+            "loopx_cli_state_usage_counts": {},
+            "loopx_cli_state_read_count": 0,
+            "loopx_cli_state_write_count": 0,
+            "loopx_case_state_read_count": 0,
+            "loopx_case_state_write_count": 0,
+            "trajectory_action_category_counts": {
+              "execution": 3,
+              "inspection": 3,
+              "tool_other": 1
+            },
+            "protected_path_edit_signal_count": 0,
+            "protected_path_mention_count": 0,
+            "codex_acp_text_present": false,
+            "codex_acp_text_bytes": 0,
+            "source_compact_run": {
+              "case_id": "3d-scan-calc",
+              "route": "raw-codex-autonomous-max5",
+              "official_score": 1.0,
+              "score_failure_attribution": "none",
+              "official_feedback_blinded": true,
+              "reward_feedback_forwarded": false,
+              "case_semantics_changed_by_harness": false
+            }
+          }
+        },
+        "treatment": {
+          "route": "loopx-product-mode",
+          "official_score": 1.0,
+          "official_feedback_blinded": true,
+          "reward_feedback_forwarded": false,
+          "case_semantics_changed_by_harness": true,
+          "trajectory_public_summary": {
+            "schema_version": "skillsbench_acp_trajectory_summary_v0",
+            "attribution_conclusion": "Historical final-only product-mode treatment also reached official 1.0, but only in round 8 with 138 tool calls and 73 LoopX CLI calls; this is success preservation with substantial overhead and a lifecycle-depth-gap signal, superseded for current stop-policy claims by the later every-round recheck.",
+            "private_trajectory_present": true,
+            "raw_text_copied_to_public": false,
+            "raw_task_text_copied_to_public": false,
+            "raw_verifier_output_copied_to_public": false,
+            "host_path_recorded": false,
+            "round_count": 8,
+            "tool_call_count": 138,
+            "loopx_cli_call_count": 73,
+            "loopx_cli_calls": [],
+            "loopx_cli_state_usage_counts": {
+              "other": 2,
+              "state_read": 28,
+              "state_write": 43
+            },
+            "loopx_cli_state_read_count": 28,
+            "loopx_cli_state_write_count": 43,
+            "loopx_case_state_read_count": 0,
+            "loopx_case_state_write_count": 0,
+            "trajectory_action_category_counts": {
+              "execution": 21,
+              "inspection": 42,
+              "loopx_cli": 73,
+              "tool_other": 2
+            },
+            "protected_path_edit_signal_count": 0,
+            "protected_path_mention_count": 0,
+            "codex_acp_text_present": false,
+            "codex_acp_text_bytes": 0,
+            "source_compact_run": {
+              "case_id": "3d-scan-calc",
+              "route": "loopx-product-mode",
+              "official_score": 1.0,
+              "score_failure_attribution": "none",
+              "official_feedback_blinded": true,
+              "reward_feedback_forwarded": false,
+              "case_semantics_changed_by_harness": true
+            }
+          }
+        }
       }
     },
     {

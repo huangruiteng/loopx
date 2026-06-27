@@ -67,11 +67,13 @@ public counters; absence from this table means the durable case record does
 not yet contain a public trajectory summary.
 
 - schema_version: `trajectory_public_summary_coverage_v0`
-- summary_count: `3`
-- attribution_conclusion_count: `3`
+- summary_count: `5`
+- attribution_conclusion_count: `5`
 
 | Benchmark | Case | Summary | Rounds | Tools | LoopX CLI | Protected Edits | Attribution |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.baseline.trajectory_public_summary` (public-safe) | `1` | `7` | `0` | `0` | `yes` |
+| `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.treatment.trajectory_public_summary` (public-safe) | `8` | `138` | `73` | `0` | `yes` |
 | `skillsbench@1.1` | `citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary` (public-safe) | `1` | `26` | `0` | `0` | `yes` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `5` | `112` | `0` | `2` | `yes` |
 | `skillsbench@1.1` | `paratransit-routing` | `legacy_blind_loop_positive_result.trajectory_public_summary` (public-safe) | `1` | `16` | `0` | `0` | `yes` |
@@ -85,11 +87,13 @@ benchmark case records that expose the same public fields. They do not read
 or copy raw trajectories, task text, verifier output, logs, or local paths.
 
 - schema_version: `harness_interaction_public_summary_coverage_v0`
-- summary_count: `12`
+- summary_count: `14`
 - benchmark_ids: `skillsbench@1.1, swe-marathon, terminal-bench@2.0`
 
 | Benchmark | Case | Source | Kind | LoopX CLI | Rounds | Tools | Events | Controller Trace | Lifecycle |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.baseline.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `7` | `7` | `no` | `no` |
+| `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.treatment.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `73` | `8` | `138` | `211` | `no` | `no` |
 | `skillsbench@1.1` | `citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `26` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `5` | `112` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `0` | `0` | `0` | `yes` | `no` |
@@ -1595,6 +1599,14 @@ Canonical product-mode every-round recheck:
   calls `2`, todo closeout calls `6`
 - host-local ACP Codex exec preflight: `passed`
 
+Historical final-only lifecycle trajectory summary:
+
+- baseline summary: `1` round, `7` tool calls, `0` LoopX CLI calls
+- treatment summary: `8` rounds, `138` tool calls, `73` LoopX CLI calls
+- treatment LoopX CLI state usage: `28` reads, `43` writes, `2` other
+- case-local state access in that historical public trace: `0` reads, `0`
+  writes
+
 Interpretation:
 
 The old record said the case was solvable by baseline, but it did not answer
@@ -1613,6 +1625,12 @@ an 8-round budget but stopped after round 1 because the private verifier
 observed reward `1.0`; the reward/pass/fail/verifier output was not forwarded
 to the agent. In treatment, the full case-local lifecycle was visible through
 state read/write, refresh, spend, and todo-closeout counters.
+
+The historical final-only lifecycle trace is kept only as overhead and
+lifecycle-depth-gap evidence. It predates the every-round recheck, and it shows
+that the older product-mode treatment preserved final official success but
+needed all `8` rounds and substantial LoopX CLI activity. It should not be used
+as the current stop-policy proof.
 
 Why it matters:
 
