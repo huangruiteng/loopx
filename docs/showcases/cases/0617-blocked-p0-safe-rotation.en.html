@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LoopX Showcase: 动态 workflow：硬件 Agent 开发</title>
+  <title>LoopX Showcase: Blocked P0 with safe P1/P2 rotation</title>
   <link rel="icon" href="data:,">
   <style>
     :root {
@@ -291,12 +291,12 @@
 
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="../index.html"><span class="brand-mark">LX</span><span>LoopX Showcases</span></a>
+        <a class="brand" href="../index.en.html"><span class="brand-mark">LX</span><span>LoopX Showcases</span></a>
         <nav aria-label="Showcase navigation">
-          <a href="../index.html#cases">案例</a>
+          <a href="../index.en.html#cases">Cases</a>
           <a href="../README.md">README</a>
           <a href="../showcase-catalog.json">Catalog</a>
-          <a href="0619-dynamic-workflow-hardware-agent.en.html">English</a>
+          <a href="0617-blocked-p0-safe-rotation.html">中文</a>
         </nav>
       </div>
     </header>
@@ -304,77 +304,78 @@
     <main>
       <section class="hero">
         <div>
-          <p class="eyebrow">2026-06-19 / 交互案例</p>
-          <h1>动态 workflow：硬件 Agent 开发</h1>
-          <p class="hero-copy">当多个 worker agent 参与一个模糊的长跑工程目标时，需要共享控制面来保持收敛。</p>
+          <p class="eyebrow">2026-06-17 / Reproducible demo</p>
+          <h1>Blocked P0 with safe P1/P2 rotation</h1>
+          <p class="hero-copy">A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.</p>
           <div class="meta-row">
-            <span class="status-pill">hardware-agent-development</span>
+            <span class="status-pill">benchmark-rotation</span>
 
-            <span>interactive-html</span><span>multi-agent</span><span>hardware</span>
+            <span>reproducible</span><span>user-gate</span><span>fallback</span>
           </div>
           <div class="hero-actions">
-            <a class="link-button primary" href="#story">故事</a>
-            <a class="link-button secondary" href="#boundary">边界</a>
+            <a class="link-button primary" href="#story">Story</a>
+            <a class="link-button secondary" href="#boundary">Boundary</a>
           </div>
         </div>
 
     <figure class="control-graph" aria-label="LoopX control-plane diagram">
       <svg viewBox="0 0 920 520" role="img">
-        <title>Dynamic workflow for hardware-agent development</title>
+        <title>Blocked P0 with safe P1/P2 rotation</title>
         <rect x="0" y="0" width="920" height="520" rx="8" class="graph-bg" />
         <path d="M460 96 L460 150" class="line muted" />
         <rect x="333" y="42" width="254" height="58" rx="8" class="node node-accent" />
         <text x="460" y="77" text-anchor="middle" class="node-label">operator + agent lane</text>
         <rect x="72" y="170" width="215" height="96" rx="8" class="node" />
-        <text x="180" y="211" text-anchor="middle" class="node-label">hardware-agent-development</text>
-        <text x="180" y="234" text-anchor="middle" class="node-sub">触发</text>
+        <text x="180" y="211" text-anchor="middle" class="node-label">benchmark-rotation</text>
+        <text x="180" y="234" text-anchor="middle" class="node-sub">trigger</text>
         <rect x="352" y="156" width="216" height="124" rx="8" class="node node-accent-fill" />
-        <text x="460" y="204" text-anchor="middle" class="node-label">goal state、worker handoff、dyna</text>
+        <text x="460" y="204" text-anchor="middle" class="node-label">concrete user todo</text>
         <text x="460" y="229" text-anchor="middle" class="node-sub">todo / quota / evidence</text>
         <rect x="632" y="170" width="215" height="96" rx="8" class="node" />
-        <text x="740" y="211" text-anchor="middle" class="node-label">交互案例</text>
-        <text x="740" y="234" text-anchor="middle" class="node-sub">公开结果</text>
+        <text x="740" y="211" text-anchor="middle" class="node-label">Reproducible demo</text>
+        <text x="740" y="234" text-anchor="middle" class="node-sub">public result</text>
         <path d="M287 218 L342 218" class="line accent" />
         <path d="M568 218 L622 218" class="line accent" />
         <path d="M740 266 L740 378 L180 378 L180 276" class="line return" />
         <circle cx="180" cy="378" r="5" class="dot" />
         <circle cx="740" cy="378" r="5" class="dot alt" />
         <rect x="206" y="326" width="508" height="44" rx="8" class="caption-box" />
-        <text x="460" y="353" text-anchor="middle" class="caption">多条 worker lane 汇入同一个共享控制面</text>
+        <text x="460" y="353" text-anchor="middle" class="caption">priority lanes with one gated lane and one active fallback lane</text>
       </svg>
     </figure>
 
       </section>
 
       <section class="section" id="proof">
-        <h2>这个案例证明了什么</h2>
+        <h2>What This Case Proves</h2>
         <div class="proof-grid">
-          <div class="proof"><span>证明点</span><p>模糊的多 worker 工程目标可以在同一个共享控制面下收敛。</p></div>
-          <div class="proof"><span>LoopX 介入</span><p>goal state、worker handoff、dynamic workflow</p></div>
-          <div class="proof"><span>公开硬件锚点</span><p>loopx 在芯片开发任务上的实践: Claude Code, DUDU, CV32E40P, VeeR EH1, Viterbi</p></div>
+          <div class="proof"><span>Proof point</span><p>A blocked P0 decision should not stall safe P1/P2 work.</p></div>
+          <div class="proof"><span>LoopX intervention</span><p>concrete user todo, safe fallback, quota control</p></div>
+
         </div>
 
       </section>
 
       <section class="section page-layout" id="story">
         <div class="behavior-panel">
-          <h2>控制面行为</h2>
-          <ol class="behavior-list"><li>把 durable goal state 放在任意单个聊天线程之外</li><li>显式管理 ownership、quota 和 evidence writeback</li><li>只有在有边界验证后才允许脚本生成的 worker loop 继续</li><li>向 operator 投影收敛状态和 human gate</li></ol>
+          <h2>Control-Plane Behavior</h2>
+          <ol class="behavior-list"><li>surface the P0 dependency as a concrete user gate</li><li>avoid spending on the gated lane</li><li>select a non-dependent fallback lane</li><li>record both the blocker and the fallback reason</li></ol>
         </div>
         <aside class="side-stack">
           <div class="timeline-panel">
-            <h2>故事节奏</h2>
-            <ol class="beat-list"><li><span>01</span><p>LoopX 持有 goal state、quota、todo、claim、evidence 和 history。</p></li><li><span>02</span><p>Claude Code 在这个契约下编写任务级 orchestration script。</p></li><li><span>03</span><p>hardware-agent worker 执行有边界的 RTL、simulation 和 validation 工作。</p></li><li><span>04</span><p>五个公开 case 展示 closed task、DSE、旗舰 Fmax 优化和收敛下限。</p></li></ol>
+            <h2>Story Beats</h2>
+            <ol class="beat-list"><li><span>01</span><p>P0 lane is blocked by a user decision</p></li><li><span>02</span><p>LoopX projects the decision as a user todo</p></li><li><span>03</span><p>agent continues safe fallback work</p></li><li><span>04</span><p>state records blocker, fallback, validation, and spend policy</p></li></ol>
           </div>
           <div class="boundary-panel" id="boundary">
-            <h2>证据边界</h2>
-            <p>公开安全交互 artifact；不包含原始聊天、截图、专有设计细节、私有仓库、本地路径、task id、凭据或未发布硬件 artifact。</p>
+            <h2>Evidence Boundary</h2>
+            <p>Synthetic public fixture only; no private screenshots, raw tasks, internal links, local image names, or raw run logs.</p>
           </div>
-          <a class="link-button secondary" href="0619-dynamic-workflow-hardware-agent.md">叙事说明</a>
+          <a class="link-button secondary" href="0617-blocked-p0-safe-rotation.md">Narrative note</a>
+<code class="demo-command">python3 examples/showcase-0617-blocked-p0-safe-rotation-smoke.py</code>
         </aside>
       </section>
     </main>
-    <footer><div>公开安全 showcase 页面，由 docs/showcases/showcase-catalog.json 生成。</div></footer>
+    <footer><div>Public-safe showcase page generated from docs/showcases/showcase-catalog.json.</div></footer>
   </div>
 </body>
 </html>
