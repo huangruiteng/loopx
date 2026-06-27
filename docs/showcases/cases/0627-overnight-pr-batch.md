@@ -91,7 +91,7 @@ showcase of reviewable control-plane throughput in one public repository at one
 point in time. Future versions can strengthen the case by linking each public
 PR number to its validation evidence and review outcome.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A long-running LoopX project enters an overnight autonomous work window.
 2. Many small slices land across runtime, docs, benchmark contracts, smokes, and

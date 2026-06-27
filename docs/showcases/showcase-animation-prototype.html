@@ -247,54 +247,70 @@
       0% { width: 0%; }
       100% { width: 100%; }
     }
-    
+
     .scene--opening-control-plane { animation: scene-opening-control-plane 30s linear infinite; }
     @keyframes scene-opening-control-plane {
       0%, 0.0000% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
       2.3333%, 11.0000% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
       13.3333%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
     }
-            
 
-    .scene--gate-visible-safe-lane-moves { animation: scene-gate-visible-safe-lane-moves 30s linear infinite; }
-    @keyframes scene-gate-visible-safe-lane-moves {
+
+    .scene--high-throughput-reviewable-prs { animation: scene-high-throughput-reviewable-prs 30s linear infinite; }
+    @keyframes scene-high-throughput-reviewable-prs {
       0%, 13.3000% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
-      15.6667%, 27.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-      30.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+      15.6667%, 24.3333% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      26.6667%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
     }
-            
+
+
+    .scene--issue-comment-repair-loop { animation: scene-issue-comment-repair-loop 30s linear infinite; }
+    @keyframes scene-issue-comment-repair-loop {
+      0%, 26.6333% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      29.0000%, 37.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      40.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+
+
+    .scene--refactor-and-safe-fallback { animation: scene-refactor-and-safe-fallback 30s linear infinite; }
+    @keyframes scene-refactor-and-safe-fallback {
+      0%, 39.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      42.3333%, 51.0000% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      53.3333%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+    }
+
 
     .scene--multi-agent-shared-state { animation: scene-multi-agent-shared-state 30s linear infinite; }
     @keyframes scene-multi-agent-shared-state {
-      0%, 29.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
-      32.3333%, 44.3333% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-      46.6667%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+      0%, 53.3000% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      55.6667%, 67.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      70.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
     }
-            
+
 
     .scene--self-iteration-efficiency-evidence { animation: scene-self-iteration-efficiency-evidence 30s linear infinite; }
     @keyframes scene-self-iteration-efficiency-evidence {
-      0%, 46.6333% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
-      49.0000%, 67.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-      70.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+      0%, 69.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      72.3333%, 84.3333% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      86.6667%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
     }
-            
+
 
     .scene--creator-operator-safe-production-loop { animation: scene-creator-operator-safe-production-loop 30s linear infinite; }
     @keyframes scene-creator-operator-safe-production-loop {
-      0%, 69.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
-      72.3333%, 87.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-      90.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
+      0%, 86.6333% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      89.0000%, 94.3333% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      96.6667%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
     }
-            
+
 
     .scene--boundary-close { animation: scene-boundary-close 30s linear infinite; }
     @keyframes scene-boundary-close {
-      0%, 89.9667% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
-      92.3333%, 97.6667% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      0%, 96.6333% { opacity: 0; transform: translateY(18px) scale(0.985); pointer-events: none; }
+      99.0000%, 99.0000% { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
       100.0000%, 100% { opacity: 0; transform: translateY(-14px) scale(0.99); pointer-events: none; }
     }
-            
+
     @media (max-width: 900px) {
       main {
         grid-template-columns: 1fr;
@@ -344,39 +360,49 @@
         <strong>Public catalog demo. No live registry, local status export, transcript, or private active state.</strong>
       </div>
       <div class="timeline" aria-label="Scene timeline">
-        
+
           <span class="timeline__segment"
             data-scene-id="opening-control-plane"
             style="--start:0.0000%; --width:13.3333%;"></span>
-            
+
 
           <span class="timeline__segment"
-            data-scene-id="gate-visible-safe-lane-moves"
-            style="--start:13.3333%; --width:16.6667%;"></span>
-            
+            data-scene-id="high-throughput-reviewable-prs"
+            style="--start:13.3333%; --width:13.3333%;"></span>
+
+
+          <span class="timeline__segment"
+            data-scene-id="issue-comment-repair-loop"
+            style="--start:26.6667%; --width:13.3333%;"></span>
+
+
+          <span class="timeline__segment"
+            data-scene-id="refactor-and-safe-fallback"
+            style="--start:40.0000%; --width:13.3333%;"></span>
+
 
           <span class="timeline__segment"
             data-scene-id="multi-agent-shared-state"
-            style="--start:30.0000%; --width:16.6667%;"></span>
-            
+            style="--start:53.3333%; --width:16.6667%;"></span>
+
 
           <span class="timeline__segment"
             data-scene-id="self-iteration-efficiency-evidence"
-            style="--start:46.6667%; --width:23.3333%;"></span>
-            
+            style="--start:70.0000%; --width:16.6667%;"></span>
+
 
           <span class="timeline__segment"
             data-scene-id="creator-operator-safe-production-loop"
-            style="--start:70.0000%; --width:20.0000%;"></span>
-            
+            style="--start:86.6667%; --width:10.0000%;"></span>
+
 
           <span class="timeline__segment"
             data-scene-id="boundary-close"
-            style="--start:90.0000%; --width:10.0000%;"></span>
-            
+            style="--start:96.6667%; --width:3.3333%;"></span>
+
       </div>
       <div class="scene-stack">
-        
+
       <article class="scene scene--opening-control-plane"
         data-scene-id="opening-control-plane"
         data-start-seconds="0"
@@ -390,136 +416,198 @@
         <p class="visual">dark canvas with a single shared goal state node; agent lanes orbit into view</p>
         <p class="motion-note">fade in the goal node, then pulse two safe lanes without implying live ops data</p>
         <div class="case-strip">
-          
+
             <div class="case-card case-card--system" data-source-case-id="catalog-boundary">
               <strong>Catalog-backed control plane</strong>
               <span>The prototype reads the public storyboard and catalog only.</span>
               <small><span>public-boundary</span><span>no-live-status</span></small>
             </div>
-    
+
         </div>
       </article>
-    
 
-      <article class="scene scene--gate-visible-safe-lane-moves"
-        data-scene-id="gate-visible-safe-lane-moves"
+
+      <article class="scene scene--high-throughput-reviewable-prs"
+        data-scene-id="high-throughput-reviewable-prs"
         data-start-seconds="4"
-        data-end-seconds="9"
-        data-source-case-ids="2026-06-17-blocked-p0-safe-rotation">
+        data-end-seconds="8"
+        data-source-case-ids="2026-06-27-overnight-pr-batch">
         <div class="scene__meta">
-          <span>04-09s</span>
+          <span>04-08s</span>
           <span>Scene 2</span>
         </div>
-        <h2>A user gate stays visible. Safe side work still moves.</h2>
-        <p class="visual">a gated P0 lane pauses while a safe side lane advances with a validation marker</p>
-        <p class="motion-note">keep the blocked lane still; animate only the safe lane and evidence writeback</p>
+        <h2>High-throughput agent work can stay reviewable.</h2>
+        <p class="visual">many small PR-sized lanes converge into a compact review rail with validation markers</p>
+        <p class="motion-note">animate several small lanes into one review rail; avoid raw commit firehoses</p>
         <div class="case-strip">
-          
+
+            <div class="case-card" data-source-case-id="2026-06-27-overnight-pr-batch">
+              <strong>Overnight PR batch with reviewable control</strong>
+              <span>An overnight LoopX run can produce many PR-sized slices while keeping review, validation, and public evidence boundaries visible.</span>
+              <small><span>PR batch</span><span>review packet</span><span>public boundary</span></small>
+            </div>
+
+        </div>
+      </article>
+
+
+      <article class="scene scene--issue-comment-repair-loop"
+        data-scene-id="issue-comment-repair-loop"
+        data-start-seconds="8"
+        data-end-seconds="12"
+        data-source-case-ids="2026-06-24-pr-issue-auto-fix,2026-06-23-agent-to-agent-pr-comments">
+        <div class="scene__meta">
+          <span>08-12s</span>
+          <span>Scene 3</span>
+        </div>
+        <h2>Review feedback becomes owned repair work with evidence.</h2>
+        <p class="visual">a PR comment becomes a claimed todo, then a repro, fix, validation, and review packet</p>
+        <p class="motion-note">show claim, repro, fix, validation, and handoff as a short packet sequence</p>
+        <div class="case-strip">
+
+            <div class="case-card" data-source-case-id="2026-06-24-pr-issue-auto-fix">
+              <strong>PR issue automatic fix loop</strong>
+              <span>Review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff.</span>
+              <small><span>issue fix</span><span>repro smoke</span><span>PR review</span></small>
+            </div>
+
+
+            <div class="case-card" data-source-case-id="2026-06-23-agent-to-agent-pr-comments">
+              <strong>Agent-to-agent PR comment and fix loop</strong>
+              <span>PR review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder.</span>
+              <small><span>handoff</span><span>PR comment</span><span>claimed_by</span></small>
+            </div>
+
+        </div>
+      </article>
+
+
+      <article class="scene scene--refactor-and-safe-fallback"
+        data-scene-id="refactor-and-safe-fallback"
+        data-start-seconds="12"
+        data-end-seconds="16"
+        data-source-case-ids="2026-06-23-overnight-project-refactor,2026-06-17-blocked-p0-safe-rotation">
+        <div class="scene__meta">
+          <span>12-16s</span>
+          <span>Scene 4</span>
+        </div>
+        <h2>Large work splits. Blocked routes do not freeze safe progress.</h2>
+        <p class="visual">a broad refactor splits into successor slices while a gated P0 lane pauses and a safe fallback advances</p>
+        <p class="motion-note">show supersede/follow-up chips beside a still-visible user gate</p>
+        <div class="case-strip">
+
+            <div class="case-card" data-source-case-id="2026-06-23-overnight-project-refactor">
+              <strong>Overnight project refactor as PR-sized slices</strong>
+              <span>A broad refactor can run overnight while staying split into human-sized review units.</span>
+              <small><span>refactor</span><span>PR slices</span><span>todo evidence</span></small>
+            </div>
+
+
             <div class="case-card" data-source-case-id="2026-06-17-blocked-p0-safe-rotation">
               <strong>Blocked P0 with safe P1/P2 rotation</strong>
               <span>A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.</span>
               <small><span>reproducible</span><span>user-gate</span><span>fallback</span></small>
             </div>
-            
+
         </div>
       </article>
-    
+
 
       <article class="scene scene--multi-agent-shared-state"
         data-scene-id="multi-agent-shared-state"
-        data-start-seconds="9"
-        data-end-seconds="14"
+        data-start-seconds="16"
+        data-end-seconds="21"
         data-source-case-ids="2026-06-19-dynamic-workflow-hardware-agent">
         <div class="scene__meta">
-          <span>09-14s</span>
-          <span>Scene 3</span>
+          <span>16-21s</span>
+          <span>Scene 5</span>
         </div>
         <h2>Multiple agents can share one project memory without guessing each other&#x27;s state.</h2>
         <p class="visual">primary and side-agent lanes claim separate todos against one catalog-backed board</p>
         <p class="motion-note">show claims and handoff lines as lightweight beams into shared state</p>
         <div class="case-strip">
-          
+
             <div class="case-card" data-source-case-id="2026-06-19-dynamic-workflow-hardware-agent">
               <strong>Dynamic workflow for hardware-agent development</strong>
               <span>A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.</span>
               <small><span>interactive-html</span><span>multi-agent</span><span>hardware</span></small>
             </div>
-            
+
         </div>
       </article>
-    
+
 
       <article class="scene scene--self-iteration-efficiency-evidence"
         data-scene-id="self-iteration-efficiency-evidence"
-        data-start-seconds="14"
-        data-end-seconds="21"
+        data-start-seconds="21"
+        data-end-seconds="26"
         data-source-case-ids="2026-06-19-loopx-self-iteration">
         <div class="scene__meta">
-          <span>14-21s</span>
-          <span>Scene 4</span>
+          <span>21-26s</span>
+          <span>Scene 6</span>
         </div>
         <h2>Async side work turns repo history into recoverable product momentum.</h2>
         <p class="visual">repo-scale requirement clusters compress into validated commits, docs, smokes, and frontstage surfaces</p>
         <p class="motion-note">avoid raw commit firehoses; use compact clusters and conservative evidence labels</p>
         <div class="case-strip">
-          
+
             <div class="case-card" data-source-case-id="2026-06-19-loopx-self-iteration">
               <strong>LoopX self-iteration loop</strong>
               <span>A high-churn LoopX repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.</span>
               <small><span>self-iteration</span><span>commit-backed</span><span>side-agent</span></small>
             </div>
-            
+
         </div>
       </article>
-    
+
 
       <article class="scene scene--creator-operator-safe-production-loop"
         data-scene-id="creator-operator-safe-production-loop"
-        data-start-seconds="21"
-        data-end-seconds="27"
+        data-start-seconds="26"
+        data-end-seconds="29"
         data-source-case-ids="2026-06-20-creator-operator-case-spec">
         <div class="scene__meta">
-          <span>21-27s</span>
-          <span>Scene 5</span>
+          <span>26-29s</span>
+          <span>Scene 7</span>
         </div>
         <h2>The agent can keep researching while human judgment guards what ships.</h2>
         <p class="visual">research, preference memory, and draft material move while publishing remains gated</p>
         <p class="motion-note">animate safe research cards; leave publish decision locked until the final frame</p>
         <div class="case-strip">
-          
+
             <div class="case-card" data-source-case-id="2026-06-20-creator-operator-case-spec">
               <strong>Creator-operator long-running agent case</strong>
               <span>A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</span>
               <small></small>
             </div>
-            
+
         </div>
       </article>
-    
+
 
       <article class="scene scene--boundary-close"
         data-scene-id="boundary-close"
-        data-start-seconds="27"
+        data-start-seconds="29"
         data-end-seconds="30"
         data-source-case-ids="">
         <div class="scene__meta">
-          <span>27-30s</span>
-          <span>Scene 6</span>
+          <span>29-30s</span>
+          <span>Scene 8</span>
         </div>
         <h2>Public demos read the showcase catalog, not private control-plane state.</h2>
         <p class="visual">public showcase catalog badge replaces the live status feed</p>
         <p class="motion-note">close on the catalog badge and a clean public/private boundary line</p>
         <div class="case-strip">
-          
+
             <div class="case-card case-card--system" data-source-case-id="catalog-boundary">
               <strong>Catalog-backed control plane</strong>
               <span>The prototype reads the public storyboard and catalog only.</span>
               <small><span>public-boundary</span><span>no-live-status</span></small>
             </div>
-    
+
         </div>
       </article>
-    
+
       </div>
     </section>
   </main>

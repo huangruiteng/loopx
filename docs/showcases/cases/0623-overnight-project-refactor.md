@@ -49,7 +49,7 @@ local paths, credentials, raw logs, and unpublished project artifacts. Public
 evidence should come from the resulting PR-sized diffs, validation commands,
 and follow-up/supersede state, not from raw agent traces.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A broad refactor starts as a long-running goal.
 2. LoopX keeps the current slice explicit.

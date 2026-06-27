@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoopX Showcase &amp; Good Case</title>
+  <link rel="icon" href="data:,">
+  <style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:#0b0b0c;color:#f1f2f3;font-family:'Geist',system-ui,-apple-system,BlinkMacSystemFont,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  ::selection{background:color-mix(in srgb,var(--accent,#6e79d6) 34%,transparent);color:#fff}
+  .gh{min-height:100vh;position:relative;overflow-x:hidden;--accent:#6e79d6}
+  .grain{position:fixed;inset:0;pointer-events:none;opacity:.025;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  article{position:relative;max-width:800px;margin:0 auto;padding:76px 28px 130px}
+  .mlab{font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;letter-spacing:.06em;color:#62666d;text-transform:uppercase}
+  h1{font-size:clamp(31px,4.6vw,46px);font-weight:600;line-height:1.12;letter-spacing:-.03em;margin:16px 0 14px;color:#fafafa;text-wrap:balance}
+  h2{font-size:22px;font-weight:600;letter-spacing:-.02em;color:#f1f2f3}
+  h3{font-size:21px;font-weight:600;letter-spacing:-.02em;color:#f1f2f3}
+  p{font-size:15.5px;line-height:1.75;color:#9ea3aa}
+  strong{color:#e9eaec;font-weight:600}
+  code{font-family:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;color:#c4c7cc}
+  .accent{font-size:clamp(17px,2.1vw,21px);font-weight:500;color:var(--accent);letter-spacing:-.01em;margin-bottom:22px}
+  .nav{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 28px}
+  .nav a,.case-link{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.04em;text-decoration:none;color:#c4c7cc;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 10px;background:rgba(255,255,255,.025)}
+  .nav a:hover,.case-link:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent);color:#f4f4f5}
+  .section-head{margin-top:74px;display:flex;align-items:baseline;gap:13px;margin-bottom:20px}
+  .section-head span{font-family:'Geist Mono',ui-monospace,monospace;font-size:13px;color:var(--accent)}
+  .panel{border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;overflow:hidden}
+  .panel-row{display:grid;grid-template-columns:150px 1fr;border-top:1px solid rgba(255,255,255,.07)}
+  .panel-row:first-child{border-top:0}
+  .panel-key{padding:18px 20px;border-right:1px solid rgba(255,255,255,.07);font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent);letter-spacing:.04em}
+  .panel-val{padding:18px 20px;display:flex;align-items:center}
+  .panel-val p{font-size:14px;line-height:1.6;margin:0}
+  .diagram{border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:30px 24px 22px;background:#0e0e10;margin:22px 0}
+  .diagram svg{display:block;width:100%;height:auto}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
+  .chips span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#888d95;border:1px solid rgba(255,255,255,.12);padding:4px 8px;border-radius:5px}
+  .text-stack{display:flex;flex-direction:column;gap:16px}
+  .evidence-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0 6px}
+  .evidence-card{border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 18px 17px;min-height:128px}
+  .evidence-label{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  .source-list{display:flex;flex-direction:column;gap:10px;margin-top:20px}
+  .source-ref{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0e0e10;padding:12px 14px}
+  .source-ref:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+  .source-ref span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
+  .source-ref code{color:#aeb3ba;word-break:break-word}
+  .boundary-box{border-left:2px solid var(--accent);background:#0e0e10;padding:18px 20px;margin-top:16px;border-radius:0 8px 8px 0}
+  .flow{display:flex;flex-direction:column}
+  .flow li{display:grid;grid-template-columns:28px 1fr;gap:14px;list-style:none}
+  .flow-num{width:24px;height:24px;border-radius:50%;border:1px solid color-mix(in srgb,var(--accent) 50%,transparent);display:flex;align-items:center;justify-content:center;font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:#0b0b0c}
+  .flow-body{padding-bottom:18px;border-left:1px solid rgba(255,255,255,.12);padding-left:14px;margin-left:-27px}
+  .flow-title{font-size:14.5px;color:#eceef0;font-weight:500;margin-bottom:7px}
+  .metric-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:22px}
+  .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
+  .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
+  .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
+  .cards{display:flex;flex-direction:column;gap:12px}
+  .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
+  .card:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+  .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
+  .card p{font-size:14px;margin-top:9px}
+  .hide{display:none}
+  footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+</style>
+</head>
+<body>
+<div class="gh">
+  <div class="grain"></div>
+  <article>
+
+    <nav class="nav" aria-label="Showcase navigation">
+      <a href="index.en.html">Showcases</a>
+      <a href="showcase-catalog.json">Catalog</a>
+      <a href="index.html">中文</a>
+    </nav>
+
+    <div class="mlab">LoopX · public-safe case surface</div>
+    <h1>Showcase &amp; Good Case</h1>
+    <div class="accent">Real LoopX cases showing how long-running agent work stays reviewable, verifiable, and safe to continue.</div>
+    <p>LoopX preserves goals, gates, todos, claims, quota, run history, and evidence outside any single agent session.</p>
+
+    <div class="diagram" aria-label="LoopX control-plane sketch">
+      <svg viewBox="0 0 760 320" role="img">
+        <rect width="760" height="320" fill="#0e0e10"></rect>
+        <rect x="285" y="34" width="190" height="58" rx="8" fill="none" stroke="#6e79d6" stroke-width="2"></rect>
+        <text x="380" y="68" text-anchor="middle" fill="#f1f2f3" font-size="15" font-weight="600">LoopX</text>
+        <line x1="380" y1="92" x2="380" y2="132" stroke="#3a3d42" stroke-width="2"></line>
+        <rect x="52" y="132" width="180" height="78" rx="8" fill="none" stroke="#6a6e76" stroke-width="2"></rect>
+        <rect x="290" y="124" width="180" height="94" rx="8" fill="#6e79d6" fill-opacity=".16" stroke="#6e79d6" stroke-width="2"></rect>
+        <rect x="528" y="132" width="180" height="78" rx="8" fill="none" stroke="#6a6e76" stroke-width="2"></rect>
+        <text x="142" y="166" text-anchor="middle" fill="#f1f2f3" font-size="13" font-weight="600">Showcase &amp; Good Case</text>
+        <text x="380" y="163" text-anchor="middle" fill="#f1f2f3" font-size="13" font-weight="600">catalog</text>
+        <text x="618" y="166" text-anchor="middle" fill="#f1f2f3" font-size="13" font-weight="600">public surface</text>
+        <text x="142" y="188" text-anchor="middle" fill="#62666d" font-size="11">goal / trigger</text>
+        <text x="380" y="185" text-anchor="middle" fill="#62666d" font-size="11">todo / gate / evidence</text>
+        <text x="618" y="188" text-anchor="middle" fill="#62666d" font-size="11">public outcome</text>
+        <line x1="232" y1="171" x2="282" y2="171" stroke="#6e79d6" stroke-width="2"></line>
+        <polygon points="290,171 280,165 280,177" fill="#6e79d6"></polygon>
+        <line x1="470" y1="171" x2="520" y2="171" stroke="#6e79d6" stroke-width="2"></line>
+        <polygon points="528,171 518,165 518,177" fill="#6e79d6"></polygon>
+        <path d="M618 210 L618 260 L142 260 L142 218" fill="none" stroke="#5a5e65" stroke-width="2"></path>
+        <polygon points="142,210 136,221 148,221" fill="#8a8088"></polygon>
+      </svg>
+    </div>
+
+
+    <div class="section-head"><span>01</span><h2>Top showcase cases</h2></div>
+    <input class="search" id="case-search" type="search" placeholder="Search showcase cases" aria-label="Search showcase cases">
+    <div class="cards" data-cards>
+      <a class="card" href="cases/0627-overnight-pr-batch.en.html" data-search="overnight pr batch with reviewable control an overnight loopx run can produce many pr-sized slices while keeping review, validation, and public evidence boundaries visible. high-throughput multi-lane work can remain pr-sized, reviewable, and merge-safe. todo claim, review packet, self-merge boundary, focused smoke, public-boundary scan high_throughput_reviewable_work pr_sized_slices self_merge_policy validation_writeback">
+        <div class="meta">2026-06-27 · public_evidence_case</div>
+        <h3>Overnight PR batch with reviewable control</h3>
+        <p>An overnight LoopX run can produce many PR-sized slices while keeping review, validation, and public evidence boundaries visible.</p>
+        <p><strong>Proof:</strong> High-throughput multi-lane work can remain PR-sized, reviewable, and merge-safe.</p>
+        <div class="chips"><span>high_throughput_reviewable_work</span><span>pr_sized_slices</span><span>self_merge_policy</span><span>validation_writeback</span></div>
+      </a>
+
+
+      <a class="card" href="cases/0624-pr-issue-auto-fix.en.html" data-search="pr issue automatic fix loop review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff. issue and review feedback can enter an executable repair loop. issue-fix workflow, command pack, repro smoke, pr review feedback issue_fix_workflow review_feedback repro_smoke command_pack">
+        <div class="meta">2026-06-24 · public_safe_pattern_case</div>
+        <h3>PR issue automatic fix loop</h3>
+        <p>Review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff.</p>
+        <p><strong>Proof:</strong> Issue and review feedback can enter an executable repair loop.</p>
+        <div class="chips"><span>issue_fix_workflow</span><span>review_feedback</span><span>repro_smoke</span><span>command_pack</span></div>
+      </a>
+
+
+      <a class="card" href="cases/0623-agent-to-agent-pr-comments.en.html" data-search="agent-to-agent pr comment and fix loop pr review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder. multiple agents can coordinate around pr review comments without losing owner review. claimed_by, handoff gate, review packet, comment/fix loop agent_to_agent_handoff pr_comment_loop review_packet claimed_todo">
+        <div class="meta">2026-06-23 · public_safe_pattern_case</div>
+        <h3>Agent-to-agent PR comment and fix loop</h3>
+        <p>PR review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder.</p>
+        <p><strong>Proof:</strong> Multiple agents can coordinate around PR review comments without losing owner review.</p>
+        <div class="chips"><span>agent_to_agent_handoff</span><span>pr_comment_loop</span><span>review_packet</span><span>claimed_todo</span></div>
+      </a>
+
+
+      <a class="card" href="cases/0623-overnight-project-refactor.en.html" data-search="overnight project refactor as pr-sized slices a broad refactor can run overnight while staying split into human-sized review units. long unattended refactors can split into moderate pr slices instead of one unreviewable diff. loop, todo follow-up, supersede, pr-sized slices long_unattended_goal pr_sized_slices todo_follow_up supersede">
+        <div class="meta">2026-06-23 · public_safe_pattern_case</div>
+        <h3>Overnight project refactor as PR-sized slices</h3>
+        <p>A broad refactor can run overnight while staying split into human-sized review units.</p>
+        <p><strong>Proof:</strong> Long unattended refactors can split into moderate PR slices instead of one unreviewable diff.</p>
+        <div class="chips"><span>long_unattended_goal</span><span>pr_sized_slices</span><span>todo_follow_up</span><span>supersede</span></div>
+      </a>
+
+
+      <a class="card" href="cases/0619-dynamic-workflow-hardware-agent.en.html" data-search="dynamic workflow for hardware-agent development a fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate. fuzzy goals, multiple workers, and long unattended runs can still converge. goal state, worker handoff, dynamic workflow dynamic_workflow multi_agent_coordination shared_control_plane long_unattended_goal">
+        <div class="meta">2026-06-19 · public_safe_interactive_case</div>
+        <h3>Dynamic workflow for hardware-agent development</h3>
+        <p>A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.</p>
+        <p><strong>Proof:</strong> Fuzzy goals, multiple workers, and long unattended runs can still converge.</p>
+        <div class="chips"><span>dynamic_workflow</span><span>multi_agent_coordination</span><span>shared_control_plane</span><span>long_unattended_goal</span></div>
+      </a>
+
+
+      <a class="card" href="cases/0619-loopx-self-iteration.en.html" data-search="loopx self-iteration loop a high-churn loopx repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel. a high-churn multi-lane project can keep state, boundaries, and evidence coherent. todo, quota, gate, evidence, review packet, frontstage self_iteration side_agent_scope todo_claim_ownership identity_aware_prompt">
+        <div class="meta">2026-06-19 · public_evidence_case</div>
+        <h3>LoopX self-iteration loop</h3>
+        <p>A high-churn LoopX repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.</p>
+        <p><strong>Proof:</strong> A high-churn multi-lane project can keep state, boundaries, and evidence coherent.</p>
+        <div class="chips"><span>self_iteration</span><span>side_agent_scope</span><span>todo_claim_ownership</span><span>identity_aware_prompt</span></div>
+      </a>
+
+
+      <a class="card" href="cases/0617-blocked-p0-safe-rotation.en.html" data-search="blocked p0 with safe p1/p2 rotation a gated p0 lane should not stall a whole long-running goal when safe fallback work exists. a user decision should not block all safe work. concrete user todo, safe fallback, quota control blocked_priority_fallback concrete_user_gate safe_fallback_work quota_discipline">
+        <div class="meta">2026-06-17 · reproducible_synthetic_demo</div>
+        <h3>Blocked P0 with safe P1/P2 rotation</h3>
+        <p>A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.</p>
+        <p><strong>Proof:</strong> A user decision should not block all safe work.</p>
+        <div class="chips"><span>blocked_priority_fallback</span><span>concrete_user_gate</span><span>safe_fallback_work</span><span>quota_discipline</span></div>
+      </a>
+</div>
+
+    <div class="section-head"><span>02</span><h2>Appendix case</h2></div>
+    <div class="cards">
+      <a class="card" href="cases/0620-creator-operator-case-spec.en.html" data-search="creator-operator long-running agent case a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. creator_operator_workflow, gate_aware_continuation, feedback_capture, safe_side_path creator_operator_workflow gate_aware_continuation feedback_capture safe_side_path">
+        <div class="meta">2026-06-20 · public_safe_case_spec</div>
+        <h3>Creator-operator long-running agent case</h3>
+        <p>A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</p>
+        <p><strong>Proof:</strong> A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</p>
+        <div class="chips"><span>creator_operator_workflow</span><span>gate_aware_continuation</span><span>feedback_capture</span><span>safe_side_path</span></div>
+      </a>
+</div>
+    <footer>Generated from docs/showcases/showcase-catalog.json. Private links, raw chats, local state, and internal media are excluded.</footer>
+  </article>
+</div>
+<script>
+const input = document.getElementById('case-search');
+const cards = Array.from(document.querySelectorAll('[data-search]'));
+input.addEventListener('input', () => {
+  const query = input.value.trim().toLowerCase();
+  for (const card of cards) {
+    card.classList.toggle('hide', query && !card.dataset.search.includes(query));
+  }
+});
+</script>
+</body>
+</html>

@@ -196,7 +196,7 @@ checks. It excludes private thread text, local active-state bodies, internal
 document links, screenshots, raw benchmark material, credentials, and
 machine-specific paths.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A long-running agent engineering repo is moving quickly across benchmark,
    runtime, docs, dashboard, planning, and smoke surfaces.

@@ -80,12 +80,12 @@ async function copyIndexForFrontstage(siteDir) {
   await writeFile(resolve(frontstageDir, "index.html"), html);
 }
 
-function validateInteractivePagePath(path) {
+function validateShowcaseHtmlPath(path) {
   if (typeof path !== "string") {
-    throw new Error(`interactive_page must be a string: ${JSON.stringify(path)}`);
+    throw new Error(`showcase page must be a string: ${JSON.stringify(path)}`);
   }
   if (!path.startsWith("docs/showcases/") || !path.endsWith(".html") || path.includes("..")) {
-    throw new Error(`interactive_page must stay under docs/showcases/*.html: ${path}`);
+    throw new Error(`showcase page must stay under docs/showcases/*.html: ${path}`);
   }
   return path;
 }
@@ -93,9 +93,15 @@ function validateInteractivePagePath(path) {
 async function copyInteractiveCasePages(siteDir) {
   const catalog = JSON.parse(await readFile(resolve(repoRoot, showcaseCatalogPath), "utf8"));
   const interactivePages = new Set();
+  for (const pagePath of ["docs/showcases/index.html", "docs/showcases/index.en.html"]) {
+    interactivePages.add(validateShowcaseHtmlPath(pagePath));
+  }
   for (const item of catalog.cases ?? []) {
     if (item.interactive_page) {
-      interactivePages.add(validateInteractivePagePath(item.interactive_page));
+      interactivePages.add(validateShowcaseHtmlPath(item.interactive_page));
+    }
+    for (const pagePath of Object.values(item.localized_pages ?? {})) {
+      interactivePages.add(validateShowcaseHtmlPath(pagePath));
     }
   }
 

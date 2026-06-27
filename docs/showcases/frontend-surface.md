@@ -38,7 +38,7 @@ Use these catalog fields directly:
 | `frontend_card.visual_metaphor` | Suggested visual treatment. |
 | `frontend_card.primary_metric_hint` | Lightweight signal, not a hard claim. |
 | `frontend_card.badges` | Compact chips. |
-| `frontend_card.story_beats` | Case detail timeline. |
+| `frontend_card.story_beats` | Backward-compatible field for the case detail evidence sequence. New copy should render it as evidence, not as author notes. |
 | `workload_signal.efficiency_model` | Optional evidence panel for conservative baseline-vs-actual efficiency modeling. |
 
 ## First Screen
@@ -109,7 +109,7 @@ pattern, not a transcript.
 
 ## Detail Story Model
 
-A case detail view should be a short visual story:
+A case detail view should be a compact evidence sequence:
 
 1. **Trigger**: what made the long-running goal hard to manage.
 2. **Visible State**: which LoopX objects made the situation explicit.

@@ -49,7 +49,7 @@ from the repository or hosted as part of the Frontstage Pages bundle. It is not
 a runnable hardware benchmark and should not be presented as a reproducible
 EDA workflow.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A fuzzy engineering goal needs more than one worker agent.
 2. LoopX gives the agents a shared state and ownership surface.

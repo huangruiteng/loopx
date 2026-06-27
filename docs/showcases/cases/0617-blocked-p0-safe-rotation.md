@@ -63,7 +63,7 @@ text, local image names, internal links, and raw run logs. The behavior is
 represented by a synthetic fixture because the reusable product value is the
 control-plane pattern, not the original private artifact.
 
-## Website Story Beats
+## Public Evidence Sequence
 
 1. A P0 lane becomes blocked by a concrete user decision.
 2. LoopX keeps that decision visible as a user todo.

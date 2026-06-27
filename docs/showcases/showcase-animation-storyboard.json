@@ -37,16 +37,32 @@
       "motion_notes": "fade in the goal node, then pulse two safe lanes without implying live ops data"
     },
     {
-      "id": "gate-visible-safe-lane-moves",
-      "time_seconds": [4, 9],
-      "source_case_ids": ["2026-06-17-blocked-p0-safe-rotation"],
-      "visual": "a gated P0 lane pauses while a safe side lane advances with a validation marker",
-      "copy": "A user gate stays visible. Safe side work still moves.",
-      "motion_notes": "keep the blocked lane still; animate only the safe lane and evidence writeback"
+      "id": "high-throughput-reviewable-prs",
+      "time_seconds": [4, 8],
+      "source_case_ids": ["2026-06-27-overnight-pr-batch"],
+      "visual": "many small PR-sized lanes converge into a compact review rail with validation markers",
+      "copy": "High-throughput agent work can stay reviewable.",
+      "motion_notes": "animate several small lanes into one review rail; avoid raw commit firehoses"
+    },
+    {
+      "id": "issue-comment-repair-loop",
+      "time_seconds": [8, 12],
+      "source_case_ids": ["2026-06-24-pr-issue-auto-fix", "2026-06-23-agent-to-agent-pr-comments"],
+      "visual": "a PR comment becomes a claimed todo, then a repro, fix, validation, and review packet",
+      "copy": "Review feedback becomes owned repair work with evidence.",
+      "motion_notes": "show claim, repro, fix, validation, and handoff as a short packet sequence"
+    },
+    {
+      "id": "refactor-and-safe-fallback",
+      "time_seconds": [12, 16],
+      "source_case_ids": ["2026-06-23-overnight-project-refactor", "2026-06-17-blocked-p0-safe-rotation"],
+      "visual": "a broad refactor splits into successor slices while a gated P0 lane pauses and a safe fallback advances",
+      "copy": "Large work splits. Blocked routes do not freeze safe progress.",
+      "motion_notes": "show supersede/follow-up chips beside a still-visible user gate"
     },
     {
       "id": "multi-agent-shared-state",
-      "time_seconds": [9, 14],
+      "time_seconds": [16, 21],
       "source_case_ids": ["2026-06-19-dynamic-workflow-hardware-agent"],
       "visual": "primary and side-agent lanes claim separate todos against one catalog-backed board",
       "copy": "Multiple agents can share one project memory without guessing each other's state.",
@@ -54,7 +70,7 @@
     },
     {
       "id": "self-iteration-efficiency-evidence",
-      "time_seconds": [14, 21],
+      "time_seconds": [21, 26],
       "source_case_ids": ["2026-06-19-loopx-self-iteration"],
       "visual": "repo-scale requirement clusters compress into validated commits, docs, smokes, and frontstage surfaces",
       "copy": "Async side work turns repo history into recoverable product momentum.",
@@ -62,7 +78,7 @@
     },
     {
       "id": "creator-operator-safe-production-loop",
-      "time_seconds": [21, 27],
+      "time_seconds": [26, 29],
       "source_case_ids": ["2026-06-20-creator-operator-case-spec"],
       "visual": "research, preference memory, and draft material move while publishing remains gated",
       "copy": "The agent can keep researching while human judgment guards what ships.",
@@ -70,7 +86,7 @@
     },
     {
       "id": "boundary-close",
-      "time_seconds": [27, 30],
+      "time_seconds": [29, 30],
       "source_case_ids": [],
       "visual": "public showcase catalog badge replaces the live status feed",
       "copy": "Public demos read the showcase catalog, not private control-plane state.",

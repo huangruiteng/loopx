@@ -11,7 +11,7 @@ into a reusable control-plane pattern:
 - the user-facing value in plain language;
 - the evidence boundary, including what must stay private;
 - a reproducible demo or the reason a demo is still pending;
-- optional data that a future website can render as a visual story.
+- optional data that a future website can render as a public evidence sequence.
 
 The machine-readable catalog lives in
 [showcase-catalog.json](showcase-catalog.json). Public docs and future frontend
@@ -118,7 +118,7 @@ public-safe user story.
 4. **Reproducible**: add a small synthetic demo or smoke that proves the
    reusable LoopX behavior without depending on private artifacts.
 5. **Frontend-ready**: add or update the catalog fields needed for a visual
-   website card, such as story beats, pattern tags, and suggested visual
+   website card, such as evidence sequence, pattern tags, and suggested visual
    layout.
 
 Cases can enter the catalog before they have a runnable demo, but their status

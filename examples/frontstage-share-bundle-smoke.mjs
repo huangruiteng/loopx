@@ -119,6 +119,18 @@ const interactivePages = manifest.content_sources?.interactive_case_pages ?? [];
 if (!interactivePages.includes("docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html")) {
   throw new Error(`share bundle did not include the hardware-agent interactive page: ${JSON.stringify(interactivePages)}`);
 }
+for (const pagePath of [
+  "docs/showcases/index.html",
+  "docs/showcases/index.en.html",
+  "docs/showcases/cases/0624-pr-issue-auto-fix.html",
+  "docs/showcases/cases/0624-pr-issue-auto-fix.en.html",
+  "docs/showcases/cases/0619-dynamic-workflow-hardware-agent.en.html",
+]) {
+  if (!interactivePages.includes(pagePath)) {
+    throw new Error(`share bundle did not include expected showcase page ${pagePath}: ${JSON.stringify(interactivePages)}`);
+  }
+  assertExists(resolve(siteDir, pagePath));
+}
 assertExists(resolve(siteDir, "docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html"));
 const hardwareCaseHtml = await readFile(resolve(siteDir, "docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html"), "utf8");
 if (!hardwareCaseHtml.includes("loopx 在芯片开发任务上的实践") || !hardwareCaseHtml.includes("VeeR EH1")) {
