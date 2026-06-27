@@ -239,6 +239,23 @@ points:
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental notes below.
 
+### Experimental: Today Value Path
+
+This is not replacing the first screen. It is an experimental entry point for
+users who already understand the control-plane idea and want to pick one useful
+LoopX capability today:
+
+| Capability / path | Expected output | User value metric |
+| --- | --- | --- |
+| PR review/comment -> fix loop | Branch-ready fix packet with repro, smoke result, and remaining review owner. | Fewer dropped review threads; faster path from comment to validated patch. |
+| Overnight PR-sized refactor | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged commits without turning the next morning into a giant diff audit. |
+| P0 blocked -> safe fallback | Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary inside an active goal. | Less idle agent time while preserving human judgment on the blocked path. |
+
+Start the goal normally with `/loopx <goal text>`. The PR review and refactor
+paths can be requested directly in plain language; the P0 safe-fallback path is
+a repository kernel behavior that appears when an active goal has a concrete
+blocking user gate and safe P1/P2 work remains.
+
 ## User Mental Model
 
 LoopX has more kernel concepts than a user should have to think about every

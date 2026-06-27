@@ -56,6 +56,8 @@
   .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
   .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
   .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .mini-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .mini-metrics span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#aeb3ba;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:4px 8px;background:#0b0b0c}
   .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
@@ -63,8 +65,16 @@
   .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
   .card p{font-size:14px;margin-top:9px}
   .hide{display:none}
+  .experiment{margin-top:24px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:20px}
+  .experiment h3{font-size:18px}
+  .experiment p{font-size:14px;margin-top:8px}
+  .experiment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .experiment-card{border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0b0b0c;padding:14px}
+  .experiment-card strong{display:block;font-size:14px;line-height:1.45}
+  .experiment-card span{display:block;margin-top:9px;font-size:13px;line-height:1.55;color:#9ea3aa}
+  .experiment-card em{display:block;margin-top:10px;font-style:normal;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.55;color:var(--accent)}
   footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
-  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid,.experiment-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
 </style>
 </head>
 <body>
@@ -110,15 +120,15 @@
 
 
     <div class="section-head"><span>01</span><h2>案例背景</h2></div>
-    <div class="text-stack"><p>这个案例展示 P0 被用户决策卡住时，系统不应该继续硬跑，也不应该让整个目标停摆。原场景是 benchmark rotation：一个 lane 需要大型本地 image，其他 no-upload benchmark work 仍然安全。</p><p>公开仓库没有暴露原始 benchmark task 或本地 image 名，而是用 synthetic smoke 复现控制面行为。</p></div>
+    <div class="text-stack"><p>这个案例展示 P0 被用户决策卡住时，系统不应该继续硬跑，也不应该让整个目标停摆。原场景是 benchmark rotation：一个 lane 需要大型本地 image，其他 no-upload benchmark work 仍然安全。</p><p>公开仓库没有暴露原始 benchmark task 或本地 image 名，而是用 synthetic smoke 复现控制面行为。用户价值是明确看到一个需要决策的 P0，同时安全 fallback 可以继续，且 gated lane 不消耗额外自动推进预算。</p></div>
 
     <div class="section-head"><span>02</span><h2>仓库证据</h2></div>
     <div class="panel">
       <div class="panel-row"><div class="panel-key">证明点</div><div class="panel-val"><p>被阻塞的 P0 决策不应该阻止安全的 P1/P2 工作继续。</p></div></div>
       <div class="panel-row"><div class="panel-key">LoopX 介入</div><div class="panel-val"><p>concrete user todo、safe fallback、quota control</p></div></div>
     </div>
-
-    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">synthetic fixture</div><p>`examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` 构造 P0 user gate、被 gate 阻塞的 P0 agent todo 和 P1 no-upload fallback。</p></div><div class="evidence-card"><div class="evidence-label">quota contract</div><p>smoke 断言 `should_run=True`、`requires_user_action=True`、`safe_bypass_allowed=True`、`safe_bypass_kind=scoped_user_gate_fallback`。</p></div><div class="evidence-card"><div class="evidence-label">selected fallback</div><p>fixture 选择 `terminal_bench_no_upload`，同时保留 `ale_image` gate 的 user-visible blocker。</p></div><div class="evidence-card"><div class="evidence-label">rendered evidence</div><p>smoke 检查 markdown 中包含 `scoped_user_gate_fallback` 和 safe no-upload Terminal-Bench rotation。</p></div></div>
+    <div class="metric-grid"><div class="metric"><strong>1</strong><span>具体 P0 用户决策</span></div><div class="metric"><strong>1</strong><span>safe fallback lane</span></div><div class="metric"><strong>0</strong><span>gated lane 自动推进</span></div><div class="metric"><strong>0</strong><span>private upload 依赖</span></div></div>
+    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">synthetic fixture</div><p>`examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` 复现 P0 user gate、被 gate 阻塞的 P0 agent lane 和 P1 no-upload fallback。</p></div><div class="evidence-card"><div class="evidence-label">quota contract</div><p>smoke 固定 `should_run=True`、`requires_user_action=True`、`safe_bypass_allowed=True`、`safe_bypass_kind=scoped_user_gate_fallback` 等关键 contract。</p></div><div class="evidence-card"><div class="evidence-label">selected fallback</div><p>fixture 选择 `terminal_bench_no_upload`，同时保留 `ale_image` gate 的 user-visible blocker。</p></div><div class="evidence-card"><div class="evidence-label">rendered evidence</div><p>smoke 检查 markdown 中包含 `scoped_user_gate_fallback` 和 safe no-upload Terminal-Bench rotation。</p></div></div>
 
     <div class="section-head"><span>03</span><h2>LoopX 行为</h2></div>
     <ul class="flow"><li><span class="flow-num">1</span><div class="flow-body"><div class="flow-title">用户 todo 具体命名 P0 决策，不用“owner gate”这种空话。</div></div></li><li><span class="flow-num">2</span><div class="flow-body"><div class="flow-title">agent 不在 gated lane 上花 compute；只选择不依赖该决策的 fallback。</div></div></li><li><span class="flow-num">3</span><div class="flow-body"><div class="flow-title">状态同时记录 blocker 和 fallback reason，方便之后恢复 P0。</div></div></li></ul>

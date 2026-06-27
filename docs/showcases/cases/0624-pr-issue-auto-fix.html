@@ -56,6 +56,8 @@
   .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
   .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
   .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .mini-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .mini-metrics span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#aeb3ba;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:4px 8px;background:#0b0b0c}
   .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
@@ -63,8 +65,16 @@
   .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
   .card p{font-size:14px;margin-top:9px}
   .hide{display:none}
+  .experiment{margin-top:24px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:20px}
+  .experiment h3{font-size:18px}
+  .experiment p{font-size:14px;margin-top:8px}
+  .experiment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .experiment-card{border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0b0b0c;padding:14px}
+  .experiment-card strong{display:block;font-size:14px;line-height:1.45}
+  .experiment-card span{display:block;margin-top:9px;font-size:13px;line-height:1.55;color:#9ea3aa}
+  .experiment-card em{display:block;margin-top:10px;font-style:normal;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.55;color:var(--accent)}
   footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
-  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid,.experiment-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
 </style>
 </head>
 <body>
@@ -110,15 +120,15 @@
 
 
     <div class="section-head"><span>01</span><h2>案例背景</h2></div>
-    <div class="text-stack"><p>这个案例把 PR issue、review comment 或 issue text 转成可执行修复闭环。它不是“读一段评论就改代码”，而是先做 metadata/intake、repro、branch-local patch、validation 和 review packet。</p><p>仓库已经有 issue-fix capability：模块在 `loopx/capabilities/issue_fix/`，CLI 入口是 `loopx issue-fix ...`，协议文档和 smoke 都在公开仓库内。</p></div>
+    <div class="text-stack"><p>这个案例把 PR issue、review comment 或 issue text 转成可执行修复闭环。它不是“读一段评论就改代码”，而是先做 metadata/intake、repro、branch-local patch、validation 和 review packet。</p><p>对用户有价值的是反馈不再停在评论区：它会进入一个有 owner、有复现、有分支修复、有验证、有 review handoff 的闭环。公开证据只证明这条闭环和边界，不把 raw issue body、私有 timeline 或本地路径带进页面。</p></div>
 
     <div class="section-head"><span>02</span><h2>仓库证据</h2></div>
     <div class="panel">
       <div class="panel-row"><div class="panel-key">证明点</div><div class="panel-val"><p>Issue 和 review 反馈可以变成受控、可执行的修复循环。</p></div></div>
       <div class="panel-row"><div class="panel-key">LoopX 介入</div><div class="panel-val"><p>issue-fix workflow、command pack、repro smoke、PR review feedback</p></div></div>
     </div>
-
-    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">产品入口</div><p>`docs/capabilities/issue-fix/README.md` 声明 `loopx issue-fix ...`、content-ops bridge、protocol docs 和 smoke。</p></div><div class="evidence-card"><div class="evidence-label">工作流协议</div><p>`issue_fix_workflow_contract_v0` 明确 metadata preview、intake classification、workflow plan、todo writeback、caller repo branch、validation、PR review packet 和 gate handling。</p></div><div class="evidence-card"><div class="evidence-label">可执行闭环</div><p>`issue_fix_acceptance_loop_v0` 包含 acceptance fixture、repo-branch fixture 和 caller-approved repo branch mode。</p></div><div class="evidence-card"><div class="evidence-label">验证面</div><p>`examples/issue-fix-workflow-plan-smoke.py`、`examples/issue-fix-workflow-contract-smoke.py`、`examples/issue-fix-acceptance-loop-smoke.py` 等 smoke 覆盖这个路径。</p></div></div>
+    <div class="metric-grid"><div class="metric"><strong>5</strong><span>修复闭环阶段</span></div><div class="metric"><strong>1</strong><span>branch-ready 修复包</span></div><div class="metric"><strong>1</strong><span>review handoff 保留</span></div><div class="metric"><strong>0</strong><span>公开 artifact 中 raw issue body</span></div></div>
+    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">产品入口</div><p>`docs/capabilities/issue-fix/README.md` 声明 `loopx issue-fix ...`、content-ops bridge、protocol docs 和 smoke；入口面向维护者的真实动作是把反馈转成可执行修复包。</p></div><div class="evidence-card"><div class="evidence-label">工作流协议</div><p>`issue_fix_workflow_contract_v0` 明确 metadata preview、intake classification、workflow plan、todo writeback、caller repo branch、validation、PR review packet 和 gate handling。</p></div><div class="evidence-card"><div class="evidence-label">可执行闭环</div><p>`issue_fix_acceptance_loop_v0` 包含 acceptance fixture、repo-branch fixture 和 caller-approved repo branch mode。</p></div><div class="evidence-card"><div class="evidence-label">验证面</div><p>focused smokes 保护 metadata preview、content-ops intake、workflow plan、workflow contract、acceptance loop 和端到端 workflow 的关键边界。</p></div></div>
 
     <div class="section-head"><span>03</span><h2>LoopX 行为</h2></div>
     <ul class="flow"><li><span class="flow-num">1</span><div class="flow-body"><div class="flow-title">public metadata 可以进入 packet；raw issue body、comment body、timeline、provider payload 都是 gated source。</div></div></li><li><span class="flow-num">2</span><div class="flow-body"><div class="flow-title">accepted candidates 写成有序 LoopX todos：repro smoke、code-context route、branch-local patch、validation、review-packet readiness。</div></div></li><li><span class="flow-num">3</span><div class="flow-body"><div class="flow-title">caller-approved repo 模式只在 `--execute` 时检查本地 repo，并且输出 repo-relative changed files、validation pass/fail 和 PR-readiness。</div></div></li><li><span class="flow-num">4</span><div class="flow-body"><div class="flow-title">外部 comment、PR creation、merge、publish、destructive git 和 production action 都保留为显式 gate。</div></div></li></ul>

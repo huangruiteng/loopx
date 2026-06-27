@@ -185,13 +185,13 @@ CASE_DETAILS = {
         "zh": {
             "context": [
                 "这个案例把 PR issue、review comment 或 issue text 转成可执行修复闭环。它不是“读一段评论就改代码”，而是先做 metadata/intake、repro、branch-local patch、validation 和 review packet。",
-                "仓库已经有 issue-fix capability：模块在 `loopx/capabilities/issue_fix/`，CLI 入口是 `loopx issue-fix ...`，协议文档和 smoke 都在公开仓库内。",
+                "对用户有价值的是反馈不再停在评论区：它会进入一个有 owner、有复现、有分支修复、有验证、有 review handoff 的闭环。公开证据只证明这条闭环和边界，不把 raw issue body、私有 timeline 或本地路径带进页面。",
             ],
             "evidence": [
-                ("产品入口", "`docs/capabilities/issue-fix/README.md` 声明 `loopx issue-fix ...`、content-ops bridge、protocol docs 和 smoke。"),
+                ("产品入口", "`docs/capabilities/issue-fix/README.md` 声明 `loopx issue-fix ...`、content-ops bridge、protocol docs 和 smoke；入口面向维护者的真实动作是把反馈转成可执行修复包。"),
                 ("工作流协议", "`issue_fix_workflow_contract_v0` 明确 metadata preview、intake classification、workflow plan、todo writeback、caller repo branch、validation、PR review packet 和 gate handling。"),
                 ("可执行闭环", "`issue_fix_acceptance_loop_v0` 包含 acceptance fixture、repo-branch fixture 和 caller-approved repo branch mode。"),
-                ("验证面", "`examples/issue-fix-workflow-plan-smoke.py`、`examples/issue-fix-workflow-contract-smoke.py`、`examples/issue-fix-acceptance-loop-smoke.py` 等 smoke 覆盖这个路径。"),
+                ("验证面", "focused smokes 保护 metadata preview、content-ops intake、workflow plan、workflow contract、acceptance loop 和端到端 workflow 的关键边界。"),
             ],
             "mechanism": [
                 "public metadata 可以进入 packet；raw issue body、comment body、timeline、provider payload 都是 gated source。",
@@ -214,13 +214,13 @@ CASE_DETAILS = {
         "en": {
             "context": [
                 "This case turns a PR issue, review comment, or issue text into an executable repair loop. It is not simply reading a comment and editing code; the path goes through metadata/intake, repro, branch-local patch, validation, and review packet.",
-                "The repository already contains the issue-fix capability: `loopx/capabilities/issue_fix/`, the `loopx issue-fix ...` CLI entry, protocol docs, and public smokes.",
+                "The user-facing value is that feedback no longer sits in a comment thread: it enters a loop with an owner, repro path, branch-local fix, validation, and review handoff. The public evidence proves the loop and its boundaries without exposing raw issue bodies, private timelines, or local paths.",
             ],
             "evidence": [
-                ("Product entry", "`docs/capabilities/issue-fix/README.md` names `loopx issue-fix ...`, the content-ops bridge, protocol docs, and smokes."),
+                ("Product entry", "`docs/capabilities/issue-fix/README.md` names `loopx issue-fix ...`, the content-ops bridge, protocol docs, and smokes; the maintainer-facing action is turning feedback into an executable fix packet."),
                 ("Workflow contract", "`issue_fix_workflow_contract_v0` defines metadata preview, intake classification, workflow plan, todo writeback, caller repo branch, validation, PR review packet, and gate handling."),
                 ("Executable loop", "`issue_fix_acceptance_loop_v0` includes the acceptance fixture, repo-branch fixture, and caller-approved repo branch mode."),
-                ("Validation surface", "Smokes cover workflow planning, workflow contract, metadata/intake, and acceptance-loop behavior."),
+                ("Validation surface", "Focused smokes protect the key boundaries for metadata preview, content-ops intake, workflow plan, workflow contract, acceptance loop, and end-to-end workflow behavior."),
             ],
             "mechanism": [
                 "Public metadata can enter packets; raw issue bodies, comment bodies, timelines, and provider payloads remain gated sources.",
@@ -245,13 +245,13 @@ CASE_DETAILS = {
         "zh": {
             "context": [
                 "这个案例描述的是 PR review feedback 在多 agent 之间流转时如何不丢 ownership。重点不是聊天记录，而是 comment、claim、handoff、fix、validation、review packet 这条链。",
-                "公开仓库里可以看到相关控制面已经被产品化：`claimed_by` 出现在 todo projection、review packet、event-sourced state 和多 agent/side-agent prompt 合约里。",
+                "对用户有价值的是每条反馈都能回答三个问题：谁负责、修复证据在哪里、还需要谁 review。公开仓库里的 event contract、review packet、heartbeat prompt 和 validation fixtures 共同证明这条 handoff 链。",
             ],
             "evidence": [
                 ("todo ownership", "`event_sourced_state_contract_v0` 把 `todo_claimed` 定义为 canonical event，记录 ownership、lease 或 `claimed_by`。"),
-                ("review packet", "`loopx/review_packet.py` 会把 open todo 的 `claimed_by` 显示进 handoff/review 文本。"),
+                ("review packet", "`loopx/review_packet.py` 在 open-todo rendering 和 handoff ranking 路径中保留 `claimed_by`，让 review packet 能显示 owner。"),
                 ("side-agent contract", "`docs/heartbeat-automation-prompt.md` 规定 side-agent 小变更可带 evidence 自合并，否则创建 claimed-by handoff todo。"),
-                ("CLI smokes", "`examples/todo-lifecycle-cli-smoke.py`、`examples/todo-cli-smoke.py` 覆盖 claim、handoff successor、side-agent self-merge 和 review handoff 规则。"),
+                ("CLI smokes", "`examples/todo-lifecycle-cli-smoke.py` 和 `examples/todo-cli-smoke.py` 覆盖 claim、handoff successor、side-agent self-merge、review handoff 和 same-agent handoff rejection。"),
             ],
             "mechanism": [
                 "PR feedback 先成为一个有 owner 的 todo，而不是 chat reminder。",
@@ -273,13 +273,13 @@ CASE_DETAILS = {
         "en": {
             "context": [
                 "This case shows how PR review feedback can move across multiple agents without losing ownership. The important chain is comment, claim, handoff, fix, validation, and review packet rather than the chat transcript.",
-                "The public repository contains the control-plane pieces: `claimed_by` appears in todo projection, review packets, event-sourced state, and multi-agent or side-agent prompt contracts.",
+                "The user-facing value is that every feedback item can answer three questions: who owns it, where the fix evidence is, and who still needs to review it. Public evidence spans the event contract, review packet, heartbeat prompt, and validation fixtures.",
             ],
             "evidence": [
                 ("Todo ownership", "`event_sourced_state_contract_v0` defines `todo_claimed` as a canonical event for ownership, lease, or `claimed_by`."),
-                ("Review packet", "`loopx/review_packet.py` renders open todo `claimed_by` values into handoff and review text."),
+                ("Review packet", "`loopx/review_packet.py` preserves `claimed_by` in open-todo rendering and handoff ranking so review packets can show ownership."),
                 ("Side-agent contract", "`docs/heartbeat-automation-prompt.md` requires side agents to self-merge only small validated evidence-backed work or create a claimed handoff todo."),
-                ("CLI smokes", "`examples/todo-lifecycle-cli-smoke.py` and `examples/todo-cli-smoke.py` cover claim, handoff successor, side-agent self-merge, and review handoff rules."),
+                ("CLI smokes", "`examples/todo-lifecycle-cli-smoke.py` and `examples/todo-cli-smoke.py` cover claim, handoff successor, side-agent self-merge, review handoff, and same-agent handoff rejection."),
             ],
             "mechanism": [
                 "PR feedback becomes an owned todo rather than a chat reminder.",
@@ -303,12 +303,12 @@ CASE_DETAILS = {
         "zh": {
             "context": [
                 "这个案例解决的是无人值守重构的风险：长时间 agent 容易把 cleanup、行为改变、发现的新问题和过期计划混成一个大 diff。",
-                "LoopX 的公开证据不是某个私有夜间截图，而是 todo lifecycle、successor/supersede、validation writeback 和 review-packet 这些已经在仓库里有文档和 smoke 的控制面。",
+                "LoopX 的公开证据不是某个私有夜间截图，而是 todo lifecycle、successor/supersede、validation writeback 和 review-packet 这些已经在仓库里有文档和 smoke 的控制面。`todo-lifecycle-cli-smoke.py` 里能看到 successor、supersede、handoff 和 self-merge 的完整回归覆盖。",
             ],
             "evidence": [
                 ("successor path", "`docs/lark-kanban-control-plane-adapter.md` 明确 real successor 使用 `todo complete --next-*`，replacement 或 narrower split 使用 `todo supersede --next-agent-todo`。"),
                 ("side-agent completion", "`docs/heartbeat-automation-prompt.md` 要求非平凡完成创建 successor todo 或写 no-follow-up rationale。"),
-                ("CLI validation", "`examples/todo-lifecycle-cli-smoke.py` 覆盖 `--next-agent-todo`、`todo supersede`、claim 继承和 handoff successor。"),
+                ("CLI validation", "`examples/todo-lifecycle-cli-smoke.py` 覆盖 `--next-agent-todo` successor、`todo supersede`、claim 继承、handoff successor、same-agent handoff rejection 和 side-agent self-merge evidence。"),
                 ("review shape", "`loopx review-packet` 把当前 open todo、claimed_by 和 handoff 状态打包成 reviewer 可读的 packet。"),
             ],
             "mechanism": [
@@ -331,12 +331,12 @@ CASE_DETAILS = {
         "en": {
             "context": [
                 "This case addresses the risk of unattended refactoring: a long-running agent can mix cleanup, behavior change, discoveries, and stale plans into one broad diff.",
-                "The public evidence is not a private overnight screenshot. It is the control-plane behavior already documented and smoke-tested in the repository: todo lifecycle, successor/supersede, validation writeback, and review packets.",
+                "The public evidence is not a private overnight screenshot. It is the control-plane behavior already documented and smoke-tested in the repository: todo lifecycle, successor/supersede, validation writeback, and review packets. `todo-lifecycle-cli-smoke.py` carries regression coverage for successors, supersede, handoff, and self-merge.",
             ],
             "evidence": [
                 ("Successor path", "`docs/lark-kanban-control-plane-adapter.md` says real successors use `todo complete --next-*`, while replacements or narrower splits use `todo supersede --next-agent-todo`."),
                 ("Side-agent completion", "`docs/heartbeat-automation-prompt.md` requires nontrivial completion to create a successor todo or a no-follow-up rationale."),
-                ("CLI validation", "`examples/todo-lifecycle-cli-smoke.py` covers `--next-agent-todo`, `todo supersede`, claim inheritance, and handoff successors."),
+                ("CLI validation", "`examples/todo-lifecycle-cli-smoke.py` covers `--next-agent-todo` successors, `todo supersede`, claim inheritance, handoff successors, same-agent handoff rejection, and side-agent self-merge evidence."),
                 ("Review shape", "`loopx review-packet` packages open todos, claimed_by, and handoff state for reviewer consumption."),
             ],
             "mechanism": [
@@ -454,11 +454,11 @@ CASE_DETAILS = {
         "zh": {
             "context": [
                 "这个案例展示 P0 被用户决策卡住时，系统不应该继续硬跑，也不应该让整个目标停摆。原场景是 benchmark rotation：一个 lane 需要大型本地 image，其他 no-upload benchmark work 仍然安全。",
-                "公开仓库没有暴露原始 benchmark task 或本地 image 名，而是用 synthetic smoke 复现控制面行为。",
+                "公开仓库没有暴露原始 benchmark task 或本地 image 名，而是用 synthetic smoke 复现控制面行为。用户价值是明确看到一个需要决策的 P0，同时安全 fallback 可以继续，且 gated lane 不消耗额外自动推进预算。",
             ],
             "evidence": [
-                ("synthetic fixture", "`examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` 构造 P0 user gate、被 gate 阻塞的 P0 agent todo 和 P1 no-upload fallback。"),
-                ("quota contract", "smoke 断言 `should_run=True`、`requires_user_action=True`、`safe_bypass_allowed=True`、`safe_bypass_kind=scoped_user_gate_fallback`。"),
+                ("synthetic fixture", "`examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` 复现 P0 user gate、被 gate 阻塞的 P0 agent lane 和 P1 no-upload fallback。"),
+                ("quota contract", "smoke 固定 `should_run=True`、`requires_user_action=True`、`safe_bypass_allowed=True`、`safe_bypass_kind=scoped_user_gate_fallback` 等关键 contract。"),
                 ("selected fallback", "fixture 选择 `terminal_bench_no_upload`，同时保留 `ale_image` gate 的 user-visible blocker。"),
                 ("rendered evidence", "smoke 检查 markdown 中包含 `scoped_user_gate_fallback` 和 safe no-upload Terminal-Bench rotation。"),
             ],
@@ -479,11 +479,11 @@ CASE_DETAILS = {
         "en": {
             "context": [
                 "This case shows what should happen when a P0 route is blocked by a user decision: the system should neither keep forcing that lane nor stop the whole goal. The original shape was a benchmark rotation where one lane needed a large local image while other no-upload benchmark work remained safe.",
-                "The public repository does not expose raw benchmark tasks or local image names. It reproduces the control-plane behavior with a synthetic smoke.",
+                "The public repository does not expose raw benchmark tasks or local image names. It reproduces the control-plane behavior with a synthetic smoke. The user-facing value is seeing one concrete P0 decision while safe fallback work can continue and the gated lane does not burn automated progress budget.",
             ],
             "evidence": [
-                ("Synthetic fixture", "`examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` creates a P0 user gate, a P0 agent todo blocked by that gate, and a P1 no-upload fallback."),
-                ("Quota contract", "The smoke asserts `should_run=True`, `requires_user_action=True`, `safe_bypass_allowed=True`, and `safe_bypass_kind=scoped_user_gate_fallback`."),
+                ("Synthetic fixture", "`examples/showcase-0617-blocked-p0-safe-rotation-smoke.py` reproduces a P0 user gate, a P0 agent lane blocked by that gate, and a P1 no-upload fallback."),
+                ("Quota contract", "The smoke pins `should_run=True`, `requires_user_action=True`, `safe_bypass_allowed=True`, `safe_bypass_kind=scoped_user_gate_fallback`, and related fallback evidence."),
                 ("Selected fallback", "The fixture selects `terminal_bench_no_upload` while preserving the `ale_image` gate as the user-visible blocker."),
                 ("Rendered evidence", "The smoke checks markdown for `scoped_user_gate_fallback` and safe no-upload Terminal-Bench rotation."),
             ],
@@ -506,12 +506,12 @@ CASE_DETAILS = {
         "zh": {
             "context": [
                 "这是 appendix case：它展示非技术创作者/运营者如何用 LoopX 管一个长期 research + planning loop，但还不是 top-card proof，因为没有真实用户公开证据。",
-                "公开材料完全使用 synthetic data，重点是产品形态：趋势候选、偏好映射、insight board、draft queue、material library、人类反馈和 controlled replan。",
+                "公开材料完全使用 synthetic data，重点不是证明增长，而是证明产品边界：研究和素材整理可以继续，发布、品牌判断和对外动作必须停在人类 gate。",
             ],
             "evidence": [
-                ("storyboard", "`creator-ops-fake-data-storyboard.md` 定义七个面板和完整 fake fixture，不需要 live platform access。"),
-                ("feedback contract", "`creator-ops-feedback-boundary-contract.md` 把 gate decision、preference hint、todo update、boundary correction、reward signal、product improvement note 分开。"),
-                ("source status", "contract 要求 topic、insight、draft、material item 都有 source status，public repo 默认 `synthetic_demo`。"),
+                ("storyboard", "`creator-ops-fake-data-storyboard.md` 给出完整 fake fixture，不需要 live platform access，适合公开展示用户旅程而不泄漏真实运营数据。"),
+                ("feedback contract", "`creator-ops-feedback-boundary-contract.md` 把 gate decision、preference hint、todo update、boundary correction、reward signal 和 product improvement note 分开，避免把偏好误当发布授权。"),
+                ("source status", "contract 要求 topic、insight、draft、material item 都携带 source status；public repo 默认 `synthetic_demo`，不伪装成真实增长证据。"),
                 ("no autopublish", "publishing 是 hard user gate；safe side work 可以继续，但不能把偏好或 reward 当成发布授权。"),
             ],
             "mechanism": [
@@ -533,12 +533,12 @@ CASE_DETAILS = {
         "en": {
             "context": [
                 "This is an appendix case: it shows how a non-technical creator-operator might use LoopX to manage a long-running research and planning loop, but it is not a top-card proof until real public user evidence exists.",
-                "The public material uses only synthetic data. The product shape is trend candidates, preference map, insight board, draft queue, material library, human feedback, and controlled replan.",
+                "The public material uses only synthetic data. The point is not proving growth; it is proving the product boundary: research and material organization can continue, while publishing, brand judgment, and external action remain human gates.",
             ],
             "evidence": [
-                ("Storyboard", "`creator-ops-fake-data-storyboard.md` defines seven panels and a full fake fixture with no live platform access."),
-                ("Feedback contract", "`creator-ops-feedback-boundary-contract.md` separates gate decision, preference hint, todo update, boundary correction, reward signal, and product improvement note."),
-                ("Source status", "The contract requires every topic, insight, draft, and material item to carry source status; public repo defaults to `synthetic_demo`."),
+                ("Storyboard", "`creator-ops-fake-data-storyboard.md` provides a complete fake fixture with no live platform access, suitable for showing the user journey without exposing real operations data."),
+                ("Feedback contract", "`creator-ops-feedback-boundary-contract.md` separates gate decisions, preference hints, todo updates, boundary corrections, reward signals, and product improvement notes so preference is not mistaken for publish approval."),
+                ("Source status", "The contract requires every topic, insight, draft, and material item to carry source status; the public repo defaults to `synthetic_demo` instead of pretending to show real growth evidence."),
                 ("No autopublish", "Publishing is a hard user gate; safe side work may continue, but preference or reward is not publication approval."),
             ],
             "mechanism": [
@@ -583,6 +583,13 @@ UI = {
         "open": "Open",
         "demo": "Demo",
         "search": "Search showcase cases",
+        "experimental_title": "Experimental today-value path",
+        "experimental_intro": "A lower-priority entry point for users who want to pick one useful LoopX capability today without replacing the showcase first screen.",
+        "experimental_rows": [
+            ("PR review/comment -> fix loop", "Branch-ready fix packet with repro, smoke result, and remaining review owner.", "Fewer dropped review threads."),
+            ("Overnight PR-sized refactor", "Reviewable slice list, validation notes, successor todo, and merge boundary.", "More merged commits without a giant diff audit."),
+            ("P0 blocked -> safe fallback", "Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary.", "Less idle agent time while preserving human judgment."),
+        ],
         "footer": "Generated from docs/showcases/showcase-catalog.json. Private links, raw chats, local state, and internal media are excluded.",
     },
     "zh": {
@@ -607,6 +614,13 @@ UI = {
         "open": "打开",
         "demo": "Demo",
         "search": "搜索 showcase 案例",
+        "experimental_title": "Experimental today-value path",
+        "experimental_intro": "一个放在首屏下方的实验性入口：帮助用户从三个 LoopX 能力里选择今天就能产生价值的一项。",
+        "experimental_rows": [
+            ("PR review/comment -> fix loop", "可复核的修复包：repro、smoke 结果、剩余 review owner。", "更少遗漏 review 线程。"),
+            ("Overnight PR-sized refactor", "可 review 的 slice 列表、验证记录、后续 todo、merge 边界。", "增加可合并 commit，避免巨型 diff。"),
+            ("P0 blocked -> safe fallback", "已有 goal 内由 kernel 投影具体 user gate、安全 fallback todo、quota 决策和证据边界。", "减少 agent 空转，同时保留人类判断。"),
+        ],
         "footer": "由 docs/showcases/showcase-catalog.json 生成。不包含私有链接、原始聊天、本地状态或内部媒体。",
     },
 }
@@ -816,6 +830,8 @@ def css() -> str:
   .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
   .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
   .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .mini-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .mini-metrics span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#aeb3ba;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:4px 8px;background:#0b0b0c}
   .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
@@ -823,8 +839,16 @@ def css() -> str:
   .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
   .card p{font-size:14px;margin-top:9px}
   .hide{display:none}
+  .experiment{margin-top:24px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:20px}
+  .experiment h3{font-size:18px}
+  .experiment p{font-size:14px;margin-top:8px}
+  .experiment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .experiment-card{border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0b0b0c;padding:14px}
+  .experiment-card strong{display:block;font-size:14px;line-height:1.45}
+  .experiment-card span{display:block;margin-top:9px;font-size:13px;line-height:1.55;color:#9ea3aa}
+  .experiment-card em{display:block;margin-top:10px;font-style:normal;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.55;color:var(--accent)}
   footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
-  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid,.experiment-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
 """
 
 
@@ -880,11 +904,37 @@ def control_diagram(case: dict[str, Any], lang: str) -> str:
 """
 
 
-def metrics(case: dict[str, Any]) -> str:
+def evidence_metric_cards(case: dict[str, Any], lang: str) -> list[tuple[str, str]]:
+    raw_metrics = case.get("evidence_metrics")
+    cards: list[tuple[str, str]] = []
+    if not isinstance(raw_metrics, list):
+        return cards
+    for item in raw_metrics:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("value")
+        labels = item.get("labels")
+        label = ""
+        if isinstance(labels, dict):
+            label = str(labels.get(lang) or labels.get("en") or "")
+        if not label:
+            label = str(item.get("label") or "")
+        if value is None or not label:
+            continue
+        cards.append((str(value), label))
+    return cards
+
+
+def metrics(case: dict[str, Any], lang: str) -> str:
+    cards = evidence_metric_cards(case, lang)
+    if cards:
+        return '<div class="metric-grid">' + "".join(
+            f'<div class="metric"><strong>{esc(value)}</strong><span>{esc(label)}</span></div>'
+            for value, label in cards[:4]
+        ) + "</div>"
     workload = case.get("workload_signal")
     if not isinstance(workload, dict):
         return ""
-    cards: list[tuple[str, str]] = []
     public_git = workload.get("public_git") if isinstance(workload.get("public_git"), dict) else {}
     whole = workload.get("whole_repository") if isinstance(workload.get("whole_repository"), dict) else {}
     window = workload.get("window") if isinstance(workload.get("window"), dict) else {}
@@ -892,15 +942,15 @@ def metrics(case: dict[str, Any]) -> str:
     estimated = model.get("estimated_developer_days") if isinstance(model.get("estimated_developer_days"), dict) else {}
     compression = model.get("single_engineer_calendar_compression") if isinstance(model.get("single_engineer_calendar_compression"), dict) else {}
     if public_git.get("merged_commits") is not None:
-        cards.append((str(public_git["merged_commits"]), "merged PR commits"))
+        cards.append((str(public_git["merged_commits"]), "merged PR commits" if lang == "en" else "merged PR commits"))
     if window.get("hours") is not None:
-        cards.append((f"{window['hours']}h", "public window"))
+        cards.append((f"{window['hours']}h", "public window" if lang == "en" else "public window"))
     if whole.get("commit_count") is not None:
-        cards.append((str(whole["commit_count"]), "public commits"))
+        cards.append((str(whole["commit_count"]), "public commits" if lang == "en" else "public commits"))
     if estimated.get("low") and estimated.get("high"):
-        cards.append((f"{estimated['low']}-{estimated['high']}d", "AI-assisted baseline"))
+        cards.append((f"{estimated['low']}-{estimated['high']}d", "AI-assisted baseline" if lang == "en" else "AI-assisted baseline"))
     if compression.get("low") and compression.get("high"):
-        cards.append((f"{compression['low']}-{compression['high']}x", "calendar compression"))
+        cards.append((f"{compression['low']}-{compression['high']}x", "calendar compression" if lang == "en" else "calendar compression"))
     if not cards:
         return ""
     return '<div class="metric-grid">' + "".join(
@@ -961,7 +1011,7 @@ def render_case_page(case: dict[str, Any], lang: str, primary: bool) -> str:
       <div class="panel-row"><div class="panel-key">{esc(ui(lang, "proof"))}</div><div class="panel-val"><p>{esc(table["proof_point"])}</p></div></div>
       <div class="panel-row"><div class="panel-key">{esc(ui(lang, "intervention"))}</div><div class="panel-val"><p>{esc(table["loopx_intervention"])}</p></div></div>
     </div>
-    {metrics(case)}
+    {metrics(case, lang)}
     {evidence_block}
 
     <div class="section-head"><span>03</span><h2>{esc(ui(lang, "behavior"))}</h2></div>
@@ -989,17 +1039,44 @@ def index_card(case: dict[str, Any], current: Path, lang: str) -> str:
     headline = localized(case, lang, "headline")
     table = table_for(case, lang)
     tags = first_items(case.get("pattern_tags"), 4)
-    search = " ".join([title, headline, table["proof_point"], table["loopx_intervention"], *tags]).lower()
+    metric_cards = evidence_metric_cards(case, lang)
+    metric_terms = [f"{value} {label}" for value, label in metric_cards]
+    search = " ".join([title, headline, table["proof_point"], table["loopx_intervention"], *tags, *metric_terms]).lower()
     canonical = f'<span>{esc(ui(lang, "canonical"))}</span>' if str(case.get("id")) == HARDWARE_CASE_ID and lang == "zh" else ""
+    metric_line = ""
+    if metric_cards:
+        metric_line = '<div class="mini-metrics">' + "".join(
+            f"<span>{esc(value)} · {esc(label)}</span>" for value, label in metric_cards[:3]
+        ) + "</div>"
     return f"""
       <a class="card" href="{esc(rel_href(current, output))}" data-search="{esc(search)}">
         <div class="meta">{esc(case.get("date") or "")} · {esc(case.get("status") or "")}</div>
         <h3>{esc(title)}</h3>
         <p>{esc(headline)}</p>
         <p><strong>{esc(ui(lang, "proof"))}:</strong> {esc(table["proof_point"])}</p>
+        {metric_line}
         <div class="chips">{badges(tags)}{canonical}</div>
       </a>
 """
+
+
+def experimental_lane(lang: str) -> str:
+    cards = "\n".join(
+        f"""
+        <div class="experiment-card">
+          <strong>{esc(title)}</strong>
+          <span>{esc(output)}</span>
+          <em>{esc(value)}</em>
+        </div>"""
+        for title, output, value in ui(lang, "experimental_rows")
+    )
+    return f"""
+    <section class="experiment" aria-label="{esc(ui(lang, "experimental_title"))}">
+      <h3>{esc(ui(lang, "experimental_title"))}</h3>
+      <p>{esc(ui(lang, "experimental_intro"))}</p>
+      <div class="experiment-grid">{cards}
+      </div>
+    </section>"""
 
 
 def render_index(cases: list[dict[str, Any]], lang: str) -> str:
@@ -1025,6 +1102,7 @@ def render_index(cases: list[dict[str, Any]], lang: str) -> str:
     <div class="section-head"><span>01</span><h2>{esc(ui(lang, "top_cases"))}</h2></div>
     <input class="search" id="case-search" type="search" placeholder="{esc(ui(lang, "search"))}" aria-label="{esc(ui(lang, "search"))}">
     <div class="cards" data-cards>{primary_cards}</div>
+    {experimental_lane(lang)}
 
     <div class="section-head"><span>02</span><h2>{esc(ui(lang, "appendix"))}</h2></div>
     <div class="cards">{appendix_cards}</div>

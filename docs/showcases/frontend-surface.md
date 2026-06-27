@@ -36,9 +36,10 @@ Use these catalog fields directly:
 | `user_value` | Outcome in plain language. |
 | `evidence_boundary` | Redaction and claim boundary drawer. |
 | `frontend_card.visual_metaphor` | Suggested visual treatment. |
-| `frontend_card.primary_metric_hint` | Lightweight signal, not a hard claim. |
+| `frontend_card.primary_metric_hint` | Lightweight value signal for leaders/users, not implementation trivia. |
 | `frontend_card.badges` | Compact chips. |
 | `frontend_card.story_beats` | Backward-compatible field for the case detail evidence sequence. New copy should render it as evidence, not as author notes. |
+| `evidence_metrics` | Optional compact value metrics. Use outcome or boundary signals such as reviewable commits, user wait avoided, gated action prevented, compression range, or public evidence window. Do not use raw file counts, smoke counts, panel counts, or other implementation-surface trivia as the main proof. |
 | `workload_signal.efficiency_model` | Optional evidence panel for conservative baseline-vs-actual efficiency modeling. |
 
 ## First Screen

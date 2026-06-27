@@ -56,6 +56,8 @@
   .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
   .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
   .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .mini-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .mini-metrics span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#aeb3ba;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:4px 8px;background:#0b0b0c}
   .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
@@ -63,8 +65,16 @@
   .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
   .card p{font-size:14px;margin-top:9px}
   .hide{display:none}
+  .experiment{margin-top:24px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:20px}
+  .experiment h3{font-size:18px}
+  .experiment p{font-size:14px;margin-top:8px}
+  .experiment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .experiment-card{border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0b0b0c;padding:14px}
+  .experiment-card strong{display:block;font-size:14px;line-height:1.45}
+  .experiment-card span{display:block;margin-top:9px;font-size:13px;line-height:1.55;color:#9ea3aa}
+  .experiment-card em{display:block;margin-top:10px;font-style:normal;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.55;color:var(--accent)}
   footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
-  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid,.experiment-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
 </style>
 </head>
 <body>
@@ -117,7 +127,7 @@
       <div class="panel-row"><div class="panel-key">证明点</div><div class="panel-val"><p>高 churn 多 lane agent repo 可以保持状态、证据和边界一致。</p></div></div>
       <div class="panel-row"><div class="panel-key">LoopX 介入</div><div class="panel-val"><p>todo、quota、gate、evidence、review packet、frontstage</p></div></div>
     </div>
-    <div class="metric-grid"><div class="metric"><strong>801</strong><span>public commits</span></div><div class="metric"><strong>59-92d</strong><span>AI-assisted baseline</span></div><div class="metric"><strong>3.0-4.7x</strong><span>calendar compression</span></div></div>
+    <div class="metric-grid"><div class="metric"><strong>801</strong><span>public commits</span></div><div class="metric"><strong>244</strong><span>06-18 后 commits</span></div><div class="metric"><strong>59-92d</strong><span>AI-assisted baseline</span></div><div class="metric"><strong>3.0-4.7x</strong><span>calendar compression</span></div></div>
     <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">全仓库证据</div><p>截至 anchor commit：801 个 public commits、570 个 touched files、265703 行新增、49895 行删除。</p></div><div class="evidence-card"><div class="evidence-label">近期窗口</div><p>2026-06-18 起有 244 个 public commits、216 个 touched files、52898 行新增、20935 行删除。</p></div><div class="evidence-card"><div class="evidence-label">0619 当日</div><p>2026-06-19 有 74 个 public commits、118 个 touched files、16087 行新增、1082 行删除。</p></div><div class="evidence-card"><div class="evidence-label">效率模型</div><p>把公开仓库能力拆成 9 个 requirement clusters，保守估计 59-92 个 AI-coding-assisted developer-days，对 19.6 天 public window 得出方向性 compression。</p></div></div>
 
     <div class="section-head"><span>03</span><h2>LoopX 行为</h2></div>

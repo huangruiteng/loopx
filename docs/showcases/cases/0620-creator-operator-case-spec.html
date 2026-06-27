@@ -56,6 +56,8 @@
   .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
   .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
   .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .mini-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .mini-metrics span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#aeb3ba;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:4px 8px;background:#0b0b0c}
   .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
@@ -63,8 +65,16 @@
   .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
   .card p{font-size:14px;margin-top:9px}
   .hide{display:none}
+  .experiment{margin-top:24px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:20px}
+  .experiment h3{font-size:18px}
+  .experiment p{font-size:14px;margin-top:8px}
+  .experiment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .experiment-card{border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0b0b0c;padding:14px}
+  .experiment-card strong{display:block;font-size:14px;line-height:1.45}
+  .experiment-card span{display:block;margin-top:9px;font-size:13px;line-height:1.55;color:#9ea3aa}
+  .experiment-card em{display:block;margin-top:10px;font-style:normal;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.55;color:var(--accent)}
   footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
-  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid,.experiment-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
 </style>
 </head>
 <body>
@@ -110,15 +120,15 @@
 
 
     <div class="section-head"><span>01</span><h2>案例背景</h2></div>
-    <div class="text-stack"><p>这是 appendix case：它展示非技术创作者/运营者如何用 LoopX 管一个长期 research + planning loop，但还不是 top-card proof，因为没有真实用户公开证据。</p><p>公开材料完全使用 synthetic data，重点是产品形态：趋势候选、偏好映射、insight board、draft queue、material library、人类反馈和 controlled replan。</p></div>
+    <div class="text-stack"><p>这是 appendix case：它展示非技术创作者/运营者如何用 LoopX 管一个长期 research + planning loop，但还不是 top-card proof，因为没有真实用户公开证据。</p><p>公开材料完全使用 synthetic data，重点不是证明增长，而是证明产品边界：研究和素材整理可以继续，发布、品牌判断和对外动作必须停在人类 gate。</p></div>
 
     <div class="section-head"><span>02</span><h2>仓库证据</h2></div>
     <div class="panel">
       <div class="panel-row"><div class="panel-key">证明点</div><div class="panel-val"><p>创作与运营工作可以共享一个 gate-aware 的长期 agent loop。</p></div></div>
       <div class="panel-row"><div class="panel-key">LoopX 介入</div><div class="panel-val"><p>creator-operator workflow、user gate、feedback capture、material library</p></div></div>
     </div>
-
-    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">storyboard</div><p>`creator-ops-fake-data-storyboard.md` 定义七个面板和完整 fake fixture，不需要 live platform access。</p></div><div class="evidence-card"><div class="evidence-label">feedback contract</div><p>`creator-ops-feedback-boundary-contract.md` 把 gate decision、preference hint、todo update、boundary correction、reward signal、product improvement note 分开。</p></div><div class="evidence-card"><div class="evidence-label">source status</div><p>contract 要求 topic、insight、draft、material item 都有 source status，public repo 默认 `synthetic_demo`。</p></div><div class="evidence-card"><div class="evidence-label">no autopublish</div><p>publishing 是 hard user gate；safe side work 可以继续，但不能把偏好或 reward 当成发布授权。</p></div></div>
+    <div class="metric-grid"><div class="metric"><strong>1</strong><span>publish hard gate</span></div><div class="metric"><strong>1</strong><span>safe research side path</span></div><div class="metric"><strong>0</strong><span>autopublish 动作</span></div><div class="metric"><strong>0</strong><span>真实运营数据暴露</span></div></div>
+    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">storyboard</div><p>`creator-ops-fake-data-storyboard.md` 给出完整 fake fixture，不需要 live platform access，适合公开展示用户旅程而不泄漏真实运营数据。</p></div><div class="evidence-card"><div class="evidence-label">feedback contract</div><p>`creator-ops-feedback-boundary-contract.md` 把 gate decision、preference hint、todo update、boundary correction、reward signal 和 product improvement note 分开，避免把偏好误当发布授权。</p></div><div class="evidence-card"><div class="evidence-label">source status</div><p>contract 要求 topic、insight、draft、material item 都携带 source status；public repo 默认 `synthetic_demo`，不伪装成真实增长证据。</p></div><div class="evidence-card"><div class="evidence-label">no autopublish</div><p>publishing 是 hard user gate；safe side work 可以继续，但不能把偏好或 reward 当成发布授权。</p></div></div>
 
     <div class="section-head"><span>03</span><h2>LoopX 行为</h2></div>
     <ul class="flow"><li><span class="flow-num">1</span><div class="flow-body"><div class="flow-title">creative objective 是 durable goal state，不是聊天窗口里的隐形任务。</div></div></li><li><span class="flow-num">2</span><div class="flow-body"><div class="flow-title">publish/no-publish 是 user gate；research、整理和 source-status 改进可以作为 safe side path。</div></div></li><li><span class="flow-num">3</span><div class="flow-body"><div class="flow-title">反馈被写成 preference hint、gate decision、todo update 或 boundary correction。</div></div></li><li><span class="flow-num">4</span><div class="flow-body"><div class="flow-title">下一次 agent run 前，用户能看到 blocked route、safe side path 和 validation expectation。</div></div></li></ul>
