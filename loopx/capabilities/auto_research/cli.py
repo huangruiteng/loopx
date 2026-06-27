@@ -1,17 +1,28 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
 from . import (
+    AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
+    build_auto_research_rollout_events,
     build_live_auto_research_projection,
     build_auto_research_projection,
+    load_auto_research_evidence_packet,
     load_auto_research_evidence_packet_inputs,
     load_auto_research_fixture,
     render_auto_research_markdown,
 )
+from ...history import load_registry
+from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
+from ...rollout_event_log import (
+    append_rollout_event,
+    load_rollout_events,
+    rollout_event_log_path,
+)
 from ...status import collect_status
 
 
@@ -78,6 +89,71 @@ def register_auto_research_commands(
     evidence_parser.add_argument("--branch-ref")
     evidence_parser.add_argument("--attempt-start", type=int, default=1)
 
+    append_parser = auto_research_sub.add_parser(
+        "append-evidence",
+        help="Append an auto_research_evidence_packet_v0 into the LoopX rollout event log.",
+    )
+    add_subcommand_format(append_parser)
+    append_parser.add_argument("--packet", required=True, help="Path to auto_research_evidence_packet_v0 JSON.")
+    append_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview rollout events without appending them.",
+    )
+
+
+def _append_auto_research_rollout_events(
+    *,
+    packet_path: str,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    dry_run: bool,
+) -> dict[str, object]:
+    packet = load_auto_research_evidence_packet(packet_path)
+    goal_id = packet["research_contract"]["goal_id"]
+    events = build_auto_research_rollout_events(packet)
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+    log_path = rollout_event_log_path(runtime_root, goal_id)
+    existing_ids = {
+        str(event.get("event_id"))
+        for event in load_rollout_events(log_path)
+        if event.get("event_id")
+    }
+    appended_ids: list[str] = []
+    skipped_ids: list[str] = []
+    for event in events:
+        event_id = str(event["event_id"])
+        if event_id in existing_ids:
+            skipped_ids.append(event_id)
+            continue
+        if not dry_run:
+            append_rollout_event(log_path, event)
+            existing_ids.add(event_id)
+        appended_ids.append(event_id)
+    counts_by_kind = Counter(str(event.get("event_kind") or "") for event in events)
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "dry_run": dry_run,
+        "event_count": len(events),
+        "appended_count": 0 if dry_run else len(appended_ids),
+        "would_append_count": len(appended_ids),
+        "skipped_existing_count": len(skipped_ids),
+        "event_ids": [str(event["event_id"]) for event in events],
+        "appended_event_ids": [] if dry_run else appended_ids,
+        "skipped_existing_event_ids": skipped_ids,
+        "counts_by_kind": dict(sorted(counts_by_kind.items())),
+        "packet_summary": packet["summary"],
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "source": "loopx_rollout_event_log",
+        },
+    }
+
 
 def handle_auto_research_command(
     args: argparse.Namespace,
@@ -130,8 +206,15 @@ def handle_auto_research_command(
                 branch_ref=args.branch_ref,
                 attempt_start=args.attempt_start,
             )
+        elif args.auto_research_command == "append-evidence":
+            payload = _append_auto_research_rollout_events(
+                packet_path=args.packet,
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root_arg,
+                dry_run=args.dry_run,
+            )
         else:
-            raise ValueError("auto-research requires the `frontier` or `evidence` subcommand")
+            raise ValueError("auto-research requires the `frontier`, `evidence`, or `append-evidence` subcommand")
     except Exception as exc:
         payload = {
             "ok": False,

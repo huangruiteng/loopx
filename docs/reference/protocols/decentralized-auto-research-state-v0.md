@@ -262,13 +262,17 @@ Already available:
   records. It preserves `needs_retry`, negative evidence,
   `protected_scope_clean`, and branch/artifact refs without recording raw logs
   or private artifacts.
+- `loopx auto-research append-evidence --packet <packet.json>` appends that
+  packet into the existing `loopx_rollout_event_v0` log as one
+  `research_hypothesis` event plus one `research_evidence` event per split.
+  Re-running the same packet skips existing event ids, so heartbeat retries do
+  not duplicate evidence.
 
 Needed next:
 
-- expose `research_hypothesis_v0` as a public-safe rollout-event subtype
-  beyond fixture projection;
-- append `auto_research_evidence_packet_v0` into LoopX rollout/event state
-  rather than leaving it as a generated packet;
+- read `research_hypothesis` and `research_evidence` rollout events back into
+  `research_evidence_graph_v0` so live frontier/product surfaces no longer need
+  fixture-only evidence;
 - add a showcase page that reports baseline, dev result, held-out result,
   retired directions, and LoopX's decentralized coordination pattern.
 

@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
+from ...rollout_event_log import build_rollout_event
+
 
 AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION = "decentralized_auto_research_fixture_v0"
 RESEARCH_CONTRACT_SCHEMA_VERSION = "research_contract_v0"
@@ -16,6 +18,7 @@ RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION = "research_evidence_graph_v0"
 RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION = "research_showcase_projection_v0"
 AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projection_v0"
 AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION = "auto_research_evidence_packet_v0"
+AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = "auto_research_rollout_append_v0"
 
 HYPOTHESIS_STATUSES = {
     "proposed",
@@ -341,6 +344,13 @@ def _is_negative_evidence_event(event: dict[str, Any]) -> bool:
     )
 
 
+def _is_retry_evidence_event(event: dict[str, Any]) -> bool:
+    return (
+        event["eval_status"] in {"failed_to_run", "inconclusive"}
+        or event["primary_metric_status"] in RETRY_PRIMARY_METRIC_STATUSES
+    )
+
+
 def build_auto_research_evidence_packet(
     *,
     contract: dict[str, Any],
@@ -410,7 +420,7 @@ def build_auto_research_evidence_packet(
             "evidence_event_count": len(events),
             "splits": sorted({event["split"] for event in events}),
             "negative_evidence_count": negative_count,
-            "needs_retry_count": 1 if status == "needs_retry" else 0,
+            "needs_retry_count": len([event for event in events if _is_retry_evidence_event(event)]),
             "protected_scope_clean": all(event["protected_scope_clean"] for event in events),
         },
         "public_boundary": {
@@ -436,6 +446,157 @@ def load_auto_research_evidence_packet_inputs(
         ],
         **kwargs,
     )
+
+
+def load_auto_research_evidence_packet(path: str | Path) -> dict[str, Any]:
+    return validate_auto_research_evidence_packet(
+        _load_json_object(path, field="auto_research_evidence_packet_file")
+    )
+
+
+def validate_auto_research_evidence_packet(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = _json_obj(payload, field="auto_research_evidence_packet")
+    schema = _compact_public_token(payload.get("schema_version"), field="schema_version")
+    if schema != AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION:
+        raise ValueError(f"schema_version must be {AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION}")
+    if payload.get("ok") is False:
+        raise ValueError("auto_research_evidence_packet.ok must not be false")
+    contract = validate_research_contract(_json_obj(payload.get("research_contract"), field="research_contract"))
+    hypothesis = validate_research_hypothesis(_json_obj(payload.get("hypothesis"), field="hypothesis"))
+    evidence_events = [
+        validate_research_evidence_event(_json_obj(item, field="evidence_events[]"))
+        for item in _json_list(payload.get("evidence_events"), field="evidence_events")
+    ]
+    if not evidence_events:
+        raise ValueError("auto_research_evidence_packet requires at least one evidence event")
+    for event in evidence_events:
+        if event["hypothesis_id"] != hypothesis["hypothesis_id"]:
+            raise ValueError("evidence event hypothesis_id must match packet hypothesis")
+        if event["todo_id"] != hypothesis["todo_id"]:
+            raise ValueError("evidence event todo_id must match packet hypothesis")
+    public_boundary = _json_obj(payload.get("public_boundary"), field="public_boundary")
+    if public_boundary.get("raw_logs_recorded") or public_boundary.get("private_artifacts_recorded"):
+        raise ValueError("auto_research_evidence_packet must not record raw logs or private artifacts")
+    return {
+        "ok": True,
+        "schema_version": schema,
+        "research_contract": contract,
+        "hypothesis": hypothesis,
+        "evidence_events": evidence_events,
+        "summary": {
+            "goal_id": contract["goal_id"],
+            "hypothesis_id": hypothesis["hypothesis_id"],
+            "todo_id": hypothesis["todo_id"],
+            "status": hypothesis["status"],
+            "evidence_event_count": len(evidence_events),
+            "splits": sorted({event["split"] for event in evidence_events}),
+            "negative_evidence_count": len(
+                [event for event in evidence_events if _is_negative_evidence_event(event)]
+            ),
+            "needs_retry_count": len([event for event in evidence_events if _is_retry_evidence_event(event)]),
+            "protected_scope_clean": all(event["protected_scope_clean"] for event in evidence_events),
+        },
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "source": "public_eval_result_projection",
+        },
+    }
+
+
+def build_auto_research_rollout_events(
+    packet: dict[str, Any],
+    *,
+    recorded_at: str | None = None,
+) -> list[dict[str, Any]]:
+    packet = validate_auto_research_evidence_packet(packet)
+    contract = packet["research_contract"]
+    hypothesis = packet["hypothesis"]
+    summary = packet["summary"]
+    goal_id = contract["goal_id"]
+    hypothesis_id = hypothesis["hypothesis_id"]
+    claimed_by = hypothesis["claimed_by"]
+    source_refs = [
+        {"kind": "grounding", "id": ref}
+        for ref in hypothesis.get("grounding_refs") or []
+    ]
+    if hypothesis.get("novelty_audit_ref"):
+        source_refs.append({"kind": "novelty_audit", "id": hypothesis["novelty_audit_ref"]})
+    events = [
+        build_rollout_event(
+            goal_id=goal_id,
+            event_kind="research_hypothesis",
+            agent_id=claimed_by,
+            todo_id=hypothesis["todo_id"],
+            lane_id=f"agent:{claimed_by}",
+            agent_role="auto_research_lane",
+            status=hypothesis["status"],
+            classification=RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
+            labels=[
+                "auto_research",
+                "research_hypothesis",
+                hypothesis["status"],
+                hypothesis["mechanism_family"],
+            ],
+            summary=(
+                f"auto-research hypothesis {hypothesis_id} status={hypothesis['status']}: "
+                f"{hypothesis['hypothesis']}"
+            ),
+            source_refs=source_refs,
+            details={
+                "hypothesis_id": hypothesis_id,
+                "parent_hypothesis_id": hypothesis.get("parent_hypothesis_id") or "",
+                "mechanism_family": hypothesis["mechanism_family"],
+                "evidence_event_count": summary["evidence_event_count"],
+                "negative_evidence_count": summary["negative_evidence_count"],
+                "needs_retry_count": summary["needs_retry_count"],
+                "protected_scope_clean": summary["protected_scope_clean"],
+            },
+            recorded_at=recorded_at,
+        )
+    ]
+    for evidence in packet["evidence_events"]:
+        metric = evidence["metric"]
+        events.append(
+            build_rollout_event(
+                goal_id=goal_id,
+                event_kind="research_evidence",
+                agent_id=evidence["agent_id"],
+                todo_id=evidence["todo_id"],
+                run_id=f"{evidence['hypothesis_id']}:{evidence['attempt']}:{evidence['split']}",
+                lane_id=f"agent:{evidence['agent_id']}",
+                agent_role="auto_research_lane",
+                status=evidence["eval_status"],
+                classification=RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION,
+                labels=[
+                    "auto_research",
+                    "research_evidence",
+                    evidence["split"],
+                    evidence["eval_status"],
+                    evidence["primary_metric_status"],
+                ],
+                summary=(
+                    f"auto-research evidence {evidence['hypothesis_id']} "
+                    f"split={evidence['split']} status={evidence['primary_metric_status']} "
+                    f"value={metric['value']}"
+                ),
+                artifact_refs=evidence["artifact_refs"],
+                details={
+                    "hypothesis_id": evidence["hypothesis_id"],
+                    "attempt": evidence["attempt"],
+                    "split": evidence["split"],
+                    "metric_name": metric["name"],
+                    "metric_value": metric["value"],
+                    "metric_direction": metric["direction"],
+                    "baseline_metric": evidence["baseline_metric"],
+                    "primary_metric_status": evidence["primary_metric_status"],
+                    "eval_status": evidence["eval_status"],
+                    "protected_scope_clean": evidence["protected_scope_clean"],
+                },
+                recorded_at=recorded_at,
+            )
+        )
+    return events
 
 
 def build_auto_research_projection(
@@ -861,6 +1022,19 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- splits: `{', '.join(summary.get('splits', []))}`",
             f"- negative evidence: `{summary.get('negative_evidence_count')}`",
             f"- protected scope clean: `{summary.get('protected_scope_clean')}`",
+        ]
+        return "\n".join(lines) + "\n"
+    if payload.get("schema_version") == AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION:
+        lines = [
+            "# LoopX Auto Research Rollout Append",
+            "",
+            f"- schema: `{payload.get('schema_version')}`",
+            f"- goal_id: `{payload.get('goal_id')}`",
+            f"- dry_run: `{payload.get('dry_run')}`",
+            f"- events: `{payload.get('event_count')}`",
+            f"- appended: `{payload.get('appended_count')}`",
+            f"- would_append: `{payload.get('would_append_count')}`",
+            f"- skipped_existing: `{payload.get('skipped_existing_count')}`",
         ]
         return "\n".join(lines) + "\n"
     return render_auto_research_projection_markdown(payload)

@@ -165,12 +165,24 @@ It preserves `needs_retry`, negative evidence, protected-scope clean flags, and
 branch/artifact refs while keeping raw logs, local paths, and private artifacts
 out of the public payload.
 
+Append the packet into LoopX's existing rollout event log when the evidence is
+ready to become durable source state:
+
+```bash
+loopx --format json auto-research append-evidence \
+  --packet auto-research-evidence-packet.public.json
+```
+
+The append step writes one `research_hypothesis` rollout event and one
+`research_evidence` event per split. It skips existing event ids on retry, which
+keeps heartbeat-driven lanes replayable.
+
 Next reproduction steps:
 
 1. Keep `research_contract_v0`, `research_hypothesis_v0`, and
    `research_evidence_event_v0` as the public-safe record boundary.
-2. Append `auto_research_evidence_packet_v0` into LoopX rollout/event state
-   instead of editing fixture numbers by hand.
+2. Read `research_hypothesis` and `research_evidence` rollout events back into
+   the evidence graph instead of depending on fixture-only evidence.
 3. Keep one local smoke that proves:
    - protected files are not editable;
    - each hypothesis is todo-linked;
