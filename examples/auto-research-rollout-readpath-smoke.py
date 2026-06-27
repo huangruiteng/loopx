@@ -17,6 +17,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.capabilities.auto_research import (  # noqa: E402
     build_live_auto_research_projection,
+    build_research_decision_candidates,
+    build_research_evidence_graph_from_records,
     build_research_evidence_graph_from_rollout_events,
 )
 from loopx.rollout_event_log import load_rollout_events, rollout_event_log_path  # noqa: E402
@@ -228,7 +230,72 @@ def main() -> None:
         assert graph["best_holdout_metric"] and graph["best_holdout_metric"] > 1.0, graph
         assert graph["holdout_improved"] is True, graph
         assert graph["nodes"][0]["hypothesis_id"] == "hyp_pack_partial_selection", graph
+        assert graph["nodes"][0]["evidence_event_count"] == 2, graph
+        assert graph["nodes"][0]["best_dev_metric"] == graph["best_dev_metric"], graph
+        assert graph["nodes"][0]["best_holdout_metric"] == graph["best_holdout_metric"], graph
+        assert graph["nodes"][0]["holdout_improved"] is True, graph
+        graph_decisions = build_research_decision_candidates(graph)
+        assert graph_decisions["retirement_candidates"] == [], graph_decisions
+        assert graph_decisions["promotion_candidates"], graph_decisions
+        assert graph_decisions["promotion_candidates"][0]["hypothesis_id"] == (
+            "hyp_pack_partial_selection"
+        ), graph_decisions
+        assert graph_decisions["promotion_candidates"][0]["requires"] == [
+            "boundary_scan",
+            "promotion_decision",
+        ], graph_decisions
         assert_public_safe(graph)
+
+        negative_graph = build_research_evidence_graph_from_records(
+            goal_id=GOAL_ID,
+            hypotheses=[
+                {
+                    "schema_version": "research_hypothesis_v0",
+                    "hypothesis_id": "hyp_bad_distance_cache",
+                    "parent_hypothesis_id": None,
+                    "todo_id": "todo_auto_research_bad_001",
+                    "claimed_by": "codex-side-bypass",
+                    "mechanism_family": "distance_cache",
+                    "hypothesis": "Cache distances before normalization.",
+                    "status": "contradicted",
+                    "grounding_refs": ["knn_pack_public_contract"],
+                    "blocked_by": ["evidence_or_boundary_guardrail_failed"],
+                }
+            ],
+            evidence_events=[
+                {
+                    "schema_version": "research_evidence_event_v0",
+                    "hypothesis_id": "hyp_bad_distance_cache",
+                    "todo_id": "todo_auto_research_bad_001",
+                    "agent_id": "codex-side-bypass",
+                    "attempt": 1,
+                    "split": "dev",
+                    "metric": {
+                        "name": "deterministic_speedup",
+                        "value": 0.74,
+                        "direction": "maximize",
+                    },
+                    "baseline_metric": 1.0,
+                    "eval_status": "scored",
+                    "primary_metric_status": "regressed",
+                    "artifact_refs": ["public_eval_summary:bad_distance_cache_dev"],
+                    "protected_scope_clean": True,
+                }
+            ],
+            metric_name="deterministic_speedup",
+            metric_direction="maximize",
+            baseline_metric=1.0,
+            source_kind="public_records",
+        )
+        negative_decisions = build_research_decision_candidates(negative_graph)
+        assert negative_decisions["promotion_candidates"] == [], negative_decisions
+        assert negative_decisions["retirement_candidates"], negative_decisions
+        assert negative_decisions["retirement_candidates"][0]["hypothesis_id"] == (
+            "hyp_bad_distance_cache"
+        ), negative_decisions
+        assert negative_decisions["retirement_candidates"][0]["negative_evidence_count"] == 1
+        assert_public_safe(negative_graph)
+        assert_public_safe(negative_decisions)
 
         live_payload = build_live_auto_research_projection(
             goal_id=GOAL_ID,
@@ -261,7 +328,15 @@ def main() -> None:
         )
         assert live_payload["evidence_graph"]["source_kind"] == "loopx_rollout_event_log", live_payload
         assert live_payload["evidence_graph"]["evidence_event_count"] == 2, live_payload
+        assert live_payload["frontier"]["promotion_candidates"], live_payload
+        assert live_payload["frontier"]["promotion_candidates"][0]["hypothesis_id"] == (
+            "hyp_pack_partial_selection"
+        ), live_payload
+        assert live_payload["frontier"]["retirement_candidates"] == [], live_payload
         assert live_payload["showcase_projection"]["best_holdout_metric"] == graph["best_holdout_metric"], live_payload
+        assert live_payload["showcase_projection"]["promotion_candidates"] == (
+            live_payload["frontier"]["promotion_candidates"]
+        ), live_payload
         assert live_payload["showcase_projection"]["decentralized_pattern"] == (
             "todo_backed_live_frontier_rollout_evidence_graph"
         ), live_payload
@@ -272,6 +347,11 @@ def main() -> None:
         assert cli_payload["ok"], cli_payload
         assert cli_payload["evidence_graph"]["source_kind"] == "loopx_rollout_event_log", cli_payload
         assert cli_payload["evidence_graph"]["evidence_event_count"] == 2, cli_payload
+        assert cli_payload["frontier"]["promotion_candidates"], cli_payload
+        assert cli_payload["frontier"]["promotion_candidates"][0]["requires"] == [
+            "boundary_scan",
+            "promotion_decision",
+        ], cli_payload
         assert cli_payload["showcase_projection"]["best_holdout_metric"] == graph["best_holdout_metric"], cli_payload
         assert_public_safe(cli_payload)
 

@@ -608,10 +608,9 @@ def build_auto_research_projection(
     fixture = validate_auto_research_fixture(fixture)
     agent = _compact_public_token(agent_id, field="agent_id")
     contract = fixture["research_contract"]
-    direction = contract["metric"]["direction"]
-    baseline = contract["metric"]["baseline"]
     hypotheses = fixture["hypotheses"]
-    events = fixture["evidence_events"]
+    evidence_graph = build_research_evidence_graph(fixture)
+    decision_candidates = build_research_decision_candidates(evidence_graph)
 
     runnable_statuses = {"active", "needs_retry"}
     selected = None
@@ -633,29 +632,6 @@ def build_auto_research_projection(
         elif item["blocked_by"]:
             blocked.append(item_summary | {"blocked_by": ",".join(item["blocked_by"])})
 
-    promotion_candidates = []
-    for item in hypotheses:
-        item_events = [event for event in events if event["hypothesis_id"] == item["hypothesis_id"]]
-        dev_best = _best_metric(item_events, split="dev", direction=direction)
-        holdout_best = _best_metric(item_events, split="holdout", direction=direction)
-        if item["status"] in {"supported", "promoted"} or _metric_improved(
-            value=dev_best,
-            baseline=baseline,
-            direction=direction,
-        ):
-            requires = ["boundary_scan"]
-            if not _metric_improved(value=holdout_best, baseline=baseline, direction=direction):
-                requires.append("holdout_eval")
-            promotion_candidates.append(
-                {
-                    "hypothesis_id": item["hypothesis_id"],
-                    "todo_id": item["todo_id"],
-                    "dev_metric": dev_best,
-                    "holdout_metric": holdout_best,
-                    "requires": requires,
-                }
-            )
-
     frontier = {
         "schema_version": RESEARCH_FRONTIER_SCHEMA_VERSION,
         "goal_id": contract["goal_id"],
@@ -663,9 +639,9 @@ def build_auto_research_projection(
         "selected": selected,
         "runnable": runnable,
         "blocked": blocked,
-        "promotion_candidates": promotion_candidates,
+        "promotion_candidates": decision_candidates["promotion_candidates"],
+        "retirement_candidates": decision_candidates["retirement_candidates"],
     }
-    evidence_graph = build_research_evidence_graph(fixture)
     showcase_projection = build_research_showcase_projection(fixture, evidence_graph=evidence_graph)
     return {
         "ok": True,
@@ -986,6 +962,7 @@ def build_live_auto_research_projection(
         evidence_graph = rollout_evidence_graph
     else:
         evidence_graph = todo_evidence_graph
+    decision_candidates = build_research_decision_candidates(evidence_graph)
     frontier = {
         "schema_version": RESEARCH_FRONTIER_SCHEMA_VERSION,
         "goal_id": goal,
@@ -993,12 +970,19 @@ def build_live_auto_research_projection(
         "selected": selected,
         "runnable": runnable,
         "blocked": blocked,
-        "promotion_candidates": [],
+        "promotion_candidates": decision_candidates["promotion_candidates"],
+        "retirement_candidates": decision_candidates["retirement_candidates"],
         "source_kind": "loopx_live_quota_status",
     }
     selected_title = selected.get("title") if isinstance(selected, dict) else "No runnable hypothesis"
     graph_metric = evidence_graph.get("metric") if isinstance(evidence_graph.get("metric"), dict) else {}
     source_kind = str(evidence_graph.get("source_kind") or "loopx_live_quota_status")
+    promoted = [
+        node.get("hypothesis_id")
+        for node in evidence_graph.get("nodes") or []
+        if isinstance(node, dict) and node.get("status") == "promoted" and node.get("hypothesis_id")
+    ]
+    retired = [item["hypothesis_id"] for item in decision_candidates["retirement_candidates"]]
     showcase_projection = {
         "schema_version": RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
         "title": "LoopX Live Auto Research Frontier",
@@ -1013,8 +997,10 @@ def build_live_auto_research_projection(
         "best_dev_metric": evidence_graph.get("best_dev_metric"),
         "best_holdout_metric": evidence_graph.get("best_holdout_metric"),
         "holdout_improved": evidence_graph.get("holdout_improved"),
-        "promoted_hypotheses": [],
-        "retired_or_contradicted_hypotheses": [],
+        "promotion_candidates": decision_candidates["promotion_candidates"],
+        "retirement_candidates": decision_candidates["retirement_candidates"],
+        "promoted_hypotheses": promoted,
+        "retired_or_contradicted_hypotheses": retired,
         "negative_evidence_count": evidence_graph.get("negative_evidence_count"),
         "decentralized_pattern": (
             "todo_backed_live_frontier_rollout_evidence_graph"
@@ -1053,6 +1039,78 @@ def _best_metric(events: list[dict[str, Any]], *, split: str, direction: str) ->
     return max(values, key=lambda value: _metric_rank_key(value, direction=direction))
 
 
+def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Derive public promotion and retirement candidates from evidence graph nodes."""
+
+    graph = _json_obj(evidence_graph, field="evidence_graph")
+    metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
+    direction = str(metric.get("direction") or "maximize")
+    if direction not in METRIC_DIRECTIONS:
+        direction = "maximize"
+    baseline = _finite_float(metric.get("baseline"), field="evidence_graph.metric.baseline")
+    source_kind = _compact_optional_token(
+        graph.get("source_kind"),
+        field="evidence_graph.source_kind",
+        default="unknown_source",
+    )
+    promotion_candidates: list[dict[str, Any]] = []
+    retirement_candidates: list[dict[str, Any]] = []
+    for raw_node in graph.get("nodes") or []:
+        if not isinstance(raw_node, dict):
+            continue
+        hypothesis_id = _compact_public_token(raw_node.get("hypothesis_id"), field="node.hypothesis_id")
+        todo_id = _compact_public_token(raw_node.get("todo_id"), field="node.todo_id")
+        status = _compact_optional_token(raw_node.get("status"), field="node.status", default="active")
+        dev_metric = _finite_float(raw_node.get("best_dev_metric"), field="node.best_dev_metric")
+        holdout_metric = _finite_float(raw_node.get("best_holdout_metric"), field="node.best_holdout_metric")
+        negative_count = int(raw_node.get("negative_evidence_count") or 0)
+        evidence_count = int(raw_node.get("evidence_event_count") or 0)
+        dev_improved = bool(raw_node.get("dev_improved")) or _metric_improved(
+            value=dev_metric,
+            baseline=baseline,
+            direction=direction,
+        )
+        holdout_improved = bool(raw_node.get("holdout_improved")) or _metric_improved(
+            value=holdout_metric,
+            baseline=baseline,
+            direction=direction,
+        )
+        is_retirement_status = status in {"contradicted", "retired"}
+        if is_retirement_status or negative_count > 0:
+            reason = "negative_or_guardrail_evidence" if negative_count > 0 else f"status:{status}"
+            retirement_candidates.append(
+                {
+                    "hypothesis_id": hypothesis_id,
+                    "todo_id": todo_id,
+                    "status": status,
+                    "negative_evidence_count": negative_count,
+                    "evidence_event_count": evidence_count,
+                    "reason": reason,
+                    "source_kind": source_kind,
+                }
+            )
+            continue
+        if status in {"supported", "promoted"} or dev_improved:
+            requires = ["boundary_scan"]
+            requires.append("promotion_decision" if holdout_improved else "holdout_eval")
+            promotion_candidates.append(
+                {
+                    "hypothesis_id": hypothesis_id,
+                    "todo_id": todo_id,
+                    "status": status,
+                    "dev_metric": dev_metric,
+                    "holdout_metric": holdout_metric,
+                    "evidence_event_count": evidence_count,
+                    "requires": requires,
+                    "source_kind": source_kind,
+                }
+            )
+    return {
+        "promotion_candidates": promotion_candidates,
+        "retirement_candidates": retirement_candidates,
+    }
+
+
 def build_research_evidence_graph_from_records(
     *,
     goal_id: str,
@@ -1075,6 +1133,42 @@ def build_research_evidence_graph_from_records(
     scored_events = [event for event in events if event["eval_status"] == "scored"]
     best_dev = _best_metric(scored_events, split="dev", direction=direction)
     best_holdout = _best_metric(scored_events, split="holdout", direction=direction)
+    events_by_hypothesis: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        events_by_hypothesis.setdefault(event["hypothesis_id"], []).append(event)
+    nodes = []
+    for item in hypotheses:
+        item_events = events_by_hypothesis.get(item["hypothesis_id"], [])
+        item_scored_events = [event for event in item_events if event["eval_status"] == "scored"]
+        item_best_dev = _best_metric(item_scored_events, split="dev", direction=direction)
+        item_best_holdout = _best_metric(item_scored_events, split="holdout", direction=direction)
+        item_negative_count = len([event for event in item_events if _is_negative_evidence_event(event)])
+        item_retry_count = len([event for event in item_events if _is_retry_evidence_event(event)])
+        nodes.append(
+            {
+                "hypothesis_id": item["hypothesis_id"],
+                "parent_hypothesis_id": item["parent_hypothesis_id"],
+                "todo_id": item["todo_id"],
+                "claimed_by": item["claimed_by"],
+                "status": item["status"],
+                "evidence_event_count": len(item_events),
+                "best_dev_metric": item_best_dev,
+                "best_holdout_metric": item_best_holdout,
+                "dev_improved": _metric_improved(
+                    value=item_best_dev,
+                    baseline=baseline,
+                    direction=direction,
+                ),
+                "holdout_improved": _metric_improved(
+                    value=item_best_holdout,
+                    baseline=baseline,
+                    direction=direction,
+                ),
+                "negative_evidence_count": item_negative_count,
+                "needs_retry_count": item_retry_count,
+                "source_kind": source,
+            }
+        )
     return {
         "schema_version": RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
         "goal_id": goal,
@@ -1091,25 +1185,11 @@ def build_research_evidence_graph_from_records(
         "best_dev_metric": best_dev,
         "best_holdout_metric": best_holdout,
         "holdout_improved": _metric_improved(value=best_holdout, baseline=baseline, direction=direction),
-        "negative_evidence_count": len(
-            [
-                event
-                for event in events
-                if event["primary_metric_status"] in {"regressed", "failed", "inconclusive"}
-                or event["eval_status"] != "scored"
-            ]
-        ),
-        "needs_retry_count": len([item for item in hypotheses if item["status"] == "needs_retry"]),
-        "nodes": [
-            {
-                "hypothesis_id": item["hypothesis_id"],
-                "parent_hypothesis_id": item["parent_hypothesis_id"],
-                "todo_id": item["todo_id"],
-                "claimed_by": item["claimed_by"],
-                "status": item["status"],
-            }
-            for item in hypotheses
-        ],
+        "negative_evidence_count": len([event for event in events if _is_negative_evidence_event(event)]),
+        "needs_retry_count": len(
+            [event for event in events if _is_retry_evidence_event(event)]
+        ) + len([item for item in hypotheses if item["status"] == "needs_retry"]),
+        "nodes": nodes,
         "source_kind": source,
     }
 
@@ -1171,16 +1251,13 @@ def build_research_showcase_projection(
 ) -> dict[str, Any]:
     contract = fixture["research_contract"]
     graph = evidence_graph or build_research_evidence_graph(fixture)
+    decision_candidates = build_research_decision_candidates(graph)
     promoted = [
-        item["hypothesis_id"]
-        for item in fixture["hypotheses"]
-        if item["status"] == "promoted"
+        node["hypothesis_id"]
+        for node in graph["nodes"]
+        if node["status"] == "promoted"
     ]
-    retired = [
-        item["hypothesis_id"]
-        for item in fixture["hypotheses"]
-        if item["status"] in {"retired", "contradicted"}
-    ]
+    retired = [item["hypothesis_id"] for item in decision_candidates["retirement_candidates"]]
     return {
         "schema_version": RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
         "title": "Decentralized Auto Research: k-NN Speedup",
@@ -1191,10 +1268,13 @@ def build_research_showcase_projection(
         "best_dev_metric": graph["best_dev_metric"],
         "best_holdout_metric": graph["best_holdout_metric"],
         "holdout_improved": graph["holdout_improved"],
+        "promotion_candidates": decision_candidates["promotion_candidates"],
+        "retirement_candidates": decision_candidates["retirement_candidates"],
         "promoted_hypotheses": promoted,
         "retired_or_contradicted_hypotheses": retired,
         "negative_evidence_count": graph["negative_evidence_count"],
         "decentralized_pattern": "todo_linked_hypotheses_agent_scoped_frontier_shared_evidence_graph",
+        "source_kind": graph["source_kind"],
     }
 
 
@@ -1217,6 +1297,8 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
         f"- best dev metric: `{graph.get('best_dev_metric')}`",
         f"- best holdout metric: `{graph.get('best_holdout_metric')}`",
         f"- holdout improved: `{graph.get('holdout_improved')}`",
+        f"- promotion candidates: `{len(frontier.get('promotion_candidates') or [])}`",
+        f"- retirement candidates: `{len(frontier.get('retirement_candidates') or [])}`",
     ]
     return "\n".join(lines) + "\n"
 
