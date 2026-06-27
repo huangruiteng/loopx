@@ -54,6 +54,7 @@ from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
 from .renderers.status_markdown import (
+    append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
     append_human_reward_markdown as _append_human_reward_markdown,
@@ -9845,69 +9846,9 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
     _append_usage_summary_markdown(lines, usage)
 
     queue = payload.get("attention_queue") if isinstance(payload.get("attention_queue"), dict) else {}
-    lines.extend(
-        [
-            "",
-            "## Attention Queue",
-            "- summary: "
-            f"items={queue.get('item_count')}, "
-            f"needs_user_or_controller={queue.get('needs_user_or_controller')}, "
-            f"needs_controller={queue.get('needs_controller')}, "
-            f"needs_codex={queue.get('needs_codex')}, "
-            f"watching_external_evidence={queue.get('watching_external_evidence')}, "
-            f"watching_monitor={queue.get('watching_monitor')}",
-        ]
-    )
+    _append_attention_queue_summary_markdown(lines, queue)
     items = queue.get("items") if isinstance(queue.get("items"), list) else []
     goals = _goals_by_id(payload)
-    backlog = (
-        queue.get("autonomous_backlog_candidates")
-        if isinstance(queue.get("autonomous_backlog_candidates"), dict)
-        else {}
-    )
-    if backlog:
-        lines.append(
-            "- autonomous_backlog_candidates: "
-            f"open={backlog.get('open_count')} "
-            f"task_class={_markdown_scalar(backlog.get('task_class') or '')} "
-            f"source={_markdown_scalar(backlog.get('source') or '')}"
-        )
-        for candidate in backlog.get("items") or []:
-            if not isinstance(candidate, dict):
-                continue
-            priority_text = ""
-            if candidate.get("priority"):
-                priority_text = f" priority={_markdown_scalar(candidate.get('priority') or '')}"
-            lines.append(
-                "  - autonomous_candidate: "
-                f"goal={_markdown_scalar(candidate.get('goal_id') or '')}"
-                f"{priority_text} "
-                f"text={_markdown_scalar(candidate.get('text') or '')}"
-            )
-    monitor_candidates = (
-        queue.get("autonomous_monitor_candidates")
-        if isinstance(queue.get("autonomous_monitor_candidates"), dict)
-        else {}
-    )
-    if monitor_candidates:
-        lines.append(
-            "- autonomous_monitor_candidates: "
-            f"open={monitor_candidates.get('open_count')} "
-            f"task_class={_markdown_scalar(monitor_candidates.get('task_class') or '')} "
-            f"source={_markdown_scalar(monitor_candidates.get('source') or '')}"
-        )
-        for candidate in monitor_candidates.get("items") or []:
-            if not isinstance(candidate, dict):
-                continue
-            priority_text = ""
-            if candidate.get("priority"):
-                priority_text = f" priority={_markdown_scalar(candidate.get('priority') or '')}"
-            lines.append(
-                "  - autonomous_monitor_candidate: "
-                f"goal={_markdown_scalar(candidate.get('goal_id') or '')}"
-                f"{priority_text} "
-                f"text={_markdown_scalar(candidate.get('text') or '')}"
-            )
     if not items:
         lines.append("- none")
     for item in items:

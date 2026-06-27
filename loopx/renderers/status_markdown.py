@@ -315,3 +315,73 @@ def append_usage_summary_markdown(lines: list[str], usage: dict[str, Any]) -> No
             f"progress_signals_24h={goal.get('progress_signal_run_count_24h')} "
             f"share_24h={goal.get('project_share_24h')}"
         )
+
+
+def append_attention_queue_summary_markdown(
+    lines: list[str],
+    queue: dict[str, Any],
+) -> None:
+    lines.extend(
+        [
+            "",
+            "## Attention Queue",
+            "- summary: "
+            f"items={queue.get('item_count')}, "
+            f"needs_user_or_controller={queue.get('needs_user_or_controller')}, "
+            f"needs_controller={queue.get('needs_controller')}, "
+            f"needs_codex={queue.get('needs_codex')}, "
+            f"watching_external_evidence={queue.get('watching_external_evidence')}, "
+            f"watching_monitor={queue.get('watching_monitor')}",
+        ]
+    )
+    backlog = (
+        queue.get("autonomous_backlog_candidates")
+        if isinstance(queue.get("autonomous_backlog_candidates"), dict)
+        else {}
+    )
+    append_attention_queue_candidate_group_markdown(
+        lines,
+        backlog,
+        group_name="autonomous_backlog_candidates",
+        item_name="autonomous_candidate",
+    )
+    monitor_candidates = (
+        queue.get("autonomous_monitor_candidates")
+        if isinstance(queue.get("autonomous_monitor_candidates"), dict)
+        else {}
+    )
+    append_attention_queue_candidate_group_markdown(
+        lines,
+        monitor_candidates,
+        group_name="autonomous_monitor_candidates",
+        item_name="autonomous_monitor_candidate",
+    )
+
+
+def append_attention_queue_candidate_group_markdown(
+    lines: list[str],
+    candidates: dict[str, Any],
+    *,
+    group_name: str,
+    item_name: str,
+) -> None:
+    if not candidates:
+        return
+    lines.append(
+        f"- {group_name}: "
+        f"open={candidates.get('open_count')} "
+        f"task_class={markdown_scalar(candidates.get('task_class') or '')} "
+        f"source={markdown_scalar(candidates.get('source') or '')}"
+    )
+    for candidate in candidates.get("items") or []:
+        if not isinstance(candidate, dict):
+            continue
+        priority_text = ""
+        if candidate.get("priority"):
+            priority_text = f" priority={markdown_scalar(candidate.get('priority') or '')}"
+        lines.append(
+            f"  - {item_name}: "
+            f"goal={markdown_scalar(candidate.get('goal_id') or '')}"
+            f"{priority_text} "
+            f"text={markdown_scalar(candidate.get('text') or '')}"
+        )
