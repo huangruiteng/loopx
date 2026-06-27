@@ -56,6 +56,8 @@ from .registry import registry_goals
 from .renderers.status_markdown import (
     append_human_reward_markdown as _append_human_reward_markdown,
     append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
+    authority_registry_markdown_summary as _authority_registry_markdown_summary,
+    goals_by_id as _goals_by_id,
     markdown_scalar as _markdown_scalar,
 )
 from .rollout_event_log import load_rollout_events, rollout_event_log_path
@@ -8910,40 +8912,6 @@ def compact_controller_readiness(readiness: Any) -> dict[str, Any] | None:
     if gates:
         compact["gates"] = gates
     return compact or None
-
-
-def _goals_by_id(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
-    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
-    result: dict[str, dict[str, Any]] = {}
-    for goal in goals:
-        if not isinstance(goal, dict):
-            continue
-        goal_id = str(goal.get("id") or "")
-        if goal_id:
-            result[goal_id] = goal
-    return result
-
-
-def _authority_registry_markdown_summary(goal: dict[str, Any] | None) -> str | None:
-    registry = goal.get("authority_registry") if isinstance(goal, dict) else None
-    if not isinstance(registry, dict) or not registry.get("declared"):
-        return None
-    materials = int(registry.get("project_material_count") or 0)
-    topics = int(registry.get("topic_authority_count") or 0)
-    if materials <= 0 and topics <= 0:
-        return None
-    return (
-        f"entries={int(registry.get('default_entries_present') or 0)}/"
-        f"{int(registry.get('default_entry_count') or 0)} "
-        f"topics={topics} "
-        f"materials={materials} "
-        f"repositories={int(registry.get('project_material_repository_count') or 0)} "
-        f"owner_review_required={int(registry.get('project_material_owner_review_required_count') or 0)} "
-        f"stale={int(registry.get('project_material_stale_count') or 0)} "
-        f"current_authority={int(registry.get('project_material_current_authority_count') or 0)} "
-        f"risk={_markdown_scalar(registry.get('conflict_risk') or 'unknown')}"
-    )
 
 
 def compact_run(run: dict[str, Any]) -> dict[str, Any]:
