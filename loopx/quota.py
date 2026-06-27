@@ -156,6 +156,7 @@ AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
 SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = AGENT_CLAIM_SCOPE_SCHEMA_VERSION
 AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
 AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
+AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION = "agent_lane_frontier_hint_v0"
 
 
 class AgentScopeFrontierAction(str, Enum):
@@ -163,6 +164,13 @@ class AgentScopeFrontierAction(str, Enum):
     AGENT_SCOPE_WAIT = "agent_scope_wait"
     REASSIGNMENT_REQUIRED = "reassignment_required"
     SUCCESSOR_REPLAN_REQUIRED = "successor_replan_required"
+
+
+class AgentLaneFrontierHintDecision(str, Enum):
+    CLAIM_UNOWNED_IN_SCOPE = "claim_unowned_in_scope"
+    ADD_NEXT_ADVANCEMENT = "add_next_advancement"
+    RECORD_NO_FOLLOWUP = "record_no_followup"
+    QUIET_NOOP_BLOCKER = "quiet_noop_blocker"
 
 
 DEFAULT_AVAILABLE_CAPABILITIES = (
@@ -2549,6 +2557,157 @@ def _agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
         return AgentScopeFrontierAction(str(value or ""))
     except ValueError:
         return None
+
+
+def _first_compact_todo_id(items: Any) -> str | None:
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        todo_id = normalize_todo_id(item.get("todo_id"))
+        if todo_id:
+            return todo_id
+    return None
+
+
+def _agent_lane_frontier_hint(
+    *,
+    goal_id: str,
+    agent_identity: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    agent_lane_next_action: dict[str, Any] | None,
+    agent_scope_frontier: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return None
+    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+
+    def build_hint(
+        decision: AgentLaneFrontierHintDecision,
+        *,
+        source: str,
+        reason_code: str,
+        target_todo_id: str | None = None,
+        quiet_noop_allowed: bool,
+        next_cli_action: str | None = None,
+    ) -> dict[str, Any]:
+        hint: dict[str, Any] = {
+            "schema_version": AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION,
+            "decision": decision.value,
+            "agent_id": agent_id,
+            "primary_agent": primary_agent,
+            "source": source,
+            "reason_code": reason_code,
+            "quiet_noop_allowed": quiet_noop_allowed,
+            "uses_structured_frontier": True,
+        }
+        if target_todo_id:
+            hint["target_todo_id"] = target_todo_id
+        if next_cli_action:
+            hint["next_cli_action"] = next_cli_action
+        return hint
+
+    if isinstance(agent_lane_next_action, dict):
+        selected_by = str(agent_lane_next_action.get("selected_by") or "")
+        claim_required = agent_lane_next_action.get("claim_required_before_work") is True
+        target_todo_id = normalize_todo_id(agent_lane_next_action.get("todo_id"))
+        if selected_by == "unclaimed_todo" or claim_required:
+            action = None
+            if target_todo_id:
+                action = (
+                    f"loopx todo claim --goal-id {goal_id} --todo-id {target_todo_id} "
+                    f"--claimed-by {agent_id}"
+                )
+            return build_hint(
+                AgentLaneFrontierHintDecision.CLAIM_UNOWNED_IN_SCOPE,
+                source="agent_lane_next_action",
+                reason_code="unclaimed_advancement_selected",
+                target_todo_id=target_todo_id,
+                quiet_noop_allowed=False,
+                next_cli_action=action,
+            )
+
+    frontier = agent_scope_frontier if isinstance(agent_scope_frontier, dict) else {}
+    frontier_action = _agent_scope_frontier_action(frontier.get("action"))
+    if frontier_action == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED:
+        cleared_todo_id = _first_compact_todo_id(
+            frontier.get("cleared_without_successor_handoff_gates")
+        )
+        if cleared_todo_id:
+            return build_hint(
+                AgentLaneFrontierHintDecision.RECORD_NO_FOLLOWUP,
+                source="agent_scope_frontier",
+                reason_code="cleared_handoff_without_successor",
+                target_todo_id=cleared_todo_id,
+                quiet_noop_allowed=False,
+                next_cli_action=(
+                    f"loopx todo complete --goal-id {goal_id} --todo-id {cleared_todo_id} "
+                    "--no-follow-up --evidence '<public-safe rationale>'"
+                ),
+            )
+        deferred_todo_id = _first_compact_todo_id(frontier.get("deferred_resume_candidates"))
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="successor_replan_required",
+            target_todo_id=deferred_todo_id,
+            quiet_noop_allowed=False,
+        )
+
+    if frontier_action in {
+        AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
+        AgentScopeFrontierAction.REASSIGNMENT_REQUIRED,
+    }:
+        blocker_todo_id = _first_compact_todo_id(frontier.get("blocking_handoff_gates"))
+        if not blocker_todo_id:
+            blocker_todo_id = _first_compact_todo_id(frontier.get("other_agent_claimed_items"))
+        if blocker_todo_id:
+            return build_hint(
+                AgentLaneFrontierHintDecision.QUIET_NOOP_BLOCKER,
+                source="agent_scope_frontier",
+                reason_code="blocked_by_other_agent_frontier",
+                target_todo_id=blocker_todo_id,
+                quiet_noop_allowed=True,
+            )
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="no_current_agent_advancement_todo",
+            quiet_noop_allowed=True,
+        )
+
+    if frontier_action == AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED:
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="agent_scope_exhausted",
+            quiet_noop_allowed=True,
+        )
+
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    current_advancement_count = int(
+        agent_todo_summary.get("current_agent_claimed_advancement_count") or 0
+    )
+    current_monitor_count = int(agent_todo_summary.get("current_agent_claimed_monitor_count") or 0)
+    unclaimed_count = _count_advancement_items(
+        agent_todo_summary.get("unclaimed_priority_open_items"),
+        claimed_by="__unclaimed__",
+    )
+    lane = str(work_lane_contract.get("lane") or "") if isinstance(work_lane_contract, dict) else ""
+    if current_advancement_count == 0 and unclaimed_count == 0 and current_monitor_count > 0:
+        return build_hint(
+            AgentLaneFrontierHintDecision.QUIET_NOOP_BLOCKER,
+            source="agent_todo_summary",
+            reason_code="only_current_agent_monitor_work_remains",
+            quiet_noop_allowed=lane != TODO_TASK_CLASS_ADVANCEMENT,
+        )
+    return None
 
 
 def _agent_scope_deferred_resume_candidates(
@@ -6545,6 +6704,16 @@ def build_quota_should_run(
             work_lane_contract=work_lane_contract,
             candidate_should_run=bool(should_run and normal_delivery_allowed),
         )
+        agent_lane_frontier_hint = _agent_lane_frontier_hint(
+            goal_id=safe_goal_id,
+            agent_identity=agent_identity,
+            agent_todo_summary=agent_todo_summary,
+            agent_lane_next_action=agent_lane_next_action,
+            agent_scope_frontier=agent_scope_frontier,
+            work_lane_contract=work_lane_contract,
+        )
+        if agent_scope_frontier and agent_lane_frontier_hint:
+            agent_scope_frontier["frontier_hint"] = agent_lane_frontier_hint
         if agent_scope_frontier:
             frontier_action = str(agent_scope_frontier.get("effective_action") or "")
             successor_replan_required = (
@@ -6686,6 +6855,8 @@ def build_quota_should_run(
             payload["agent_identity"] = agent_identity
         if agent_lane_next_action:
             payload["agent_lane_next_action"] = agent_lane_next_action
+        if agent_lane_frontier_hint:
+            payload["agent_lane_frontier_hint"] = agent_lane_frontier_hint
         if agent_scope_frontier:
             payload["agent_scope_frontier"] = agent_scope_frontier
         if workspace_guard:
@@ -8005,6 +8176,19 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if agent_lane_next_action.get("text"):
             lines.append(f"- agent_lane_next_action_text: {agent_lane_next_action.get('text')}")
+    agent_lane_frontier_hint = (
+        payload.get("agent_lane_frontier_hint")
+        if isinstance(payload.get("agent_lane_frontier_hint"), dict)
+        else {}
+    )
+    if agent_lane_frontier_hint:
+        lines.append(
+            "- agent_lane_frontier_hint: "
+            f"decision={agent_lane_frontier_hint.get('decision')} "
+            f"source={agent_lane_frontier_hint.get('source')} "
+            f"reason_code={agent_lane_frontier_hint.get('reason_code')} "
+            f"target_todo_id={agent_lane_frontier_hint.get('target_todo_id')}"
+        )
     agent_scope_frontier = (
         payload.get("agent_scope_frontier")
         if isinstance(payload.get("agent_scope_frontier"), dict)

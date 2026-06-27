@@ -250,6 +250,8 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
     if not isinstance(items, list):
         return payload
     attached = 0
+    frontier_attached = 0
+    hint_attached = 0
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -261,18 +263,37 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
         except Exception:
             continue
         next_action = guard.get("agent_lane_next_action")
-        if not isinstance(next_action, dict):
-            continue
-        item["agent_lane_next_action"] = next_action
         project_asset = item.get("project_asset")
-        if isinstance(project_asset, dict):
-            project_asset["agent_lane_next_action"] = next_action
-        attached += 1
-    if attached:
+        changed = False
+        if isinstance(next_action, dict):
+            item["agent_lane_next_action"] = next_action
+            if isinstance(project_asset, dict):
+                project_asset["agent_lane_next_action"] = next_action
+            attached += 1
+            changed = True
+        frontier = guard.get("agent_scope_frontier")
+        if isinstance(frontier, dict):
+            item["agent_scope_frontier"] = frontier
+            if isinstance(project_asset, dict):
+                project_asset["agent_scope_frontier"] = frontier
+            frontier_attached += 1
+            changed = True
+        frontier_hint = guard.get("agent_lane_frontier_hint")
+        if isinstance(frontier_hint, dict):
+            item["agent_lane_frontier_hint"] = frontier_hint
+            if isinstance(project_asset, dict):
+                project_asset["agent_lane_frontier_hint"] = frontier_hint
+            hint_attached += 1
+            changed = True
+        if not changed:
+            continue
+    if attached or frontier_attached or hint_attached:
         payload["agent_lane_next_action_projection"] = {
             "schema_version": "agent_lane_next_action_projection_v0",
             "agent_id": safe_agent_id,
             "attached_count": attached,
+            "frontier_attached_count": frontier_attached,
+            "frontier_hint_attached_count": hint_attached,
             "preserves_goal_next_action": True,
         }
     return payload

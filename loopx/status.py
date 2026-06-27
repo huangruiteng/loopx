@@ -9633,6 +9633,13 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             if isinstance(item.get("agent_lane_next_action"), dict)
             else {}
         )
+        agent_lane_frontier_hint = (
+            project_asset.get("agent_lane_frontier_hint")
+            if isinstance(project_asset.get("agent_lane_frontier_hint"), dict)
+            else item.get("agent_lane_frontier_hint")
+            if isinstance(item.get("agent_lane_frontier_hint"), dict)
+            else {}
+        )
         goal_todo_scope_suffix = " scope=goal_all_agents" if agent_lane_next_action else ""
         lines.append(
             "  - project_asset_source: "
@@ -9687,6 +9694,15 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     "    - current_agent_todo: "
                     f"agent={agent} todo_id={todo_id} selected_by={selected_by} "
                     f"confidence={confidence} source=agent_lane_next_action action={action}"
+                )
+            if agent_lane_frontier_hint:
+                lines.append(
+                    "    - agent_lane_frontier_hint: "
+                    f"agent={_markdown_scalar(agent_lane_frontier_hint.get('agent_id') or '')} "
+                    f"decision={_markdown_scalar(agent_lane_frontier_hint.get('decision') or '')} "
+                    f"source={_markdown_scalar(agent_lane_frontier_hint.get('source') or '')} "
+                    f"reason_code={_markdown_scalar(agent_lane_frontier_hint.get('reason_code') or '')} "
+                    f"target_todo_id={_markdown_scalar(agent_lane_frontier_hint.get('target_todo_id') or '')}"
                 )
             dreaming_lane_badge = (
                 project_asset.get("dreaming_lane_badge")

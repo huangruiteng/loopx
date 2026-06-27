@@ -1159,6 +1159,14 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert frontier["candidate_counts"]["unclaimed_advancement_count"] == 0, frontier
     assert frontier["candidate_counts"]["other_agent_claimed_advancement_count"] == 1, frontier
     assert frontier["other_claimants"] == ["codex-main-control"], frontier
+    hint = guard["agent_lane_frontier_hint"]
+    assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
+    assert hint["decision"] == "quiet_noop_blocker", hint
+    assert hint["source"] == "agent_scope_frontier", hint
+    assert hint["reason_code"] == "blocked_by_other_agent_frontier", hint
+    assert hint["target_todo_id"] == "todo_primary_suite", hint
+    assert hint["quiet_noop_allowed"] is True, hint
+    assert frontier["frontier_hint"] == hint, frontier
     assert "codex-side-bypass" in guard["recommended_action"], guard
     assert "codex-main-control" in guard["recommended_action"], guard
     assert "SWE-Marathon" not in guard["recommended_action"], guard
@@ -1176,6 +1184,7 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert "codex-side-bypass has no current/unclaimed" in contract["user_channel"]["reason"], contract
     markdown = render_quota_should_run_markdown(guard)
     assert "agent_scope_frontier: action=agent_scope_wait" in markdown, markdown
+    assert "agent_lane_frontier_hint: decision=quiet_noop_blocker" in markdown, markdown
     assert "quiet_noop_allowed=True" in markdown, markdown
 
 
@@ -1415,6 +1424,14 @@ def assert_side_agent_replans_when_deferred_successor_is_ready() -> None:
     assert frontier["quiet_noop_allowed"] is False, frontier
     assert frontier["requires_replan"] is True, frontier
     assert frontier["deferred_resume_candidates"][0]["todo_id"] == "todo_issue_surface_deferred", frontier
+    hint = guard["agent_lane_frontier_hint"]
+    assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
+    assert hint["decision"] == "add_next_advancement", hint
+    assert hint["source"] == "agent_scope_frontier", hint
+    assert hint["reason_code"] == "successor_replan_required", hint
+    assert hint["target_todo_id"] == "todo_issue_surface_deferred", hint
+    assert hint["quiet_noop_allowed"] is False, hint
+    assert frontier["frontier_hint"] == hint, frontier
     assert guard["agent_todo_summary"]["current_agent_deferred_resume_count"] == 1, guard
     obligation = guard["execution_obligation"]
     assert obligation["kind"] == "successor_replan_required", obligation
@@ -1430,6 +1447,7 @@ def assert_side_agent_replans_when_deferred_successor_is_ready() -> None:
     assert guard["automation_liveness"]["automation_action"] == "execute_bounded_work", guard
     markdown = render_quota_should_run_markdown(guard)
     assert "agent_scope_frontier: action=successor_replan_required" in markdown, markdown
+    assert "agent_lane_frontier_hint: decision=add_next_advancement" in markdown, markdown
     assert "agent_scope_deferred_resume_candidates" in markdown, markdown
 
 
@@ -1478,6 +1496,16 @@ def assert_side_agent_can_take_unclaimed_work() -> None:
     assert next_action["todo_id"] == "todo_unclaimed_frontstage", guard
     assert next_action["selected_by"] == "unclaimed_todo", guard
     assert next_action["claim_required_before_work"] is True, guard
+    hint = guard["agent_lane_frontier_hint"]
+    assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
+    assert hint["decision"] == "claim_unowned_in_scope", hint
+    assert hint["source"] == "agent_lane_next_action", hint
+    assert hint["reason_code"] == "unclaimed_advancement_selected", hint
+    assert hint["target_todo_id"] == "todo_unclaimed_frontstage", hint
+    assert hint["quiet_noop_allowed"] is False, hint
+    assert "loopx todo claim" in hint["next_cli_action"], hint
+    markdown = render_quota_should_run_markdown(guard)
+    assert "agent_lane_frontier_hint: decision=claim_unowned_in_scope" in markdown, markdown
 
 
 def assert_agent_lane_next_action_prefers_capability_repair_candidate() -> None:
