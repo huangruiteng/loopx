@@ -32,6 +32,18 @@ BENCHMARK_RUN_LEDGER_MAINTENANCE_COMMANDS = {
 }
 
 
+def _compact_benchmark_run_input(
+    payload: dict[str, object],
+) -> tuple[dict[str, object] | None, str]:
+    """Return compact benchmark_run_v0 plus the public-safe input kind."""
+
+    if payload.get("schema_version") == "harbor_job_result_reducer_v0":
+        compact = payload.get("compact_benchmark_run")
+        if isinstance(compact, dict):
+            return compact_benchmark_run(compact), "harbor_job_result_reducer_v0"
+    return compact_benchmark_run(payload), "benchmark_run_v0"
+
+
 def render_benchmark_run_ledger_upsert_markdown(payload: dict[str, object]) -> str:
     ledger = (
         payload.get("benchmark_run_ledger")
@@ -294,12 +306,13 @@ def handle_benchmark_run_ledger_maintenance_command(
                 raise ValueError("ledger input JSON must contain an object")
 
             if args.benchmark_run_json:
-                benchmark_run = compact_benchmark_run(run_input)
+                benchmark_run, input_kind = _compact_benchmark_run_input(run_input)
                 if not benchmark_run:
                     raise ValueError(
-                        "--benchmark-run-json did not contain a compactable benchmark_run_v0 object"
+                        "--benchmark-run-json did not contain a compactable "
+                        "benchmark_run_v0 object or harbor_job_result_reducer_v0 "
+                        "wrapper with compact_benchmark_run"
                     )
-                input_kind = "benchmark_run_v0"
             else:
                 benchmark_run = compact_benchmark_post_launch_materialization(
                     run_input

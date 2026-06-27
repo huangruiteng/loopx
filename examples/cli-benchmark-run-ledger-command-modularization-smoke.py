@@ -132,6 +132,41 @@ def main() -> int:
         if upsert_payload["read_boundary"].get("raw_logs_read") is not False:
             raise AssertionError(upsert_payload)
 
+        harbor_wrapper_path = temp_root / "harbor-wrapper.json"
+        harbor_wrapper_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "harbor_job_result_reducer_v0",
+                    "ok": True,
+                    "compact_benchmark_run": terminal_payload,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        harbor_wrapper_result = run_cli(
+            "--format",
+            "json",
+            "benchmark",
+            "run-ledger-upsert",
+            "--benchmark-run-json",
+            str(harbor_wrapper_path),
+            "--run-ledger-path",
+            str(temp_root / "harbor-wrapper-ledger.json"),
+        )
+        if harbor_wrapper_result.returncode != 0:
+            raise AssertionError(
+                harbor_wrapper_result.stderr or harbor_wrapper_result.stdout
+            )
+        harbor_wrapper_payload = payload_from(harbor_wrapper_result)
+        if harbor_wrapper_payload.get("ok") is not True:
+            raise AssertionError(harbor_wrapper_payload)
+        if harbor_wrapper_payload.get("input_kind") != "harbor_job_result_reducer_v0":
+            raise AssertionError(harbor_wrapper_payload)
+        if harbor_wrapper_payload["read_boundary"].get("raw_logs_read") is not False:
+            raise AssertionError(harbor_wrapper_payload)
+
         post_launch = {
             "schema_version": "terminal_bench_post_launch_materialization_v0",
             "checked": True,
