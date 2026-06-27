@@ -128,6 +128,21 @@ loopx bootstrap \
 完整案例目录见 [docs/showcases/README.md](docs/showcases/README.md)。
 更完整的演示材料放在文末实验性能力里。
 
+### Experimental: Today Value Path
+
+这不会替代首屏。它先作为实验性入口放在案例区下面，给已经理解控制面价值的用户
+快速选一个今天就能用的 LoopX 能力：
+
+| 能力 / 路径 | 预期产物 | 用户价值指标 |
+| --- | --- | --- |
+| PR review/comment -> fix loop | 可复核的修复包：repro、smoke 结果、剩余 review owner。 | 更少遗漏 review 线程，更快从 comment 走到 validated patch。 |
+| Overnight PR-sized refactor | 可 review 的 slice 列表、验证记录、后续 todo、merge 边界。 | 增加可合并 commit，而不是第二天早上面对一个巨型 diff。 |
+| P0 blocked -> safe fallback | 在已有 goal 内由 kernel 投影具体 user gate、安全 fallback todo、quota 决策和证据边界。 | 等人决策时减少 agent 空转，同时保留人类判断。 |
+
+正常用 `/loopx <goal text>` 启动目标即可。PR review 和 refactor 路径可以用自然语言
+直接描述；P0 safe fallback 不是单独命令，而是已有 goal 出现具体阻塞 user gate、
+且还有安全 P1/P2 工作时触发的仓库 kernel 行为。
+
 ## 它是什么
 
 LoopX 不是另一个 agent runtime，也不是要替代 Codex、Claude Code、

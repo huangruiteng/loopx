@@ -56,6 +56,8 @@
   .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
   .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
   .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .mini-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .mini-metrics span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#aeb3ba;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:4px 8px;background:#0b0b0c}
   .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
@@ -63,8 +65,16 @@
   .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
   .card p{font-size:14px;margin-top:9px}
   .hide{display:none}
+  .experiment{margin-top:24px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:20px}
+  .experiment h3{font-size:18px}
+  .experiment p{font-size:14px;margin-top:8px}
+  .experiment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .experiment-card{border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0b0b0c;padding:14px}
+  .experiment-card strong{display:block;font-size:14px;line-height:1.45}
+  .experiment-card span{display:block;margin-top:9px;font-size:13px;line-height:1.55;color:#9ea3aa}
+  .experiment-card em{display:block;margin-top:10px;font-style:normal;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.55;color:var(--accent)}
   footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
-  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid,.experiment-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
 </style>
 </head>
 <body>
@@ -111,76 +121,108 @@
     <div class="section-head"><span>01</span><h2>Top showcase cases</h2></div>
     <input class="search" id="case-search" type="search" placeholder="Search showcase cases" aria-label="Search showcase cases">
     <div class="cards" data-cards>
-      <a class="card" href="cases/0627-overnight-pr-batch.en.html" data-search="overnight pr batch with reviewable control an overnight loopx run can produce many pr-sized slices while keeping review, validation, and public evidence boundaries visible. high-throughput multi-lane work can remain pr-sized, reviewable, and merge-safe. todo claim, review packet, self-merge boundary, focused smoke, public-boundary scan high_throughput_reviewable_work pr_sized_slices self_merge_policy validation_writeback">
+      <a class="card" href="cases/0627-overnight-pr-batch.en.html" data-search="overnight pr batch with reviewable control an overnight loopx run can produce many pr-sized slices while keeping review, validation, and public evidence boundaries visible. high-throughput multi-lane work can remain pr-sized, reviewable, and merge-safe. todo claim, review packet, self-merge boundary, focused smoke, public-boundary scan high_throughput_reviewable_work pr_sized_slices self_merge_policy validation_writeback 22 reviewable merged commits 10 pr-numbered commits 10h public evidence window 0 raw-agent-log dependency">
         <div class="meta">2026-06-27 · public_evidence_case</div>
         <h3>Overnight PR batch with reviewable control</h3>
         <p>An overnight LoopX run can produce many PR-sized slices while keeping review, validation, and public evidence boundaries visible.</p>
         <p><strong>Proof:</strong> High-throughput multi-lane work can remain PR-sized, reviewable, and merge-safe.</p>
+        <div class="mini-metrics"><span>22 · reviewable merged commits</span><span>10 · PR-numbered commits</span><span>10h · public evidence window</span></div>
         <div class="chips"><span>high_throughput_reviewable_work</span><span>pr_sized_slices</span><span>self_merge_policy</span><span>validation_writeback</span></div>
       </a>
 
 
-      <a class="card" href="cases/0624-pr-issue-auto-fix.en.html" data-search="pr issue automatic fix loop review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff. issue and review feedback can enter an executable repair loop. issue-fix workflow, command pack, repro smoke, pr review feedback issue_fix_workflow review_feedback repro_smoke command_pack">
+      <a class="card" href="cases/0624-pr-issue-auto-fix.en.html" data-search="pr issue automatic fix loop review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff. issue and review feedback can enter an executable repair loop. issue-fix workflow, command pack, repro smoke, pr review feedback issue_fix_workflow review_feedback repro_smoke command_pack 5 repair-loop stages 1 branch-ready fix packet 1 review handoff preserved 0 raw issue bodies in public artifact">
         <div class="meta">2026-06-24 · public_safe_pattern_case</div>
         <h3>PR issue automatic fix loop</h3>
         <p>Review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff.</p>
         <p><strong>Proof:</strong> Issue and review feedback can enter an executable repair loop.</p>
+        <div class="mini-metrics"><span>5 · repair-loop stages</span><span>1 · branch-ready fix packet</span><span>1 · review handoff preserved</span></div>
         <div class="chips"><span>issue_fix_workflow</span><span>review_feedback</span><span>repro_smoke</span><span>command_pack</span></div>
       </a>
 
 
-      <a class="card" href="cases/0623-agent-to-agent-pr-comments.en.html" data-search="agent-to-agent pr comment and fix loop pr review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder. multiple agents can coordinate around pr review comments without losing owner review. claimed_by, handoff gate, review packet, comment/fix loop agent_to_agent_handoff pr_comment_loop review_packet claimed_todo">
+      <a class="card" href="cases/0623-agent-to-agent-pr-comments.en.html" data-search="agent-to-agent pr comment and fix loop pr review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder. multiple agents can coordinate around pr review comments without losing owner review. claimed_by, handoff gate, review packet, comment/fix loop agent_to_agent_handoff pr_comment_loop review_packet claimed_todo 1 owner per feedback item 3 owner/fix/review questions answered 1 review-packet handoff 0 unowned pr comment reminders">
         <div class="meta">2026-06-23 · public_safe_pattern_case</div>
         <h3>Agent-to-agent PR comment and fix loop</h3>
         <p>PR review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder.</p>
         <p><strong>Proof:</strong> Multiple agents can coordinate around PR review comments without losing owner review.</p>
+        <div class="mini-metrics"><span>1 · owner per feedback item</span><span>3 · owner/fix/review questions answered</span><span>1 · review-packet handoff</span></div>
         <div class="chips"><span>agent_to_agent_handoff</span><span>pr_comment_loop</span><span>review_packet</span><span>claimed_todo</span></div>
       </a>
 
 
-      <a class="card" href="cases/0623-overnight-project-refactor.en.html" data-search="overnight project refactor as pr-sized slices a broad refactor can run overnight while staying split into human-sized review units. long unattended refactors can split into moderate pr slices instead of one unreviewable diff. loop, todo follow-up, supersede, pr-sized slices long_unattended_goal pr_sized_slices todo_follow_up supersede">
+      <a class="card" href="cases/0623-overnight-project-refactor.en.html" data-search="overnight project refactor as pr-sized slices a broad refactor can run overnight while staying split into human-sized review units. long unattended refactors can split into moderate pr slices instead of one unreviewable diff. loop, todo follow-up, supersede, pr-sized slices long_unattended_goal pr_sized_slices todo_follow_up supersede 1 pr-sized slice at a time 3 successor/supersede/handoff routes 1 review gate for broad risk 0 giant-diff target">
         <div class="meta">2026-06-23 · public_safe_pattern_case</div>
         <h3>Overnight project refactor as PR-sized slices</h3>
         <p>A broad refactor can run overnight while staying split into human-sized review units.</p>
         <p><strong>Proof:</strong> Long unattended refactors can split into moderate PR slices instead of one unreviewable diff.</p>
+        <div class="mini-metrics"><span>1 · PR-sized slice at a time</span><span>3 · successor/supersede/handoff routes</span><span>1 · review gate for broad risk</span></div>
         <div class="chips"><span>long_unattended_goal</span><span>pr_sized_slices</span><span>todo_follow_up</span><span>supersede</span></div>
       </a>
 
 
-      <a class="card" href="cases/0619-dynamic-workflow-hardware-agent.en.html" data-search="dynamic workflow for hardware-agent development a fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate. fuzzy goals, multiple workers, and long unattended runs can still converge. goal state, worker handoff, dynamic workflow dynamic_workflow multi_agent_coordination shared_control_plane long_unattended_goal">
+      <a class="card" href="cases/0619-dynamic-workflow-hardware-agent.en.html" data-search="dynamic workflow for hardware-agent development a fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate. fuzzy goals, multiple workers, and long unattended runs can still converge. goal state, worker handoff, dynamic workflow dynamic_workflow multi_agent_coordination shared_control_plane long_unattended_goal 5 public-safe hardware workflows 3 loopx/orchestrator/worker role split 1 canonical artifact preserved 0 proprietary design details exposed">
         <div class="meta">2026-06-19 · public_safe_interactive_case</div>
         <h3>Dynamic workflow for hardware-agent development</h3>
         <p>A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.</p>
         <p><strong>Proof:</strong> Fuzzy goals, multiple workers, and long unattended runs can still converge.</p>
+        <div class="mini-metrics"><span>5 · public-safe hardware workflows</span><span>3 · LoopX/orchestrator/worker role split</span><span>1 · canonical artifact preserved</span></div>
         <div class="chips"><span>dynamic_workflow</span><span>multi_agent_coordination</span><span>shared_control_plane</span><span>long_unattended_goal</span></div>
       </a>
 
 
-      <a class="card" href="cases/0619-loopx-self-iteration.en.html" data-search="loopx self-iteration loop a high-churn loopx repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel. a high-churn multi-lane project can keep state, boundaries, and evidence coherent. todo, quota, gate, evidence, review packet, frontstage self_iteration side_agent_scope todo_claim_ownership identity_aware_prompt">
+      <a class="card" href="cases/0619-loopx-self-iteration.en.html" data-search="loopx self-iteration loop a high-churn loopx repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel. a high-churn multi-lane project can keep state, boundaries, and evidence coherent. todo, quota, gate, evidence, review packet, frontstage self_iteration side_agent_scope todo_claim_ownership identity_aware_prompt 801 public commits 244 commits since jun 18 59-92d ai-assisted baseline 3.0-4.7x calendar compression">
         <div class="meta">2026-06-19 · public_evidence_case</div>
         <h3>LoopX self-iteration loop</h3>
         <p>A high-churn LoopX repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.</p>
         <p><strong>Proof:</strong> A high-churn multi-lane project can keep state, boundaries, and evidence coherent.</p>
+        <div class="mini-metrics"><span>801 · public commits</span><span>244 · commits since Jun 18</span><span>59-92d · AI-assisted baseline</span></div>
         <div class="chips"><span>self_iteration</span><span>side_agent_scope</span><span>todo_claim_ownership</span><span>identity_aware_prompt</span></div>
       </a>
 
 
-      <a class="card" href="cases/0617-blocked-p0-safe-rotation.en.html" data-search="blocked p0 with safe p1/p2 rotation a gated p0 lane should not stall a whole long-running goal when safe fallback work exists. a user decision should not block all safe work. concrete user todo, safe fallback, quota control blocked_priority_fallback concrete_user_gate safe_fallback_work quota_discipline">
+      <a class="card" href="cases/0617-blocked-p0-safe-rotation.en.html" data-search="blocked p0 with safe p1/p2 rotation a gated p0 lane should not stall a whole long-running goal when safe fallback work exists. a user decision should not block all safe work. concrete user todo, safe fallback, quota control blocked_priority_fallback concrete_user_gate safe_fallback_work quota_discipline 1 concrete p0 user decision 1 safe fallback lane 0 gated-lane auto-progress 0 private upload dependency">
         <div class="meta">2026-06-17 · reproducible_synthetic_demo</div>
         <h3>Blocked P0 with safe P1/P2 rotation</h3>
         <p>A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.</p>
         <p><strong>Proof:</strong> A user decision should not block all safe work.</p>
+        <div class="mini-metrics"><span>1 · concrete P0 user decision</span><span>1 · safe fallback lane</span><span>0 · gated-lane auto-progress</span></div>
         <div class="chips"><span>blocked_priority_fallback</span><span>concrete_user_gate</span><span>safe_fallback_work</span><span>quota_discipline</span></div>
       </a>
 </div>
 
+    <section class="experiment" aria-label="Experimental today-value path">
+      <h3>Experimental today-value path</h3>
+      <p>A lower-priority entry point for users who want to pick one useful LoopX capability today without replacing the showcase first screen.</p>
+      <div class="experiment-grid">
+        <div class="experiment-card">
+          <strong>PR review/comment -&gt; fix loop</strong>
+          <span>Branch-ready fix packet with repro, smoke result, and remaining review owner.</span>
+          <em>Fewer dropped review threads.</em>
+        </div>
+
+        <div class="experiment-card">
+          <strong>Overnight PR-sized refactor</strong>
+          <span>Reviewable slice list, validation notes, successor todo, and merge boundary.</span>
+          <em>More merged commits without a giant diff audit.</em>
+        </div>
+
+        <div class="experiment-card">
+          <strong>P0 blocked -&gt; safe fallback</strong>
+          <span>Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary.</span>
+          <em>Less idle agent time while preserving human judgment.</em>
+        </div>
+      </div>
+    </section>
+
     <div class="section-head"><span>02</span><h2>Appendix case</h2></div>
     <div class="cards">
-      <a class="card" href="cases/0620-creator-operator-case-spec.en.html" data-search="creator-operator long-running agent case a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. creator_operator_workflow, gate_aware_continuation, feedback_capture, safe_side_path creator_operator_workflow gate_aware_continuation feedback_capture safe_side_path">
+      <a class="card" href="cases/0620-creator-operator-case-spec.en.html" data-search="creator-operator long-running agent case a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. creator_operator_workflow, gate_aware_continuation, feedback_capture, safe_side_path creator_operator_workflow gate_aware_continuation feedback_capture safe_side_path 1 publish hard gate 1 safe research side path 0 autopublish actions 0 real operations data exposed">
         <div class="meta">2026-06-20 · public_safe_case_spec</div>
         <h3>Creator-operator long-running agent case</h3>
         <p>A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</p>
         <p><strong>Proof:</strong> A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</p>
+        <div class="mini-metrics"><span>1 · publish hard gate</span><span>1 · safe research side path</span><span>0 · autopublish actions</span></div>
         <div class="chips"><span>creator_operator_workflow</span><span>gate_aware_continuation</span><span>feedback_capture</span><span>safe_side_path</span></div>
       </a>
 </div>

@@ -81,7 +81,7 @@
       },
       "frontend_card": {
         "visual_metaphor": "parallel PR lanes converge into a reviewable merge rail",
-        "primary_metric_hint": "High-throughput multi-lane work can remain PR-sized, reviewable, and merge-safe.",
+        "primary_metric_hint": "22 reviewable merged commits, including 10 PR-numbered commits, landed inside a 10h public evidence window.",
         "badges": [
           "PR batch",
           "review packet",
@@ -93,7 +93,37 @@
           "limit self-merge to narrow validated changes while preserving broader review gates",
           "record public evidence from Git history instead of raw agent logs or private screenshots"
         ]
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "22",
+          "labels": {
+            "zh": "可审阅 merged commits",
+            "en": "reviewable merged commits"
+          }
+        },
+        {
+          "value": "10",
+          "labels": {
+            "zh": "带 PR 编号的 commits",
+            "en": "PR-numbered commits"
+          }
+        },
+        {
+          "value": "10h",
+          "labels": {
+            "zh": "公开证据窗口",
+            "en": "public evidence window"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "raw agent logs 依赖",
+            "en": "raw-agent-log dependency"
+          }
+        }
+      ]
     },
     {
       "id": "2026-06-24-pr-issue-auto-fix",
@@ -139,7 +169,7 @@
       },
       "frontend_card": {
         "visual_metaphor": "issue feedback closes through repro, fix, validation, and review handoff",
-        "primary_metric_hint": "Issue and review feedback can enter an executable repair loop.",
+        "primary_metric_hint": "Feedback becomes a five-stage repair loop with branch-ready fix evidence and reviewer handoff.",
         "badges": [
           "issue fix",
           "repro smoke",
@@ -151,7 +181,37 @@
           "keep gated source reads explicit",
           "separate repro, implementation, validation, and reviewer handoff"
         ]
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "5",
+          "labels": {
+            "zh": "修复闭环阶段",
+            "en": "repair-loop stages"
+          }
+        },
+        {
+          "value": "1",
+          "labels": {
+            "zh": "branch-ready 修复包",
+            "en": "branch-ready fix packet"
+          }
+        },
+        {
+          "value": "1",
+          "labels": {
+            "zh": "review handoff 保留",
+            "en": "review handoff preserved"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "公开 artifact 中 raw issue body",
+            "en": "raw issue bodies in public artifact"
+          }
+        }
+      ]
     },
     {
       "id": "2026-06-23-agent-to-agent-pr-comments",
@@ -197,7 +257,7 @@
       },
       "frontend_card": {
         "visual_metaphor": "agent comments pass through explicit ownership instead of loose threads",
-        "primary_metric_hint": "Multiple agents can coordinate around PR review comments without losing owner review.",
+        "primary_metric_hint": "Every PR feedback item gets an owner, fix evidence, and a visible reviewer handoff instead of becoming a loose reminder.",
         "badges": [
           "handoff",
           "PR comment",
@@ -209,7 +269,37 @@
           "record fix and validation evidence in the review packet",
           "keep successor work explicit after the comment is handled"
         ]
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "1",
+          "labels": {
+            "zh": "每条反馈一个 owner",
+            "en": "owner per feedback item"
+          }
+        },
+        {
+          "value": "3",
+          "labels": {
+            "zh": "owner/fix/review 可回答问题",
+            "en": "owner/fix/review questions answered"
+          }
+        },
+        {
+          "value": "1",
+          "labels": {
+            "zh": "review packet handoff",
+            "en": "review-packet handoff"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "无主 PR comment reminder",
+            "en": "unowned PR comment reminders"
+          }
+        }
+      ]
     },
     {
       "id": "2026-06-23-overnight-project-refactor",
@@ -255,7 +345,7 @@
       },
       "frontend_card": {
         "visual_metaphor": "a large refactor moves as small reviewable packets",
-        "primary_metric_hint": "Long unattended refactors can split into moderate PR slices instead of one unreviewable diff.",
+        "primary_metric_hint": "Unattended refactors stay reviewable by landing one PR-sized slice at a time with follow-up and review gates.",
         "badges": [
           "refactor",
           "PR slices",
@@ -267,7 +357,37 @@
           "supersede stale tasks when the route changes",
           "validate each slice before merge or handoff"
         ]
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "1",
+          "labels": {
+            "zh": "一次一个 PR-sized slice",
+            "en": "PR-sized slice at a time"
+          }
+        },
+        {
+          "value": "3",
+          "labels": {
+            "zh": "successor/supersede/handoff 路线",
+            "en": "successor/supersede/handoff routes"
+          }
+        },
+        {
+          "value": "1",
+          "labels": {
+            "zh": "宽风险 review gate",
+            "en": "review gate for broad risk"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "巨型 diff 目标",
+            "en": "giant-diff target"
+          }
+        }
+      ]
     },
     {
       "id": "2026-06-19-dynamic-workflow-hardware-agent",
@@ -302,7 +422,7 @@
       "evidence_boundary": "Public-safe interactive artifact; no raw chats, screenshots, proprietary design details, private repositories, local paths, task ids, credentials, or unpublished hardware artifacts.",
       "frontend_card": {
         "visual_metaphor": "multiple worker lanes converging through one shared control plane",
-        "primary_metric_hint": "five public hardware-agent cases under one control plane",
+        "primary_metric_hint": "5 public-safe hardware workflows demonstrate multi-worker convergence while proprietary details stay out of the artifact.",
         "badges": [
           "interactive-html",
           "multi-agent",
@@ -325,7 +445,37 @@
       "showcase_table": {
         "proof_point": "Fuzzy goals, multiple workers, and long unattended runs can still converge.",
         "loopx_intervention": "goal state, worker handoff, dynamic workflow"
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "5",
+          "labels": {
+            "zh": "公开安全硬件 workflow",
+            "en": "public-safe hardware workflows"
+          }
+        },
+        {
+          "value": "3",
+          "labels": {
+            "zh": "LoopX/编排/worker 角色分离",
+            "en": "LoopX/orchestrator/worker role split"
+          }
+        },
+        {
+          "value": "1",
+          "labels": {
+            "zh": "canonical artifact 保留",
+            "en": "canonical artifact preserved"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "专有设计细节暴露",
+            "en": "proprietary design details exposed"
+          }
+        }
+      ]
     },
     {
       "id": "2026-06-19-loopx-self-iteration",
@@ -425,7 +575,7 @@
       "evidence_boundary": "Public Git evidence only; no private thread text, local active-state bodies, internal document links, screenshots, raw benchmark material, credentials, or machine-specific paths.",
       "frontend_card": {
         "visual_metaphor": "many repo lanes flowing through one control plane, with a side-agent lane branching safely beside the primary benchmark lane",
-        "primary_metric_hint": "801 public commits mapped to a conservative 59-92 AI-assisted developer-day baseline over a 19.6-day public Git window",
+        "primary_metric_hint": "801 public commits, 244 recent commits, and a conservative 59-92 AI-assisted developer-day baseline show self-iteration throughput.",
         "badges": [
           "self-iteration",
           "commit-backed",
@@ -452,7 +602,37 @@
       "showcase_table": {
         "proof_point": "A high-churn multi-lane project can keep state, boundaries, and evidence coherent.",
         "loopx_intervention": "todo, quota, gate, evidence, review packet, frontstage"
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "801",
+          "labels": {
+            "zh": "public commits",
+            "en": "public commits"
+          }
+        },
+        {
+          "value": "244",
+          "labels": {
+            "zh": "06-18 后 commits",
+            "en": "commits since Jun 18"
+          }
+        },
+        {
+          "value": "59-92d",
+          "labels": {
+            "zh": "AI-assisted baseline",
+            "en": "AI-assisted baseline"
+          }
+        },
+        {
+          "value": "3.0-4.7x",
+          "labels": {
+            "zh": "calendar compression",
+            "en": "calendar compression"
+          }
+        }
+      ]
     },
     {
       "id": "2026-06-17-blocked-p0-safe-rotation",
@@ -486,7 +666,7 @@
       "evidence_boundary": "Synthetic public fixture only; no private screenshots, raw tasks, internal links, local image names, or raw run logs.",
       "frontend_card": {
         "visual_metaphor": "priority lanes with one gated lane and one active fallback lane",
-        "primary_metric_hint": "attention reduction: user sees one concrete decision instead of reading the whole run log",
+        "primary_metric_hint": "One concrete P0 user decision is isolated while one safe fallback lane can continue with zero gated-lane spend.",
         "badges": [
           "reproducible",
           "user-gate",
@@ -510,7 +690,37 @@
       "showcase_table": {
         "proof_point": "A user decision should not block all safe work.",
         "loopx_intervention": "concrete user todo, safe fallback, quota control"
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "1",
+          "labels": {
+            "zh": "具体 P0 用户决策",
+            "en": "concrete P0 user decision"
+          }
+        },
+        {
+          "value": "1",
+          "labels": {
+            "zh": "safe fallback lane",
+            "en": "safe fallback lane"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "gated lane 自动推进",
+            "en": "gated-lane auto-progress"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "private upload 依赖",
+            "en": "private upload dependency"
+          }
+        }
+      ]
     },
     {
       "id": "2026-06-20-creator-operator-case-spec",
@@ -561,7 +771,37 @@
       "localized_pages": {
         "zh": "docs/showcases/cases/0620-creator-operator-case-spec.html",
         "en": "docs/showcases/cases/0620-creator-operator-case-spec.en.html"
-      }
+      },
+      "evidence_metrics": [
+        {
+          "value": "1",
+          "labels": {
+            "zh": "publish hard gate",
+            "en": "publish hard gate"
+          }
+        },
+        {
+          "value": "1",
+          "labels": {
+            "zh": "safe research side path",
+            "en": "safe research side path"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "autopublish 动作",
+            "en": "autopublish actions"
+          }
+        },
+        {
+          "value": "0",
+          "labels": {
+            "zh": "真实运营数据暴露",
+            "en": "real operations data exposed"
+          }
+        }
+      ]
     }
   ]
 }

@@ -39,6 +39,18 @@ FORBIDDEN_SHOWCASE_COPY = (
     "Story " + "beats",
     "Website Story " + "Beats",
 )
+FORBIDDEN_TRIVIAL_METRIC_COPY = (
+    "issue-fix 公开文件",
+    "issue-fix public files",
+    "smoke assertions",
+    "storyboard panels",
+    "source statuses",
+    "coverage points",
+    "render refs",
+    "handoff 回归引用",
+    "synthetic todos",
+    "todo lifecycle smokes",
+)
 
 
 def read(path: Path) -> str:
@@ -78,6 +90,13 @@ def main() -> int:
         assert case.get("evidence_boundary"), case
         assert case.get("user_value"), case
         assert isinstance(case.get("pattern_tags"), list) and case["pattern_tags"], case
+        evidence_metrics = case.get("evidence_metrics")
+        assert isinstance(evidence_metrics, list) and len(evidence_metrics) >= 2, case
+        for metric in evidence_metrics:
+            assert metric.get("value"), case
+            labels = metric.get("labels")
+            assert isinstance(labels, dict), case
+            assert labels.get("zh") and labels.get("en"), case
         frontend = case.get("frontend_card")
         appendix = case.get("appendix_surface")
         assert isinstance(frontend, dict) or isinstance(appendix, dict), case
@@ -100,6 +119,8 @@ def main() -> int:
             localized_text = read(localized_path)
             for phrase in FORBIDDEN_SHOWCASE_COPY:
                 assert phrase not in localized_text, f"{localized_page}: forbidden copy {phrase!r}"
+            for phrase in FORBIDDEN_TRIVIAL_METRIC_COPY:
+                assert phrase not in localized_text, f"{localized_page}: trivial metric copy {phrase!r}"
             if case_id != "2026-06-19-dynamic-workflow-hardware-agent" or lang == "en":
                 assert "Repository evidence" in localized_text or "仓库证据" in localized_text, localized_page
                 assert "Repository sources" in localized_text or "仓库来源" in localized_text, localized_page

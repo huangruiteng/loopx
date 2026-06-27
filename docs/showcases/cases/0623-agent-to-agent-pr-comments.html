@@ -56,6 +56,8 @@
   .metric{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:17px 19px;background:#0c0c0e}
   .metric strong{display:block;font-size:24px;letter-spacing:-.02em;color:#fafafa}
   .metric span{display:block;margin-top:5px;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;text-transform:uppercase}
+  .mini-metrics{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+  .mini-metrics span{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#aeb3ba;border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:4px 8px;background:#0b0b0c}
   .search{width:100%;height:42px;margin:22px 0 16px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#0e0e10;color:#f1f2f3;padding:0 12px;font:14px 'Geist',system-ui,sans-serif}
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{display:block;text-decoration:none;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:18px 20px}
@@ -63,8 +65,16 @@
   .card .meta{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;color:#62666d;margin-bottom:8px}
   .card p{font-size:14px;margin-top:9px}
   .hide{display:none}
+  .experiment{margin-top:24px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:#0e0e10;padding:20px}
+  .experiment h3{font-size:18px}
+  .experiment p{font-size:14px;margin-top:8px}
+  .experiment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+  .experiment-card{border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#0b0b0c;padding:14px}
+  .experiment-card strong{display:block;font-size:14px;line-height:1.45}
+  .experiment-card span{display:block;margin-top:9px;font-size:13px;line-height:1.55;color:#9ea3aa}
+  .experiment-card em{display:block;margin-top:10px;font-style:normal;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.55;color:var(--accent)}
   footer{margin-top:76px;color:#62666d;font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;line-height:1.7}
-  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
+  @media(max-width:720px){article{padding:52px 18px 90px}.panel-row{grid-template-columns:1fr}.panel-key{border-right:0;border-bottom:1px solid rgba(255,255,255,.07)}.metric-grid,.evidence-grid,.experiment-grid{grid-template-columns:1fr}.source-ref{grid-template-columns:1fr;gap:6px}}
 </style>
 </head>
 <body>
@@ -110,15 +120,15 @@
 
 
     <div class="section-head"><span>01</span><h2>案例背景</h2></div>
-    <div class="text-stack"><p>这个案例描述的是 PR review feedback 在多 agent 之间流转时如何不丢 ownership。重点不是聊天记录，而是 comment、claim、handoff、fix、validation、review packet 这条链。</p><p>公开仓库里可以看到相关控制面已经被产品化：`claimed_by` 出现在 todo projection、review packet、event-sourced state 和多 agent/side-agent prompt 合约里。</p></div>
+    <div class="text-stack"><p>这个案例描述的是 PR review feedback 在多 agent 之间流转时如何不丢 ownership。重点不是聊天记录，而是 comment、claim、handoff、fix、validation、review packet 这条链。</p><p>对用户有价值的是每条反馈都能回答三个问题：谁负责、修复证据在哪里、还需要谁 review。公开仓库里的 event contract、review packet、heartbeat prompt 和 validation fixtures 共同证明这条 handoff 链。</p></div>
 
     <div class="section-head"><span>02</span><h2>仓库证据</h2></div>
     <div class="panel">
       <div class="panel-row"><div class="panel-key">证明点</div><div class="panel-val"><p>多 agent lane 可以围绕 PR comment 协作，同时保留 owner review。</p></div></div>
       <div class="panel-row"><div class="panel-key">LoopX 介入</div><div class="panel-val"><p>claimed_by、handoff gate、review packet、comment/fix loop</p></div></div>
     </div>
-
-    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">todo ownership</div><p>`event_sourced_state_contract_v0` 把 `todo_claimed` 定义为 canonical event，记录 ownership、lease 或 `claimed_by`。</p></div><div class="evidence-card"><div class="evidence-label">review packet</div><p>`loopx/review_packet.py` 会把 open todo 的 `claimed_by` 显示进 handoff/review 文本。</p></div><div class="evidence-card"><div class="evidence-label">side-agent contract</div><p>`docs/heartbeat-automation-prompt.md` 规定 side-agent 小变更可带 evidence 自合并，否则创建 claimed-by handoff todo。</p></div><div class="evidence-card"><div class="evidence-label">CLI smokes</div><p>`examples/todo-lifecycle-cli-smoke.py`、`examples/todo-cli-smoke.py` 覆盖 claim、handoff successor、side-agent self-merge 和 review handoff 规则。</p></div></div>
+    <div class="metric-grid"><div class="metric"><strong>1</strong><span>每条反馈一个 owner</span></div><div class="metric"><strong>3</strong><span>owner/fix/review 可回答问题</span></div><div class="metric"><strong>1</strong><span>review packet handoff</span></div><div class="metric"><strong>0</strong><span>无主 PR comment reminder</span></div></div>
+    <div class="evidence-grid"><div class="evidence-card"><div class="evidence-label">todo ownership</div><p>`event_sourced_state_contract_v0` 把 `todo_claimed` 定义为 canonical event，记录 ownership、lease 或 `claimed_by`。</p></div><div class="evidence-card"><div class="evidence-label">review packet</div><p>`loopx/review_packet.py` 在 open-todo rendering 和 handoff ranking 路径中保留 `claimed_by`，让 review packet 能显示 owner。</p></div><div class="evidence-card"><div class="evidence-label">side-agent contract</div><p>`docs/heartbeat-automation-prompt.md` 规定 side-agent 小变更可带 evidence 自合并，否则创建 claimed-by handoff todo。</p></div><div class="evidence-card"><div class="evidence-label">CLI smokes</div><p>`examples/todo-lifecycle-cli-smoke.py` 和 `examples/todo-cli-smoke.py` 覆盖 claim、handoff successor、side-agent self-merge、review handoff 和 same-agent handoff rejection。</p></div></div>
 
     <div class="section-head"><span>03</span><h2>LoopX 行为</h2></div>
     <ul class="flow"><li><span class="flow-num">1</span><div class="flow-body"><div class="flow-title">PR feedback 先成为一个有 owner 的 todo，而不是 chat reminder。</div></div></li><li><span class="flow-num">2</span><div class="flow-body"><div class="flow-title">被阻塞或跨 lane 的修复通过 handoff gate 和 review packet 传递，不允许另一个 agent 猜测上下文。</div></div></li><li><span class="flow-num">3</span><div class="flow-body"><div class="flow-title">修复 agent 需要留下 diff、validation 和剩余 gate；后续工作创建 successor todo。</div></div></li><li><span class="flow-num">4</span><div class="flow-body"><div class="flow-title">owner review 仍在 PR/review surface 上完成，LoopX 只提供状态、证据和 handoff。</div></div></li></ul>

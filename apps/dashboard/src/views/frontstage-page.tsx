@@ -839,6 +839,67 @@ const showcaseMotionTones = [
   },
 ];
 
+const todayValueWorkflows = [
+  {
+    workflow: "PR review/comment -> fix loop",
+    output: "Branch-ready fix packet with repro, smoke result, and remaining review owner.",
+    metric: "Fewer dropped review threads; faster path from comment to validated patch.",
+    start: "/loopx fix this PR feedback",
+  },
+  {
+    workflow: "Overnight PR-sized refactor",
+    output: "Reviewable slice list, validation notes, successor todo, and merge boundary.",
+    metric: "More merged commits without turning the next morning into a giant diff audit.",
+    start: "/loopx split this refactor into reviewable slices",
+  },
+  {
+    workflow: "P0 blocked -> safe fallback",
+    output: "Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary.",
+    metric: "Less idle agent time while preserving human judgment on the blocked path.",
+    start: "Appears inside an active /loopx goal when a concrete P0 gate blocks one lane and safe P1/P2 work remains.",
+  },
+];
+
+function ExperimentalTodayValuePanel() {
+  return (
+    <Panel icon={ListChecks} title="Experimental Today Value Path">
+      <div className="space-y-4 p-4" data-testid="frontstage-today-value-experiment">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-950">Pick one capability that earns value today</h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              This lower-priority module does not replace the first screen. It gives evaluators three concrete
+              LoopX capabilities with expected output and user-facing value metrics.
+            </p>
+          </div>
+          <Badge variant="info">experimental</Badge>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          {todayValueWorkflows.map((item) => (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-4" key={item.workflow}>
+              <div className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">capability</div>
+              <h4 className="mt-2 text-sm font-semibold leading-6 text-slate-950">{item.workflow}</h4>
+              <div className="mt-3 space-y-3 text-xs font-medium leading-5 text-slate-600">
+                <p>
+                  <span className="font-semibold text-slate-950">Output: </span>
+                  {item.output}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-950">Value metric: </span>
+                  {item.metric}
+                </p>
+                <code className="block rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700">
+                  {item.start}
+                </code>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function ShowcaseMotionBoard() {
   const [activeCaseId, setActiveCaseId] = useState(frontstageShowcases[0]?.id ?? "");
   if (!frontstageShowcases.length) {
@@ -1993,6 +2054,8 @@ function FrontstageRoute({
           {isShowcaseMode ? <SelfIterationTimelinePanel /> : null}
 
           {!isDeveloperMode ? <ShowcaseMotionBoard /> : null}
+
+          {!isDeveloperMode ? <ExperimentalTodayValuePanel /> : null}
 
           {!isDeveloperMode ? <ShowcaseCasePackPanel /> : null}
 
