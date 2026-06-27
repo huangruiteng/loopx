@@ -14,6 +14,10 @@ from .capabilities.issue_fix.cli import (
     handle_issue_fix_command,
     register_issue_fix_commands,
 )
+from .capabilities.auto_research.cli import (
+    handle_auto_research_command,
+    register_auto_research_commands,
+)
 from .capabilities.value_connectors.cli import (
     handle_value_connector_command,
     register_value_connector_commands,
@@ -141,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
 
     register_ml_experiment_commands(sub, add_subcommand_format)
 
+    register_auto_research_commands(sub, add_subcommand_format)
+
     register_registry_admin_commands(sub)
 
     register_history_command(sub)
@@ -245,6 +251,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ml-experiment":
         return handle_ml_experiment_command(args, output_format=output_format, print_payload=print_payload)
+
+    if args.command == "auto-research":
+        return handle_auto_research_command(
+            args,
+            registry_path=registry_path,
+            runtime_root_arg=args.runtime_root,
+            output_format=output_format,
+            print_payload=print_payload,
+        )
 
     if args.command == "content-ops":
         return handle_content_ops_command(args, output_format=output_format, print_payload=print_payload)

@@ -11,6 +11,10 @@ runtime contract, benchmark route, or launch draft.
 - [Core control-plane graphs](core-control-plane/README.md): the paired
   interaction catalog lens, state definitions, and state machine that keep
   product explanation, runtime projection, and validation aligned.
+- [Decentralized auto-research showcase blueprint](decentralized-auto-research-showcase.md):
+  Arbor-inspired but LoopX-native design for turning research hypotheses into
+  todo-linked, agent-scoped, evidence-backed work without adding a single
+  leader agent.
 - [Server-client product shape](server-client-product-shape.md): the medium-term
   product model where the server owns durable state, signal inbox, selected
   anchors, delivery/planning queue boundaries, performance-review summaries,
