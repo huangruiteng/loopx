@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LoopX Showcase Gallery</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0b0c;
+      --panel: #121318;
+      --panel-2: #171920;
+      --ink: #f4f2ee;
+      --muted: #b7bbc7;
+      --dim: #7f8492;
+      --line: #343843;
+      --line-2: #4a4f5e;
+      --accent: #6e79d6;
+      --accent-2: #7ed4a8;
+      --accent-3: #e1b36a;
+      --danger: #e07a7a;
+      --max: 1180px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    a { color: inherit; }
+    .page-shell { min-height: 100vh; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      background: rgba(11,11,12,.92);
+      backdrop-filter: blur(12px);
+    }
+    .topbar-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 22px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      font-weight: 720;
+    }
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      display: inline-grid;
+      place-items: center;
+      color: var(--accent-2);
+      font-size: 14px;
+    }
+    .topbar nav { display: flex; flex-wrap: wrap; gap: 10px; }
+    .topbar nav a, .link-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      border: 1px solid var(--line-2);
+      border-radius: 8px;
+      padding: 8px 11px;
+      text-decoration: none;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 650;
+      background: rgba(255,255,255,.03);
+    }
+    .topbar nav a:hover, .link-button:hover { border-color: var(--accent); }
+    .link-button.secondary { color: var(--muted); }
+    main { max-width: var(--max); margin: 0 auto; padding: 38px 22px 70px; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, .95fr) minmax(380px, 1.05fr);
+      gap: 28px;
+      align-items: center;
+      min-height: min(720px, calc(100vh - 64px));
+      padding-bottom: 26px;
+    }
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--accent-2);
+      font-size: 12px;
+      font-weight: 750;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      max-width: 760px;
+      font-size: clamp(44px, 7vw, 94px);
+      line-height: .91;
+      letter-spacing: 0;
+    }
+    .hero-copy {
+      margin: 20px 0 0;
+      max-width: 680px;
+      color: var(--muted);
+      font-size: clamp(16px, 2vw, 20px);
+      line-height: 1.6;
+    }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+    .hero-actions .primary {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: var(--bg);
+    }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .pill, .badges span, .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 5px 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      background: rgba(255,255,255,.03);
+    }
+    .status-pill { color: var(--accent-2); border-color: rgba(126,212,168,.45); }
+    .control-graph {
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #0f1014;
+      box-shadow: 0 18px 80px rgba(0,0,0,.28);
+    }
+    .control-graph svg { display: block; width: 100%; height: auto; }
+    .graph-bg { fill: #0b0b0c; }
+    .node { fill: none; stroke: #666b75; stroke-width: 3; }
+    .node-accent { stroke: var(--accent); }
+    .node-accent-fill { fill: rgba(110,121,214,.16); stroke: var(--accent); stroke-width: 3; }
+    .node-label { fill: var(--ink); font-size: 18px; font-weight: 720; }
+    .node-sub { fill: var(--dim); font-size: 13px; font-weight: 650; }
+    .line { fill: none; stroke-width: 3; }
+    .line.muted { stroke: #3a3d42; }
+    .line.accent { stroke: var(--accent); }
+    .line.return { stroke: #555b66; }
+    .dot { fill: var(--accent); }
+    .dot.alt { fill: var(--accent-3); }
+    .caption-box { fill: rgba(255,255,255,.035); stroke: rgba(255,255,255,.08); }
+    .caption { fill: var(--muted); font-size: 13px; font-weight: 650; }
+    .section { border-top: 1px solid rgba(255,255,255,.08); padding: 34px 0; }
+    .section h2 { margin: 0 0 18px; font-size: clamp(28px, 4vw, 46px); line-height: 1; }
+    .section-lede { margin: -6px 0 24px; max-width: 760px; color: var(--muted); line-height: 1.65; }
+    .metrics, .case-grid, .proof-grid, .link-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 18px; }
+    .metric, .proof, .case-card, .boundary-panel, .behavior-panel, .timeline-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    .metric { padding: 16px; }
+    .metric strong { display: block; font-size: 28px; line-height: 1; color: var(--ink); }
+    .metric span { display: block; margin-top: 8px; color: var(--dim); font-size: 12px; font-weight: 650; }
+    .proof-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .proof { padding: 18px; }
+    .proof span { color: var(--accent-2); font-size: 12px; font-weight: 780; text-transform: uppercase; }
+    .proof p { margin: 10px 0 0; color: var(--muted); line-height: 1.6; }
+    .case-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .case-card {
+      display: grid;
+      gap: 12px;
+      min-height: 310px;
+      padding: 18px;
+      text-decoration: none;
+      color: inherit;
+    }
+    .case-card:hover { border-color: var(--accent); }
+    .case-card h3 { margin: 0; font-size: 23px; line-height: 1.08; }
+    .case-card p { margin: 0; color: var(--muted); line-height: 1.55; }
+    .case-card .badges { display: flex; flex-wrap: wrap; gap: 6px; align-self: end; }
+    .case-card__meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .case-card__date { color: var(--dim); font-size: 12px; font-weight: 700; }
+    .case-card__proof { border-left: 2px solid var(--accent); padding-left: 10px; font-size: 13px; color: var(--muted); }
+    .page-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+    .behavior-panel, .timeline-panel, .boundary-panel { padding: 20px; }
+    .behavior-panel h2, .timeline-panel h2, .boundary-panel h2 { font-size: 24px; }
+    .behavior-list, .beat-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+    .behavior-list li {
+      border-left: 2px solid var(--accent);
+      padding: 7px 0 7px 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .beat-list li {
+      display: grid;
+      grid-template-columns: 42px minmax(0,1fr);
+      gap: 10px;
+      align-items: start;
+      color: var(--muted);
+    }
+    .beat-list li span {
+      display: inline-grid;
+      place-items: center;
+      width: 34px;
+      height: 28px;
+      border: 1px solid var(--line-2);
+      border-radius: 8px;
+      color: var(--accent-2);
+      font-size: 12px;
+      font-weight: 780;
+    }
+    .beat-list li p { margin: 2px 0 0; line-height: 1.55; }
+    .boundary-panel { background: #121514; border-color: rgba(126,212,168,.22); }
+    .boundary-panel p { margin: 0; color: var(--muted); line-height: 1.6; }
+    .side-stack { display: grid; gap: 12px; align-content: start; }
+    .demo-command {
+      display: block;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--accent-2);
+      background: #0d0f12;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .control-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .control-strip div {
+      min-height: 92px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--panel-2);
+    }
+    .control-strip span { color: var(--accent-3); font-size: 12px; font-weight: 760; }
+    .control-strip p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .search-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .search-row input {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 12px;
+      background: var(--panel);
+      color: var(--ink);
+      font: inherit;
+    }
+    .search-row .count { align-self: center; color: var(--dim); font-size: 13px; font-weight: 650; }
+    .public-note { color: var(--dim); font-size: 12px; line-height: 1.6; }
+    footer { border-top: 1px solid rgba(255,255,255,.08); padding: 28px 22px 44px; color: var(--dim); }
+    footer div { max-width: var(--max); margin: 0 auto; }
+    @media (max-width: 940px) {
+      .hero, .page-layout { grid-template-columns: 1fr; min-height: auto; }
+      .metrics, .case-grid, .control-strip { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .proof-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      main { padding: 26px 14px 48px; }
+      .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 14px; }
+      .metrics, .case-grid, .control-strip { grid-template-columns: 1fr; }
+      .search-row { grid-template-columns: 1fr; }
+      h1 { font-size: 44px; }
+    }
+    </style>
+</head>
+<body>
+  <div class="page-shell">
+
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="index.en.html"><span class="brand-mark">LX</span><span>LoopX Showcases</span></a>
+        <nav aria-label="Showcase navigation">
+          <a href="index.en.html#cases">Cases</a>
+          <a href="README.md">README</a>
+          <a href="showcase-catalog.json">Catalog</a>
+          <a href="index.html">中文</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">LoopX Showcase Gallery</p>
+          <h1>Agent work that stays reviewable.</h1>
+          <p class="hero-copy">Seven public-safe cases show how LoopX keeps long-running agent work tied to todos, gates, quota, handoffs, validation, review packets, and evidence boundaries.</p>
+          <div class="hero-actions">
+            <a class="link-button primary" href="#cases">Browse cases</a>
+            <a class="link-button secondary" href="showcase-catalog.json">Open catalog</a>
+          </div>
+          <div class="control-strip" aria-label="LoopX showcase control loop">
+            <div><span>01 Goal</span><p>Open-ended work becomes durable project state.</p></div>
+<div><span>02 Todo</span><p>Each lane has ownership, priority, and a bounded next move.</p></div>
+<div><span>03 Gate</span><p>Human decisions stay visible without stopping safe work.</p></div>
+<div><span>04 Evidence</span><p>Reviewable output links back to validation and public boundaries.</p></div>
+          </div>
+        </div>
+
+    <figure class="control-graph" aria-label="Showcase case rail">
+      <svg viewBox="0 0 920 520" role="img">
+        <title>LoopX showcase gallery rail</title>
+        <rect x="0" y="0" width="920" height="520" rx="8" class="graph-bg" />
+        <rect x="150" y="70" width="620" height="76" rx="8" class="node node-accent" />
+        <text x="460" y="115" text-anchor="middle" class="node-label">showcase catalog</text>
+        <rect x="110" y="204" width="190" height="72" rx="8" class="node" />
+        <text x="205" y="246" text-anchor="middle" class="node-label">proof point</text>
+        <rect x="365" y="196" width="190" height="88" rx="8" class="node node-accent-fill" />
+        <text x="460" y="235" text-anchor="middle" class="node-label">LoopX control</text>
+        <text x="460" y="257" text-anchor="middle" class="node-sub">todo / gate / evidence</text>
+        <rect x="620" y="204" width="190" height="72" rx="8" class="node" />
+        <text x="715" y="246" text-anchor="middle" class="node-label">case page</text>
+        <path d="M300 240 L354 240" class="line accent" />
+        <path d="M555 240 L610 240" class="line accent" />
+        <path d="M120 310 C260 282 340 334 460 310 S660 282 780 310" class="line return" />
+        <circle cx="120" cy="310" r="7" class="dot" /><text x="120" y="350" text-anchor="middle" class="node-sub">06-27</text>
+<circle cx="225" cy="332" r="7" class="dot alt" /><text x="225" y="372" text-anchor="middle" class="node-sub">06-24</text>
+<circle cx="330" cy="310" r="7" class="dot" /><text x="330" y="350" text-anchor="middle" class="node-sub">06-23</text>
+<circle cx="435" cy="332" r="7" class="dot alt" /><text x="435" y="372" text-anchor="middle" class="node-sub">06-23</text>
+<circle cx="540" cy="310" r="7" class="dot" /><text x="540" y="350" text-anchor="middle" class="node-sub">06-19</text>
+<circle cx="645" cy="332" r="7" class="dot alt" /><text x="645" y="372" text-anchor="middle" class="node-sub">06-19</text>
+<circle cx="750" cy="310" r="7" class="dot" /><text x="750" y="350" text-anchor="middle" class="node-sub">06-17</text>
+      </svg>
+    </figure>
+
+      </section>
+
+      <section class="section" id="cases">
+        <h2>Showcase Cases</h2>
+        <p class="section-lede">The order mirrors the current Showcase &amp; Good Case packet: high-throughput proof first, then issue-fix, agent-to-agent collaboration, overnight refactor, dynamic hardware workflow, LoopX self-iteration, and blocked-P0 fallback.</p>
+        <div class="search-row">
+          <input id="case-search" type="search" placeholder="Search cases, patterns, or LoopX interventions" aria-label="Search showcase cases">
+          <span class="count" id="case-count">7 public cases</span>
+        </div>
+        <div class="case-grid" data-case-grid>
+
+      <a class="case-card" href="cases/0627-overnight-pr-batch.en.html" data-case-card data-search="overnight pr batch with reviewable control an overnight loopx run can produce many pr-sized slices while keeping review, validation, and public evidence boundaries visible. agent-platform-self-improvement public_evidence_case high-throughput multi-lane work can stay pr-sized, reviewable, and merge-safe. todo claim, review packet, self-merge boundary, focused smoke, public-boundary scan high_throughput_reviewable_work pr_sized_slices self_merge_policy validation_writeback">
+        <div class="case-card__meta">
+          <span class="status-pill">Public evidence</span>
+          <span class="case-card__date">2026-06-27</span>
+        </div>
+        <h3>Overnight PR batch with reviewable control</h3>
+        <p>An overnight LoopX run can produce many PR-sized slices while keeping review, validation, and public evidence boundaries visible.</p>
+        <p class="case-card__proof">High-throughput multi-lane work can stay PR-sized, reviewable, and merge-safe.</p>
+        <div class="badges"><span>PR batch</span><span>review packet</span><span>public boundary</span></div>
+      </a>
+
+
+      <a class="case-card" href="cases/0624-pr-issue-auto-fix.en.html" data-case-card data-search="pr issue automatic fix loop review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff. issue-fix-workflow public_safe_pattern_case issue and review feedback can become a controlled executable repair loop. issue-fix workflow, command pack, repro smoke, pr review feedback issue_fix_workflow review_feedback repro_smoke command_pack">
+        <div class="case-card__meta">
+          <span class="status-pill">Pattern case</span>
+          <span class="case-card__date">2026-06-24</span>
+        </div>
+        <h3>PR issue automatic fix loop</h3>
+        <p>Review feedback should become an ordered repair workflow with repro, fix, validation, and reviewer handoff.</p>
+        <p class="case-card__proof">Issue and review feedback can become a controlled executable repair loop.</p>
+        <div class="badges"><span>issue fix</span><span>repro smoke</span><span>PR review</span></div>
+      </a>
+
+
+      <a class="case-card" href="cases/0623-agent-to-agent-pr-comments.en.html" data-case-card data-search="agent-to-agent pr comment and fix loop pr review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder. pull-request-review public_safe_pattern_case agent lanes can coordinate around pr comments without losing owner review. claimed_by, handoff gate, review packet, comment/fix loop agent_to_agent_handoff pr_comment_loop review_packet claimed_todo">
+        <div class="case-card__meta">
+          <span class="status-pill">Pattern case</span>
+          <span class="case-card__date">2026-06-23</span>
+        </div>
+        <h3>Agent-to-agent PR comment and fix loop</h3>
+        <p>PR review feedback can become an owned agent todo with fix evidence instead of a loose chat reminder.</p>
+        <p class="case-card__proof">Agent lanes can coordinate around PR comments without losing owner review.</p>
+        <div class="badges"><span>handoff</span><span>PR comment</span><span>claimed_by</span></div>
+      </a>
+
+
+      <a class="case-card" href="cases/0623-overnight-project-refactor.en.html" data-case-card data-search="overnight project refactor as pr-sized slices a broad refactor can run overnight while staying split into human-sized review units. repository-refactor public_safe_pattern_case unattended refactors can split into human-sized pr slices instead of one large diff. loop, todo follow-up, supersede, pr-sized slices long_unattended_goal pr_sized_slices todo_follow_up supersede">
+        <div class="case-card__meta">
+          <span class="status-pill">Pattern case</span>
+          <span class="case-card__date">2026-06-23</span>
+        </div>
+        <h3>Overnight project refactor as PR-sized slices</h3>
+        <p>A broad refactor can run overnight while staying split into human-sized review units.</p>
+        <p class="case-card__proof">Unattended refactors can split into human-sized PR slices instead of one large diff.</p>
+        <div class="badges"><span>refactor</span><span>PR slices</span><span>todo evidence</span></div>
+      </a>
+
+
+      <a class="case-card" href="cases/0619-dynamic-workflow-hardware-agent.en.html" data-case-card data-search="dynamic workflow for hardware-agent development a fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate. hardware-agent-development public_safe_interactive_case fuzzy multi-worker engineering goals can converge under one shared control plane. goal state, worker handoff, dynamic workflow dynamic_workflow multi_agent_coordination shared_control_plane long_unattended_goal">
+        <div class="case-card__meta">
+          <span class="status-pill">Interactive case</span>
+          <span class="case-card__date">2026-06-19</span>
+        </div>
+        <h3>Dynamic workflow for hardware-agent development</h3>
+        <p>A fuzzy long-running engineering goal needs a shared control plane when multiple worker agents participate.</p>
+        <p class="case-card__proof">Fuzzy multi-worker engineering goals can converge under one shared control plane.</p>
+        <div class="badges"><span>interactive-html</span><span>multi-agent</span><span>hardware</span></div>
+      </a>
+
+
+      <a class="case-card" href="cases/0619-loopx-self-iteration.en.html" data-case-card data-search="loopx self-iteration loop a high-churn loopx repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel. agent-platform-self-improvement public_evidence_case a high-churn multi-lane agent repo can keep state, evidence, and boundaries coherent. todo, quota, gate, evidence, review packet, frontstage self_iteration side_agent_scope todo_claim_ownership identity_aware_prompt">
+        <div class="case-card__meta">
+          <span class="status-pill">Public evidence</span>
+          <span class="case-card__date">2026-06-19</span>
+        </div>
+        <h3>LoopX self-iteration loop</h3>
+        <p>A high-churn LoopX repo stayed legible while benchmark, product, docs, planning, and side-agent lanes moved in parallel.</p>
+        <p class="case-card__proof">A high-churn multi-lane agent repo can keep state, evidence, and boundaries coherent.</p>
+        <div class="badges"><span>self-iteration</span><span>commit-backed</span><span>side-agent</span><span>efficiency-model</span></div>
+      </a>
+
+
+      <a class="case-card" href="cases/0617-blocked-p0-safe-rotation.en.html" data-case-card data-search="blocked p0 with safe p1/p2 rotation a gated p0 lane should not stall a whole long-running goal when safe fallback work exists. benchmark-rotation reproducible_synthetic_demo a blocked p0 decision should not stall safe p1/p2 work. concrete user todo, safe fallback, quota control blocked_priority_fallback concrete_user_gate safe_fallback_work quota_discipline">
+        <div class="case-card__meta">
+          <span class="status-pill">Reproducible demo</span>
+          <span class="case-card__date">2026-06-17</span>
+        </div>
+        <h3>Blocked P0 with safe P1/P2 rotation</h3>
+        <p>A gated P0 lane should not stall a whole long-running goal when safe fallback work exists.</p>
+        <p class="case-card__proof">A blocked P0 decision should not stall safe P1/P2 work.</p>
+        <div class="badges"><span>reproducible</span><span>user-gate</span><span>fallback</span></div>
+      </a>
+
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Appendix Surface</h2>
+        <p class="section-lede">Appendix material keeps product direction visible without mixing synthetic or private-adjacent evidence into the seven public proof cases.</p>
+        <div class="case-grid">
+
+      <a class="case-card" href="cases/0620-creator-operator-case-spec.en.html" data-case-card data-search="creator-operator long-running agent case a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. creator-operations public_safe_case_spec a creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated. creator_operator_workflow, gate_aware_continuation, feedback_capture, safe_side_path creator_operator_workflow gate_aware_continuation feedback_capture safe_side_path">
+        <div class="case-card__meta">
+          <span class="status-pill">Case spec</span>
+          <span class="case-card__date">2026-06-20</span>
+        </div>
+        <h3>Creator-operator long-running agent case</h3>
+        <p>A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</p>
+        <p class="case-card__proof">A creator-operator needs a long-running agent loop that keeps research moving while publishing decisions stay gated.</p>
+        <div class="badges"><span>creator_operator_workflow</span><span>gate_aware_continuation</span><span>feedback_capture</span><span>safe_side_path</span></div>
+      </a>
+
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Public Boundary</h2>
+        <div class="boundary-panel">
+          <p>These pages are generated from the public showcase catalog. They do not embed private documents, internal screenshots, raw chats, local active-state bodies, credentials, raw benchmark traces, or internal Lark media URLs.</p>
+        </div>
+      </section>
+    </main>
+    <footer><div>Generated from docs/showcases/showcase-catalog.json. Public case pages are copied into the GitHub Pages frontstage bundle.</div></footer>
+  </div>
+  <script>
+    const input = document.getElementById('case-search');
+    const count = document.getElementById('case-count');
+    const cards = Array.from(document.querySelectorAll('[data-case-card]'));
+    input.addEventListener('input', () => {
+      const query = input.value.trim().toLowerCase();
+      let visible = 0;
+      for (const card of cards) {
+        const match = !query || card.dataset.search.includes(query);
+        card.style.display = match ? '' : 'none';
+        if (match) visible += 1;
+      }
+      count.textContent = `${visible} public cases`;
+    });
+  </script>
+</body>
+</html>
