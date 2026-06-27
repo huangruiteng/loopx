@@ -53,7 +53,7 @@ private evidence migration, production actions, or public first-screen copy.
 | Attention queue | `build_attention_queue` | Queue builder over normalized goal status, todos, gates, and project assets. | Queue ordering and truncation limits remain explicit and stable. |
 | Task graph projection | `build_task_graph_projection` | Read-only graph projection module. | Node caps include truncation metadata; full cold-path detail remains outside the hot graph. |
 | Status contract assembly | `build_status_contract`, `collect_status` | Thin collector/orchestrator that wires registry, runtime, state, and read models. | CLI status JSON shape remains compatible. |
-| Markdown rendering | `render_status_markdown` | Render-only module over the status payload. | Rendering cannot become the source of scheduler or quota truth. |
+| Markdown rendering | `render_status_markdown` plus `loopx/renderers/status_markdown.py` | Render-only module/helpers over the status payload. | Rendering cannot become the source of scheduler or quota truth. |
 
 ## Proposed Extraction Order
 
