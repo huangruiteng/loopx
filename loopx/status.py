@@ -6613,6 +6613,27 @@ def active_state_projection_warning(goal: dict[str, Any], current_run: dict[str,
     digest_mismatch = bool(run_state_digest and active_digest != run_state_digest)
     if not (active_newer_than_run_state or active_newer_than_run or digest_mismatch):
         return None
+    for run in goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []:
+        if not isinstance(run, dict):
+            continue
+        if str(run.get("progress_scope") or "") != AGENT_LANE_PROGRESS_SCOPE:
+            continue
+        agent_run_state = run.get("state") if isinstance(run.get("state"), dict) else {}
+        agent_run_frontmatter = (
+            agent_run_state.get("frontmatter")
+            if isinstance(agent_run_state.get("frontmatter"), dict)
+            else {}
+        )
+        agent_run_digest = str(agent_run_state.get("sha256_16") or "")
+        agent_run_updated_at = agent_run_frontmatter.get("updated_at")
+        agent_run_state_dt = parse_timestamp(agent_run_updated_at)
+        agent_run_generated_dt = parse_timestamp(str(run.get("generated_at") or ""))
+        if agent_run_digest and agent_run_digest == active_digest:
+            return None
+        if active_dt and agent_run_state_dt and active_dt <= agent_run_state_dt:
+            return None
+        if active_dt and not agent_run_state_dt and agent_run_generated_dt and active_dt <= agent_run_generated_dt:
+            return None
 
     reasons: list[str] = []
     if active_newer_than_run:

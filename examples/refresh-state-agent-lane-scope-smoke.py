@@ -106,6 +106,15 @@ def main() -> None:
                 dry_run=False,
                 sync_global=False,
             )
+            state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+            state_path.write_text(
+                state_path.read_text(encoding="utf-8").replace(
+                    "updated_at: 2026-06-20T00:00:00+00:00",
+                    "updated_at: 2026-06-20T00:00:30+00:00",
+                    1,
+                ),
+                encoding="utf-8",
+            )
 
             state_refresh.now_local = lambda: "2026-06-20T00:01:00+00:00"
             side_payload = state_refresh.refresh_state_run(
@@ -271,6 +280,9 @@ def main() -> None:
             )
             goal = history["goals"][0]
             assert goal["latest_runs"][0]["classification"] == "side_lane_review_handoff", goal
+            latest_run_state = goal["latest_runs"][0]["state"]
+            assert latest_run_state["sha256_16"], latest_run_state
+            assert latest_run_state["frontmatter"]["updated_at"] == "2026-06-20T00:00:30+00:00"
             assert goal["latest_status_run"]["classification"] == "terminal_bench_primary_ready", goal
 
             status = collect_status(
@@ -283,6 +295,8 @@ def main() -> None:
             item = next(item for item in items if item["goal_id"] == GOAL_ID)
             assert item["status"] == "terminal_bench_primary_ready", item
             assert item["recommended_action"] == PRIMARY_ACTION, item
+            assert "stale_latest_run_warning" not in item, item
+            assert "stale_latest_run_warning" not in item["project_asset"], item
             lane = item["agent_lane_recommendation"]
             assert lane["progress_scope"] == "agent_lane", lane
             assert lane["agent_id"] == "codex-side-bypass", lane

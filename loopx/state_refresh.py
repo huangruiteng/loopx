@@ -924,6 +924,18 @@ def refresh_state_run(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
+    record_state = record.get("state") if isinstance(record.get("state"), dict) else {}
+    record_frontmatter = (
+        record_state.get("frontmatter")
+        if isinstance(record_state.get("frontmatter"), dict)
+        else {}
+    )
+    index_record["state"] = {
+        "sha256_16": record_state.get("sha256_16"),
+        "frontmatter": {
+            "updated_at": record_frontmatter.get("updated_at"),
+        },
+    }
     if normalized_delivery_batch_scale:
         index_record["delivery_batch_scale"] = normalized_delivery_batch_scale
     if normalized_delivery_outcome:
