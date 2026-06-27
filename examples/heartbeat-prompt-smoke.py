@@ -1087,6 +1087,72 @@ def main() -> int:
             cli_profile_scoped_payload
         )
 
+        profile_handoff_registry_path = project / ".loopx" / "profile-handoff-registry.json"
+        profile_handoff_registry_path.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": GOAL_ID,
+                            "domain": "smoke",
+                            "status": "active",
+                            "repo": str(project),
+                            "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                            "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                            "coordination": {
+                                "registered_agents": [
+                                    "codex-main-control",
+                                    "codex-side-bypass",
+                                    "codex-product-capability",
+                                ],
+                                "primary_agent": "codex-main-control",
+                                "side_agent_handoff_agent": "codex-side-bypass",
+                                "agent_profiles": {
+                                    "codex-product-capability": {
+                                        "schema_version": "agent_profile_v0",
+                                        "scope_summary": "product capability and runtime contracts",
+                                        "review_policy": {"handoff_agent": "codex-main-control"},
+                                    }
+                                },
+                            },
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        cli_profile_handoff_json = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(profile_handoff_registry_path),
+                "heartbeat-prompt",
+                "--goal-id",
+                GOAL_ID,
+                "--thin",
+                "--agent-id",
+                "codex-product-capability",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        cli_profile_handoff_payload = json.loads(cli_profile_handoff_json)
+        assert cli_profile_handoff_payload["side_agent_handoff_agent"] == "codex-main-control", (
+            cli_profile_handoff_payload
+        )
+        assert "handoff todo claimed_by `codex-side-bypass`" not in cli_profile_handoff_payload["task_body"], (
+            cli_profile_handoff_payload
+        )
+        assert "handoff todo claimed_by `codex-main-control`" in cli_profile_handoff_payload["task_body"], (
+            cli_profile_handoff_payload
+        )
+
         ignored_review_registry_path = project / ".loopx" / "ignored-review-registry.json"
         ignored_review_registry_path.write_text(
             json.dumps(

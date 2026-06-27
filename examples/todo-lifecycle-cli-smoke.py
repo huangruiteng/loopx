@@ -276,6 +276,71 @@ def assert_configured_side_agent_handoff() -> None:
         )
         assert "handoff_agent='codex-main-control'" in ignored_review_handoff["error"], ignored_review_handoff
 
+    with tempfile.TemporaryDirectory(prefix="loopx-profile-side-agent-handoff-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, state_file = write_fixture(root)
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        coordination = registry["goals"][0]["coordination"]
+        coordination["registered_agents"].append("codex-product-capability")
+        coordination["side_agent_handoff_agent"] = "codex-side-bypass"
+        coordination["agent_profiles"] = {
+            "codex-product-capability": {
+                "schema_version": "agent_profile_v0",
+                "review_policy": {"handoff_agent": "codex-main-control"},
+            }
+        }
+        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        profile_handoff_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            SIDE_HANDOFF_SOURCE_TODO,
+            "--claimed-by",
+            "codex-product-capability",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "contract_refine",
+        )
+        profile_handoff_completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            profile_handoff_added["todo_id"],
+            "--claimed-by",
+            "codex-product-capability",
+            "--evidence",
+            "product-capability-runtime-contract-diff",
+            "--next-agent-todo",
+            SIDE_HANDOFF_TODO,
+            "--next-claimed-by",
+            "codex-main-control",
+        )
+        assert profile_handoff_completed["changed"] is True, profile_handoff_completed
+        assert profile_handoff_completed["next_todos"][0]["claimed_by"] == "codex-main-control", (
+            profile_handoff_completed
+        )
+        assert profile_handoff_completed["next_todos"][0]["blocks_agent"] == "codex-product-capability", (
+            profile_handoff_completed
+        )
+        assert profile_handoff_completed["next_todos"][0]["unblocks_todo_id"] == profile_handoff_added["todo_id"], (
+            profile_handoff_completed
+        )
+        profile_handoff_successor = next(
+            item
+            for item in parsed_items(state_file)
+            if item["todo_id"] == profile_handoff_completed["next_todos"][0]["todo_id"]
+        )
+        assert profile_handoff_successor["claimed_by"] == "codex-main-control", profile_handoff_successor
+
 
 def assert_no_followup_cli_metadata() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-todo-no-followup-smoke-") as tmp:

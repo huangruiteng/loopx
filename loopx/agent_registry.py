@@ -59,9 +59,32 @@ def primary_agent_id_for_goal(goal: dict[str, Any] | None) -> str | None:
     return None
 
 
-def side_agent_handoff_agent_id_for_goal(goal: dict[str, Any] | None) -> str | None:
+def _agent_profile_handoff_agent_id(profile: dict[str, Any] | None) -> str | None:
+    if not isinstance(profile, dict):
+        return None
+    candidates: list[Any] = []
+    review_policy = profile.get("review_policy")
+    if isinstance(review_policy, dict):
+        candidates.append(review_policy.get("handoff_agent"))
+        candidates.append(review_policy.get("side_agent_handoff_agent"))
+    candidates.append(profile.get("handoff_agent"))
+    candidates.append(profile.get("side_agent_handoff_agent"))
+    for candidate in candidates:
+        agent = normalize_todo_claimed_by(candidate)
+        if agent:
+            return agent
+    return None
+
+
+def side_agent_handoff_agent_id_for_goal(
+    goal: dict[str, Any] | None,
+    agent_id: str | None = None,
+) -> str | None:
     if not isinstance(goal, dict):
         return None
+    profile_handoff_agent = _agent_profile_handoff_agent_id(agent_profile_for_goal(goal, agent_id))
+    if profile_handoff_agent:
+        return profile_handoff_agent
     candidates: list[Any] = []
     coordination = goal.get("coordination")
     if isinstance(coordination, dict):
@@ -121,8 +144,15 @@ def primary_agent_id_from_registry(registry_path: Path, goal_id: str) -> str | N
     return primary_agent_id_for_goal(load_goal_from_registry(registry_path, goal_id))
 
 
-def side_agent_handoff_agent_id_from_registry(registry_path: Path, goal_id: str) -> str | None:
-    return side_agent_handoff_agent_id_for_goal(load_goal_from_registry(registry_path, goal_id))
+def side_agent_handoff_agent_id_from_registry(
+    registry_path: Path,
+    goal_id: str,
+    agent_id: str | None = None,
+) -> str | None:
+    return side_agent_handoff_agent_id_for_goal(
+        load_goal_from_registry(registry_path, goal_id),
+        agent_id=agent_id,
+    )
 
 
 def agent_profile_from_registry(registry_path: Path, goal_id: str, agent_id: str | None) -> dict[str, Any] | None:

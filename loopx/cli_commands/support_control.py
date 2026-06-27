@@ -300,7 +300,6 @@ def handle_support_control_command(
                 agent_registry_path = Path(active_state_source.removeprefix("registry:"))
             registered_agents = registered_agent_ids_from_registry(agent_registry_path, args.goal_id)
             primary_agent = primary_agent_id_from_registry(agent_registry_path, args.goal_id)
-            side_agent_handoff_agent = side_agent_handoff_agent_id_from_registry(agent_registry_path, args.goal_id)
             effective_agent_id = None
             agent_profile = None
             if args.agent_id:
@@ -311,6 +310,11 @@ def handle_support_control_command(
                     field="agent_id",
                 )
                 agent_profile = agent_profile_from_registry(agent_registry_path, args.goal_id, effective_agent_id)
+            side_agent_handoff_agent = side_agent_handoff_agent_id_from_registry(
+                agent_registry_path,
+                args.goal_id,
+                agent_id=effective_agent_id,
+            )
             payload = build_heartbeat_prompt(
                 goal_id=args.goal_id,
                 active_state=active_state,

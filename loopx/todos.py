@@ -1241,7 +1241,11 @@ def complete_goal_todo(
         )
         primary_agent = primary_agent_id_from_registry(registry_path, goal_id)
         registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
-        configured_handoff_agent = side_agent_handoff_agent_id_from_registry(registry_path, goal_id)
+        configured_handoff_agent = side_agent_handoff_agent_id_from_registry(
+            registry_path,
+            goal_id,
+            agent_id=effective_claimed_by,
+        )
         handoff_agent = configured_handoff_agent or primary_agent
         if configured_handoff_agent:
             handoff_agent = require_registered_agent_id(
