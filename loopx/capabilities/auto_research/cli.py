@@ -185,10 +185,16 @@ def handle_auto_research_command(
                     goal_id=args.goal_id,
                     agent_id=args.agent_id,
                 )
+                registry = load_registry(registry_path)
+                runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+                rollout_events = load_rollout_events(
+                    rollout_event_log_path(runtime_root, args.goal_id)
+                )
                 payload = build_live_auto_research_projection(
                     goal_id=args.goal_id,
                     agent_id=args.agent_id,
                     quota_payload=quota_payload,
+                    rollout_events=rollout_events,
                 )
         elif args.auto_research_command == "evidence":
             payload = load_auto_research_evidence_packet_inputs(

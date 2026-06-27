@@ -19,6 +19,7 @@ RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION = "research_showcase_projection_v0"
 AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projection_v0"
 AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION = "auto_research_evidence_packet_v0"
 AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = "auto_research_rollout_append_v0"
+ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND = "loopx_rollout_event_log"
 
 HYPOTHESIS_STATUSES = {
     "proposed",
@@ -702,6 +703,127 @@ def _live_hypothesis_id(todo_id: str) -> str:
     return _compact_public_token(f"hyp_{suffix}", field="live.hypothesis_id")
 
 
+def _rollout_source_refs(event: dict[str, Any]) -> tuple[list[str], str | None]:
+    grounding_refs: list[str] = []
+    novelty_audit_ref: str | None = None
+    for index, ref in enumerate(event.get("source_refs") or []):
+        if not isinstance(ref, dict):
+            continue
+        kind = str(ref.get("kind") or "").strip()
+        ref_id = ref.get("id")
+        if not ref_id:
+            continue
+        if kind == "grounding":
+            grounding_refs.append(
+                _compact_public_text(ref_id, field=f"rollout.source_refs[{index}].id")
+            )
+        elif kind == "novelty_audit" and novelty_audit_ref is None:
+            novelty_audit_ref = _compact_public_text(
+                ref_id,
+                field=f"rollout.source_refs[{index}].id",
+            )
+    return grounding_refs, novelty_audit_ref
+
+
+def _rollout_hypothesis_text(event: dict[str, Any], details: dict[str, Any]) -> str:
+    if details.get("hypothesis"):
+        return _compact_public_text(details["hypothesis"], field="rollout.details.hypothesis")
+    summary = str(event.get("summary") or "")
+    prefix = "auto-research hypothesis "
+    if summary.startswith(prefix) and ": " in summary:
+        return _compact_public_text(
+            summary.split(": ", 1)[1],
+            field="rollout.summary.hypothesis",
+        )
+    fallback = f"Evidence-backed hypothesis {details.get('hypothesis_id') or event.get('todo_id')}"
+    return _compact_public_text(fallback, field="rollout.summary.hypothesis")
+
+
+def _research_hypothesis_from_rollout_event(event: dict[str, Any]) -> dict[str, Any] | None:
+    if str(event.get("event_kind") or "") != "research_hypothesis":
+        return None
+    if str(event.get("classification") or "") != RESEARCH_HYPOTHESIS_SCHEMA_VERSION:
+        return None
+    details = _json_obj(event.get("details") or {}, field="rollout.hypothesis.details")
+    grounding_refs, novelty_audit_ref = _rollout_source_refs(event)
+    negative_count = int(details.get("negative_evidence_count") or 0)
+    retry_count = int(details.get("needs_retry_count") or 0)
+    status = details.get("status") or event.get("status") or "active"
+    blocked_by: list[str] = []
+    if str(status) == "contradicted" or negative_count:
+        blocked_by.append("evidence_or_boundary_guardrail_failed")
+    elif str(status) == "needs_retry" or retry_count:
+        blocked_by.append("needs_retry_evidence")
+    return validate_research_hypothesis(
+        {
+            "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
+            "hypothesis_id": details.get("hypothesis_id"),
+            "parent_hypothesis_id": details.get("parent_hypothesis_id") or None,
+            "todo_id": event.get("todo_id"),
+            "claimed_by": event.get("agent_id") or "unknown_agent",
+            "mechanism_family": details.get("mechanism_family") or "rollout_imported",
+            "hypothesis": _rollout_hypothesis_text(event, details),
+            "status": status,
+            "grounding_refs": grounding_refs,
+            "novelty_audit_ref": novelty_audit_ref,
+            "blocked_by": blocked_by,
+        }
+    )
+
+
+def _research_evidence_from_rollout_event(event: dict[str, Any]) -> dict[str, Any] | None:
+    if str(event.get("event_kind") or "") != "research_evidence":
+        return None
+    if str(event.get("classification") or "") != RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION:
+        return None
+    details = _json_obj(event.get("details") or {}, field="rollout.evidence.details")
+    return validate_research_evidence_event(
+        {
+            "schema_version": RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION,
+            "hypothesis_id": details.get("hypothesis_id"),
+            "todo_id": event.get("todo_id"),
+            "agent_id": event.get("agent_id") or "unknown_agent",
+            "attempt": details.get("attempt") or 1,
+            "split": details.get("split"),
+            "metric": {
+                "name": details.get("metric_name"),
+                "value": details.get("metric_value"),
+                "direction": details.get("metric_direction"),
+            },
+            "baseline_metric": details.get("baseline_metric"),
+            "eval_status": details.get("eval_status") or event.get("status"),
+            "primary_metric_status": details.get("primary_metric_status") or "inconclusive",
+            "artifact_refs": event.get("artifact_refs") or [],
+            "protected_scope_clean": bool(details.get("protected_scope_clean")),
+        }
+    )
+
+
+def _synthetic_hypothesis_from_evidence(events: list[dict[str, Any]]) -> dict[str, Any]:
+    first = events[0]
+    status = _derive_hypothesis_status(events)
+    blocked_by = []
+    if status == "contradicted":
+        blocked_by.append("evidence_or_boundary_guardrail_failed")
+    elif status == "needs_retry":
+        blocked_by.append("needs_retry_evidence")
+    return validate_research_hypothesis(
+        {
+            "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
+            "hypothesis_id": first["hypothesis_id"],
+            "parent_hypothesis_id": None,
+            "todo_id": first["todo_id"],
+            "claimed_by": first["agent_id"],
+            "mechanism_family": "rollout_evidence_only",
+            "hypothesis": f"Evidence-backed hypothesis {first['hypothesis_id']}",
+            "status": status,
+            "grounding_refs": [],
+            "novelty_audit_ref": None,
+            "blocked_by": blocked_by,
+        }
+    )
+
+
 def _todo_frontier_item(
     item: dict[str, Any],
     *,
@@ -757,6 +879,7 @@ def build_live_auto_research_projection(
     goal_id: str,
     agent_id: str,
     quota_payload: dict[str, Any],
+    rollout_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Render a read-only auto-research frontier from live LoopX quota state.
 
@@ -834,13 +957,18 @@ def build_live_auto_research_projection(
     ]
     agent_ids = sorted({item["claimed_by"] for item in [*runnable, *blocked]})
     todo_ids = sorted({item["todo_id"] for item in [*runnable, *blocked]})
-    evidence_graph = {
+    todo_evidence_graph = {
         "schema_version": RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
         "goal_id": goal,
         "hypothesis_count": len(nodes),
         "evidence_event_count": 0,
         "todo_ids": todo_ids,
         "agent_ids": agent_ids,
+        "metric": {
+            "name": "runnable_hypotheses",
+            "direction": "maximize",
+            "baseline": 0.0,
+        },
         "baseline_metric": None,
         "best_dev_metric": None,
         "best_holdout_metric": None,
@@ -850,6 +978,14 @@ def build_live_auto_research_projection(
         "nodes": nodes,
         "source_kind": "loopx_live_quota_status",
     }
+    rollout_evidence_graph = build_research_evidence_graph_from_rollout_events(
+        goal_id=goal,
+        rollout_events=rollout_events or [],
+    )
+    if rollout_evidence_graph["evidence_event_count"] or rollout_evidence_graph["hypothesis_count"]:
+        evidence_graph = rollout_evidence_graph
+    else:
+        evidence_graph = todo_evidence_graph
     frontier = {
         "schema_version": RESEARCH_FRONTIER_SCHEMA_VERSION,
         "goal_id": goal,
@@ -861,25 +997,31 @@ def build_live_auto_research_projection(
         "source_kind": "loopx_live_quota_status",
     }
     selected_title = selected.get("title") if isinstance(selected, dict) else "No runnable hypothesis"
+    graph_metric = evidence_graph.get("metric") if isinstance(evidence_graph.get("metric"), dict) else {}
+    source_kind = str(evidence_graph.get("source_kind") or "loopx_live_quota_status")
     showcase_projection = {
         "schema_version": RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
         "title": "LoopX Live Auto Research Frontier",
         "goal_id": goal,
         "objective": selected_title,
         "metric": {
-            "name": "runnable_hypotheses",
-            "direction": "maximize",
-            "baseline": 0.0,
+            "name": graph_metric.get("name") or "runnable_hypotheses",
+            "direction": graph_metric.get("direction") or "maximize",
+            "baseline": graph_metric.get("baseline") or 0.0,
         },
-        "baseline_metric": None,
-        "best_dev_metric": None,
-        "best_holdout_metric": None,
-        "holdout_improved": False,
+        "baseline_metric": evidence_graph.get("baseline_metric"),
+        "best_dev_metric": evidence_graph.get("best_dev_metric"),
+        "best_holdout_metric": evidence_graph.get("best_holdout_metric"),
+        "holdout_improved": evidence_graph.get("holdout_improved"),
         "promoted_hypotheses": [],
         "retired_or_contradicted_hypotheses": [],
-        "negative_evidence_count": 0,
-        "decentralized_pattern": "todo_backed_live_frontier_agent_scoped_quota_projection",
-        "source_kind": "loopx_live_quota_status",
+        "negative_evidence_count": evidence_graph.get("negative_evidence_count"),
+        "decentralized_pattern": (
+            "todo_backed_live_frontier_rollout_evidence_graph"
+            if source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
+            else "todo_backed_live_frontier_agent_scoped_quota_projection"
+        ),
+        "source_kind": source_kind,
     }
     return {
         "ok": True,
@@ -891,7 +1033,11 @@ def build_live_auto_research_projection(
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
-            "source": "live_quota_status_projection",
+            "source": (
+                "live_quota_status_and_rollout_event_log"
+                if source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
+                else "live_quota_status_projection"
+            ),
         },
     }
 
@@ -907,21 +1053,40 @@ def _best_metric(events: list[dict[str, Any]], *, split: str, direction: str) ->
     return max(values, key=lambda value: _metric_rank_key(value, direction=direction))
 
 
-def build_research_evidence_graph(fixture: dict[str, Any]) -> dict[str, Any]:
-    contract = fixture["research_contract"]
-    direction = contract["metric"]["direction"]
-    events = fixture["evidence_events"]
-    baseline = contract["metric"]["baseline"]
+def build_research_evidence_graph_from_records(
+    *,
+    goal_id: str,
+    hypotheses: list[dict[str, Any]],
+    evidence_events: list[dict[str, Any]],
+    metric_name: str,
+    metric_direction: str,
+    baseline_metric: float | None,
+    source_kind: str = "public_records",
+) -> dict[str, Any]:
+    goal = _compact_public_token(goal_id, field="goal_id")
+    direction = _compact_public_token(metric_direction, field="metric.direction")
+    if direction not in METRIC_DIRECTIONS:
+        raise ValueError("metric.direction must be maximize or minimize")
+    name = _compact_public_token(metric_name, field="metric.name")
+    source = _compact_public_token(source_kind, field="source_kind")
+    hypotheses = [validate_research_hypothesis(dict(item)) for item in hypotheses]
+    events = [validate_research_evidence_event(dict(event)) for event in evidence_events]
+    baseline = _finite_float(baseline_metric, field="baseline_metric")
     scored_events = [event for event in events if event["eval_status"] == "scored"]
     best_dev = _best_metric(scored_events, split="dev", direction=direction)
     best_holdout = _best_metric(scored_events, split="holdout", direction=direction)
     return {
         "schema_version": RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
-        "goal_id": contract["goal_id"],
-        "hypothesis_count": len(fixture["hypotheses"]),
+        "goal_id": goal,
+        "hypothesis_count": len(hypotheses),
         "evidence_event_count": len(events),
-        "todo_ids": sorted({item["todo_id"] for item in fixture["hypotheses"]}),
-        "agent_ids": sorted({item["claimed_by"] for item in fixture["hypotheses"]}),
+        "todo_ids": sorted({item["todo_id"] for item in hypotheses}),
+        "agent_ids": sorted({item["claimed_by"] for item in hypotheses}),
+        "metric": {
+            "name": name,
+            "direction": direction,
+            "baseline": baseline,
+        },
         "baseline_metric": baseline,
         "best_dev_metric": best_dev,
         "best_holdout_metric": best_holdout,
@@ -934,7 +1099,7 @@ def build_research_evidence_graph(fixture: dict[str, Any]) -> dict[str, Any]:
                 or event["eval_status"] != "scored"
             ]
         ),
-        "needs_retry_count": len([item for item in fixture["hypotheses"] if item["status"] == "needs_retry"]),
+        "needs_retry_count": len([item for item in hypotheses if item["status"] == "needs_retry"]),
         "nodes": [
             {
                 "hypothesis_id": item["hypothesis_id"],
@@ -943,9 +1108,60 @@ def build_research_evidence_graph(fixture: dict[str, Any]) -> dict[str, Any]:
                 "claimed_by": item["claimed_by"],
                 "status": item["status"],
             }
-            for item in fixture["hypotheses"]
+            for item in hypotheses
         ],
+        "source_kind": source,
     }
+
+
+def build_research_evidence_graph(fixture: dict[str, Any]) -> dict[str, Any]:
+    contract = fixture["research_contract"]
+    return build_research_evidence_graph_from_records(
+        goal_id=contract["goal_id"],
+        hypotheses=fixture["hypotheses"],
+        evidence_events=fixture["evidence_events"],
+        metric_name=contract["metric"]["name"],
+        metric_direction=contract["metric"]["direction"],
+        baseline_metric=contract["metric"]["baseline"],
+        source_kind="public_fixture",
+    )
+
+
+def build_research_evidence_graph_from_rollout_events(
+    *,
+    goal_id: str,
+    rollout_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    goal = _compact_public_token(goal_id, field="goal_id")
+    hypotheses_by_id: dict[str, dict[str, Any]] = {}
+    evidence_events: list[dict[str, Any]] = []
+    for event in rollout_events:
+        hypothesis = _research_hypothesis_from_rollout_event(event)
+        if hypothesis:
+            hypotheses_by_id[hypothesis["hypothesis_id"]] = hypothesis
+            continue
+        evidence = _research_evidence_from_rollout_event(event)
+        if evidence:
+            evidence_events.append(evidence)
+
+    events_by_hypothesis: dict[str, list[dict[str, Any]]] = {}
+    for evidence in evidence_events:
+        events_by_hypothesis.setdefault(evidence["hypothesis_id"], []).append(evidence)
+    for hypothesis_id, events in events_by_hypothesis.items():
+        if hypothesis_id not in hypotheses_by_id:
+            hypotheses_by_id[hypothesis_id] = _synthetic_hypothesis_from_evidence(events)
+
+    first_metric_event = evidence_events[0] if evidence_events else None
+    metric = first_metric_event["metric"] if first_metric_event else {}
+    return build_research_evidence_graph_from_records(
+        goal_id=goal,
+        hypotheses=list(hypotheses_by_id.values()),
+        evidence_events=evidence_events,
+        metric_name=metric.get("name") or "research_metric",
+        metric_direction=metric.get("direction") or "maximize",
+        baseline_metric=first_metric_event.get("baseline_metric") if first_metric_event else None,
+        source_kind=ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND,
+    )
 
 
 def build_research_showcase_projection(
