@@ -391,9 +391,14 @@ def test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate() -
     assert task_prompt is not None
     assert "--- TASK INSTRUCTION ---" not in task_prompt
     assert "The task packet is now available" not in task_prompt
-    assert "Continue from your LoopX case state" in task_prompt
+    assert "Mandatory product-mode solver checkpoint" in task_prompt
+    assert "task-facing sandbox bridge operation" in task_prompt
+    assert "selected P0 closeout sequence" in task_prompt
     assert "official reward" in task_prompt
-    assert trace["last_decision"] == "send_product_mode_scheduled_continuation", trace
+    assert (
+        trace["last_decision"]
+        == "send_product_mode_solver_activity_continuation"
+    ), trace
     assert trace.get("product_mode_task_instruction_sent_after_agent_lifecycle") is not True
     assert trace["followup_prompt_count"] == 1, trace
 
@@ -1930,7 +1935,8 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         )
         assert prompt is not None, trace
         assert "Mandatory product-mode solver checkpoint" in prompt
-        assert "full agent closeout evidence" in prompt
+        assert "selected P0 solver/closeout evidence" in prompt
+        assert "task-facing sandbox bridge operation" in prompt
         assert "todo complete" in prompt
         assert "benchmark_case_agent_closeout" in prompt
         assert "quota spend-slot" in prompt
@@ -2595,7 +2601,16 @@ def test_product_mode_workflow_driver_task_bridge_activity_avoids_no_tool_abort(
         )
     )
     assert prompt is not None, trace
-    assert trace["last_decision"] == "send_product_mode_scheduled_continuation", trace
+    assert "Mandatory product-mode solver checkpoint" in prompt
+    assert "task-facing sandbox bridge operation" in prompt
+    assert "selected P0 closeout sequence" in prompt
+    assert (
+        trace["last_decision"]
+        == "send_product_mode_solver_activity_continuation"
+    ), trace
+    assert trace["product_mode_solver_activity_gap"] is True, trace
+    assert trace["product_mode_solver_activity_gap_count"] == 1, trace
+    assert trace["product_mode_solver_activity_gap_round"] == 1, trace
     assert trace.get("product_mode_no_tool_call_lifecycle_abort") is not True, trace
     assert trace.get("product_mode_no_lifecycle_request_abort") is not True, trace
     assert trace["followup_prompt_count"] == 1, trace

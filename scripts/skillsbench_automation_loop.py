@@ -7126,15 +7126,21 @@ def _build_product_mode_user(
             f"Mandatory product-mode solver checkpoint before round {round_number} "
             "continues. The previous round produced enough LoopX lifecycle "
             "evidence to make the treatment countable, but it did not produce "
-            "the full agent closeout evidence: task-facing validation plus "
+            "the selected P0 solver/closeout evidence. The next agent turn "
+            "must start with either a task-facing sandbox bridge operation "
+            "from `/app`, or, if local validation already proves the selected "
+            "P0 is complete, the selected P0 closeout sequence: "
             "`todo complete`, `refresh-state`, and `quota spend-slot "
             "--source adapter --execute`. Read-only LoopX calls such as "
             "`quota should-run`, or state edits without a spend event, are not "
-            "enough to declare completion. This is not official verifier "
-            "feedback and says nothing about task success. Before declaring "
-            "done, use the available sandbox tool or command-file bridge to "
-            "inspect the task workspace, make or verify the required changes, "
-            "then run this exact case-local closeout sequence from `/app`:\n\n"
+            "enough to declare completion. This is not official reward, "
+            "pass/fail, or verifier feedback and says nothing about task "
+            "success. If the task is not "
+            "complete, use the available sandbox tool or command-file bridge "
+            "to inspect the task workspace, make or verify the required "
+            "changes, and continue solving. If local evidence shows the "
+            "selected P0 is complete, run this exact case-local closeout "
+            "sequence from `/app`:\n\n"
             f"{closeout_commands(round_number)}"
             "Do not answer with prose only, and only end with "
             f"{DECLARED_DONE_MARKER} after meaningful local task work or "
@@ -7416,6 +7422,26 @@ def _build_product_mode_user(
                 _inc_counter(trace, "stop_decision_count")
                 trace["last_decision"] = "stop_after_product_mode_budget"
                 return None
+            if (
+                treatment
+                and round_result is not None
+                and self._task_instruction_sent
+                and product_mode_entry_lifecycle_gate_satisfied()
+                and not _product_mode_solver_activity_observed(
+                    trace,
+                    round_result,
+                )
+            ):
+                _record_product_mode_solver_activity_gap(
+                    trace,
+                    agent_round=round,
+                )
+                _inc_counter(trace, "controller_action_decisions")
+                _inc_counter(trace, "followup_prompt_count")
+                trace["last_decision"] = (
+                    "send_product_mode_solver_activity_continuation"
+                )
+                return solver_activity_prompt(round + 1)
             if round == 0:
                 _inc_counter(trace, "controller_action_decisions")
                 _inc_counter(trace, "initial_prompt_count")
