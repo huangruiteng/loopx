@@ -35,6 +35,7 @@ def main() -> int:
         "/loopx-global-gates",
         "/loopx-global-todos",
         "/loopx-global-risks",
+        "/loopx-pr-review",
     ]:
         assert command in commands, commands
     assert "/loop-global-summary" in commands["/loopx-global-summary"]["legacy_aliases"]
@@ -51,6 +52,8 @@ def main() -> int:
     assert "# LoopX Slash Commands" in markdown, markdown
     assert "`/loopx-global-summary`" in markdown, markdown
     assert "`loopx global-summary`" in markdown, markdown
+    assert "`/loopx-pr-review`" in markdown, markdown
+    assert "`loopx pr-review [--repo owner/repo]`" in markdown, markdown
     assert "`/loopx-summary-all`" not in markdown, markdown
 
     top_help = run_cli("--help").stdout

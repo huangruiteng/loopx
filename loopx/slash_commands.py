@@ -88,6 +88,13 @@ def build_slash_command_catalog(
             legacy_aliases=legacy_risks,
             implementation_status="host_command_defined",
         ),
+        _command(
+            command="/loopx-pr-review",
+            scope="repo",
+            intent="List unmerged pull requests for the current project or explicit --repo target and generate a guided review queue with motivation, change scope, checks, risks, and per-PR review prompts.",
+            mutation_policy="read_only; does not comment, approve, merge, or spend quota",
+            cli_reference=f"{cli_bin} pr-review [--repo owner/repo]",
+        ),
     ]
     return {
         "ok": True,
@@ -116,6 +123,7 @@ def render_onboarding_slash_command_note(commands: list[dict[str, Any]], *, cli_
             f"- `/loopx <goal text>`: {goal.get('intent', 'start a concrete project goal')}",
             "- `/loopx-global-summary`: read the global progress digest.",
             "- `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`: inspect manager-level gates, work, and risks.",
+            "- `/loopx-pr-review`: review the current project's unmerged PRs one by one with motivation, scope, checks, and risks.",
             f"CLI help: `{cli_bin} slash-commands`.",
         ]
     )

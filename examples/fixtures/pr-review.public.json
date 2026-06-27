@@ -1,0 +1,88 @@
+{
+  "repository": "huangruiteng/loopx",
+  "pull_requests": [
+    {
+      "number": 773,
+      "title": "docs: add newcomer command path",
+      "url": "https://github.com/huangruiteng/loopx/pull/773",
+      "author": {"login": "huangruiteng"},
+      "baseRefName": "main",
+      "headRefName": "codex/side-bypass-command-surface-20260627",
+      "updatedAt": "2026-06-27T12:21:43Z",
+      "isDraft": false,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "mergeStateStatus": "CLEAN",
+      "body": "Adds a newcomer command path so first-time users see /loopx and one quickstart before the full command catalog. It also adds manager-view commands as second-layer discovery.",
+      "changedFiles": 3,
+      "additions": 90,
+      "deletions": 4,
+      "files": [
+        {"path": "docs/guides/newcomer-command-path.md", "additions": 75, "deletions": 0},
+        {"path": "docs/README.md", "additions": 8, "deletions": 2},
+        {"path": "docs/guides/getting-started.md", "additions": 7, "deletions": 2}
+      ],
+      "commits": [
+        {"messageHeadline": "docs: add newcomer command path"},
+        {"messageHeadline": "docs: mention global manager slash commands"}
+      ],
+      "statusCheckRollup": [
+        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "docs-smoke", "status": "COMPLETED", "conclusion": "SUCCESS"}
+      ]
+    },
+    {
+      "number": 771,
+      "title": "docs: add public showcase pages and experimental value path",
+      "url": "https://github.com/huangruiteng/loopx/pull/771",
+      "author": {"login": "huangruiteng"},
+      "baseRefName": "main",
+      "headRefName": "codex/hardware-canonical-showcases",
+      "updatedAt": "2026-06-27T12:18:59Z",
+      "isDraft": false,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "mergeStateStatus": "CLEAN",
+      "body": "Adds public showcase pages, preserves the hardware workflow page as the quality bar, and places the Today Value Path as an experimental section below the first screen.",
+      "changedFiles": 9,
+      "additions": 740,
+      "deletions": 42,
+      "files": [
+        {"path": "README.md", "additions": 20, "deletions": 5},
+        {"path": "README.zh-CN.md", "additions": 20, "deletions": 5},
+        {"path": "docs/showcases/index.html", "additions": 150, "deletions": 20},
+        {"path": "docs/showcases/showcase-catalog.json", "additions": 190, "deletions": 5},
+        {"path": "apps/dashboard/src/views/frontstage-page.tsx", "additions": 80, "deletions": 4}
+      ],
+      "commits": [
+        {"messageHeadline": "docs: require first-screen owner review"},
+        {"messageHeadline": "docs: add experimental today value path"}
+      ],
+      "statusCheckRollup": [
+        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "showcase-smoke", "status": "COMPLETED", "conclusion": "SUCCESS"}
+      ]
+    },
+    {
+      "number": 775,
+      "title": "draft: explore PR review dashboard cards",
+      "url": "https://github.com/huangruiteng/loopx/pull/775",
+      "author": {"login": "huangruiteng"},
+      "baseRefName": "main",
+      "headRefName": "codex/pr-review-dashboard-cards",
+      "updatedAt": "2026-06-27T12:30:00Z",
+      "isDraft": true,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "mergeStateStatus": "UNKNOWN",
+      "body": "Explores a dashboard card view for PR review packets.",
+      "changedFiles": 1,
+      "additions": 40,
+      "deletions": 0,
+      "files": [
+        {"path": "apps/dashboard/src/views/pr-review-card.tsx", "additions": 40, "deletions": 0}
+      ],
+      "commits": [
+        {"messageHeadline": "draft: explore PR review cards"}
+      ],
+      "statusCheckRollup": []
+    }
+  ]
+}

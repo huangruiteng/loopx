@@ -18,6 +18,7 @@ Current contracts:
 - [todo_detail_cold_path_v0](todo-detail-cold-path-v0.md)
 - [long_horizon_agent_state_protocol_v0](long-horizon-agent-state-protocol-v0.md)
 - [global_manager_command_v0](global-manager-command-v0.md)
+- [pr_review_command_v0](pr-review-command-v0.md)
 - [event_sourced_state_contract_v0](event-sourced-state-contract-v0.md)
 - [rollback_packet_v0](rollback-packet-v0.md)
 - [content_ops_surface_v0](content-ops-surface-v0.md)

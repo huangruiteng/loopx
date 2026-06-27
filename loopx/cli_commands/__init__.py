@@ -86,6 +86,7 @@ from .project_lifecycle import (
     handle_project_lifecycle_command,
     register_project_lifecycle_commands,
 )
+from .pr_review import handle_pr_review_command, register_pr_review_command
 from .quota import handle_quota_command, register_quota_command
 from .registry_admin import (
     handle_registry_admin_command,
@@ -204,6 +205,7 @@ __all__ = [
     "handle_ml_experiment_command",
     "handle_new_project_prompt_command",
     "handle_project_lifecycle_command",
+    "handle_pr_review_command",
     "handle_quota_command",
     "handle_registry_admin_command",
     "handle_review_packet_command",
@@ -245,6 +247,7 @@ __all__ = [
     "register_lark_kanban_commands",
     "register_ml_experiment_commands",
     "register_project_lifecycle_commands",
+    "register_pr_review_command",
     "register_quota_command",
     "register_registry_admin_commands",
     "register_slash_commands_command",
