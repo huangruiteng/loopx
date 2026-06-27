@@ -42,15 +42,12 @@ from .todo_contract import (
     TODO_TASK_CLASS_USER_GATE,
     next_action_requires_advancement_text,
     normalize_required_capabilities,
-    normalize_required_decision_scopes,
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
-    normalize_todo_decision_scope,
     normalize_todo_id,
     normalize_todo_resume_when,
     normalize_required_write_scopes,
-    normalize_todo_safety_class,
     normalize_todo_status,
     normalize_todo_task_class,
 )
@@ -1014,9 +1011,6 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "target_capabilities",
         "claimed_by",
         "blocks_agent",
-        "decision_scope",
-        "required_decision_scopes",
-        "safety_class",
         "unblocks_todo_id",
         "resume_when",
         "resume_condition",
@@ -1030,23 +1024,6 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         compact["required_write_scopes"] = required_write_scopes
     else:
         compact.pop("required_write_scopes", None)
-    decision_scope = normalize_todo_decision_scope(compact.get("decision_scope"))
-    if decision_scope:
-        compact["decision_scope"] = decision_scope
-    else:
-        compact.pop("decision_scope", None)
-    required_decision_scopes = normalize_required_decision_scopes(
-        compact.get("required_decision_scopes")
-    )
-    if required_decision_scopes:
-        compact["required_decision_scopes"] = required_decision_scopes
-    else:
-        compact.pop("required_decision_scopes", None)
-    safety_class = normalize_todo_safety_class(compact.get("safety_class"))
-    if safety_class:
-        compact["safety_class"] = safety_class
-    else:
-        compact.pop("safety_class", None)
     compact["task_class"] = _todo_task_class(compact)
     return compact
 
@@ -2225,51 +2202,25 @@ def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
     return _action_scope_tokens_from_text(text)
 
 
-_DECISION_SCOPE_GRANULARITY_RANK = {
-    "action": 0,
-    "lane": 1,
-    "goal": 2,
-    "project": 3,
-    "global": 4,
-}
-
-
-def _decision_scope_covers(gate_scope: dict[str, Any], required_scope: dict[str, Any]) -> bool:
-    if gate_scope.get("kind") != required_scope.get("kind"):
-        return False
-    gate_key = str(gate_scope.get("scope_key") or "")
-    required_key = str(required_scope.get("scope_key") or "")
-    if gate_key != "*" and gate_key != required_key:
-        return False
-    gate_rank = _DECISION_SCOPE_GRANULARITY_RANK.get(str(gate_scope.get("granularity") or ""), -1)
-    required_rank = _DECISION_SCOPE_GRANULARITY_RANK.get(str(required_scope.get("granularity") or ""), -1)
-    return gate_rank >= required_rank >= 0
-
-
-def _decision_scope_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
-    gate_scope = normalize_todo_decision_scope(gate.get("decision_scope"))
-    required_scopes = normalize_required_decision_scopes(agent_item.get("required_decision_scopes"))
-    if not gate_scope or not required_scopes:
+def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
+    target_todo_id = normalize_todo_id(gate.get("unblocks_todo_id"))
+    if not target_todo_id:
         return None
-    covered_scope = next(
-        (scope for scope in required_scopes if _decision_scope_covers(gate_scope, scope)),
-        None,
-    )
+    agent_todo_id = normalize_todo_id(agent_item.get("todo_id"))
     return {
-        "schema_version": "decision_scope_relation_v0",
-        "source": "structured_decision_scope",
-        "state": "gate_covers_action" if covered_scope else "independent",
-        "gate_scope": gate_scope,
-        "required_decision_scopes": required_scopes,
-        "matched_required_scope": covered_scope,
-        "safety_class": normalize_todo_safety_class(agent_item.get("safety_class")),
+        "schema_version": "todo_gate_relation_v0",
+        "source": "unblocks_todo_id",
+        "state": "gate_targets_todo" if target_todo_id == agent_todo_id else "independent",
+        "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
+        "target_todo_id": target_todo_id,
+        "agent_todo_id": agent_todo_id,
     }
 
 
 def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
-    relation = _decision_scope_relation(gate, agent_item)
+    relation = _todo_gate_relation(gate, agent_item)
     if relation:
-        return relation.get("state") == "gate_covers_action"
+        return relation.get("state") == "gate_targets_todo"
 
     gate_action_tokens = _todo_action_kind_tokens(gate)
     agent_action_tokens = _todo_action_kind_tokens(agent_item)
@@ -2331,9 +2282,9 @@ def _scoped_user_gate_fallback(
             blocking_gate = blocking_gate or matching_gate
             text = str(item.get("text") or "").strip()
             blocked_item = _compact_todo_summary_item(item, text=text)
-            relation = _decision_scope_relation(matching_gate, item)
+            relation = _todo_gate_relation(matching_gate, item)
             if relation:
-                blocked_item["decision_scope_relation"] = relation
+                blocked_item["todo_gate_relation"] = relation
             blocked_items.append(blocked_item)
             continue
         if selected is None:
@@ -2344,12 +2295,12 @@ def _scoped_user_gate_fallback(
     if not blocking_gate and not allow_unrelated_gate:
         return None
 
-    gate_to_surface = blocking_gate or gates[0]
     selected_text = str(selected.get("text") or "").strip()
+    gate_to_surface = blocking_gate or gates[0]
     selected_item = _compact_todo_summary_item(selected, text=selected_text)
-    selected_relation = _decision_scope_relation(gate_to_surface, selected)
+    selected_relation = _todo_gate_relation(gate_to_surface, selected)
     if selected_relation:
-        selected_item["decision_scope_relation"] = selected_relation
+        selected_item["todo_gate_relation"] = selected_relation
     gate_text = str(gate_to_surface.get("text") or "").strip()
     reason = (
         "an open user_gate blocks a scoped agent todo, but a non-dependent "
@@ -2369,7 +2320,6 @@ def _scoped_user_gate_fallback(
         "blocked_user_gate": _compact_todo_summary_item(gate_to_surface, text=gate_text),
         "blocked_agent_items": blocked_items[:3],
         "selected_executable": selected_item,
-        "scope_relation": selected_relation,
         "recommended_action": (
             "Notify the user about the scoped gate; then execute the selected "
             "non-gated fallback and spend only after validated writeback."

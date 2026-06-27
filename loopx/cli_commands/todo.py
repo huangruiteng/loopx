@@ -10,7 +10,6 @@ from ..todo_suggestion_prompt import (
     build_todo_suggestion_prompt_packet,
     render_todo_suggestion_prompt_markdown,
 )
-from ..todo_contract import TODO_SAFETY_CLASS_VALUES
 from ..todo_followups import capture_followup_todos
 from ..todos import (
     archive_completed_todos,
@@ -128,27 +127,6 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "For todo add/update, mark that this todo unblocks a registered agent, "
             "for example codex-side-bypass."
         ),
-    )
-    todo_parser.add_argument(
-        "--decision-scope",
-        help=(
-            "For user/controller gates, attach a decision_scope_v0 value as "
-            "kind:granularity:scope_key or compact JSON."
-        ),
-    )
-    todo_parser.add_argument(
-        "--required-decision-scope",
-        dest="required_decision_scopes",
-        action="append",
-        help=(
-            "For agent todos, declare a required decision_scope_v0 value as "
-            "kind:granularity:scope_key or compact JSON. Repeat for multiple scopes."
-        ),
-    )
-    todo_parser.add_argument(
-        "--safety-class",
-        choices=sorted(TODO_SAFETY_CLASS_VALUES),
-        help="For agent todos, declare the decision-scope safety class for gate matching.",
     )
     todo_parser.add_argument(
         "--global-gate",
@@ -315,9 +293,6 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
-                decision_scope=args.decision_scope,
-                required_decision_scopes=args.required_decision_scopes,
-                safety_class=args.safety_class,
                 global_gate=bool(args.global_gate),
                 agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
@@ -347,9 +322,6 @@ def handle_todo_command(
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
                     ("--blocks-agent", args.blocks_agent),
-                    ("--decision-scope", args.decision_scope),
-                    ("--required-decision-scope", args.required_decision_scopes),
-                    ("--safety-class", args.safety_class),
                     ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
@@ -400,16 +372,13 @@ def handle_todo_command(
                 args.target_capabilities,
                 args.claimed_by,
                 args.blocks_agent,
-                args.decision_scope,
-                args.required_decision_scopes,
-                args.safety_class,
                 args.global_gate,
                 args.unblocks_todo_id,
                 args.resume_when,
                 args.no_follow_up,
                 args.clear_claim,
             ]):
-                raise ValueError("todo update requires at least one mutable field, such as --text, --status, --task-class, --decision-scope, --required-decision-scope, --safety-class, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --resume-when, --no-follow-up, or --clear-claim")
+                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --resume-when, --no-follow-up, or --clear-claim")
             if args.no_follow_up and not (args.note or args.reason or args.evidence):
                 raise ValueError("--no-follow-up requires --note, --reason, or --evidence")
             if args.followups:
@@ -435,9 +404,6 @@ def handle_todo_command(
                 target_capabilities=args.target_capabilities,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
-                decision_scope=args.decision_scope,
-                required_decision_scopes=args.required_decision_scopes,
-                safety_class=args.safety_class,
                 global_gate=bool(args.global_gate),
                 agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
@@ -453,16 +419,8 @@ def handle_todo_command(
                 raise ValueError("todo complete requires --todo-id")
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
-            if (
-                args.blocks_agent
-                or args.decision_scope
-                or args.required_decision_scopes
-                or args.safety_class
-                or args.global_gate
-                or args.unblocks_todo_id
-                or args.resume_when
-            ):
-                raise ValueError("todo complete does not support scope/dependency metadata; use todo update before completion or side-agent handoff successor metadata")
+            if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
+                raise ValueError("todo complete does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent handoff successor metadata")
             if args.no_follow_up and (args.next_agent_todo or args.next_user_todo):
                 raise ValueError("--no-follow-up cannot be combined with successor todos")
             if args.no_follow_up and not (args.note or args.evidence):
@@ -506,16 +464,8 @@ def handle_todo_command(
                 raise ValueError("todo supersede does not support --no-follow-up")
             if args.followups:
                 raise ValueError("todo supersede does not support --follow-up; use `todo capture-followups`")
-            if (
-                args.blocks_agent
-                or args.decision_scope
-                or args.required_decision_scopes
-                or args.safety_class
-                or args.global_gate
-                or args.unblocks_todo_id
-                or args.resume_when
-            ):
-                raise ValueError("todo supersede does not support scope/dependency metadata; update the source todo first so the successor can inherit dependency metadata")
+            if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
+                raise ValueError("todo supersede does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; update the source todo first so the successor can inherit dependency metadata")
             payload = supersede_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -542,8 +492,6 @@ def handle_todo_command(
                 raise ValueError("todo archive-completed does not support --no-follow-up")
             if args.followups:
                 raise ValueError("todo archive-completed does not support --follow-up; use `todo capture-followups`")
-            if args.decision_scope or args.required_decision_scopes or args.safety_class:
-                raise ValueError("todo archive-completed does not support decision-scope metadata")
             payload = archive_completed_todos(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -571,9 +519,6 @@ def handle_todo_command(
                     ("--target-capability", args.target_capabilities),
                     ("--claimed-by", args.claimed_by),
                     ("--blocks-agent", args.blocks_agent),
-                    ("--decision-scope", args.decision_scope),
-                    ("--required-decision-scope", args.required_decision_scopes),
-                    ("--safety-class", args.safety_class),
                     ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
@@ -619,9 +564,6 @@ def handle_todo_command(
                     ("--note", args.note),
                     ("--reason", args.reason),
                     ("--blocks-agent", args.blocks_agent),
-                    ("--decision-scope", args.decision_scope),
-                    ("--required-decision-scope", args.required_decision_scopes),
-                    ("--safety-class", args.safety_class),
                     ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--resume-when", args.resume_when),
