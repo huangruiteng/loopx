@@ -160,7 +160,8 @@ The migration should be staged:
 1. Define this contract and smoke-test replay/privacy invariants.
 2. Add a minimal event store and projection API for todo/history events.
 3. Dual-write `loopx todo`, `refresh-state`, quota spend, and gate commands.
-4. Compare event projection against current Markdown parsing.
+4. Compare event projection against current Markdown parsing through
+   `event_store_migration_bridge_v0`.
 5. Prefer event projection for status, quota, review packets, dashboard, and
    slash-command help.
 6. Keep Markdown rendering as the workbench and compatibility export.
