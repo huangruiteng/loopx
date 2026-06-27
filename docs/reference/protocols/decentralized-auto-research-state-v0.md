@@ -248,15 +248,20 @@ Already available:
   now renders a fixture-backed `decentralized_research_frontier_v0`,
   `research_evidence_graph_v0`, and `research_showcase_projection_v0` without
   launching experiments or depending on a leader agent.
+- `loopx auto-research frontier --goal-id <goal> --agent-id <agent>` now
+  renders a live todo/quota-backed frontier for the current agent from LoopX
+  status projection.
+- `examples/auto_research_knn_pack/` now provides a runnable public k-NN pack
+  with an editable candidate solver, protected evaluator, dev/held-out splits,
+  exactness guard, deterministic speedup metric, no-upload boundary, and smoke
+  coverage.
 
 Needed next:
 
 - expose `research_hypothesis_v0` as a public-safe rollout-event subtype
   beyond fixture projection;
-- connect the frontier projection to live todo/quota status rather than only a
-  public fixture;
-- add a runnable auto-research benchmark fixture modeled on Arbor's k-NN zoo
-  task;
+- append runnable pack outputs as `research_evidence_event_v0` records through
+  a write path rather than hand-maintained fixture evidence;
 - add a showcase page that reports baseline, dev result, held-out result,
   retired directions, and LoopX's decentralized coordination pattern.
 
