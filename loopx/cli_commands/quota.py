@@ -205,6 +205,17 @@ def handle_quota_command(
                 "source": "quota",
                 "recommended_action": "fix quota/status collection before spending automatic compute",
             }
+            if args.quota_command == "monitor-poll":
+                payload.update(
+                    {
+                        "source": args.source,
+                        "agent_id": args.agent_id,
+                        "todo_id": args.todo_id,
+                        "target_key": args.target_key,
+                        "result_hash": args.result_hash,
+                        "material_change": bool(args.material_change),
+                    }
+                )
         else:
             payload = {
                 "ok": False,

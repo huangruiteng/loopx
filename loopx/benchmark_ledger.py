@@ -140,6 +140,48 @@ def _compact_task_staging(value: Any) -> dict[str, Any]:
     return compact
 
 
+def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "status",
+        "sandbox",
+        "task_id",
+        "first_blocker",
+        "alternate_source_kind",
+        "selection_recommendation",
+    ):
+        text = _compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    for field in (
+        "raw_task_text_read",
+        "raw_logs_read",
+        "raw_trajectory_read",
+        "apt_setup_risk_detected",
+        "apt_retry_patch_required",
+        "dockerfile_present",
+        "canonical_task_present",
+        "alternate_source_supported_by_runner",
+        "task_source_path_recorded",
+        "task_source_content_recorded",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    nearest_ids = value.get("nearest_canonical_task_ids")
+    if isinstance(nearest_ids, list):
+        compact_nearest: list[str] = []
+        for item in nearest_ids[:5]:
+            text = _compact_text(item, limit=120)
+            if text:
+                compact_nearest.append(text)
+        if compact_nearest:
+            compact["nearest_canonical_task_ids"] = compact_nearest
+    return compact
+
+
 def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -907,6 +949,28 @@ def _repair_route(
                 "raw_task_text_required": False,
             },
         }
+    if failure_class == "skillsbench_task_source_preflight_blocked":
+        return {
+            "repair_priority": "P1",
+            "repair_class": "skillsbench_task_source_preflight_selection",
+            "next_action": (
+                "select a SkillsBench task from the canonical tasks source, or "
+                "use an explicit sanity-source runner before spending a full "
+                "baseline/treatment arm"
+            ),
+            "repair_profile": {
+                "schema_version": "benchmark_repair_profile_v0",
+                "repair_class": "skillsbench_task_source_preflight_selection",
+                "rerun_allowed_after_profile_applied": True,
+                "required_preflight": [
+                    "skillsbench_task_setup_preflight",
+                    "canonical_task_present",
+                    "nearest_canonical_task_ids",
+                ],
+                "raw_logs_required": False,
+                "raw_task_text_required": False,
+            },
+        }
     if failure_class == "score_missing":
         return {
             "repair_priority": "P0",
@@ -1472,6 +1536,11 @@ def build_benchmark_run_ledger_entry(
             }
         )
     entry.update(repair_route)
+    task_setup_preflight = _compact_task_setup_preflight(
+        benchmark_run.get("task_setup_preflight")
+    )
+    if task_setup_preflight:
+        entry["task_setup_preflight"] = task_setup_preflight
     task_staging = _compact_task_staging(benchmark_run.get("task_staging"))
     if task_staging:
         entry["task_staging"] = task_staging
@@ -1716,6 +1785,8 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
             decision = f"{prefix}_codex_acp_post_success_finalization_required"
         elif repair_class == "skillsbench_setup_preflight_selection":
             decision = f"{prefix}_setup_preflight_selection_required"
+        elif repair_class == "skillsbench_task_source_preflight_selection":
+            decision = f"{prefix}_task_source_preflight_selection_required"
         elif repair_class == "worker_verifier_alignment":
             decision = f"{prefix}_worker_verifier_alignment_required"
         elif repair_class == "verifier_or_infra_repair":

@@ -88,6 +88,20 @@ Completed slices:
     shared failure taxonomy that keeps runner startup/materialization blockers
     out of case-attempt accounting.
 
+## Adapter Rollout Matrix
+
+This table is the public-safe rollout ledger for the shared adapter contract.
+It records which benchmark family owns the generic lifecycle stages through an
+adapter, and which stage should be migrated next. Benchmark-specific runner
+details must stay in the adapter column, not in `benchmark_core`.
+
+| Benchmark family | Adapter module | Current generic lifecycle coverage | Next migration slice |
+| --- | --- | --- | --- |
+| Terminal-Bench | `loopx.benchmark_adapters.terminal_bench` | First migration target. Public configuration, private-runner launch/materialization helpers, access packets, bridge traces, Harbor reducers, timeout policy, and compact validation policy are adapter-owned. | Adopt `benchmark_attempt_accounting_v0` and `run_permission_policy_v0` in the public launch/result packets before adding new Terminal-Bench runner behavior. |
+| SkillsBench | `loopx.benchmark_adapters.skillsbench` plus ACP relay helpers | Route contracts, arm semantics, job names, public-safe setup failure attribution, case-local product lifecycle, and compact reducer surfaces are adapter-owned. | Map goal-start `/loopx` raw/new runs into the same launch/observe/ingest/classify/ledger fields after solver output and new-arm compact artifacts are available. |
+| ALE | `loopx.benchmark_adapters.agents_last_exam` | Public configuration, local runner/source readiness, launch packets, validation gates, CUA/Codex-route helpers, and task-material/result-report helpers are adapter-owned. | Add attempt accounting and permission-policy fields to local launch/readiness packets before any new ALE run path is promoted. |
+| SWE-Marathon | no dedicated adapter yet | Current evidence remains in public-safe research packets and run ledger rows, not in a reusable adapter module. | Create the adapter only after a second SWE-Marathon route needs shared launch/observe/ingest behavior; until then, do not add SWE-specific conventions to `benchmark_core`. |
+
 Next slices:
 
 1. Keep `benchmark.py` as the compatibility facade until callers are migrated

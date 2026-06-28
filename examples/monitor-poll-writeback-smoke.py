@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -24,17 +25,40 @@ TARGET_KEY = "update-note-draft-pr"
 OTHER_TARGET_KEY = "other-monitor-target"
 
 
+def write_promotion_readiness(runtime: Path) -> None:
+    runs_dir = runtime / "goals" / GOAL_ID / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    json_path = runs_dir / "readiness.json"
+    markdown_path = runs_dir / "readiness.md"
+    record = {
+        "generated_at": generated_at,
+        "goal_id": GOAL_ID,
+        "classification": "canary_promotion_readiness_smoke_group",
+        "delivery_batch_scale": "multi_surface",
+        "delivery_outcome": "primary_goal_outcome",
+        "recommended_action": "fixture promotion readiness is fresh",
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+    }
+    json_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    markdown_path.write_text("# Canary promotion readiness\n", encoding="utf-8")
+    (runs_dir / "index.jsonl").write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def write_fixture(
     root: Path,
     *,
     selected_target_key: str | None = TARGET_KEY,
     include_other_monitor: bool = False,
+    include_user_gate: bool = False,
 ) -> tuple[Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     state_file = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
     registry_path = project / ".loopx" / "registry.json"
     state_file.parent.mkdir(parents=True)
+    write_promotion_readiness(runtime)
     monitor_metadata = (
         f"target_key={selected_target_key} "
         if selected_target_key
@@ -56,6 +80,31 @@ def write_fixture(
         "material_change=false "
         "-->\n"
         if include_other_monitor
+        else ""
+    )
+    gated_advancement = (
+        "- [ ] [P1] Prepare the gated publication packet.\n"
+        "  <!-- loopx:todo "
+        "todo_id=todo_monitorpollblocked "
+        "status=open "
+        "task_class=advancement_task "
+        f"claimed_by={AGENT_ID} "
+        "-->\n"
+        if include_user_gate
+        else ""
+    )
+    user_gate = (
+        "\n## User Todo\n\n"
+        "- [ ] [P0-user] Review the unrelated publication gate.\n"
+        "  <!-- loopx:todo "
+        "todo_id=todo_monitorpollgate "
+        "status=open "
+        "task_class=user_gate "
+        "action_kind=review_publication_gate "
+        f"blocks_agent={AGENT_ID} "
+        "unblocks_todo_id=todo_monitorpollblocked "
+        "-->\n"
+        if include_user_gate
         else ""
     )
     state_file.write_text(
@@ -81,7 +130,9 @@ def write_fixture(
         "consecutive_no_change=1 "
         "material_change=false "
         "-->\n"
-        f"{other_monitor}",
+        f"{other_monitor}"
+        f"{gated_advancement}"
+        f"{user_gate}",
         encoding="utf-8",
     )
     registry_path.parent.mkdir(parents=True)
@@ -115,6 +166,7 @@ def write_fixture(
 
 
 def run_cli(registry_path: Path, *args: str) -> dict:
+    scan_args = ["--scan-path", str(Path(__file__).resolve())] if args[:1] == ("quota",) else []
     result = subprocess.run(
         [
             sys.executable,
@@ -125,6 +177,7 @@ def run_cli(registry_path: Path, *args: str) -> dict:
             "--format",
             "json",
             *args,
+            *scan_args,
         ],
         cwd=REPO_ROOT,
         check=True,
@@ -135,6 +188,7 @@ def run_cli(registry_path: Path, *args: str) -> dict:
 
 
 def run_cli_expect_error(registry_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    scan_args = ["--scan-path", str(Path(__file__).resolve())] if args[:1] == ("quota",) else []
     result = subprocess.run(
         [
             sys.executable,
@@ -145,6 +199,7 @@ def run_cli_expect_error(registry_path: Path, *args: str) -> subprocess.Complete
             "--format",
             "json",
             *args,
+            *scan_args,
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -177,6 +232,14 @@ def run_index_records(registry_path: Path) -> list[dict]:
         json.loads(line)
         for line in index_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
+    ]
+
+
+def monitor_poll_records(registry_path: Path) -> list[dict]:
+    return [
+        record
+        for record in run_index_records(registry_path)
+        if record.get("classification") == "quota_monitor_poll"
     ]
 
 
@@ -231,7 +294,7 @@ def assert_unchanged_writeback() -> None:
         assert payload["classification"] == "quota_monitor_poll", payload
         assert payload["delivery_outcome"] == "surface_only", payload
         assert "no quota spend" in payload["health_check"], payload
-        records = run_index_records(registry_path)
+        records = monitor_poll_records(registry_path)
         assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
 
 
@@ -273,9 +336,51 @@ def assert_material_transition_followup() -> None:
         ]
         assert successors, agent_todos(state_file)
         assert successors[0]["task_class"] == "advancement_task", successors[0]
-        records = run_index_records(registry_path)
+        records = monitor_poll_records(registry_path)
         assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
         assert records[0]["delivery_outcome"] == "outcome_progress", records[0]
+
+
+def assert_due_monitor_poll_allowed_with_open_user_gate() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-user-gate-") as tmp:
+        registry_path, state_file = write_fixture(Path(tmp), include_user_gate=True)
+        quota = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+        )
+        assert quota["requires_user_action"] is True, quota
+        contract = quota.get("work_lane_contract")
+        assert isinstance(contract, dict), quota
+        assert contract.get("obligation") == "attempt_due_monitor", quota
+
+        payload = run_cli(
+            registry_path,
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--todo-id",
+            TODO_ID,
+            "--target-key",
+            TARGET_KEY,
+            "--result-hash",
+            "old",
+            "--execute",
+        )
+        assert payload["ok"] is True, payload
+        assert payload["agent_id"] == AGENT_ID, payload
+        assert payload["todo_id"] == TODO_ID, payload
+        assert payload["target_key"] == TARGET_KEY, payload
+        item = find_todo(state_file, TODO_ID)
+        assert item["consecutive_no_change"] == "2", item
+        assert item["next_due_at"] != "2026-01-01T00:00:00+00:00", item
 
 
 def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
@@ -308,12 +413,13 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         other = find_todo(state_file, "todo_monitorpoll111")
         assert selected["result_hash"] == "old", selected
         assert other["result_hash"] == "old", other
-        assert run_index_records(registry_path) == [], run_index_records(registry_path)
+        assert monitor_poll_records(registry_path) == [], run_index_records(registry_path)
 
 
 def main() -> int:
     assert_unchanged_writeback()
     assert_material_transition_followup()
+    assert_due_monitor_poll_allowed_with_open_user_gate()
     assert_target_key_cannot_hijack_selected_due_monitor()
     return 0
 

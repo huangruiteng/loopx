@@ -14,7 +14,9 @@ from typing import Any, Iterable, Mapping, Sequence
 from ..benchmark_core import (
     BenchmarkFailureClass,
     build_benchmark_attempt_accounting,
+    build_run_permission_policy,
     canonical_lifecycle,
+    compact_run_permission_policy_for_quota,
 )
 from ..benchmark_core.io import (
     load_json_object as _load_json_object,
@@ -1798,6 +1800,19 @@ def launch_terminal_bench_case_run(
         raise ValueError("Terminal-Bench case run requires no-upload/no-submit boundary")
     if summary.get("worker_materialization_probe_only") is True:
         raise ValueError("Terminal-Bench case run summary unexpectedly probe-only")
+    run_permission_policy = build_run_permission_policy(
+        policy_id="terminal_bench_case_run_no_upload_policy",
+        max_wall_time_minutes=120,
+    )
+    run_permission_projection = compact_run_permission_policy_for_quota(
+        run_permission_policy
+    )
+    attempt_accounting = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(),
+        failure_label="",
+        failure_class=BenchmarkFailureClass.NONE,
+        official_score_attempted=False,
+    )
 
     parsed_wait_seconds = max(0, int(wait_seconds))
     parsed_materialization_wait_seconds = max(0, int(materialization_wait_seconds))
@@ -1822,6 +1837,9 @@ def launch_terminal_bench_case_run(
         "resume_after_materialization": bool(resume_after_materialization),
         "resume_after_materialization_attempted": False,
         "launch_summary": summary,
+        "run_permission_policy": run_permission_policy,
+        "run_permission_quota_projection": run_permission_projection,
+        "attempt_accounting": attempt_accounting,
         "command_ref": (
             argv[2]
             if len(argv) > 2 and argv[:2] == ["uvx", "--from"]
