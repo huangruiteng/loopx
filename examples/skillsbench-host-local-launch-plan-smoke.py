@@ -1564,7 +1564,7 @@ subprocess.run(
                         "LoopX bridge test. Your first tool action should be "
                         "a shell pipeline that sends JSON to the private bridge.\n\n"
                         "Private bridge command:\n"
-                        "/tmp/not-recorded"
+                        "ssh loopx-unavailable.example"
                     ),
                 ],
                 "timeout_sec": 5,
