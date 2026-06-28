@@ -646,9 +646,11 @@ the control-plane signal consumed by quota, status, and review packets.
 This fixes stale dashboards where the latest run still shows an old
 `ready_for_controller_opt_in` or similar state. It also auto-syncs the project
 entry into the global registry. If you do not pass `--recommended-action`, the
-refresh run should publish the first public-safe item from `## Next Action` as
-the compact dashboard action, including wrapped continuation lines; keep raw
-evidence and private links in the state file, not in that action item.
+refresh run should publish the first local-control-plane item from
+`## Next Action` as the compact dashboard action, including wrapped continuation
+lines. `recommended_action` may include private/local routing references needed
+by the individual operator, but must not include credentials, auth headers, or
+inline secrets; shareable/public projections are responsible for redaction.
 
 For complex projects, do not pack a whole user reading queue into
 `## Next Action`. Keep the first Next Action item as one routing sentence, then

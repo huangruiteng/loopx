@@ -22,6 +22,9 @@ SIDE_ACTION = "Polish the hosted frontstage showcase for external developers."
 SIDE_HANDOFF_ACTION = (
     "Primary should inspect todo_primary while side lane switches to the next product todo."
 )
+LOCAL_CONTROL_ACTION = (
+    "Review standing authorization for todo_local_control before changing the runtime lane."
+)
 AUTO_RESEARCH_ACTION = (
     "[P0-auto-research] Use rollout-backed research_evidence_graph_v0 to generate "
     "live promotion and retirement candidates."
@@ -264,6 +267,49 @@ def main() -> None:
             assert lane["agent_lane"] == "codex-side-bypass", lane
             assert lane["recommended_action"] == SIDE_HANDOFF_ACTION, lane
             assert item["project_asset"]["agent_lane_recommendation"] == lane, item
+
+            state_refresh.now_local = lambda: "2026-06-20T00:03:30+00:00"
+            local_control_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="side_lane_local_control_reference",
+                recommended_action=LOCAL_CONTROL_ACTION,
+                delivery_batch_scale="single_surface",
+                delivery_outcome="outcome_progress",
+                agent_id="codex-side-bypass",
+                dry_run=False,
+                sync_global=False,
+            )
+            assert (
+                local_control_payload["recommended_action"] == LOCAL_CONTROL_ACTION
+            ), local_control_payload
+
+            expect_value_error(
+                "recommended_action contains a secret-looking value",
+                lambda: state_refresh.refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=str(runtime),
+                    goal_id=GOAL_ID,
+                    project=project,
+                    state_file=None,
+                    classification="side_lane_auth_header_blocked",
+                    recommended_action=(
+                        "Do not store "
+                        + "Author"
+                        + "ization: "
+                        + "Bear"
+                        + "er fake-token in control-plane action text."
+                    ),
+                    delivery_batch_scale="single_surface",
+                    delivery_outcome="outcome_progress",
+                    agent_id="codex-side-bypass",
+                    dry_run=True,
+                    sync_global=False,
+                ),
+            )
 
             expect_value_error(
                 "agent-lane refresh-state cannot update the durable active-state Next Action",

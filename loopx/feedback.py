@@ -31,6 +31,11 @@ PRIVATE_TEXT_PATTERNS = (
     re.compile(r"\b" + "pass" + r"word\b", re.I),
     re.compile(r"\b" + "sec" + r"ret\b", re.I),
 )
+LOCAL_CONTROL_TEXT_PATTERNS = (
+    re.compile(r"\b" + "Bear" + r"er\s+[A-Za-z0-9._~+/=-]+\b", re.I),
+    re.compile(r"\b" + "Author" + r"ization\s*:", re.I),
+    re.compile(r"\b(?:tok" + r"en|pass" + r"word|sec" + r"ret)\s*[:=]", re.I),
+)
 HUMAN_REWARD_FIELDS = (
     "recorded_at",
     "decision",
@@ -68,6 +73,23 @@ def validate_public_safe_text(label: str, value: str | None) -> None:
     for pattern in PRIVATE_TEXT_PATTERNS:
         if pattern.search(value):
             raise ValueError(f"{label} contains a private-looking value; keep raw evidence in private payloads")
+
+
+def validate_local_control_text(label: str, value: str | None) -> None:
+    """Validate text for local control-plane state, not public export.
+
+    Local routing fields such as recommended_action are allowed to mention
+    private/local material, stable control-plane refs, and ordinary governance
+    words. They still must not carry credentials or auth headers.
+    """
+
+    if not value:
+        return
+    for pattern in LOCAL_CONTROL_TEXT_PATTERNS:
+        if pattern.search(value):
+            raise ValueError(
+                f"{label} contains a secret-looking value; keep credentials out of control-plane text"
+            )
 
 
 def compact_reward(

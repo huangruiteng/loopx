@@ -976,10 +976,15 @@ run came from `loopx refresh-state`. Dashboard consumers should show it
 as Codex-ready work: the controller state changed, and the next agent turn
 should inspect the refreshed active state before continuing.
 If the refresh command was run without `--recommended-action`, the compact
-`recommended_action` should be the first public-safe item from the refreshed
-active state's `## Next Action`, including wrapped continuation lines; only when
-that durable section is absent should it fall back to the first open Agent Todo,
-and finally to a generic refresh notice. The record includes
+`recommended_action` should be the first local control-plane item from the
+refreshed active state's `## Next Action`, including wrapped continuation
+lines; only when that durable section is absent should it fall back to the first
+open Agent Todo, and finally to a generic refresh notice. This field may carry
+stable local routing references such as todo ids, branch names, agent ids, PR
+refs, or private-material pointers because it serves the individual operator's
+local loop. It must not carry credentials, auth headers, or inline secrets.
+Public/export sinks are responsible for redacting or omitting local/private
+references before rendering shareable surfaces. The record includes
 `recommended_action_source` (`explicit_arg`, `active_state_next_action`,
 `agent_todo_fallback`, or `default_refresh_action`) so consumers can distinguish
 run guidance from durable-state projection and last-resort compatibility
@@ -988,7 +993,7 @@ fallback.
 the active state's durable `## Next Action`. To intentionally change that
 durable route in a multi-agent goal, the primary agent must run
 `refresh-state --agent-id <primary-agent> --progress-scope goal --next-action
-<public-safe action>`. Status projections may expose both
+<local control-plane action>`. Status projections may expose both
 `active_state_next_action` and
 `latest_run_recommended_action`; when they differ, `next_action_projection_warning`
 marks the drift instead of silently choosing one as the only truth.

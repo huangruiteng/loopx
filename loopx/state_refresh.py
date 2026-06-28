@@ -9,7 +9,7 @@ from typing import Any
 
 from .delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES, require_delivery_batch_scale
 from .delivery_outcome import DELIVERY_OUTCOME_CHOICES, require_delivery_outcome
-from .feedback import validate_public_safe_text
+from .feedback import validate_local_control_text, validate_public_safe_text
 from .file_lock import exclusive_file_lock
 from .global_registry import sync_project_registry_to_global
 from .history import load_registry, reserve_unique_run_paths, unique_run_paths
@@ -344,7 +344,7 @@ def first_open_agent_todo_action(state_text: str) -> str | None:
         if not action:
             continue
         try:
-            validate_public_safe_text("derived agent_todo recommended_action", action)
+            validate_local_control_text("derived agent_todo recommended_action", action)
         except ValueError:
             continue
         metadata = todo_metadata(lines, index)
@@ -392,7 +392,7 @@ def derive_recommended_action_with_source(state_text: str) -> tuple[str, str]:
         if not action:
             continue
         try:
-            validate_public_safe_text("derived recommended_action", action)
+            validate_local_control_text("derived recommended_action", action)
         except ValueError:
             continue
         return action, RECOMMENDED_ACTION_SOURCE_ACTIVE_NEXT_ACTION
@@ -742,7 +742,7 @@ def refresh_state_run(
         recommended_action_source = RECOMMENDED_ACTION_SOURCE_EXPLICIT
     else:
         action, recommended_action_source = derive_recommended_action_with_source(state_text)
-    validate_public_safe_text("recommended_action", action)
+    validate_local_control_text("recommended_action", action)
     repair_delta_contract: dict[str, Any] | None = None
     requested_classification = classification
     effective_autonomous_replan_recorded = bool(autonomous_replan_recorded)
