@@ -1964,6 +1964,52 @@
         "reward_feedback_forwarded": false,
         "conclusion": "The every-round canonical product-mode rerun produced public-safe soft-verify counters and full LoopX lifecycle evidence. It stopped after round 1 because the agent declared done and final official scoring returned 0.0; attribution is solution/case failure, not missing lifecycle, transport, or final-only reward sampling.",
         "product_fix_status": "Every-round private soft verify is now the canonical product-mode default; the separate soft-timeout cleanup path is covered by runner smoke and did not need to trigger in this completed run."
+      },
+      "goal_start_bridge_timeout_recheck": {
+        "schema_version": "skillsbench_goal_start_bridge_timeout_recheck_v0",
+        "route": "loopx_goal_start_product_mode",
+        "official_score": 0.0,
+        "score_failure_attribution": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+        "first_blocker": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+        "every_round_reward_observation_count": 13,
+        "controller_followup_prompt_count": 13,
+        "controller_stop_decision_count": 0,
+        "controller_official_success_observed": false,
+        "trajectory_public_summary": {
+          "schema_version": "skillsbench_acp_trajectory_summary_v0",
+          "attribution_conclusion": "The goal-start citation-check treatment reached thirteen controller rounds with every-round reward observations but never produced tool calls, LoopX CLI calls, or LoopX state reads/writes in the ACP trajectory; compact runner evidence attributes the 0.0 score to a host-local Codex exec bridge idle timeout rather than task-solving content or verifier feedback being exposed to the agent.",
+          "private_trajectory_present": true,
+          "raw_text_copied_to_public": false,
+          "raw_task_text_copied_to_public": false,
+          "raw_verifier_output_copied_to_public": false,
+          "host_path_recorded": false,
+          "round_count": 13,
+          "event_count": 39,
+          "agent_message_count": 13,
+          "tool_call_count": 0,
+          "loopx_cli_call_count": 0,
+          "loopx_cli_calls": [],
+          "loopx_cli_state_usage_counts": {},
+          "loopx_cli_state_read_count": 0,
+          "loopx_cli_state_write_count": 0,
+          "loopx_case_state_path_count": 2,
+          "loopx_case_state_read_count": 0,
+          "loopx_case_state_write_count": 0,
+          "protected_path_edit_signal_count": 0,
+          "protected_path_mention_count": 0,
+          "codex_acp_text_present": false,
+          "codex_acp_text_bytes": 0,
+          "source_compact_run": {
+            "case_id": "citation-check",
+            "route": "skillsbench_loopx_goal_start_product_mode_treatment",
+            "official_score": 0.0,
+            "score_failure_attribution": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+            "first_blocker": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+            "official_feedback_blinded": true,
+            "reward_feedback_forwarded": false,
+            "case_semantics_changed_by_harness": false
+          }
+        }
       }
     },
     {
@@ -4052,7 +4098,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-27T23:32:28Z",
+  "updated_at": "2026-06-28T17:56:06+08:00",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",
