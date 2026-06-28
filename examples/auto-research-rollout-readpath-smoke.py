@@ -156,6 +156,25 @@ def frontier_projection(registry: Path) -> dict[str, Any]:
     )
 
 
+def board_projection(registry: Path) -> dict[str, Any]:
+    return run_json(
+        [
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry),
+            "--format",
+            "json",
+            "auto-research",
+            "board",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-side-bypass",
+        ]
+    )
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -354,6 +373,20 @@ def main() -> None:
         ], cli_payload
         assert cli_payload["showcase_projection"]["best_holdout_metric"] == graph["best_holdout_metric"], cli_payload
         assert_public_safe(cli_payload)
+
+        board_payload = board_projection(registry)
+        assert board_payload["ok"], board_payload
+        assert board_payload["schema_version"] == "auto_research_frontstage_board_v0", board_payload
+        assert board_payload["projection_binding"]["read_only"] is True, board_payload
+        assert board_payload["projection_binding"]["source_kind"] == "loopx_rollout_event_log", board_payload
+        assert board_payload["projection_binding"]["rollout_backed"] is True, board_payload
+        assert board_payload["projection_binding"]["first_screen_policy"] == (
+            "experimental_only_not_first_screen_without_owner_review"
+        ), board_payload
+        assert board_payload["artifact_packet"]["rollout_backed"] is True, board_payload
+        assert board_payload["decision_candidates"]["promotion_candidates"], board_payload
+        assert len(board_payload["user_gates"]) >= 4, board_payload
+        assert_public_safe(board_payload)
 
     print("auto-research-rollout-readpath-smoke ok")
 

@@ -10,6 +10,7 @@ from . import (
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
+    build_auto_research_board_projection,
     build_auto_research_demo_supervisor_plan,
     build_auto_research_quickstart,
     build_auto_research_rollout_events,
@@ -105,6 +106,25 @@ def register_auto_research_commands(
         "--agent-id",
         required=True,
         help="Agent id whose runnable frontier should be projected.",
+    )
+
+    board_parser = auto_research_sub.add_parser(
+        "board",
+        help="Render a read-only Frontstage board packet from a fixture or live LoopX rollout projection.",
+    )
+    add_subcommand_format(board_parser)
+    board_parser.add_argument(
+        "--fixture",
+        help="Path to a decentralized_auto_research_fixture_v0 JSON file.",
+    )
+    board_parser.add_argument(
+        "--goal-id",
+        help="Goal id for live LoopX quota/status input. Mutually exclusive with --fixture.",
+    )
+    board_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="Agent id whose board/frontier should be projected.",
     )
 
     evidence_parser = auto_research_sub.add_parser(
@@ -244,9 +264,9 @@ def handle_auto_research_command(
                 execute=args.execute,
                 cwd=Path.cwd(),
             )
-        elif args.auto_research_command == "frontier":
+        elif args.auto_research_command in {"frontier", "board"}:
             if bool(args.fixture) == bool(args.goal_id):
-                raise ValueError("auto-research frontier requires exactly one of --fixture or --goal-id")
+                raise ValueError(f"auto-research {args.auto_research_command} requires exactly one of --fixture or --goal-id")
             if args.fixture:
                 fixture = load_auto_research_fixture(args.fixture)
                 payload = build_auto_research_projection(
@@ -276,6 +296,8 @@ def handle_auto_research_command(
                     quota_payload=quota_payload,
                     rollout_events=rollout_events,
                 )
+            if args.auto_research_command == "board":
+                payload = build_auto_research_board_projection(payload)
         elif args.auto_research_command == "evidence":
             payload = load_auto_research_evidence_packet_inputs(
                 contract_path=args.contract,
@@ -311,7 +333,7 @@ def handle_auto_research_command(
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
-                "`append-evidence`, or `demo-supervisor` subcommand"
+                "`board`, `append-evidence`, or `demo-supervisor` subcommand"
             )
     except Exception as exc:
         payload = {

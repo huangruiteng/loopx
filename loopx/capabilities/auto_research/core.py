@@ -20,6 +20,7 @@ RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION = "research_showcase_projection_v0"
 AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projection_v0"
 AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION = "auto_research_evidence_packet_v0"
 AUTO_RESEARCH_ARTIFACT_PACKET_SCHEMA_VERSION = "auto_research_artifact_packet_v0"
+AUTO_RESEARCH_BOARD_SCHEMA_VERSION = "auto_research_frontstage_board_v0"
 AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = "auto_research_rollout_append_v0"
 AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION = "auto_research_quickstart_v0"
 AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_plan_v0"
@@ -1832,6 +1833,282 @@ def build_live_auto_research_projection(
     }
 
 
+def _metric_display(value: Any, *, suffix: str = "x") -> str:
+    number = _finite_float(value, field="board.metric_value")
+    if number is None:
+        return "not scored"
+    if number == int(number):
+        return f"{int(number)}{suffix}"
+    return f"{number:.1f}{suffix}"
+
+
+def _board_user_gates() -> list[dict[str, str]]:
+    return [
+        {
+            "gate_id": "first_screen_review_gate",
+            "decision_owner": "product owner",
+            "purpose": "Keep this board experimental until the first visible screen is explicitly reviewed.",
+            "trigger": "Any change that moves the auto-research value path into README, hosted frontstage home, showcase index, or another first viewport.",
+            "takeover_action": "Review the local preview or screenshot before the change is committed, pushed, or self-merged.",
+            "public_evidence": "AGENTS.md first-screen review gate",
+        },
+        {
+            "gate_id": "promotion_gate",
+            "decision_owner": "research operator",
+            "purpose": "Promote a hypothesis only when the evidence graph proves value on both dev and held-out splits.",
+            "trigger": "A promotion candidate reports improved holdout metric and clean protected-boundary evidence.",
+            "takeover_action": "Approve, reject, or defer promotion from the decision packet; agents may not promote from dev-only evidence.",
+            "public_evidence": "artifact_packet.decision_packet",
+        },
+        {
+            "gate_id": "protected_scope_gate",
+            "decision_owner": "maintainer",
+            "purpose": "Prevent benchmark or evaluator edits from being hidden inside a research run.",
+            "trigger": "A candidate touches protected files, raw logs, upload paths, credentials, or non-public source material.",
+            "takeover_action": "Stop the lane, keep the attempt visible as blocked or retired, and require a boundary repair before retry.",
+            "public_evidence": "public_boundary and quality_gates",
+        },
+        {
+            "gate_id": "real_launch_gate",
+            "decision_owner": "local user",
+            "purpose": "Keep the multi-agent demo visible and interruptible before any local Codex sessions are launched.",
+            "trigger": "The dry-run supervisor is converted into real tmux/Codex process startup.",
+            "takeover_action": "Inspect the rehearsal output, attach to the session, and keep a stop command visible before accepting agent prompts.",
+            "public_evidence": "auto_research_demo_supervisor_v0",
+        },
+    ]
+
+
+def _board_lanes(agent_id: str) -> list[dict[str, Any]]:
+    agent = _compact_public_token(agent_id, field="board.agent_id")
+    return [
+        {
+            "role_id": "curator",
+            "display_name": "Curator",
+            "agent_id": "codex-product-capability",
+            "responsibility": "Keep the research contract, protected scope, and public boundary clear.",
+            "produces": ["research_contract_v0", "scope boundary notes"],
+            "does_not_own": "Experiment execution or promotion by persuasion.",
+        },
+        {
+            "role_id": "hypothesis_proposer",
+            "display_name": "Hypothesis proposer",
+            "agent_id": agent,
+            "responsibility": "Propose todo-linked hypotheses and parent-child refinements from the current frontier.",
+            "produces": ["research_hypothesis_v0", "grounding refs"],
+            "does_not_own": "Novelty claims from the same material used for ideation.",
+        },
+        {
+            "role_id": "research_executor",
+            "display_name": "Research executor",
+            "agent_id": agent,
+            "responsibility": "Run one claimed hypothesis in an isolated worktree and emit split-aware evidence.",
+            "produces": ["auto_research_evidence_packet_v0", "branch refs"],
+            "does_not_own": "Protected files, evaluator behavior, or promotion gates.",
+        },
+        {
+            "role_id": "evaluator_promoter",
+            "display_name": "Evaluator / promoter",
+            "agent_id": "codex-product-capability",
+            "responsibility": "Classify scored attempts into promote, retry, or retire using dev and holdout evidence.",
+            "produces": ["promotion candidates", "retirement candidates", "gate todos"],
+            "does_not_own": "Dev-only promotion or hidden bypass of user gates.",
+        },
+        {
+            "role_id": "product_narrator",
+            "display_name": "Product narrator",
+            "agent_id": agent,
+            "responsibility": "Turn the evidence graph into a public showcase without leaking private material.",
+            "produces": ["research_showcase_projection_v0", "Frontstage board"],
+            "does_not_own": "Changing public first screens without owner review.",
+        },
+    ]
+
+
+def _board_decision_candidate(raw: dict[str, Any], *, decision: str) -> dict[str, Any]:
+    candidate = {
+        "hypothesis_id": _compact_public_token(raw.get("hypothesis_id"), field="board.candidate.hypothesis_id"),
+        "todo_id": _compact_public_token(raw.get("todo_id"), field="board.candidate.todo_id"),
+        "decision": _compact_public_token(decision, field="board.candidate.decision"),
+        "reason": _compact_optional_text(
+            raw.get("reason") or raw.get("status") or decision,
+            field="board.candidate.reason",
+            default=decision,
+            max_len=180,
+        ),
+    }
+    if raw.get("dev_metric") is not None:
+        candidate["dev_metric"] = _metric_display(raw.get("dev_metric"))
+    if raw.get("holdout_metric") is not None:
+        candidate["holdout_metric"] = _metric_display(raw.get("holdout_metric"))
+    if raw.get("requires"):
+        candidate["requires"] = _compact_public_text_list(raw.get("requires"), field="board.candidate.requires")
+    if decision.startswith("promote"):
+        candidate["user_value"] = "A promotion candidate survived the read-only evidence graph and still requires an operator gate."
+    return candidate
+
+
+def build_auto_research_board_projection(
+    projection: dict[str, Any],
+    *,
+    stage: str = "experimental",
+) -> dict[str, Any]:
+    """Build the Frontstage board packet from an existing read-only projection.
+
+    This is deliberately a wrapper over `frontier` projection output. It does
+    not parse private state files, launch experiments, or become a second source
+    of truth; live boards come from quota/status plus rollout events, while
+    fixture boards come from public fixture records.
+    """
+
+    projection = _json_obj(projection, field="auto_research_projection")
+    schema = _compact_public_token(projection.get("schema_version"), field="projection.schema_version")
+    if schema != AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION:
+        raise ValueError(f"projection.schema_version must be {AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION}")
+    if not projection.get("ok"):
+        raise ValueError("projection must be ok")
+    frontier = _json_obj(projection.get("frontier"), field="projection.frontier")
+    graph = _json_obj(projection.get("evidence_graph"), field="projection.evidence_graph")
+    showcase = _json_obj(projection.get("showcase_projection"), field="projection.showcase_projection")
+    artifact = _json_obj(projection.get("artifact_packet"), field="projection.artifact_packet")
+    goal = _compact_public_token(graph.get("goal_id") or frontier.get("goal_id"), field="board.goal_id")
+    agent = _compact_public_token(frontier.get("agent_id"), field="board.agent_id")
+    source_kind = _compact_optional_token(graph.get("source_kind"), field="board.source_kind", default="unknown_source")
+    metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
+    baseline = metric.get("baseline")
+    best_dev = graph.get("best_dev_metric")
+    best_holdout = graph.get("best_holdout_metric")
+    promotion_candidates = [
+        _board_decision_candidate(dict(item), decision="promote_after_operator_gate")
+        for item in frontier.get("promotion_candidates") or []
+        if isinstance(item, dict)
+    ]
+    retirement_candidates = [
+        _board_decision_candidate(dict(item), decision="retire_or_block_until_repaired")
+        for item in frontier.get("retirement_candidates") or []
+        if isinstance(item, dict)
+    ]
+    retry_candidates = [
+        {
+            "hypothesis_id": _compact_public_token(item.get("hypothesis_id"), field="board.retry.hypothesis_id"),
+            "todo_id": _compact_public_token(item.get("todo_id"), field="board.retry.todo_id"),
+            "decision": "retry_with_executor_lane",
+            "reason": "Visible unresolved or runnable hypothesis without held-out promotion evidence.",
+        }
+        for item in frontier.get("runnable") or []
+        if isinstance(item, dict)
+    ][:3]
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_BOARD_SCHEMA_VERSION,
+        "generated_from": schema,
+        "surface": {
+            "id": f"{goal}_frontstage_board",
+            "title": _compact_optional_text(showcase.get("title"), field="board.title", default="Auto Research Product Board"),
+            "subtitle": "Read-only Frontstage board for decentralized auto research.",
+            "stage": _compact_public_token(stage, field="board.stage"),
+            "positioning": "LoopX shows autonomous research as lanes, claims, evidence, promotion decisions, user gates, and value metrics without a leader agent.",
+            "public_boundary": "Projection data only; no raw logs, credentials, local paths, private source bodies, hidden leader transcript, or first-screen takeover.",
+        },
+        "projection_binding": {
+            "read_only": True,
+            "source_schema_version": projection.get("source_schema_version"),
+            "source_kind": source_kind,
+            "rollout_backed": bool(artifact.get("rollout_backed")),
+            "first_screen_policy": "experimental_only_not_first_screen_without_owner_review",
+            "frontier_agent_id": agent,
+        },
+        "research_contract": {
+            "goal_id": goal,
+            "objective": _compact_optional_text(
+                showcase.get("objective"),
+                field="board.objective",
+                default=f"Read the current decentralized research frontier for {goal}.",
+            ),
+            "editable_scope": ["claimed hypothesis worktree"],
+            "protected_scope": ["protected evaluator", "promotion gate", "first-screen review gate"],
+            "metric": {
+                "name": _compact_optional_token(metric.get("name"), field="board.metric.name", default="research_metric"),
+                "direction": _compact_optional_token(
+                    metric.get("direction"),
+                    field="board.metric.direction",
+                    default="maximize",
+                ),
+                "baseline": _metric_display(baseline),
+            },
+            "promotion_policy": "Promote only after split-aware evidence, clean protected boundary, and explicit operator gate.",
+            "commands": [
+                {
+                    "label": "frontier",
+                    "command": f"loopx --format json auto-research frontier --goal-id {goal} --agent-id {agent}",
+                },
+                {
+                    "label": "board",
+                    "command": f"loopx --format json auto-research board --goal-id {goal} --agent-id {agent}",
+                },
+            ],
+        },
+        "value_metrics": [
+            {
+                "label": "Held-out result",
+                "value": _metric_display(best_holdout),
+                "baseline": _metric_display(baseline),
+                "interpretation": "Promotion value is only legible when held-out evidence is present or explicitly missing.",
+                "source": "evidence_graph.best_holdout_metric",
+            },
+            {
+                "label": "Dev to holdout transfer",
+                "value": f"{_metric_display(best_dev)} -> {_metric_display(best_holdout)}",
+                "baseline": "dev evidence before promotion",
+                "interpretation": "The board keeps dev iteration separate from promotion evidence.",
+                "source": "research_evidence_graph_v0",
+            },
+            {
+                "label": "Promotion candidates",
+                "value": str(len(promotion_candidates)),
+                "baseline": "0 without evidence",
+                "interpretation": "Candidates remain review items; the board does not auto-promote them.",
+                "source": "artifact_packet.decision_packet",
+            },
+            {
+                "label": "User gates visible",
+                "value": str(len(_board_user_gates())),
+                "baseline": "0 hidden gates",
+                "interpretation": "Human takeover points are part of the product surface, not buried in logs.",
+                "source": "user_gates",
+            },
+        ],
+        "lane_contract": {
+            "topology": "decentralized",
+            "anti_pattern": "single leader agent owns the whole hypothesis tree",
+            "lanes": _board_lanes(agent),
+        },
+        "frontier": frontier,
+        "evidence_graph": graph,
+        "artifact_packet": artifact,
+        "decision_candidates": {
+            "promotion_candidates": promotion_candidates,
+            "retry_candidates": retry_candidates,
+            "retirement_candidates": retirement_candidates,
+        },
+        "user_gates": _board_user_gates(),
+        "showcase_projection": showcase,
+        "quality_gates": [
+            "All promoted work needs split-aware evidence.",
+            "Protected scope edits fail the promotion gate.",
+            "Every hypothesis stays todo-linked and agent-scoped.",
+            "Negative evidence remains visible as reusable research memory.",
+            "Public boards render projections, not raw logs or private planning text.",
+        ],
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "raw_source_bodies_recorded": False,
+            "source": "read_only_auto_research_projection",
+        },
+    }
+
+
 def _best_metric(events: list[dict[str, Any]], *, split: str, direction: str) -> float | None:
     values = [
         event["metric"]["value"]
@@ -2305,6 +2582,36 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
 def render_auto_research_markdown(payload: dict[str, object]) -> str:
     if not payload.get("ok"):
         return f"# LoopX Auto Research\n\n- ok: `False`\n- error: `{payload.get('error')}`\n"
+    if payload.get("schema_version") == AUTO_RESEARCH_BOARD_SCHEMA_VERSION:
+        surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
+        binding = (
+            payload.get("projection_binding")
+            if isinstance(payload.get("projection_binding"), dict)
+            else {}
+        )
+        decisions = (
+            payload.get("decision_candidates")
+            if isinstance(payload.get("decision_candidates"), dict)
+            else {}
+        )
+        gates = payload.get("user_gates") if isinstance(payload.get("user_gates"), list) else []
+        metrics = payload.get("value_metrics") if isinstance(payload.get("value_metrics"), list) else []
+        lines = [
+            "# LoopX Auto Research Board",
+            "",
+            f"- schema: `{payload.get('schema_version')}`",
+            f"- title: {surface.get('title')}",
+            f"- stage: `{surface.get('stage')}`",
+            f"- read_only: `{binding.get('read_only')}`",
+            f"- source_kind: `{binding.get('source_kind')}`",
+            f"- rollout_backed: `{binding.get('rollout_backed')}`",
+            f"- first_screen_policy: `{binding.get('first_screen_policy')}`",
+            f"- value metrics: `{len(metrics)}`",
+            f"- promotion candidates: `{len(decisions.get('promotion_candidates') or [])}`",
+            f"- retirement candidates: `{len(decisions.get('retirement_candidates') or [])}`",
+            f"- user gates: `{len(gates)}`",
+        ]
+        return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION:
         contract = payload["research_contract"]  # type: ignore[index]
         hypothesis = payload["next_runnable_hypothesis"]  # type: ignore[index]

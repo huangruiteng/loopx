@@ -235,6 +235,21 @@ contradiction review, citation packet, and decision packet derived from
 fixture-only, so every claim can point back to LoopX rollout/evidence events
 without exposing raw logs or private source bodies.
 
+The experimental Frontstage board is also available as a read-only packet. It
+wraps the same frontier/evidence/artifact projection with product-facing value
+metrics, user gates, and the first-screen policy, so the dashboard is not a
+second source of truth:
+
+```bash
+loopx --format json auto-research board \
+  --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass
+```
+
+For fixture rehearsals, use `--fixture` instead of `--goal-id`. In both modes
+the board must remain experimental and must not take over README, hosted
+frontstage home, showcase index, hero, or primary CTA without owner review.
+
 ## Local Demo Supervisor
 
 The short-term multi-agent demo should be inspectable before it launches

@@ -66,6 +66,12 @@ assert(
   "auto-research board schema version",
 );
 assert(autoResearchBoard.surface.stage === "experimental", "auto-research board remains experimental");
+assert(autoResearchBoard.projection_binding.read_only === true, "auto-research board read-only binding");
+assert(
+  autoResearchBoard.projection_binding.first_screen_policy ===
+    "experimental_only_not_first_screen_without_owner_review",
+  "auto-research board first-screen policy",
+);
 assert(autoResearchBoard.lane_contract.topology === "decentralized", "auto-research decentralized topology");
 assert(autoResearchBoard.value_metrics.length >= 4, "auto-research board must expose user-value metrics");
 assert(

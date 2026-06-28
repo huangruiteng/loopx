@@ -9,6 +9,14 @@
     "positioning": "LoopX keeps autonomous research decentralized: every agent sees a claim-compatible frontier, while hypotheses, evidence, retries, and promotion decisions stay in the shared control plane.",
     "public_boundary": "Public fixture and protected-evaluator outputs only; no raw logs, non-public source docs, credentials, local paths, or hidden leader transcript."
   },
+  "projection_binding": {
+    "read_only": true,
+    "source_schema_version": "decentralized_auto_research_projection_v0",
+    "source_kind": "public_fixture",
+    "rollout_backed": false,
+    "first_screen_policy": "experimental_only_not_first_screen_without_owner_review",
+    "frontier_agent_id": "codex-side-bypass"
+  },
   "research_contract": {
     "goal_id": "loopx-auto-research-knn",
     "objective": "Improve exact k-nearest-neighbor inference speed while preserving exact neighbor identity.",
