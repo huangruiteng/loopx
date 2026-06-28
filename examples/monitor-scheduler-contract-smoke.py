@@ -19,7 +19,12 @@ PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
 
 
-def status_payload(*, agent_todo_items: list[dict], status: str = "monitor_scheduler_fixture") -> dict:
+def status_payload(
+    *,
+    agent_todo_items: list[dict],
+    status: str = "monitor_scheduler_fixture",
+    coordination: dict | None = None,
+) -> dict:
     agent_todos = compact_todo_group(
         agent_todo_items,
         source_section="Agent Todo",
@@ -67,7 +72,8 @@ def status_payload(*, agent_todo_items: list[dict], status: str = "monitor_sched
                         "slot_minutes": 1,
                         "allowed_slots": 10,
                     },
-                    "coordination": {
+                    "coordination": coordination
+                    or {
                         "registered_agents": [AGENT_ID],
                         "primary_agent": AGENT_ID,
                     },
@@ -84,6 +90,7 @@ def monitor_item(
     priority: str,
     next_due_at: str,
     target_key: str,
+    claimed_by: str = AGENT_ID,
 ) -> dict:
     return {
         "index": index,
@@ -94,14 +101,14 @@ def monitor_item(
         "priority": priority,
         "task_class": "continuous_monitor",
         "action_kind": "monitor",
-        "claimed_by": AGENT_ID,
+        "claimed_by": claimed_by,
         "target_key": target_key,
         "cadence": "15m",
         "next_due_at": next_due_at,
     }
 
 
-def advancement_item(*, index: int, priority: str = "P1") -> dict:
+def advancement_item(*, index: int, priority: str = "P1", claimed_by: str = AGENT_ID) -> dict:
     return {
         "index": index,
         "text": f"[{priority}] Advance the runtime contract slice with validation.",
@@ -110,15 +117,20 @@ def advancement_item(*, index: int, priority: str = "P1") -> dict:
         "status": "open",
         "priority": priority,
         "task_class": "advancement_task",
-        "claimed_by": AGENT_ID,
+        "claimed_by": claimed_by,
     }
 
 
-def guard_for(items: list[dict]) -> dict:
+def guard_for(
+    items: list[dict],
+    *,
+    agent_id: str = AGENT_ID,
+    coordination: dict | None = None,
+) -> dict:
     return build_quota_should_run(
-        status_payload(agent_todo_items=items),
+        status_payload(agent_todo_items=items, coordination=coordination),
         goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
+        agent_id=agent_id,
     )
 
 
@@ -222,11 +234,76 @@ def assert_multiple_due_monitor_cap_and_order() -> None:
     assert "work_lane_monitor_due: count=3" in markdown, markdown
 
 
+def assert_other_agent_due_monitor_does_not_preempt_current_agent_lane() -> None:
+    other_agent = "codex-main-control"
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_other_due_monitor",
+                priority="P0",
+                next_due_at=PAST_DUE_AT,
+                target_key="other-agent-watch",
+                claimed_by=other_agent,
+            ),
+            advancement_item(index=2, priority="P1"),
+        ],
+        coordination={
+            "registered_agents": [other_agent, AGENT_ID],
+            "primary_agent": other_agent,
+        },
+    )
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    assert lane.get("monitor_due_count", 0) == 0, lane
+    assert "monitor_due_items" not in lane, lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
+    claim_scope = guard["agent_todo_summary"]["claim_scope"]
+    assert claim_scope["other_agent_claimed_open_count"] == 1, claim_scope
+    assert claim_scope["other_agent_claimed_items"][0]["todo_id"] == "todo_other_due_monitor", claim_scope
+    assert guard["recommended_action"] == advancement_item(index=2, priority="P1")["text"], guard
+
+
+def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> None:
+    other_agent = "codex-main-control"
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_other_due_monitor",
+                priority="P0",
+                next_due_at=PAST_DUE_AT,
+                target_key="other-agent-watch",
+                claimed_by=other_agent,
+            ),
+            advancement_item(index=2, priority="P0", claimed_by=other_agent),
+        ],
+        coordination={
+            "registered_agents": [other_agent, AGENT_ID],
+            "primary_agent": other_agent,
+        },
+    )
+    summary = guard["agent_todo_summary"]
+    lane = guard.get("work_lane_contract") or {}
+    assert summary["open_count"] == 0, summary
+    assert summary["first_executable_items"] == [], summary
+    assert summary["monitor_due_count"] == 0, summary
+    assert lane.get("must_attempt_work") is not True, lane
+    claim_scope = summary["claim_scope"]
+    assert claim_scope["selectable_open_count"] == 0, claim_scope
+    assert claim_scope["other_agent_claimed_open_count"] == 2, claim_scope
+    assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only", claim_scope
+    assert guard["recommended_action"] != advancement_item(index=2, priority="P0", claimed_by=other_agent)["text"], guard
+
+
 def main() -> int:
     assert_not_due_monitor_waits_quietly()
     assert_due_monitor_requires_explicit_attempt()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
     assert_multiple_due_monitor_cap_and_order()
+    assert_other_agent_due_monitor_does_not_preempt_current_agent_lane()
+    assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane()
     print("monitor-scheduler-contract-smoke ok")
     return 0
 

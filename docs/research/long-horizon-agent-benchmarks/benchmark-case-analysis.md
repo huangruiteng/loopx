@@ -7,7 +7,7 @@ It is intentionally separate from `benchmark-run-ledger.md`. The run ledger
 records compact attempts and scores; this file records why a result matters.
 
 - schema_version: `benchmark_case_analysis_v0`
-- updated_at: `2026-06-28T04:27:53+08:00`
+- updated_at: `2026-06-28T17:56:06+08:00`
 - machine_source: `benchmark-case-analysis.json`
 - ledger-only migration audit:
   `benchmark-case-analysis-ledger-only-migration-audit-20260618.md`
@@ -96,6 +96,7 @@ or copy raw trajectories, task text, verifier output, logs, or local paths.
 | `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.baseline.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `7` | `7` | `no` | `no` |
 | `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.treatment.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `73` | `8` | `138` | `211` | `no` | `no` |
 | `skillsbench@1.1` | `citation-check` | `goal_start_bridge_timeout_recheck.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `13` | `0` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `citation-check` | `goal_start_transport_monitor` (public-safe) | `compact_harness_interaction` | `0` | `0` | `0` | `0` | `yes` | `no` |
 | `skillsbench@1.1` | `citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `26` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `5` | `112` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `0` | `0` | `0` | `yes` | `no` |

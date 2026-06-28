@@ -40,6 +40,12 @@ def main() -> int:
         assert command in commands, commands
     assert "/loop-global-summary" in commands["/loopx-global-summary"]["legacy_aliases"]
     assert "/loopx-summary-all" not in json.dumps(payload)
+    pr_review = commands["/loopx-pr-review"]
+    assert pr_review["agent_contract"]["must_run_cli_first"] is True, pr_review
+    assert "loopx pr-review" in pr_review["agent_contract"]["primary_cli"], pr_review
+    assert "review_groups.unmerged" in pr_review["agent_contract"]["authoritative_fields"], pr_review
+    assert "review_groups.merged" in pr_review["agent_contract"]["authoritative_fields"], pr_review
+    assert "do not reconstruct" in pr_review["agent_contract"]["manual_gh_policy"], pr_review
     onboarding = payload["onboarding"]
     assert onboarding["tell_new_users"] is True, onboarding
     assert "CLI help: `loopx slash-commands`." in onboarding["suggested_user_note"], onboarding
@@ -53,7 +59,8 @@ def main() -> int:
     assert "`/loopx-global-summary`" in markdown, markdown
     assert "`loopx global-summary`" in markdown, markdown
     assert "`/loopx-pr-review`" in markdown, markdown
-    assert "`loopx pr-review [--repo owner/repo]`" in markdown, markdown
+    assert "`loopx pr-review [--repo owner/repo] [--state open\\|merged\\|all] [--since ISO]`" in markdown, markdown
+    assert "Agent contract: run the CLI reference first" in markdown, markdown
     assert "`/loopx-summary-all`" not in markdown, markdown
 
     top_help = run_cli("--help").stdout

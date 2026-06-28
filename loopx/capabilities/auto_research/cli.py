@@ -10,6 +10,7 @@ from . import (
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
+    build_auto_research_demo_supervisor_plan,
     build_auto_research_quickstart,
     build_auto_research_rollout_events,
     build_live_auto_research_projection,
@@ -142,6 +143,34 @@ def register_auto_research_commands(
         help="Preview rollout events without appending them.",
     )
 
+    demo_supervisor_parser = auto_research_sub.add_parser(
+        "demo-supervisor",
+        help="Plan a dry-run tmux/Codex-CLI supervisor for decentralized auto-research lanes.",
+    )
+    add_subcommand_format(demo_supervisor_parser)
+    demo_supervisor_parser.add_argument(
+        "--goal-id",
+        default=AUTO_RESEARCH_DEFAULT_GOAL_ID,
+        help="Research goal id whose frontier each lane should inspect.",
+    )
+    demo_supervisor_parser.add_argument(
+        "--agent",
+        action="append",
+        default=[],
+        help=(
+            "Agent/lane pair as agent_id:lane_id. Repeat for each visible lane. "
+            "Omit to use the default LoopX auto-research demo lane set."
+        ),
+    )
+    demo_supervisor_parser.add_argument(
+        "--session-name",
+        default="loopx-auto-research",
+        help="Public-safe tmux session name for the generated dry-run script.",
+    )
+    demo_supervisor_parser.add_argument("--cli-bin", default="loopx", help="LoopX CLI executable name.")
+    demo_supervisor_parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable name.")
+    demo_supervisor_parser.add_argument("--tmux-bin", default="tmux", help="tmux executable name.")
+
 
 def _append_auto_research_rollout_events(
     *,
@@ -270,9 +299,19 @@ def handle_auto_research_command(
                 runtime_root_arg=runtime_root_arg,
                 dry_run=args.dry_run,
             )
+        elif args.auto_research_command == "demo-supervisor":
+            payload = build_auto_research_demo_supervisor_plan(
+                goal_id=args.goal_id,
+                agent_specs=args.agent,
+                session_name=args.session_name,
+                cli_bin=args.cli_bin,
+                codex_bin=args.codex_bin,
+                tmux_bin=args.tmux_bin,
+            )
         else:
             raise ValueError(
-                "auto-research requires the `quickstart`, `frontier`, `evidence`, or `append-evidence` subcommand"
+                "auto-research requires the `quickstart`, `frontier`, `evidence`, "
+                "`append-evidence`, or `demo-supervisor` subcommand"
             )
     except Exception as exc:
         payload = {

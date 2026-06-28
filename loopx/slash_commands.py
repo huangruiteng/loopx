@@ -15,6 +15,7 @@ def _command(
     cli_reference: str,
     legacy_aliases: list[str] | None = None,
     implementation_status: str = "available",
+    agent_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     item: dict[str, Any] = {
         "command": command,
@@ -26,6 +27,8 @@ def _command(
     }
     if legacy_aliases:
         item["legacy_aliases"] = legacy_aliases
+    if agent_contract:
+        item["agent_contract"] = agent_contract
     return item
 
 
@@ -91,9 +94,24 @@ def build_slash_command_catalog(
         _command(
             command="/loopx-pr-review",
             scope="repo",
-            intent="List unmerged pull requests for the current project or explicit --repo target and generate a guided review queue with motivation, change scope, checks, risks, and per-PR review prompts.",
+            intent="Run the pr-review CLI first, then review the generated unmerged and merged PR groups one by one with the blank five-block template.",
             mutation_policy="read_only; does not comment, approve, merge, or spend quota",
-            cli_reference=f"{cli_bin} pr-review [--repo owner/repo]",
+            cli_reference=f"{cli_bin} pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
+            agent_contract={
+                "schema_version": "slash_command_agent_contract_v0",
+                "must_run_cli_first": True,
+                "primary_cli": f"{cli_bin} pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
+                "authoritative_fields": [
+                    "review_groups.unmerged",
+                    "review_groups.merged",
+                    "pull_requests[].review_template",
+                    "pull_requests[].evidence_commands",
+                ],
+                "manual_gh_policy": (
+                    "Use gh only after the CLI packet selects a PR; do not reconstruct "
+                    "the review window or state grouping from ad hoc gh calls."
+                ),
+            },
         ),
     ]
     return {
@@ -123,10 +141,14 @@ def render_onboarding_slash_command_note(commands: list[dict[str, Any]], *, cli_
             f"- `/loopx <goal text>`: {goal.get('intent', 'start a concrete project goal')}",
             "- `/loopx-global-summary`: read the global progress digest.",
             "- `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`: inspect manager-level gates, work, and risks.",
-            "- `/loopx-pr-review`: review the current project's unmerged PRs one by one with motivation, scope, checks, and risks.",
+            "- `/loopx-pr-review`: run `loopx pr-review` first, then review its unmerged and merged PR groups one by one.",
             f"CLI help: `{cli_bin} slash-commands`.",
         ]
     )
+
+
+def _markdown_table_cell(value: Any) -> str:
+    return str(value or "").replace("\n", " ").replace("|", "\\|")
 
 
 def render_slash_command_catalog_markdown(payload: dict[str, Any]) -> str:
@@ -147,13 +169,16 @@ def render_slash_command_catalog_markdown(payload: dict[str, Any]) -> str:
         intent = str(item.get("intent") or "")
         if legacy:
             intent += " Legacy aliases: " + ", ".join(f"`{alias}`" for alias in legacy) + "."
+        agent_contract = item.get("agent_contract") if isinstance(item.get("agent_contract"), dict) else {}
+        if agent_contract.get("must_run_cli_first"):
+            intent += " Agent contract: run the CLI reference first; do not rebuild the queue manually."
         lines.append(
             "| "
-            f"`{item.get('command')}` | "
-            f"{item.get('scope')} | "
-            f"{intent} | "
-            f"{item.get('mutation_policy')} | "
-            f"`{item.get('cli_reference')}` |"
+            f"`{_markdown_table_cell(item.get('command'))}` | "
+            f"{_markdown_table_cell(item.get('scope'))} | "
+            f"{_markdown_table_cell(intent)} | "
+            f"{_markdown_table_cell(item.get('mutation_policy'))} | "
+            f"`{_markdown_table_cell(item.get('cli_reference'))}` |"
         )
     lines.extend(
         [

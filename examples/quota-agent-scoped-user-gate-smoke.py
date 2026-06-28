@@ -480,42 +480,49 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     assert "todo_x_launch_monitor" in blocked_monitor_ids, blocked_payload["agent_todo_summary"]
 
 
-def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
+def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet() -> None:
     payload = build_quota_should_run(
         scoped_no_candidate_status_payload(),
         goal_id=GOAL_ID,
         agent_id="codex-product-capability",
     )
-    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["decision"] == "skip", payload
+    assert payload["effective_action"] == "monitor_quiet_skip", payload
     assert payload["should_run"] is False, payload
     assert payload["normal_delivery_allowed"] is False, payload
     assert payload.get("agent_lane_next_action") is None, payload
-    frontier = payload["agent_scope_frontier"]
-    assert frontier["action"] == "agent_scope_wait", frontier
-    assert frontier["candidate_counts"]["current_agent_claimed_advancement_count"] == 0
-    assert frontier["candidate_counts"]["other_agent_claimed_advancement_count"] == 1
+    assert "agent_scope_frontier" not in payload, payload
+    hint = payload["agent_lane_frontier_hint"]
+    assert hint["decision"] == "quiet_noop_blocker", hint
+    assert hint["source"] == "agent_todo_summary", hint
+    assert hint["reason_code"] == "only_current_agent_monitor_work_remains", hint
+    assert hint["quiet_noop_allowed"] is True, hint
+    claim_scope = payload["agent_todo_summary"]["claim_scope"]
+    assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only", claim_scope
+    assert claim_scope["other_agent_claimed_open_count"] == 1, claim_scope
     contract = payload["interaction_contract"]
     assert contract["user_channel"]["action_required"] is False, contract
     assert contract["agent_channel"]["must_attempt"] is False, contract
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["mode"] == "monitor_quiet_skip", contract
     scheduler = payload["scheduler_hint"]
     assert scheduler["schema_version"] == "scheduler_hint_v0", scheduler
-    assert scheduler["action"] == "backoff_until_reassigned", scheduler
-    assert scheduler["codex_app"]["recommended_interval_minutes"] == 10, scheduler
-    assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=10", scheduler
-    assert scheduler["codex_app"]["example_progression_minutes"] == [10, 20, 30, 60], scheduler
+    assert scheduler["action"] == "backoff_until_material_transition", scheduler
+    assert scheduler["codex_app"]["recommended_interval_minutes"] == 15, scheduler
+    assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+    assert scheduler["codex_app"]["example_progression_minutes"] == [15, 30, 60], scheduler
     assert scheduler["codex_cli_tui"]["unchanged_poll_limit"] == 3, scheduler
     assert scheduler["codex_cli_tui"]["final_quota_replan_check"]["enabled"] is True, scheduler
     assert scheduler["claude_code_loop"]["after_limit"] == "stop_loop", scheduler
     assert scheduler["claude_code_loop"]["unchanged_poll_limit"] == 3, scheduler
     reset = scheduler["reset_policy"]
     assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-    assert reset["profile_action"] == "backoff_until_reassigned", reset
+    assert reset["profile_action"] == "backoff_until_material_transition", reset
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
-    assert reset["codex_app_initial_interval_minutes"] == 10, reset
-    assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=10", reset
+    assert reset["codex_app_initial_interval_minutes"] == 15, reset
+    assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
     assert scheduler["codex_app"]["max_interval_minutes"] == 60, scheduler
     assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
     assert len(reset["identity_signature"]) == 12, reset
@@ -527,7 +534,7 @@ def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
     assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
     assert "active_work_projected" in reset["reset_condition_summary"], reset
     assert reset["no_spend_for_reset"] is True, reset
-    assert "scheduler=backoff_until_reassigned" in payload["protocol_action_packet"]["summary"], payload
+    assert "scheduler=backoff_until_material_transition" in payload["protocol_action_packet"]["summary"], payload
 
 
 def main() -> int:
@@ -536,7 +543,7 @@ def main() -> int:
     assert_unscoped_user_gate_remains_global()
     assert_unrelated_user_gate_allows_feishu_fallback()
     assert_exact_todo_gate_only_blocks_target_todo()
-    assert_agent_without_advancement_candidate_enters_scope_wait()
+    assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet()
     print("quota-agent-scoped-user-gate-smoke ok")
     return 0
 

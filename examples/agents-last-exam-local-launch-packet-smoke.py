@@ -155,6 +155,53 @@ def assert_no_execution(payload: dict[str, object]) -> None:
     assert launch_packet["will_capture_screenshot"] is False
     assert launch_packet["will_record_credentials"] is False
     assert launch_packet["will_record_local_paths"] is False
+    handle_registration = payload["observable_handle_registration"]
+    assert isinstance(handle_registration, dict)
+    assert (
+        handle_registration["schema_version"]
+        == "benchmark_launch_observable_handle_v0"
+    ), handle_registration
+    assert handle_registration["benchmark_id"] == "agents-last-exam"
+    assert handle_registration["launch_mode"] == "no_execution_launch_packet"
+    assert handle_registration["will_execute"] is False
+    assert handle_registration["monitor_poll_allowed"] is False
+    observable_handle = handle_registration["observable_handle"]
+    assert isinstance(observable_handle, dict)
+    assert observable_handle["kind"] == "job_basename"
+    assert observable_handle["state"] == "not_started"
+    assert observable_handle["job_basename"].startswith("agents-last-exam-")
+    assert "/" not in observable_handle["job_basename"]
+    assert observable_handle["pid_recorded"] is False
+    assert observable_handle["pid_alive"] is None
+    assert observable_handle["raw_handle_payload_recorded"] is False
+    assert observable_handle["private_handle_values_recorded"] is False
+    poll_command = handle_registration["allowed_poll_command"]
+    assert isinstance(poll_command, dict)
+    assert poll_command["command_label"] == "benchmark_run_status_snapshot"
+    assert poll_command["argv_recorded"] is False
+    assert poll_command["raw_command_recorded"] is False
+    assert poll_command["requires_private_paths"] is False
+    assert handle_registration["compact_artifact_refs"] == [
+        "run.compact.json",
+        "eval.compact.json",
+        "events.compact.json",
+    ]
+    handle_boundary = handle_registration["read_boundary"]
+    assert isinstance(handle_boundary, dict)
+    assert handle_boundary["compact_only"] is True
+    assert handle_boundary["raw_logs_read"] is False
+    assert handle_boundary["raw_task_text_read"] is False
+    assert handle_boundary["raw_artifacts_read"] is False
+    assert handle_boundary["trajectory_read"] is False
+    assert handle_boundary["local_paths_recorded"] is False
+    assert handle_boundary["private_handle_values_recorded"] is False
+    registration_boundary = handle_registration["boundary"]
+    assert isinstance(registration_boundary, dict)
+    assert registration_boundary["raw_logs_recorded"] is False
+    assert registration_boundary["raw_task_text_recorded"] is False
+    assert registration_boundary["raw_trajectory_recorded"] is False
+    assert registration_boundary["local_paths_recorded"] is False
+    assert registration_boundary["scheduler_payload_recorded"] is False
     boundary = payload["boundary"]
     assert isinstance(boundary, dict)
     assert boundary["container_started"] is False
@@ -204,6 +251,34 @@ def assert_no_execution(payload: dict[str, object]) -> None:
         "case_goal_state_path",
     ):
         assert field in case_state["proof_fields"], case_state
+    policy = payload["run_permission_policy"]
+    assert isinstance(policy, dict)
+    assert policy["schema_version"] == "run_permission_policy_v0", policy
+    assert policy["policy_id"] == "agents_last_exam_local_launch_no_upload_policy", policy
+    assert policy["no_upload_required"] is True, policy
+    assert policy["submit_allowed"] is False, policy
+    assert policy["leaderboard_claim_allowed"] is False, policy
+    projection = payload["run_permission_quota_projection"]
+    assert isinstance(projection, dict)
+    assert projection["schema_version"] == "run_permission_quota_projection_v0", projection
+    assert projection["delivery_allowed"] is True, projection
+    assert projection["no_upload_required"] is True, projection
+    assert projection["compact_observation_only"] is True, projection
+    attempt_accounting = payload["attempt_accounting"]
+    assert isinstance(attempt_accounting, dict)
+    assert (
+        attempt_accounting["schema_version"] == "benchmark_attempt_accounting_v0"
+    ), attempt_accounting
+    assert attempt_accounting["lifecycle_phase"] == "not_started", attempt_accounting
+    assert attempt_accounting["failure_label"] == "", attempt_accounting
+    assert attempt_accounting["failure_class"] == "none", attempt_accounting
+    assert attempt_accounting["launcher_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["case_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["solver_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["verifier_attempt_countable"] is False, attempt_accounting
+    assert (
+        attempt_accounting["official_score_attempt_countable"] is False
+    ), attempt_accounting
 
 
 def run_fixture_smoke() -> None:

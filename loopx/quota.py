@@ -368,6 +368,13 @@ def _external_evidence_poll_signal(
 ) -> dict[str, Any] | None:
     """Detect launched external work whose next safe step is observation."""
 
+    if (
+        isinstance(agent_todo_summary, dict)
+        and _todo_summary_claim_scope_agent_id(agent_todo_summary)
+        and _open_todo_count(agent_todo_summary) <= 0
+    ):
+        return None
+
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     action_texts = [
         str(value or "").strip()
@@ -531,6 +538,14 @@ def _external_evidence_observation_obligation(
     explicit_wait = state == "waiting" and str(item.get("waiting_on") or "") == "external_evidence"
     poll_signal = _external_evidence_poll_signal(item, agent_todo_summary=agent_todo_summary)
     if not explicit_wait and not poll_signal:
+        return None
+    if (
+        not explicit_wait
+        and poll_signal
+        and isinstance(agent_todo_summary, dict)
+        and _todo_summary_claim_scope_agent_id(agent_todo_summary)
+        and _open_todo_count(agent_todo_summary) <= 0
+    ):
         return None
     if (
         not explicit_wait
@@ -1301,7 +1316,7 @@ def _agent_claim_scoped_open_items(
     unclaimed_items = [item for item in open_items if claim_bucket(item) == 1]
     other_agent_claimed_items = [item for item in open_items if claim_bucket(item) == 2]
     selectable_items = sorted(
-        [*current_agent_items, *unclaimed_items, *other_agent_claimed_items],
+        [*current_agent_items, *unclaimed_items],
         key=lambda item: (claim_bucket(item), *_todo_projection_sort_key(item)),
     )
     claim_scope = {
@@ -1309,12 +1324,12 @@ def _agent_claim_scoped_open_items(
         "agent_id": agent_id,
         "agent_role": str(agent_identity.get("role") or ""),
         "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
-        "selection_order": "current_agent_claimed_then_unclaimed_then_other_agent_claimed_low_weight",
+        "selection_order": "current_agent_claimed_then_unclaimed",
         "selectable_open_count": len(selectable_items),
         "current_agent_claimed_open_count": len(current_agent_items),
         "unclaimed_open_count": len(unclaimed_items),
         "other_agent_claimed_open_count": len(other_agent_claimed_items),
-        "other_agent_claimed_weight": "lower_than_current_claimed_and_unclaimed",
+        "other_agent_claimed_weight": "diagnostic_only",
         "other_agent_claimed_items": [
             _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
             for item in _claimed_visibility_items(other_agent_claimed_items, limit=3)
@@ -1326,6 +1341,27 @@ def _agent_claim_scoped_open_items(
         ],
     }
     return selectable_items, claim_scope
+
+
+def _todo_item_claimed_by_agent_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> bool:
+    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+    return not claimed_by or claimed_by == agent_id
+
+
+def _agent_scope_selectable_todo_item(
+    item: dict[str, Any],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(agent_identity, dict):
+        return True
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return True
+    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    if blocks_agent and blocks_agent != agent_id:
+        return False
+    return _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
 
 
 def _agent_scope_filter_user_gate_items(
@@ -1730,6 +1766,7 @@ def _summarize_user_todos(
         item
         for item in monitor_items
         if _todo_item_is_due_monitor(item)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ]
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     gate_items = [
@@ -1741,13 +1778,17 @@ def _summarize_user_todos(
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_items"), list) else []
     active_next_action_executable_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_executable_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_executable_items"), list) else []
     open_count = value.get("open_count", len(all_open_items))
+    if claim_scope is not None:
+        open_count = len(open_items)
     if agent_scope_filter is not None:
         open_count = len(blocking_open_items)
     summary = {
@@ -1867,19 +1908,24 @@ def _summarize_project_asset_todos(
         item
         for item in monitor_items
         if _todo_item_is_due_monitor(item)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ]
     active_next_action_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_items"), list) else []
     active_next_action_executable_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_executable_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_executable_items"), list) else []
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     open_count = value.get("open", value.get("open_count", len(all_open_items)))
+    if claim_scope is not None:
+        open_count = len(open_items)
     if agent_scope_filter is not None:
         open_count = len(blocking_open_items)
     summary = {
@@ -2883,9 +2929,6 @@ def _agent_scope_no_candidate_frontier(
             "cleared_without_successor_handoff_gates": cleared_handoff_gates[:3],
         }
 
-    if not has_advancement_contract:
-        return None
-
     claimed_advancement_items = (
         agent_todo_summary.get("claimed_advancement_open_items")
         if isinstance(agent_todo_summary.get("claimed_advancement_open_items"), list)
@@ -2926,6 +2969,8 @@ def _agent_scope_no_candidate_frontier(
         else {}
     )
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+    if not has_advancement_contract and not other_advancement_items:
+        return None
     if other_advancement_items:
         if blocking_review_claimants:
             action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
@@ -4494,7 +4539,11 @@ def _automation_prompt_upgrade(
     }
 
 
-def _build_gate_prompt(item: dict[str, Any]) -> str | None:
+def _build_gate_prompt(
+    item: dict[str, Any],
+    *,
+    user_todo_summary: dict[str, Any] | None = None,
+) -> str | None:
     question = str(item.get("operator_question") or "").strip()
     recommended_action = str(item.get("recommended_action") or "").strip()
     next_handoff_condition = str(item.get("next_handoff_condition") or "").strip()
@@ -4503,14 +4552,30 @@ def _build_gate_prompt(item: dict[str, Any]) -> str | None:
         for gate in (item.get("missing_gates") if isinstance(item.get("missing_gates"), list) else [])
         if str(gate).strip()
     ]
-    user_todo_summary = _summarize_user_todos(item.get("user_todos"))
+    if user_todo_summary is None:
+        user_todo_summary = _summarize_user_todos(item.get("user_todos"))
     first_open = (
         user_todo_summary.get("first_open_items")
         if isinstance(user_todo_summary, dict) and isinstance(user_todo_summary.get("first_open_items"), list)
         else []
     )
+    other_agent_scoped_items = (
+        user_todo_summary.get("other_agent_scoped_items")
+        if isinstance(user_todo_summary, dict)
+        and isinstance(user_todo_summary.get("other_agent_scoped_items"), list)
+        else []
+    )
 
-    if not any([question, recommended_action, next_handoff_condition, missing_gates, first_open]):
+    if not any(
+        [
+            question,
+            recommended_action,
+            next_handoff_condition,
+            missing_gates,
+            first_open,
+            other_agent_scoped_items,
+        ]
+    ):
         return None
 
     lines = ["请用户/控制器确认当前 gate："]
@@ -4526,6 +4591,16 @@ def _build_gate_prompt(item: dict[str, Any]) -> str | None:
         open_count = user_todo_summary.get("open_count")
         lines.append(f"- 用户待办：{open_count} 项未完成，优先确认：")
         for todo in first_open:
+            index = todo.get("index")
+            prefix = f"  {index}. " if index is not None else "  - "
+            lines.append(f"{prefix}{todo.get('text')}")
+    elif isinstance(user_todo_summary, dict) and other_agent_scoped_items:
+        scoped_count = user_todo_summary.get("other_agent_scoped_open_count")
+        all_open_count = user_todo_summary.get("all_open_count")
+        count = scoped_count if scoped_count is not None else len(other_agent_scoped_items)
+        suffix = f"（全局共 {all_open_count} 项）" if all_open_count is not None else ""
+        lines.append(f"- 当前 agent 无阻塞用户待办；其他 agent/global 用户待办：{count} 项{suffix}，优先确认：")
+        for todo in other_agent_scoped_items[:3]:
             index = todo.get("index")
             prefix = f"  {index}. " if index is not None else "  - "
             lines.append(f"{prefix}{todo.get('text')}")
@@ -4653,6 +4728,11 @@ def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = No
     return next_due_at <= current_time
 
 
+def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
+    claim_scope = summary.get("claim_scope") if isinstance(summary.get("claim_scope"), dict) else {}
+    return normalize_todo_claimed_by(claim_scope.get("agent_id"))
+
+
 def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(summary, dict):
         return []
@@ -4673,6 +4753,13 @@ def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict
             if isinstance(item, dict)
             if _todo_item_is_due_monitor(item)
         ]
+    agent_id = _todo_summary_claim_scope_agent_id(summary)
+    if agent_id:
+        due_items = [
+            item
+            for item in due_items
+            if _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+        ]
     return sorted(due_items, key=_todo_projection_sort_key)
 
 
@@ -4683,6 +4770,20 @@ def _todo_summary_monitor_due_count(
 ) -> int:
     if not isinstance(summary, dict):
         return 0
+    agent_id = _todo_summary_claim_scope_agent_id(summary)
+    if agent_id:
+        raw_items = summary.get("monitor_open_items")
+        if isinstance(raw_items, list):
+            return len(
+                [
+                    item
+                    for item in raw_items
+                    if isinstance(item, dict)
+                    if _todo_item_is_due_monitor(item)
+                    if _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+                ]
+            )
+        return len(due_items if due_items is not None else _todo_summary_monitor_due_items(summary))
     projected_count = summary.get("monitor_due_count")
     if isinstance(projected_count, int):
         return max(0, projected_count)
@@ -4712,7 +4813,27 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
     open_count = _open_todo_count(summary)
     classified_items: list[dict[str, Any]] = []
     seen: set[tuple[Any, str]] = set()
+    executable_backlog_items: list[dict[str, Any]] | None = None
+    monitor_open_items: list[dict[str, Any]] | None = None
     if isinstance(summary, dict):
+        raw_executable_backlog = summary.get("executable_backlog_items")
+        if isinstance(raw_executable_backlog, list):
+            executable_backlog_items = [
+                item
+                for item in raw_executable_backlog
+                if isinstance(item, dict)
+                if _todo_item_is_actionable_open(item)
+                if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+            ]
+        raw_monitor_open = summary.get("monitor_open_items")
+        if isinstance(raw_monitor_open, list):
+            monitor_open_items = [
+                item
+                for item in raw_monitor_open
+                if isinstance(item, dict)
+                if _todo_item_is_actionable_open(item)
+                if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+            ]
         for key in (
             "first_executable_items",
             "first_open_items",
@@ -4732,22 +4853,30 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
                     continue
                 seen.add(identity)
                 classified_items.append(item)
-    visible_open = min(open_count, len(classified_items))
-    advancement_visible_count = sum(
-        1
-        for item in classified_items[:visible_open]
-        if _todo_item_is_actionable_open(item)
-        and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    )
-    monitor_visible_count = sum(
-        1
-        for item in classified_items[:visible_open]
-        if _todo_item_is_actionable_open(item)
-        and _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-    )
+    if executable_backlog_items is not None:
+        advancement_count = len(executable_backlog_items)
+    else:
+        visible_open = min(open_count, len(classified_items))
+        advancement_visible_count = sum(
+            1
+            for item in classified_items[:visible_open]
+            if _todo_item_is_actionable_open(item)
+            and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+        )
+        hidden_count = max(0, open_count - visible_open)
+        advancement_count = advancement_visible_count + hidden_count
+    if monitor_open_items is not None:
+        monitor_visible_count = len(monitor_open_items)
+    else:
+        visible_open = min(open_count, len(classified_items))
+        monitor_visible_count = sum(
+            1
+            for item in classified_items[:visible_open]
+            if _todo_item_is_actionable_open(item)
+            and _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+        )
     monitor_due_count = _todo_summary_monitor_due_count(summary)
-    hidden_count = max(0, open_count - visible_open)
-    advancement_count = advancement_visible_count + hidden_count
+    hidden_count = max(0, open_count - len(classified_items))
     return {
         "open": open_count,
         "advancement": advancement_count,
@@ -6600,7 +6729,11 @@ def build_quota_should_run(
         )
         if reward_lesson_warning:
             payload["reward_lesson_projection_warning"] = reward_lesson_warning
-        gate_prompt = _build_gate_prompt(item) if state == "operator_gate" else None
+        gate_prompt = (
+            _build_gate_prompt(item, user_todo_summary=user_todo_summary)
+            if state == "operator_gate"
+            else None
+        )
         if gate_prompt:
             payload["gate_prompt"] = gate_prompt
             payload["notify_user_on_gate"] = True
@@ -7022,9 +7155,14 @@ def _allows_due_monitor_poll(
     todo_id: str | None = None,
     target_key: str | None = None,
 ) -> bool:
-    if decision.get("should_run") is not True:
+    contract = (
+        decision.get("work_lane_contract")
+        if isinstance(decision.get("work_lane_contract"), dict)
+        else {}
+    )
+    if contract.get("obligation") != "attempt_due_monitor":
         return False
-    if decision.get("requires_user_action") is True:
+    if contract.get("must_attempt_work") is not True:
         return False
     item = _quota_decision_due_monitor_item(decision)
     if not item:
@@ -7484,30 +7622,31 @@ def record_quota_monitor_poll(
     before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
     normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
     safe_target_key = str(target_key or "").strip() or None
+    safe_result_hash = str(result_hash or "").strip() or None
+
+    def failure(reason: str) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "mode": "monitor-poll",
+            "dry_run": not execute,
+            "goal_id": safe_goal_id,
+            "appended": False,
+            "registry_mutated": False,
+            "source": str(source or DEFAULT_SLOT_SPEND_SOURCE).strip() or DEFAULT_SLOT_SPEND_SOURCE,
+            "agent_id": normalize_todo_claimed_by(agent_id),
+            "todo_id": normalized_todo_id,
+            "target_key": safe_target_key,
+            "result_hash": safe_result_hash,
+            "material_change": material_change,
+            "reason": reason,
+            "before": before,
+            "after": None,
+        }
+
     if material_change and not (normalized_todo_id or safe_target_key):
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": "`quota monitor-poll --material-change` requires --todo-id or --target-key",
-            "before": before,
-            "after": None,
-        }
+        return failure("`quota monitor-poll --material-change` requires --todo-id or --target-key")
     if (next_agent_todo or next_user_todo) and not material_change:
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": "`--next-agent-todo` and `--next-user-todo` require --material-change",
-            "before": before,
-            "after": None,
-        }
+        return failure("`--next-agent-todo` and `--next-user-todo` require --material-change")
     due_monitor_poll = _allows_due_monitor_poll(
         before,
         todo_id=normalized_todo_id,
@@ -7518,20 +7657,10 @@ def record_quota_monitor_poll(
         and not _allows_no_spend_external_monitor_poll(before)
         and not due_monitor_poll
     ):
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": (
-                "monitor-poll requires monitor_quiet_skip, due monitor todo, "
-                "or external monitor observation"
-            ),
-            "before": before,
-            "after": None,
-        }
+        return failure(
+            "monitor-poll requires monitor_quiet_skip, due monitor todo, "
+            "or external monitor observation"
+        )
 
     generated_at = _now_local()
     todo_writeback = None

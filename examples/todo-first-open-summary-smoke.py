@@ -14,7 +14,6 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.status import (  # noqa: E402
-    MAX_PROJECT_ASSET_TODO_ITEMS,
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     compact_todo_group,
@@ -60,7 +59,7 @@ def build_truncated_todo_group() -> dict:
     assert group is not None, group
     assert group["schema_version"] == "todo_summary_v0", group
     assert len(group["items"]) == 12, group
-    assert [item["index"] for item in group["items"][:3]] == [14, 15, 16], group
+    assert [item["index"] for item in group["items"][:3]] == [17, 14, 15], group
     assert all(not item["done"] for item in group["items"][:4]), group
     assert all(item["done"] for item in group["items"][4:]), group
     assert group["open_count"] == 4, group
@@ -94,7 +93,7 @@ def parse_multiline_deep_open_todo() -> dict:
     )
     group = parse_active_state_todos(state_text)["agent_todos"]
     assert len(group["items"]) == 12, group
-    assert [item["index"] for item in group["items"][:3]] == [14, 15, 16], group
+    assert [item["index"] for item in group["items"][:3]] == [17, 14, 15], group
     assert all(not item["done"] for item in group["items"][:4]), group
     assert all(item["done"] for item in group["items"][4:]), group
     assert group["open_count"] == 4, group
@@ -550,9 +549,9 @@ def assert_claimed_advancement_lanes_preserve_claimants() -> None:
     assert "todo_side_tui" in current_agent_advancement_ids, summary
     assert summary["first_executable_items"][0]["todo_id"] == "todo_side_tui", summary
     assert summary["claim_scope"]["selection_order"] == (
-        "current_agent_claimed_then_unclaimed_then_other_agent_claimed_low_weight"
+        "current_agent_claimed_then_unclaimed"
     ), summary
-    assert summary["claim_scope"]["other_agent_claimed_open_count"] == 12, summary
+    assert summary["claim_scope"]["other_agent_claimed_open_count"] == 11, summary
     assert summary["claim_scope"]["other_agent_claimed_items"][0]["todo_id"] == "todo_primary_1", summary
     assert summary["claim_scope"]["blocked_claimed_items"][0]["todo_id"] == "todo_primary_1", summary
     assert summary["current_agent_claimed_advancement_count"] == 6, summary
@@ -572,7 +571,8 @@ def main() -> int:
         "view": "project_asset_overview",
         "truth": "derived",
         "canonical_source": "attention_queue.items[].agent_todos",
-        "item_limit": MAX_PROJECT_ASSET_TODO_ITEMS,
+        "item_limit": 3,
+        "deferred_item_limit": 8,
     }, asset_summary
     assert asset_summary["detail_pointer"] == {
         "schema_version": TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,

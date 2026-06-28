@@ -54,6 +54,11 @@ The executable product contract is split in two:
   hypothesis proposer, executor, evaluator/promoter, and product narrator. Each
   lane contributes typed records through claims and gates; none owns the whole
   graph.
+- [Auto-research product metrics](auto-research-product-metrics.md) defines
+  which user-value metrics the product surface should show. It intentionally
+  favors scored attempts, held-out lift, negative-evidence reuse, retry
+  recovery, and human promotion decisions over implementation counters such as
+  file count, smoke count, or dashboard row count.
 
 ## Showcase Candidate
 
@@ -82,7 +87,10 @@ preserving exact output.
    status.
 4. Promotion decision: what got promoted, which alternatives were retired, and
    which evidence proves the boundary.
-5. Report: concise public-safe final summary with commands and artifacts.
+5. Product metrics: time to first scored attempt, useful hypotheses per active
+   day, held-out lift, negative-evidence reuse, retry recovery, and human
+   promotion decisions required.
+6. Report: concise public-safe final summary with commands and artifacts.
 
 ## Candidate Hypothesis Graph
 
@@ -211,6 +219,41 @@ loopx --format json auto-research append-evidence \
 The append step writes one `research_hypothesis` rollout event and one
 `research_evidence` event per split. It skips existing event ids on retry, which
 keeps heartbeat-driven lanes replayable.
+
+## Local Demo Supervisor
+
+The short-term multi-agent demo should be inspectable before it launches
+anything. The supervisor command therefore starts as a dry-run packet: it plans
+a visible tmux layout for multiple Codex CLI lanes, but it does not start tmux,
+launch Codex, read session files, write LoopX state, or spend quota.
+
+```bash
+loopx --format json auto-research demo-supervisor \
+  --goal-id loopx-auto-research-knn
+```
+
+The packet has two important product properties:
+
+- the supervisor is a host shell layout, not a leader agent;
+- every lane receives its own `quota should-run` and `auto-research frontier`
+  command, so work routing still comes from LoopX state, todo claims, gates,
+  and evidence graph projections.
+
+Operators can pass explicit lanes when rehearsing a real local demo:
+
+```bash
+loopx --format json auto-research demo-supervisor \
+  --goal-id loopx-auto-research-knn \
+  --agent codex-side-bypass:hypothesis-runner \
+  --agent codex-product-capability:evidence-promoter \
+  --agent codex-main-control:control-plane-guard
+```
+
+The generated shell plan uses environment placeholders such as `LOOPX_PROJECT`,
+`LOOPX_REGISTRY`, and `LOOPX_RUNTIME_ROOT` instead of embedding local absolute
+paths. A future `--execute` path must remain user-visible: attach to tmux
+before accepting any Codex prompt, preserve manual interrupt, and keep same-
+session prompt injection blocked until visible-attach and idle evidence pass.
 
 Next reproduction steps:
 
