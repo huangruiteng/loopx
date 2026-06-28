@@ -574,6 +574,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards refresh-state update behavior and projection writes",
             },
             {
+                "command": "python3 examples/todo-write-correctness-smoke.py",
+                "tier": "default",
+                "reason": "guards todo dry-run write correctness and shadow revision/lease validation",
+            },
+            {
                 "command": "python3 examples/todo-concurrent-write-lock-smoke.py",
                 "tier": "deep",
                 "reason": "samples lock behavior for concurrent todo writes",

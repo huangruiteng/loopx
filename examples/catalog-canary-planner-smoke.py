@@ -62,6 +62,11 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "catalog-canary-contract",
         "benchmark-adapter-readiness",
     } <= domain_profile_ids, payload
+    domain_profiles = {profile["id"]: profile for profile in payload["domain_profiles"]}
+    state_write_commands = [
+        check["command"] for check in domain_profiles["state-write-correctness"]["checks"]
+    ]
+    assert "python3 examples/todo-write-correctness-smoke.py" in state_write_commands
 
 
 def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
