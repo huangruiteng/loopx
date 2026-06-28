@@ -2121,7 +2121,7 @@
             "repair_class": "verifier_or_infra_repair",
             "repair_priority": "P0",
             "treatment_failure_scope": "score_missing",
-            "treatment_run_id": "e907196f7c85"
+            "treatment_run_id": "c3b9fa70421c"
           },
           "runs": [
             {
@@ -3108,6 +3108,184 @@
                 "codex_acp_runtime_tools_patch_applied": true,
                 "include_task_skills": false,
                 "original_task_mutated": false,
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": true,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-citation-check-goalstart-earlyexit-20260628T1235Z/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "verifier_failed",
+              "attempt_failure_label": "verifier_infrastructure_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "declared_done_round": 15,
+              "failure_class": "verifier_infrastructure_failure",
+              "failure_labels": [
+                "verifier_infrastructure_failure",
+                "skillsbench_product_mode_declared_done_below_passing_reward",
+                "skillsbench_agent_premature_done_signal"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_citation_check_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "next_action": "repair verifier or infra attribution before comparing arms",
+              "notes": "citation-check /loopx goal-start + reverse-channel rerun used formal 16-round budget; case-local LoopX public open todo count was 0 after declared done, but verifier never passed, so this is worker-verifier/goal-todo ...",
+              "official_feedback_blinded": true,
+              "official_score_attempt_countable": false,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 16,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 34,
+                "state_write_count": 92
+              },
+              "recorded_at": "2026-06-28T21:45:07+08:00",
+              "repair_class": "verifier_or_infra_repair",
+              "repair_priority": "P0",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 15,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 6,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 7,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 8,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 9,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 10,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 11,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 12,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 13,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 14,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 15,
+                  "passed": false,
+                  "reward_present": false,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-citation-check-goalstart-earlyexit-20260628T1235Z",
+              "run_id": "c3b9fa70421c",
+              "score_status": "missing",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "effective_cpus": 1.0,
+                  "host_cpus": 2.0,
+                  "requested_cpus": 1.0
+                },
                 "staged": true,
                 "task_skills_removed": true
               },
@@ -9920,7 +10098,7 @@
           ]
         }
       },
-      "run_count": 161
+      "run_count": 162
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -13972,5 +14150,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-28T19:33:21+08:00"
+  "updated_at": "2026-06-28T21:45:07+08:00"
 }

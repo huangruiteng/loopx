@@ -56,7 +56,7 @@ def _compact_list(value: Any, *, limit: int = 8) -> list[str]:
     return result
 
 
-def _compact_round_reward_records(value: Any, *, limit: int = 12) -> list[dict[str, Any]]:
+def _compact_round_reward_records(value: Any, *, limit: int = 32) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     records: list[dict[str, Any]] = []

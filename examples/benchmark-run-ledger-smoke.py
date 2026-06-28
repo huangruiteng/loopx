@@ -956,6 +956,34 @@ def test_skillsbench_product_mode_pair_review_is_ledgered() -> None:
         rendered = render_benchmark_run_ledger_markdown(ledger)
         assert "`main_table_ready`" in rendered, rendered
 
+    long_round_treatment = json.loads(json.dumps(treatment))
+    long_round_treatment["case_id"] = "product-mode-long-round-fixture"
+    long_round_treatment["round_reward_trace"]["max_rounds_budget"] = 16
+    long_round_treatment["round_reward_trace"]["records"] = [
+        {"agent_round": round_index, "passed": False, "reward_present": False}
+        for round_index in range(1, 16)
+    ]
+
+    with tempfile.TemporaryDirectory(
+        prefix="benchmark-run-ledger-product-pair-long-round-"
+    ) as tmp:
+        root = Path(tmp)
+        ledger_path = root / "ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=long_round_treatment,
+            run_group_id="product-pair-long-round-ledger-smoke",
+            cwd=root,
+        )
+        ledger = load_benchmark_run_ledger(ledger_path)
+        case = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
+            "product-mode-long-round-fixture"
+        ]
+        run = case["runs"][0]
+        assert run["max_rounds_budget"] == 16, run
+        assert run["round_reward_count"] == 15, run
+        assert run["round_rewards"][-1]["agent_round"] == 15, run
+
 
 def test_skillsbench_product_mode_pair_blocks_shallow_lifecycle() -> None:
     baseline = {

@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-28T19:33:21+08:00`
+- updated_at: `2026-06-28T21:45:07+08:00`
 
 ## Case Decisions
 
@@ -17,7 +17,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | - | `1` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `treatment_loopx_lifecycle_not_observed` | - | `10` |
 | `skillsbench@1.1` | `bike-rebalance` | `paired_baseline_solved_treatment_preserved` | - | - | `3` |
-| `skillsbench@1.1` | `citation-check` | `paired_treatment_verifier_or_infra_repair_required` | - | - | `12` |
+| `skillsbench@1.1` | `citation-check` | `paired_treatment_verifier_or_infra_repair_required` | - | - | `13` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `paired_no_score_uplift` | - | - | `4` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_baseline_setup_preflight_selection_required` | - | - | `5` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | - | `9` |
@@ -124,6 +124,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `citation-check` | `skillsbench_raw_codex_autonomous_max5_baseline` | `case_attempt` | `1.0` | `1` | `1:1*` | `none` | `` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0` | `skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout` | `.local/private-benchmark-jobs/skillsbench-citation-check-goal-start-local-20260627T0735Z/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `missing` | `` | `` | `verifier_infrastructure_failure` | `.local/private-benchmark-jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z/remote-root/jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z-goalstart/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `missing` | `` | `1:missing,2:missing,3:missing,4:missing,5:missing,6:missing,7:missing,8:missing,9:missing,10:missing,11:missing,12:missing,13:missing,14:missing,15:missing` | `verifier_infrastructure_failure` | `.local/private-benchmark-jobs/skillsbench-citation-check-goalstart-earlyexit-20260628T1235Z/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `loopx_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-baseline-v0/civ6-adjacency-optimizer__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
