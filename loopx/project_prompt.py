@@ -343,6 +343,7 @@ def build_codex_cli_bootstrap_message(
         goal_id=resolved_goal_id,
         agent_id=agent_id,
         cli_preflight=install_repair_command,
+        existing_goal_probe_command=quota_guard_command,
         connect_command=connect_command,
         heartbeat_prompt_json_command=heartbeat_prompt_json_command,
         heartbeat_prompt_command=heartbeat_prompt_command,
@@ -360,6 +361,7 @@ def build_codex_cli_bootstrap_message(
         "agent_id": agent_id,
         "cli_bin": cli_bin,
         "install_repair_command": install_repair_command,
+        "existing_goal_probe_command": quota_guard_command,
         "connect_command": connect_command,
         "heartbeat_prompt_command": heartbeat_prompt_command,
         "heartbeat_prompt_json_command": heartbeat_prompt_json_command,
@@ -497,6 +499,7 @@ def render_codex_cli_bootstrap_message_text(
     goal_id: str,
     agent_id: str | None,
     cli_preflight: str,
+    existing_goal_probe_command: str,
     connect_command: str,
     heartbeat_prompt_json_command: str,
     heartbeat_prompt_command: str,
@@ -517,14 +520,15 @@ headless `codex exec` for this bootstrap path.
 
 This first message is the setup/bootstrap instruction, not the reusable
 heartbeat prompt. Complete the setup in order: install or repair LoopX
-if needed; bootstrap/connect this project; then configure the current loop
-surface from the generated thin heartbeat prompt. For Codex CLI, set the
-current TUI goal to `/goal ` plus the thin `task_body`. For Codex App, set or
-refresh the heartbeat automation to start at 3 minutes with that same thin
-`task_body`, then follow quota `scheduler_hint` for backoff. If the current
-surface cannot be mutated from this session, show the exact pasteable `/goal`
-or automation body and report that as a concrete user gate; do not claim setup
-success.
+if needed; probe whether this goal already exists in the shared global
+registry; only bootstrap/connect this project when the goal is absent; then
+configure the current loop surface from the generated thin heartbeat prompt.
+For Codex CLI, set the current TUI goal to `/goal ` plus the thin `task_body`.
+For Codex App, set or refresh the heartbeat automation to start at 3 minutes
+with that same thin `task_body`, then follow quota `scheduler_hint` for
+backoff. If the current surface cannot be mutated from this session, show the
+exact pasteable `/goal` or automation body and report that as a concrete user
+gate; do not claim setup success.
 
 Project: `{project}`
 Goal id: `{goal_id}`
@@ -533,8 +537,9 @@ Goal id: `{goal_id}`
 Success criteria for this first setup turn:
 - I should not need to inspect registry paths, runtime roots, JSON payloads, or
   hidden session files.
-- If LoopX is already installed and this repo is already connected,
-  reuse the existing install/state and do not reinstall or duplicate bootstrap.
+- If LoopX is already installed and this goal is already present in the shared
+  global registry, reuse the existing `source_registry` route and do not
+  duplicate bootstrap from this worktree.
 - Configure the loop target after bootstrap: Codex CLI `/goal <thin task_body>`
   or Codex App heartbeat automation starting at 3 minutes with
   `<thin task_body>`, then follow quota `scheduler_hint`.
@@ -555,7 +560,21 @@ run:
 {cli_preflight}
 ```
 
-2. If this repo is not connected to LoopX yet, connect it conservatively:
+2. Before bootstrap/connect, probe the shared global registry for this goal:
+
+```bash
+{existing_goal_probe_command}
+```
+
+If this command returns a known goal, even with a normal delivery gate or
+workspace guard, treat the goal as already connected and reuse the existing
+global route/source_registry. In an independent side-agent worktree, do not
+run `loopx bootstrap` for the same `goal_id`; that can create a route collision
+between the primary checkout and the worktree. Only run bootstrap when the
+probe clearly says the goal is absent from the registered quota plan.
+
+3. If the goal is absent and this repo is not connected to LoopX yet, connect
+it conservatively:
 
 ```bash
 {connect_command}
@@ -564,7 +583,7 @@ run:
 If the connect output includes onboarding candidate todos, summarize them in
 this TUI and ask me which ones to accept before starting autonomous delivery.
 
-3. Generate the thin loop prompt after bootstrap/connect, not before. Do not
+4. Generate the thin loop prompt after route reuse or bootstrap/connect, not before. Do not
 hand-write or copy an old heartbeat body:
 
 ```bash
@@ -584,7 +603,7 @@ For review, the Markdown form is:
 {heartbeat_prompt_command}
 ```
 
-4. After install/connect and loop activation, run the quota/status guard for
+5. After install/connect and loop activation, run the quota/status guard for
 the first control-plane snapshot:
 
 ```bash
@@ -599,16 +618,16 @@ Follow `interaction_contract` exactly:
 - If delivery is allowed, choose one runnable agent todo after a short steering
   audit, preferably a current-agent claimed advancement todo.
 
-5. Report the current goal/gate/todo/next-action snapshot in this TUI. Stop
+6. Report the current goal/gate/todo/next-action snapshot in this TUI. Stop
 after setup unless I explicitly asked for delivery in this same turn. Do not
 store raw Codex transcripts, credentials, private paths, raw logs, or
 production artifacts in public docs or LoopX state.
 
-6. Before writeback, use this transcript-free validation checklist:
+7. Before writeback, use this transcript-free validation checklist:
 
 {checklist}
 
-7. After setup writeback, refresh state if needed. Do not spend quota for a
+8. After setup writeback, refresh state if needed. Do not spend quota for a
 setup-only turn. The configured thin loop spends only after a later validated
 delivery writeback. If I explicitly asked you to do delivery in this same turn
 and you completed a validated delivery segment, spend exactly once:

@@ -78,6 +78,7 @@ def main() -> int:
         env = os.environ.copy()
         env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
         env["FAKE_TMUX_LOG"] = str(tmux_log)
+        workspace = temp / "visible-workspace"
 
         result = subprocess.run(
             [
@@ -105,6 +106,9 @@ def main() -> int:
                 "--execute",
                 "--launcher",
                 "tmux",
+                "--workspace",
+                str(workspace),
+                "--create-workspace",
             ],
             cwd=REPO_ROOT,
             env=env,
@@ -119,11 +123,16 @@ def main() -> int:
         assert payload["boundary"]["runs_codex"] is True, payload
         assert payload["boundary"]["writes_loopx_state"] is False, payload
         assert payload["boundary"]["spends_loopx_quota"] is False, payload
+        assert payload["boundary"]["workspace_mode"] == "explicit_workspace", payload
+        assert payload["boundary"]["workspace_write_scope"] == "user_selected_workspace_only", payload
+        assert payload["boundary"]["shared_state_route"] == "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT", payload
         launch = payload["launch_result"]
         assert launch["launcher"] == "tmux", launch
         assert launch["started_lane_count"] == 3, launch
         assert launch["attach_command"] == "tmux attach -t loopx-auto-research-smoke", launch
         assert launch["stop_command"] == "tmux kill-session -t loopx-auto-research-smoke", launch
+        assert launch["workspace_mode"] == "explicit_workspace", launch
+        assert workspace.is_dir(), workspace
 
         for lane in payload["lanes"]:
             command = lane["visible_launch_command"]

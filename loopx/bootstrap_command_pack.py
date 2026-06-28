@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .bootstrap import default_goal_id
+from .project_alias import resolve_canonical_project_alias
 from .project_prompt import (
     DEFAULT_HANDOFF_ADAPTER_KIND,
     DEFAULT_HANDOFF_ADAPTER_STATUS,
@@ -55,17 +56,28 @@ def _select_goal(goals: list[dict[str, Any]], goal_id: str | None) -> tuple[str,
 
 
 def inspect_bootstrap_connection(project: Path, *, goal_id: str | None = None) -> dict[str, Any]:
-    resolved_project = _resolve_project(project)
+    input_project = _resolve_project(project)
+    alias = resolve_canonical_project_alias(input_project, goal_id=goal_id)
+    resolved_project = (
+        _resolve_project(Path(str(alias.get("canonical_project"))))
+        if alias.get("applied") and alias.get("canonical_project")
+        else input_project
+    )
     registry_path = resolved_project / ".loopx" / "registry.json"
     registry_exists = registry_path.exists()
     registry, registry_error = _read_registry(registry_path) if registry_exists else (None, None)
     inferred_goal_id = goal_id or default_goal_id(resolved_project)
     state_file = resolved_project / ".codex" / "goals" / inferred_goal_id / "ACTIVE_GOAL_STATE.md"
+    base_connection = {
+        "input_project": str(input_project),
+        "project": str(resolved_project),
+        "canonical_project_alias": alias,
+        "registry": str(registry_path),
+    }
 
     if registry_error:
         return {
-            "project": str(resolved_project),
-            "registry": str(registry_path),
+            **base_connection,
             "registry_exists": registry_exists,
             "goal_id": inferred_goal_id,
             "goal_found": False,
@@ -78,8 +90,7 @@ def inspect_bootstrap_connection(project: Path, *, goal_id: str | None = None) -
 
     if not registry:
         return {
-            "project": str(resolved_project),
-            "registry": str(registry_path),
+            **base_connection,
             "registry_exists": False,
             "goal_id": inferred_goal_id,
             "goal_found": False,
@@ -103,8 +114,7 @@ def inspect_bootstrap_connection(project: Path, *, goal_id: str | None = None) -
 
     if selected_goal is None:
         return {
-            "project": str(resolved_project),
-            "registry": str(registry_path),
+            **base_connection,
             "registry_exists": True,
             "goal_id": resolved_goal_id,
             "goal_found": False,
@@ -118,8 +128,7 @@ def inspect_bootstrap_connection(project: Path, *, goal_id: str | None = None) -
 
     if not selected_goal.get("state_file"):
         return {
-            "project": str(resolved_project),
-            "registry": str(registry_path),
+            **base_connection,
             "registry_exists": True,
             "goal_id": resolved_goal_id,
             "goal_found": True,
@@ -132,8 +141,7 @@ def inspect_bootstrap_connection(project: Path, *, goal_id: str | None = None) -
 
     if not state_file.exists():
         return {
-            "project": str(resolved_project),
-            "registry": str(registry_path),
+            **base_connection,
             "registry_exists": True,
             "goal_id": resolved_goal_id,
             "goal_found": True,
@@ -145,8 +153,7 @@ def inspect_bootstrap_connection(project: Path, *, goal_id: str | None = None) -
         }
 
     return {
-        "project": str(resolved_project),
-        "registry": str(registry_path),
+        **base_connection,
         "registry_exists": True,
         "goal_id": resolved_goal_id,
         "goal_found": True,
@@ -467,6 +474,14 @@ def render_loopx_bootstrap_command_pack_message(payload: dict[str, Any]) -> str:
     goal_text = payload.get("goal_text")
     state = connection.get("connection_state")
     reason = connection.get("reason")
+    alias = connection.get("canonical_project_alias")
+    alias = alias if isinstance(alias, dict) else {}
+    alias_note = (
+        f"\nInput project: `{connection.get('input_project')}`\n"
+        f"Canonical route: `{alias.get('canonical_project')}` via `{alias.get('source_registry')}`\n"
+        if alias.get("applied")
+        else ""
+    )
     goal_start_contract = payload.get("goal_start_contract")
     goal_start_contract = goal_start_contract if isinstance(goal_start_contract, dict) else {}
     onboarding = payload.get("onboarding_hint")
@@ -532,6 +547,7 @@ Project: `{project}`
 Goal id: `{goal_id}`
 Goal text: `{goal_text or ""}`
 Detected state: `{state}` ({reason})
+{alias_note}
 
 Rules:
 - This command pack preview is read-only. Do not run bootstrap/connect, create heartbeat automation, or spend quota while only previewing it.
@@ -583,12 +599,14 @@ Supported forms: `/loopx`, `/loopx <goal text>`
 ## Detected Project State
 
 - project: `{payload.get("project")}`
+- input_project: `{connection.get("input_project")}`
 - goal_id: `{payload.get("goal_id")}`
 - goal_text: `{payload.get("goal_text") or ""}`
 - connection_state: `{connection.get("connection_state")}`
 - reason: `{connection.get("reason")}`
 - registry: `{connection.get("registry")}`
 - state_file: `{connection.get("state_file")}`
+- canonical_project_alias: `{(connection.get("canonical_project_alias") or {}).get("kind") if isinstance(connection.get("canonical_project_alias"), dict) else None}`
 
 ## Recommended Next Step
 

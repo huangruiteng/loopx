@@ -45,6 +45,12 @@ writing project state:
 loopx bootstrap-command-pack --project .
 ```
 
+When the target is a linked git worktree, trust the command pack's
+`canonical_project_alias` / `source_registry` route. Do not manually run
+`loopx bootstrap` in the linked worktree merely because its local `.loopx`
+state is missing or stale; that can create a worktree-local shadow goal instead
+of updating the canonical project state.
+
 For `/loopx <goal text>`, pass the text after `/loopx` as the explicit
 goal-start objective:
 

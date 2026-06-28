@@ -33,6 +33,10 @@ MUST_HAVE = (
     "top user todo",
     "top agent todo",
     "next safe action",
+    "shared global registry",
+    "source_registry",
+    "route collision",
+    "goal is absent",
     "loopx bootstrap",
     "heartbeat-prompt --thin",
     "quota should-run",
@@ -55,6 +59,7 @@ def assert_message_contract(payload: dict[str, object]) -> None:
     assert payload["goal_id"] == GOAL_ID, payload
     assert payload["agent_id"] == AGENT_ID, payload
     assert "install-from-github.sh" in str(payload["install_repair_command"]), payload
+    assert payload["existing_goal_probe_command"] == payload["quota_guard_command"], payload
     assert "heartbeat-prompt --thin" in str(payload["heartbeat_prompt_command"]), payload
     assert "heartbeat-prompt --thin" in str(payload["heartbeat_prompt_json_command"]), payload
     assert "--format json heartbeat-prompt" in str(payload["heartbeat_prompt_json_command"]), payload
@@ -76,9 +81,13 @@ def assert_message_contract(payload: dict[str, object]) -> None:
     for phrase in MUST_HAVE:
         assert phrase in normalized, (phrase, message)
     assert normalized.index("install or repair LoopX") < normalized.index("bootstrap/connect this project"), message
+    assert normalized.index("probe whether this goal already exists") < normalized.index("bootstrap/connect this project"), message
+    assert normalized.index("shared global registry for this goal") < normalized.index("loopx bootstrap"), message
     assert normalized.index("bootstrap/connect this project") < normalized.index("heartbeat-prompt --thin"), message
     assert normalized.index("quota should-run") < normalized.index("interaction_contract"), message
     assert normalized.index("refresh-state") < normalized.index("quota spend-slot"), message
+    assert "do not run `loopx bootstrap` for the same `goal_id`" in normalized, message
+    assert "Only run bootstrap when the probe clearly says the goal is absent" in normalized, message
     assert "registry/quota identity alone" in normalized, message
     assert "Headless fallback should never be the only way" not in message, message
     assert "quota spend-slot --goal-id public-codex-cli-goal" in message, message

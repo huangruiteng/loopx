@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,10 +12,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_json(*args: str) -> dict[str, object]:
+def run_json(*args: str, env: dict[str, str] | None = None) -> dict[str, object]:
+    process_env = os.environ.copy()
+    if env:
+        process_env.update(env)
     result = subprocess.run(
         [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
         cwd=REPO_ROOT,
+        env=process_env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -196,6 +201,136 @@ def test_connected_project_reuses_existing_state() -> None:
         assert "loopx status" in str(payload["commands"])
 
 
+def test_linked_git_worktree_reuses_canonical_source_registry() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        primary = root / "primary"
+        primary.mkdir()
+        subprocess.run(["git", "init"], cwd=primary, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(
+            ["git", "config", "user.email", "loopx@example.invalid"],
+            cwd=primary,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "LoopX Smoke"],
+            cwd=primary,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        (primary / "README.md").write_text("# primary\n", encoding="utf-8")
+        subprocess.run(["git", "add", "README.md"], cwd=primary, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(
+            ["git", "commit", "-m", "init"],
+            cwd=primary,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        worktree = root / "linked-worktree"
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "linked-smoke", str(worktree)],
+            cwd=primary,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        canonical_goal = "canonical-goal"
+        state_file = primary / ".codex" / "goals" / canonical_goal / "ACTIVE_GOAL_STATE.md"
+        state_file.parent.mkdir(parents=True)
+        state_file.write_text("# Active Goal State\n", encoding="utf-8")
+        primary_registry = primary / ".loopx" / "registry.json"
+        primary_registry.parent.mkdir(parents=True)
+        primary_payload = {
+            "schema_version": "0.1",
+            "goals": [
+                {
+                    "id": canonical_goal,
+                    "status": "active",
+                    "repo": str(primary),
+                    "state_file": ".codex/goals/canonical-goal/ACTIVE_GOAL_STATE.md",
+                }
+            ],
+        }
+        primary_registry.write_text(json.dumps(primary_payload, indent=2) + "\n", encoding="utf-8")
+
+        shadow_goal = "linked-worktree-goal"
+        shadow_state = worktree / ".codex" / "goals" / shadow_goal / "ACTIVE_GOAL_STATE.md"
+        shadow_state.parent.mkdir(parents=True)
+        shadow_state.write_text("# Shadow State\n", encoding="utf-8")
+        shadow_registry = worktree / ".loopx" / "registry.json"
+        shadow_registry.parent.mkdir(parents=True)
+        shadow_registry.write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1",
+                    "goals": [
+                        {
+                            "id": shadow_goal,
+                            "status": "active",
+                            "repo": str(worktree),
+                            "state_file": ".codex/goals/linked-worktree-goal/ACTIVE_GOAL_STATE.md",
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        runtime = root / "runtime"
+        global_registry = runtime / "registry.global.json"
+        global_registry.parent.mkdir(parents=True)
+        global_payload = {
+            "schema_version": "0.1",
+            "registry_role": "global-local",
+            "goals": [
+                {
+                    **primary_payload["goals"][0],
+                    "source_registry": str(primary_registry),
+                    "synced_at": "2026-06-28T00:00:00+00:00",
+                },
+                {
+                    "id": shadow_goal,
+                    "status": "active",
+                    "repo": str(worktree),
+                    "state_file": ".codex/goals/linked-worktree-goal/ACTIVE_GOAL_STATE.md",
+                    "source_registry": str(shadow_registry),
+                    "synced_at": "2026-06-28T00:00:00+00:00",
+                },
+            ],
+        }
+        global_registry.write_text(json.dumps(global_payload, indent=2) + "\n", encoding="utf-8")
+
+        payload = run_json(
+            "bootstrap-command-pack",
+            "--project",
+            str(worktree),
+            env={"LOOPX_RUNTIME_ROOT": str(runtime)},
+        )
+
+        connection = payload["project_connection"]
+        assert isinstance(connection, dict)
+        alias = connection["canonical_project_alias"]
+        assert isinstance(alias, dict)
+        assert alias["applied"] is True, alias
+        assert alias["kind"] == "git_worktree_canonical_source_registry", alias
+        assert Path(str(connection["input_project"])).resolve() == worktree.resolve(), connection
+        assert Path(str(payload["project"])).resolve() == primary.resolve(), payload
+        assert payload["goal_id"] == canonical_goal, payload
+        assert Path(str(connection["registry"])).resolve() == primary_registry.resolve(), connection
+        assert Path(str(connection["state_file"])).resolve() == state_file.resolve(), connection
+        assert connection["connection_state"] == "connected", connection
+        assert payload["recommended_next_step"]["requires_user_confirmation"] is False, payload
+        assert shadow_goal not in str(payload["message"])
+
+
 def test_skill_slash_fallback_contract() -> None:
     skill_text = (REPO_ROOT / "skills" / "loopx-project" / "SKILL.md").read_text(
         encoding="utf-8"
@@ -210,6 +345,8 @@ def test_skill_slash_fallback_contract() -> None:
     assert "`/loopx`" in skill_text
     assert "`/loopx <goal text>`" in skill_text
     assert "loopx bootstrap-command-pack --project ." in skill_text
+    assert "canonical_project_alias" in skill_text
+    assert "worktree-local shadow goal" in skill_text
     assert '--goal-text "<GOAL_TEXT>"' in skill_text
     assert "read/status-first" in skill_text
     assert "explicit goal-start intent" in normalized
@@ -239,6 +376,7 @@ def main() -> int:
     test_missing_project_stops_before_mutation()
     test_goal_text_invocation_plans_ranked_todos_before_activation()
     test_connected_project_reuses_existing_state()
+    test_linked_git_worktree_reuses_canonical_source_registry()
     test_skill_slash_fallback_contract()
     print("bootstrap command pack smoke passed")
     return 0

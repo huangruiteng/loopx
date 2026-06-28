@@ -256,6 +256,19 @@ def register_auto_research_commands(
         action="store_true",
         help="With tmux launcher, kill an existing session with the same name before launching.",
     )
+    demo_supervisor_parser.add_argument(
+        "--workspace",
+        help=(
+            "Directory where visible Codex lanes should start. Defaults to the current directory. "
+            "For demos, prefer an empty user-owned research workspace that shares LoopX state through "
+            "--registry/--runtime-root."
+        ),
+    )
+    demo_supervisor_parser.add_argument(
+        "--create-workspace",
+        action="store_true",
+        help="Create --workspace when it does not already exist.",
+    )
 
 
 def _append_auto_research_rollout_events(
@@ -338,6 +351,26 @@ def _runtime_shell_command(
     return "; ".join([*exports, command])
 
 
+def _resolve_demo_workspace(
+    workspace: str | None,
+    *,
+    create: bool,
+    cwd: Path,
+) -> tuple[Path, str]:
+    if not workspace:
+        return cwd.resolve(), "current_directory"
+    path = Path(workspace).expanduser()
+    if not path.is_absolute():
+        path = cwd / path
+    if not path.exists():
+        if not create:
+            raise ValueError("workspace does not exist; pass --create-workspace to create it")
+        path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        raise ValueError("workspace must be a directory")
+    return path.resolve(), "explicit_workspace"
+
+
 def _mac_terminal_available() -> bool:
     if platform.system() != "Darwin" or not shutil.which("osascript"):
         return False
@@ -365,6 +398,7 @@ def _launch_auto_research_with_tmux(
     *,
     payload: dict[str, object],
     project: Path,
+    workspace_mode: str,
     registry: Path,
     runtime_root: Path,
     tmux_bin: str,
@@ -452,6 +486,7 @@ def _launch_auto_research_with_tmux(
         "started_lanes": started_lanes,
         "attach_command": f"{tmux_bin} attach -t {session}",
         "stop_command": f"{tmux_bin} kill-session -t {session}",
+        "workspace_mode": workspace_mode,
         "attach_requested": attach,
         "operator_takeover": "attach to the tmux session, interrupt any lane, or kill the session",
     }
@@ -461,6 +496,7 @@ def _launch_auto_research_with_terminal(
     *,
     payload: dict[str, object],
     project: Path,
+    workspace_mode: str,
     registry: Path,
     runtime_root: Path,
 ) -> dict[str, object]:
@@ -516,6 +552,7 @@ def _launch_auto_research_with_terminal(
         "started_lanes": started_lanes,
         "attach_command": "already visible in Terminal windows",
         "stop_command": "interrupt or close the opened Terminal windows",
+        "workspace_mode": workspace_mode,
         "attach_requested": False,
         "operator_takeover": "use the visible Terminal windows; interrupt any lane before writeback",
     }
@@ -532,17 +569,24 @@ def _execute_auto_research_demo_supervisor(
     codex_bin: str,
     attach: bool,
     replace_existing: bool,
+    workspace: str | None,
+    create_workspace: bool,
 ) -> dict[str, object]:
     _require_executable(cli_bin, field="cli_bin")
     _require_executable(codex_bin, field="codex_bin")
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_arg)
     chosen = _resolve_auto_research_launcher(requested=launcher, tmux_bin=tmux_bin)
-    project = Path.cwd()
+    project, workspace_mode = _resolve_demo_workspace(
+        workspace,
+        create=create_workspace,
+        cwd=Path.cwd(),
+    )
     if chosen == "tmux":
         result = _launch_auto_research_with_tmux(
             payload=payload,
             project=project,
+            workspace_mode=workspace_mode,
             registry=registry_path,
             runtime_root=runtime_root,
             tmux_bin=tmux_bin,
@@ -553,6 +597,7 @@ def _execute_auto_research_demo_supervisor(
         result = _launch_auto_research_with_terminal(
             payload=payload,
             project=project,
+            workspace_mode=workspace_mode,
             registry=registry_path,
             runtime_root=runtime_root,
         )
@@ -569,6 +614,9 @@ def _execute_auto_research_demo_supervisor(
                 "writes_loopx_state": False,
                 "spends_loopx_quota": False,
                 "external_service_call": False,
+                "workspace_mode": workspace_mode,
+                "workspace_write_scope": "user_selected_workspace_only",
+                "shared_state_route": "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
             }
         )
     return payload
@@ -680,6 +728,8 @@ def handle_auto_research_command(
                     codex_bin=args.codex_bin,
                     attach=args.attach,
                     replace_existing=args.replace_existing,
+                    workspace=args.workspace,
+                    create_workspace=args.create_workspace,
                 )
         else:
             raise ValueError(
