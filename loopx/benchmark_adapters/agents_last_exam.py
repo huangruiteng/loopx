@@ -23,6 +23,7 @@ from ..benchmark_case_state import (
 from ..benchmark_core import (
     BenchmarkFailureClass,
     build_benchmark_attempt_accounting,
+    build_benchmark_launch_observable_handle,
     build_run_permission_policy,
     canonical_lifecycle,
     compact_run_permission_policy_for_quota,
@@ -3444,11 +3445,37 @@ def build_agents_last_exam_local_launch_packet(
         failure_class=BenchmarkFailureClass.NONE,
         official_score_attempted=False,
     )
+    task_public_id = (
+        _agents_last_exam_public_id(selected_task_id, limit=160)
+        or "metadata_only_candidate"
+    )
+    task_job_id = task_public_id.replace("/", "-")
+    observable_handle_registration = build_benchmark_launch_observable_handle(
+        benchmark_id=AGENTS_LAST_EXAM_BENCHMARK_ID,
+        launch_mode="no_execution_launch_packet",
+        run_label=f"{AGENTS_LAST_EXAM_BENCHMARK_ID}-{task_job_id}-dry-run",
+        job_basename=f"{AGENTS_LAST_EXAM_BENCHMARK_ID}-{task_job_id}-dry-run",
+        process_state="not_started",
+        compact_artifact_refs=(
+            "run.compact.json",
+            "eval.compact.json",
+            "events.compact.json",
+        ),
+        allowed_poll_command="benchmark_run_status_snapshot",
+        scheduler_kind="manual_operator",
+        will_execute=False,
+        read_boundary={
+            "compact_only": True,
+            "task_text_read": False,
+            "raw_artifacts_read": False,
+            "local_paths_recorded": False,
+            "private_handle_values_recorded": False,
+        },
+    )
     return {
         "schema_version": AGENTS_LAST_EXAM_LOCAL_LAUNCH_PACKET_SCHEMA_VERSION,
         "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
-        "task_id": _agents_last_exam_public_id(selected_task_id, limit=160)
-        or "metadata_only_candidate",
+        "task_id": task_public_id,
         "snapshot": _agents_last_exam_public_id(snapshot, limit=80)
         or AGENTS_LAST_EXAM_DEFAULT_SNAPSHOT,
         "ready": ready,
@@ -3505,6 +3532,7 @@ def build_agents_last_exam_local_launch_packet(
             "will_record_credentials": False,
             "will_record_local_paths": False,
         },
+        "observable_handle_registration": observable_handle_registration,
         "case_state_init_contract": benchmark_case_active_state_init_contract(
             benchmark_id=AGENTS_LAST_EXAM_BENCHMARK_ID,
             goal_id=AGENTS_LAST_EXAM_CASE_GOAL_ID,
