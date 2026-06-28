@@ -2054,6 +2054,46 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     return compact
 
 
+def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "status",
+        "sandbox",
+        "task_id",
+        "first_blocker",
+        "alternate_source_kind",
+        "selection_recommendation",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=180)
+        if text:
+            compact[field] = text
+    for field in (
+        "raw_task_text_read",
+        "raw_logs_read",
+        "raw_trajectory_read",
+        "apt_setup_risk_detected",
+        "apt_retry_patch_required",
+        "dockerfile_present",
+        "canonical_task_present",
+        "alternate_source_supported_by_runner",
+        "task_source_path_recorded",
+        "task_source_content_recorded",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    nearest_task_ids = public_safe_compact_list(
+        value.get("nearest_canonical_task_ids"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if nearest_task_ids:
+        compact["nearest_canonical_task_ids"] = nearest_task_ids
+    return compact
+
+
 def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -3263,6 +3303,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+    task_setup_preflight = _compact_benchmark_task_setup_preflight(
+        source.get("task_setup_preflight")
+    )
+    if task_setup_preflight:
+        compact["task_setup_preflight"] = task_setup_preflight
     task_staging = _compact_benchmark_task_staging(source.get("task_staging"))
     if task_staging:
         compact["task_staging"] = task_staging
