@@ -168,6 +168,7 @@ carry source refs and remain recomputable from source state.
 | --- | --- |
 | `decentralized_research_frontier_v0` | Per-agent queue of runnable or blocked hypotheses after quota, claim, capability, and boundary checks. |
 | `research_evidence_graph_v0` | Read-only graph joining hypotheses, todos, attempts, branches, metrics, gates, and promotion decisions. |
+| `auto_research_artifact_packet_v0` | User-facing artifact chain derived from the evidence graph: question, source map, claim ledger, contradiction review, citation packet, and decision packet. |
 | `research_showcase_projection_v0` | Public-safe view for a case page: objective, baseline, best result, attempt timeline, dev/held-out split, and reusable LoopX pattern. |
 
 ### `decentralized_research_frontier_v0`
@@ -202,6 +203,94 @@ carry source refs and remain recomputable from source state.
 This projection intentionally replaces a centralized Coordinator decision. The
 kernel selects only what the current agent may attempt; the agent still does
 semantic implementation within its allowed boundary.
+
+### `auto_research_artifact_packet_v0`
+
+The artifact packet is the first product-facing research output. It is not a
+new write path and not a leader-agent report. It is a read-only projection from
+`research_evidence_graph_v0`, preferably built from `research_hypothesis` and
+`research_evidence` rollout events. It gives a user or leader the evidence chain
+needed to understand the research result without reading raw logs, private
+source bodies, local paths, credentials, or session transcripts.
+
+```json
+{
+  "schema_version": "auto_research_artifact_packet_v0",
+  "goal_id": "loopx-auto-research-knn",
+  "question": "Which exact k-NN candidate should be promoted?",
+  "source_kind": "loopx_rollout_event_log",
+  "rollout_backed": true,
+  "source_map": [
+    {
+      "source_id": "hypothesis:hyp_0004",
+      "source_kind": "loopx_rollout_event_log",
+      "todo_id": "todo_123",
+      "claimed_by": "codex-side-bypass",
+      "status": "supported",
+      "grounding_refs": ["research_contract:knn_speedup"],
+      "artifact_refs": ["experiment:hyp_0004/report"],
+      "split_refs": ["dev", "holdout"]
+    }
+  ],
+  "claim_ledger": [
+    {
+      "claim_id": "claim:hyp_0004",
+      "hypothesis_id": "hyp_0004",
+      "todo_id": "todo_123",
+      "claimed_by": "codex-side-bypass",
+      "status": "supported",
+      "evidence_event_count": 2,
+      "best_dev_metric": 11.4,
+      "best_holdout_metric": 10.9,
+      "source_id": "hypothesis:hyp_0004"
+    }
+  ],
+  "contradiction_review": {
+    "negative_evidence_count": 0,
+    "needs_retry_count": 0,
+    "contradicted_or_retired": [],
+    "needs_retry": [],
+    "unresolved_without_evidence": []
+  },
+  "citation_packet": {
+    "schema_version": "auto_research_citation_packet_v0",
+    "items": [
+      {
+        "citation_id": "citation:hyp_0004",
+        "supports_claim_id": "claim:hyp_0004",
+        "source_refs": ["hypothesis:hyp_0004", "experiment:hyp_0004/report"],
+        "split_refs": ["dev", "holdout"],
+        "public_safe": true
+      }
+    ],
+    "raw_source_bodies_included": false
+  },
+  "decision_packet": {
+    "schema_version": "auto_research_decision_packet_v0",
+    "recommended_decision": "review_promotion_candidate",
+    "promotion_candidates": [{"hypothesis_id": "hyp_0004"}],
+    "retirement_candidates": [],
+    "requires_operator_gate": true
+  }
+}
+```
+
+The five blocks deliberately answer different user questions:
+
+- `source_map`: where did this claim come from, and which compact refs can be
+  inspected without leaking raw material?
+- `claim_ledger`: who owned the hypothesis, which todo carried it, and what
+  scored evidence exists?
+- `contradiction_review`: what failed, regressed, needs retry, or has no
+  evidence yet?
+- `citation_packet`: which public-safe refs support each claim?
+- `decision_packet`: should the user review promotion, retirement, retry, or
+  continued exploration?
+
+When `source_kind` is `loopx_rollout_event_log`, `rollout_backed` must be true:
+the packet was derived from LoopX rollout/evidence events, not from a fixture
+or chat summary. Fixture-backed packets may still exist for docs and examples,
+but user-facing research demos should prefer rollout-backed packets.
 
 ## Decentralized Cycle
 
@@ -281,6 +370,10 @@ Already available:
   `research_hypothesis` and `research_evidence` rollout events back into
   `research_evidence_graph_v0` and derives promotion/retirement candidates for
   the live frontier and showcase projection.
+- `loopx auto-research frontier ...` also returns
+  `auto_research_artifact_packet_v0`, so the same read path exposes a source
+  map, claim ledger, contradiction review, citation packet, and decision packet
+  without adding a leader agent or a second research database.
 
 Needed next:
 
@@ -299,6 +392,8 @@ An implementation is acceptable when:
 - `needs_retry` keeps resumable evidence instead of collapsing into `done`;
 - grounded ideation and novelty audit are separated;
 - held-out promotion is explicit;
+- user-facing research artifacts include source map, claim ledger,
+  contradiction review, citation packet, and decision packet;
 - public projections contain no raw logs, private paths, credentials, or raw
   private documents;
 - the showcase can be rendered from public-safe evidence refs.

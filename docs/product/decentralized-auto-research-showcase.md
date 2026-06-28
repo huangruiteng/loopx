@@ -223,6 +223,14 @@ The append step writes one `research_hypothesis` rollout event and one
 `research_evidence` event per split. It skips existing event ids on retry, which
 keeps heartbeat-driven lanes replayable.
 
+After rollout evidence exists, the frontier packet also returns
+`auto_research_artifact_packet_v0`: a read-only artifact chain for the
+user-facing research answer. It carries the question, source map, claim ledger,
+contradiction review, citation packet, and decision packet derived from
+`research_evidence_graph_v0`. For real demos this should be rollout-backed, not
+fixture-only, so every claim can point back to LoopX rollout/evidence events
+without exposing raw logs or private source bodies.
+
 ## Local Demo Supervisor
 
 The short-term multi-agent demo should be inspectable before it launches
