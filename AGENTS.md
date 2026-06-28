@@ -2,6 +2,26 @@
 
 ## Commit And PR Hygiene
 
+### Worktree And PR Gate
+
+For any tracked repository change beyond a trivial typo fix, create or use a
+dedicated clean `git worktree` on a `codex/` branch from latest `origin/main`
+before editing files. Do not implement changes directly in a dirty primary
+worktree, even when the task starts by inspecting that dirty tree.
+
+When a dirty worktree contains potentially valuable changes, first classify it
+read-only, then copy or reapply the valuable subset into the dedicated clean
+worktree and open a PR from that branch. Reset or clean the original dirty
+worktree only after the valuable subset has been merged or explicitly judged
+obsolete. Leave unrelated untracked local artifacts alone.
+
+Every tracked repository change must be pushed on a branch and reviewed through
+a pull request before it reaches `main`. Do not push broad mixed commits or
+direct commits to `main`.
+
+Only skip this worktree/PR gate when the user explicitly says the change is
+local-only and must not be proposed for the repository.
+
 For non-trivial repository changes, especially anything that touches benchmark
 adapters, smoke tests, public docs, or commit/push workflows, use the
 `git-split-commit-pr` workflow before staging:
@@ -22,9 +42,7 @@ adapters, smoke tests, public docs, or commit/push workflows, use the
    - runtime/API behavior;
    - public docs and protocol notes;
    - focused validation or cleanup.
-6. Push a branch and open a PR for reviewable batches instead of pushing broad
-   mixed commits directly to `main`, unless the user explicitly asks for a
-   direct `main` push.
+6. Push a branch and open a PR for reviewable batches.
 
 For small, low-risk PRs, maintainers may self-merge after validation when all
 of the following are true:
