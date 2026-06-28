@@ -33,6 +33,7 @@ OPERATION_RESPONSE_SCHEMA_VERSION = (
     "skillsbench_remote_command_file_bridge_operation_response_v0"
 )
 MAX_CAPTURE_BYTES = 200_000
+ALLOWED_SANDBOX_PATH_ROOTS = ("/app", "/tmp", "/root")
 
 
 def _json_response(payload: dict[str, Any]) -> int:
@@ -46,11 +47,13 @@ def _safe_path(value: Any, *, allow_file: bool = True) -> str:
         raise ValueError("path_missing")
     if "\x00" in text or not text.startswith("/"):
         raise ValueError("path_invalid")
-    allowed_roots = ("/app", "/tmp")
-    if not any(text == root or text.startswith(root + "/") for root in allowed_roots):
+    if not any(
+        text == root or text.startswith(root + "/")
+        for root in ALLOWED_SANDBOX_PATH_ROOTS
+    ):
         raise ValueError("path_outside_allowed_roots")
-    if not allow_file and text == "/app":
-        raise ValueError("path_refuses_app_root")
+    if not allow_file and text in ALLOWED_SANDBOX_PATH_ROOTS:
+        raise ValueError("path_refuses_sandbox_root")
     return text
 
 

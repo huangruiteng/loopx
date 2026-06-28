@@ -1174,7 +1174,11 @@ LoopX SkillsBench remote workspace bridge:
   - {{"operation":"exec","cwd":"/app","command":"pwd","timeout_sec":10}}
   - {{"operation":"read_file","path":"/app/path/to/file","max_bytes":20000}}
   - {{"operation":"write_file","path":"/app/path/to/file","content":"..."}}
+  - {{"operation":"read_file","path":"/root/task-input-or-data","max_bytes":20000}}
+  - {{"operation":"write_file","path":"/root/answer.json","content":"..."}}
   - {{"operation":"cleanup","path":"/app/path/to/temp"}}
+- Allowed sandbox path roots are `/app`, `/tmp`, and `/root`; use `/root`
+  when the task instruction names a scored input or output path there.
 - Do not upload, submit, expose credentials, quote the bridge command in final output, or record raw stdout/stderr/task text in public artifacts.
 - The bridge readiness probe completed with ready=true and operation_count={operation_count}.
 - If a LoopX product-mode lifecycle contract is present later in this prompt,

@@ -48,6 +48,9 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
 from scripts.skillsbench_reverse_channel_bridge import (  # noqa: E402
     _run_codex_payload,
 )
+from scripts.skillsbench_docker_command_file_bridge import (  # noqa: E402
+    _safe_path as _docker_bridge_safe_path,
+)
 
 SCRIPT = REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"
 RELAY_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"
@@ -83,6 +86,31 @@ def main() -> int:
     assert "pwd && ls -la" in first_action_block
     assert "/tmp/private-bridge" in first_action_block
     assert "<private bridge command>" not in first_action_block
+    assert '/root/answer.json' in packet, packet
+    assert '/root/task-input-or-data' in packet, packet
+    assert "`/app`, `/tmp`, and `/root`" in packet, packet
+    assert _docker_bridge_safe_path("/app/.codex/goals/state.json") == (
+        "/app/.codex/goals/state.json"
+    )
+    assert _docker_bridge_safe_path("/tmp/loopx/probe.txt") == (
+        "/tmp/loopx/probe.txt"
+    )
+    assert _docker_bridge_safe_path("/root/test.bib") == "/root/test.bib"
+    assert _docker_bridge_safe_path("/root/answer.json") == "/root/answer.json"
+    for blocked_path in ("/home/agent/answer.json", "relative/path", "/"):
+        try:
+            _docker_bridge_safe_path(blocked_path)
+        except ValueError as exc:
+            assert str(exc) in {"path_outside_allowed_roots", "path_invalid"}
+        else:
+            raise AssertionError(f"unexpected allowed path: {blocked_path}")
+    for protected_root in ("/app", "/tmp", "/root"):
+        try:
+            _docker_bridge_safe_path(protected_root, allow_file=False)
+        except ValueError as exc:
+            assert str(exc) == "path_refuses_sandbox_root"
+        else:
+            raise AssertionError(f"unexpected cleanup root: {protected_root}")
     with tempfile.TemporaryDirectory(prefix="skillsbench-agent-probe-count-") as tmp:
         tmp_path = Path(tmp)
         fake_bridge = tmp_path / "fake-bridge"
