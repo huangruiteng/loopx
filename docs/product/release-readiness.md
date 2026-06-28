@@ -100,6 +100,14 @@ The default promotion canary is:
 python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
 ```
 
+The default dashboard policy is `--dashboard-mode=auto`: source checkouts run
+dashboard demo-readiness when `apps/dashboard` is present, while installed
+release snapshots that omit the dashboard app skip that optional surface and
+keep the omission visible in the canary output. Use `--dashboard-mode=require`
+when the dashboard/frontstage itself is being promoted, and
+`--dashboard-mode=skip` only when the release boundary intentionally excludes
+the dashboard app.
+
 Use the writeback form only when you intentionally want to append fresh
 promotion-readiness evidence:
 
@@ -109,8 +117,9 @@ python3 examples/canary-promotion-readiness-smoke.py
 
 If the source checkout has optional frontend dependencies installed, dashboard
 readiness can be included in the same canary. If a release snapshot omits the
-dashboard app, record that as a release-boundary decision or follow-up instead
-of silently treating the dashboard path as covered.
+dashboard app, the canary should degrade gracefully and record that boundary
+rather than failing unrelated CLI/install promotion or silently treating the
+dashboard path as covered.
 
 ## What Is Safe To Depend On
 

@@ -223,6 +223,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks promotion readiness from compact run history",
             },
             {
+                "command": "python3 examples/canary-promotion-readiness-boundary-smoke.py",
+                "tier": "default",
+                "reason": "guards dashboard release-boundary planning for source checkouts and release snapshots",
+            },
+            {
                 "command": "python3 examples/canary-promotion-no-write-contract-smoke.py",
                 "tier": "default",
                 "reason": "guards no-write promotion readiness behavior",

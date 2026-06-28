@@ -124,9 +124,14 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         changed_files=["docs/product/release-readiness.md"],
         surfaces=["release promotion install update"],
     )
-    release_profile_ids = {profile["id"] for profile in release_payload["domain_profiles"]}
+    release_profiles = {profile["id"]: profile for profile in release_payload["domain_profiles"]}
+    release_profile_ids = set(release_profiles)
     assert "release-promotion" in release_profile_ids, release_payload
     assert "install-update" in release_profile_ids, release_payload
+    release_commands = [
+        check["command"] for check in release_profiles["release-promotion"]["checks"]
+    ]
+    assert "python3 examples/canary-promotion-readiness-boundary-smoke.py" in release_commands
 
     install_payload = build_catalog_canary_plan(
         changed_files=["scripts/install-local.sh", "loopx/self_update.py"],
