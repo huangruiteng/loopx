@@ -77,6 +77,7 @@ from .rollout_event_log import load_rollout_events, rollout_event_log_path
 from .session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION
 from .state_projection import (
     active_state_next_action_entries,
+    actions_are_projection_aligned,
     next_action_projection_warning,
     state_projection_gap_warning,
 )
@@ -8039,6 +8040,50 @@ def compact_agent_lane_recommendation(run: dict[str, Any] | None) -> dict[str, A
     return compact
 
 
+def latest_run_recommended_action_for_projection(
+    *,
+    current_status_run: dict[str, Any] | None,
+    agent_lane_recommendation: dict[str, Any] | None,
+    active_state_next_action: Any = None,
+    limit: int = 320,
+) -> tuple[str | None, str | None]:
+    latest_action = public_safe_compact_text(
+        current_status_run.get("recommended_action")
+        if isinstance(current_status_run, dict)
+        else None,
+        limit=limit,
+    )
+    if not isinstance(agent_lane_recommendation, dict):
+        return latest_action, "latest_status_run" if latest_action else None
+
+    lane_action = public_safe_compact_text(
+        agent_lane_recommendation.get("recommended_action"),
+        limit=limit,
+    )
+    if not lane_action:
+        return latest_action, "latest_status_run" if latest_action else None
+    if not active_state_next_action or not actions_are_projection_aligned(
+        active_state_next_action,
+        lane_action,
+    ):
+        return latest_action, "latest_status_run" if latest_action else None
+
+    latest_aligned = bool(
+        latest_action
+        and actions_are_projection_aligned(active_state_next_action, latest_action)
+    )
+    lane_dt = parse_timestamp(agent_lane_recommendation.get("generated_at"))
+    latest_dt = parse_timestamp(
+        current_status_run.get("generated_at")
+        if isinstance(current_status_run, dict)
+        else None
+    )
+    lane_is_newer = bool(lane_dt and latest_dt and lane_dt >= latest_dt)
+    if not latest_action or not latest_aligned or lane_is_newer:
+        return lane_action, "agent_lane_recommendation"
+    return latest_action, "latest_status_run"
+
+
 def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
     status_run = goal.get("latest_status_run")
     if isinstance(status_run, dict) and not is_status_neutral_run(status_run):
@@ -8639,23 +8684,33 @@ def build_attention_queue(
             if not item:
                 item = active_state_item
         if item:
-            latest_run_action = public_safe_compact_text(
-                current_status_run.get("recommended_action")
-                if isinstance(current_status_run, dict)
-                else None,
-                limit=320,
+            agent_lane_recommendation = compact_agent_lane_recommendation(
+                latest_agent_lane_run(goal)
+            )
+            active_state_next_action = (
+                active_state_fields.get("active_state_next_action")
+                if isinstance(active_state_fields, dict)
+                else None
+            )
+            latest_run_action, latest_run_action_source = latest_run_recommended_action_for_projection(
+                current_status_run=current_status_run,
+                agent_lane_recommendation=agent_lane_recommendation,
+                active_state_next_action=active_state_next_action,
             )
             if latest_run_action:
                 item["latest_run_recommended_action"] = latest_run_action
+                if latest_run_action_source:
+                    item["latest_run_recommended_action_source"] = latest_run_action_source
                 if isinstance(item.get("project_asset"), dict):
                     item["project_asset"]["latest_run_recommended_action"] = latest_run_action
+                    if latest_run_action_source:
+                        item["project_asset"][
+                            "latest_run_recommended_action_source"
+                        ] = latest_run_action_source
             control_plane = compact_control_plane_policy(goal.get("control_plane"))
             if control_plane:
                 item["control_plane"] = control_plane
             goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
-            agent_lane_recommendation = compact_agent_lane_recommendation(
-                latest_agent_lane_run(goal)
-            )
             if agent_lane_recommendation:
                 item["agent_lane_recommendation"] = agent_lane_recommendation
             subagent_activity = subagent_activity_for_goal(goal)
