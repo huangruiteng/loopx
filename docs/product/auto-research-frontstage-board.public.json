@@ -240,6 +240,40 @@
       }
     ]
   },
+  "user_gates": [
+    {
+      "gate_id": "first_screen_review_gate",
+      "decision_owner": "product owner",
+      "purpose": "Keep this board experimental until the first visible screen is explicitly reviewed.",
+      "trigger": "Any change that moves the auto-research value path into README, hosted frontstage home, showcase index, or another first viewport.",
+      "takeover_action": "Review the local preview or screenshot before the change is committed, pushed, or self-merged.",
+      "public_evidence": "AGENTS.md first-screen review gate"
+    },
+    {
+      "gate_id": "promotion_gate",
+      "decision_owner": "research operator",
+      "purpose": "Promote a hypothesis only when the evidence graph proves value on both dev and held-out splits.",
+      "trigger": "A promotion candidate reports improved holdout metric and clean protected-boundary evidence.",
+      "takeover_action": "Approve, reject, or defer promotion from the decision packet; agents may not promote from dev-only evidence.",
+      "public_evidence": "decision_candidates.promotion_candidates"
+    },
+    {
+      "gate_id": "protected_scope_gate",
+      "decision_owner": "maintainer",
+      "purpose": "Prevent benchmark or evaluator edits from being hidden inside a research run.",
+      "trigger": "A candidate touches protected files, raw logs, upload paths, credentials, or non-public source material.",
+      "takeover_action": "Stop the lane, keep the attempt visible as blocked or retired, and require a boundary repair before retry.",
+      "public_evidence": "research_contract.protected_scope and quality_gates"
+    },
+    {
+      "gate_id": "real_launch_gate",
+      "decision_owner": "local user",
+      "purpose": "Keep the multi-agent demo visible and interruptible before any local Codex sessions are launched.",
+      "trigger": "The dry-run supervisor is converted into real tmux/Codex process startup.",
+      "takeover_action": "Inspect the rehearsal output, attach to the session, and keep a stop command visible before accepting agent prompts.",
+      "public_evidence": "auto_research_demo_supervisor_v0"
+    }
+  ],
   "showcase_projection": {
     "schema_version": "research_showcase_projection_v0",
     "title": "Decentralized Auto Research: k-NN Speedup",
