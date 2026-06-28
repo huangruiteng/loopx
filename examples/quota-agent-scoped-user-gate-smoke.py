@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.decision_scope import todo_gate_relation  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 
 
@@ -539,6 +540,89 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
     }
 
 
+def exact_todo_gate_with_decision_scope_migration_payload() -> dict:
+    benchmark_gate = todo_item(
+        todo_id="todo_benchmark_owner_gate",
+        text="Owner must choose the benchmark run target before benchmark execution.",
+        role="user",
+        task_class="user_gate",
+        action_kind="benchmark_run",
+        blocks_agent="codex-main-control",
+    )
+    benchmark_gate["unblocks_todo_id"] = "todo_blocked_benchmark_run"
+    benchmark_gate["decision_scope"] = {
+        "schema_version": "decision_scope_v0",
+        "kind": "direction",
+        "granularity": "action",
+        "scope_key": "benchmark_target_choice",
+    }
+    blocked_benchmark = todo_item(
+        todo_id="todo_blocked_benchmark_run",
+        text="[P1] Run the gated benchmark target after owner choice.",
+        claimed_by="codex-main-control",
+        action_kind="benchmark_run",
+    )
+    independent_benchmark = todo_item(
+        todo_id="todo_benchmark_ledger_cleanup",
+        text="[P1] Clean public-safe benchmark ledger summaries while target choice is pending.",
+        claimed_by="codex-main-control",
+        action_kind="benchmark_run",
+    )
+    return {
+        "ok": True,
+        "goal_count": 1,
+        "run_count": 0,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active_state_user_todo",
+                    "waiting_on": "controller",
+                    "severity": "action",
+                    "source": "active_state",
+                    "recommended_action": "Choose benchmark target.",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "operator_gate",
+                        "blocked_action_scope": "gated_delivery",
+                        "safe_bypass_allowed": True,
+                        "safe_bypass_policy": (
+                            "Only the exact gated todo is blocked; independent "
+                            "public-safe agent work may continue during scope migration."
+                        ),
+                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
+                    },
+                    "user_todos": todo_summary(benchmark_gate, source_section="User Todo"),
+                    "agent_todos": todo_summary_items(
+                        [blocked_benchmark, independent_benchmark],
+                        source_section="Agent Todo",
+                    ),
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "fixture_adapter_v0",
+                    "adapter_status": "connected",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": ["codex-main-control"],
+                    },
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
 def decision_scope_status_payload() -> dict:
     benchmark_gate = todo_item(
         todo_id="todo_benchmark_scope_gate",
@@ -675,6 +759,64 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     assert "todo_x_launch_monitor" in blocked_monitor_ids, blocked_payload["agent_todo_summary"]
 
 
+def assert_exact_todo_gate_survives_decision_scope_migration() -> None:
+    payload = build_quota_should_run(
+        exact_todo_gate_with_decision_scope_migration_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    assert payload["should_run"] is True, payload
+    assert payload["decision"] == "safe_bypass_user_gate_fallback", payload
+    fallback = payload["scoped_user_gate_fallback"]
+    blocked = fallback["blocked_agent_items"][0]
+    assert blocked["todo_id"] == "todo_blocked_benchmark_run", fallback
+    relation = blocked["todo_gate_relation"]
+    assert relation["source"] == "unblocks_todo_id", relation
+    assert relation["state"] == "gate_targets_todo", relation
+    scope_relation = relation["decision_scope_relation"]
+    assert scope_relation["source"] == "decision_scope", scope_relation
+    assert scope_relation["state"] == "independent", scope_relation
+    assert scope_relation["reason"] == "agent_todo_has_no_required_decision_scopes", scope_relation
+    selected = fallback["selected_executable"]
+    assert selected["todo_id"] == "todo_benchmark_ledger_cleanup", fallback
+    assert selected["todo_gate_relation"]["source"] == "unblocks_todo_id", selected
+    assert selected["todo_gate_relation"]["state"] == "independent", selected
+
+
+def assert_conflicting_exact_and_decision_scope_requires_projection_repair() -> None:
+    gate = {
+        "todo_id": "todo_gate_conflict",
+        "task_class": "user_gate",
+        "unblocks_todo_id": "todo_exact_target",
+        "decision_scope": {
+            "schema_version": "decision_scope_v0",
+            "kind": "direction",
+            "granularity": "action",
+            "scope_key": "benchmark_target_choice",
+        },
+    }
+    agent_item = {
+        "todo_id": "todo_semantic_target",
+        "task_class": "advancement_task",
+        "required_decision_scopes": [
+            {
+                "schema_version": "decision_scope_v0",
+                "kind": "direction",
+                "granularity": "action",
+                "scope_key": "benchmark_target_choice",
+            }
+        ],
+    }
+    relation = todo_gate_relation(gate, agent_item)
+    assert relation["source"] == "unblocks_todo_id+decision_scope", relation
+    assert relation["state"] == "projection_repair_required", relation
+    assert relation["reason"] == (
+        "decision_scope_covers_agent_todo_but_unblocks_todo_targets_different_todo"
+    ), relation
+    assert relation["exact_todo_relation"]["state"] == "independent", relation
+    assert relation["decision_scope_relation"]["state"] == "gate_covers_action", relation
+
+
 def assert_decision_scope_overrides_shared_action_kind_tokens() -> None:
     payload = build_quota_should_run(
         decision_scope_status_payload(),
@@ -762,6 +904,8 @@ def main() -> int:
     assert_unscoped_user_gate_remains_global()
     assert_unrelated_user_gate_allows_feishu_fallback()
     assert_exact_todo_gate_only_blocks_target_todo()
+    assert_exact_todo_gate_survives_decision_scope_migration()
+    assert_conflicting_exact_and_decision_scope_requires_projection_repair()
     assert_decision_scope_overrides_shared_action_kind_tokens()
     assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet()
     print("quota-agent-scoped-user-gate-smoke ok")

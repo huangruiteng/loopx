@@ -18,6 +18,7 @@ from .control_plane import (
     control_plane_policy_summary,
     control_plane_self_repair_allows,
 )
+from .decision_scope import todo_gate_relation, todo_gate_relation_blocks_agent
 from .delivery_outcome import (
     ACCOUNTABLE_DELIVERY_OUTCOMES,
     DeliveryOutcome,
@@ -2168,96 +2169,14 @@ def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
     return _action_scope_tokens_from_text(text)
 
 
-_DECISION_SCOPE_GRANULARITY_RANK = {
-    "action": 0,
-    "lane": 1,
-    "goal": 2,
-    "project": 3,
-    "global": 4,
-}
-
-
-def _decision_scope_covers(gate_scope: dict[str, Any], required_scope: dict[str, Any]) -> bool:
-    gate = normalize_todo_decision_scope(gate_scope)
-    required = normalize_todo_decision_scope(required_scope)
-    if not gate or not required:
-        return False
-    if gate["kind"] != required["kind"]:
-        return False
-    if gate["scope_key"] not in {required["scope_key"], "*"}:
-        return False
-    return _DECISION_SCOPE_GRANULARITY_RANK[gate["granularity"]] >= _DECISION_SCOPE_GRANULARITY_RANK[
-        required["granularity"]
-    ]
-
-
-def _decision_scope_gate_relation(
-    gate: dict[str, Any],
-    agent_item: dict[str, Any],
-) -> dict[str, Any] | None:
-    gate_scope = normalize_todo_decision_scope(gate.get("decision_scope"))
-    required_scopes = normalize_todo_required_decision_scopes(
-        agent_item.get("required_decision_scopes")
-    )
-    if not gate_scope:
-        return None
-    if not required_scopes:
-        return {
-            "schema_version": "decision_scope_relation_v0",
-            "source": "decision_scope",
-            "state": "independent",
-            "reason": "agent_todo_has_no_required_decision_scopes",
-            "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
-            "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
-            "decision_scope": gate_scope,
-            "required_decision_scopes": [],
-        }
-    for required_scope in required_scopes:
-        if _decision_scope_covers(gate_scope, required_scope):
-            return {
-                "schema_version": "decision_scope_relation_v0",
-                "source": "decision_scope",
-                "state": "gate_covers_action",
-                "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
-                "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
-                "decision_scope": gate_scope,
-                "matched_required_decision_scope": required_scope,
-                "required_decision_scopes": required_scopes,
-            }
-    return {
-        "schema_version": "decision_scope_relation_v0",
-        "source": "decision_scope",
-        "state": "independent",
-        "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
-        "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
-        "decision_scope": gate_scope,
-        "required_decision_scopes": required_scopes,
-    }
-
-
 def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
-    decision_scope_relation = _decision_scope_gate_relation(gate, agent_item)
-    if decision_scope_relation:
-        return decision_scope_relation
-
-    target_todo_id = normalize_todo_id(gate.get("unblocks_todo_id"))
-    if not target_todo_id:
-        return None
-    agent_todo_id = normalize_todo_id(agent_item.get("todo_id"))
-    return {
-        "schema_version": "todo_gate_relation_v0",
-        "source": "unblocks_todo_id",
-        "state": "gate_targets_todo" if target_todo_id == agent_todo_id else "independent",
-        "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
-        "target_todo_id": target_todo_id,
-        "agent_todo_id": agent_todo_id,
-    }
+    return todo_gate_relation(gate, agent_item)
 
 
 def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
     relation = _todo_gate_relation(gate, agent_item)
     if relation:
-        return relation.get("state") in {"gate_targets_todo", "gate_covers_action"}
+        return todo_gate_relation_blocks_agent(relation)
 
     gate_action_tokens = _todo_action_kind_tokens(gate)
     agent_action_tokens = _todo_action_kind_tokens(agent_item)
