@@ -38,6 +38,31 @@ Keep examples public-safe. Do not copy raw benchmark tasks, raw trajectories,
 private logs, verifier output tails, credentials, internal URLs, or local
 machine paths.
 
+## Catalog Maintenance And Validation Design
+
+The catalog is for reusable user / agent / state interaction shapes. Do not add
+a new IP merely because a maintainer needs a validation technique, smoke group,
+release checklist, dashboard card, or rollout procedure. Those are uses of the
+catalog, not catalog patterns by themselves.
+
+When a new repo behavior appears, update the catalog at the lowest durable
+level:
+
+- if the behavior is already covered by an IP, add the new smoke, fixture,
+  protocol doc, or visual explanation to that IP's validation or details;
+- if several existing IPs must be checked together, document the validation
+  bundle in the relevant release/readiness or workflow doc and point back to
+  those existing IPs;
+- only allocate a new IP when the behavior itself is a repeatable interaction
+  with its own trigger, user channel, agent channel, state contract, bad smell,
+  and validation.
+
+Canary and readiness groups should therefore be catalog-informed rather than
+catalog-expanding by default. A canary may sample Work Routing, State And
+Boundary, Evidence Lifecycle, Human Decision, and Planning Governance patterns,
+but it should not become a standalone IP unless the canary behavior itself is a
+runtime/state interaction that future controllers must route.
+
 ## Decision Scope Model
 
 User gates are not global booleans. The first-class model is a scoped decision:
@@ -243,7 +268,6 @@ External handles, benchmark transitions, and countable proof.
 | --- | --- | --- | --- | --- | --- |
 | P0 | IP-012 | External Evidence Observation | Agent/controller | no interruption unless handle missing needs owner input | observe compact handles/results; do not launch benchmark/model work |
 | P1 | IP-015 | Benchmark Lifecycle Countability | Benchmark adapter/controller | no interruption by default | advance only through compact countable lifecycle gates |
-| P1 | IP-030 | Catalog-Driven Canary Slice | Maintainer/controller | no interruption by default | select a small cross-pattern readiness group before promotion instead of treating canary as full E2E |
 
 ### Planning Governance
 
@@ -1986,75 +2010,6 @@ state says it is countable.
 - `examples/benchmark-lifecycle-state-smoke.py`
 - `examples/benchmark-core-adapter-contract-smoke.py`
 - `examples/terminal-bench-runner-mode-contract-smoke.py`
-
-#### IP-030 Catalog-Driven Canary Slice
-
-**Trigger**
-
-- a release snapshot, canary wrapper, status/quota hot-path change, dashboard
-  demo, or public guide is about to be promoted;
-- the touched surface maps to several catalog patterns instead of one isolated
-  unit test;
-- the maintainer needs fast confidence without running a full benchmark suite,
-  browser matrix, or raw private evidence path.
-
-**Expected behavior**
-
-A canary is a bounded promotion/readiness slice, not a synonym for full E2E.
-It should approximate a real user/controller path by choosing one or two
-representative public-safe checks from the relevant catalog families:
-
-- **State And Boundary**: public/private scan, local-state boundaries, task
-  graph or todo detail cold-path contracts;
-- **Work Routing**: quota `should-run`, scheduler hints, agent-lane next action,
-  or fallback/gate behavior;
-- **Evidence Lifecycle**: compact evidence observation or benchmark lifecycle
-  countability without raw logs or task text;
-- **Planning Governance**: replan, repair-delta, cadence, or plan-to-todo
-  writeback when the change affects autonomous continuation;
-- **Human Decision**: concrete user todo, approval, reward, or gate projection
-  when the path asks a person to decide.
-
-The canary should declare its source patterns and stop at the first clear
-blocker. Missing optional dependencies, such as a browser or dashboard app in a
-release snapshot, should become an explicit readiness boundary rather than a
-silent pass or a hidden full-suite requirement. A passing canary means "safe to
-promote the touched surfaces under the declared boundary"; it does not prove
-all benchmark routes, all connectors, or all UI states are correct.
-
-**Visual Model**
-
-```mermaid
-flowchart TD
-  C["catalog pattern families"] --> S["select representative public-safe checks"]
-  S --> R{"real promotion path touched?"}
-  R -->|"status/quota"| Q["quota + scheduler + hot-path budget"]
-  R -->|"dashboard/frontstage"| D["fixture + route + browser optional"]
-  R -->|"release/install"| I["installer + update + public boundary"]
-  R -->|"benchmark/evidence"| E["compact lifecycle evidence only"]
-  Q --> B{"blocker?"}
-  D --> B
-  I --> B
-  E --> B
-  B -->|"yes"| W["write readiness boundary / follow-up todo"]
-  B -->|"no"| P["promotion-ready for declared surfaces"]
-```
-
-**Bad smell**
-
-Maintainers call every canary an E2E test, so the suite either becomes too slow
-to run before promotion or gives false confidence by checking only one happy
-path. The opposite bad smell is a synthetic smoke group that passes while the
-catalog shows an untested gate, boundary, scheduler, or evidence pattern on
-the changed path.
-
-**Validation**
-
-- `examples/canary-promotion-readiness-smoke.py`
-- `examples/canary-promotion-no-write-contract-smoke.py`
-- `examples/control-plane-integrated-canary-smoke.py`
-- `examples/hot-path-interface-budget-smoke.py`
-- `examples/release-readiness-doc-smoke.py`
 
 ### Planning Governance
 

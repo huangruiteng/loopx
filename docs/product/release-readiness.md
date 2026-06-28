@@ -61,13 +61,14 @@ release evidence.
 
 ## Canary Model
 
-A release canary is a catalog-driven readiness slice. It is near-E2E in the
+A release canary is a catalog-informed readiness slice. It is near-E2E in the
 sense that it follows a real promotion or operator path across several seams,
 but it is intentionally smaller than a full end-to-end test suite. Its job is
 to answer "can the touched public surfaces be promoted under this declared
 boundary?" rather than "is every LoopX path correct?"
 
-Choose the canary group from the interaction pattern catalog:
+Choose the canary group from existing interaction pattern families; do not add
+new IPs solely to describe a validation bundle:
 
 - status/quota/scheduler changes should include Work Routing checks such as
   `quota should-run`, scheduler hints, and hot-path interface budget;
