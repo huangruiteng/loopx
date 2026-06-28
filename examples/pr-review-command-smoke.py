@@ -17,6 +17,7 @@ import loopx.pr_review as pr_review_module
 from loopx.pr_review import _github_search_date
 
 FIXTURE = REPO_ROOT / "examples" / "fixtures" / "pr-review.public.json"
+PR_REVIEW_SKILL = REPO_ROOT / "skills" / "loopx-pr-review" / "SKILL.md"
 PRIVATE_PATTERNS = [
     re.compile(r"/" + r"Users/[A-Za-z0-9._-]+/"),
     re.compile(r"/" + r"private/"),
@@ -45,6 +46,21 @@ def assert_public_safe(payload: dict[str, object]) -> None:
 
 
 def main() -> int:
+    skill_text = " ".join(PR_REVIEW_SKILL.read_text(encoding="utf-8").split())
+    for phrase in (
+        "Use when the visible request starts with `/loopx-pr-review`",
+        "loopx --format json pr-review --state all",
+        "agent_response_contract",
+        "review_groups",
+        "pull_requests[].review_template",
+        "pull_requests[].evidence_commands",
+        "Do not pipe the first packet through `jq`",
+        "Do not fill the five-block review from title, labels, changed-file counts, or metadata risk hints alone",
+        "Do not use this skill to approve",
+        "Route those decisions to `loopx-pr-merge`",
+    ):
+        assert phrase in skill_text, phrase
+
     assert _github_search_date("2026-06-28T00:00:00+08:00") == "2026-06-27"
     assert _github_search_date("2026-06-28T00:00:00Z") == "2026-06-28"
     calls: list[list[str]] = []

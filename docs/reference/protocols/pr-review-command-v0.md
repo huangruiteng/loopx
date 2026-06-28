@@ -12,6 +12,10 @@ LoopX-repo-specific.
 The command is read-only. It does not approve reviews, post PR comments, merge,
 push, spend LoopX quota, or mark LoopX todos complete.
 
+Codex agents should use the dedicated `loopx-pr-review` skill for this slash
+command. Do not route `/loopx-pr-review` through the broader `loopx-project`
+workflow or the merge-focused `loopx-pr-merge` skill.
+
 ## Command
 
 | Command | CLI reference | Intent |

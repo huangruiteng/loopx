@@ -73,66 +73,13 @@ or status summary surface instead of `bootstrap-command-pack`. Legacy
 `/loop-global-*` forms may be treated as aliases, but canonical help and
 packets should use `/loopx-global-*`.
 
-Repo-review slash commands are also not project bootstrap commands. For
-`/loopx-pr-review`, run the CLI tool first and treat its packet as the
-authoritative queue:
-
-```bash
-loopx --format json pr-review --state all
-```
-
-If the user includes a repository, time window, or state filter, translate only
-those arguments into `--repo`, `--since`, and `--state`; otherwise keep the
-current repository and the default `--state all`. The CLI packet's
-`review_groups.unmerged`, `review_groups.merged`, and per-PR
-`review_template` are the source of truth. Do not reconstruct the review
-window by manually calling `gh pr view` or `gh pr list`; use the packet's
-`evidence_commands` only after selecting a PR from the CLI output.
-
-The first command must keep the contract/template fields in the model context:
-`agent_response_contract`, `review_groups`, `pull_requests[].review_template`,
-and `pull_requests[].evidence_commands`.
-Do not pipe the JSON through `jq` or another projection that only prints
-`.summary` and `.review_sequence`. If you need a compact local packet, save the
-full JSON first and then inspect the fields that drive the final answer:
-
-```bash
-packet="$(mktemp)"
-loopx --format json pr-review --state all [--repo owner/repo] [--since ISO] > "$packet"
-python3 - "$packet" <<'PY'
-import json
-import sys
-p=json.load(open(sys.argv[1]))
-print(json.dumps({
-  "agent_response_contract": p.get("agent_response_contract"),
-  "review_groups": p.get("review_groups"),
-  "pull_requests": [
-    {
-      "number": pr.get("number"),
-      "title": pr.get("title"),
-      "review_template": pr.get("review_template"),
-      "evidence_commands": pr.get("evidence_commands"),
-    }
-    for pr in p.get("pull_requests", [])
-  ],
-}, ensure_ascii=False, indent=2))
-PY
-rm -f "$packet"
-```
-
-`/loopx-pr-review` is a review command, not a table-only statistics command.
-When the visible message starts with `/loopx-pr-review`, treat words such as
-`open`, `closed`, `merged`, `today`, or a time window as filters on the review
-queue, not as permission to skip review. Only downgrade to stats/list-only when
-the user explicitly says `只统计`, `只列出`, `stats only`, `list only`,
-`不要 review`, or `不用分析`.
-After the CLI packet selects the queue, the final answer must review the
-selected PRs one by one with these five headings: `动机`, `改动思路`,
-`具体改动`, `对主干的风险`, and `我的整体评价`. A queue table may be a short
-preface, but stopping after an open/merged table or summary is an invalid
-response unless the user explicitly asked for stats/list-only. Do not fill those
-five sections from metadata alone; first read the selected PR body/files/diff
-using the packet's `evidence_commands` or equivalent targeted `gh` commands.
+Repo-review slash commands are also not project bootstrap commands. If the
+visible request starts with `/loopx-pr-review`, stop this project-bootstrap
+workflow and load the narrower `loopx-pr-review` skill. That skill owns the
+required first command, packet-preservation rules, and five-block per-PR review
+contract. Do not handle `/loopx-pr-review` from this broader project skill, and
+do not route it to `loopx-pr-merge` unless the user later asks to approve,
+comment on, merge, self-merge, or admin-bypass a specific PR.
 
 When a user has just connected a project or receives a bootstrap command pack
 for the first time, briefly tell them the usable commands instead of assuming
@@ -144,8 +91,8 @@ they will inspect CLI help:
 - `/loopx-global-summary`: read the global progress digest.
 - `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`: inspect
   manager-level gates, work, and risks.
-- `/loopx-pr-review`: run `loopx pr-review`, then review its unmerged and
-  merged PR groups one by one.
+- `/loopx-pr-review`: use the `loopx-pr-review` skill to run `loopx pr-review`
+  and review unmerged/merged PR groups one by one.
 
 For command-line discovery, use:
 
