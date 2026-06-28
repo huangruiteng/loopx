@@ -13,6 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+import loopx.pr_review as pr_review_module
 from loopx.pr_review import _github_search_date
 
 FIXTURE = REPO_ROOT / "examples" / "fixtures" / "pr-review.public.json"
@@ -46,6 +47,41 @@ def assert_public_safe(payload: dict[str, object]) -> None:
 def main() -> int:
     assert _github_search_date("2026-06-28T00:00:00+08:00") == "2026-06-27"
     assert _github_search_date("2026-06-28T00:00:00Z") == "2026-06-28"
+    calls: list[list[str]] = []
+
+    def fake_run_gh_json(args: list[str], *, cwd: Path | None = None) -> object:
+        calls.append(args)
+        assert args[:2] == ["pr", "list"], calls
+        assert "--search" in args and "updated:>=2026-06-27" in args, args
+        return [
+            {
+                "number": 900,
+                "title": "Runtime review fixture",
+                "url": "https://github.com/owner/repo/pull/900",
+                "state": "OPEN",
+                "updatedAt": "2026-06-28T00:01:00Z",
+                "files": [{"path": "loopx/status.py", "additions": 4, "deletions": 1}],
+                "changedFiles": 1,
+                "additions": 4,
+                "deletions": 1,
+                "statusCheckRollup": [],
+            }
+        ]
+
+    original_run_gh_json = pr_review_module._run_gh_json
+    try:
+        pr_review_module._run_gh_json = fake_run_gh_json
+        fetched = pr_review_module.fetch_github_pull_requests(
+            repo="owner/repo",
+            limit=10,
+            state_filter="all",
+            since="2026-06-28T00:00:00+08:00",
+        )
+    finally:
+        pr_review_module._run_gh_json = original_run_gh_json
+    assert len(calls) == 1, calls
+    assert fetched[0]["number"] == 900, fetched
+    assert fetched[0]["files"][0]["path"] == "loopx/status.py", fetched
 
     payload = json.loads(
         run_cli("--format", "json", "pr-review", "--fixture", str(FIXTURE), "--limit", "5").stdout
@@ -71,11 +107,24 @@ def main() -> int:
     assert sequence[0]["number"] == 773, sequence
     assert sequence[-1]["number"] == 775, sequence
     assert any(item["number"] == 770 and item["state"] == "MERGED" for item in sequence), sequence
+    assert sequence[0]["main_risk_level"] == "low", sequence[0]
+    merged_sequence = next(item for item in sequence if item["number"] == 770)
+    assert merged_sequence["main_risk_level"] == "high", merged_sequence
     first = payload["pull_requests"][0]
     assert first["number"] == 773, first
     assert "newcomer command path" in first["motivation"], first
     assert first["checks"]["counts"]["success"] == 2, first["checks"]
     assert "public_docs" in first["areas"], first["areas"]
+    main_risk = first["main_regression_analysis"]
+    assert main_risk["schema_version"] == "main_regression_analysis_v0", main_risk
+    assert main_risk["risk_level"] == "low", main_risk
+    assert any("Runtime regression risk is low" in item for item in main_risk["potential_regressions"]), main_risk
+    merged = next(item for item in payload["pull_requests"] if item["number"] == 770)
+    merged_main_risk = merged["main_regression_analysis"]
+    assert merged_main_risk["risk_level"] == "high", merged_main_risk
+    assert merged_main_risk["post_merge_review"] is True, merged_main_risk
+    assert any("Control-plane routing" in item for item in merged_main_risk["potential_regressions"]), merged_main_risk
+    assert any("post-merge" in item for item in merged_main_risk["verification_focus"]), merged_main_risk
     assert payload["boundary"]["absolute_paths_recorded"] is False, payload["boundary"]
     assert_public_safe(payload)
 
@@ -119,6 +168,10 @@ def main() -> int:
     assert "current gh repository" not in markdown, markdown
     assert "state_filter: `all`" in markdown, markdown
     assert "merged=`" in markdown, markdown
+    assert "main_risk=`low`" in markdown, markdown
+    assert "main regression risk:" in markdown, markdown
+    assert "potential main regressions:" in markdown, markdown
+    assert "verification focus:" in markdown, markdown
     assert "## Review Sequence" in markdown, markdown
     assert "PR #773" in markdown, markdown
     assert "review prompts" in markdown, markdown

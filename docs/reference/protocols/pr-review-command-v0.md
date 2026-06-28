@@ -16,7 +16,7 @@ push, spend LoopX quota, or mark LoopX todos complete.
 
 | Command | CLI reference | Intent |
 | --- | --- | --- |
-| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository and build a guided review packet with motivation, change scope, checks, risks, and review prompts. |
+| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository and build a guided review packet with motivation, change scope, checks, main regression risk, and review prompts. |
 
 ## Source Reads
 
@@ -26,9 +26,11 @@ Implementations may read compact public PR surfaces:
   and review decision;
 - PR body summary;
 - changed-file list and diff scale;
-- commit headlines;
 - status-check rollup;
 - merge-state metadata.
+
+Commit headlines may be used as optional single-PR deep-review evidence, but
+the default window review should not require fetching them for every PR.
 
 They must not include raw logs, private connector payloads, credentials, local
 absolute paths, private source bodies, or hidden CI artifacts.
@@ -75,6 +77,7 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "url": "https://github.com/owner/repo/pull/773",
       "state": "OPEN",
       "review_depth": "docs_and_smoke_review",
+      "main_risk_level": "low",
       "why_now": "Open and awaiting reviewer decision."
     }
   ],
@@ -86,8 +89,24 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "areas": {"public_docs": 3},
       "checks": {"summary": "2 successful check(s)."},
       "risk_notes": [],
+      "main_regression_analysis": {
+        "schema_version": "main_regression_analysis_v0",
+        "risk_level": "low",
+        "risk_summary": "low main regression risk across public_docs; 3 file(s), +90/-4.",
+        "potential_regressions": [
+          "Runtime regression risk is low, but public guidance or smoke expectations can drift from shipped behavior."
+        ],
+        "bug_risks": [
+          "Docs-only or smoke-only changes can bless stale contracts if the example no longer matches the real CLI/runtime path."
+        ],
+        "verification_focus": [
+          "Run `git diff --check` and the touched smoke; compare docs examples with current CLI help when command syntax is involved."
+        ],
+        "post_merge_review": false
+      },
       "review_prompts": [
-        "What user or maintainer value does this PR unlock now?"
+        "What user or maintainer value does this PR unlock now?",
+        "What could regress on main, and which focused validation would catch it?"
       ]
     }
   ],
@@ -105,8 +124,10 @@ The packet should let a reviewer move through PRs in order:
 
 1. Read the motivation and decide whether the PR should exist.
 2. Compare the touched areas and key files with that scope.
-3. Inspect validation and risk notes before approval or merge handoff.
-4. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
+3. Inspect validation, risk notes, and `main_regression_analysis`.
+4. Decide which regression class matters most on main and which focused
+   validation would catch it.
+5. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
 
 ## Acceptance Checks
 
@@ -121,7 +142,7 @@ A first implementation is acceptable when:
 - `--since` can bound an overnight or release-window review without relying on
   private chat memory;
 - the response includes review sequence, motivation, changed-file scope,
-  status checks, risk notes, and review prompts;
+  status checks, risk notes, main regression analysis, and review prompts;
 - live GitHub reads and fixture-based smokes share the same schema;
 - no raw logs, private payloads, credentials, local paths, or private source
   bodies are recorded.

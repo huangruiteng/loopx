@@ -24,7 +24,6 @@ SOURCE_SURFACES = [
     "GitHub pull request metadata",
     "GitHub pull request body summary",
     "GitHub pull request changed-file list",
-    "GitHub pull request commit headlines",
     "GitHub pull request status check rollup",
 ]
 
@@ -181,6 +180,13 @@ def fetch_github_pull_requests(
         "updatedAt",
         "closedAt",
         "mergedAt",
+        "mergeCommit",
+        "body",
+        "files",
+        "changedFiles",
+        "additions",
+        "deletions",
+        "statusCheckRollup",
     ]
     fetch_limit = max(1, limit)
     if since:
@@ -203,56 +209,10 @@ def fetch_github_pull_requests(
     if not isinstance(rows, list):
         return []
 
-    view_fields = [
-        "number",
-        "title",
-        "url",
-        "state",
-        "isDraft",
-        "reviewDecision",
-        "mergeStateStatus",
-        "mergeable",
-        "headRefName",
-        "baseRefName",
-        "author",
-        "updatedAt",
-        "closedAt",
-        "mergedAt",
-        "mergeCommit",
-        "body",
-        "files",
-        "commits",
-        "changedFiles",
-        "additions",
-        "deletions",
-        "statusCheckRollup",
-    ]
     detailed: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
-        number = row.get("number")
-        if not number:
-            continue
-        try:
-            view = _run_gh_json(
-                [
-                    "pr",
-                    "view",
-                    str(number),
-                    "--json",
-                    ",".join(view_fields),
-                    *repo_args,
-                ],
-                cwd=cwd,
-            )
-            if isinstance(view, dict):
-                merged = {**row, **view}
-                if _include_pr_in_window(merged, since=since):
-                    detailed.append(merged)
-                continue
-        except Exception:
-            pass
         if _include_pr_in_window(row, since=since):
             detailed.append(row)
     return detailed
@@ -458,6 +418,110 @@ def _risk_notes(pr: dict[str, Any], files: list[dict[str, Any]]) -> list[str]:
     return notes
 
 
+def _file_paths(files: list[dict[str, Any]]) -> list[str]:
+    return [str(item.get("path") or "") for item in files if item.get("path")]
+
+
+def _matches_any(path: str, prefixes: tuple[str, ...]) -> bool:
+    return any(path.startswith(prefix) for prefix in prefixes)
+
+
+def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]]) -> dict[str, Any]:
+    paths = _file_paths(files)
+    areas = _area_counts(files)
+    checks = _checks(pr)
+    state = str(pr.get("state") or "").upper()
+    changed = int(pr.get("changedFiles") or len(files) or 0)
+    additions = int(pr.get("additions") or 0)
+    deletions = int(pr.get("deletions") or 0)
+
+    potential_regressions: list[str] = []
+    bug_risks: list[str] = []
+    verification_focus: list[str] = []
+
+    if any(path.startswith(("loopx/quota.py", "loopx/status.py", "loopx/todos.py", "loopx/todo_contract.py")) for path in paths):
+        potential_regressions.append(
+            "Control-plane routing can regress: user gates, agent lane selection, monitor due projection, or quota spend/no-spend decisions may change on main."
+        )
+        bug_risks.append("A small projection mismatch can strand automation behind a wrong gate or hide runnable work.")
+        verification_focus.append("Run focused quota/status/todo smokes and inspect one live quota/status packet after merge.")
+    if any(path.startswith("loopx/cli_commands/") or path == "loopx/cli.py" for path in paths):
+        potential_regressions.append(
+            "CLI compatibility can regress: flags, JSON schema, markdown output, or shell-facing command examples may change for existing users."
+        )
+        bug_risks.append("Existing automation may parse older fields or rely on previous default command behavior.")
+        verification_focus.append("Run the affected CLI smoke plus one live command against public-safe GitHub metadata or fixture data.")
+    if any(path.startswith("loopx/benchmark_adapters/") or "skillsbench" in path.lower() or "terminal_bench" in path.lower() for path in paths):
+        potential_regressions.append(
+            "Benchmark launch or attribution behavior can regress: readiness blockers, attempt accounting, runner boundaries, or public/private evidence filtering may shift."
+        )
+        bug_risks.append("A benchmark helper change can misclassify a blocked launch as an attempted run, or expose raw benchmark evidence if boundaries slip.")
+        verification_focus.append("Run the adapter's focused public smoke; avoid raw task text, trajectories, verifier output, and private logs.")
+    if any(_matches_any(path, UI_PREFIXES) for path in paths):
+        potential_regressions.append(
+            "Frontstage/dashboard rendering can regress: routes, first viewport, responsive layout, hover affordances, or public-safe projection display may change."
+        )
+        bug_risks.append("A visual or routing change may look correct in fixture data but fail in the browser or hide important review context.")
+        verification_focus.append("Run browser/frontstage smoke or capture the affected route when the first screen or interaction changes.")
+    if any(path.startswith(".github/workflows/") or path.endswith(("pyproject.toml", "package.json", "uv.lock")) for path in paths):
+        potential_regressions.append(
+            "Build, install, or CI behavior can regress: dependency resolution, workflow triggers, or required checks may change for main."
+        )
+        bug_risks.append("A config-only diff can block future PR validation even when runtime code is unchanged.")
+        verification_focus.append("Check workflow syntax or the smallest install/build command that exercises the changed config.")
+    if areas and set(areas) <= {"public_docs", "test_or_example"}:
+        potential_regressions.append(
+            "Runtime regression risk is low, but public guidance or smoke expectations can drift from shipped behavior."
+        )
+        bug_risks.append("Docs-only or smoke-only changes can bless stale contracts if the example no longer matches the real CLI/runtime path.")
+        verification_focus.append("Run `git diff --check` and the touched smoke; compare docs examples with current CLI help when command syntax is involved.")
+    if not potential_regressions:
+        potential_regressions.append("Main impact is localized to the touched files; verify the stated scope matches the diff before merge.")
+        bug_risks.append("Unknown-area changes may still affect consumers if they alter shared data, examples, or public contracts.")
+        verification_focus.append("Review changed files directly and run the narrowest smoke that exercises the touched surface.")
+
+    if checks.get("failures"):
+        bug_risks.append("Failing checks are present; merging would carry known red validation into main.")
+    elif checks.get("pending"):
+        bug_risks.append("Pending checks leave main-risk unresolved until they complete.")
+    elif not checks.get("total"):
+        bug_risks.append("No status-check rollup was available; rely on explicit local validation evidence before merge.")
+
+    if changed >= 12 or additions + deletions >= 800:
+        bug_risks.append("Large diff size increases reviewer miss risk; split by area or require stronger smoke coverage.")
+        verification_focus.append("Review by area buckets and confirm each high-risk area has direct validation.")
+
+    if state == "MERGED":
+        verification_focus.append("Because this is already merged, prioritize post-merge canary, regression symptoms, and follow-up todos over merge readiness.")
+    else:
+        verification_focus.append("Before merge, confirm branch policy, conflict state, public/private boundary, and required checks.")
+
+    high_area = (
+        any(path.startswith(("loopx/quota.py", "loopx/status.py", "loopx/todos.py", "loopx/todo_contract.py")) for path in paths)
+        or any(path.startswith("loopx/benchmark_adapters/") for path in paths)
+        or bool(checks.get("failures"))
+    )
+    if high_area or changed >= 12 or additions + deletions >= 800:
+        risk_level = "high"
+    elif any(str(item.get("area")) in {"product_runtime", "app_or_ui_surface", "ci_or_release", "build_or_config"} for item in files):
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+
+    return {
+        "schema_version": "main_regression_analysis_v0",
+        "risk_level": risk_level,
+        "risk_summary": _redact_text(
+            f"{risk_level} main regression risk across {', '.join(sorted(areas)) or 'unknown'}; "
+            f"{changed} file(s), +{additions}/-{deletions}."
+        ),
+        "potential_regressions": potential_regressions[:5],
+        "bug_risks": bug_risks[:6],
+        "verification_focus": verification_focus[:6],
+        "post_merge_review": state == "MERGED",
+    }
+
+
 def _review_depth(files: list[dict[str, Any]]) -> str:
     areas = {str(item.get("area") or "") for item in files}
     if "product_runtime" in areas:
@@ -538,10 +602,12 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
         "checks": checks,
         "review_depth": _review_depth(files),
         "risk_notes": _risk_notes(pr, files),
+        "main_regression_analysis": _main_regression_analysis(pr, files),
         "review_prompts": [
             "What user or maintainer value does this PR unlock now?",
             "Do the touched files match that stated scope?",
             "Are validation evidence and risk boundaries strong enough for merge?",
+            "What could regress on main, and which focused validation would catch it?",
         ],
         "evidence_commands": [
             f"gh pr view {number} --json title,body,files,commits,statusCheckRollup",
@@ -580,6 +646,7 @@ def build_pr_review_packet(
             "url": item.get("url"),
             "state": item.get("state"),
             "review_depth": item.get("review_depth"),
+            "main_risk_level": _as_dict(item.get("main_regression_analysis")).get("risk_level"),
             "why_now": _review_why_now(item),
         }
         for index, item in enumerate(normalized, start=1)
@@ -621,7 +688,14 @@ def build_pr_review_packet(
                 "state_filter": normalized_state_filter,
             },
             "source": source,
-            "include": ["motivation", "change_scope", "checks", "risk_notes", "review_sequence"],
+            "include": [
+                "motivation",
+                "change_scope",
+                "checks",
+                "risk_notes",
+                "main_regression_analysis",
+                "review_sequence",
+            ],
             "privacy_mode": "public_safe_github_metadata",
             "dry_run": True,
         },
@@ -708,7 +782,7 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         lines.append(
             f"{item.get('rank')}. [#{item.get('number')} {item.get('title')}]({item.get('url')}) "
             f"[{item.get('state')}] - "
-            f"{item.get('review_depth')}: {item.get('why_now')}"
+            f"{item.get('review_depth')} / main_risk=`{item.get('main_risk_level')}`: {item.get('why_now')}"
         )
 
     for pr in [item for item in _as_list(payload.get("pull_requests")) if isinstance(item, dict)]:
@@ -738,6 +812,26 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
                 lines.append(f"  - `{item.get('path')}` ({item.get('area')})")
         risks = [item for item in _as_list(pr.get("risk_notes")) if item]
         lines.append("- risk notes: " + ("; ".join(str(item) for item in risks) if risks else "none"))
+        main_risk = _as_dict(pr.get("main_regression_analysis"))
+        if main_risk:
+            lines.append(
+                f"- main regression risk: `{main_risk.get('risk_level')}` - {main_risk.get('risk_summary')}"
+            )
+            regressions = [item for item in _as_list(main_risk.get("potential_regressions")) if item]
+            if regressions:
+                lines.append("- potential main regressions:")
+                for item in regressions[:4]:
+                    lines.append(f"  - {item}")
+            bug_risks = [item for item in _as_list(main_risk.get("bug_risks")) if item]
+            if bug_risks:
+                lines.append("- bug risks:")
+                for item in bug_risks[:4]:
+                    lines.append(f"  - {item}")
+            verification = [item for item in _as_list(main_risk.get("verification_focus")) if item]
+            if verification:
+                lines.append("- verification focus:")
+                for item in verification[:4]:
+                    lines.append(f"  - {item}")
         prompts = [item for item in _as_list(pr.get("review_prompts")) if item]
         if prompts:
             lines.append("- review prompts: " + " / ".join(str(item) for item in prompts))
