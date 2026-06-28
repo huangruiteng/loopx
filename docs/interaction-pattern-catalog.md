@@ -63,6 +63,48 @@ Boundary, Evidence Lifecycle, Human Decision, and Planning Governance patterns,
 but it should not become a standalone IP unless the canary behavior itself is a
 runtime/state interaction that future controllers must route.
 
+### Pattern-To-Canary Design Matrix
+
+Catalog patterns are the vocabulary for designing many canary profiles, not one
+fixed canary. Start from the changed surface, identify the pattern families it
+can regress, then choose the smallest profile that exercises those patterns with
+public-safe fixtures. A good canary explains why each check is present and what
+kind of failure it diagnoses.
+
+Use these archetypes as the reusable selection layer:
+
+| Canary Archetype | Primary Question | Typical Trigger Surface | Fixture Depth | Cost Tier | Failure Usually Means |
+| --- | --- | --- | --- | --- | --- |
+| Hot-path route canary | Will the next agent turn route, fallback, monitor, or recover correctly? | `quota should-run`, status, review packet, heartbeat prompt, scheduler hint | synthetic active state plus compact run-history fixtures | cheap | a controller may spend, stop, notify, or select a todo incorrectly |
+| Scoped decision canary | Are user gates, reward, approvals, and deferred resumes concrete and scoped? | user todo projection, operator gate, reward, decision-scope schema | fixture state plus dry-run decision append/preview | cheap to medium | the user may see a vague ask, or an agent may treat a scoped gate as global |
+| Projection and boundary canary | Does compact state match todos, claims, authority, scopes, leases, and public/private boundaries? | active-state parser, todo lifecycle, task graph, connector policy, `loopx check` | fixture state plus boundary scan; no private source bodies | cheap to medium | dashboard/status may explain the wrong blocker or grant the wrong write/read scope |
+| Evidence lifecycle canary | Can external evidence become countable without raw logs, task text, trajectories, or verifier tails? | benchmark adapter, CI handle, public PR metadata, compact evidence reducer | compact synthetic or public-handle fixture; no real benchmark launch by default | medium | evidence may be invisible, over-counted, or leak private/raw material |
+| Planning governance canary | Does replan, repair, cadence, and plan-to-todo writeback change the machine-visible frontier? | autonomous replan, repair delta, dreaming, cadence hints, slash-command planning | synthetic stalled history plus todo/writeback fixtures | cheap | the system may loop on advisory prose without changing executable state |
+| Product/readiness canary | Can a promoted product surface explain and render the relevant projections? | dashboard/frontstage/release/readiness surface | route or render fixture; browser only when visual behavior is promoted | medium to deep | the operator UI may look healthy while hiding broken route, gate, or evidence semantics |
+
+Map P0/P1 catalog rows to canary archetypes before picking commands:
+
+| Family | P0/P1 Pattern Coverage | Default Canary Archetypes | Trigger Surfaces | Minimum Useful Fixture | Failure Meaning |
+| --- | --- | --- | --- | --- | --- |
+| Work Routing | IP-001, IP-002, IP-003, IP-007, IP-008, IP-021, IP-029 | Hot-path route canary; Planning governance canary when cadence or repair is involved | `quota should-run`, `interaction_contract`, `work_lane_contract`, scheduler hint, handoff todo state | one eligible delivery fixture, one blocked/fallback fixture, one quiet or monitor fixture | agent turn routing is unsafe: it may spend, wait, notify, or choose fallback incorrectly |
+| Human Decision | IP-004, IP-014, IP-017, IP-027 | Scoped decision canary; Product/readiness canary when first-screen human copy changes | user todos, decision scope, operator-gate/reward preview, deferred resume candidates | one concrete user ask, one scoped non-blocking gate, one preview-or-append dry run | humans may be asked the wrong question, or an agent may continue without the needed decision |
+| State And Boundary | IP-005, IP-006, IP-011, IP-016, IP-019, IP-020, IP-022, IP-023, IP-025, IP-026, IP-028 | Projection and boundary canary; Hot-path route canary when the projection feeds quota/status | active state, todo metadata, task graph, authority source, claim lease, connector runtime policy, public/private scan | fixture state plus structured projection check; boundary scan for touched public files | compact state and executable truth diverge, so dashboards and agents may trust stale or unsafe authority |
+| Evidence Lifecycle | IP-012, IP-015 | Evidence lifecycle canary; Product/readiness canary when evidence is rendered | external handle observation, benchmark lifecycle reducer, compact result projection | compact public-safe evidence fixture with raw-material exclusion assertions | progress evidence may be missing, double-counted, or represented with unsafe raw material |
+| Planning Governance | IP-010, IP-013, IP-018, IP-024 | Planning governance canary; Hot-path route canary when cadence changes affect execution | stalled run history, autonomous replan obligation, repair delta, cadence hint, plan-to-todo writeback | two-turn stalled fixture plus repair/writeback delta assertion | the agent may keep planning in prose while the machine-visible frontier stays unchanged |
+
+P2 patterns may still have canaries, but they should be selected by an explicit
+domain profile instead of being pulled into every default profile. If a P2
+pattern becomes hot-path for a shipped surface, promote the behavior or add a
+small profile-specific canary with an explicit owner and non-applicability note
+for other profiles.
+
+When a PR touches several families, compose the smallest set of archetypes that
+covers the touched surfaces. Do not build a giant "everything canary" by
+default. Prefer a cheap route/projection profile for ordinary runtime changes,
+add evidence lifecycle checks for benchmark or external-handle changes, and add
+browser or deep integration only when a visual or end-to-end surface is being
+promoted.
+
 ## Decision Scope Model
 
 User gates are not global booleans. The first-class model is a scoped decision:
