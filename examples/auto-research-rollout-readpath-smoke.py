@@ -175,6 +175,31 @@ def board_projection(registry: Path) -> dict[str, Any]:
     )
 
 
+def acceptance_projection(registry: Path) -> dict[str, Any]:
+    return run_json(
+        [
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry),
+            "--format",
+            "json",
+            "auto-research",
+            "acceptance",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-side-bypass",
+            "--agent",
+            "codex-side-bypass:hypothesis-runner",
+            "--agent",
+            "codex-product-capability:evidence-promoter",
+            "--agent",
+            "codex-main-control:control-plane-guard",
+        ]
+    )
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -387,6 +412,21 @@ def main() -> None:
         assert board_payload["decision_candidates"]["promotion_candidates"], board_payload
         assert len(board_payload["user_gates"]) >= 4, board_payload
         assert_public_safe(board_payload)
+
+        acceptance_payload = acceptance_projection(registry)
+        assert acceptance_payload["ok"], acceptance_payload
+        assert acceptance_payload["schema_version"] == "auto_research_demo_acceptance_packet_v0", acceptance_payload
+        assert acceptance_payload["board_output"]["source_kind"] == "loopx_rollout_event_log", acceptance_payload
+        assert acceptance_payload["board_output"]["rollout_backed"] is True, acceptance_payload
+        assert acceptance_payload["supervisor_rehearsal"]["mode"] == "dry_run", acceptance_payload
+        assert acceptance_payload["readiness_summary"]["operator_can_review_now"] is True, acceptance_payload
+        assert acceptance_payload["readiness_summary"]["ready_for_real_launch"] is True, acceptance_payload
+        assert acceptance_payload["readiness_summary"]["ready_for_public_first_screen"] is False, acceptance_payload
+        assert acceptance_payload["public_boundary"]["starts_tmux"] is False, acceptance_payload
+        assert acceptance_payload["public_boundary"]["runs_codex"] is False, acceptance_payload
+        assert acceptance_payload["public_boundary"]["writes_loopx_state"] is False, acceptance_payload
+        assert acceptance_payload["public_boundary"]["spends_loopx_quota"] is False, acceptance_payload
+        assert_public_safe(acceptance_payload)
 
     print("auto-research-rollout-readpath-smoke ok")
 
