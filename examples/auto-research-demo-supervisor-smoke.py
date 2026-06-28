@@ -75,6 +75,27 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "auto-research frontier" in start_script, start_script
     assert payload["commands"]["attach"] == "tmux attach -t loopx-auto-research", payload
 
+    one_click = payload["one_click_demo"]
+    assert one_click["schema_version"] == "auto_research_one_click_demo_v0", payload
+    assert one_click["mode"] == "copy_paste_dry_run_rehearsal", payload
+    assert one_click["default_safe"] is True, payload
+    rehearsal = "\n".join(one_click["script"])
+    assert "dry-run rehearsal only" in rehearsal, rehearsal
+    assert "does not start tmux" in rehearsal, rehearsal
+    assert "LOOPX_PROJECT" in rehearsal, rehearsal
+    assert "start script - inspect before pasting" in rehearsal, rehearsal
+    assert "tmux new-session" in rehearsal, rehearsal
+    assert "tmux attach -t loopx-auto-research" in rehearsal, rehearsal
+    assert "tmux kill-session -t loopx-auto-research" in rehearsal, rehearsal
+    assert "start tmux" in one_click["does_not"], one_click
+    assert "launch Codex" in one_click["does_not"], one_click
+
+    takeover = payload["user_takeover"]
+    assert takeover["schema_version"] == "auto_research_user_takeover_v0", payload
+    assert any("rehearsal script first" in item for item in takeover["operator_controls"]), takeover
+    assert any("attach to tmux" in item for item in takeover["operator_controls"]), takeover
+    assert any("quota guard" in item for item in takeover["visible_status_cues"]), takeover
+
     boundary = payload["boundary"]
     assert boundary["dry_run_plan_only"] is True, payload
     assert boundary["starts_tmux"] is False, payload
@@ -145,6 +166,10 @@ def main() -> int:
     ).stdout
     assert "# LoopX Auto Research Demo Supervisor" in markdown, markdown
     assert "leader_agent_required: `False`" in markdown, markdown
+    assert "## One-Click Dry Run" in markdown, markdown
+    assert "copy_paste_dry_run_rehearsal" in markdown, markdown
+    assert "## User Takeover" in markdown, markdown
+    assert "## Visible Status Cues" in markdown, markdown
     assert "tmux attach -t loopx-auto-research" in markdown, markdown
 
     print("auto-research-demo-supervisor-smoke ok")

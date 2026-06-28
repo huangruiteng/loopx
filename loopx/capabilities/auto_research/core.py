@@ -620,6 +620,28 @@ def _env_bootstrap_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
     )
 
 
+def _demo_rehearsal_script(*, session: str, start_script: list[str], attach_command: str, stop_command: str) -> list[str]:
+    """Return a copy-paste dry-run script that prints the real launch plan only."""
+
+    quoted_start_lines = " ".join(_shell_arg(line) for line in start_script)
+    return [
+        "set -euo pipefail",
+        "echo 'LoopX auto-research demo supervisor: dry-run rehearsal only'",
+        "echo 'This script does not start tmux, launch Codex, mutate LoopX state, or spend quota.'",
+        ": ${LOOPX_PROJECT:?set LOOPX_PROJECT to the repo root before rehearsal}",
+        ": ${LOOPX_REGISTRY:?set LOOPX_REGISTRY to the LoopX registry path before rehearsal}",
+        ": ${LOOPX_RUNTIME_ROOT:?set LOOPX_RUNTIME_ROOT to the LoopX runtime root before rehearsal}",
+        "printf '\\n[visible session]\\n'",
+        f"printf '%s\\n' {_shell_arg(session)}",
+        "printf '\\n[start script - inspect before pasting]\\n'",
+        f"printf '%s\\n' {quoted_start_lines}",
+        "printf '\\n[attach after start]\\n'",
+        f"printf '%s\\n' {_shell_arg(attach_command)}",
+        "printf '\\n[stop / user takeover abort]\\n'",
+        f"printf '%s\\n' {_shell_arg(stop_command)}",
+    ]
+
+
 def build_auto_research_demo_supervisor_plan(
     *,
     goal_id: str = AUTO_RESEARCH_DEFAULT_GOAL_ID,
@@ -697,6 +719,13 @@ def build_auto_research_demo_supervisor_plan(
             ]
         )
     attach_command = f"{_shell_arg(tmux)} attach -t {_shell_arg(session)}"
+    stop_command = f"{_shell_arg(tmux)} kill-session -t {_shell_arg(session)}"
+    rehearsal_script = _demo_rehearsal_script(
+        session=session,
+        start_script=start_script,
+        attach_command=attach_command,
+        stop_command=stop_command,
+    )
 
     return {
         "ok": True,
@@ -719,7 +748,47 @@ def build_auto_research_demo_supervisor_plan(
         "commands": {
             "start_script": start_script,
             "attach": attach_command,
-            "stop": f"{_shell_arg(tmux)} kill-session -t {_shell_arg(session)}",
+            "stop": stop_command,
+            "one_click_dry_run_rehearsal": rehearsal_script,
+        },
+        "one_click_demo": {
+            "schema_version": "auto_research_one_click_demo_v0",
+            "mode": "copy_paste_dry_run_rehearsal",
+            "default_safe": True,
+            "description": (
+                "Copy the rehearsal script into the user shell to verify environment variables "
+                "and print the visible tmux/Codex plan without launching sessions."
+            ),
+            "script": rehearsal_script,
+            "expected_visible_result": [
+                "prints the tmux session name",
+                "prints every command that would be pasted into a visible pane",
+                "prints attach and stop commands for user takeover",
+            ],
+            "does_not": [
+                "start tmux",
+                "launch Codex",
+                "read session files",
+                "write LoopX state",
+                "spend quota",
+            ],
+        },
+        "user_takeover": {
+            "schema_version": "auto_research_user_takeover_v0",
+            "operator_controls": [
+                "run the rehearsal script first and inspect the printed start script",
+                "paste start_script manually only after deciding to launch the visible demo",
+                "attach to tmux before accepting any Codex prompt",
+                "use the stop command to kill the whole demo session",
+                "interrupt an individual pane with the normal terminal interrupt before any write path",
+            ],
+            "visible_status_cues": [
+                "frontier window shows the shared research frontier",
+                "each lane window prints its own quota guard before Codex starts",
+                "each lane window prints its own auto-research frontier before Codex starts",
+                "bootstrap message is visible in the same pane that would run Codex",
+            ],
+            "handoff_boundary": "the shell supervisor owns layout only; LoopX quota, todo claims, frontier, and evidence graph remain source of truth",
         },
         "future_gates": [
             {
@@ -1997,6 +2066,8 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
     if payload.get("schema_version") == AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION:
         lanes = payload.get("lanes") or []
         commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+        one_click = payload.get("one_click_demo") if isinstance(payload.get("one_click_demo"), dict) else {}
+        takeover = payload.get("user_takeover") if isinstance(payload.get("user_takeover"), dict) else {}
         coordination = (
             payload.get("coordination_model")
             if isinstance(payload.get("coordination_model"), dict)
@@ -2020,6 +2091,25 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             lines.append(
                 f"- `{item.get('lane_id')}` / `{item.get('agent_id')}`: {item.get('responsibility')}"
             )
+        lines.extend(["", "## One-Click Dry Run", ""])
+        lines.append(f"- mode: `{one_click.get('mode')}`")
+        lines.append(f"- default_safe: `{one_click.get('default_safe')}`")
+        lines.append(f"- description: {one_click.get('description')}")
+        lines.append("")
+        lines.append("```bash")
+        for line in one_click.get("script") or []:
+            lines.append(str(line))
+        lines.append("```")
+        controls = takeover.get("operator_controls") or []
+        if controls:
+            lines.extend(["", "## User Takeover", ""])
+            for item in controls:
+                lines.append(f"- {item}")
+        cues = takeover.get("visible_status_cues") or []
+        if cues:
+            lines.extend(["", "## Visible Status Cues", ""])
+            for item in cues:
+                lines.append(f"- {item}")
         lines.extend(["", "## Shell Plan", ""])
         for line in commands.get("start_script") or []:
             lines.append(f"- `{line}`")
