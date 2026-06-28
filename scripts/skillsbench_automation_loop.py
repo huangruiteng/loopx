@@ -303,6 +303,7 @@ PROTECTED_DIRECTIVE_RE = re.compile(
     r"(?:modify|edit|change|write|touch|修改|编辑|改动|写)"
 )
 DECLARED_DONE_MARKER = "AGENT_DECLARED_DONE_NO_REMAINING_GOALS"
+PRODUCT_MODE_FINAL_CLOSEOUT_MAX_CHECKPOINTS = 3
 CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD = (
     "set -e; "
     "export DEBIAN_FRONTEND=noninteractive; "
@@ -1088,6 +1089,7 @@ def _host_local_acp_codex_exec_preflight_should_run(
     return bool(
         getattr(args, "host_local_acp_launch", False)
         and _is_goal_start_product_mode_route(str(getattr(args, "route", "") or ""))
+        and str(getattr(args, "remote_command_file_bridge_solver_command", "") or "")
     )
 
 
@@ -1131,6 +1133,15 @@ def _summarize_host_local_acp_preflight_bridge_trace(
         "request_count": 0,
         "preflight_operation_count": 0,
         "task_facing_operation_count": 0,
+        "success_count": 0,
+        "failure_count": 0,
+        "preflight_success_count": 0,
+        "preflight_failure_count": 0,
+        "task_facing_success_count": 0,
+        "task_facing_failure_count": 0,
+        "operation_counts": {},
+        "returncode_counts": {},
+        "failure_category_counts": {},
         "raw_material_recorded": False,
     }
     if trace_dir is None or not trace_dir.exists():
@@ -1170,18 +1181,63 @@ def _summarize_host_local_acp_preflight_bridge_trace(
         for source_key, target_key in (
             ("request_count", "request_count"),
             ("task_facing_operation_count", "task_facing_operation_count"),
+            ("success_count", "success_count"),
+            ("failure_count", "failure_count"),
+            ("preflight_success_count", "preflight_success_count"),
+            ("preflight_failure_count", "preflight_failure_count"),
+            ("task_facing_success_count", "task_facing_success_count"),
+            ("task_facing_failure_count", "task_facing_failure_count"),
         ):
             value = operations.get(source_key)
             if isinstance(value, int) and not isinstance(value, bool):
                 summary[target_key] = int(summary[target_key]) + max(0, value)
-        operation_counts = operations.get("operation_counts")
+        for source_key, target_key in (
+            ("operation_counts", "operation_counts"),
+            ("returncode_counts", "returncode_counts"),
+            ("failure_category_counts", "failure_category_counts"),
+        ):
+            source_counts = operations.get(source_key)
+            target_counts = summary.get(target_key)
+            if not isinstance(source_counts, dict) or not isinstance(
+                target_counts, dict
+            ):
+                continue
+            for key, value in source_counts.items():
+                if not isinstance(key, str) or not key:
+                    continue
+                if not isinstance(value, int) or isinstance(value, bool):
+                    continue
+                safe_key = key[:80]
+                target_counts[safe_key] = int(target_counts.get(safe_key, 0)) + max(
+                    0, value
+                )
+        operation_counts = summary.get("operation_counts")
         if isinstance(operation_counts, dict):
             value = operation_counts.get("preflight")
             if isinstance(value, int) and not isinstance(value, bool):
-                summary["preflight_operation_count"] = int(
-                    summary["preflight_operation_count"]
-                ) + max(0, value)
+                summary["preflight_operation_count"] = max(0, value)
     return summary
+
+
+def _host_local_acp_codex_exec_preflight_bridge_success_observed(
+    bridge_summary: dict[str, Any],
+) -> bool:
+    action_count = int(bridge_summary.get("preflight_operation_count") or 0) + int(
+        bridge_summary.get("task_facing_operation_count") or 0
+    )
+    successful_action_count = int(
+        bridge_summary.get("preflight_success_count") or 0
+    ) + int(bridge_summary.get("task_facing_success_count") or 0)
+    return action_count > 0 and successful_action_count > 0
+
+
+def _first_bridge_failure_category(bridge_summary: dict[str, Any]) -> str:
+    counts = bridge_summary.get("failure_category_counts")
+    if isinstance(counts, dict):
+        for key, value in sorted(counts.items()):
+            if isinstance(key, str) and key and isinstance(value, int) and value > 0:
+                return key[:120]
+    return "codex_remote_bridge_operation_failed"
 
 
 def _run_host_local_acp_codex_exec_preflight(
@@ -1256,6 +1312,30 @@ def _run_host_local_acp_codex_exec_preflight(
         prerequisites[
             "host_local_acp_codex_exec_preflight_bridge_preflight_operation_count"
         ] = bridge_summary["preflight_operation_count"]
+        prerequisites["host_local_acp_codex_exec_preflight_bridge_success_count"] = (
+            bridge_summary["success_count"]
+        )
+        prerequisites["host_local_acp_codex_exec_preflight_bridge_failure_count"] = (
+            bridge_summary["failure_count"]
+        )
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_preflight_success_count"
+        ] = bridge_summary["preflight_success_count"]
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_preflight_failure_count"
+        ] = bridge_summary["preflight_failure_count"]
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_task_facing_success_count"
+        ] = bridge_summary["task_facing_success_count"]
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count"
+        ] = bridge_summary["task_facing_failure_count"]
+        prerequisites["host_local_acp_codex_exec_preflight_bridge_returncode_counts"] = (
+            bridge_summary["returncode_counts"]
+        )
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_failure_category_counts"
+        ] = bridge_summary["failure_category_counts"]
         prerequisites[
             "host_local_acp_codex_exec_preflight_bridge_raw_material_recorded"
         ] = bridge_summary["raw_material_recorded"]
@@ -1266,7 +1346,15 @@ def _run_host_local_acp_codex_exec_preflight(
         prerequisites["host_local_acp_codex_exec_preflight_bridge_action_observed"] = (
             bridge_action_observed
         )
-        if ready and (not bridge_action_required or bridge_action_observed):
+        bridge_action_success_observed = (
+            _host_local_acp_codex_exec_preflight_bridge_success_observed(
+                bridge_summary
+            )
+        )
+        prerequisites[
+            "host_local_acp_codex_exec_preflight_bridge_action_success_observed"
+        ] = bridge_action_success_observed
+        if ready and (not bridge_action_required or bridge_action_success_observed):
             prerequisites["host_local_acp_codex_exec_preflight_status"] = "passed"
             for key in (
                 "host_local_acp_codex_exec_failure_category",
@@ -1283,6 +1371,13 @@ def _run_host_local_acp_codex_exec_preflight(
             )
             prerequisites["host_local_acp_codex_exec_failure_category"] = (
                 "codex_exec_no_bridge_action"
+            )
+        elif ready and bridge_action_required and not bridge_action_success_observed:
+            prerequisites["host_local_acp_codex_exec_preflight_first_blocker"] = (
+                "skillsbench_host_local_acp_codex_exec_preflight_bridge_action_failed"
+            )
+            prerequisites["host_local_acp_codex_exec_failure_category"] = (
+                _first_bridge_failure_category(bridge_summary)
             )
         if preflight_trace_dir:
             trace: dict[str, Any] = {
@@ -1476,6 +1571,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_stage",
         "benchflow_user_loop_soft_verify_exception_type",
         "benchflow_user_loop_soft_verify_exception_stage",
+        "benchflow_user_loop_no_tool_exception_type",
+        "benchflow_user_loop_no_tool_exception_stage",
         "benchflow_intermediate_soft_verify_policy",
         "benchflow_intermediate_soft_verify_timeout_stage",
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
@@ -1483,6 +1580,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
+        "remote_command_file_bridge_agent_transport_mode",
         "host_local_acp_sandbox_bridge_mode",
         "host_local_acp_session_adapter_status",
         "host_local_acp_pwd_probe_status",
@@ -1515,6 +1613,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_response_marker_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_required",
         "host_local_acp_codex_exec_preflight_bridge_action_observed",
+        "host_local_acp_codex_exec_preflight_bridge_action_success_observed",
         "host_local_acp_codex_exec_preflight_bridge_trace_present",
         "host_local_acp_codex_exec_preflight_bridge_raw_material_recorded",
         "container_codex_acp_install_skipped",
@@ -1524,6 +1623,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_command_configured",
         "remote_command_file_bridge_agent_command_configured",
         "remote_command_file_bridge_agent_command_instrumented",
+        "remote_command_file_bridge_agent_queue_configured",
+        "remote_command_file_bridge_agent_queue_path_recorded",
         "remote_command_file_bridge_probe_command_configured",
         "remote_command_file_bridge_solver_wiring_configured",
         "remote_command_file_bridge_consumed_by_solver",
@@ -1565,6 +1666,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_recovery_preserved_final_verify",
         "benchflow_user_loop_soft_verify_exception_continued",
         "benchflow_user_loop_soft_verify_exception_raw_error_recorded",
+        "benchflow_user_loop_no_tool_exception_continued",
+        "benchflow_user_loop_no_tool_exception_raw_error_recorded",
         "benchflow_intermediate_soft_verify_final_only",
         "benchflow_intermediate_soft_verify_raw_output_recorded",
         "benchflow_intermediate_soft_verify_timeout_enabled",
@@ -1615,6 +1718,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_user_loop_soft_verify_exception_round",
         "benchflow_user_loop_soft_verify_exception_delta_events",
         "benchflow_user_loop_soft_verify_exception_delta_tool_calls",
+        "benchflow_user_loop_no_tool_exception_count",
+        "benchflow_user_loop_no_tool_exception_round",
+        "benchflow_user_loop_no_tool_exception_delta_events",
+        "benchflow_user_loop_no_tool_exception_delta_tool_calls",
         "benchflow_intermediate_soft_verify_call_count",
         "benchflow_intermediate_soft_verify_skipped_count",
         "benchflow_intermediate_soft_verify_timeout_sec",
@@ -1646,10 +1753,14 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_solver_operation_count",
         "remote_command_file_bridge_agent_operation_trace_count",
         "remote_command_file_bridge_agent_request_count",
+        "remote_command_file_bridge_agent_success_count",
+        "remote_command_file_bridge_agent_failure_count",
         "remote_command_file_bridge_agent_loopx_cli_call_count",
         "remote_command_file_bridge_agent_loopx_state_read_count",
         "remote_command_file_bridge_agent_loopx_state_write_count",
         "remote_command_file_bridge_agent_task_facing_operation_count",
+        "remote_command_file_bridge_agent_task_facing_success_count",
+        "remote_command_file_bridge_agent_task_facing_failure_count",
         "remote_command_file_bridge_agent_probe_operation_count",
         "remote_command_file_bridge_agent_todo_closeout_count",
         "remote_command_file_bridge_agent_refresh_state_count",
@@ -1671,6 +1782,12 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_request_count",
         "host_local_acp_codex_exec_preflight_bridge_preflight_operation_count",
         "host_local_acp_codex_exec_preflight_bridge_task_facing_operation_count",
+        "host_local_acp_codex_exec_preflight_bridge_success_count",
+        "host_local_acp_codex_exec_preflight_bridge_failure_count",
+        "host_local_acp_codex_exec_preflight_bridge_preflight_success_count",
+        "host_local_acp_codex_exec_preflight_bridge_preflight_failure_count",
+        "host_local_acp_codex_exec_preflight_bridge_task_facing_success_count",
+        "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count",
         "host_local_acp_codex_exec_failure_trace_count",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
@@ -1683,7 +1800,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
             if isinstance(key, str) and key in HOST_LOCAL_ACP_TARGET_ENV_KEYS
         ][: len(HOST_LOCAL_ACP_TARGET_ENV_KEYS)]
     for field in (
+        "host_local_acp_codex_exec_preflight_bridge_returncode_counts",
+        "host_local_acp_codex_exec_preflight_bridge_failure_category_counts",
         "remote_command_file_bridge_agent_operation_counts",
+        "remote_command_file_bridge_agent_returncode_counts",
+        "remote_command_file_bridge_agent_failure_category_counts",
         "remote_command_file_bridge_agent_loopx_subcommand_counts",
         "remote_command_file_bridge_agent_successful_loopx_subcommand_counts",
         "remote_command_file_bridge_driver_lifecycle_command_counts",
@@ -2439,6 +2560,41 @@ def _mark_user_loop_soft_verify_exception_continuation(
         trace.update(trace_fields)
 
 
+def _mark_user_loop_no_tool_exception_continuation(
+    *,
+    plan: dict[str, Any],
+    trace: dict[str, Any] | None,
+    round_num: int,
+    exception: Exception,
+    delta_events: int,
+) -> None:
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    fields: dict[str, Any] = {
+        "benchflow_user_loop_no_tool_exception_continued": True,
+        "benchflow_user_loop_no_tool_exception_raw_error_recorded": False,
+        "benchflow_user_loop_no_tool_exception_stage": "agent_execute",
+        "benchflow_user_loop_no_tool_exception_type": type(exception).__name__,
+        "benchflow_user_loop_no_tool_exception_round": round_num,
+        "benchflow_user_loop_no_tool_exception_delta_events": max(0, delta_events),
+        "benchflow_user_loop_no_tool_exception_delta_tool_calls": 0,
+    }
+    current = prerequisites.get("benchflow_user_loop_no_tool_exception_count")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    fields["benchflow_user_loop_no_tool_exception_count"] = current + 1
+    prerequisites.update(fields)
+    if isinstance(trace, dict):
+        trace_current = trace.get("benchflow_user_loop_no_tool_exception_count")
+        if not isinstance(trace_current, int) or isinstance(trace_current, bool):
+            trace_current = 0
+        trace_fields = dict(fields)
+        trace_fields["benchflow_user_loop_no_tool_exception_count"] = (
+            trace_current + 1
+        )
+        trace.update(trace_fields)
+        trace["last_decision"] = "continue_after_agent_execute_no_tool_exception"
+
+
 def install_benchflow_user_loop_final_verify_recovery(
     rollout_cls: Any,
     *,
@@ -2558,6 +2714,36 @@ def install_benchflow_user_loop_final_verify_recovery(
                 )
                 if (not connected) or delta_events <= 0:
                     raise
+                if delta_tool_calls <= 0 and round_num + 1 < cfg.max_user_rounds:
+                    _mark_user_loop_no_tool_exception_continuation(
+                        plan=plan,
+                        trace=trace,
+                        round_num=round_num,
+                        exception=exc,
+                        delta_events=delta_events,
+                    )
+                    round_result = RoundResult(
+                        round=round_num,
+                        trajectory=round_trajectory,
+                        rewards=None,
+                        verifier_output=None,
+                        verifier_error=(
+                            "public_safe_agent_execute_exception_before_tool_activity"
+                        ),
+                        n_tool_calls=0,
+                    )
+                    rounds_log.append(
+                        {
+                            "round": round_num,
+                            "rewards": None,
+                            "verifier_error": (
+                                "public_safe_agent_execute_exception_before_tool_activity"
+                            ),
+                            "n_tool_calls": 0,
+                            "n_trajectory_events": delta_events,
+                        }
+                    )
+                    continue
                 _mark_user_loop_final_verify_recovery(
                     plan=plan,
                     trace=trace,
@@ -2693,8 +2879,14 @@ def _runner_prerequisite_failure_attribution(
         and (
             value.get("remote_command_file_bridge_agent_operation_trace_required")
             is not True
-            or value.get("remote_command_file_bridge_agent_command_instrumented")
-            is True
+            or (
+                value.get("remote_command_file_bridge_agent_command_instrumented")
+                is True
+                and value.get(
+                    "remote_command_file_bridge_agent_operation_trace_satisfied"
+                )
+                is True
+            )
         )
     )
 
@@ -2782,6 +2974,29 @@ def _runner_prerequisite_failure_attribution(
             return None
         trace_count = value.get("remote_command_file_bridge_agent_operation_trace_count")
         request_count = value.get("remote_command_file_bridge_agent_request_count")
+        if status == "agent_operation_trace_recorded_no_success":
+            category = "bridge_operation_failed"
+            counts = value.get("remote_command_file_bridge_agent_failure_category_counts")
+            if isinstance(counts, dict):
+                for key, count_value in sorted(counts.items()):
+                    if (
+                        isinstance(key, str)
+                        and key
+                        and isinstance(count_value, int)
+                        and count_value > 0
+                    ):
+                        category = key[:80]
+                        break
+            label = f"skillsbench_remote_bridge_agent_operation_failed_{category}"
+            return (
+                label,
+                label,
+                [
+                    label,
+                    "skillsbench_product_mode_uncountable_treatment",
+                    "skillsbench_runner_setup_error",
+                ],
+            )
         if (
             status == "agent_operation_trace_present_no_requests"
             or (
@@ -5618,11 +5833,14 @@ def _merge_host_local_acp_relay_trace_summary(
     agent_bridge_loopx_state_read_count = 0
     agent_bridge_loopx_state_write_count = 0
     agent_bridge_task_facing_operation_count = 0
+    agent_bridge_task_facing_success_count = 0
+    agent_bridge_task_facing_failure_count = 0
     agent_bridge_probe_operation_count = 0
     agent_bridge_operation_counts: dict[str, int] = {}
     agent_bridge_loopx_subcommand_counts: dict[str, int] = {}
     agent_bridge_successful_loopx_subcommand_counts: dict[str, int] = {}
     agent_bridge_returncode_counts: dict[str, int] = {}
+    agent_bridge_failure_category_counts: dict[str, int] = {}
     driver_lifecycle_trace_count = 0
     driver_lifecycle_checkpoint_count = 0
     driver_lifecycle_request_count = 0
@@ -5702,6 +5920,8 @@ def _merge_host_local_acp_relay_trace_summary(
                 "loopx_state_read_count": "state_read",
                 "loopx_state_write_count": "state_write",
                 "task_facing_operation_count": "task_facing",
+                "task_facing_success_count": "task_facing_success",
+                "task_facing_failure_count": "task_facing_failure",
                 "probe_operation_count": "probe",
             }
             for field, target in count_fields.items():
@@ -5723,6 +5943,10 @@ def _merge_host_local_acp_relay_trace_summary(
                     agent_bridge_loopx_state_write_count += value
                 elif target == "task_facing":
                     agent_bridge_task_facing_operation_count += value
+                elif target == "task_facing_success":
+                    agent_bridge_task_facing_success_count += value
+                elif target == "task_facing_failure":
+                    agent_bridge_task_facing_failure_count += value
                 elif target == "probe":
                     agent_bridge_probe_operation_count += value
             for source_key, target_counts in (
@@ -5733,6 +5957,7 @@ def _merge_host_local_acp_relay_trace_summary(
                     agent_bridge_successful_loopx_subcommand_counts,
                 ),
                 ("returncode_counts", agent_bridge_returncode_counts),
+                ("failure_category_counts", agent_bridge_failure_category_counts),
             ):
                 source_counts = agent_ops.get(source_key)
                 if not isinstance(source_counts, dict):
@@ -5827,6 +6052,16 @@ def _merge_host_local_acp_relay_trace_summary(
             )
         )
     consumed_by_solver = solver_trace_count > 0 and probe_ready_count > 0
+    agent_bridge_failure_category = ""
+    for category, count in sorted(agent_bridge_failure_category_counts.items()):
+        if count > 0:
+            agent_bridge_failure_category = category[:120]
+            break
+    host_local_acp_codex_exec_failure_category = (
+        codex_exec_failure_categories[0]
+        if codex_exec_failure_categories
+        else agent_bridge_failure_category
+    )
     trace["remote_command_file_bridge_solver_trace_dir_present"] = trace_dir.exists()
     trace["remote_command_file_bridge_solver_public_trace_read"] = (
         solver_trace_count > 0
@@ -5848,7 +6083,7 @@ def _merge_host_local_acp_relay_trace_summary(
         codex_exec_failure_categories
     )
     trace["host_local_acp_codex_exec_failure_category"] = (
-        codex_exec_failure_categories[0] if codex_exec_failure_categories else ""
+        host_local_acp_codex_exec_failure_category
     )
     trace["host_local_acp_codex_exec_failure_raw_material_recorded"] = (
         raw_material_recorded
@@ -5869,11 +6104,14 @@ def _merge_host_local_acp_relay_trace_summary(
         or (
             agent_bridge_trace_count > 0
             and agent_bridge_request_count > 0
+            and agent_bridge_task_facing_success_count > 0
         )
     )
     if agent_trace_required:
         if agent_trace_satisfied:
             agent_trace_status = "agent_operation_trace_recorded"
+        elif agent_bridge_trace_count > 0 and agent_bridge_request_count > 0:
+            agent_trace_status = "agent_operation_trace_recorded_no_success"
         elif agent_bridge_trace_count > 0:
             agent_trace_status = "agent_operation_trace_present_no_requests"
         else:
@@ -5920,6 +6158,12 @@ def _merge_host_local_acp_relay_trace_summary(
     trace["remote_command_file_bridge_agent_task_facing_operation_count"] = (
         agent_bridge_task_facing_operation_count
     )
+    trace["remote_command_file_bridge_agent_task_facing_success_count"] = (
+        agent_bridge_task_facing_success_count
+    )
+    trace["remote_command_file_bridge_agent_task_facing_failure_count"] = (
+        agent_bridge_task_facing_failure_count
+    )
     trace["remote_command_file_bridge_agent_probe_operation_count"] = (
         agent_bridge_probe_operation_count
     )
@@ -5934,6 +6178,9 @@ def _merge_host_local_acp_relay_trace_summary(
     ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
     trace["remote_command_file_bridge_agent_returncode_counts"] = dict(
         sorted(agent_bridge_returncode_counts.items())
+    )
+    trace["remote_command_file_bridge_agent_failure_category_counts"] = dict(
+        sorted(agent_bridge_failure_category_counts.items())
     )
     trace["remote_command_file_bridge_agent_todo_closeout_count"] = (
         _subcommand_family_count(
@@ -6024,7 +6271,7 @@ def _merge_host_local_acp_relay_trace_summary(
         codex_exec_failure_categories
     )
     prerequisites["host_local_acp_codex_exec_failure_category"] = (
-        codex_exec_failure_categories[0] if codex_exec_failure_categories else ""
+        host_local_acp_codex_exec_failure_category
     )
     prerequisites["host_local_acp_codex_exec_failure_raw_material_recorded"] = (
         raw_material_recorded
@@ -6065,6 +6312,12 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites["remote_command_file_bridge_agent_task_facing_operation_count"] = (
         agent_bridge_task_facing_operation_count
     )
+    prerequisites["remote_command_file_bridge_agent_task_facing_success_count"] = (
+        agent_bridge_task_facing_success_count
+    )
+    prerequisites["remote_command_file_bridge_agent_task_facing_failure_count"] = (
+        agent_bridge_task_facing_failure_count
+    )
     prerequisites["remote_command_file_bridge_agent_probe_operation_count"] = (
         agent_bridge_probe_operation_count
     )
@@ -6079,6 +6332,9 @@ def _merge_host_local_acp_relay_trace_summary(
     ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
     prerequisites["remote_command_file_bridge_agent_returncode_counts"] = dict(
         sorted(agent_bridge_returncode_counts.items())
+    )
+    prerequisites["remote_command_file_bridge_agent_failure_category_counts"] = dict(
+        sorted(agent_bridge_failure_category_counts.items())
     )
     prerequisites["remote_command_file_bridge_agent_todo_closeout_count"] = trace[
         "remote_command_file_bridge_agent_todo_closeout_count"
@@ -6595,6 +6851,19 @@ def _trace_max_int(trace: dict[str, Any], *fields: str) -> int:
     return max(values, default=0)
 
 
+def _product_mode_agent_bridge_closeout_observed(trace: dict[str, Any]) -> bool:
+    return bool(
+        _trace_max_int(trace, "remote_command_file_bridge_agent_todo_closeout_count")
+        > 0
+        and _trace_max_int(trace, "remote_command_file_bridge_agent_refresh_state_count")
+        > 0
+        and _trace_max_int(
+            trace, "remote_command_file_bridge_agent_quota_spend_slot_count"
+        )
+        > 0
+    )
+
+
 def _product_mode_solver_activity_observed(
     trace: dict[str, Any],
     round_result: Any | None,
@@ -6621,28 +6890,30 @@ def _product_mode_solver_activity_observed(
         )
         > 0
     )
+    bridge_success_count = _trace_max_int(
+        trace,
+        "remote_command_file_bridge_agent_success_count",
+    )
+    bridge_failure_count = _trace_max_int(
+        trace,
+        "remote_command_file_bridge_agent_failure_count",
+    )
+    legacy_recorded_without_success_counters = bool(
+        bridge_success_count == 0
+        and bridge_failure_count == 0
+        and trace.get("remote_command_file_bridge_agent_operation_trace_status")
+        == "agent_operation_trace_recorded"
+    )
     bridge_activity_observed = (
-        _trace_max_int(
-            trace,
-            "remote_command_file_bridge_agent_request_count",
-            "remote_command_file_bridge_agent_operation_trace_count",
-        )
-        > 0
+        bridge_success_count > 0
         or trace.get("remote_command_file_bridge_agent_operation_trace_satisfied")
         is True
-    )
-    agent_bridge_closeout_observed = (
-        _trace_max_int(trace, "remote_command_file_bridge_agent_todo_closeout_count")
-        > 0
-        and _trace_max_int(trace, "remote_command_file_bridge_agent_refresh_state_count")
-        > 0
-        and _trace_max_int(
-            trace, "remote_command_file_bridge_agent_quota_spend_slot_count"
-        )
-        > 0
+        or legacy_recorded_without_success_counters
     )
     if bridge_activity_observed:
-        return task_activity_observed and agent_bridge_closeout_observed
+        return task_activity_observed and _product_mode_agent_bridge_closeout_observed(
+            trace
+        )
     return task_activity_observed and agent_state_write_observed
 
 
@@ -7275,17 +7546,87 @@ def _build_product_mode_user(
             "has been recorded."
         )
 
-    def product_mode_workflow_entry_activity_satisfied() -> bool:
+    def final_closeout_prompt(round_number: int) -> str:
+        return (
+            f"Mandatory product-mode closeout checkpoint before finalization "
+            f"round {round_number}. The controller is at a finalization "
+            "boundary, but the selected P0 todo has not produced the required "
+            "`todo complete`, `refresh-state`, and `quota spend-slot "
+            "--source adapter --execute` evidence. This is not official "
+            "reward, pass/fail, verifier error, verifier output, or verifier "
+            "tail feedback. Do not answer with prose only and do not start a "
+            "new broad exploration loop. If local task-facing validation "
+            "indicates the selected P0 is complete, run this exact case-local "
+            "closeout sequence from `/app` now:\n\n"
+            f"{closeout_commands(round_number)}"
+            "If local validation does not support closeout, perform one "
+            "focused task-facing validation or repair operation from `/app`, "
+            "update the selected P0 todo with the concrete blocker evidence, "
+            f"and do not end with {DECLARED_DONE_MARKER}."
+        )
+
+    def final_closeout_checkpoint_budget_exhausted() -> bool:
+        return (
+            _trace_max_int(trace, "product_mode_final_closeout_checkpoint_count")
+            >= PRODUCT_MODE_FINAL_CLOSEOUT_MAX_CHECKPOINTS
+        )
+
+    def record_final_closeout_checkpoint(
+        *,
+        agent_round: int,
+        reason: str,
+    ) -> None:
+        trace["product_mode_final_closeout_required"] = True
+        trace["product_mode_final_closeout_checkpoint_max"] = (
+            PRODUCT_MODE_FINAL_CLOSEOUT_MAX_CHECKPOINTS
+        )
+        trace["product_mode_final_closeout_checkpoint_round"] = agent_round
+        trace["product_mode_final_closeout_reason"] = reason
+        current = trace.get("product_mode_final_closeout_checkpoint_count")
+        if not isinstance(current, int) or isinstance(current, bool):
+            current = 0
+        trace["product_mode_final_closeout_checkpoint_count"] = current + 1
+
+    def final_closeout_checkpoint_needed(
+        round_result: Any | None,
+        *,
+        task_instruction_sent: bool,
+    ) -> bool:
         return bool(
-            workflow_lifecycle_driver
-            and _product_mode_depth_gate_satisfied(trace)
+            treatment
+            and task_instruction_sent
+            and product_mode_entry_lifecycle_gate_satisfied()
+            and not _product_mode_solver_activity_observed(trace, round_result)
+            and not final_closeout_checkpoint_budget_exhausted()
+        )
+
+    def product_mode_workflow_entry_activity_satisfied() -> bool:
+        if not workflow_lifecycle_driver or not _product_mode_depth_gate_satisfied(trace):
+            return False
+        task_facing_success_count = _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_task_facing_success_count",
+        )
+        task_facing_failure_count = _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_task_facing_failure_count",
+        )
+        legacy_task_facing_recorded = bool(
+            task_facing_success_count == 0
+            and task_facing_failure_count == 0
+            and trace.get("remote_command_file_bridge_agent_operation_trace_status")
+            == "agent_operation_trace_recorded"
             and _trace_max_int(
                 trace,
-                "remote_command_file_bridge_agent_request_count",
-                "remote_command_file_bridge_agent_operation_trace_count",
                 "remote_command_file_bridge_agent_task_facing_operation_count",
             )
             > 0
+        )
+        return bool(
+            task_facing_success_count > 0
+            or trace.get("remote_command_file_bridge_agent_operation_trace_satisfied")
+            is True
+            or legacy_task_facing_recorded
         )
 
     def product_mode_entry_lifecycle_gate_satisfied() -> bool:
@@ -7396,6 +7737,24 @@ def _build_product_mode_user(
                             trace,
                             agent_round=round,
                         )
+                        _inc_counter(trace, "controller_action_decisions")
+                        if round < max_rounds:
+                            _inc_counter(trace, "followup_prompt_count")
+                            trace["last_decision"] = (
+                                "send_followup_after_product_mode_no_tool_calls_without_lifecycle"
+                                if no_tool_calls
+                                else "send_followup_after_product_mode_agent_no_lifecycle_requests"
+                            )
+                            return (
+                                f"Scheduled product-mode continuation round {round + 1} "
+                                f"of {max_rounds}. The previous round did not create "
+                                "task-facing bridge activity for the selected P0 todo, "
+                                "so it is not a valid closeout. Do not answer with "
+                                "status-only prose. Use the available sandbox "
+                                "command/file bridge now to inspect or modify the task "
+                                "workspace, then update the selected LoopX todo with "
+                                "public-safe evidence before any done/closeout claim."
+                            )
                         if no_tool_calls:
                             _record_product_mode_no_tool_call_lifecycle_abort(
                                 trace,
@@ -7406,7 +7765,6 @@ def _build_product_mode_user(
                                 trace,
                                 agent_round=round,
                             )
-                        _inc_counter(trace, "controller_action_decisions")
                         _inc_counter(trace, "stop_decision_count")
                         trace["last_decision"] = (
                             "stop_after_product_mode_agent_no_lifecycle_requests"
@@ -7478,6 +7836,22 @@ def _build_product_mode_user(
                             )
                             _inc_counter(trace, "controller_action_decisions")
                             if round >= max_rounds:
+                                if final_closeout_checkpoint_needed(
+                                    round_result,
+                                    task_instruction_sent=self._task_instruction_sent,
+                                ):
+                                    record_final_closeout_checkpoint(
+                                        agent_round=round,
+                                        reason=(
+                                            "declared_done_at_budget_without_selected_p0_closeout"
+                                        ),
+                                    )
+                                    _inc_counter(trace, "followup_prompt_count")
+                                    trace["last_decision"] = (
+                                        "send_product_mode_final_closeout_after_"
+                                        "declared_done_budget_boundary"
+                                    )
+                                    return final_closeout_prompt(round + 1)
                                 _inc_counter(trace, "stop_decision_count")
                                 trace["last_decision"] = (
                                     "stop_after_budget_with_declared_done_solver_activity_gap"
@@ -7539,6 +7913,25 @@ def _build_product_mode_user(
                     return None
             if reward is not None and reward >= 1.0:
                 _inc_counter(trace, "controller_action_decisions")
+                if final_closeout_checkpoint_needed(
+                    round_result,
+                    task_instruction_sent=self._task_instruction_sent,
+                ):
+                    _record_product_mode_solver_activity_gap(
+                        trace,
+                        agent_round=round,
+                    )
+                    record_final_closeout_checkpoint(
+                        agent_round=round,
+                        reason=(
+                            "official_success_observed_before_selected_p0_closeout"
+                        ),
+                    )
+                    _inc_counter(trace, "followup_prompt_count")
+                    trace["last_decision"] = (
+                        "send_product_mode_final_closeout_after_success_boundary"
+                    )
+                    return final_closeout_prompt(round + 1)
                 _inc_counter(trace, "stop_decision_count")
                 trace["last_decision"] = (
                     "stop_after_product_mode_official_success_observed_without_feedback"
@@ -7546,6 +7939,23 @@ def _build_product_mode_user(
                 return None
             if round >= max_rounds:
                 _inc_counter(trace, "controller_action_decisions")
+                if final_closeout_checkpoint_needed(
+                    round_result,
+                    task_instruction_sent=self._task_instruction_sent,
+                ):
+                    _record_product_mode_solver_activity_gap(
+                        trace,
+                        agent_round=round,
+                    )
+                    record_final_closeout_checkpoint(
+                        agent_round=round,
+                        reason="budget_boundary_without_selected_p0_closeout",
+                    )
+                    _inc_counter(trace, "followup_prompt_count")
+                    trace["last_decision"] = (
+                        "send_product_mode_final_closeout_after_budget_boundary"
+                    )
+                    return final_closeout_prompt(round + 1)
                 _inc_counter(trace, "stop_decision_count")
                 trace["last_decision"] = "stop_after_product_mode_budget"
                 return None
@@ -7810,6 +8220,12 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             )
             prerequisites["remote_command_file_bridge_command_configured"] = True
             prerequisites["remote_command_file_bridge_agent_command_configured"] = True
+            prerequisites["remote_command_file_bridge_agent_command_instrumented"] = True
+            prerequisites["remote_command_file_bridge_agent_transport_mode"] = (
+                "json_file_queue"
+            )
+            prerequisites["remote_command_file_bridge_agent_queue_configured"] = True
+            prerequisites["remote_command_file_bridge_agent_queue_path_recorded"] = False
             prerequisites["remote_command_file_bridge_solver_wiring_configured"] = True
             prerequisites["remote_command_file_bridge_consumption_status"] = (
                 "solver_wiring_configured_pending_prompt"
@@ -9830,49 +10246,6 @@ def main(argv: list[str] | None = None) -> int:
             "remote_command_file_bridge_command_configured": True,
             "remote_command_file_bridge_solver_wiring_configured": False,
             "remote_command_file_bridge_consumed_by_solver": False,
-            "raw_logs_recorded": False,
-            "raw_task_text_read": False,
-            "raw_trajectory_recorded": False,
-            "credential_values_recorded": False,
-        }
-        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
-        return 2
-    if (
-        _is_loopx_product_mode_route(args.route)
-        and args.host_local_acp_launch
-        and product_host_local_bridge_sandbox_auto_wiring_pending
-        and not args.local_driver_worker_handshake_preflight
-        and not args.plan_only
-        and not args.reduce_only
-    ):
-        payload = {
-            "ok": False,
-            "error_type": "SkillsBenchProductModeBridgeAutoWiringPending",
-            "route": args.route,
-            "reason": (
-                "LoopX product-mode routes are countable only when the "
-                "host-local agent has an explicit sandbox command/file bridge "
-                "available before the scored case starts. A readiness "
-                "declaration without a solver bridge command leaves sandbox "
-                "bridge auto-wiring pending; prior runs can reach the agent "
-                "with zero task-facing bridge/tool calls, then fail after "
-                "consuming a scored attempt."
-            ),
-            "next_action": (
-                "rerun with a real --remote-command-file-bridge-solver-command "
-                "and a countable agent bridge command or instrumented wrapper; "
-                "use --plan-only or --local-driver-worker-handshake-preflight "
-                "for non-executing readiness inspection"
-            ),
-            "remote_command_file_bridge_materialized": (
-                product_host_local_bridge_materialized
-            ),
-            "remote_command_file_bridge_command_configured": False,
-            "remote_command_file_bridge_solver_wiring_configured": False,
-            "remote_command_file_bridge_consumed_by_solver": False,
-            "remote_command_file_bridge_consumption_status": (
-                "sandbox_bridge_auto_wiring_pending"
-            ),
             "raw_logs_recorded": False,
             "raw_task_text_read": False,
             "raw_trajectory_recorded": False,

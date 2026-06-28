@@ -2240,6 +2240,15 @@ def _skillsbench_controller_trace_counters(
         "remote_command_file_bridge_agent_request_count": count(
             "remote_command_file_bridge_agent_request_count"
         ),
+        "remote_command_file_bridge_agent_success_count": count(
+            "remote_command_file_bridge_agent_success_count"
+        ),
+        "remote_command_file_bridge_agent_failure_count": count(
+            "remote_command_file_bridge_agent_failure_count"
+        ),
+        "remote_command_file_bridge_agent_failure_category_counts": count_map(
+            "remote_command_file_bridge_agent_failure_category_counts"
+        ),
         "remote_command_file_bridge_agent_loopx_cli_call_count": count(
             "remote_command_file_bridge_agent_loopx_cli_call_count"
         ),
@@ -2263,6 +2272,12 @@ def _skillsbench_controller_trace_counters(
         ),
         "remote_command_file_bridge_agent_task_facing_operation_count": count(
             "remote_command_file_bridge_agent_task_facing_operation_count"
+        ),
+        "remote_command_file_bridge_agent_task_facing_success_count": count(
+            "remote_command_file_bridge_agent_task_facing_success_count"
+        ),
+        "remote_command_file_bridge_agent_task_facing_failure_count": count(
+            "remote_command_file_bridge_agent_task_facing_failure_count"
         ),
         "remote_command_file_bridge_agent_probe_operation_count": count(
             "remote_command_file_bridge_agent_probe_operation_count"
@@ -3051,21 +3066,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
         )
         is True
     )
-    orchestrated_driver_counts_as_product_mode = bool(
-        orchestrated_driver_lifecycle_satisfied
-        and (
-            not remote_agent_operation_trace_required_raw
-            or controller_counters.get(
-                "remote_command_file_bridge_agent_command_instrumented"
-            )
-            is True
-        )
-    )
-    remote_agent_operation_trace_required = bool(
-        remote_agent_operation_trace_required_raw
-        and not orchestrated_driver_counts_as_product_mode
-    )
-    remote_agent_operation_trace_satisfied = (
+    remote_agent_operation_trace_satisfied_raw_field = (
         controller_counters.get(
             "remote_command_file_bridge_agent_operation_trace_satisfied"
         )
@@ -3076,6 +3077,55 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "remote_command_file_bridge_agent_operation_trace_status", ""
         )
     )
+    remote_agent_task_facing_operation_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_operation_count"
+    )
+    remote_agent_task_facing_success_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_success_count"
+    )
+    remote_agent_task_facing_failure_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_failure_count"
+    )
+    remote_agent_success_count = _controller_public_count(
+        "remote_command_file_bridge_agent_success_count"
+    )
+    remote_agent_failure_count = _controller_public_count(
+        "remote_command_file_bridge_agent_failure_count"
+    )
+    legacy_satisfied_without_task_facing_success_counters = bool(
+        remote_agent_operation_trace_satisfied_raw_field
+        and remote_agent_task_facing_success_count == 0
+        and remote_agent_task_facing_failure_count == 0
+        and remote_agent_success_count > 0
+        and remote_agent_failure_count == 0
+        and remote_agent_task_facing_operation_count > 0
+        and remote_agent_operation_trace_status == "agent_operation_trace_recorded"
+    )
+    remote_agent_operation_trace_satisfied_raw = bool(
+        remote_agent_operation_trace_satisfied_raw_field
+        and (
+            remote_agent_task_facing_success_count > 0
+            or legacy_satisfied_without_task_facing_success_counters
+        )
+    )
+    orchestrated_driver_counts_as_product_mode = bool(
+        orchestrated_driver_lifecycle_satisfied
+        and (
+            not remote_agent_operation_trace_required_raw
+            or (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_command_instrumented"
+                )
+                is True
+                and remote_agent_operation_trace_satisfied_raw
+            )
+        )
+    )
+    remote_agent_operation_trace_required = bool(
+        remote_agent_operation_trace_required_raw
+        and not orchestrated_driver_counts_as_product_mode
+    )
+    remote_agent_operation_trace_satisfied = remote_agent_operation_trace_satisfied_raw
     remote_agent_operation_trace_missing = bool(
         remote_agent_operation_trace_required
         and not remote_agent_operation_trace_satisfied
@@ -3084,6 +3134,30 @@ def build_skillsbench_benchflow_result_benchmark_run(
         remote_agent_operation_trace_missing
         and remote_agent_operation_trace_status
         == "agent_operation_trace_present_no_requests"
+    )
+    remote_agent_operation_trace_recorded_no_success = bool(
+        remote_agent_operation_trace_missing
+        and remote_agent_operation_trace_status
+        == "agent_operation_trace_recorded_no_success"
+    )
+    remote_agent_operation_failure_category = "bridge_operation_failed"
+    failure_category_counts = controller_counters.get(
+        "remote_command_file_bridge_agent_failure_category_counts"
+    )
+    if isinstance(failure_category_counts, dict):
+        for category_key, category_count in sorted(failure_category_counts.items()):
+            if (
+                isinstance(category_key, str)
+                and category_key
+                and isinstance(category_count, int)
+                and not isinstance(category_count, bool)
+                and category_count > 0
+            ):
+                remote_agent_operation_failure_category = category_key[:80]
+                break
+    remote_agent_operation_failure_label = (
+        "skillsbench_remote_bridge_agent_operation_failed_"
+        f"{remote_agent_operation_failure_category}"
     )
     agent_bridge_lifecycle_read_count = _controller_public_count(
         "remote_command_file_bridge_agent_loopx_state_read_count"
@@ -3209,6 +3283,11 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "missing_reason": (
             "remote_command_file_bridge_agent_no_requests"
             if remote_agent_operation_trace_no_requests
+            else (
+                "remote_command_file_bridge_agent_operation_failed_"
+                f"{remote_agent_operation_failure_category}"
+            )
+            if remote_agent_operation_trace_recorded_no_success
             else "remote_command_file_bridge_agent_operation_trace_missing"
             if remote_agent_operation_trace_missing
             else "missing_case_local_loopx_closeout"
@@ -3243,13 +3322,30 @@ def build_skillsbench_benchflow_result_benchmark_run(
     agent_bridge_task_facing_operation_count = _controller_public_count(
         "remote_command_file_bridge_agent_task_facing_operation_count"
     )
+    agent_bridge_success_count = _controller_public_count(
+        "remote_command_file_bridge_agent_success_count"
+    )
+    agent_bridge_failure_count = _controller_public_count(
+        "remote_command_file_bridge_agent_failure_count"
+    )
+    agent_bridge_task_facing_success_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_success_count"
+    )
+    agent_bridge_task_facing_failure_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_failure_count"
+    )
+    legacy_recorded_without_success_counters = bool(
+        agent_bridge_success_count == 0
+        and agent_bridge_failure_count == 0
+        and agent_bridge_task_facing_success_count == 0
+        and agent_bridge_task_facing_failure_count == 0
+        and remote_agent_operation_trace_status == "agent_operation_trace_recorded"
+        and agent_bridge_task_facing_operation_count > 0
+    )
     agent_bridge_activity_observed = bool(
-        _controller_public_count("remote_command_file_bridge_agent_request_count") > 0
-        or _controller_public_count(
-            "remote_command_file_bridge_agent_operation_trace_count"
-        )
-        > 0
+        agent_bridge_task_facing_success_count > 0
         or remote_agent_operation_trace_satisfied
+        or legacy_recorded_without_success_counters
     )
     declared_done_round_count = _controller_public_count("declared_done_round")
     trajectory_tool_calls = _trajectory_public_count("tool_call_count")
@@ -3680,7 +3776,11 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "official_benchflow_result_json_plus_loopx_controller_trace"
         )
     if product_mode_lifecycle_missing:
-        label = "skillsbench_product_mode_lifecycle_missing"
+        label = (
+            remote_agent_operation_failure_label
+            if remote_agent_operation_trace_recorded_no_success
+            else "skillsbench_product_mode_lifecycle_missing"
+        )
         contract_official_score_comparable_to_native_codex = False
         contract_official_score_comparable_to_loopx_treatment = False
         product_mode_lifecycle_contract["countable_treatment"] = False
@@ -3706,10 +3806,18 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 runner_failure["failure_class"] = label
         for item in (
             label,
+            "skillsbench_product_mode_lifecycle_missing"
+            if label != "skillsbench_product_mode_lifecycle_missing"
+            else "",
+            "skillsbench_runner_setup_error"
+            if remote_agent_operation_trace_recorded_no_success
+            else "",
             "skillsbench_product_mode_uncountable_treatment",
             "skillsbench_case_local_loopx_state_not_observed",
             "skillsbench_remote_bridge_agent_no_requests"
             if remote_agent_operation_trace_no_requests
+            else remote_agent_operation_failure_label
+            if remote_agent_operation_trace_recorded_no_success
             else "skillsbench_remote_bridge_agent_operation_trace_missing"
             if remote_agent_operation_trace_missing
             else "",
@@ -4261,6 +4369,21 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "remote_command_file_bridge_agent_task_facing_operation_count": (
                 controller_counters.get(
                     "remote_command_file_bridge_agent_task_facing_operation_count", 0
+                )
+            ),
+            "remote_command_file_bridge_agent_task_facing_success_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_task_facing_success_count", 0
+                )
+            ),
+            "remote_command_file_bridge_agent_task_facing_failure_count": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_task_facing_failure_count", 0
+                )
+            ),
+            "remote_command_file_bridge_agent_failure_category_counts": (
+                controller_counters.get(
+                    "remote_command_file_bridge_agent_failure_category_counts", {}
                 )
             ),
             "remote_command_file_bridge_agent_probe_operation_count": (

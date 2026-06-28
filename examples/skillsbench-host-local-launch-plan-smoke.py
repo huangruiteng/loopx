@@ -22,6 +22,7 @@ from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SkillsBenchLocalAcpRelay,
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
     SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER,
+    _codex_exec_failure_category,
     run_skillsbench_local_acp_relay_probe,
 )
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
@@ -256,13 +257,17 @@ if out:
             for line in str(reverse_payload["agent_operations_jsonl"]).splitlines()
             if line.strip()
         ]
-        assert len(operation_lines) == 1, reverse_payload
+        assert len(operation_lines) == 2, reverse_payload
         operation_record = operation_lines[0]
         assert operation_record["operation"] == "exec", operation_record
+        assert operation_record["record_phase"] == "start", operation_record
         assert operation_record["loopx_cli_call"] is True, operation_record
         assert operation_record["loopx_state_read"] is True, operation_record
         assert operation_record["task_facing_operation"] is False, operation_record
         assert operation_record["raw_request_recorded"] is False, operation_record
+        complete_record = operation_lines[1]
+        assert complete_record["record_phase"] == "complete", complete_record
+        assert complete_record["returncode"] == 0, complete_record
         root = Path(tmp) / "skillsbench"
         task = root / "tasks" / "demo-task" / "environment"
         task.mkdir(parents=True)
@@ -586,7 +591,7 @@ if out:
             == "sandbox_bridge_auto_wiring_pending"
         )
         for route in ("loopx-product-mode", "loopx-goal-start-product-mode"):
-            blocked_auto_wiring_full_run = subprocess.run(
+            auto_wiring_runtime_plan = subprocess.run(
                 [
                     sys.executable,
                     str(SCRIPT),
@@ -598,6 +603,7 @@ if out:
                     route,
                     "--host-local-acp-launch",
                     "--remote-command-file-bridge-ready",
+                    "--plan-only",
                 ],
                 cwd=REPO_ROOT,
                 stdout=subprocess.PIPE,
@@ -606,19 +612,23 @@ if out:
                 timeout=30,
                 check=False,
             )
-            assert blocked_auto_wiring_full_run.returncode == 2, (
-                blocked_auto_wiring_full_run
+            assert auto_wiring_runtime_plan.returncode == 0, (
+                auto_wiring_runtime_plan.stderr
             )
-            auto_wiring_failure = json.loads(blocked_auto_wiring_full_run.stderr)
-            assert auto_wiring_failure["error_type"] == (
-                "SkillsBenchProductModeBridgeAutoWiringPending"
-            ), auto_wiring_failure
+            auto_wiring_prereqs = json.loads(auto_wiring_runtime_plan.stdout)[
+                "launch_plan"
+            ]["runner_prerequisites"]
             assert (
-                auto_wiring_failure["remote_command_file_bridge_consumption_status"]
+                auto_wiring_prereqs["remote_command_file_bridge_consumption_status"]
                 == "sandbox_bridge_auto_wiring_pending"
-            ), auto_wiring_failure
-            assert auto_wiring_failure["raw_task_text_read"] is False
-            assert auto_wiring_failure["raw_trajectory_recorded"] is False
+            ), auto_wiring_prereqs
+            source = SCRIPT.read_text(encoding="utf-8")
+            assert "_host_local_acp_docker_bridge_command(" in source
+            assert 'prerequisites["remote_command_file_bridge_command_configured"] = True' in source
+            assert (
+                'prerequisites["remote_command_file_bridge_solver_wiring_configured"] = True'
+                in source
+            )
         blocked_fixture_solver = subprocess.run(
             [
                 sys.executable,
@@ -1185,6 +1195,61 @@ raise SystemExit(125)
             exit125_controller_trace["host_local_acp_codex_exec_failure_category"]
             == "codex_exec_exit_125"
         )
+        agent_bridge_failure_trace_dir = Path(tmp) / "agent-bridge-failure-traces"
+        agent_bridge_failure_trace_dir.mkdir(parents=True)
+        (agent_bridge_failure_trace_dir / "worker-agent-failure.compact.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": (
+                        "skillsbench_host_local_acp_relay_public_trace_v0"
+                    ),
+                    "ok": True,
+                    "route": "loopx-goal-start-product-mode",
+                    "trace_kind": "remote_command_file_bridge_agent_operations",
+                    "remote_command_file_bridge_agent_operations": {
+                        "schema_version": (
+                            "skillsbench_remote_command_file_bridge_agent_operations_v0"
+                        ),
+                        "request_count": 1,
+                        "success_count": 0,
+                        "failure_count": 1,
+                        "task_facing_operation_count": 1,
+                        "task_facing_success_count": 0,
+                        "task_facing_failure_count": 1,
+                        "failure_category_counts": {
+                            "bridge_client_permission_error": 1
+                        },
+                        "raw_material_recorded": False,
+                    },
+                    "boundary": {
+                        "raw_command_recorded": False,
+                        "raw_stdout_recorded": False,
+                        "raw_stderr_recorded": False,
+                        "raw_task_text_recorded": False,
+                        "credential_values_recorded": False,
+                    },
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        agent_bridge_failure_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0"
+        }
+        agent_bridge_failure_plan = {
+            "host_local_acp_relay_trace_dir": str(agent_bridge_failure_trace_dir),
+            "runner_prerequisites": {},
+        }
+        _merge_host_local_acp_relay_trace_summary(
+            agent_bridge_failure_plan,
+            agent_bridge_failure_trace,
+        )
+        assert agent_bridge_failure_trace[
+            "host_local_acp_codex_exec_failure_category"
+        ] == "bridge_client_permission_error", agent_bridge_failure_trace
+        assert agent_bridge_failure_plan["runner_prerequisites"][
+            "host_local_acp_codex_exec_failure_category"
+        ] == "bridge_client_permission_error"
         network_exit125_codex = Path(tmp) / "network-exit125-codex"
         network_exit125_codex.write_text(
             """#!/usr/bin/env python3
@@ -1309,12 +1374,23 @@ raise SystemExit(1)
             reverse_failure["codex_exec_process"]["failure_category"]
             == "codex_reverse_channel_unavailable"
         ), reverse_failure
+        assert (
+            _codex_exec_failure_category(
+                returncode=1,
+                stderr_text=(
+                    "failed to connect to websocket: IO error: Connection refused "
+                    "(os error 111), url: "
+                    "wss://chatgpt.com/backend-api/codex/responses"
+                ),
+            )
+            == "codex_network_or_api_unreachable"
+        )
         reverse_sleeping_codex = Path(tmp) / "reverse-sleeping-codex"
         reverse_sleeping_codex.write_text(
             """#!/usr/bin/env python3
 import time
 
-time.sleep(30)
+time.sleep(5)
 """,
             encoding="utf-8",
         )
@@ -1425,6 +1501,61 @@ subprocess.run(
             assert (
                 reverse_hanging_operations[0]["raw_request_recorded"] is False
             ), reverse_hanging_operations
+        fake_ssh = Path(tmp) / "ssh"
+        fake_ssh.write_text("#!/usr/bin/env bash\nexit 255\n", encoding="utf-8")
+        fake_ssh.chmod(0o755)
+        ssh_bridge_codex = Path(tmp) / "ssh-bridge-codex"
+        ssh_bridge_codex.write_text(
+            f"""#!/usr/bin/env python3
+import json
+import os
+import re
+import subprocess
+import sys
+
+os.environ["PATH"] = {str(tmp)!r} + os.pathsep + os.environ.get("PATH", "")
+prompt = sys.stdin.read()
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+subprocess.run(
+    match.group(1),
+    input=json.dumps({{"operation": "exec", "cwd": "/app", "command": "true"}}),
+    text=True,
+    shell=True,
+    check=False,
+)
+""",
+            encoding="utf-8",
+        )
+        ssh_bridge_codex.chmod(0o755)
+        ssh_bridge_payload = _run_codex_payload(
+            {
+                "args": [
+                    "exec",
+                    (
+                        "LoopX bridge test. Your first tool action should be "
+                        "a shell pipeline that sends JSON to the private bridge.\n\n"
+                        "Private bridge command:\n"
+                        "/tmp/not-recorded"
+                    ),
+                ],
+                "timeout_sec": 5,
+            },
+            codex_bin=str(ssh_bridge_codex),
+            default_timeout_sec=5,
+            prompt_bridge_command="ssh loopx-unavailable.example",
+            first_action_timeout_sec=1,
+        )
+        ssh_bridge_operations = [
+            json.loads(line)
+            for line in str(ssh_bridge_payload["agent_operations_jsonl"]).splitlines()
+            if line.strip()
+        ]
+        assert ssh_bridge_payload["exit_code"] == 0, ssh_bridge_payload
+        assert ssh_bridge_operations[-1]["record_phase"] == "complete"
+        assert ssh_bridge_operations[-1]["failure_category"] == (
+            "bridge_ssh_unavailable"
+        ), ssh_bridge_operations
         idle_bridge = Path(tmp) / "post-action-idle-bridge"
         idle_bridge.write_text(
             """#!/usr/bin/env python3
@@ -1509,17 +1640,14 @@ time.sleep(30)
                 remote_command_file_bridge_agent_command=str(idle_bridge),
             )
         )
-        try:
-            idle_relay._run_codex(
-                "LoopX demo prompt.",
-                session={"cwd": str(Path(tmp))},
-                session_id="idle-demo",
-                stdout=io.StringIO(),
-            )
-        except TimeoutError as exc:
-            assert "bridge idle timeout" in str(exc), exc
-        else:
-            raise AssertionError("expected bridge idle timeout")
+        idle_response = idle_relay._run_codex(
+            "LoopX demo prompt.",
+            session={"cwd": str(Path(tmp))},
+            session_id="idle-demo",
+            stdout=io.StringIO(),
+        )
+        assert "LoopX recoverable Codex turn failure" in idle_response
+        assert "codex_exec_bridge_idle_timeout" in idle_response
         idle_traces = [
             json.loads(path.read_text(encoding="utf-8"))
             for path in idle_trace_dir.glob("*.compact.json")
@@ -1621,7 +1749,7 @@ subprocess.run(
                 route="loopx-product-mode",
                 dataset="skillsbench-v1.1",
                 task_id="demo-task",
-                timeout_sec=30,
+                timeout_sec=2,
                 first_action_timeout_sec=1,
                 bridge_idle_timeout_sec=1,
                 worker_public_trace_dir=str(inflight_trace_dir),
@@ -1629,17 +1757,14 @@ subprocess.run(
                 remote_command_file_bridge_agent_command=str(inflight_bridge),
             )
         )
-        try:
-            inflight_relay._run_codex(
-                "LoopX demo prompt.",
-                session={"cwd": str(Path(tmp))},
-                session_id="inflight-idle-demo",
-                stdout=io.StringIO(),
-            )
-        except TimeoutError as exc:
-            assert "bridge idle timeout" in str(exc), exc
-        else:
-            raise AssertionError("expected in-flight bridge idle timeout")
+        inflight_response = inflight_relay._run_codex(
+            "LoopX demo prompt.",
+            session={"cwd": str(Path(tmp))},
+            session_id="inflight-idle-demo",
+            stdout=io.StringIO(),
+        )
+        assert "LoopX recoverable Codex turn failure" in inflight_response
+        assert "codex_exec_timeout" in inflight_response
         inflight_traces = [
             json.loads(path.read_text(encoding="utf-8"))
             for path in inflight_trace_dir.glob("*.compact.json")
@@ -1656,9 +1781,24 @@ subprocess.run(
         assert inflight_counts["request_count"] in {0, 1}, inflight_counts
         if inflight_counts["request_count"] == 1:
             assert inflight_counts["task_facing_operation_count"] == 1, inflight_counts
+            assert inflight_counts["failure_count"] == 0, inflight_counts
+            assert inflight_counts["failure_category_counts"] == {}, inflight_counts
+            assert inflight_counts["task_facing_interrupted_count"] == inflight_counts[
+                "interrupted_operation_count"
+            ], inflight_counts
         else:
             assert inflight_counts["task_facing_operation_count"] == 0, inflight_counts
+        assert inflight_counts["inflight_operation_count"] == 1, inflight_counts
         assert inflight_counts["raw_material_recorded"] is False, inflight_counts
+        inflight_failures = [
+            trace
+            for trace in inflight_traces
+            if trace.get("trace_kind") == "codex_exec_process_failure"
+        ]
+        assert len(inflight_failures) == 1, inflight_traces
+        assert inflight_failures[0]["codex_exec_process"]["failure_category"] == (
+            "codex_exec_timeout"
+        )
         bridge_preflight_codex = Path(tmp) / "bridge-preflight-codex"
         bridge_preflight_codex.write_text(
             f"""#!/usr/bin/env python3

@@ -60,6 +60,18 @@ def _send_json_line(sock: socket.socket, payload: dict[str, Any]) -> None:
     sock.sendall(json.dumps(payload, separators=(",", ":")).encode() + b"\n")
 
 
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(
+        f"{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
+    )
+    tmp_path.write_text(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True),
+        encoding="utf-8",
+    )
+    os.replace(tmp_path, path)
+
+
 def _recv_json_line(conn: socket.socket) -> dict[str, Any]:
     data = b""
     while not data.endswith(b"\n"):
@@ -95,7 +107,18 @@ def _allowed_env_assignments(extra: object) -> str:
 
 
 def _bridge_command_with_payload_env(command: str, extra: object) -> str:
-    return command.replace("{loopx_allowed_env}", _allowed_env_assignments(extra))
+    private_bridge_command = ""
+    if isinstance(extra, dict):
+        private_bridge_command = str(extra.get("private_bridge_command") or "")
+        env_extra = extra.get("env") if isinstance(extra.get("env"), dict) else extra
+    else:
+        env_extra = extra
+    command = command.replace("{private_bridge_command}", private_bridge_command)
+    command = command.replace(
+        "{private_bridge_command_sh}",
+        shlex.quote(private_bridge_command),
+    )
+    return command.replace("{loopx_allowed_env}", _allowed_env_assignments(env_extra))
 
 
 def _stop_process_group(proc: subprocess.Popen[str], *, sig: int) -> None:
@@ -161,6 +184,41 @@ def _read_agent_operations_jsonl(path: Path | None) -> str:
         return ""
 
 
+def _bridge_summary_has_inflight_operation(path: Path | None) -> bool:
+    if path is None or not path.exists():
+        return False
+    starts = 0
+    completions = 0
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        phase = str(record.get("record_phase") or "").strip().lower()
+        if phase == "complete" and not _bridge_operation_record_interrupted(record):
+            completions += 1
+        elif phase == "start" or record.get("operation_observed") is True:
+            starts += 1
+    return starts > completions
+
+
+def _bridge_operation_record_interrupted(record: dict[str, Any]) -> bool:
+    rc = record.get("returncode")
+    if isinstance(rc, int) and not isinstance(rc, bool) and rc < 0:
+        return True
+    category = str(record.get("failure_category") or "")
+    return record.get("interrupted") is True or category in {
+        "bridge_operation_interrupted",
+        "bridge_controller_interrupted",
+    }
+
+
 def _replace_output_last_message(args: list[str], replacement: Path) -> str | None:
     for index, token in enumerate(args[:-1]):
         if token == "--output-last-message":
@@ -201,6 +259,9 @@ def _prompt_requires_bridge_first_action(prompt: str) -> bool:
     lowered = text.lower()
     required_markers = (
         "loopx_skillsbench_local_acp_relay_bridge_ready",
+        "mandatory product-mode solver checkpoint",
+        "mandatory product-mode closeout checkpoint",
+        "must start with either a task-facing sandbox bridge operation",
         "your first tool action should be a shell",
         "your first agent action must be a shell/tool call",
         "your first agent action must be a task-facing shell/tool call",
@@ -358,12 +419,17 @@ record["task_facing_operation"] = bool(
     or (operation == "exec" and not subcommands)
 )
 record["operation_observed"] = True
-try:
-    SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record, sort_keys=True) + "\\n")
-except OSError:
-    pass
+
+def append_record(item: dict[str, object]) -> None:
+    try:
+        SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with SUMMARY_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(item, sort_keys=True) + "\\n")
+    except OSError:
+        pass
+
+record["record_phase"] = "start"
+append_record(record)
 proc = subprocess.run(
     bridge_command(),
     input=raw,
@@ -372,6 +438,27 @@ proc = subprocess.run(
     stderr=subprocess.PIPE,
     shell=True,
 )
+complete_record = dict(record)
+complete_record["record_phase"] = "complete"
+complete_record["returncode"] = int(proc.returncode)
+complete_record["success"] = proc.returncode == 0
+complete_record["stdout_bytes"] = len((proc.stdout or "").encode("utf-8"))
+complete_record["stderr_bytes"] = len((proc.stderr or "").encode("utf-8"))
+if proc.returncode != 0:
+    stderr_text = proc.stderr or ""
+    if int(proc.returncode) < 0:
+        complete_record["failure_category"] = "bridge_operation_interrupted"
+        complete_record["interrupted"] = True
+        complete_record["controller_interrupted"] = True
+    elif "PermissionError" in stderr_text or "Operation not permitted" in stderr_text:
+        complete_record["failure_category"] = "bridge_client_permission_error"
+    elif "No such file or directory" in stderr_text:
+        complete_record["failure_category"] = "bridge_command_not_found"
+    elif proc.returncode == 255 and bridge_command().lstrip().startswith("ssh "):
+        complete_record["failure_category"] = "bridge_ssh_unavailable"
+    else:
+        complete_record["failure_category"] = "bridge_command_failed"
+append_record(complete_record)
 sys.stdout.write(proc.stdout)
 sys.stderr.write(proc.stderr)
 raise SystemExit(proc.returncode)
@@ -449,15 +536,16 @@ def _run_codex_payload(
             ):
                 first_action_deadline = (
                     time.monotonic() + max(1.0, float(first_action_timeout_sec))
-                )
+            )
             first_action_seen = not bool(first_action_deadline)
             bridge_idle_timeout_sec = max(0.0, float(bridge_idle_timeout_sec or 0.0))
+            bridge_activity_seen = False
             last_agent_operations_size = 0
             last_bridge_activity_at = time.monotonic()
             timeout_kind = ""
             while proc.poll() is None:
                 now = time.monotonic()
-                if not first_action_seen and agent_operations_summary_path:
+                if agent_operations_summary_path:
                     try:
                         current_agent_operations_size = (
                             agent_operations_summary_path.stat().st_size
@@ -467,17 +555,21 @@ def _run_codex_payload(
                     if current_agent_operations_size > last_agent_operations_size:
                         last_agent_operations_size = current_agent_operations_size
                         last_bridge_activity_at = now
+                        bridge_activity_seen = True
                         first_action_seen = True
-                    elif current_agent_operations_size > 0:
+                    elif not first_action_seen and current_agent_operations_size > 0:
                         first_action_seen = True
                 if not first_action_seen and first_action_deadline and now >= first_action_deadline:
                     timeout_kind = "codex_exec_first_action_timeout"
                     _stop_process_group(proc, sig=signal.SIGTERM)
                     break
                 if (
-                    first_action_seen
+                    bridge_activity_seen
                     and agent_operations_summary_path is not None
                     and bridge_idle_timeout_sec > 0
+                    and not _bridge_summary_has_inflight_operation(
+                        agent_operations_summary_path
+                    )
                     and now - last_bridge_activity_at >= bridge_idle_timeout_sec
                 ):
                     timeout_kind = "codex_exec_bridge_idle_timeout"
@@ -585,7 +677,7 @@ def _run_json_bridge_payload(
         }
     payload_env = payload.get("env")
     env = _safe_env(payload_env)
-    command = _bridge_command_with_payload_env(bridge_command, payload_env)
+    command = _bridge_command_with_payload_env(bridge_command, payload)
     try:
         proc = subprocess.run(
             command,
@@ -670,6 +762,66 @@ def _serve_socket(
             pass
 
 
+def _serve_json_file_queue(
+    queue_dir: Path,
+    *,
+    once: bool,
+    poll_interval_sec: float,
+    handler: Any,
+) -> int:
+    requests_dir = queue_dir / "requests"
+    processing_dir = queue_dir / "processing"
+    responses_dir = queue_dir / "responses"
+    requests_dir.mkdir(parents=True, exist_ok=True)
+    processing_dir.mkdir(parents=True, exist_ok=True)
+    responses_dir.mkdir(parents=True, exist_ok=True)
+    poll_interval_sec = max(0.01, float(poll_interval_sec or 0.05))
+    while True:
+        for request_path in sorted(requests_dir.glob("*.json")):
+            processing_path = processing_dir / request_path.name
+            try:
+                os.replace(request_path, processing_path)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                continue
+            response_path = responses_dir / request_path.name
+            try:
+                try:
+                    payload_raw = processing_path.read_text(encoding="utf-8")
+                    payload = json.loads(payload_raw or "{}")
+                    if not isinstance(payload, dict):
+                        payload = {}
+                    response = handler(payload)
+                except Exception as exc:  # keep client deterministic
+                    response = {
+                        "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
+                        "exit_code": 1,
+                        "stdout": "",
+                        "stderr": type(exc).__name__,
+                        "raw_task_text_recorded": False,
+                        "credential_values_recorded": False,
+                    }
+                if not isinstance(response, dict):
+                    response = {
+                        "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
+                        "exit_code": 1,
+                        "stdout": "",
+                        "stderr": "invalid bridge response",
+                        "raw_task_text_recorded": False,
+                        "credential_values_recorded": False,
+                    }
+                _atomic_write_json(response_path, response)
+            finally:
+                try:
+                    processing_path.unlink()
+                except FileNotFoundError:
+                    pass
+            if once:
+                return 0
+        time.sleep(poll_interval_sec)
+
+
 def _write_codex_client(socket_path: str, output_path: Path) -> None:
     script = f"""#!/usr/bin/env python3
 import json, os, socket, sys
@@ -730,6 +882,71 @@ sys.exit(int(resp.get('exit_code') or 0))
     output_path.chmod(0o700)
 
 
+def _write_json_file_client(queue_dir: str, output_path: Path) -> None:
+    script = f"""#!/usr/bin/env python3
+import json, os, sys, time, uuid
+from pathlib import Path
+QUEUE = Path({queue_dir!r})
+REQUESTS = QUEUE / 'requests'
+RESPONSES = QUEUE / 'responses'
+
+def fail(message: str) -> None:
+    sys.stderr.write(message + '\\n')
+    raise SystemExit(125)
+
+def atomic_write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{{path.name}}.{{os.getpid()}}.{{time.monotonic_ns()}}.tmp")
+    tmp.write_text(json.dumps(payload, separators=(',', ':'), sort_keys=True), encoding='utf-8')
+    os.replace(tmp, path)
+
+request_id = f"{{int(time.time() * 1000)}}-{{os.getpid()}}-{{uuid.uuid4().hex}}"
+payload = {{
+    'schema_version': {CLIENT_SCHEMA_VERSION!r},
+    'request_id': request_id,
+    'stdin': sys.stdin.read(),
+    'env': {{k: os.environ.get(k, '') for k in ('AI_ADDR','AI_PORT','GOAL_HARNESS_REMOTE_BENCH_ROOT')}},
+    'private_bridge_command': os.environ.get('LOOPX_PRIVATE_BRIDGE_COMMAND', ''),
+}}
+request_path = REQUESTS / f"{{request_id}}.json"
+response_path = RESPONSES / f"{{request_id}}.json"
+try:
+    atomic_write_json(request_path, payload)
+except OSError as exc:
+    fail(f"reverse channel request write failed: {{type(exc).__name__}}")
+deadline = time.monotonic() + float(os.environ.get(
+    'LOOPX_REVERSE_RESPONSE_TIMEOUT_SEC',
+    os.environ.get('LOOPX_REVERSE_JSON_TIMEOUT_SEC', '300'),
+))
+resp = None
+while time.monotonic() < deadline:
+    try:
+        if response_path.exists():
+            resp = json.loads(response_path.read_text(encoding='utf-8') or '{{}}')
+            break
+    except json.JSONDecodeError:
+        fail('reverse channel response invalid')
+    except OSError:
+        pass
+    time.sleep(float(os.environ.get('LOOPX_REVERSE_FILE_POLL_INTERVAL_SEC', '0.05')))
+if resp is None:
+    fail('reverse channel response missing')
+if not isinstance(resp, dict):
+    fail('reverse channel response invalid')
+try:
+    response_path.unlink()
+except OSError:
+    pass
+out = resp.get('stdout')
+err = resp.get('stderr')
+if isinstance(out, str): sys.stdout.write(out)
+if isinstance(err, str): sys.stderr.write(err)
+sys.exit(int(resp.get('exit_code') or 0))
+"""
+    output_path.write_text(script, encoding="utf-8")
+    output_path.chmod(0o700)
+
+
 def _write_json_client(socket_path: str, output_path: Path) -> None:
     script = f"""#!/usr/bin/env python3
 import json, os, socket, sys
@@ -738,6 +955,7 @@ payload = {{
     'schema_version': {CLIENT_SCHEMA_VERSION!r},
     'stdin': sys.stdin.read(),
     'env': {{k: os.environ.get(k, '') for k in ('AI_ADDR','AI_PORT','GOAL_HARNESS_REMOTE_BENCH_ROOT')}},
+    'private_bridge_command': os.environ.get('LOOPX_PRIVATE_BRIDGE_COMMAND', ''),
 }}
 s=socket.socket(socket.AF_UNIX)
 s.settimeout(float(os.environ.get('LOOPX_REVERSE_CONNECT_TIMEOUT_SEC', '30')))
@@ -831,9 +1049,28 @@ def main(argv: list[str] | None = None) -> int:
     json_server.add_argument("--timeout-sec", type=float, default=300.0)
     json_server.add_argument("--once", action="store_true")
 
+    json_file_server = sub.add_parser("serve-json-file")
+    json_file_server.add_argument("--queue-dir", required=True)
+    json_file_server.add_argument(
+        "--bridge-command",
+        required=True,
+        help=(
+            "Private JSON bridge command. Use {loopx_allowed_env} inside nested "
+            "remote commands to forward AI_ADDR/AI_PORT without logging values."
+        ),
+    )
+    json_file_server.add_argument("--timeout-sec", type=float, default=300.0)
+    json_file_server.add_argument("--poll-interval-sec", type=float, default=0.05)
+    json_file_server.add_argument("--once", action="store_true")
+
     write_client = sub.add_parser("write-client")
-    write_client.add_argument("--kind", choices=("codex", "json"), required=True)
-    write_client.add_argument("--socket", required=True)
+    write_client.add_argument(
+        "--kind",
+        choices=("codex", "json", "json-file"),
+        required=True,
+    )
+    write_client.add_argument("--socket")
+    write_client.add_argument("--queue-dir")
     write_client.add_argument("--output", required=True)
 
     probe = sub.add_parser("probe-socket")
@@ -864,13 +1101,32 @@ def main(argv: list[str] | None = None) -> int:
                 default_timeout_sec=args.timeout_sec,
             ),
         )
+    if args.command == "serve-json-file":
+        return _serve_json_file_queue(
+            Path(args.queue_dir),
+            once=bool(args.once),
+            poll_interval_sec=args.poll_interval_sec,
+            handler=lambda payload: _run_json_bridge_payload(
+                payload,
+                bridge_command=args.bridge_command,
+                default_timeout_sec=args.timeout_sec,
+            ),
+        )
     if args.command == "write-client":
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         if args.kind == "codex":
+            if not args.socket:
+                parser.error("--socket is required for --kind codex")
             _write_codex_client(args.socket, output)
-        else:
+        elif args.kind == "json":
+            if not args.socket:
+                parser.error("--socket is required for --kind json")
             _write_json_client(args.socket, output)
+        else:
+            if not args.queue_dir:
+                parser.error("--queue-dir is required for --kind json-file")
+            _write_json_file_client(args.queue_dir, output)
         print(json.dumps({"ok": True, "kind": args.kind, "raw_path_recorded": False}))
         return 0
     if args.command == "probe-socket":
