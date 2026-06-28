@@ -217,6 +217,21 @@ def assert_no_execution(payload: dict[str, object]) -> None:
     assert projection["delivery_allowed"] is True, projection
     assert projection["no_upload_required"] is True, projection
     assert projection["compact_observation_only"] is True, projection
+    attempt_accounting = payload["attempt_accounting"]
+    assert isinstance(attempt_accounting, dict)
+    assert (
+        attempt_accounting["schema_version"] == "benchmark_attempt_accounting_v0"
+    ), attempt_accounting
+    assert attempt_accounting["lifecycle_phase"] == "not_started", attempt_accounting
+    assert attempt_accounting["failure_label"] == "", attempt_accounting
+    assert attempt_accounting["failure_class"] == "none", attempt_accounting
+    assert attempt_accounting["launcher_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["case_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["solver_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["verifier_attempt_countable"] is False, attempt_accounting
+    assert (
+        attempt_accounting["official_score_attempt_countable"] is False
+    ), attempt_accounting
 
 
 def run_fixture_smoke() -> None:

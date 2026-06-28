@@ -3438,6 +3438,12 @@ def build_agents_last_exam_local_launch_packet(
     run_permission_projection = compact_run_permission_policy_for_quota(
         run_permission_policy
     )
+    attempt_accounting = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(),
+        failure_label="",
+        failure_class=BenchmarkFailureClass.NONE,
+        official_score_attempted=False,
+    )
     return {
         "schema_version": AGENTS_LAST_EXAM_LOCAL_LAUNCH_PACKET_SCHEMA_VERSION,
         "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
@@ -3507,6 +3513,7 @@ def build_agents_last_exam_local_launch_packet(
         ),
         "run_permission_policy": run_permission_policy,
         "run_permission_quota_projection": run_permission_projection,
+        "attempt_accounting": attempt_accounting,
         "boundary": {
             "local_only": True,
             "no_upload": True,
