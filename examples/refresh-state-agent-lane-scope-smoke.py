@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test agent-lane refreshes without stealing goal-level next action."""
+"""Smoke-test explicit refresh-state goal/agent-lane scoping."""
 
 from __future__ import annotations
 
@@ -17,7 +17,11 @@ from loopx.status import collect_status
 
 GOAL_ID = "refresh-state-agent-lane-goal"
 PRIMARY_ACTION = "Run the primary benchmark bootstrap hardening slice."
+PRIMARY_AGENT_LANE_ACTION = "Continue the primary adapter lifecycle rollout repair."
 SIDE_ACTION = "Polish the hosted frontstage showcase for external developers."
+SIDE_HANDOFF_ACTION = (
+    "Primary should inspect todo_primary while side lane switches to the next product todo."
+)
 AUTO_RESEARCH_ACTION = (
     "[P0-auto-research] Use rollout-backed research_evidence_graph_v0 to generate "
     "live promotion and retirement candidates."
@@ -71,7 +75,10 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "adapter": {"kind": "fixture", "status": "connected-read-only"},
                         "coordination": {
                             "primary_agent": "codex-main-control",
-                            "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                            "registered_agents": [
+                                "codex-main-control",
+                                "codex-side-bypass",
+                            ],
                         },
                         "authority_sources": [],
                     }
@@ -86,14 +93,24 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     return registry_path, runtime, project
 
 
+def expect_value_error(message: str, callback) -> None:
+    error = None
+    try:
+        callback()
+    except ValueError as exc:
+        error = str(exc)
+    assert error and message in error, error
+
+
 def main() -> None:
     original_now_local = state_refresh.now_local
     try:
         with tempfile.TemporaryDirectory(prefix="loopx-agent-lane-refresh-") as raw_tmp:
             registry_path, runtime, project = write_fixture(Path(raw_tmp))
+            state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
 
             state_refresh.now_local = lambda: "2026-06-20T00:00:00+00:00"
-            state_refresh.refresh_state_run(
+            primary_payload = state_refresh.refresh_state_run(
                 registry_path=registry_path,
                 runtime_root_override=str(runtime),
                 goal_id=GOAL_ID,
@@ -103,10 +120,15 @@ def main() -> None:
                 recommended_action=PRIMARY_ACTION,
                 delivery_batch_scale="multi_surface",
                 delivery_outcome="outcome_progress",
+                agent_id="codex-main-control",
+                progress_scope="goal",
                 dry_run=False,
                 sync_global=False,
             )
-            state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+            assert primary_payload["progress_scope"] == "goal", primary_payload
+            assert primary_payload["agent_id"] == "codex-main-control", primary_payload
+            assert primary_payload.get("agent_lane") is None, primary_payload
+
             state_path.write_text(
                 state_path.read_text(encoding="utf-8").replace(
                     "updated_at: 2026-06-20T00:00:00+00:00",
@@ -114,6 +136,61 @@ def main() -> None:
                     1,
                 ),
                 encoding="utf-8",
+            )
+
+            expect_value_error(
+                "multi-agent refresh-state requires --agent-id",
+                lambda: state_refresh.refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=str(runtime),
+                    goal_id=GOAL_ID,
+                    project=project,
+                    state_file=None,
+                    classification="frontstage_side_lane_unscoped",
+                    recommended_action=f"Continue todo_side: {SIDE_ACTION}",
+                    delivery_batch_scale="single_surface",
+                    delivery_outcome="outcome_progress",
+                    dry_run=True,
+                    sync_global=False,
+                ),
+            )
+
+            expect_value_error(
+                "agent-lane refresh-state cannot update the durable active-state Next Action",
+                lambda: state_refresh.refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=str(runtime),
+                    goal_id=GOAL_ID,
+                    project=project,
+                    state_file=None,
+                    classification="frontstage_side_lane_next_action_write",
+                    recommended_action=SIDE_ACTION,
+                    next_action=SIDE_ACTION,
+                    delivery_batch_scale="single_surface",
+                    delivery_outcome="outcome_progress",
+                    agent_id="codex-side-bypass",
+                    dry_run=True,
+                    sync_global=False,
+                ),
+            )
+
+            expect_value_error(
+                "goal-scope refresh-state requires the primary agent",
+                lambda: state_refresh.refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=str(runtime),
+                    goal_id=GOAL_ID,
+                    project=project,
+                    state_file=None,
+                    classification="frontstage_side_goal_scope",
+                    recommended_action=SIDE_ACTION,
+                    delivery_batch_scale="single_surface",
+                    delivery_outcome="outcome_progress",
+                    agent_id="codex-side-bypass",
+                    progress_scope="goal",
+                    dry_run=True,
+                    sync_global=False,
+                ),
             )
 
             state_refresh.now_local = lambda: "2026-06-20T00:01:00+00:00"
@@ -134,124 +211,8 @@ def main() -> None:
             )
             assert side_payload["progress_scope"] == "agent_lane", side_payload
             assert side_payload["agent_id"] == "codex-side-bypass", side_payload
-
-            unscoped_side_action = f"Continue todo_side: {SIDE_ACTION}"
-            side_next_action_error = None
-            try:
-                state_refresh.refresh_state_run(
-                    registry_path=registry_path,
-                    runtime_root_override=str(runtime),
-                    goal_id=GOAL_ID,
-                    project=project,
-                    state_file=None,
-                    classification="frontstage_side_lane_explicit_next_action_write",
-                    recommended_action=unscoped_side_action,
-                    next_action=unscoped_side_action,
-                    delivery_batch_scale="single_surface",
-                    delivery_outcome="outcome_progress",
-                    agent_id="codex-side-bypass",
-                    dry_run=True,
-                    sync_global=False,
-                )
-            except ValueError as exc:
-                side_next_action_error = str(exc)
-            assert side_next_action_error and (
-                "cannot update the durable active-state Next Action" in side_next_action_error
-            )
-
-            blocked_next_action_error = None
-            try:
-                state_refresh.refresh_state_run(
-                    registry_path=registry_path,
-                    runtime_root_override=str(runtime),
-                    goal_id=GOAL_ID,
-                    project=project,
-                    state_file=None,
-                    classification="frontstage_side_lane_next_action_write",
-                    recommended_action=unscoped_side_action,
-                    next_action=unscoped_side_action,
-                    delivery_batch_scale="single_surface",
-                    delivery_outcome="outcome_progress",
-                    dry_run=True,
-                    sync_global=False,
-                )
-            except ValueError as exc:
-                blocked_next_action_error = str(exc)
-            assert blocked_next_action_error and (
-                "inferred non-primary agent-lane scope" in blocked_next_action_error
-            )
-
-            state_refresh.now_local = lambda: "2026-06-20T00:02:00+00:00"
-            unscoped_side_payload = state_refresh.refresh_state_run(
-                registry_path=registry_path,
-                runtime_root_override=str(runtime),
-                goal_id=GOAL_ID,
-                project=project,
-                state_file=None,
-                classification="frontstage_side_lane_next_unscoped",
-                recommended_action=unscoped_side_action,
-                delivery_batch_scale="single_surface",
-                delivery_outcome="outcome_progress",
-                dry_run=False,
-                sync_global=False,
-            )
-            assert unscoped_side_payload["progress_scope"] == "agent_lane", unscoped_side_payload
-            assert unscoped_side_payload["agent_id"] == "codex-side-bypass", unscoped_side_payload
-            assert unscoped_side_payload["agent_lane_scope_inference"]["todo_id"] == "todo_side"
-            assert (
-                unscoped_side_payload["agent_lane_scope_inference"]["source"]
-                == "referenced_claimed_todo"
-            )
-
-            state_refresh.now_local = lambda: "2026-06-20T00:02:30+00:00"
-            unscoped_text_payload = state_refresh.refresh_state_run(
-                registry_path=registry_path,
-                runtime_root_override=str(runtime),
-                goal_id=GOAL_ID,
-                project=project,
-                state_file=None,
-                classification="auto_research_rollout_read_path_merged",
-                recommended_action=AUTO_RESEARCH_ACTION,
-                delivery_batch_scale="single_surface",
-                delivery_outcome="outcome_progress",
-                dry_run=False,
-                sync_global=False,
-            )
-            assert unscoped_text_payload["progress_scope"] == "agent_lane", unscoped_text_payload
-            assert unscoped_text_payload["agent_id"] == "codex-side-bypass", unscoped_text_payload
-            assert (
-                unscoped_text_payload["agent_lane_scope_inference"]["source"]
-                == "matched_claimed_todo_text"
-            )
-            assert (
-                unscoped_text_payload["agent_lane_scope_inference"]["todo_id"]
-                == "todo_auto_research"
-            )
-
-            primary_review_handoff = (
-                "Primary review todo_primary should inspect the refactor before deeper splits; "
-                "codex-side-bypass should switch to another eligible product todo."
-            )
-            ambiguous_agent_mention_error = None
-            try:
-                state_refresh.refresh_state_run(
-                    registry_path=registry_path,
-                    runtime_root_override=str(runtime),
-                    goal_id=GOAL_ID,
-                    project=project,
-                    state_file=None,
-                    classification="side_lane_review_handoff_ambiguous",
-                    recommended_action=primary_review_handoff,
-                    delivery_batch_scale="single_surface",
-                    delivery_outcome="outcome_progress",
-                    dry_run=True,
-                    sync_global=False,
-                )
-            except ValueError as exc:
-                ambiguous_agent_mention_error = str(exc)
-            assert ambiguous_agent_mention_error and (
-                "text-only agent references are ambiguous" in ambiguous_agent_mention_error
-            )
+            assert side_payload["agent_lane"] == "productization_frontstage", side_payload
+            assert "agent_lane_scope_inference" not in side_payload, side_payload
 
             state_refresh.now_local = lambda: "2026-06-20T00:03:00+00:00"
             handoff_payload = state_refresh.refresh_state_run(
@@ -261,7 +222,7 @@ def main() -> None:
                 project=project,
                 state_file=None,
                 classification="side_lane_review_handoff",
-                recommended_action=primary_review_handoff,
+                recommended_action=SIDE_HANDOFF_ACTION,
                 delivery_batch_scale="single_surface",
                 delivery_outcome="outcome_progress",
                 agent_id="codex-side-bypass",
@@ -270,6 +231,7 @@ def main() -> None:
             )
             assert handoff_payload["progress_scope"] == "agent_lane", handoff_payload
             assert handoff_payload["agent_id"] == "codex-side-bypass", handoff_payload
+            assert handoff_payload["agent_lane"] == "codex-side-bypass", handoff_payload
             assert "agent_lane_scope_inference" not in handoff_payload, handoff_payload
 
             history = collect_history(
@@ -280,9 +242,6 @@ def main() -> None:
             )
             goal = history["goals"][0]
             assert goal["latest_runs"][0]["classification"] == "side_lane_review_handoff", goal
-            latest_run_state = goal["latest_runs"][0]["state"]
-            assert latest_run_state["sha256_16"], latest_run_state
-            assert latest_run_state["frontmatter"]["updated_at"] == "2026-06-20T00:00:30+00:00"
             assert goal["latest_status_run"]["classification"] == "terminal_bench_primary_ready", goal
 
             status = collect_status(
@@ -295,14 +254,81 @@ def main() -> None:
             item = next(item for item in items if item["goal_id"] == GOAL_ID)
             assert item["status"] == "terminal_bench_primary_ready", item
             assert item["recommended_action"] == PRIMARY_ACTION, item
+            assert item["latest_run_recommended_action"] == PRIMARY_ACTION, item
+            assert item["latest_run_recommended_action_source"] == "latest_status_run", item
             assert "stale_latest_run_warning" not in item, item
             assert "stale_latest_run_warning" not in item["project_asset"], item
             lane = item["agent_lane_recommendation"]
             assert lane["progress_scope"] == "agent_lane", lane
             assert lane["agent_id"] == "codex-side-bypass", lane
             assert lane["agent_lane"] == "codex-side-bypass", lane
-            assert lane["recommended_action"] == primary_review_handoff, lane
+            assert lane["recommended_action"] == SIDE_HANDOFF_ACTION, lane
             assert item["project_asset"]["agent_lane_recommendation"] == lane, item
+
+            expect_value_error(
+                "agent-lane refresh-state cannot update the durable active-state Next Action",
+                lambda: state_refresh.refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=str(runtime),
+                    goal_id=GOAL_ID,
+                    project=project,
+                    state_file=None,
+                    classification="adapter_lifecycle_primary_default_lane_next",
+                    recommended_action=PRIMARY_AGENT_LANE_ACTION,
+                    next_action=PRIMARY_AGENT_LANE_ACTION,
+                    delivery_batch_scale="single_surface",
+                    delivery_outcome="outcome_progress",
+                    agent_id="codex-main-control",
+                    dry_run=True,
+                    sync_global=False,
+                ),
+            )
+
+            state_refresh.now_local = lambda: "2026-06-20T00:04:00+00:00"
+            primary_next_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="adapter_lifecycle_primary_goal_next",
+                recommended_action=PRIMARY_AGENT_LANE_ACTION,
+                next_action=PRIMARY_AGENT_LANE_ACTION,
+                delivery_batch_scale="single_surface",
+                delivery_outcome="outcome_progress",
+                agent_id="codex-main-control",
+                progress_scope="goal",
+                dry_run=False,
+                sync_global=False,
+            )
+            assert primary_next_payload["progress_scope"] == "goal", primary_next_payload
+            assert primary_next_payload["agent_id"] == "codex-main-control", primary_next_payload
+            assert primary_next_payload.get("agent_lane") is None, primary_next_payload
+            assert primary_next_payload["active_state_next_action_update"]["updated"] is True
+
+            primary_goal_status = collect_status(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                scan_roots=[project],
+                limit=5,
+            )
+            primary_goal_item = next(
+                item
+                for item in primary_goal_status["attention_queue"]["items"]
+                if item["goal_id"] == GOAL_ID
+            )
+            assert primary_goal_item["status"] == "adapter_lifecycle_primary_goal_next"
+            assert primary_goal_item["recommended_action"] == PRIMARY_AGENT_LANE_ACTION
+            assert primary_goal_item["active_state_next_action"] == PRIMARY_AGENT_LANE_ACTION
+            assert (
+                primary_goal_item["latest_run_recommended_action"]
+                == PRIMARY_AGENT_LANE_ACTION
+            ), primary_goal_item
+            assert (
+                primary_goal_item["latest_run_recommended_action_source"]
+                == "latest_status_run"
+            ), primary_goal_item
+            assert "next_action_projection_warning" not in primary_goal_item, primary_goal_item
     finally:
         state_refresh.now_local = original_now_local
 

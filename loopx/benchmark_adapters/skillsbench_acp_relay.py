@@ -31,6 +31,10 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (
 )
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REVERSE_CHANNEL_BRIDGE_SCRIPT = (
+    REPO_ROOT / "scripts" / "skillsbench_reverse_channel_bridge.py"
+)
 SKILLSBENCH_LOCAL_ACP_RELAY_SCHEMA_VERSION = "skillsbench_local_acp_relay_v0"
 SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION = (
     "skillsbench_local_acp_relay_probe_v0"
@@ -69,6 +73,9 @@ def _prompt_requires_bridge_first_action(prompt: str) -> bool:
     lowered = text.lower()
     required_markers = (
         SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER.lower(),
+        "mandatory product-mode solver checkpoint",
+        "mandatory product-mode closeout checkpoint",
+        "must start with either a task-facing sandbox bridge operation",
         "your first tool action should be a shell",
         "your first agent action must be a shell/tool call",
         "your first agent action must be a task-facing shell/tool call",
@@ -158,6 +165,41 @@ def _public_bridge_operations(value: Any) -> list[dict[str, Any]]:
     return operations
 
 
+def _bridge_summary_has_inflight_operation(path: Path | None) -> bool:
+    if path is None or not path.exists():
+        return False
+    starts = 0
+    completions = 0
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        phase = str(record.get("record_phase") or "").strip().lower()
+        if phase == "complete" and not _bridge_operation_record_interrupted(record):
+            completions += 1
+        elif phase == "start" or record.get("operation_observed") is True:
+            starts += 1
+    return starts > completions
+
+
+def _bridge_operation_record_interrupted(record: dict[str, Any]) -> bool:
+    rc = record.get("returncode")
+    if isinstance(rc, int) and not isinstance(rc, bool) and rc < 0:
+        return True
+    category = str(record.get("failure_category") or "")
+    return record.get("interrupted") is True or category in {
+        "bridge_operation_interrupted",
+        "bridge_controller_interrupted",
+    }
+
+
 def _codex_exec_failure_category(
     *,
     returncode: int | None,
@@ -189,13 +231,6 @@ def _codex_exec_failure_category(
         )
     ):
         return "codex_model_unavailable"
-    if (
-        "connectionrefusederror" in text
-        or "connection refused" in text
-        or "failed to establish a new connection" in text
-        or ("create_connection" in text and "socket" in text)
-    ):
-        return "codex_reverse_channel_unavailable"
     if any(
         token in text
         for token in (
@@ -203,6 +238,8 @@ def _codex_exec_failure_category(
             "stream disconnected before completion",
             "error sending request",
             "request error",
+            "connection refused",
+            "connection timed out",
         )
     ) and any(
         token in text
@@ -214,6 +251,13 @@ def _codex_exec_failure_category(
         )
     ):
         return "codex_network_or_api_unreachable"
+    if (
+        "connectionrefusederror" in text
+        or "connection refused" in text
+        or "failed to establish a new connection" in text
+        or ("create_connection" in text and "socket" in text)
+    ):
+        return "codex_reverse_channel_unavailable"
     if "hit your usage limit" in text or "usage limit" in text:
         return "codex_usage_limit"
     if "codex_exec_first_action_timeout" in text:
@@ -243,6 +287,20 @@ def _codex_exec_failure_category(
     if returncode is not None:
         return "codex_exec_exit_nonzero"
     return "codex_exec_failed"
+
+
+RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES = {
+    "codex_exec_first_action_timeout",
+    "codex_exec_bridge_idle_timeout",
+}
+
+
+def _recoverable_codex_turn_failure_message(category: str) -> str:
+    return (
+        "LoopX recoverable Codex turn failure: "
+        f"{category}. Continue with the next scheduled product-mode round; "
+        "raw task text, logs, and trajectory material were not recorded."
+    )
 
 
 def _write_process_stdin_async(
@@ -455,6 +513,7 @@ class SkillsBenchLocalAcpRelay:
             stderr_path = tmp_path / "codex-stderr.txt"
             prompt_for_codex = prompt_text
             cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
+            bridge_server_proc: subprocess.Popen[str] | None = None
             if self._config.remote_command_file_bridge_command:
                 if _is_bridge_action_preflight_prompt(prompt_text):
                     bridge_probe = self._reverse_channel_json_preflight_probe()
@@ -471,6 +530,13 @@ class SkillsBenchLocalAcpRelay:
                     self._config.remote_command_file_bridge_agent_command
                     or self._config.remote_command_file_bridge_command
                     or ""
+                )
+                agent_bridge_command, bridge_server_proc = (
+                    self._start_json_file_bridge_server(
+                        tmp_path=tmp_path,
+                        local_cwd=local_cwd,
+                        bridge_command=agent_bridge_command,
+                    )
                 )
                 instrumented_bridge = self._write_instrumented_bridge_wrapper(
                     tmp_path=tmp_path,
@@ -544,6 +610,7 @@ class SkillsBenchLocalAcpRelay:
                         0.0,
                         float(self._config.bridge_idle_timeout_sec or 0.0),
                     )
+                    bridge_activity_seen = False
                     last_bridge_summary_size = 0
                     last_bridge_activity_at = time.monotonic()
                     next_heartbeat = (
@@ -562,6 +629,7 @@ class SkillsBenchLocalAcpRelay:
                             if current_bridge_summary_size > last_bridge_summary_size:
                                 last_bridge_summary_size = current_bridge_summary_size
                                 last_bridge_activity_at = now
+                                bridge_activity_seen = True
                                 first_action_seen = True
                             elif (
                                 not first_action_seen
@@ -574,6 +642,10 @@ class SkillsBenchLocalAcpRelay:
                             and now >= first_action_deadline
                         ):
                             self._terminate_codex_process(proc)
+                            if bridge_summary_path is not None:
+                                self._publish_remote_bridge_agent_operations_trace(
+                                    bridge_summary_path=bridge_summary_path,
+                                )
                             self._publish_codex_exec_failure_trace(
                                 stage="first_action_timeout",
                                 returncode=124,
@@ -587,11 +659,16 @@ class SkillsBenchLocalAcpRelay:
                                 ),
                                 failure_category="codex_exec_first_action_timeout",
                             )
-                            raise TimeoutError("local codex first action timeout")
+                            return _recoverable_codex_turn_failure_message(
+                                "codex_exec_first_action_timeout"
+                            )
                         if (
-                            first_action_seen
+                            bridge_activity_seen
                             and bridge_summary_path is not None
                             and bridge_idle_timeout_sec > 0
+                            and not _bridge_summary_has_inflight_operation(
+                                bridge_summary_path
+                            )
                             and now - last_bridge_activity_at >= bridge_idle_timeout_sec
                         ):
                             self._terminate_codex_process(proc)
@@ -611,7 +688,9 @@ class SkillsBenchLocalAcpRelay:
                                 ),
                                 failure_category="codex_exec_bridge_idle_timeout",
                             )
-                            raise TimeoutError("local codex bridge idle timeout")
+                            return _recoverable_codex_turn_failure_message(
+                                "codex_exec_bridge_idle_timeout"
+                            )
                         if now >= deadline:
                             self._terminate_codex_process(proc)
                             raise subprocess.TimeoutExpired(
@@ -657,7 +736,9 @@ class SkillsBenchLocalAcpRelay:
                         output_path.stat().st_size if output_path.exists() else 0
                     ),
                 )
-                raise TimeoutError from exc
+                return _recoverable_codex_turn_failure_message("codex_exec_timeout")
+            finally:
+                self._terminate_bridge_server_process(bridge_server_proc)
             stdout_text = (
                 stdout_path.read_text(encoding="utf-8", errors="replace")
                 if stdout_path.exists()
@@ -684,6 +765,12 @@ class SkillsBenchLocalAcpRelay:
                     ),
                     failure_category=category,
                 )
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
+                if category in RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES:
+                    return _recoverable_codex_turn_failure_message(category)
                 raise RuntimeError(f"local codex execution failed: {category}")
             try:
                 response = output_path.read_text(encoding="utf-8").strip()
@@ -735,6 +822,80 @@ class SkillsBenchLocalAcpRelay:
             proc.wait(timeout=grace_sec)
         except subprocess.TimeoutExpired:
             pass
+
+    def _terminate_bridge_server_process(
+        self,
+        proc: subprocess.Popen[str] | None,
+        *,
+        grace_sec: float = 2.0,
+    ) -> None:
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+        except (ProcessLookupError, PermissionError, OSError):
+            return
+        try:
+            proc.wait(timeout=grace_sec)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            proc.kill()
+        except (ProcessLookupError, PermissionError, OSError):
+            return
+        try:
+            proc.wait(timeout=grace_sec)
+        except subprocess.TimeoutExpired:
+            pass
+
+    def _start_json_file_bridge_server(
+        self,
+        *,
+        tmp_path: Path,
+        local_cwd: Path,
+        bridge_command: str,
+    ) -> tuple[str, subprocess.Popen[str] | None]:
+        if not bridge_command or not REVERSE_CHANNEL_BRIDGE_SCRIPT.exists():
+            return bridge_command, None
+        queue_dir = local_cwd / "loopx-reverse-channel-queue"
+        client_path = local_cwd / "loopx-json-file-bridge"
+        subprocess.run(
+            [
+                sys.executable,
+                str(REVERSE_CHANNEL_BRIDGE_SCRIPT),
+                "write-client",
+                "--kind",
+                "json-file",
+                "--queue-dir",
+                str(queue_dir),
+                "--output",
+                str(client_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(REVERSE_CHANNEL_BRIDGE_SCRIPT),
+                "serve-json-file",
+                "--queue-dir",
+                str(queue_dir),
+                "--bridge-command",
+                bridge_command,
+                "--timeout-sec",
+                str(max(1.0, float(self._config.remote_command_file_bridge_timeout_sec))),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            cwd=str(tmp_path),
+        )
+        return shlex.quote(str(client_path)), proc
 
     def _consume_remote_bridge_for_solver(self) -> dict[str, Any]:
         return run_skillsbench_remote_command_file_bridge_probe(
@@ -1167,6 +1328,20 @@ complete_record["returncode"] = int(proc.returncode)
 complete_record["success"] = proc.returncode == 0
 complete_record["stdout_bytes"] = len((proc.stdout or "").encode("utf-8"))
 complete_record["stderr_bytes"] = len((proc.stderr or "").encode("utf-8"))
+if proc.returncode != 0:
+    stderr_text = proc.stderr or ""
+    if int(proc.returncode) < 0:
+        complete_record["failure_category"] = "bridge_operation_interrupted"
+        complete_record["interrupted"] = True
+        complete_record["controller_interrupted"] = True
+    elif "PermissionError" in stderr_text or "Operation not permitted" in stderr_text:
+        complete_record["failure_category"] = "bridge_client_permission_error"
+    elif "No such file or directory" in stderr_text:
+        complete_record["failure_category"] = "bridge_command_not_found"
+    elif proc.returncode == 255 and BRIDGE_COMMAND.lstrip().startswith("ssh "):
+        complete_record["failure_category"] = "bridge_ssh_unavailable"
+    else:
+        complete_record["failure_category"] = "bridge_command_failed"
 append_record(complete_record)
 sys.stdout.write(proc.stdout)
 sys.stderr.write(proc.stderr)
@@ -1187,6 +1362,7 @@ raise SystemExit(proc.returncode)
         loopx_subcommand_counts: dict[str, int] = {}
         successful_loopx_subcommand_counts: dict[str, int] = {}
         returncode_counts: dict[str, int] = {}
+        failure_category_counts: dict[str, int] = {}
         request_count = 0
         success_count = 0
         failure_count = 0
@@ -1194,8 +1370,17 @@ raise SystemExit(proc.returncode)
         state_read_count = 0
         state_write_count = 0
         task_facing_operation_count = 0
+        preflight_success_count = 0
+        preflight_failure_count = 0
+        task_facing_success_count = 0
+        task_facing_failure_count = 0
         probe_operation_count = 0
+        inflight_operation_count = 0
+        interrupted_operation_count = 0
+        task_facing_interrupted_count = 0
         raw_material_recorded = False
+        starts = 0
+        completions = 0
         if bridge_summary_path.exists():
             for line in bridge_summary_path.read_text(
                 encoding="utf-8",
@@ -1213,6 +1398,11 @@ raise SystemExit(proc.returncode)
                 counts_as_completion = phase == "complete" or (
                     not phase and ("returncode" in record or "success" in record)
                 )
+                interrupted_completion = counts_as_completion and _bridge_operation_record_interrupted(record)
+                if phase == "complete" and not interrupted_completion:
+                    completions += 1
+                elif phase == "start" or record.get("operation_observed") is True:
+                    starts += 1
                 if counts_as_request:
                     request_count += 1
                     operation_counts[operation] = (
@@ -1224,19 +1414,56 @@ raise SystemExit(proc.returncode)
                         returncode_counts[str(rc)] = (
                             returncode_counts.get(str(rc), 0) + 1
                         )
-                        if rc == 0:
+                        if interrupted_completion:
+                            interrupted_operation_count += 1
+                            if record.get("task_facing_operation") is True:
+                                task_facing_interrupted_count += 1
+                        elif rc == 0:
                             success_count += 1
+                            if operation == "preflight":
+                                preflight_success_count += 1
+                            if record.get("task_facing_operation") is True:
+                                task_facing_success_count += 1
                         else:
                             failure_count += 1
+                            if operation == "preflight":
+                                preflight_failure_count += 1
+                            if record.get("task_facing_operation") is True:
+                                task_facing_failure_count += 1
+                            category = str(
+                                record.get("failure_category")
+                                or "bridge_command_failed"
+                            )[:80]
+                            failure_category_counts[category] = (
+                                failure_category_counts.get(category, 0) + 1
+                            )
+                    elif interrupted_completion:
+                        interrupted_operation_count += 1
+                        if record.get("task_facing_operation") is True:
+                            task_facing_interrupted_count += 1
                     elif record.get("success") is True:
                         success_count += 1
+                        if operation == "preflight":
+                            preflight_success_count += 1
+                        if record.get("task_facing_operation") is True:
+                            task_facing_success_count += 1
                         returncode_counts["unknown_success"] = (
                             returncode_counts.get("unknown_success", 0) + 1
                         )
                     elif record.get("success") is False:
                         failure_count += 1
+                        if operation == "preflight":
+                            preflight_failure_count += 1
+                        if record.get("task_facing_operation") is True:
+                            task_facing_failure_count += 1
                         returncode_counts["unknown_failure"] = (
                             returncode_counts.get("unknown_failure", 0) + 1
+                        )
+                        category = str(
+                            record.get("failure_category") or "bridge_command_failed"
+                        )[:80]
+                        failure_category_counts[category] = (
+                            failure_category_counts.get(category, 0) + 1
                         )
                 if counts_as_request and record.get("loopx_cli_call") is True:
                     loopx_cli_call_count += 1
@@ -1276,6 +1503,7 @@ raise SystemExit(proc.returncode)
                         "remote_paths_recorded",
                     )
                 )
+        inflight_operation_count = max(0, starts - completions)
         trace = {
             "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
             "ok": True,
@@ -1292,6 +1520,9 @@ raise SystemExit(proc.returncode)
                 "failure_count": failure_count,
                 "operation_counts": dict(sorted(operation_counts.items())),
                 "returncode_counts": dict(sorted(returncode_counts.items())),
+                "failure_category_counts": dict(
+                    sorted(failure_category_counts.items())
+                ),
                 "loopx_cli_call_count": loopx_cli_call_count,
                 "loopx_cli_subcommand_counts": dict(
                     sorted(loopx_subcommand_counts.items())
@@ -1302,7 +1533,14 @@ raise SystemExit(proc.returncode)
                 "loopx_state_read_count": state_read_count,
                 "loopx_state_write_count": state_write_count,
                 "task_facing_operation_count": task_facing_operation_count,
+                "preflight_success_count": preflight_success_count,
+                "preflight_failure_count": preflight_failure_count,
+                "task_facing_success_count": task_facing_success_count,
+                "task_facing_failure_count": task_facing_failure_count,
                 "probe_operation_count": probe_operation_count,
+                "inflight_operation_count": inflight_operation_count,
+                "interrupted_operation_count": interrupted_operation_count,
+                "task_facing_interrupted_count": task_facing_interrupted_count,
                 "raw_material_recorded": raw_material_recorded,
             },
             "boundary": {

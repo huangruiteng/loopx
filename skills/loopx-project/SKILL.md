@@ -33,6 +33,11 @@ Recognized project-local commands:
 - `/loopx`
 - `/loopx <goal text>`
 
+Recognized repo-review commands:
+
+- `/loopx-pr-review`
+- `/loopx-pr-review <time window or filter text>`
+
 From the target project root, run the bootstrap command pack before planning or
 writing project state:
 
@@ -68,6 +73,14 @@ or status summary surface instead of `bootstrap-command-pack`. Legacy
 `/loop-global-*` forms may be treated as aliases, but canonical help and
 packets should use `/loopx-global-*`.
 
+Repo-review slash commands are also not project bootstrap commands. If the
+visible request starts with `/loopx-pr-review`, stop this project-bootstrap
+workflow and load the narrower `loopx-pr-review` skill. That skill owns the
+required first command, packet-preservation rules, and five-block per-PR review
+contract. Do not handle `/loopx-pr-review` from this broader project skill, and
+do not route it to `loopx-pr-merge` unless the user later asks to approve,
+comment on, merge, self-merge, or admin-bypass a specific PR.
+
 When a user has just connected a project or receives a bootstrap command pack
 for the first time, briefly tell them the usable commands instead of assuming
 they will inspect CLI help:
@@ -78,6 +91,8 @@ they will inspect CLI help:
 - `/loopx-global-summary`: read the global progress digest.
 - `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`: inspect
   manager-level gates, work, and risks.
+- `/loopx-pr-review`: use the `loopx-pr-review` skill to run `loopx pr-review`
+  and review unmerged/merged PR groups one by one.
 
 For command-line discovery, use:
 
@@ -583,8 +598,13 @@ or external coordination state without producing a new adapter run, append a
 state-only refresh:
 
 ```bash
-loopx refresh-state --goal-id <STABLE_GOAL_ID>
+loopx refresh-state --goal-id <STABLE_GOAL_ID> --agent-id <REGISTERED_AGENT_ID>
 ```
+
+For multi-agent goals, keep the same `--agent-id` envelope that passed
+`quota should-run`. This default is an agent-lane refresh. To update the
+goal-level route or durable `## Next Action`, the primary agent must add
+`--progress-scope goal`.
 
 If that refresh records a validated progress artifact rather than a pure
 state-only note, include a public-safe classification and explicit delivery
@@ -596,7 +616,9 @@ loopx refresh-state \
   --goal-id <STABLE_GOAL_ID> \
   --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> \
   --delivery-batch-scale multi_surface \
-  --delivery-outcome outcome_progress
+  --delivery-outcome outcome_progress \
+  --agent-id <PRIMARY_AGENT_ID> \
+  --progress-scope goal
 ```
 
 Use `delivery_outcome` as a machine enum, not as prose:

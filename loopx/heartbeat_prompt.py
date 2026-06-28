@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Any
 
 from .agent_registry import normalize_registered_agents
-from .project_prompt import render_cli_preflight, render_quota_guard_command, render_quota_spend_command
+from .project_prompt import (
+    render_cli_preflight,
+    render_quota_guard_command,
+    render_quota_spend_command,
+    render_refresh_state_command,
+)
 from .todo_contract import normalize_todo_claimed_by
 
 
@@ -423,6 +428,19 @@ def build_heartbeat_prompt(
         cli_bin=cli_bin,
         agent_id=normalized_agent_id,
     )
+    refresh_state_command = render_refresh_state_command(
+        goal_id,
+        cli_bin=cli_bin,
+        agent_id=normalized_agent_id,
+    )
+    progress_refresh_state_command = render_refresh_state_command(
+        goal_id,
+        cli_bin=cli_bin,
+        agent_id=normalized_agent_id,
+        classification="<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
+        delivery_batch_scale="multi_surface",
+        delivery_outcome="outcome_progress",
+    )
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
     expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}"
     compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}"
@@ -442,6 +460,8 @@ def build_heartbeat_prompt(
         cli_preflight=cli_preflight,
         quota_guard_command=quota_guard_command,
         quota_spend_command=quota_spend_command,
+        refresh_state_command=refresh_state_command,
+        progress_refresh_state_command=progress_refresh_state_command,
         material_queue_rule=resolved_material_rule,
         permission_rule=resolved_permission_rule,
         cli_bin=cli_bin,
@@ -475,9 +495,11 @@ def build_heartbeat_prompt(
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
         "thin_prompt_command": thin_prompt_command,
-        "quota_guard_command": quota_guard_command,
-        "quota_spend_command": quota_spend_command,
-        "cli_preflight": cli_preflight,
+            "quota_guard_command": quota_guard_command,
+            "quota_spend_command": quota_spend_command,
+            "refresh_state_command": refresh_state_command,
+            "progress_refresh_state_command": progress_refresh_state_command,
+            "cli_preflight": cli_preflight,
         "material_queue_rule": resolved_material_rule,
         "permission_rule": resolved_permission_rule,
         "interface_budget": build_interface_budget(
@@ -499,6 +521,8 @@ def render_heartbeat_task_body(
     cli_preflight: str,
     quota_guard_command: str,
     quota_spend_command: str,
+    refresh_state_command: str,
+    progress_refresh_state_command: str,
     material_queue_rule: str,
     permission_rule: str,
     cli_bin: str,
@@ -676,7 +700,7 @@ If the result says `should_run=true`:
 9. If the dashboard or controller needs state after spend, refresh:
 
    ```bash
-   {cli_bin} refresh-state --goal-id {goal_id}
+   {refresh_state_command}
    ```
 
    For a validated progress artifact, add a public-safe classification and
@@ -684,7 +708,7 @@ If the result says `should_run=true`:
    names:
 
    ```bash
-   {cli_bin} refresh-state --goal-id {goal_id} --classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION> --delivery-batch-scale multi_surface --delivery-outcome outcome_progress
+   {progress_refresh_state_command}
    ```
 
 10. Return a compact final report. Use heartbeat `NOTIFY` only for meaningful
@@ -702,6 +726,8 @@ def render_brief_heartbeat_task_body(
     cli_preflight: str,
     quota_guard_command: str,
     quota_spend_command: str,
+    refresh_state_command: str,
+    progress_refresh_state_command: str,
     material_queue_rule: str,
     permission_rule: str,
     cli_bin: str,
@@ -768,6 +794,8 @@ def render_compact_heartbeat_task_body(
     cli_preflight: str,
     quota_guard_command: str,
     quota_spend_command: str,
+    refresh_state_command: str,
+    progress_refresh_state_command: str,
     material_queue_rule: str,
     permission_rule: str,
     cli_bin: str,
@@ -785,20 +813,19 @@ Put local policy in registry/state/adapter/`goal_boundary`.
 Expanded lifecycle contract: `{expanded_prompt_command}`.
 {scope_block}
 
-Before delivery, make CLI reachable; run quota guard:
+Before delivery, make CLI reachable; run guard:
 
 ```bash
 {cli_preflight}
 {quota_guard_command}
 ```
 
-If preflight fails: quiet `DONT_NOTIFY`; no work/spend.
+Preflight fail: quiet `DONT_NOTIFY`; no work/spend.
 
 If `should_run=false`: `monitor_quiet_skip` appends at most one no-spend
-`quota monitor-poll --execute` event, reruns the guard, then stays quiet unless
-the next guard exposes `autonomous_replan_required` / `must_attempt_work=true`;
-no delivery edits/spend; unchanged monitor-only polls are not self-stop
-signals.
+`quota monitor-poll --execute`, reruns guard, then stays quiet unless
+`autonomous_replan_required` / `must_attempt_work=true`; no edits/spend;
+unchanged monitor-only polls are not self-stop signals.
 `state=operator_gate` or `notify_user_on_open_todo=true`: blocker-push;
 `open_todo_notification_policy=repeat_until_resolved`: repeat `NOTIFY`;
 if action/open todo exists, list payload todo(s)/questions, never only
@@ -813,7 +840,7 @@ If `should_run=true`:
    Legacy/raw fallback is not owner/gate/stop authority. Treat
    `run_history.latest_runs` as drill-down only.
 2. Stop only for this goal's own blocker todo: Chinese `NOTIFY`, no work/spend.
-   Dependency/sibling todos: record/surface; continue audit.
+   Dependency/sibling todos: surface; continue audit.
 3. If `effective_action=outcome_floor_recovery` or
    `recovery_delivery_allowed=true` or
    `safe_bypass_kind=outcome_floor_recovery`, run only ranker/cross-domain
@@ -839,26 +866,23 @@ If `should_run=true`:
    no-spend stall evidence, so if 2 eligible heartbeats only repeat status/brief
    checks with no artifact/progress/gate/validation, replan before quiet no-op.
    Pause/delete only if repair is stuck for 2 more turns.
-7. Choose one bounded segment. Coherent batch is OK with clear validation.
-   Public-safe commit/push/PR may proceed after validation/clean scan. Stop
-   for private/company material, credentials, destructive git, production, or
-   explicit review rules.
+7. Choose one bounded segment; coherent batch is OK with clear validation.
+   Public-safe commit/push/PR may proceed after validation/clean scan. Stop for
+   private/company material, credentials, destructive git, production, or review rules.
 8. Validate; write files/validation/critic/next action to active state;
    use `{cli_bin} todo add --goal-id {goal_id} --role user|agent` for
    blockers/plans, not prose. Nontrivial done ->
    successor todo or no-follow-up rationale.
-9. After completed delivery or safe-bypass work, spend once before state
-   refresh:
+9. After delivery/safe-bypass, spend once before refresh:
 
 ```bash
 {quota_spend_command}
 ```
 
-10. Refresh after spend if needed; validated progress artifacts pass explicit
-   `--delivery-batch-scale` and `--delivery-outcome`.
+10. Refresh after spend if needed; progress: `{progress_refresh_state_command}`.
 
-Do not append spend for quiet skips, preflight failures, blocker-push asks,
-pure dry-runs, self-cancel turns, or duplicate accounting attempts.
+No spend for quiet skips, preflight failures, blocker-push asks, dry-runs,
+self-cancel turns, or duplicate accounting.
 
 Return compactly. Use heartbeat `NOTIFY` only for committed artifact, user gate,
 real blocker, or self-stop; otherwise use `DONT_NOTIFY`.
@@ -874,6 +898,8 @@ def render_thin_heartbeat_task_body(
     cli_preflight: str,
     quota_guard_command: str,
     quota_spend_command: str,
+    refresh_state_command: str,
+    progress_refresh_state_command: str,
     material_queue_rule: str,
     permission_rule: str,
     cli_bin: str,

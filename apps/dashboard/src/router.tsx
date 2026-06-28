@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 
 import { DashboardPage } from "./views/dashboard-page";
+import { FrontstageAutoResearchPage } from "./views/frontstage-auto-research-page";
 import { FrontstageDeveloperPage } from "./views/frontstage-developer-page";
 import { FrontstagePage } from "./views/frontstage-page";
 
@@ -55,7 +56,18 @@ export const frontstageDeveloperRoute = createRoute({
   component: FrontstageDeveloperPage,
 });
 
-const routeTree = rootRoute.addChildren([dashboardRoute, frontstageRoute, frontstageDeveloperRoute]);
+export const frontstageAutoResearchRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/frontstage/auto-research",
+  component: FrontstageAutoResearchPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  dashboardRoute,
+  frontstageRoute,
+  frontstageDeveloperRoute,
+  frontstageAutoResearchRoute,
+]);
 
 function routerBasepathFromViteBase(baseUrl: string) {
   if (!baseUrl || baseUrl === "/" || baseUrl === "./") {

@@ -50,13 +50,34 @@ from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .paths import global_registry_path, resolve_runtime_root
+from .projections.task_graph import (
+    TASK_GRAPH_MAX_USER_GATE_NODES,
+    TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
+    TASK_GRAPH_SOURCE_OF_TRUTH,
+    build_task_graph_projection as _build_task_graph_projection_read_model,
+)
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
+from .renderers.status_markdown import (
+    append_attention_queue_item_header_markdown as _append_attention_queue_item_header_markdown,
+    append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
+    append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
+    append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
+    append_human_reward_markdown as _append_human_reward_markdown,
+    append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
+    append_promotion_gate_markdown as _append_promotion_gate_markdown,
+    append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
+    append_usage_summary_markdown as _append_usage_summary_markdown,
+    authority_registry_markdown_summary as _authority_registry_markdown_summary,
+    goals_by_id as _goals_by_id,
+    markdown_scalar as _markdown_scalar,
+)
 from .rollout_event_log import load_rollout_events, rollout_event_log_path
 from .session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION
 from .state_projection import (
     active_state_next_action_entries,
+    actions_are_projection_aligned,
     next_action_projection_warning,
     state_projection_gap_warning,
 )
@@ -75,9 +96,11 @@ from .todo_contract import (
     normalize_required_write_scopes,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
+    normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -487,18 +510,6 @@ TODO_ARCHIVE_HEADER_MARKERS = (
     "待办归档",
 )
 TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
-TASK_GRAPH_PROJECTION_SCHEMA_VERSION = "task_graph_projection_v0"
-TASK_GRAPH_SOURCE_OF_TRUTH = [
-    "event_ledger",
-    "active_goal_state",
-    "todos",
-    "gates",
-    "leases",
-    "run_history",
-]
-TASK_GRAPH_MAX_USER_GATE_NODES = 2
-
-
 def normalize_todo_text(text: str, *, limit: int = 500) -> str:
     compact = " ".join(text.strip().split())
     if len(compact) <= limit:
@@ -765,6 +776,350 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
         "events": events[:12],
     }
     return compact
+
+
+def _benchmark_case_timeline_events_by_name(
+    timeline: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    events = timeline.get("events") if isinstance(timeline.get("events"), list) else []
+    result: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        name = public_safe_compact_text(event.get("event"), limit=120)
+        if name and name not in result:
+            result[name] = event
+    return result
+
+
+def _benchmark_positive_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 0
+
+
+def build_skillsbench_post_run_debug_gate(
+    run: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the public-safe SkillsBench post-run debug gate packet."""
+
+    if not isinstance(run, dict):
+        return {}
+    benchmark_id = public_safe_compact_text(run.get("benchmark_id"), limit=120) or ""
+    timeline = _compact_benchmark_case_event_timeline(run.get("case_event_timeline"))
+    if not benchmark_id.startswith("skillsbench"):
+        return {}
+
+    counters = (
+        run.get("interaction_counters")
+        if isinstance(run.get("interaction_counters"), dict)
+        else {}
+    )
+    lifecycle = (
+        run.get("product_mode_lifecycle_contract")
+        if isinstance(run.get("product_mode_lifecycle_contract"), dict)
+        else {}
+    )
+    official = (
+        run.get("official_task_score")
+        if isinstance(run.get("official_task_score"), dict)
+        else {}
+    )
+    runner_failure = (
+        run.get("runner_failure")
+        if isinstance(run.get("runner_failure"), dict)
+        else {}
+    )
+    events = _benchmark_case_timeline_events_by_name(timeline)
+    missing_fields: list[str] = []
+    if not timeline:
+        missing_fields.append("case_event_timeline")
+
+    product_mode_required = bool(
+        run.get("product_mode") is True
+        or counters.get("product_mode") is True
+        or lifecycle.get("required") is True
+    )
+    required_events = [
+        "controller_decision_loop",
+        "official_score_closeout",
+    ]
+    if product_mode_required:
+        required_events.extend(
+            [
+                "case_goal_state_init",
+                "orchestrated_loopx_lifecycle",
+                "remote_command_bridge_consumption",
+                "task_facing_activity",
+                "agent_bridge_closeout",
+            ]
+        )
+    for event_name in required_events:
+        if timeline and event_name not in events:
+            missing_fields.append(f"case_event_timeline.events.{event_name}")
+
+    official_event = events.get("official_score_closeout", {})
+    closeout_event = events.get("agent_bridge_closeout", {})
+    controller_event = events.get("controller_decision_loop", {})
+    driver_event = events.get("orchestrated_loopx_lifecycle", {})
+    recovery_event = events.get("timeout_or_failure_closeout", {})
+    activity_event = events.get("task_facing_activity", {})
+
+    official_status = (
+        public_safe_compact_text(
+            official_event.get("status") or run.get("official_score_status"),
+            limit=120,
+        )
+        or "unknown"
+    )
+    official_passed = official.get("passed")
+    if not isinstance(official_passed, bool):
+        official_passed = official_event.get("official_score_passed")
+    official_score_value = official.get("value")
+    if not isinstance(official_score_value, (int, float)) or isinstance(
+        official_score_value,
+        bool,
+    ):
+        official_score_value = run.get("official_score")
+    closeout_status = public_safe_compact_text(
+        closeout_event.get("status"),
+        limit=120,
+    ) or ("not_required" if not product_mode_required else "unknown")
+    activity_status = (
+        public_safe_compact_text(activity_event.get("status"), limit=120)
+        or "unknown"
+    )
+    recovery_status = (
+        public_safe_compact_text(recovery_event.get("status"), limit=120)
+        or "not_observed"
+    )
+    agent_operation_trace_missing = bool(
+        activity_status == "missing_agent_operation_trace"
+        or lifecycle.get("agent_operation_trace_missing") is True
+    )
+    runner_recovery_blocked = recovery_status in {
+        "user_loop_recovery_triggered",
+        "runner_failure_recorded",
+    }
+    lifecycle_required = lifecycle.get("required") is True or product_mode_required
+    lifecycle_state_read_count = _benchmark_positive_int(
+        lifecycle.get("state_read_count")
+    ) or _benchmark_positive_int(driver_event.get("state_read_count"))
+    lifecycle_state_write_count = _benchmark_positive_int(
+        lifecycle.get("state_write_count")
+    ) or _benchmark_positive_int(driver_event.get("state_write_count"))
+    lifecycle_satisfied = lifecycle.get("satisfied")
+    closeout_satisfied = bool(
+        closeout_status in {"satisfied", "not_required"}
+        or lifecycle.get("closeout_satisfied") is True
+    )
+    timeline_lifecycle_satisfied = bool(
+        closeout_satisfied
+        and (
+            not lifecycle_required
+            or (lifecycle_state_read_count > 0 and lifecycle_state_write_count > 0)
+        )
+    )
+    effective_lifecycle_satisfied = bool(
+        lifecycle_satisfied is True or timeline_lifecycle_satisfied
+    )
+    case_closeout_complete = bool(
+        not missing_fields
+        and (not lifecycle_required or effective_lifecycle_satisfied)
+        and official_status not in {"unknown", ""}
+        and not agent_operation_trace_missing
+        and not (official_status == "missing" and runner_recovery_blocked)
+    )
+
+    first_blocker = "none"
+    attribution_layer = "solution_level_unknown"
+    if missing_fields:
+        attribution_layer = "incomplete_public_debug_packet"
+        first_blocker = missing_fields[0]
+    elif lifecycle_required and (
+        not effective_lifecycle_satisfied or agent_operation_trace_missing
+    ):
+        attribution_layer = "loopx_lifecycle"
+        first_blocker = public_safe_compact_text(
+            lifecycle.get("missing_reason"),
+            limit=140,
+        ) or ""
+        if agent_operation_trace_missing and not first_blocker:
+            first_blocker = "remote_command_file_bridge_agent_operation_trace_missing"
+        if not first_blocker:
+            first_blocker = (
+                public_safe_compact_text(lifecycle.get("missing_reason"), limit=140)
+                or "loopx_lifecycle_incomplete"
+            )
+    elif closeout_status in {"missing", "partial"}:
+        attribution_layer = "loopx_lifecycle"
+        first_blocker = "loopx_closeout_incomplete"
+    elif runner_recovery_blocked:
+        attribution_layer = "timeout_or_runner"
+        first_blocker = (
+            public_safe_compact_text(
+                recovery_event.get("recovery_exception_type")
+                or recovery_event.get("runner_failure_class"),
+                limit=140,
+            )
+            or "runner_or_timeout_closeout"
+        )
+    elif official_status == "missing":
+        attribution_layer = "verifier_or_scorer"
+        first_blocker = (
+            public_safe_compact_text(run.get("score_failure_attribution"), limit=140)
+            or "official_score_missing"
+        )
+    elif official_passed is True:
+        attribution_layer = "clean_pass"
+    elif isinstance(official_score_value, (int, float)) and official_score_value == 0:
+        attribution_layer = "solution_level_unknown"
+        first_blocker = (
+            public_safe_compact_text(run.get("score_failure_attribution"), limit=140)
+            or "official_score_zero_case_failure"
+        )
+    elif official_passed is False:
+        attribution_layer = "solution_level_unknown"
+        first_blocker = (
+            public_safe_compact_text(run.get("score_failure_attribution"), limit=140)
+            or "official_score_nonpassing"
+        )
+
+    packet_complete = not missing_fields
+    if not packet_complete:
+        next_case_gate = "blocked_missing_debug_packet"
+        next_action = "write_public_safe_case_debug_packet_before_next_case"
+    elif not case_closeout_complete:
+        next_case_gate = "blocked_incomplete_case_closeout"
+        next_action = "record_or_repair_case_closeout_before_next_case"
+    elif attribution_layer == "clean_pass":
+        next_case_gate = "open"
+        next_action = "upsert_ledger_and_continue_or_compare_pair"
+    else:
+        next_case_gate = "open_with_attribution"
+        next_action = "use_debug_packet_attribution_before_rotating_or_rerunning"
+
+    labels = public_safe_compact_list(
+        run.get("failure_attribution_labels"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    gate: dict[str, Any] = {
+        "schema_version": "skillsbench_post_run_debug_gate_v0",
+        "source": "compact_public_signals",
+        "packet_complete": packet_complete,
+        "case_closeout_complete": case_closeout_complete,
+        "next_case_gate": next_case_gate,
+        "normal_progress_allowed": bool(packet_complete and case_closeout_complete),
+        "first_blocker": first_blocker,
+        "next_action": next_action,
+        "attribution_layer": attribution_layer,
+        "raw_material_recorded": False,
+        "missing_field_count": len(missing_fields),
+        "missing_fields": missing_fields[:MAX_BENCHMARK_RUN_LIST_ITEMS],
+        "scorer_verifier": {
+            "official_score_status": official_status,
+            "official_score_passed": (
+                official_passed if isinstance(official_passed, bool) else None
+            ),
+            "official_score_value": (
+                official_score_value
+                if isinstance(official_score_value, (int, float))
+                and not isinstance(official_score_value, bool)
+                else None
+            ),
+            "score_failure_attribution": (
+                public_safe_compact_text(
+                    run.get("score_failure_attribution"),
+                    limit=140,
+                )
+                or "none"
+            ),
+        },
+        "loopx_lifecycle": {
+            "required": lifecycle_required,
+            "satisfied": effective_lifecycle_satisfied,
+            "closeout_status": closeout_status,
+            "state_read_count": lifecycle_state_read_count,
+            "state_write_count": lifecycle_state_write_count,
+            "todo_closeout_count": _benchmark_positive_int(
+                lifecycle.get("agent_bridge_todo_closeout_count")
+            )
+            or _benchmark_positive_int(closeout_event.get("todo_closeout_count")),
+            "refresh_state_count": _benchmark_positive_int(
+                lifecycle.get("agent_bridge_refresh_state_count")
+            )
+            or _benchmark_positive_int(closeout_event.get("refresh_state_count")),
+            "quota_spend_slot_count": _benchmark_positive_int(
+                lifecycle.get("agent_bridge_quota_spend_slot_count")
+            )
+            or _benchmark_positive_int(closeout_event.get("quota_spend_slot_count")),
+        },
+        "todo_flow": {
+            "case_todo_seeded_or_init_observed": (
+                events.get("case_goal_state_init", {}).get("status")
+                in {"passed", "satisfied", "not_required"}
+            ),
+            "task_facing_activity_status": activity_status,
+            "open_todo_count_public": _benchmark_positive_int(
+                counters.get("open_todo_count")
+            ),
+        },
+        "controller": {
+            "status": (
+                public_safe_compact_text(controller_event.get("status"), limit=120)
+                or "unknown"
+            ),
+            "action_decision_count": _benchmark_positive_int(
+                controller_event.get("action_decision_count")
+            ),
+            "initial_prompt_count": _benchmark_positive_int(
+                controller_event.get("initial_prompt_count")
+            ),
+            "followup_prompt_count": _benchmark_positive_int(
+                controller_event.get("followup_prompt_count")
+            ),
+            "stop_decision_count": _benchmark_positive_int(
+                controller_event.get("stop_decision_count")
+            ),
+            "max_rounds_budget": _benchmark_positive_int(
+                controller_event.get("max_rounds_budget")
+            ),
+            "last_decision": (
+                public_safe_compact_text(
+                    controller_event.get("last_decision"),
+                    limit=140,
+                )
+                or "unknown"
+            ),
+        },
+        "timeout_fairness": {
+            "runner_recovery_status": recovery_status,
+            "recovery_exception_type": (
+                public_safe_compact_text(
+                    recovery_event.get("recovery_exception_type"),
+                    limit=140,
+                )
+                or "none"
+            ),
+            "benchflow_agent_timeout_effective_sec": _benchmark_positive_int(
+                recovery_event.get("benchflow_agent_timeout_effective_sec")
+            ),
+        },
+        "boundary": {
+            "task_text_read": False,
+            "logs_read": False,
+            "trajectory_read": False,
+            "verifier_output_tail_public": False,
+        },
+    }
+    if labels:
+        gate["failure_attribution_labels"] = labels
+    if runner_failure:
+        gate["runner_failure_class"] = (
+            public_safe_compact_text(runner_failure.get("failure_class"), limit=140)
+            or "unknown"
+        )
+    return gate
 
 
 def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
@@ -1698,6 +2053,46 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
                 compact_resource_cap[field] = raw
         if compact_resource_cap:
             compact["resource_cap_patch"] = compact_resource_cap
+    return compact
+
+
+def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "status",
+        "sandbox",
+        "task_id",
+        "first_blocker",
+        "alternate_source_kind",
+        "selection_recommendation",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=180)
+        if text:
+            compact[field] = text
+    for field in (
+        "raw_task_text_read",
+        "raw_logs_read",
+        "raw_trajectory_read",
+        "apt_setup_risk_detected",
+        "apt_retry_patch_required",
+        "dockerfile_present",
+        "canonical_task_present",
+        "alternate_source_supported_by_runner",
+        "task_source_path_recorded",
+        "task_source_content_recorded",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    nearest_task_ids = public_safe_compact_list(
+        value.get("nearest_canonical_task_ids"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if nearest_task_ids:
+        compact["nearest_canonical_task_ids"] = nearest_task_ids
     return compact
 
 
@@ -2910,6 +3305,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+    task_setup_preflight = _compact_benchmark_task_setup_preflight(
+        source.get("task_setup_preflight")
+    )
+    if task_setup_preflight:
+        compact["task_setup_preflight"] = task_setup_preflight
     task_staging = _compact_benchmark_task_staging(source.get("task_staging"))
     if task_staging:
         compact["task_staging"] = task_staging
@@ -3160,6 +3560,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if case_event_timeline:
         compact["case_event_timeline"] = case_event_timeline
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
+    if post_run_debug_gate:
+        compact["post_run_debug_gate"] = post_run_debug_gate
 
     preflight_guard = _compact_benchmark_preflight_guard(source.get("preflight_guard"))
     if preflight_guard:
@@ -4729,6 +5132,14 @@ def structured_todo_item(
     target_capabilities = normalize_target_capabilities(item.get("target_capabilities"))
     if target_capabilities:
         normalized["target_capabilities"] = target_capabilities
+    decision_scope = normalize_todo_decision_scope(item.get("decision_scope"))
+    if decision_scope:
+        normalized["decision_scope"] = decision_scope
+    required_decision_scopes = normalize_todo_required_decision_scopes(
+        item.get("required_decision_scopes")
+    )
+    if required_decision_scopes:
+        normalized["required_decision_scopes"] = required_decision_scopes
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     if claimed_by:
         normalized["claimed_by"] = claimed_by
@@ -4773,6 +5184,8 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",
+        "decision_scope",
+        "required_decision_scopes",
         "claimed_by",
         "blocks_agent",
         "global_gate",
@@ -4784,6 +5197,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "target_key",
         "cadence",
         "next_due_at",
+        "expires_at",
         "last_checked_at",
         "result_hash",
         "consecutive_no_change",
@@ -4834,10 +5248,24 @@ def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
     return parse_timestamp(item.get("next_due_at"))
 
 
+def todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
+    return parse_timestamp(item.get("expires_at"))
+
+
+def todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
+    expires_at = todo_item_expires_at(item)
+    if expires_at is None:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return expires_at <= current_time
+
+
 def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
     if not todo_item_is_actionable_open(item):
         return False
     if todo_item_task_class(item) != TODO_TASK_CLASS_MONITOR:
+        return False
+    if todo_item_is_expired_monitor(item, now=now):
         return False
     next_due_at = todo_item_next_due_at(item)
     if next_due_at is None:
@@ -7705,6 +8133,50 @@ def compact_agent_lane_recommendation(run: dict[str, Any] | None) -> dict[str, A
     return compact
 
 
+def latest_run_recommended_action_for_projection(
+    *,
+    current_status_run: dict[str, Any] | None,
+    agent_lane_recommendation: dict[str, Any] | None,
+    active_state_next_action: Any = None,
+    limit: int = 320,
+) -> tuple[str | None, str | None]:
+    latest_action = public_safe_compact_text(
+        current_status_run.get("recommended_action")
+        if isinstance(current_status_run, dict)
+        else None,
+        limit=limit,
+    )
+    if not isinstance(agent_lane_recommendation, dict):
+        return latest_action, "latest_status_run" if latest_action else None
+
+    lane_action = public_safe_compact_text(
+        agent_lane_recommendation.get("recommended_action"),
+        limit=limit,
+    )
+    if not lane_action:
+        return latest_action, "latest_status_run" if latest_action else None
+    if not active_state_next_action or not actions_are_projection_aligned(
+        active_state_next_action,
+        lane_action,
+    ):
+        return latest_action, "latest_status_run" if latest_action else None
+
+    latest_aligned = bool(
+        latest_action
+        and actions_are_projection_aligned(active_state_next_action, latest_action)
+    )
+    lane_dt = parse_timestamp(agent_lane_recommendation.get("generated_at"))
+    latest_dt = parse_timestamp(
+        current_status_run.get("generated_at")
+        if isinstance(current_status_run, dict)
+        else None
+    )
+    lane_is_newer = bool(lane_dt and latest_dt and lane_dt >= latest_dt)
+    if not latest_action or not latest_aligned or lane_is_newer:
+        return lane_action, "agent_lane_recommendation"
+    return latest_action, "latest_status_run"
+
+
 def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
     status_run = goal.get("latest_status_run")
     if isinstance(status_run, dict) and not is_status_neutral_run(status_run):
@@ -8221,382 +8693,27 @@ def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _task_graph_safe_id(prefix: str, value: Any) -> str:
-    raw = public_safe_compact_text(value, limit=120) or prefix
-    normalized = re.sub(r"[^A-Za-z0-9_]+", "_", raw).strip("_").lower()
-    if not normalized:
-        normalized = hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:10]
-    if len(normalized) > 56:
-        suffix = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
-        normalized = f"{normalized[:47].rstrip('_')}_{suffix}"
-    return f"{prefix}_{normalized}"
-
-
-def _task_graph_ref_values(*values: Any, limit: int = 4) -> list[str]:
-    refs: list[str] = []
-    for value in values:
-        if isinstance(value, list):
-            for nested in _task_graph_ref_values(*value, limit=limit):
-                if nested not in refs:
-                    refs.append(nested)
-                    if len(refs) >= limit:
-                        return refs
-            continue
-        text = public_safe_compact_text(value, limit=120)
-        if not text or text in refs:
-            continue
-        refs.append(text)
-        if len(refs) >= limit:
-            break
-    return refs
-
-
-def _task_graph_refs(key: str, *values: Any) -> dict[str, list[str]] | None:
-    refs = _task_graph_ref_values(*values)
-    if not refs:
-        return None
-    return {key: refs}
-
-
-def _task_graph_todo_state(todo: dict[str, Any], *, waiting_default: bool = False) -> str:
-    status = normalize_todo_status(todo.get("status")) or TODO_STATUS_OPEN
-    if todo.get("done") or todo_done_for_status(status):
-        return "done"
-    if status == "blocked":
-        return "blocked"
-    if status in {"waiting", "deferred"} or waiting_default:
-        return "waiting"
-    return "open"
-
-
-def _task_graph_generated_at(
-    *,
-    goal: dict[str, Any],
-    goal_latest_runs: list[dict[str, Any]],
-) -> str:
-    candidates: list[dict[str, Any]] = [*goal_latest_runs]
-    current_run = latest_run(goal)
-    if isinstance(current_run, dict):
-        candidates.append(current_run)
-    for run in candidates:
-        generated_at = public_safe_compact_text(run.get("generated_at"), limit=80)
-        if generated_at:
-            return generated_at
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _task_graph_active_state_updated_at(item: dict[str, Any], goal: dict[str, Any]) -> str | None:
-    warning = (
-        item.get("stale_latest_run_warning")
-        if isinstance(item.get("stale_latest_run_warning"), dict)
-        else {}
-    )
-    updated_at = public_safe_compact_text(warning.get("active_state_updated_at"), limit=80)
-    if updated_at:
-        return updated_at
-    current_run = latest_run(goal)
-    state = (
-        current_run.get("state")
-        if isinstance(current_run, dict) and isinstance(current_run.get("state"), dict)
-        else {}
-    )
-    frontmatter = state.get("frontmatter") if isinstance(state.get("frontmatter"), dict) else {}
-    return public_safe_compact_text(frontmatter.get("updated_at"), limit=80)
-
-
-def _task_graph_latest_run_node(
-    *,
-    goal_latest_runs: list[dict[str, Any]],
-    selected_todo_id: str | None,
-) -> dict[str, Any] | None:
-    for run in goal_latest_runs:
-        if not isinstance(run, dict):
-            continue
-        run_ref = public_safe_compact_text(
-            run.get("run_id") or run.get("generated_at") or run.get("classification"),
-            limit=120,
-        )
-        classification = public_safe_compact_text(run.get("classification"), limit=120)
-        if not (run_ref or classification):
-            continue
-        refs = _task_graph_refs("run_ids", run_ref or classification)
-        if refs and selected_todo_id:
-            todo_refs = _task_graph_ref_values(selected_todo_id)
-            if todo_refs:
-                refs["todo_ids"] = todo_refs
-        if not refs:
-            continue
-        title = classification or "Latest compact run-history evidence"
-        return {
-            "node_id": _task_graph_safe_id("node_run", run_ref or title),
-            "kind": "validation",
-            "title": f"Latest compact run: {title}",
-            "state": "ready",
-            "refs": refs,
-        }
-    return None
-
-
-def _task_graph_visible_user_gate_items(
-    user_todos: dict[str, Any] | None,
-    *,
-    limit: int,
-) -> tuple[list[dict[str, Any]], int]:
-    visible_items = open_todo_items(
-        user_todos,
-        limit=MAX_STATUS_TODOS_PER_ROLE,
-        text_limit=180,
-        source_keys=("gate_open_items", "first_open_items", "items"),
-    )
-    visible_gate_items = [
-        item for item in visible_items if todo_item_task_class(item) == TODO_TASK_CLASS_USER_GATE
-    ]
-    if visible_gate_items and len(visible_gate_items) == len(visible_items):
-        gate_open_count = max(len(visible_gate_items), todo_summary_open_count(user_todos))
-    else:
-        gate_open_count = len(visible_gate_items)
-    return visible_gate_items[:limit], gate_open_count
-
-
 def build_task_graph_projection(
     item: dict[str, Any],
     *,
     goal: dict[str, Any],
     goal_latest_runs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
-    """Build a compact read-only graph from already-projected status fields."""
-
-    goal_id = public_safe_compact_text(item.get("goal_id") or goal.get("id"), limit=120)
-    if not goal_id:
-        return None
-    latest_runs = [run for run in goal_latest_runs or [] if isinstance(run, dict)]
-    nodes: list[dict[str, Any]] = []
-    edges: list[dict[str, Any]] = []
-    node_ids: set[str] = set()
-    edge_ids: set[str] = set()
-    refs_by_node_id: dict[str, dict[str, list[str]]] = {}
-
-    def add_node(node: dict[str, Any] | None) -> str | None:
-        if not isinstance(node, dict):
-            return None
-        node_id = str(node.get("node_id") or "")
-        if not node_id:
-            return None
-        if node_id in node_ids:
-            return node_id
-        refs = node.get("refs") if isinstance(node.get("refs"), dict) else None
-        if not refs:
-            return None
-        title = public_safe_compact_text(node.get("title"), limit=160)
-        if not title:
-            return None
-        node["title"] = title
-        node_ids.add(node_id)
-        refs_by_node_id[node_id] = refs
-        nodes.append(node)
-        return node_id
-
-    def add_edge(
-        *,
-        edge_id: str,
-        from_node_id: str | None,
-        to_node_id: str | None,
-        relation: str,
-        reason: str,
-        refs: dict[str, list[str]] | None = None,
-    ) -> None:
-        if not from_node_id or not to_node_id or from_node_id == to_node_id:
-            return
-        if from_node_id not in node_ids or to_node_id not in node_ids or edge_id in edge_ids:
-            return
-        compact_reason = public_safe_compact_text(reason, limit=180)
-        if not compact_reason:
-            return
-        edge: dict[str, Any] = {
-            "edge_id": edge_id,
-            "from_node_id": from_node_id,
-            "to_node_id": to_node_id,
-            "relation": relation,
-            "reason": compact_reason,
-        }
-        if refs:
-            edge["refs"] = refs
-        edge_ids.add(edge_id)
-        edges.append(edge)
-
-    agent_items = open_todo_items(
-        item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
-        limit=1,
-        text_limit=180,
+    return _build_task_graph_projection_read_model(
+        item,
+        goal=goal,
+        goal_latest_runs=goal_latest_runs,
+        public_safe_compact_text=public_safe_compact_text,
+        normalize_todo_status=normalize_todo_status,
+        todo_done_for_status=todo_done_for_status,
+        todo_status_open=TODO_STATUS_OPEN,
+        open_todo_items=open_todo_items,
+        max_status_todos_per_role=MAX_STATUS_TODOS_PER_ROLE,
+        todo_item_task_class=todo_item_task_class,
+        user_gate_task_class=TODO_TASK_CLASS_USER_GATE,
+        todo_summary_open_count=todo_summary_open_count,
+        latest_run=latest_run,
     )
-    selected_todo = agent_items[0] if agent_items else None
-    selected_todo_id = public_safe_compact_text(
-        selected_todo.get("todo_id") if isinstance(selected_todo, dict) else None,
-        limit=120,
-    )
-    selected_node_id: str | None = None
-    if isinstance(selected_todo, dict):
-        selected_node_id = add_node(
-            {
-                "node_id": _task_graph_safe_id("node_todo", selected_todo_id or selected_todo.get("text")),
-                "kind": "deliverable",
-                "title": selected_todo.get("title") or selected_todo.get("text"),
-                "state": _task_graph_todo_state(selected_todo),
-                "refs": _task_graph_refs("todo_ids", selected_todo_id),
-                **(
-                    {"owner_agent": selected_todo.get("claimed_by")}
-                    if public_safe_compact_text(selected_todo.get("claimed_by"), limit=80)
-                    else {}
-                ),
-            }
-        )
-        claimed_by = public_safe_compact_text(selected_todo.get("claimed_by"), limit=80)
-        if claimed_by and selected_node_id:
-            lease_id = f"claim:{goal_id}:{selected_todo_id or 'selected'}:{claimed_by}"
-            lease_node_id = add_node(
-                {
-                    "node_id": _task_graph_safe_id("node_lease", lease_id),
-                    "kind": "lease",
-                    "title": f"Claimed by {claimed_by}",
-                    "state": "ready",
-                    "refs": _task_graph_refs("lease_ids", lease_id),
-                    "owner_agent": claimed_by,
-                }
-            )
-            add_edge(
-                edge_id=_task_graph_safe_id("edge_depends", f"{selected_node_id}:{lease_node_id}"),
-                from_node_id=selected_node_id,
-                to_node_id=lease_node_id,
-                relation="depends_on",
-                reason="Selected work depends on its active claim lease.",
-                refs=_task_graph_refs("lease_ids", lease_id),
-            )
-
-    user_todo_summary = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else None
-    user_items, user_gate_open_count = _task_graph_visible_user_gate_items(
-        user_todo_summary,
-        limit=TASK_GRAPH_MAX_USER_GATE_NODES,
-    )
-    for ordinal, todo in enumerate(user_items):
-        todo_id = public_safe_compact_text(todo.get("todo_id"), limit=120)
-        gate_id = todo_id or f"gate:{goal_id}:user:{ordinal + 1}"
-        gate_node_id = add_node(
-            {
-                "node_id": _task_graph_safe_id("node_gate", gate_id),
-                "kind": "gate",
-                "title": todo.get("title") or todo.get("text") or "Open user gate",
-                "state": _task_graph_todo_state(todo, waiting_default=True),
-                "refs": _task_graph_refs("gate_ids", gate_id),
-            }
-        )
-        add_edge(
-            edge_id=_task_graph_safe_id("edge_blocks", f"{gate_node_id}:{selected_node_id}:{ordinal}"),
-            from_node_id=gate_node_id,
-            to_node_id=selected_node_id,
-            relation="blocks",
-            reason="Open user gate blocks the gated delivery path.",
-            refs=_task_graph_refs("gate_ids", gate_id),
-        )
-    user_gate_truncated_count = max(0, user_gate_open_count - len(user_items))
-    if user_gate_truncated_count:
-        summary_node_id = add_node(
-            {
-                "node_id": _task_graph_safe_id(
-                    "node_gate_summary",
-                    f"{goal_id}:{user_gate_truncated_count}:more_user_gates",
-                ),
-                "kind": "gate_summary",
-                "title": f"{user_gate_truncated_count} more open user gates not expanded",
-                "state": "waiting",
-                "refs": _task_graph_refs("goal_ids", goal_id),
-            }
-        )
-        add_edge(
-            edge_id=_task_graph_safe_id(
-                "edge_blocks",
-                f"{summary_node_id}:{selected_node_id}:user_gate_summary",
-            ),
-            from_node_id=summary_node_id,
-            to_node_id=selected_node_id,
-            relation="blocks",
-            reason="Additional open user gates stay on the cold path instead of expanding the task graph hot path.",
-            refs=_task_graph_refs("goal_ids", goal_id),
-        )
-
-    run_node_id = add_node(
-        _task_graph_latest_run_node(
-            goal_latest_runs=latest_runs,
-            selected_todo_id=selected_todo_id,
-        )
-    )
-    add_edge(
-        edge_id=_task_graph_safe_id("edge_validates", f"{run_node_id}:{selected_node_id}"),
-        from_node_id=run_node_id,
-        to_node_id=selected_node_id,
-        relation="validates",
-        reason="Latest compact run-history evidence validates or contextualizes the selected work.",
-        refs=refs_by_node_id.get(run_node_id or ""),
-    )
-
-    replan = (
-        item.get("autonomous_replan_obligation")
-        if isinstance(item.get("autonomous_replan_obligation"), dict)
-        else None
-    )
-    if replan and selected_node_id:
-        replan_id = public_safe_compact_text(
-            replan.get("schema_version") or replan.get("kind") or "autonomous_replan_obligation",
-            limit=120,
-        )
-        repair_node_id = add_node(
-            {
-                "node_id": _task_graph_safe_id("node_repair", replan_id),
-                "kind": "repair",
-                "title": replan.get("recommended_action") or replan_id,
-                "state": "ready",
-                "refs": _task_graph_refs("todo_ids", selected_todo_id),
-            }
-        )
-        add_edge(
-            edge_id=_task_graph_safe_id("edge_repairs", f"{repair_node_id}:{selected_node_id}"),
-            from_node_id=repair_node_id,
-            to_node_id=selected_node_id,
-            relation="repairs",
-            reason="Autonomous repair/replan obligation should recover the selected work lane.",
-            refs=_task_graph_refs("todo_ids", selected_todo_id),
-        )
-
-    if not nodes:
-        return None
-    derived_from: dict[str, Any] = {
-        "source_of_truth": TASK_GRAPH_SOURCE_OF_TRUTH,
-        "status_item_goal_id": goal_id,
-        "run_history_window": "compact_latest_runs",
-    }
-    active_state_updated_at = _task_graph_active_state_updated_at(item, goal)
-    if active_state_updated_at:
-        derived_from["active_state_updated_at"] = active_state_updated_at
-    return {
-        "schema_version": TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
-        "mode": "read_only",
-        "goal_id": goal_id,
-        "generated_at": _task_graph_generated_at(goal=goal, goal_latest_runs=latest_runs),
-        "derived_from": derived_from,
-        "truth_contract": {
-            "event_ledger_is_source_of_truth": True,
-            "projection_is_writable": False,
-            "write_api": False,
-            "recompute_rule": "Recompute from status, active state, gates, leases, and run history after each lifecycle event.",
-        },
-        "limits": {
-            "user_gate_node_limit": TASK_GRAPH_MAX_USER_GATE_NODES,
-            "user_gate_open_count": user_gate_open_count,
-            "user_gate_truncated_count": user_gate_truncated_count,
-        },
-        "nodes": nodes,
-        "edges": edges,
-    }
-
 
 def attach_goal_channel_projection(
     item: dict[str, Any],
@@ -8629,6 +8746,7 @@ def build_attention_queue(
     history: dict[str, Any],
     global_registry: dict[str, Any],
     runtime_root: Path | None = None,
+    include_task_graph: bool = False,
 ) -> dict[str, Any]:
     health_items: list[dict[str, Any]] = []
     history_items: list[dict[str, Any]] = []
@@ -8660,23 +8778,33 @@ def build_attention_queue(
             if not item:
                 item = active_state_item
         if item:
-            latest_run_action = public_safe_compact_text(
-                current_status_run.get("recommended_action")
-                if isinstance(current_status_run, dict)
-                else None,
-                limit=320,
+            agent_lane_recommendation = compact_agent_lane_recommendation(
+                latest_agent_lane_run(goal)
+            )
+            active_state_next_action = (
+                active_state_fields.get("active_state_next_action")
+                if isinstance(active_state_fields, dict)
+                else None
+            )
+            latest_run_action, latest_run_action_source = latest_run_recommended_action_for_projection(
+                current_status_run=current_status_run,
+                agent_lane_recommendation=agent_lane_recommendation,
+                active_state_next_action=active_state_next_action,
             )
             if latest_run_action:
                 item["latest_run_recommended_action"] = latest_run_action
+                if latest_run_action_source:
+                    item["latest_run_recommended_action_source"] = latest_run_action_source
                 if isinstance(item.get("project_asset"), dict):
                     item["project_asset"]["latest_run_recommended_action"] = latest_run_action
+                    if latest_run_action_source:
+                        item["project_asset"][
+                            "latest_run_recommended_action_source"
+                        ] = latest_run_action_source
             control_plane = compact_control_plane_policy(goal.get("control_plane"))
             if control_plane:
                 item["control_plane"] = control_plane
             goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
-            agent_lane_recommendation = compact_agent_lane_recommendation(
-                latest_agent_lane_run(goal)
-            )
             if agent_lane_recommendation:
                 item["agent_lane_recommendation"] = agent_lane_recommendation
             subagent_activity = subagent_activity_for_goal(goal)
@@ -8806,13 +8934,14 @@ def build_attention_queue(
                         interface_budget_cadence=interface_budget_cadence,
                     )
                 normalize_monitor_quiet_attention_display(item)
-            task_graph_projection = build_task_graph_projection(
-                item,
-                goal=goal,
-                goal_latest_runs=goal_latest_runs,
-            )
-            if task_graph_projection:
-                item["task_graph_projection"] = task_graph_projection
+            if include_task_graph:
+                task_graph_projection = build_task_graph_projection(
+                    item,
+                    goal=goal,
+                    goal_latest_runs=goal_latest_runs,
+                )
+                if task_graph_projection:
+                    item["task_graph_projection"] = task_graph_projection
             attach_goal_channel_projection(
                 item,
                 goal=goal,
@@ -8926,101 +9055,6 @@ def compact_controller_readiness(readiness: Any) -> dict[str, Any] | None:
     if gates:
         compact["gates"] = gates
     return compact or None
-
-
-def _markdown_scalar(value: Any) -> str:
-    return str(value).replace("\n", " ").replace("|", "\\|").strip()
-
-
-def _goals_by_id(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
-    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
-    result: dict[str, dict[str, Any]] = {}
-    for goal in goals:
-        if not isinstance(goal, dict):
-            continue
-        goal_id = str(goal.get("id") or "")
-        if goal_id:
-            result[goal_id] = goal
-    return result
-
-
-def _authority_registry_markdown_summary(goal: dict[str, Any] | None) -> str | None:
-    registry = goal.get("authority_registry") if isinstance(goal, dict) else None
-    if not isinstance(registry, dict) or not registry.get("declared"):
-        return None
-    materials = int(registry.get("project_material_count") or 0)
-    topics = int(registry.get("topic_authority_count") or 0)
-    if materials <= 0 and topics <= 0:
-        return None
-    return (
-        f"entries={int(registry.get('default_entries_present') or 0)}/"
-        f"{int(registry.get('default_entry_count') or 0)} "
-        f"topics={topics} "
-        f"materials={materials} "
-        f"repositories={int(registry.get('project_material_repository_count') or 0)} "
-        f"owner_review_required={int(registry.get('project_material_owner_review_required_count') or 0)} "
-        f"stale={int(registry.get('project_material_stale_count') or 0)} "
-        f"current_authority={int(registry.get('project_material_current_authority_count') or 0)} "
-        f"risk={_markdown_scalar(registry.get('conflict_risk') or 'unknown')}"
-    )
-
-
-def _append_human_reward_markdown(lines: list[str], goal_id: Any, reward: dict[str, Any]) -> None:
-    headline_parts = []
-    for field in ("recorded_at", "decision", "reward"):
-        value = reward.get(field)
-        if value:
-            headline_parts.append(f"{field}={_markdown_scalar(value)}")
-    if not headline_parts:
-        headline_parts.append("recorded=True")
-    lines.append(f"    - human_reward: {' '.join(headline_parts)}")
-    reason = reward.get("reason_summary")
-    if reason:
-        lines.append(f"      - reason_summary: {_markdown_scalar(reason)}")
-    follow_up = reward.get("follow_up")
-    if follow_up:
-        lines.append(f"      - follow_up: {_markdown_scalar(follow_up)}")
-    lesson = reward.get("lesson") if isinstance(reward.get("lesson"), dict) else {}
-    if lesson:
-        lines.append(
-            "      - lesson: "
-            f"kind={_markdown_scalar(lesson.get('kind') or '')} "
-            f"summary={_markdown_scalar(lesson.get('summary') or '')}"
-        )
-        for field in ("avoid", "prefer"):
-            values = lesson.get(field) if isinstance(lesson.get(field), list) else []
-            if values:
-                lines.append(
-                    f"        - lesson_{field}: "
-                    + ", ".join(_markdown_scalar(value) for value in values[:5])
-                )
-    if goal_id:
-        lines.append(
-            "      - project_agent_visibility: "
-            f"`loopx history --goal-id {_markdown_scalar(goal_id)} --limit 3`"
-        )
-
-
-def _append_operator_gate_resume_contract_markdown(lines: list[str], contract: dict[str, Any]) -> None:
-    headline_parts = []
-    for field in ("version", "gate_id", "operator_decision"):
-        value = contract.get(field)
-        if value:
-            headline_parts.append(f"{field}={_markdown_scalar(value)}")
-    if not headline_parts:
-        headline_parts.append("recorded=True")
-    lines.append(f"    - operator_gate_resume_contract: {' '.join(headline_parts)}")
-    for field in (
-        "latest_state_ref",
-        "freshness_check",
-        "precondition_check",
-        "migration_or_rebase_result",
-        "validation_after_resume",
-    ):
-        value = contract.get(field)
-        if value:
-            lines.append(f"      - {field}: {_markdown_scalar(value)}")
 
 
 def compact_run(run: dict[str, Any]) -> dict[str, Any]:
@@ -9787,6 +9821,7 @@ def collect_status(
     runtime_root_override: str | None,
     scan_roots: list[Path],
     limit: int,
+    include_task_graph: bool = False,
 ) -> dict[str, Any]:
     display_limit = max(0, limit)
     control_plane_limit = max(display_limit, STATUS_CONTROL_PLANE_CONTEXT_LIMIT)
@@ -9816,6 +9851,7 @@ def collect_status(
         history=history,
         global_registry=global_registry,
         runtime_root=runtime_root,
+        include_task_graph=include_task_graph,
     )
     run_history = build_run_history(history, display_limit=display_limit)
     event_ledger_summary = build_event_ledger_summary(history)
@@ -9859,13 +9895,6 @@ def collect_status(
         "usage_summary": usage_summary,
         "todo_index": todo_index,
     }
-
-
-def _event_class_count_text(counts: dict[str, Any]) -> str:
-    return " ".join(
-        f"{event_class}={counts.get(event_class, 0)}"
-        for event_class in EVENT_LEDGER_CLASSES
-    )
 
 
 def render_status_markdown(payload: dict[str, Any]) -> str:
@@ -9925,290 +9954,51 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         if isinstance(payload.get("event_ledger_summary"), dict)
         else {}
     )
-    event_totals = (
-        event_ledger.get("totals")
-        if isinstance(event_ledger.get("totals"), dict)
-        else {}
+    _append_event_ledger_summary_markdown(
+        lines,
+        event_ledger,
+        event_classes=EVENT_LEDGER_CLASSES,
     )
-    if event_ledger.get("available") and event_totals:
-        by_class_24h = (
-            event_totals.get("by_class_24h")
-            if isinstance(event_totals.get("by_class_24h"), dict)
-            else {}
-        )
-        by_class_7d = (
-            event_totals.get("by_class_7d")
-            if isinstance(event_totals.get("by_class_7d"), dict)
-            else {}
-        )
-        lines.extend(
-            [
-                "",
-                "## Event Ledger Summary",
-                "- summary: "
-                f"source={_markdown_scalar(event_ledger.get('source') or '')} "
-                f"samples={event_ledger.get('sample_run_count')} "
-                f"events_24h={event_totals.get('events_24h')} "
-                f"events_7d={event_totals.get('events_7d')} "
-                f"benchmark_runs_24h={event_totals.get('benchmark_runs_24h', 0)} "
-                f"benchmark_runs_7d={event_totals.get('benchmark_runs_7d', 0)} "
-                f"classes_24h={_event_class_count_text(by_class_24h)} "
-                f"classes_7d={_event_class_count_text(by_class_7d)}",
-            ]
-        )
-        event_goals = (
-            event_ledger.get("goals")
-            if isinstance(event_ledger.get("goals"), list)
-            else []
-        )
-        for goal in event_goals[:3]:
-            if not isinstance(goal, dict):
-                continue
-            goal_by_class_24h = (
-                goal.get("by_class_24h")
-                if isinstance(goal.get("by_class_24h"), dict)
-                else {}
-            )
-            lines.append(
-                "- "
-                f"`{_markdown_scalar(goal.get('goal_id') or '')}`: "
-                f"events_24h={goal.get('events_24h')} "
-                f"events_7d={goal.get('events_7d')} "
-                f"benchmark_runs_24h={goal.get('benchmark_runs_24h', 0)} "
-                f"benchmark_runs_7d={goal.get('benchmark_runs_7d', 0)} "
-                f"latest={_markdown_scalar(goal.get('latest_event_class') or '')} "
-                f"classes_24h={_event_class_count_text(goal_by_class_24h)}"
-            )
 
     promotion_readiness = (
         payload.get("promotion_readiness_summary")
         if isinstance(payload.get("promotion_readiness_summary"), dict)
         else {}
     )
-    if promotion_readiness:
-        lines.extend(
-            [
-                "",
-                "## Promotion Readiness Summary",
-                "- summary: "
-                f"source={_markdown_scalar(promotion_readiness.get('source') or '')} "
-                f"available={promotion_readiness.get('available')} "
-                f"samples={promotion_readiness.get('sample_run_count')} "
-                f"freshness={_markdown_scalar(promotion_readiness.get('freshness_status') or '')} "
-                f"age_hours={promotion_readiness.get('age_hours')} "
-                f"requires_readiness_run={promotion_readiness.get('requires_readiness_run')} "
-                f"window_hours={promotion_readiness.get('freshness_window_hours')}",
-                "- latest: "
-                f"goal={_markdown_scalar(promotion_readiness.get('goal_id') or '')} "
-                f"generated_at={_markdown_scalar(promotion_readiness.get('generated_at') or '')} "
-                f"classification={_markdown_scalar(promotion_readiness.get('classification') or '')} "
-                f"outcome={_markdown_scalar(promotion_readiness.get('delivery_outcome') or '')} "
-                f"artifacts={promotion_readiness.get('json_exists')}/{promotion_readiness.get('markdown_exists')}",
-            ]
-        )
+    _append_promotion_readiness_summary_markdown(lines, promotion_readiness)
 
     promotion_gate = (
         payload.get("promotion_gate")
         if isinstance(payload.get("promotion_gate"), dict)
         else {}
     )
-    promotion_gate_readiness = (
-        promotion_gate.get("readiness")
-        if isinstance(promotion_gate.get("readiness"), dict)
-        else {}
-    )
-    if promotion_gate:
-        lines.extend(
-            [
-                "",
-                "## Promotion Gate",
-                "- gate: "
-                f"state={_markdown_scalar(promotion_gate.get('gate_state') or '')} "
-                f"can_promote={promotion_gate.get('can_promote')} "
-                f"should_warn={promotion_gate.get('should_warn')} "
-                f"non_blocking={promotion_gate.get('non_blocking')} "
-                f"freshness={_markdown_scalar(promotion_gate_readiness.get('freshness_status') or '')} "
-                f"requires_readiness_run={promotion_gate_readiness.get('requires_readiness_run')}",
-                "- latest: "
-                f"generated_at={_markdown_scalar(promotion_gate_readiness.get('generated_at') or '')} "
-                f"age_hours={promotion_gate_readiness.get('age_hours')} "
-                f"action={_markdown_scalar(promotion_gate.get('recommended_action') or '')}",
-            ]
-        )
-        if promotion_gate.get("warning_message"):
-            lines.append(
-                "- warning: "
-                f"{_markdown_scalar(promotion_gate.get('warning_message') or '')}"
-            )
+    _append_promotion_gate_markdown(lines, promotion_gate)
 
     decision_freshness = (
         payload.get("decision_freshness_summary")
         if isinstance(payload.get("decision_freshness_summary"), dict)
         else {}
     )
-    decision_summary = (
-        decision_freshness.get("summary")
-        if isinstance(decision_freshness.get("summary"), dict)
-        else {}
-    )
-    if decision_freshness.get("available") and decision_summary:
-        lines.extend(
-            [
-                "",
-                "## Decision Freshness Summary",
-                "- summary: "
-                f"source={_markdown_scalar(decision_freshness.get('source') or '')} "
-                f"samples={decision_freshness.get('sample_run_count')} "
-                f"window_days={decision_freshness.get('window_days')} "
-                f"decisions={decision_summary.get('decision_count')} "
-                f"stale={decision_summary.get('stale_count')} "
-                f"rebase_required={decision_summary.get('rebase_required_count')} "
-                f"fresh={decision_summary.get('fresh_count')}",
-            ]
-        )
-        decision_items = (
-            decision_freshness.get("items")
-            if isinstance(decision_freshness.get("items"), list)
-            else []
-        )
-        for item in decision_items[:3]:
-            if not isinstance(item, dict):
-                continue
-            lines.append(
-                "- "
-                f"`{_markdown_scalar(item.get('goal_id') or '')}`: "
-                f"kind={_markdown_scalar(item.get('decision_kind') or '')} "
-                f"state={_markdown_scalar(item.get('freshness_state') or '')} "
-                f"age_days={item.get('age_days')} "
-                f"newer_7d={item.get('newer_event_count_7d')} "
-                f"decision_at={_markdown_scalar(item.get('decision_at') or '')}"
-            )
+    _append_decision_freshness_summary_markdown(lines, decision_freshness)
 
     usage = payload.get("usage_summary") if isinstance(payload.get("usage_summary"), dict) else {}
-    usage_totals = usage.get("totals") if isinstance(usage.get("totals"), dict) else {}
-    if usage.get("available") and usage_totals:
-        lines.extend(
-            [
-                "",
-                "## Usage Summary",
-                "- summary: "
-                f"source={_markdown_scalar(usage.get('source') or '')} "
-                f"samples={usage.get('sample_run_count')} "
-                f"runs_24h={usage_totals.get('runs_24h')} "
-                f"runs_7d={usage_totals.get('runs_7d')} "
-                f"quota_slots_24h={usage_totals.get('quota_spend_slots_24h')} "
-                f"quota_slots_7d={usage_totals.get('quota_spend_slots_7d')} "
-                f"automation_24h={usage_totals.get('automation_run_count_24h')} "
-                f"automation_7d={usage_totals.get('automation_run_count_7d')} "
-                f"progress_signals_24h={usage_totals.get('progress_signal_run_count_24h')} "
-                f"progress_signals_7d={usage_totals.get('progress_signal_run_count_7d')}",
-            ]
-        )
-        usage_goals = usage.get("goals") if isinstance(usage.get("goals"), list) else []
-        for goal in usage_goals[:3]:
-            if not isinstance(goal, dict):
-                continue
-            lines.append(
-                "- "
-                f"`{_markdown_scalar(goal.get('goal_id') or '')}`: "
-                f"runs_24h={goal.get('runs_24h')} "
-                f"runs_7d={goal.get('runs_7d')} "
-                f"quota_slots_24h={goal.get('quota_spend_slots_24h')} "
-                f"automation_24h={goal.get('automation_run_count_24h')} "
-                f"progress_signals_24h={goal.get('progress_signal_run_count_24h')} "
-                f"share_24h={goal.get('project_share_24h')}"
-            )
+    _append_usage_summary_markdown(lines, usage)
 
     queue = payload.get("attention_queue") if isinstance(payload.get("attention_queue"), dict) else {}
-    lines.extend(
-        [
-            "",
-            "## Attention Queue",
-            "- summary: "
-            f"items={queue.get('item_count')}, "
-            f"needs_user_or_controller={queue.get('needs_user_or_controller')}, "
-            f"needs_controller={queue.get('needs_controller')}, "
-            f"needs_codex={queue.get('needs_codex')}, "
-            f"watching_external_evidence={queue.get('watching_external_evidence')}, "
-            f"watching_monitor={queue.get('watching_monitor')}",
-        ]
-    )
+    _append_attention_queue_summary_markdown(lines, queue)
     items = queue.get("items") if isinstance(queue.get("items"), list) else []
     goals = _goals_by_id(payload)
-    backlog = (
-        queue.get("autonomous_backlog_candidates")
-        if isinstance(queue.get("autonomous_backlog_candidates"), dict)
-        else {}
-    )
-    if backlog:
-        lines.append(
-            "- autonomous_backlog_candidates: "
-            f"open={backlog.get('open_count')} "
-            f"task_class={_markdown_scalar(backlog.get('task_class') or '')} "
-            f"source={_markdown_scalar(backlog.get('source') or '')}"
-        )
-        for candidate in backlog.get("items") or []:
-            if not isinstance(candidate, dict):
-                continue
-            priority_text = ""
-            if candidate.get("priority"):
-                priority_text = f" priority={_markdown_scalar(candidate.get('priority') or '')}"
-            lines.append(
-                "  - autonomous_candidate: "
-                f"goal={_markdown_scalar(candidate.get('goal_id') or '')}"
-                f"{priority_text} "
-                f"text={_markdown_scalar(candidate.get('text') or '')}"
-            )
-    monitor_candidates = (
-        queue.get("autonomous_monitor_candidates")
-        if isinstance(queue.get("autonomous_monitor_candidates"), dict)
-        else {}
-    )
-    if monitor_candidates:
-        lines.append(
-            "- autonomous_monitor_candidates: "
-            f"open={monitor_candidates.get('open_count')} "
-            f"task_class={_markdown_scalar(monitor_candidates.get('task_class') or '')} "
-            f"source={_markdown_scalar(monitor_candidates.get('source') or '')}"
-        )
-        for candidate in monitor_candidates.get("items") or []:
-            if not isinstance(candidate, dict):
-                continue
-            priority_text = ""
-            if candidate.get("priority"):
-                priority_text = f" priority={_markdown_scalar(candidate.get('priority') or '')}"
-            lines.append(
-                "  - autonomous_monitor_candidate: "
-                f"goal={_markdown_scalar(candidate.get('goal_id') or '')}"
-                f"{priority_text} "
-                f"text={_markdown_scalar(candidate.get('text') or '')}"
-            )
     if not items:
         lines.append("- none")
     for item in items:
         if not isinstance(item, dict):
             continue
-        action = str(item.get("recommended_action") or "").replace("|", "\\|")
-        lines.append(
-            "- "
-            f"`{item.get('goal_id')}`: "
-            f"status={item.get('status')} "
-            f"phase={item.get('lifecycle_phase')} "
-            f"waiting_on={item.get('waiting_on')} "
-            f"severity={item.get('severity')} "
-            f"source={item.get('source')}"
-        )
-        if action:
-            lines.append(f"  - action: {action}")
-        active_state_action = _markdown_scalar(item.get("active_state_next_action") or "")
-        if active_state_action:
-            lines.append(f"  - active_state_next_action: {active_state_action}")
-        latest_run_action = _markdown_scalar(item.get("latest_run_recommended_action") or "")
-        if latest_run_action:
-            lines.append(f"  - latest_run_recommended_action: {latest_run_action}")
         authority_summary = _authority_registry_markdown_summary(goals.get(str(item.get("goal_id") or "")))
-        if authority_summary:
-            lines.append(f"  - authority_material: {authority_summary}")
+        _append_attention_queue_item_header_markdown(
+            lines,
+            item,
+            authority_summary=authority_summary,
+        )
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
         agent_lane_next_action = (
             project_asset.get("agent_lane_next_action")
@@ -10267,6 +10057,30 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 lines.append(
                     "    - agent_lane_recommendation: "
                     f"agent={agent} lane={lane} action={recommendation}"
+                )
+            agent_member = (
+                project_asset.get("agent_member")
+                if isinstance(project_asset.get("agent_member"), dict)
+                else item.get("agent_member")
+                if isinstance(item.get("agent_member"), dict)
+                else {}
+            )
+            if agent_member:
+                current_claims = ",".join(
+                    _markdown_scalar(claim)
+                    for claim in (agent_member.get("current_claims") or [])
+                    if str(claim or "").strip()
+                )
+                lines.append(
+                    "    - agent_member: "
+                    f"agent={_markdown_scalar(agent_member.get('agent_id') or '')} "
+                    f"role={_markdown_scalar(agent_member.get('role') or '')} "
+                    f"scope={_markdown_scalar(agent_member.get('scope_summary') or '')} "
+                    f"worktree_policy={_markdown_scalar(agent_member.get('worktree_policy') or '')} "
+                    f"claims={_markdown_scalar(current_claims)} "
+                    f"handoff_agent={_markdown_scalar(agent_member.get('handoff_agent') or '')} "
+                    f"source={_markdown_scalar(agent_member.get('profile_source') or '')} "
+                    "authority=advisory_projection"
                 )
             if agent_lane_next_action:
                 agent = _markdown_scalar(agent_lane_next_action.get("agent_id") or "")

@@ -1,8 +1,8 @@
 # pr_review_command_v0
 
 `pr_review_command_v0` defines the `/loopx-pr-review` command. It helps a
-user review unmerged pull requests one by one by turning public GitHub PR
-metadata into a guided review queue.
+user review open and recently merged pull requests one by one by turning public
+GitHub PR metadata into a guided review queue.
 
 The reviewed repository is the caller's current GitHub project by default, as
 resolved by `gh`, or the explicit `--repo owner/repo` target. LoopX's own
@@ -12,22 +12,63 @@ LoopX-repo-specific.
 The command is read-only. It does not approve reviews, post PR comments, merge,
 push, spend LoopX quota, or mark LoopX todos complete.
 
+Codex agents should use the dedicated `loopx-pr-review` skill for this slash
+command. Do not route `/loopx-pr-review` through the broader `loopx-project`
+workflow or the merge-focused `loopx-pr-merge` skill.
+
 ## Command
 
 | Command | CLI reference | Intent |
 | --- | --- | --- |
-| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo]` | List open PRs for the current project or explicit repository and build a guided review packet with motivation, change scope, checks, risks, and review prompts. |
+| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository, provide concrete main-regression analysis for each PR, and include a blank five-block template that agentloop fills after reading the selected PR body/diff. |
+
+The slash command must run the CLI first. Agentloop must not reconstruct the
+review window by manually calling `gh pr view` / `gh pr list` for every PR. The
+CLI packet's `review_groups.unmerged`, `review_groups.merged`, and
+`pull_requests[].review_template` are the authoritative queue. The packet's
+`evidence_commands` are for the second step: reading one selected PR deeply.
+Use the JSON form for the first pass so the response contract and per-PR blank
+templates enter the model context:
+
+```bash
+loopx --format json pr-review --state all [--repo owner/repo] [--since ISO]
+```
+
+Do not pipe that first packet through `jq` or another projection that only
+keeps `.summary` and `.review_sequence`; that drops
+`agent_response_contract`, `review_groups`, `pull_requests[].review_template`,
+and `pull_requests[].evidence_commands`, which are the fields that make the
+command a guided review instead of a statistics table.
+
+When `--state all` is used, the command must preserve both lifecycle groups.
+The `--limit` value is applied per group so a busy open queue cannot consume the
+whole packet and make `review_groups.merged` empty while merged PRs exist in the
+window. Live GitHub reads should fetch open and closed/merged windows
+separately before constructing the grouped packet.
+
+The agent response must not stop at a queue table. For `/loopx-pr-review`, the
+queue is only the preface; the final answer should review selected PRs one by
+one with five sections: `动机`, `改动思路`, `具体改动`, `对主干的风险`, and
+`我的整体评价`. A stats/list-only response is valid only when the user
+explicitly asks for stats or a list without review. When the visible message
+starts with `/loopx-pr-review`, words such as `open`, `closed`, `merged`,
+`today`, or a time window are filters on the review queue, not permission to
+skip the review. Downgrade only for explicit opt-out phrases such as `只统计`,
+`只列出`, `stats only`, `list only`, `不要 review`, or `不用分析`.
 
 ## Source Reads
 
 Implementations may read compact public PR surfaces:
 
-- pull request title, number, URL, branch, author, state, and review decision;
+- pull request title, number, URL, branch, author, lifecycle state, merge time,
+  and review decision;
 - PR body summary;
 - changed-file list and diff scale;
-- commit headlines;
 - status-check rollup;
 - merge-state metadata.
+
+Commit headlines may be used as optional single-PR deep-review evidence, but
+the default window review should not require fetching them for every PR.
 
 They must not include raw logs, private connector payloads, credentials, local
 absolute paths, private source bodies, or hidden CI artifacts.
@@ -42,17 +83,23 @@ absolute paths, private source bodies, or hidden CI artifacts.
   "request": {
     "schema_version": "loopx_pr_review_command_request_v0",
     "command": "/loopx-pr-review",
-    "cli_command": "loopx pr-review [--repo owner/repo]",
+    "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
     "repository": "owner/repo",
     "limit": 10,
+    "state_filter": "all",
+    "since": "2026-06-28T00:00:00Z",
+    "window": {"state_filter": "all", "since": "2026-06-28T00:00:00Z"},
     "source": "github_cli",
     "privacy_mode": "public_safe_github_metadata",
     "dry_run": true
   },
   "summary": {
-    "headline": "5 open PR(s) found; 5 need review attention.",
-    "open_pr_count": 5,
-    "review_attention_count": 5,
+    "headline": "8 PR(s) in review window: 3 open, 5 merged; 8 need review attention.",
+    "total_pr_count": 8,
+    "open_pr_count": 3,
+    "merged_pr_count": 5,
+    "review_attention_count": 8,
+    "post_merge_review_count": 5,
     "draft_count": 0,
     "recommended_first_pr": {
       "rank": 1,
@@ -66,23 +113,127 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "number": 773,
       "title": "docs: add newcomer command path",
       "url": "https://github.com/owner/repo/pull/773",
+      "state": "OPEN",
       "review_depth": "docs_and_smoke_review",
+      "risk_hint_level": "low",
+      "main_risk_level": "low",
       "why_now": "Open and awaiting reviewer decision."
     }
   ],
+  "review_groups": {
+    "unmerged": {
+      "schema_version": "pr_review_group_v0",
+      "group_id": "unmerged",
+      "title": "Unmerged PRs",
+      "intent": "Review before merge: decide approve, request changes, defer, or wait for checks.",
+      "count": 3,
+      "pr_numbers": [773, 775, 771],
+      "review_sequence": []
+    },
+    "merged": {
+      "schema_version": "pr_review_group_v0",
+      "group_id": "merged",
+      "title": "Merged PRs",
+      "intent": "Post-merge audit: check outcome, regression risk, and follow-up quality without blocking already-merged work.",
+      "count": 5,
+      "pr_numbers": [770],
+      "review_sequence": []
+    }
+  },
   "pull_requests": [
     {
       "number": 773,
+      "review_template": {
+        "schema_version": "pr_review_five_block_template_v0",
+        "purpose": "Empty scaffold only; agentloop fills it after reading PR body and diff.",
+        "sections": [
+          {
+            "label": "动机",
+            "word_hint": "40-80字",
+            "content": "",
+            "agent_instruction": "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题。"
+          },
+          {
+            "label": "改动思路",
+            "word_hint": "40-100字",
+            "content": "",
+            "agent_instruction": "读关键 diff 后填写：作者采用什么路线解决问题，不要只复述文件名。"
+          },
+          {
+            "label": "具体改动",
+            "word_hint": "60-140字",
+            "content": "",
+            "agent_instruction": "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试，只保留决策相关细节。"
+          },
+          {
+            "label": "对主干的风险",
+            "word_hint": "40-100字",
+            "content": "",
+            "agent_instruction": "读 diff 和 checks 后填写：合入 main 可能破坏什么，哪些验证能覆盖。"
+          },
+          {
+            "label": "我的整体评价",
+            "word_hint": "30-80字",
+            "content": "",
+            "agent_instruction": "读完整 PR 后填写：approve / request changes / defer / merge after checks，并给一句理由。"
+          }
+        ],
+        "review_order": ["docs/guides/newcomer-command-path.md", "docs/README.md"],
+        "output_hint": "Keep each PR concise; the filled five-block review is usually 100-200 Chinese characters total for small PRs and longer only when risk demands it."
+      },
       "motivation": "Adds a newcomer command path...",
       "scale": {"changed_files": 3, "additions": 90, "deletions": 4},
       "areas": {"public_docs": 3},
       "checks": {"summary": "2 successful check(s)."},
+      "metadata_risk_hint": {
+        "schema_version": "pr_metadata_risk_hint_v0",
+        "level": "low",
+        "basis": ["areas=公开文档 3", "scale=3 files +90/-4", "checks=2 pass"],
+        "disclaimer": "Metadata-only hint for queue ordering; agentloop must read the PR diff before judging main risk."
+      },
+      "main_regression_analysis": {
+        "schema_version": "main_regression_analysis_v0",
+        "risk_level": "low",
+        "risk_summary": "低 main regression risk across 公开文档 3; 3 file(s), +90/-4; checks=2 pass.",
+        "potential_regressions": [
+          "Runtime regression risk is low, but public guidance or smoke expectations can drift from shipped behavior."
+        ],
+        "bug_risks": [
+          "Docs-only or smoke-only changes can bless stale contracts if examples no longer match the real command path."
+        ],
+        "verification_focus": [
+          "Run `git diff --check` and the touched smoke; compare command examples with current CLI help when syntax is involved."
+        ],
+        "post_merge_review": false
+      },
       "risk_notes": [],
-      "review_prompts": [
-        "What user or maintainer value does this PR unlock now?"
+      "evidence_commands": [
+        "gh pr view 773 --json title,body,files,commits,statusCheckRollup",
+        "gh pr diff 773 --name-only",
+        "gh pr diff 773 --patch"
       ]
     }
   ],
+  "agent_response_contract": {
+    "schema_version": "pr_review_agent_response_contract_v0",
+    "table_only_response_allowed": false,
+    "slash_prefix_dominates_intent": true,
+    "stats_only_requires_explicit_opt_out": true,
+    "queue_table_role": "preface_only",
+    "required_packet_fields_to_preserve": [
+      "agent_response_contract",
+      "review_groups",
+      "pull_requests[].review_template",
+      "pull_requests[].evidence_commands"
+    ],
+    "required_final_sections": [
+      "动机",
+      "改动思路",
+      "具体改动",
+      "对主干的风险",
+      "我的整体评价"
+    ]
+  },
   "boundary": {
     "raw_logs_recorded": false,
     "credential_values_recorded": false,
@@ -95,10 +246,28 @@ absolute paths, private source bodies, or hidden CI artifacts.
 
 The packet should let a reviewer move through PRs in order:
 
-1. Read the motivation and decide whether the PR should exist.
-2. Compare the touched areas and key files with that scope.
-3. Inspect validation and risk notes before approval or merge handoff.
-4. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
+1. Start from `review_groups.unmerged` for PRs that can still affect merge
+   decisions.
+2. Then use `review_groups.merged` for post-merge audit and follow-up quality.
+3. Use `evidence_commands`, key files, changed-file scale, and checks to open
+   the actual PR body and diff.
+4. Read `main_regression_analysis` before filling risk prose. It is the CLI's
+   concrete, generated view of potential main regressions, bug risks, and
+   focused validation.
+5. Let agentloop fill the blank five-block template:
+   `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.
+6. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
+   copied as the final risk judgement.
+7. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
+
+A response that only lists `Open` and `Merged` PRs, scale, and recommended next
+order is incomplete for `/loopx-pr-review`; it should continue into the
+per-PR five-block review cards after reading evidence.
+
+Similarly, a response that says it ran `loopx pr-review` but used a command like
+`loopx --format json pr-review ... | jq '.summary, .review_sequence'` is still
+incomplete: the tool call happened, but the contract/template fields were
+discarded before the agent planned its answer.
 
 ## Acceptance Checks
 
@@ -108,8 +277,32 @@ A first implementation is acceptable when:
 - `loopx pr-review` returns `loopx_pr_review_command_response_v0`;
 - default live reads use the caller's current `gh` repository, while
   `--repo owner/repo` can review another GitHub project;
-- the response includes review sequence, motivation, changed-file scope,
-  status checks, risk notes, and review prompts;
+- `--state all` includes merged PRs in the same packet, applies `--limit` per
+  lifecycle group, and keeps `review_groups.merged` non-empty when merged PRs
+  exist in the requested window; `--state open` preserves the old open-only
+  review queue;
+- `--since` can bound an overnight or release-window review without relying on
+  private chat memory;
+- the response includes review sequence, changed-file scope, status checks,
+  key files, risk notes, metadata-only risk hints, concrete
+  `main_regression_analysis`, evidence commands, explicit
+  `review_groups.unmerged` / `review_groups.merged`, and a blank five-block
+  review template;
+- the packet includes `agent_response_contract.table_only_response_allowed=false`
+  and `agent_response_contract.required_packet_fields_to_preserve` so
+  slash-command agents know a table-only chat answer is incomplete;
+- the slash-command catalog marks `/loopx-pr-review` as `must_run_cli_first`
+  and `slash_prefix_dominates_intent`, and says manual `gh` calls are only
+  per-PR deep-read commands after the CLI packet selects a PR;
+- each PR includes `review_template.sections` for `动机`, `改动思路`,
+  `具体改动`, `对主干的风险`, and `我的整体评价`;
+- template sections must leave `content` empty so agentloop reads the real PR
+  before writing the review;
+- `metadata_risk_hint` must be repository-generic and must not special-case
+  LoopX files or domains;
+- `main_regression_analysis` must be repository-generic, must include
+  `potential_regressions`, `bug_risks`, and `verification_focus`, and must not
+  be replaced by a blank template;
 - live GitHub reads and fixture-based smokes share the same schema;
 - no raw logs, private payloads, credentials, local paths, or private source
   bodies are recorded.

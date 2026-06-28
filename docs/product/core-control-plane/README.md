@@ -9,6 +9,8 @@ LoopX learns a new long-running agent behavior:
   derived runtime state names the situation?
 - [State machine](state-machine.md): which transition is legal next, and who
   owns it?
+- [Rule seam map](rule-seam-map.md): which runtime rule families should be
+  characterized and extracted before moving code?
 
 The older detailed documents remain the canonical reference for full protocol
 detail:
@@ -20,7 +22,9 @@ detail:
 
 This folder is the shorter control-plane map. It exists so product surfaces,
 runtime code, smokes, and agent instructions share one picture instead of
-rediscovering state from chat history or private planning notes.
+rediscovering state from chat history or private planning notes. The rule seam
+map is intentionally behavior-preserving: it names extraction seams and parity
+checks before the refactor branch moves control-plane code.
 
 ## Three-Lens Contract
 

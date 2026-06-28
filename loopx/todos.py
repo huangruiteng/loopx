@@ -12,6 +12,7 @@ from .agent_registry import (
 )
 from .file_lock import exclusive_file_lock
 from .history import load_registry
+from .local_state_write_correctness import build_todo_write_correctness_dry_run_packet
 from .state_refresh import now_local, resolve_goal_state
 from .status import (
     MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE,
@@ -35,9 +36,11 @@ from .todo_contract import (
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
+    normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_todo_status,
     parse_todo_metadata_line,
@@ -60,6 +63,8 @@ TODO_METADATA_FIELDS = (
     "required_write_scopes",
     "required_capabilities",
     "target_capabilities",
+    "decision_scope",
+    "required_decision_scopes",
     "claimed_by",
     "blocks_agent",
     "global_gate",
@@ -69,6 +74,7 @@ TODO_METADATA_FIELDS = (
     "target_key",
     "cadence",
     "next_due_at",
+    "expires_at",
     "last_checked_at",
     "result_hash",
     "consecutive_no_change",
@@ -81,6 +87,37 @@ TODO_METADATA_FIELDS = (
     "updated_at",
     "superseded_by",
 )
+
+
+def _attach_todo_write_correctness_dry_run_packet(
+    payload: dict[str, Any],
+    *,
+    goal_id: str,
+    write_class: str,
+    state_text: str,
+) -> dict[str, Any]:
+    if not payload.get("dry_run"):
+        return payload
+    todo_id = normalize_todo_id(str(payload.get("todo_id") or "")) or None
+    claimed_by = normalize_todo_claimed_by(payload.get("claimed_by"))
+    changed = bool(
+        payload.get("changed")
+        or payload.get("added")
+        or payload.get("metadata_updated")
+        or payload.get("completed")
+        or payload.get("superseded")
+    )
+    payload["local_state_write_correctness"] = build_todo_write_correctness_dry_run_packet(
+        goal_id=goal_id,
+        write_class=write_class,
+        state_text=state_text,
+        todo_id=todo_id,
+        role=str(payload.get("role") or ""),
+        section=str(payload.get("section") or ""),
+        claimed_by=claimed_by,
+        changed=changed,
+    )
+    return payload
 TODO_PRIORITY_PREFIX_PATTERN = re.compile(r"^\[(P[0-4])\]\s+", re.IGNORECASE)
 MONITOR_CADENCE_PATTERN = re.compile(
     r"^\s*(?P<count>[1-9][0-9]{0,4})\s*"
@@ -116,7 +153,7 @@ def inherit_todo_priority(next_text: str, source_text: str | None) -> str:
 def normalize_monitor_metadata(metadata: dict[str, Any] | None) -> dict[str, str]:
     normalized: dict[str, str] = {}
     for key, value in (metadata or {}).items():
-        if key not in {"target_key", "cadence", "next_due_at"}:
+        if key not in TODO_MONITOR_METADATA_FIELDS:
             continue
         candidate = str(value or "").strip()
         if candidate:
@@ -125,6 +162,17 @@ def normalize_monitor_metadata(metadata: dict[str, Any] | None) -> dict[str, str
         raise ValueError("--cadence must look like 30m, 2h, or 1d")
     if "next_due_at" in normalized and parse_timestamp(normalized["next_due_at"]) is None:
         raise ValueError("--next-due-at must be an ISO timestamp")
+    if "expires_at" in normalized and parse_timestamp(normalized["expires_at"]) is None:
+        raise ValueError("--expires-at must be an ISO timestamp")
+    if "last_checked_at" in normalized and parse_timestamp(normalized["last_checked_at"]) is None:
+        raise ValueError("--last-checked-at must be an ISO timestamp")
+    if "consecutive_no_change" in normalized:
+        try:
+            int(normalized["consecutive_no_change"])
+        except ValueError as exc:
+            raise ValueError("--consecutive-no-change must be an integer") from exc
+    if "material_change" in normalized and normalized["material_change"] not in {"true", "false"}:
+        raise ValueError("--material-change metadata must be true or false")
     return normalized
 
 
@@ -485,6 +533,16 @@ def block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             if capabilities:
                 metadata[key] = capabilities
             continue
+        if key == "decision_scope":
+            decision_scope = normalize_todo_decision_scope(value)
+            if decision_scope:
+                metadata[key] = decision_scope
+            continue
+        if key == "required_decision_scopes":
+            scopes = normalize_todo_required_decision_scopes(value)
+            if scopes:
+                metadata[key] = scopes
+            continue
         if key == "no_followup":
             no_followup = normalize_todo_no_followup(value)
             if no_followup is not None:
@@ -523,6 +581,18 @@ def metadata_line_for_block(block: dict[str, Any], updates: dict[str, Any]) -> s
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata[key] = capabilities
+            else:
+                metadata.pop(key, None)
+        elif key == "decision_scope":
+            decision_scope = normalize_todo_decision_scope(value)
+            if decision_scope:
+                metadata[key] = decision_scope
+            else:
+                metadata.pop(key, None)
+        elif key == "required_decision_scopes":
+            scopes = normalize_todo_required_decision_scopes(value)
+            if scopes:
+                metadata[key] = scopes
             else:
                 metadata.pop(key, None)
         elif key == "no_followup":
@@ -642,6 +712,8 @@ def add_todo_to_lines(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     global_gate: bool | None = None,
@@ -689,6 +761,8 @@ def add_todo_to_lines(
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
+            decision_scope=decision_scope,
+            required_decision_scopes=required_decision_scopes,
             claimed_by=claimed_by,
             blocks_agent=blocks_agent,
             global_gate=global_gate,
@@ -718,6 +792,10 @@ def add_todo_to_lines(
             updates["required_capabilities"] = required_capabilities
         if target_capabilities is not None:
             updates["target_capabilities"] = target_capabilities
+        if decision_scope is not None:
+            updates["decision_scope"] = decision_scope
+        if required_decision_scopes is not None:
+            updates["required_decision_scopes"] = required_decision_scopes
         if claimed_by:
             updates["claimed_by"] = claimed_by
         if blocks_agent:
@@ -755,6 +833,12 @@ def add_todo_to_lines(
         "target_capabilities": normalize_target_capabilities(
             effective_metadata.get("target_capabilities") or target_capabilities
         ),
+        "decision_scope": normalize_todo_decision_scope(
+            effective_metadata.get("decision_scope") or decision_scope
+        ),
+        "required_decision_scopes": normalize_todo_required_decision_scopes(
+            effective_metadata.get("required_decision_scopes") or required_decision_scopes
+        ),
         "claimed_by": normalize_todo_claimed_by(effective_metadata.get("claimed_by")),
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
         "global_gate": normalize_todo_global_gate(effective_metadata.get("global_gate")),
@@ -763,6 +847,7 @@ def add_todo_to_lines(
         "target_key": effective_metadata.get("target_key"),
         "cadence": effective_metadata.get("cadence"),
         "next_due_at": effective_metadata.get("next_due_at"),
+        "expires_at": effective_metadata.get("expires_at"),
         "evidence": effective_metadata.get("evidence") or evidence,
     }
 
@@ -807,6 +892,8 @@ def add_goal_todo(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     global_gate: bool = False,
@@ -899,6 +986,8 @@ def add_goal_todo(
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
+            decision_scope=decision_scope,
+            required_decision_scopes=required_decision_scopes,
             claimed_by=effective_claimed_by,
             blocks_agent=effective_blocks_agent,
             global_gate=True if global_gate else None,
@@ -915,7 +1004,7 @@ def add_goal_todo(
         if (added or metadata_updated) and not dry_run:
             resolved_state_file.write_text(new_text, encoding="utf-8")
 
-    return {
+    payload = {
         "ok": True,
         "dry_run": dry_run,
         "added": added,
@@ -931,6 +1020,8 @@ def add_goal_todo(
         "required_write_scopes": add_result.get("required_write_scopes"),
         "required_capabilities": add_result.get("required_capabilities"),
         "target_capabilities": add_result.get("target_capabilities"),
+        "decision_scope": add_result.get("decision_scope"),
+        "required_decision_scopes": add_result.get("required_decision_scopes"),
         "claimed_by": add_result.get("claimed_by"),
         "agent_id": effective_agent_id,
         "blocks_agent": add_result.get("blocks_agent"),
@@ -940,10 +1031,17 @@ def add_goal_todo(
         "target_key": add_result.get("target_key"),
         "cadence": add_result.get("cadence"),
         "next_due_at": add_result.get("next_due_at"),
+        "expires_at": add_result.get("expires_at"),
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if added or metadata_updated else None,
     }
+    return _attach_todo_write_correctness_dry_run_packet(
+        payload,
+        goal_id=goal_id,
+        write_class="todo_add",
+        state_text=original,
+    )
 
 
 def resolve_todo_state(
@@ -978,6 +1076,8 @@ def apply_todo_update_to_lines(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     global_gate: bool | None = None,
@@ -1033,6 +1133,10 @@ def apply_todo_update_to_lines(
         updates["required_capabilities"] = required_capabilities
     if target_capabilities is not None:
         updates["target_capabilities"] = target_capabilities
+    if decision_scope is not None:
+        updates["decision_scope"] = decision_scope
+    if required_decision_scopes is not None:
+        updates["required_decision_scopes"] = required_decision_scopes
     if clear_claim:
         updates["claimed_by"] = None
     elif claimed_by:
@@ -1082,6 +1186,10 @@ def apply_todo_update_to_lines(
         "target_capabilities": normalize_target_capabilities(
             effective_metadata.get("target_capabilities")
         ),
+        "decision_scope": normalize_todo_decision_scope(effective_metadata.get("decision_scope")),
+        "required_decision_scopes": normalize_todo_required_decision_scopes(
+            effective_metadata.get("required_decision_scopes")
+        ),
         "blocks_agent": normalize_todo_blocks_agent(effective_metadata.get("blocks_agent")),
         "global_gate": normalize_todo_global_gate(effective_metadata.get("global_gate")),
         "unblocks_todo_id": normalize_todo_id(effective_metadata.get("unblocks_todo_id")),
@@ -1090,6 +1198,7 @@ def apply_todo_update_to_lines(
         "target_key": effective_metadata.get("target_key"),
         "cadence": effective_metadata.get("cadence"),
         "next_due_at": effective_metadata.get("next_due_at"),
+        "expires_at": effective_metadata.get("expires_at"),
     }
 
 
@@ -1109,6 +1218,8 @@ def update_goal_todo(
     required_write_scopes: list[str] | None = None,
     required_capabilities: list[str] | None = None,
     target_capabilities: list[str] | None = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     global_gate: bool = False,
@@ -1235,6 +1346,8 @@ def update_goal_todo(
             required_write_scopes=required_write_scopes,
             required_capabilities=required_capabilities,
             target_capabilities=target_capabilities,
+            decision_scope=decision_scope,
+            required_decision_scopes=required_decision_scopes,
             claimed_by=effective_claimed_by,
             blocks_agent=effective_blocks_agent,
             global_gate=True if global_gate else None,
@@ -1252,7 +1365,8 @@ def update_goal_todo(
             new_text = replace_updated_at(new_text, updated_at)
         if changed and not dry_run:
             resolved_state_file.write_text(new_text, encoding="utf-8")
-    return {
+    write_class = "todo_claim" if claim_only else "todo_update"
+    payload = {
         "ok": True,
         "dry_run": dry_run,
         "changed": changed,
@@ -1263,6 +1377,12 @@ def update_goal_todo(
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,
     }
+    return _attach_todo_write_correctness_dry_run_packet(
+        payload,
+        goal_id=goal_id,
+        write_class=write_class,
+        state_text=original,
+    )
 
 
 def complete_goal_todo(
@@ -1717,6 +1837,7 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
                     "target_key",
                     "cadence",
                     "next_due_at",
+                    "expires_at",
                 ):
                     if item.get(metadata_key):
                         metadata.append(f"{metadata_key}={item.get(metadata_key)}")
@@ -1764,6 +1885,7 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
                 f"- target_key: `{payload.get('target_key')}`",
                 f"- cadence: `{payload.get('cadence')}`",
                 f"- next_due_at: `{payload.get('next_due_at')}`",
+                f"- expires_at: `{payload.get('expires_at')}`",
             ]
         )
     if payload.get("error"):
@@ -1771,4 +1893,24 @@ def render_todo_markdown(payload: dict[str, Any]) -> str:
     elif "todo" in payload:
         marker = todo_marker_for_status(payload.get("status") or TODO_STATUS_OPEN)
         lines.extend(["", "## Todo", "", f"- [{marker}] {payload.get('todo')}"])
+    correctness = payload.get("local_state_write_correctness")
+    if isinstance(correctness, dict):
+        intent = correctness.get("write_intent") if isinstance(correctness.get("write_intent"), dict) else {}
+        apply_result = (
+            correctness.get("apply_result")
+            if isinstance(correctness.get("apply_result"), dict)
+            else {}
+        )
+        lines.extend(
+            [
+                "",
+                "## Local State Write Correctness",
+                "",
+                f"- schema_version: `{correctness.get('schema_version')}`",
+                f"- write_id: `{intent.get('write_id')}`",
+                f"- write_class: `{intent.get('write_class')}`",
+                f"- idempotency_key: `{intent.get('idempotency_key')}`",
+                f"- status: `{apply_result.get('status')}`",
+            ]
+        )
     return "\n".join(lines)

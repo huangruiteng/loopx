@@ -1371,6 +1371,22 @@ def assert_status_agent_lane_next_action_projection() -> None:
     coordination = {
         "primary_agent": "codex-main-control",
         "registered_agents": ["codex-main-control", "codex-side-bypass"],
+        "agent_profiles": {
+            "codex-side-bypass": {
+                "schema_version": "agent_profile_v0",
+                "agent_id": "codex-side-bypass",
+                "role": "side-agent",
+                "scope_summary": "productization showcase docs lane",
+                "worktree_policy": {
+                    "mode": "independent_worktree_required",
+                    "requires_independent_worktree": True,
+                },
+                "review_policy": {
+                    "handoff_agent": "codex-main-control",
+                    "can_self_merge": "small_validated_docs_or_metadata_only",
+                },
+            }
+        },
     }
     payload = {
         "ok": True,
@@ -1436,12 +1452,36 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert next_action["preserves_goal_next_action"] is True, next_action
     assert item["recommended_action"] == primary_action, item
     assert item["project_asset"]["next_action"] == primary_action, item
+    member = item["agent_member"]
+    assert member["schema_version"] == "agent_member_v0", member
+    assert member["agent_id"] == "codex-side-bypass", member
+    assert member["role"] == "side-agent", member
+    assert member["scope_summary"] == "productization showcase docs lane", member
+    assert member["worktree_policy"] == "independent_worktree_required", member
+    assert member["requires_independent_worktree"] is True, member
+    assert member["current_claims"] == ["todo_side_tui"], member
+    assert member["lease_projection"]["source"] == "todo.claimed_by", member
+    assert member["lease_projection"]["hard_lease_available"] is False, member
+    assert member["handoff_agent"] == "codex-main-control", member
+    assert member["role_is_advisory"] is True, member
+    assert item["project_asset"]["agent_member"] == member, item
+    projection = payload["agent_member_projection"]
+    assert projection["schema_version"] == "agent_member_projection_v0", projection
+    assert projection["attached_count"] == 1, projection
+    assert projection["projection_is_authoritative"] is False, projection
     markdown = render_status_markdown(payload)
+    assert "agent_member: agent=codex-side-bypass role=side-agent" in markdown, markdown
+    assert "worktree_policy=independent_worktree_required" in markdown, markdown
+    assert "claims=todo_side_tui" in markdown, markdown
     assert "current_agent_todo: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
     assert "source=agent_lane_next_action" in markdown, markdown
     assert side_action in markdown, markdown
     assert f"next_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
     assert f"asset_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
+    packet = build_review_packet(payload, goal_id=goal_id, action_kind="codex")
+    assert packet["agent_member"]["agent_id"] == "codex-side-bypass", packet
+    assert "Agent 成员：agent=codex-side-bypass role=side-agent" in packet["project_agent_handoff"], packet
+    assert "authority=advisory_projection" in packet["project_agent_handoff"], packet
 
 
 def assert_status_agent_lane_frontier_hint_projection() -> None:

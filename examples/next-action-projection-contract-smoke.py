@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -115,6 +116,21 @@ def collect_projection(registry_path: Path, runtime: Path, project: Path) -> dic
     return {"status": status, "item": item, "decision": decision}
 
 
+def run_cli_json(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from loopx.cli import main; raise SystemExit(main())",
+            *args,
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
 def main() -> None:
     original_now_local = state_refresh.now_local
     try:
@@ -130,6 +146,8 @@ def main() -> None:
                 state_file=None,
                 classification="state_refreshed",
                 recommended_action=None,
+                agent_id="codex-main-control",
+                progress_scope="goal",
                 dry_run=True,
                 sync_global=False,
             )
@@ -147,6 +165,8 @@ def main() -> None:
                 state_file=None,
                 classification="state_refreshed",
                 recommended_action=RUN_RECOMMENDATION,
+                agent_id="codex-main-control",
+                progress_scope="goal",
                 dry_run=False,
                 sync_global=False,
             )
@@ -176,6 +196,8 @@ def main() -> None:
                 classification="state_refreshed",
                 recommended_action=UPDATED_RUN_RECOMMENDATION,
                 next_action=UPDATED_NEXT_ACTION,
+                agent_id="codex-main-control",
+                progress_scope="goal",
                 dry_run=False,
                 sync_global=False,
             )
@@ -210,6 +232,63 @@ def main() -> None:
             assert "active_state_next_action" in quota_markdown, quota_markdown
             assert "latest_run_recommended_action" in quota_markdown, quota_markdown
 
+            cli_ok = run_cli_json(
+                [
+                    "--format",
+                    "json",
+                    "--registry",
+                    str(registry_path),
+                    "--runtime-root",
+                    str(runtime),
+                    "refresh-state",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--project",
+                    str(project),
+                    "--classification",
+                    "cli_goal_scope_dry_run",
+                    "--recommended-action",
+                    UPDATED_RUN_RECOMMENDATION,
+                    "--agent-id",
+                    "codex-main-control",
+                    "--progress-scope",
+                    "goal",
+                    "--dry-run",
+                    "--no-global-sync",
+                ]
+            )
+            assert cli_ok.returncode == 0, cli_ok.stderr or cli_ok.stdout
+            cli_ok_payload = json.loads(cli_ok.stdout)
+            assert cli_ok_payload["ok"] is True, cli_ok_payload
+            assert cli_ok_payload["progress_scope"] == "goal", cli_ok_payload
+            assert cli_ok_payload["agent_id"] == "codex-main-control", cli_ok_payload
+
+            cli_fail = run_cli_json(
+                [
+                    "--format",
+                    "json",
+                    "--registry",
+                    str(registry_path),
+                    "--runtime-root",
+                    str(runtime),
+                    "refresh-state",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--project",
+                    str(project),
+                    "--classification",
+                    "cli_unscoped_dry_run",
+                    "--recommended-action",
+                    SIDE_AGENT_ACTION,
+                    "--dry-run",
+                    "--no-global-sync",
+                ]
+            )
+            assert cli_fail.returncode == 1, cli_fail.stdout
+            cli_fail_payload = json.loads(cli_fail.stdout)
+            assert cli_fail_payload["ok"] is False, cli_fail_payload
+            assert "requires --agent-id" in cli_fail_payload["error"], cli_fail_payload
+
         with tempfile.TemporaryDirectory(prefix="loopx-next-action-fallback-") as raw_tmp:
             registry_path, runtime, project, _state_path = write_fixture(
                 Path(raw_tmp),
@@ -224,6 +303,8 @@ def main() -> None:
                 state_file=None,
                 classification="state_refreshed",
                 recommended_action=None,
+                agent_id="codex-main-control",
+                progress_scope="goal",
                 dry_run=True,
                 sync_global=False,
             )

@@ -113,6 +113,7 @@ def main() -> int:
             in install.stdout
         ), install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-doc-registry'}" in install.stdout, install.stdout
+        assert f"- skill: {codex_home / 'skills' / 'loopx-pr-review'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-project'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-self-repair'}" in install.stdout, install.stdout
 
@@ -165,6 +166,19 @@ def main() -> int:
         ):
             assert phrase in compact_skill_text, phrase
         assert "JSON output still keeps the full payload" not in compact_skill_text, compact_skill_text
+        pr_review_skill = codex_home / "skills" / "loopx-pr-review" / "SKILL.md"
+        pr_review_text = " ".join(pr_review_skill.read_text(encoding="utf-8").split())
+        for phrase in (
+            "loopx --format json pr-review --state all",
+            "agent_response_contract",
+            "review_groups",
+            "pull_requests[].review_template",
+            "pull_requests[].evidence_commands",
+            "Do not pipe the first packet through `jq`",
+            "Do not fill the five-block review from title, labels, changed-file counts, or metadata risk hints alone",
+            "Do not use this skill to approve",
+        ):
+            assert phrase in pr_review_text, phrase
         doc_registry_skill = codex_home / "skills" / "loopx-doc-registry" / "SKILL.md"
         doc_registry_text = " ".join(doc_registry_skill.read_text(encoding="utf-8").split())
         for phrase in (
@@ -236,6 +250,8 @@ def main() -> int:
         assert doctor_payload["skill"]["delivery_hints"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["exists"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["required_phrases"] is True, doctor_payload
+        assert doctor_payload["skills"]["loopx-pr-review"]["exists"] is True, doctor_payload
+        assert doctor_payload["skills"]["loopx-pr-review"]["required_phrases"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-doc-registry"]["exists"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-doc-registry"]["required_phrases"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-self-repair"]["exists"] is True, doctor_payload
@@ -280,7 +296,7 @@ def main() -> int:
         assert "installed_skill_delivery_hints: `True`" in doctor_markdown, doctor_markdown
         assert (
             "installed_required_skills: "
-            "`loopx-doc-registry,loopx-project,loopx-self-repair`"
+            "`loopx-doc-registry,loopx-pr-review,loopx-project,loopx-self-repair`"
             in doctor_markdown
         ), doctor_markdown
         assert "loopx_canary_realpath:" in doctor_markdown, doctor_markdown
@@ -313,6 +329,7 @@ def main() -> int:
             repo_root=REPO_ROOT,
             skills={
                 "loopx-project": {"exists": True, "required_phrases": True},
+                "loopx-pr-review": {"exists": True, "required_phrases": True},
                 "loopx-doc-registry": {"exists": True, "required_phrases": True},
                 "loopx-self-repair": {"exists": True, "required_phrases": True},
             },
@@ -329,6 +346,7 @@ def main() -> int:
             repo_root=REPO_ROOT,
             skills={
                 "loopx-project": {"exists": True, "required_phrases": True},
+                "loopx-pr-review": {"exists": True, "required_phrases": True},
                 "loopx-doc-registry": {"exists": True, "required_phrases": True},
                 "loopx-self-repair": {"exists": True, "required_phrases": True},
             },

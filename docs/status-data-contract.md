@@ -49,11 +49,15 @@ card or timeline, but project truth still comes from the registry, active
 state, quota guard, and append-only run history.
 
 Rows may also include an optional `task_graph_projection` object with
-`schema_version=task_graph_projection_v0`. This is a compact graph-shaped view
-over existing todos, gates, leases, run ids, and event-ledger state. It is
-read-only and exists only to show dependency, validation, repair, and handoff
-relationships that are hard to scan in a flat todo list. It must not introduce a
-second scheduler, graph write API, hidden lease store, or alternate task truth.
+`schema_version=task_graph_projection_v0`. The default `status` hot path omits
+this graph to preserve the dashboard interface budget; callers that need the
+graph can request it with `loopx --format json status --include-task-graph`, or
+use a full review packet. This is a compact graph-shaped view over existing
+todos, gates, leases, run ids, and event-ledger state. It is read-only and
+exists only to show dependency, validation, repair, audit, continuation, and
+handoff relationships that are hard to scan in a flat todo list. It must not
+introduce a second scheduler, graph write API, hidden lease store, or alternate
+task truth.
 The protocol is defined in
 [`docs/reference/protocols/task-graph-projection-v0.md`](reference/protocols/task-graph-projection-v0.md);
 consumers should ignore the field when absent.
@@ -982,18 +986,24 @@ run guidance from durable-state projection and last-resort compatibility
 fallback.
 `--recommended-action` describes the appended run record; it does not rewrite
 the active state's durable `## Next Action`. To intentionally change that
-durable route, run `refresh-state --next-action <public-safe action>`. Status
-projections may expose both `active_state_next_action` and
+durable route in a multi-agent goal, the primary agent must run
+`refresh-state --agent-id <primary-agent> --progress-scope goal --next-action
+<public-safe action>`. Status projections may expose both
+`active_state_next_action` and
 `latest_run_recommended_action`; when they differ, `next_action_projection_warning`
 marks the drift instead of silently choosing one as the only truth.
 Executable dispatch should use `agent_lane_next_action` / todo projection rather
 than treating shared `## Next Action` as a per-agent work item.
 
-When a refresh is scoped with `--agent-id`, the run records
-`progress_scope=agent_lane`. This is a side-lane note, not a project-level
-status transition: status/quota keep selecting the latest non-agent-lane run for
-the goal-level `status` and `recommended_action`, while exposing the side-lane
-note as `agent_lane_recommendation` on the attention item and project asset.
+In a multi-agent goal, `refresh-state` requires an explicit `--agent-id`; text
+or todo-title inference is not a valid identity source. When a refresh is
+scoped with `--agent-id` and no `--progress-scope`, the run records
+`progress_scope=agent_lane`. This is a lane note, not a project-level status
+transition: status/quota keep selecting the latest non-agent-lane run for the
+goal-level `status` and `recommended_action`, while exposing the lane note as
+`agent_lane_recommendation` on the attention item and project asset. A
+goal-level refresh in a multi-agent goal must use the primary agent with
+`--progress-scope goal`.
 Use this for side agents that want to record their own lane recommendation
 without replacing the primary controller's next action.
 

@@ -69,9 +69,9 @@ def test_case_analysis_json() -> None:
     assert trajectory_coverage["schema_version"] == (
         "trajectory_public_summary_coverage_v0"
     ), trajectory_coverage
-    assert trajectory_coverage["summary_count"] == 5, trajectory_coverage
-    assert trajectory_coverage["public_safe_count"] == 5, trajectory_coverage
-    assert trajectory_coverage["attribution_conclusion_count"] == 5, (
+    assert trajectory_coverage["summary_count"] == 6, trajectory_coverage
+    assert trajectory_coverage["public_safe_count"] == 6, trajectory_coverage
+    assert trajectory_coverage["attribution_conclusion_count"] == 6, (
         trajectory_coverage
     )
     coverage_rows = {
@@ -83,6 +83,22 @@ def test_case_analysis_json() -> None:
         "citation-check",
         "post_stop_policy_raw_rerun.trajectory_public_summary",
     ) in coverage_rows, trajectory_coverage
+    goal_start_bridge_timeout = coverage_rows[
+        (
+            "skillsbench@1.1",
+            "citation-check",
+            "goal_start_bridge_timeout_recheck.trajectory_public_summary",
+        )
+    ]
+    assert goal_start_bridge_timeout["round_count"] == 13, (
+        goal_start_bridge_timeout
+    )
+    assert goal_start_bridge_timeout["tool_call_count"] == 0, (
+        goal_start_bridge_timeout
+    )
+    assert goal_start_bridge_timeout["loopx_cli_call_count"] == 0, (
+        goal_start_bridge_timeout
+    )
     assert (
         "skillsbench@1.1",
         "3d-scan-calc",
@@ -1269,7 +1285,9 @@ def test_case_analysis_markdown() -> None:
     assert "native_goal_route_observations" in text, text
     assert "legacy_blind_loop_positive_result.trajectory_public_summary" in text, text
     assert "post_stop_policy_raw_rerun.trajectory_public_summary" in text, text
+    assert "goal_start_bridge_timeout_recheck.trajectory_public_summary" in text, text
     assert "`citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary`" in text, text
+    assert "`citation-check` | `goal_start_bridge_timeout_recheck.trajectory_public_summary`" in text, text
     assert "historical_final_only_lifecycle_trajectory_summaries" in text, text
     assert "`3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.treatment.trajectory_public_summary`" in text, text
     assert "`debug-trl-grpo` | `trajectory_public_summary`" in text, text

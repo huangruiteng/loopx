@@ -25,6 +25,8 @@ ROLLOUT_EVENT_KINDS = {
     "quota_spend",
     "quota_void",
     "refresh_state",
+    "research_evidence",
+    "research_hypothesis",
     "todo_add",
     "todo_archive_completed",
     "todo_claim",

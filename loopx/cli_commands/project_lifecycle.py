@@ -21,6 +21,7 @@ from ..project_map import (
 from ..state_refresh import (
     DEFAULT_REFRESH_ACTION,
     DEFAULT_REFRESH_CLASSIFICATION,
+    PROGRESS_SCOPE_CHOICES,
     REPAIR_DELTA_KIND_CHOICES,
     refresh_state_run,
     render_state_refresh_markdown,
@@ -117,6 +118,14 @@ def register_project_lifecycle_commands(
     refresh_state_parser.add_argument(
         "--agent-lane",
         help="Public-safe lane label for --agent-id scoped refreshes, such as productization_frontstage.",
+    )
+    refresh_state_parser.add_argument(
+        "--progress-scope",
+        choices=PROGRESS_SCOPE_CHOICES,
+        help=(
+            "Refresh scope. In multi-agent goals, use agent_lane for per-agent runnable "
+            "status, or goal with the primary agent for durable goal-level status/Next Action."
+        ),
     )
     refresh_state_parser.add_argument(
         "--dry-run",
@@ -284,6 +293,7 @@ def handle_project_lifecycle_command(
                 delivery_outcome=args.delivery_outcome,
                 agent_id=args.agent_id,
                 agent_lane=args.agent_lane,
+                progress_scope=args.progress_scope,
                 autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
                 repair_delta_kinds=args.repair_delta_kinds,
                 dry_run=bool(args.dry_run),

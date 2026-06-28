@@ -539,15 +539,37 @@ JSON or Markdown decision:
       "recommended_interval_minutes": 30,
       "example_progression_minutes": [30, 60, 120]
     },
-    "codex_cli_tui": {
-      "unchanged_poll_limit": 3,
-      "after_limit": "exit_goal_loop",
-      "final_quota_replan_check": {"enabled": true}
+    "unchanged_poll": {
+      "limits": {
+        "local_scheduler": 3,
+        "codex_cli_tui": 3,
+        "claude_code_loop": 3
+      },
+      "after_limits": {
+        "local_scheduler": "stop_tick_loop",
+        "codex_cli_tui": "exit_goal_loop",
+        "claude_code_loop": "stop_loop"
+      },
+      "final_quota_replan_check_enabled": true,
+      "final_quota_replan_check_action": "rerun_quota_should_run_once",
+      "spend_policy": "no quota spend for final replan check or loop stop"
     },
-    "claude_code_loop": {
-      "unchanged_poll_limit": 3,
-      "after_limit": "stop_loop",
-      "final_quota_replan_check": {"enabled": true}
+    "detail_ref": {
+      "schema_version": "scheduler_hint_detail_v0",
+      "omitted_by_default": true,
+      "execution_required": false,
+      "request": "loopx quota should-run --include-scheduler-detail",
+      "hot_path_runtime_fields": [
+        "codex_app",
+        "unchanged_poll",
+        "reset_policy"
+      ],
+      "contains": [
+        "local_scheduler",
+        "codex_cli_tui",
+        "claude_code_loop",
+        "final_quota_replan_check"
+      ]
     },
     "reset_policy": {
       "schema_version": "scheduler_reset_policy_v0",
@@ -613,8 +635,8 @@ When available, `quota should-run` also keeps next-action signals separate:
 recommendation, and `agent_lane_next_action` is the current `--agent-id`
 slice. If the active-state and latest-run actions differ,
 `next_action_projection_warning` asks the executor to explicitly write back the
-intended durable route with `refresh-state --next-action` or keep treating the
-signals as distinct.
+intended durable route with a primary goal-scope `refresh-state --next-action`
+or keep treating the signals as distinct.
 `refresh-state` records `recommended_action_source` so hosts can tell whether a
 run recommendation came from an explicit argument, durable `## Next Action`, an
 Agent Todo compatibility fallback, or the generic default. Dispatch still comes
@@ -714,9 +736,21 @@ snapshots in `quota should-run` JSON. User
 feedback, newly runnable work, reassignment, or material evidence should
 therefore restore the automation to the current profile's initial interval
 before backoff resumes.
-For Codex CLI TUI and Claude Code loops, `unchanged_poll_limit=3` means the
-third unchanged poll triggers `final_quota_replan_check`; if the rerun is still
-unchanged, the loop applies `after_limit`.
+For Codex CLI TUI and Claude Code loops, the default hot path reads
+`scheduler_hint.unchanged_poll.limits.<runtime>`. A value of `3` means the third
+unchanged poll triggers the compact final quota/replan check named by
+`scheduler_hint.unchanged_poll.final_quota_replan_check_action`; if the rerun is
+still unchanged, the loop applies
+`scheduler_hint.unchanged_poll.after_limits.<runtime>`. Hosts that need the
+older per-runtime detail objects must opt in with
+`quota should-run --include-scheduler-detail` and read
+`scheduler_hint.cold_path_detail.local_scheduler`,
+`scheduler_hint.cold_path_detail.codex_cli_tui`, or
+`scheduler_hint.cold_path_detail.claude_code_loop`. That opt-in is diagnostic
+and migration support only: a host or agent that forgets
+`--include-scheduler-detail` must still retain the core scheduling abilities by
+reading the default hot-path fields named in
+`scheduler_hint.detail_ref.hot_path_runtime_fields`.
 The response also includes `execution_obligation`, which is the compatibility
 field that separates worker execution from user-facing notification.
 `heartbeat_recommendation.notify` answers "should this heartbeat interrupt the

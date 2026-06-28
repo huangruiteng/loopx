@@ -20,6 +20,13 @@ def shell_arg(value: str) -> str:
     return shlex.quote(value)
 
 
+def shell_arg_or_placeholder(value: str) -> str:
+    text = str(value)
+    if text.startswith("<") and text.endswith(">"):
+        return text
+    return shell_arg(text)
+
+
 def render_cli_preflight(*, cli_bin: str = "loopx") -> str:
     cli_bin_arg = shell_arg(cli_bin)
     return f"""export PATH="$HOME/.local/bin:$PATH"
@@ -74,6 +81,39 @@ def render_quota_spend_command(
         "quota spend-slot "
         f"--goal-id {shell_arg(goal_id)} "
         f"--slots 1 --source {shell_arg(source)} --execute{agent_arg}"
+    )
+
+
+def render_refresh_state_command(
+    goal_id: str,
+    *,
+    cli_bin: str = "loopx",
+    agent_id: str | None = None,
+    progress_scope: str | None = None,
+    classification: str | None = None,
+    delivery_batch_scale: str | None = None,
+    delivery_outcome: str | None = None,
+) -> str:
+    agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
+    scope_arg = f" --progress-scope {shell_arg(progress_scope)}" if progress_scope else ""
+    classification_arg = (
+        f" --classification {shell_arg_or_placeholder(classification)}"
+        if classification
+        else ""
+    )
+    scale_arg = (
+        f" --delivery-batch-scale {shell_arg_or_placeholder(delivery_batch_scale)}"
+        if delivery_batch_scale
+        else ""
+    )
+    outcome_arg = (
+        f" --delivery-outcome {shell_arg_or_placeholder(delivery_outcome)}"
+        if delivery_outcome
+        else ""
+    )
+    return (
+        f"{shell_arg(cli_bin)} refresh-state --goal-id {shell_arg(goal_id)}"
+        f"{classification_arg}{scale_arg}{outcome_arg}{agent_arg}{scope_arg}"
     )
 
 
@@ -187,6 +227,7 @@ def build_new_project_prompt(
     )
     quota_guard_command = render_quota_guard_command(resolved_goal_id)
     quota_spend_command = render_quota_spend_command(resolved_goal_id)
+    refresh_command = render_refresh_state_command(resolved_goal_id)
     prompt = render_prompt_text(
         project=project_text,
         goal_doc=goal_doc_text,
@@ -200,6 +241,7 @@ def build_new_project_prompt(
         connect_command=connect_command,
         quota_guard_command=quota_guard_command,
         quota_spend_command=quota_spend_command,
+        refresh_command=refresh_command,
         cli_bin="loopx",
         spawn_allowed=spawn_allowed,
         allowed_domains=allowed_domains,
@@ -221,6 +263,7 @@ def build_new_project_prompt(
         "connect_command": connect_command,
         "quota_guard_command": quota_guard_command,
         "quota_spend_command": quota_spend_command,
+        "refresh_command": refresh_command,
         "cli_preflight": render_cli_preflight(),
         "prompt": prompt,
     }
@@ -280,7 +323,11 @@ def build_codex_cli_bootstrap_message(
         agent_id=agent_id,
     )
     install_repair_command = render_codex_cli_no_clone_preflight(cli_bin=cli_bin)
-    refresh_command = f"{shell_arg(cli_bin)} refresh-state --goal-id {shell_arg(resolved_goal_id)}"
+    refresh_command = render_refresh_state_command(
+        resolved_goal_id,
+        cli_bin=cli_bin,
+        agent_id=agent_id,
+    )
     first_run_validation_checklist = [
         f"{cli_bin} doctor passed after no-clone install repair or existing install",
         "repo bootstrap/connect completed conservatively or a concrete install/connect blocker was shown",
@@ -593,6 +640,7 @@ def render_prompt_text(
     connect_command: str,
     quota_guard_command: str,
     quota_spend_command: str,
+    refresh_command: str,
     cli_bin: str,
     spawn_allowed: bool,
     allowed_domains: list[str],
@@ -660,7 +708,7 @@ def render_prompt_text(
    - 是否 `autonomous=yes`，允许你在 quota guard 通过后开始执行第一个接受的 agent todo。
    如果用户接受候选 todo，用输出里的 `{cli_bin} todo add ...` 命令写入 agent todo；
    如果用户允许自主推进，先运行 quota guard，再执行第一个已接受 agent todo。
-   如果用户不允许自主推进，只写入接受的 todo 并运行 `{cli_bin} refresh-state --goal-id {goal_id}`，
+   如果用户不允许自主推进，只写入接受的 todo 并运行 `{refresh_command}`，
    然后停下来汇报。
    如果目标状态包含私有证据，把 `.loopx/` 和 `.codex/goals/` 加入该项目 `.gitignore`。
    `{cli_bin} connect` 默认会同步到共享全局 registry；不要手动编辑其他项目的 registry。
@@ -712,7 +760,7 @@ def render_prompt_text(
 ```
 
    agent 自己的后续动作写成 `--role agent`。写入后如果 dashboard 需要看到最新状态，运行
-   `{cli_bin} refresh-state --goal-id {goal_id}`。
+   `{refresh_command}`。
    完整契约见 LoopX 仓库里的 `docs/project-agent-todo-contract.md`。
 6. 如果需要把当前 packet 或已批准命令交给项目 agent，优先生成最小 handoff，不要从旧聊天、
    旧 review packet 或 `run_history.latest_runs` 拼当前状态。当前权威状态来自
@@ -724,7 +772,7 @@ def render_prompt_text(
 ```
 
    只把输出的 handoff 交给目标项目 agent；完整 review packet 留给 operator view / evidence drill-down。
-7. 如果要给这个项目设置 recurring Codex App heartbeat，初始可用每 3 分钟一次，后续跟随 `quota should-run.scheduler_hint` 降频；不要手抄 guard 和 spend 协议；先生成 task body，再把输出复制进 automation：
+7. 如果要给这个项目设置 recurring Codex App heartbeat，默认每 3 分钟一次，后续跟随 `quota should-run.scheduler_hint` 降频；不要手抄 guard 和 spend 协议；先生成 task body，再把输出复制进 automation：
 
 ```bash
 {cli_bin} heartbeat-prompt --goal-id {goal_id} --active-state .codex/goals/{goal_id}/ACTIVE_GOAL_STATE.md
@@ -739,7 +787,7 @@ def render_prompt_text(
 9. 如果本轮只更新了 active state、ledger 或外部规划文档，没有产生新的 adapter run，或者 dashboard 仍显示旧 run，追加一个 state-only refresh run；若本轮实际消耗了 automatic delivery compute，则把这个 refresh 放到 quota spend 之后，避免 state refresh 先关闭 active delivery lane：
 
 ```bash
-{cli_bin} refresh-state --goal-id {goal_id}
+{refresh_command}
 ```
 
 这个命令也会自动同步全局 registry。

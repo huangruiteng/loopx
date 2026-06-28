@@ -1388,13 +1388,19 @@ def build_codex_cli_local_scheduler_tick(
         if isinstance(scheduler_hint.get("local_scheduler"), dict)
         else {}
     )
+    codex_app_hint = (
+        scheduler_hint.get("codex_app")
+        if isinstance(scheduler_hint.get("codex_app"), dict)
+        else {}
+    )
     reset_policy = (
         scheduler_hint.get("reset_policy")
         if isinstance(scheduler_hint.get("reset_policy"), dict)
         else {}
     )
     recommended_interval_minutes = _positive_int(
-        local_scheduler_hint.get("recommended_interval_minutes"),
+        local_scheduler_hint.get("recommended_interval_minutes")
+        or codex_app_hint.get("recommended_interval_minutes"),
         10,
     )
     reset_interval_minutes = _positive_int(
@@ -2849,6 +2855,46 @@ def render_codex_cli_local_scheduler_tick_markdown(payload: dict[str, Any]) -> s
         if isinstance(scheduler_hint.get("local_scheduler"), dict)
         else {}
     )
+    codex_app = (
+        scheduler_hint.get("codex_app")
+        if isinstance(scheduler_hint.get("codex_app"), dict)
+        else {}
+    )
+    unchanged_poll = (
+        scheduler_hint.get("unchanged_poll")
+        if isinstance(scheduler_hint.get("unchanged_poll"), dict)
+        else {}
+    )
+    limits = unchanged_poll.get("limits") if isinstance(unchanged_poll.get("limits"), dict) else {}
+    after_limits = (
+        unchanged_poll.get("after_limits")
+        if isinstance(unchanged_poll.get("after_limits"), dict)
+        else {}
+    )
+    local_interval = (
+        local_scheduler.get("recommended_interval_minutes")
+        or codex_app.get("recommended_interval_minutes")
+    )
+    local_progression = (
+        local_scheduler.get("example_progression_minutes")
+        or codex_app.get("example_progression_minutes")
+    )
+    local_unchanged_limit = (
+        local_scheduler.get("unchanged_poll_limit")
+        if "unchanged_poll_limit" in local_scheduler
+        else limits.get("local_scheduler")
+    )
+    local_after_limit = (
+        local_scheduler.get("after_limit")
+        or after_limits.get("local_scheduler")
+    )
+    final_replan_check = (
+        local_scheduler.get("final_quota_replan_check")
+        or {
+            "enabled": unchanged_poll.get("final_quota_replan_check_enabled"),
+            "action": unchanged_poll.get("final_quota_replan_check_action"),
+        }
+    )
     blocker = payload.get("precise_blocker") if isinstance(payload.get("precise_blocker"), dict) else None
     runtime_idle = (
         payload.get("runtime_idle_detector")
@@ -2900,11 +2946,11 @@ def render_codex_cli_local_scheduler_tick_markdown(payload: dict[str, Any]) -> s
 
 - action: `{scheduler_hint.get("action")}`
 - cadence_class: `{scheduler_hint.get("cadence_class")}`
-- local_interval_minutes: `{local_scheduler.get("recommended_interval_minutes")}`
-- local_progression_minutes: `{local_scheduler.get("example_progression_minutes")}`
-- local_unchanged_poll_limit: `{local_scheduler.get("unchanged_poll_limit")}`
-- local_after_limit: `{local_scheduler.get("after_limit")}`
-- final_quota_replan_check: `{local_scheduler.get("final_quota_replan_check")}`
+- local_interval_minutes: `{local_interval}`
+- local_progression_minutes: `{local_progression}`
+- local_unchanged_poll_limit: `{local_unchanged_limit}`
+- local_after_limit: `{local_after_limit}`
+- final_quota_replan_check: `{final_replan_check}`
 
 ## Boundary
 

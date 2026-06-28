@@ -216,6 +216,78 @@ def scoped_no_candidate_status_payload() -> dict:
     }
 
 
+def other_agent_gate_with_non_due_monitor_payload() -> dict:
+    primary_review_gate = todo_item(
+        todo_id="todo_primary_pr_review_gate",
+        text="Review the main-control PR gate before primary merge.",
+        role="user",
+        task_class="user_gate",
+        action_kind="review_pr",
+        blocks_agent="codex-main-control",
+    )
+    primary_agent_todo = todo_item(
+        todo_id="todo_primary_pr_review",
+        text="[P0] Review and merge the primary-control PR.",
+        claimed_by="codex-main-control",
+    )
+    value_monitor = todo_item(
+        todo_id="todo_value_external_signal_monitor",
+        text="[P1-monitor] Monitor value-lane external signal when it becomes due.",
+        task_class="continuous_monitor",
+        claimed_by="codex-value-explorer",
+    )
+    return {
+        "ok": True,
+        "goal_count": 1,
+        "run_count": 0,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active_state_user_todo",
+                    "waiting_on": "controller",
+                    "severity": "action",
+                    "source": "active_state",
+                    "recommended_action": "Primary-control PR review gate is pending.",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "operator_gate",
+                        "reason": "open user gate",
+                    },
+                    "user_todos": todo_summary_items([primary_review_gate], source_section="User Todo"),
+                    "agent_todos": todo_summary_items(
+                        [primary_agent_todo, value_monitor],
+                        source_section="Agent Todo",
+                    ),
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "fixture_adapter_v0",
+                    "adapter_status": "connected",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": [
+                            "codex-main-control",
+                            "codex-value-explorer",
+                        ],
+                    },
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
 def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     payload = build_quota_should_run(
         status_payload(),
@@ -238,6 +310,31 @@ def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     assert override["from_state"] == "operator_gate", override
     assert override["to_state"] == "eligible", override
     assert payload["agent_lane_next_action"]["todo_id"] == "todo_benchmark_driver", payload
+
+
+def assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane() -> None:
+    payload = build_quota_should_run(
+        other_agent_gate_with_non_due_monitor_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-value-explorer",
+    )
+    assert payload["decision"] == "skip", payload
+    assert payload["effective_action"] == "monitor_quiet_skip", payload
+    assert payload["should_run"] is False, payload
+    assert payload["requires_user_action"] is False, payload
+    assert payload["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", payload
+    assert payload["interaction_contract"]["user_channel"]["action_required"] is False, payload
+    assert payload["interaction_contract"]["user_channel"]["notify"] == "DONT_NOTIFY", payload
+    assert payload["interaction_contract"]["mode"] == "monitor_quiet_skip", payload
+    assert "scoped_user_gate_fallback" not in payload, payload
+    summary = payload["user_todo_summary"]
+    assert summary["open_count"] == 0, summary
+    assert summary["other_agent_scoped_open_count"] == 1, summary
+    assert summary["other_agent_scoped_items"][0]["blocks_agent"] == "codex-main-control", summary
+    agent_summary = payload["agent_todo_summary"]
+    assert agent_summary["current_agent_claimed_monitor_count"] == 1, agent_summary
+    claim_scope = agent_summary["claim_scope"]
+    assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only", claim_scope
 
 
 def assert_target_agent_still_blocks_on_its_user_gate() -> None:
@@ -442,6 +539,104 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
     }
 
 
+def decision_scope_status_payload() -> dict:
+    benchmark_gate = todo_item(
+        todo_id="todo_benchmark_scope_gate",
+        text="Owner must choose the benchmark target before the target run.",
+        role="user",
+        task_class="user_gate",
+        action_kind="benchmark_run",
+        blocks_agent="codex-main-control",
+    )
+    benchmark_gate["decision_scope"] = {
+        "schema_version": "decision_scope_v0",
+        "kind": "direction",
+        "granularity": "action",
+        "scope_key": "benchmark_target_choice",
+    }
+    blocked_target_run = todo_item(
+        todo_id="todo_target_benchmark_run",
+        text="[P1] Run the chosen benchmark target after owner decision.",
+        claimed_by="codex-main-control",
+        action_kind="benchmark_run",
+    )
+    blocked_target_run["required_decision_scopes"] = [
+        {
+            "schema_version": "decision_scope_v0",
+            "kind": "direction",
+            "granularity": "action",
+            "scope_key": "benchmark_target_choice",
+        }
+    ]
+    independent_helper = todo_item(
+        todo_id="todo_benchmark_helper_cleanup",
+        text="[P1] Clean benchmark helper ledger summaries while target choice waits.",
+        claimed_by="codex-main-control",
+        action_kind="benchmark_run",
+    )
+    independent_helper["required_decision_scopes"] = [
+        {
+            "schema_version": "decision_scope_v0",
+            "kind": "direction",
+            "granularity": "action",
+            "scope_key": "helper_ledger_cleanup",
+        }
+    ]
+    return {
+        "ok": True,
+        "goal_count": 1,
+        "run_count": 0,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active_state_user_todo",
+                    "waiting_on": "controller",
+                    "severity": "action",
+                    "source": "active_state",
+                    "recommended_action": "Choose benchmark target.",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "operator_gate",
+                        "blocked_action_scope": "gated_delivery",
+                        "safe_bypass_allowed": True,
+                        "safe_bypass_policy": (
+                            "Only the gated decision scope is blocked; independent "
+                            "public-safe agent work may continue."
+                        ),
+                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
+                    },
+                    "user_todos": todo_summary(benchmark_gate, source_section="User Todo"),
+                    "agent_todos": todo_summary_items(
+                        [blocked_target_run, independent_helper],
+                        source_section="Agent Todo",
+                    ),
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "fixture_adapter_v0",
+                    "adapter_status": "connected",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": ["codex-main-control"],
+                    },
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
 def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     payload = build_quota_should_run(
         exact_todo_gate_status_payload(),
@@ -480,42 +675,72 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     assert "todo_x_launch_monitor" in blocked_monitor_ids, blocked_payload["agent_todo_summary"]
 
 
-def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
+def assert_decision_scope_overrides_shared_action_kind_tokens() -> None:
+    payload = build_quota_should_run(
+        decision_scope_status_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-main-control",
+    )
+    assert payload["should_run"] is True, payload
+    assert payload["decision"] == "safe_bypass_user_gate_fallback", payload
+    fallback = payload["scoped_user_gate_fallback"]
+    blocked = fallback["blocked_agent_items"][0]
+    assert blocked["todo_id"] == "todo_target_benchmark_run", fallback
+    assert blocked["todo_gate_relation"]["source"] == "decision_scope", blocked
+    assert blocked["todo_gate_relation"]["state"] == "gate_covers_action", blocked
+    selected = fallback["selected_executable"]
+    assert selected["todo_id"] == "todo_benchmark_helper_cleanup", fallback
+    assert selected["todo_gate_relation"]["source"] == "decision_scope", selected
+    assert selected["todo_gate_relation"]["state"] == "independent", selected
+
+
+def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet() -> None:
     payload = build_quota_should_run(
         scoped_no_candidate_status_payload(),
         goal_id=GOAL_ID,
         agent_id="codex-product-capability",
     )
-    assert payload["decision"] == "agent_scope_wait", payload
+    assert payload["decision"] == "skip", payload
+    assert payload["effective_action"] == "monitor_quiet_skip", payload
     assert payload["should_run"] is False, payload
     assert payload["normal_delivery_allowed"] is False, payload
     assert payload.get("agent_lane_next_action") is None, payload
-    frontier = payload["agent_scope_frontier"]
-    assert frontier["action"] == "agent_scope_wait", frontier
-    assert frontier["candidate_counts"]["current_agent_claimed_advancement_count"] == 0
-    assert frontier["candidate_counts"]["other_agent_claimed_advancement_count"] == 1
+    assert "agent_scope_frontier" not in payload, payload
+    hint = payload["agent_lane_frontier_hint"]
+    assert hint["decision"] == "quiet_noop_blocker", hint
+    assert hint["source"] == "agent_todo_summary", hint
+    assert hint["reason_code"] == "only_current_agent_monitor_work_remains", hint
+    assert hint["quiet_noop_allowed"] is True, hint
+    claim_scope = payload["agent_todo_summary"]["claim_scope"]
+    assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only", claim_scope
+    assert claim_scope["other_agent_claimed_open_count"] == 1, claim_scope
     contract = payload["interaction_contract"]
     assert contract["user_channel"]["action_required"] is False, contract
     assert contract["agent_channel"]["must_attempt"] is False, contract
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["mode"] == "monitor_quiet_skip", contract
     scheduler = payload["scheduler_hint"]
     assert scheduler["schema_version"] == "scheduler_hint_v0", scheduler
-    assert scheduler["action"] == "backoff_until_reassigned", scheduler
-    assert scheduler["codex_app"]["recommended_interval_minutes"] == 10, scheduler
-    assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=10", scheduler
-    assert scheduler["codex_app"]["example_progression_minutes"] == [10, 20, 30, 60], scheduler
-    assert scheduler["codex_cli_tui"]["unchanged_poll_limit"] == 3, scheduler
-    assert scheduler["codex_cli_tui"]["final_quota_replan_check"]["enabled"] is True, scheduler
-    assert scheduler["claude_code_loop"]["after_limit"] == "stop_loop", scheduler
-    assert scheduler["claude_code_loop"]["unchanged_poll_limit"] == 3, scheduler
+    assert scheduler["action"] == "backoff_until_material_transition", scheduler
+    assert scheduler["codex_app"]["recommended_interval_minutes"] == 15, scheduler
+    assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", scheduler
+    assert scheduler["codex_app"]["example_progression_minutes"] == [15, 30, 60], scheduler
+    assert scheduler["unchanged_poll"]["limits"]["codex_cli_tui"] == 3, scheduler
+    assert scheduler["unchanged_poll"]["final_quota_replan_check_enabled"] is True, scheduler
+    assert scheduler["unchanged_poll"]["after_limits"]["claude_code_loop"] == "stop_loop", scheduler
+    assert scheduler["unchanged_poll"]["limits"]["claude_code_loop"] == 3, scheduler
+    assert "local_scheduler" not in scheduler, scheduler
+    assert "codex_cli_tui" not in scheduler, scheduler
+    assert "claude_code_loop" not in scheduler, scheduler
+    assert "cold_path_detail" not in scheduler, scheduler
     reset = scheduler["reset_policy"]
     assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-    assert reset["profile_action"] == "backoff_until_reassigned", reset
+    assert reset["profile_action"] == "backoff_until_material_transition", reset
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
-    assert reset["codex_app_initial_interval_minutes"] == 10, reset
-    assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=10", reset
+    assert reset["codex_app_initial_interval_minutes"] == 15, reset
+    assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
     assert scheduler["codex_app"]["max_interval_minutes"] == 60, scheduler
     assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
     assert len(reset["identity_signature"]) == 12, reset
@@ -527,16 +752,18 @@ def assert_agent_without_advancement_candidate_enters_scope_wait() -> None:
     assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
     assert "active_work_projected" in reset["reset_condition_summary"], reset
     assert reset["no_spend_for_reset"] is True, reset
-    assert "scheduler=backoff_until_reassigned" in payload["protocol_action_packet"]["summary"], payload
+    assert "scheduler=backoff_until_material_transition" in payload["protocol_action_packet"]["summary"], payload
 
 
 def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
+    assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane()
     assert_target_agent_still_blocks_on_its_user_gate()
     assert_unscoped_user_gate_remains_global()
     assert_unrelated_user_gate_allows_feishu_fallback()
     assert_exact_todo_gate_only_blocks_target_todo()
-    assert_agent_without_advancement_candidate_enters_scope_wait()
+    assert_decision_scope_overrides_shared_action_kind_tokens()
+    assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet()
     print("quota-agent-scoped-user-gate-smoke ok")
     return 0
 

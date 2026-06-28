@@ -44,6 +44,21 @@ small in v0:
 If the relation is ambiguous, status/quota must repair projection or ask the
 user/controller; it must not infer permission from prose.
 
+### Markdown metadata compact form
+
+Todo metadata stores decision scopes as a compact public-safe token instead of
+inline JSON:
+
+```md
+<!-- loopx:todo decision_scope=direction:action:benchmark_target_choice -->
+<!-- loopx:todo required_decision_scopes=direction:action:benchmark_target_choice -->
+```
+
+The token is `kind:granularity:scope_key`. `decision_scope` is singular on a
+user gate; `required_decision_scopes` may contain a comma-separated list on an
+agent todo. Status/quota normalize those tokens back into
+`decision_scope_v0` objects before evaluating gate coverage.
+
 ### `safety_class`
 
 Attached to agent work candidates and selected actions.
@@ -117,7 +132,8 @@ runtime.
 
 1. **Contract only:** document this schema and keep current behavior unchanged.
 2. **State authoring:** teach todo/gate write paths to accept and preserve
-   `decision_scope`, `required_decision_scopes`, and `safety_class`.
+   `decision_scope` and `required_decision_scopes`. `safety_class` remains a
+   later authoring field.
 3. **Projection:** surface the fields in status, quota, review packets, and
    frontstage local ops mode.
 4. **Hot path:** make status/quota prefer structured scope relation over text

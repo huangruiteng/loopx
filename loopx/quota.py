@@ -21,9 +21,6 @@ from .control_plane import (
 from .delivery_outcome import (
     ACCOUNTABLE_DELIVERY_OUTCOMES,
     DeliveryOutcome,
-    FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES,
-    DeliveryTurnKind,
-    delivery_turn_kind_for_run,
     normalize_delivery_outcome,
 )
 from .execution_profile import (
@@ -33,6 +30,13 @@ from .execution_profile import (
 )
 from .long_task_cadence import long_task_cadence_hint_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
+from .policies.execution_obligation import build_execution_obligation
+from .policies.outcome_followthrough import build_outcome_followthrough_hint
+from .policies.scheduler_hint import build_scheduler_hint
+from .policies.work_lane import (
+    WORK_LANE_CONTRACT_SCHEMA_VERSION,
+    build_work_lane_contract as build_work_lane_contract_policy,
+)
 from .state_projection import is_user_wait_text, next_action_projection_warning
 from .todo_contract import (
     TODO_STATUS_DEFERRED,
@@ -46,7 +50,9 @@ from .todo_contract import (
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
     normalize_todo_id,
+    normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_required_write_scopes,
     normalize_todo_status,
@@ -143,13 +149,10 @@ DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
     "dependency_observation",
     "dependency_monitor",
 )
-WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v1"
 EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_obligation_v0"
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
-SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
-SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
 SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
 AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
@@ -367,6 +370,13 @@ def _external_evidence_poll_signal(
 ) -> dict[str, Any] | None:
     """Detect launched external work whose next safe step is observation."""
 
+    if (
+        isinstance(agent_todo_summary, dict)
+        and _todo_summary_claim_scope_agent_id(agent_todo_summary)
+        and _open_todo_count(agent_todo_summary) <= 0
+    ):
+        return None
+
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     action_texts = [
         str(value or "").strip()
@@ -479,50 +489,7 @@ def _post_handoff_latest_run(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _outcome_followthrough_hint(item: dict[str, Any]) -> dict[str, Any] | None:
-    latest_run = _post_handoff_latest_run(item)
-    if not latest_run:
-        return None
-    explicit_required = latest_run.get("outcome_followthrough_required") is True
-    delivery_outcome = normalize_delivery_outcome(latest_run.get("delivery_outcome"))
-    delivery_turn_kind = delivery_turn_kind_for_run(
-        latest_run,
-        delivery_outcome=delivery_outcome,
-    )
-    if delivery_outcome == DeliveryOutcome.PRIMARY_GOAL_OUTCOME:
-        return None
-    if (
-        not explicit_required
-        and delivery_turn_kind == DeliveryTurnKind.BLOCKER_WRITEBACK.value
-    ):
-        return None
-    classification = str(latest_run.get("classification") or "").strip()
-    kind_requires_followthrough = (
-        delivery_turn_kind == DeliveryTurnKind.CONTRACT_ONLY_PREPARATION.value
-    )
-    if (
-        not explicit_required
-        and delivery_outcome not in FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES
-        and not kind_requires_followthrough
-    ):
-        return None
-    return {
-        "source": "post_handoff_latest_run",
-        "required": True,
-        "latest_classification": classification,
-        "latest_delivery_outcome": delivery_outcome.value if delivery_outcome else None,
-        "latest_delivery_turn_kind": delivery_turn_kind,
-        "obligation": "advance_primary_outcome_or_write_blocker",
-        "accepted_resolution_kinds": [
-            DeliveryTurnKind.PRODUCT_PATH_EXECUTION.value,
-            DeliveryTurnKind.COMPACT_EVIDENCE.value,
-            DeliveryTurnKind.BLOCKER_WRITEBACK.value,
-        ],
-        "spend_policy": (
-            "do not spend for another contract/preparation-only slice; spend only "
-            "after validated product-path evidence, benchmark/case evidence, or a "
-            "precise blocker writeback"
-        ),
-    }
+    return build_outcome_followthrough_hint(_post_handoff_latest_run(item))
 
 
 def _work_lane_contract(
@@ -533,11 +500,11 @@ def _work_lane_contract(
     progress_scope = _item_progress_scope(item)
     external_poll_signal = _external_evidence_poll_signal(item, agent_todo_summary=agent_todo_summary)
     todo_counts = _open_todo_task_counts(agent_todo_summary)
-    has_agent_todos = todo_counts["open"] > 0
-    has_advancement_todos = todo_counts["advancement"] > 0
-    has_monitor_todos = todo_counts["monitor"] > 0
-    monitor_only_todos = has_agent_todos and has_monitor_todos and not has_advancement_todos
     due_monitor_items = _todo_summary_monitor_due_items(agent_todo_summary)
+    due_monitor_count = _todo_summary_monitor_due_count(
+        agent_todo_summary,
+        due_items=due_monitor_items,
+    )
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None
     first_advancement = _first_executable_todo_item(agent_todo_summary)
     due_monitor_preempts_advancement = bool(
@@ -547,160 +514,18 @@ def _work_lane_contract(
             or _todo_priority_rank(first_due_monitor) < _todo_priority_rank(first_advancement)
         )
     )
-
-    def due_monitor_contract(*, reason_codes: list[str]) -> dict[str, Any]:
-        due_count = _todo_summary_monitor_due_count(
-            agent_todo_summary,
-            due_items=due_monitor_items,
-        )
-        selected = first_due_monitor or {}
-        return {
-            "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-            "lane": "continuous_monitor",
-            "monitor_kind": "todo_monitor_due",
-            "next_lane": "advancement_task" if has_advancement_todos else "continuous_monitor",
-            "obligation": "attempt_due_monitor",
-            "must_attempt_work": True,
-            "reason_codes": reason_codes,
-            "monitor_policy": "attempt_due_monitor_once_then_writeback_or_no_spend_if_unchanged",
-            "monitor_due_count": due_count,
-            "monitor_due_items": due_monitor_items[:MONITOR_DUE_ITEM_LIMIT],
-            "selected_todo_id": selected.get("todo_id"),
-            "selected_next_due_at": selected.get("next_due_at"),
-            "action": (
-                "attempt the selected due continuous_monitor todo; write back only a "
-                "material transition, blocker, or compact reschedule/no-change note"
-            ),
-        }
-
-    if progress_scope != "dependency_observation":
-        if has_advancement_todos and due_monitor_preempts_advancement:
-            return due_monitor_contract(
-                reason_codes=["monitor_due", "due_monitor_priority_preempts_advancement"]
-            )
-        if has_advancement_todos:
-            outcome_followthrough = _outcome_followthrough_hint(item)
-            reason_codes = ["open_agent_todo"]
-            if first_due_monitor:
-                reason_codes.append("due_monitor_context")
-            if external_poll_signal:
-                reason_codes.append("external_monitor_context")
-            if outcome_followthrough:
-                reason_codes.append("outcome_followthrough_required")
-            obligation = (
-                "advance_primary_outcome_or_write_blocker"
-                if outcome_followthrough
-                else "advance_one_bounded_segment"
-            )
-            action = (
-                "advance the first executable agent todo to product-path evidence, "
-                "benchmark/case evidence, or a precise blocker; do not spend for "
-                "another contract-only preparation layer"
-                if outcome_followthrough
-                else (
-                    "advance the first executable agent todo or write a concrete blocker; "
-                    "treat monitor todos as auxiliary observation context"
-                )
-            )
-            contract = {
-                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                "lane": "advancement_task",
-                "next_lane": "advancement_task",
-                "obligation": obligation,
-                "must_attempt_work": True,
-                "reason_codes": reason_codes,
-                "monitor_policy": "material_transition_only",
-                "action": action,
-            }
-            if outcome_followthrough:
-                contract["outcome_followthrough"] = outcome_followthrough
-            return contract
-        if external_poll_signal:
-            return {
-                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                "lane": "continuous_monitor",
-                "monitor_kind": "external_evidence",
-                "next_lane": "continuous_monitor",
-                "obligation": "observe_external_evidence_or_blocker",
-                "must_attempt_work": True,
-                "reason_codes": ["external_evidence_poll_signal"],
-                "monitor_policy": "read_only_observation_then_no_spend_if_unchanged",
-                "action": (
-                    "verify the observable external result handle; if it is absent, "
-                    "write a compact blocker instead of rerunning launched work"
-                ),
-            }
-        if monitor_only_todos:
-            if first_due_monitor:
-                return due_monitor_contract(
-                    reason_codes=["monitor_todo_only", "monitor_due"]
-                )
-            if _next_action_requires_advancement(item):
-                return {
-                    "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                    "lane": "advancement_task",
-                    "next_lane": "advancement_task",
-                    "obligation": "materialize_advancement_todo_or_blocker",
-                    "must_attempt_work": True,
-                    "reason_codes": ["monitor_todo_only", "next_action_requires_advancement"],
-                    "monitor_policy": "material_transition_only",
-                    "action": (
-                        "materialize the planning/self-repair advancement todo or write a concrete blocker"
-                    ),
-                }
-            return {
-                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                "lane": "continuous_monitor",
-                "monitor_kind": "todo_monitor",
-                "next_lane": "continuous_monitor",
-                "obligation": "quiet_until_material_monitor_transition",
-                "must_attempt_work": False,
-                "reason_codes": ["monitor_todo_only"],
-                "monitor_policy": "write_once_per_material_transition_else_no_spend",
-                "material_transition": (
-                    "a monitor todo may write back only material state transitions, regressions, or concrete blockers"
-                ),
-                "action": "wait quietly for material monitor evidence",
-            }
-        return None
-
-    reason_codes = ["dependency_observation"]
-    if has_advancement_todos:
-        reason_codes.append("open_agent_todo")
-        if due_monitor_preempts_advancement:
-            reason_codes.append("due_monitor_priority_preempts_advancement")
-    elif monitor_only_todos:
-        reason_codes.append("monitor_todo_only")
-        if first_due_monitor:
-            reason_codes.append("monitor_due")
-    else:
-        reason_codes.append("no_open_agent_todo")
-    if due_monitor_preempts_advancement:
-        return due_monitor_contract(reason_codes=reason_codes)
-    return {
-        "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-        "lane": "continuous_monitor",
-        "monitor_kind": "dependency_observation",
-        "next_lane": "advancement_task" if has_advancement_todos else "continuous_monitor",
-        "obligation": (
-            "advance_unless_material_monitor_transition"
-            if has_advancement_todos
-            else "attempt_due_monitor"
-            if first_due_monitor
-            else "quiet_until_material_monitor_transition"
-        ),
-        "must_attempt_work": has_advancement_todos or bool(first_due_monitor),
-        "reason_codes": reason_codes,
-        "monitor_policy": "write_once_per_material_transition_else_no_spend",
-        "material_transition": (
-            "a dependency-state transition may be written back once when it changes the selected goal decision"
-        ),
-        "action": (
-            "advance the first executable agent todo or write a concrete blocker"
-            if has_advancement_todos
-            else "wait quietly for new external evidence"
-        ),
-    }
+    return build_work_lane_contract_policy(
+        progress_scope=progress_scope,
+        external_poll_signal=external_poll_signal,
+        todo_counts=todo_counts,
+        monitor_due_count=due_monitor_count,
+        due_monitor_items=due_monitor_items,
+        first_advancement=first_advancement,
+        due_monitor_preempts_advancement=due_monitor_preempts_advancement,
+        outcome_followthrough=_outcome_followthrough_hint(item),
+        next_action_requires_advancement=_next_action_requires_advancement(item),
+        monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
+    )
 
 
 def _external_evidence_observation_obligation(
@@ -715,6 +540,14 @@ def _external_evidence_observation_obligation(
     explicit_wait = state == "waiting" and str(item.get("waiting_on") or "") == "external_evidence"
     poll_signal = _external_evidence_poll_signal(item, agent_todo_summary=agent_todo_summary)
     if not explicit_wait and not poll_signal:
+        return None
+    if (
+        not explicit_wait
+        and poll_signal
+        and isinstance(agent_todo_summary, dict)
+        and _todo_summary_claim_scope_agent_id(agent_todo_summary)
+        and _open_todo_count(agent_todo_summary) <= 0
+    ):
         return None
     if (
         not explicit_wait
@@ -1074,6 +907,8 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",
+        "decision_scope",
+        "required_decision_scopes",
         "claimed_by",
         "blocks_agent",
         "unblocks_todo_id",
@@ -1084,6 +919,7 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "target_key",
         "cadence",
         "next_due_at",
+        "expires_at",
         "last_checked_at",
         "result_hash",
         "consecutive_no_change",
@@ -1097,6 +933,18 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         compact["required_write_scopes"] = required_write_scopes
     else:
         compact.pop("required_write_scopes", None)
+    decision_scope = normalize_todo_decision_scope(compact.get("decision_scope"))
+    if decision_scope:
+        compact["decision_scope"] = decision_scope
+    else:
+        compact.pop("decision_scope", None)
+    required_decision_scopes = normalize_todo_required_decision_scopes(
+        compact.get("required_decision_scopes")
+    )
+    if required_decision_scopes:
+        compact["required_decision_scopes"] = required_decision_scopes
+    else:
+        compact.pop("required_decision_scopes", None)
     compact["task_class"] = _todo_task_class(compact)
     return compact
 
@@ -1485,7 +1333,7 @@ def _agent_claim_scoped_open_items(
     unclaimed_items = [item for item in open_items if claim_bucket(item) == 1]
     other_agent_claimed_items = [item for item in open_items if claim_bucket(item) == 2]
     selectable_items = sorted(
-        [*current_agent_items, *unclaimed_items, *other_agent_claimed_items],
+        [*current_agent_items, *unclaimed_items],
         key=lambda item: (claim_bucket(item), *_todo_projection_sort_key(item)),
     )
     claim_scope = {
@@ -1493,12 +1341,12 @@ def _agent_claim_scoped_open_items(
         "agent_id": agent_id,
         "agent_role": str(agent_identity.get("role") or ""),
         "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
-        "selection_order": "current_agent_claimed_then_unclaimed_then_other_agent_claimed_low_weight",
+        "selection_order": "current_agent_claimed_then_unclaimed",
         "selectable_open_count": len(selectable_items),
         "current_agent_claimed_open_count": len(current_agent_items),
         "unclaimed_open_count": len(unclaimed_items),
         "other_agent_claimed_open_count": len(other_agent_claimed_items),
-        "other_agent_claimed_weight": "lower_than_current_claimed_and_unclaimed",
+        "other_agent_claimed_weight": "diagnostic_only",
         "other_agent_claimed_items": [
             _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
             for item in _claimed_visibility_items(other_agent_claimed_items, limit=3)
@@ -1510,6 +1358,27 @@ def _agent_claim_scoped_open_items(
         ],
     }
     return selectable_items, claim_scope
+
+
+def _todo_item_claimed_by_agent_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> bool:
+    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+    return not claimed_by or claimed_by == agent_id
+
+
+def _agent_scope_selectable_todo_item(
+    item: dict[str, Any],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(agent_identity, dict):
+        return True
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return True
+    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    if blocks_agent and blocks_agent != agent_id:
+        return False
+    return _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
 
 
 def _agent_scope_filter_user_gate_items(
@@ -1914,6 +1783,7 @@ def _summarize_user_todos(
         item
         for item in monitor_items
         if _todo_item_is_due_monitor(item)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ]
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     gate_items = [
@@ -1925,13 +1795,17 @@ def _summarize_user_todos(
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_items"), list) else []
     active_next_action_executable_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_executable_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_executable_items"), list) else []
     open_count = value.get("open_count", len(all_open_items))
+    if claim_scope is not None:
+        open_count = len(open_items)
     if agent_scope_filter is not None:
         open_count = len(blocking_open_items)
     summary = {
@@ -2051,19 +1925,24 @@ def _summarize_project_asset_todos(
         item
         for item in monitor_items
         if _todo_item_is_due_monitor(item)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ]
     active_next_action_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_items"), list) else []
     active_next_action_executable_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_executable_items") or [])
         if isinstance(item, dict)
+        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_executable_items"), list) else []
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     open_count = value.get("open", value.get("open_count", len(all_open_items)))
+    if claim_scope is not None:
+        open_count = len(open_items)
     if agent_scope_filter is not None:
         open_count = len(blocking_open_items)
     summary = {
@@ -2289,7 +2168,78 @@ def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
     return _action_scope_tokens_from_text(text)
 
 
+_DECISION_SCOPE_GRANULARITY_RANK = {
+    "action": 0,
+    "lane": 1,
+    "goal": 2,
+    "project": 3,
+    "global": 4,
+}
+
+
+def _decision_scope_covers(gate_scope: dict[str, Any], required_scope: dict[str, Any]) -> bool:
+    gate = normalize_todo_decision_scope(gate_scope)
+    required = normalize_todo_decision_scope(required_scope)
+    if not gate or not required:
+        return False
+    if gate["kind"] != required["kind"]:
+        return False
+    if gate["scope_key"] not in {required["scope_key"], "*"}:
+        return False
+    return _DECISION_SCOPE_GRANULARITY_RANK[gate["granularity"]] >= _DECISION_SCOPE_GRANULARITY_RANK[
+        required["granularity"]
+    ]
+
+
+def _decision_scope_gate_relation(
+    gate: dict[str, Any],
+    agent_item: dict[str, Any],
+) -> dict[str, Any] | None:
+    gate_scope = normalize_todo_decision_scope(gate.get("decision_scope"))
+    required_scopes = normalize_todo_required_decision_scopes(
+        agent_item.get("required_decision_scopes")
+    )
+    if not gate_scope:
+        return None
+    if not required_scopes:
+        return {
+            "schema_version": "decision_scope_relation_v0",
+            "source": "decision_scope",
+            "state": "independent",
+            "reason": "agent_todo_has_no_required_decision_scopes",
+            "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
+            "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
+            "decision_scope": gate_scope,
+            "required_decision_scopes": [],
+        }
+    for required_scope in required_scopes:
+        if _decision_scope_covers(gate_scope, required_scope):
+            return {
+                "schema_version": "decision_scope_relation_v0",
+                "source": "decision_scope",
+                "state": "gate_covers_action",
+                "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
+                "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
+                "decision_scope": gate_scope,
+                "matched_required_decision_scope": required_scope,
+                "required_decision_scopes": required_scopes,
+            }
+    return {
+        "schema_version": "decision_scope_relation_v0",
+        "source": "decision_scope",
+        "state": "independent",
+        "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
+        "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
+        "decision_scope": gate_scope,
+        "required_decision_scopes": required_scopes,
+    }
+
+
 def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
+    decision_scope_relation = _decision_scope_gate_relation(gate, agent_item)
+    if decision_scope_relation:
+        return decision_scope_relation
+
     target_todo_id = normalize_todo_id(gate.get("unblocks_todo_id"))
     if not target_todo_id:
         return None
@@ -2307,7 +2257,7 @@ def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dic
 def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
     relation = _todo_gate_relation(gate, agent_item)
     if relation:
-        return relation.get("state") == "gate_targets_todo"
+        return relation.get("state") in {"gate_targets_todo", "gate_covers_action"}
 
     gate_action_tokens = _todo_action_kind_tokens(gate)
     agent_action_tokens = _todo_action_kind_tokens(agent_item)
@@ -2435,6 +2385,24 @@ def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> st
     return None
 
 
+def _first_monitor_todo_text(agent_todo_summary: dict[str, Any] | None) -> str | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    for key in ("monitor_due_items", "monitor_open_items"):
+        items = agent_todo_summary.get(key) if isinstance(agent_todo_summary.get(key), list) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if not _todo_item_is_actionable_open(item):
+                continue
+            if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+                continue
+            text = _protocol_action_text(item.get("text"), limit=320)
+            if text:
+                return text
+    return None
+
+
 def _agent_scoped_user_gate_override(
     *,
     state: str,
@@ -2459,6 +2427,8 @@ def _agent_scoped_user_gate_override(
     if item.get("operator_question") or item.get("missing_gates"):
         return None
     selected_action = _first_executable_todo_text(agent_todo_summary)
+    if not selected_action:
+        selected_action = _first_monitor_todo_text(agent_todo_summary)
     if not selected_action:
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
@@ -3067,9 +3037,6 @@ def _agent_scope_no_candidate_frontier(
             "cleared_without_successor_handoff_gates": cleared_handoff_gates[:3],
         }
 
-    if not has_advancement_contract:
-        return None
-
     claimed_advancement_items = (
         agent_todo_summary.get("claimed_advancement_open_items")
         if isinstance(agent_todo_summary.get("claimed_advancement_open_items"), list)
@@ -3110,6 +3077,8 @@ def _agent_scope_no_candidate_frontier(
         else {}
     )
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+    if not has_advancement_contract and not other_advancement_items:
+        return None
     if other_advancement_items:
         if blocking_review_claimants:
             action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
@@ -4396,309 +4365,12 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _scheduler_hint(payload: dict[str, Any]) -> dict[str, Any]:
-    """Project how external schedulers should wake, back off, or stop polling.
-
-    `automation_liveness` answers whether the LoopX automation lane should stay
-    alive. This hint answers the separate host-runtime question: when a Codex
-    App automation, Codex CLI local scheduler, or Claude Code loop sees the same
-    quiet state repeatedly, how aggressively should it poll again?
-    """
-
-    heartbeat_recommendation = (
-        payload.get("heartbeat_recommendation")
-        if isinstance(payload.get("heartbeat_recommendation"), dict)
-        else {}
-    )
-    execution_obligation = (
-        payload.get("execution_obligation")
-        if isinstance(payload.get("execution_obligation"), dict)
-        else {}
-    )
-    automation_liveness = (
-        payload.get("automation_liveness")
-        if isinstance(payload.get("automation_liveness"), dict)
-        else {}
-    )
-    interaction_contract = (
-        payload.get("interaction_contract")
-        if isinstance(payload.get("interaction_contract"), dict)
-        else {}
-    )
-    user_channel = (
-        interaction_contract.get("user_channel")
-        if isinstance(interaction_contract.get("user_channel"), dict)
-        else {}
-    )
-    effective_action = str(payload.get("effective_action") or "")
-    recommended_mode = str(heartbeat_recommendation.get("recommended_mode") or "")
-    must_attempt_work = bool(execution_obligation.get("must_attempt_work"))
-    user_required = _user_channel_action_required(payload) or bool(
-        user_channel.get("action_required")
-    )
-    automation_action = str(automation_liveness.get("automation_action") or "")
-    spend_policy = (
-        automation_liveness.get("spend_policy")
-        or execution_obligation.get("spend_policy")
-        or heartbeat_recommendation.get("spend_policy")
-    )
-    identity_keys = [
-        "goal_id",
-        "agent_identity.agent_id",
-        "effective_action",
-        "heartbeat_recommendation.recommended_mode",
-        "interaction_contract.mode",
-        "recommended_action",
-    ]
-
-    def identity_value(path: str) -> Any:
-        current: Any = payload
-        for part in path.split("."):
-            if not isinstance(current, dict):
-                return None
-            current = current.get(part)
-        return current
-
-    def hint(
-        *,
-        action: str,
-        cadence_class: str,
-        reason: str,
-        codex_interval: int,
-        codex_max: int,
-        cli_limit: int | None,
-        claude_limit: int | None,
-        multiplier: int = 2,
-        cadence_progression_override: list[int] | None = None,
-    ) -> dict[str, Any]:
-        cadence_progression = cadence_progression_override or [
-            min(codex_interval * (multiplier**step), codex_max)
-            for step in range(3)
-        ]
-        final_replan_check = {
-            "enabled": cli_limit is not None or claude_limit is not None,
-            "trigger": "before_unchanged_poll_after_limit",
-            "action": "rerun_quota_should_run_once",
-            "if_changed": "follow_new_scheduler_hint",
-            "if_run_now": "execute_new_quota_contract",
-            "if_unchanged": "apply_after_limit_without_spend",
-            "spend_policy": "no quota spend for final replan check or loop stop",
-        }
-        identity_snapshot = {
-            key: identity_value(key)
-            for key in identity_keys
-        }
-        codex_rrule = f"FREQ=MINUTELY;INTERVAL={codex_interval}"
-        profile_snapshot = {
-            "cadence_class": cadence_class,
-            "codex_app_initial_interval_minutes": codex_interval,
-            "codex_app_initial_rrule": codex_rrule,
-            "codex_app_max_interval_minutes": codex_max,
-            "unchanged_poll_backoff_multiplier": multiplier,
-            "local_scheduler_unchanged_poll_limit": cli_limit,
-            "claude_code_loop_unchanged_poll_limit": claude_limit,
-        }
-        reset_token_payload = {
-            "action": action,
-            "identity_snapshot": identity_snapshot,
-            "profile_snapshot": profile_snapshot,
-        }
-        reset_token = hashlib.sha256(
-            json.dumps(
-                reset_token_payload,
-                ensure_ascii=True,
-                sort_keys=True,
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()[:16]
-        identity_signature = hashlib.sha256(
-            json.dumps(
-                identity_snapshot,
-                ensure_ascii=True,
-                sort_keys=True,
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()[:12]
-        profile_signature = hashlib.sha256(
-            json.dumps(
-                profile_snapshot,
-                ensure_ascii=True,
-                sort_keys=True,
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()[:12]
-        reset_policy = {
-            "schema_version": SCHEDULER_RESET_POLICY_SCHEMA_VERSION,
-            "source": "quota.should-run",
-            "reset_to": "profile_initial_interval",
-            "profile_action": action,
-            "reset_token": reset_token,
-            "host_state_key": "scheduler_hint.reset_policy.reset_token",
-            "codex_app_initial_interval_minutes": codex_interval,
-            "codex_app_initial_rrule": codex_rrule,
-            "local_scheduler_initial_interval_minutes": codex_interval,
-            "clear_unchanged_poll_state": True,
-            "identity_key_count": len(identity_keys),
-            "identity_signature": identity_signature,
-            "profile_signature": profile_signature,
-            "reset_condition_summary": "token_changed|user_feedback|new_or_reassigned_todo|gate_or_material_transition|active_work_projected",
-            "after_reset": "apply_initial_interval_before_backoff",
-            "codex_app_apply": "update_rrule_to_initial_and_clear_unchanged_state_on_token_change",
-            "no_spend_for_reset": True,
-        }
-        return {
-            "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
-            "source": "quota.should-run",
-            "action": action,
-            "cadence_class": cadence_class,
-            "reason": reason,
-            "spend_policy": spend_policy,
-            "codex_app": {
-                "recommended_interval_minutes": codex_interval,
-                "recommended_rrule": codex_rrule,
-                "max_interval_minutes": codex_max,
-                "unchanged_poll_backoff_multiplier": multiplier,
-                "example_progression_minutes": cadence_progression,
-                "apply": "update_automation_cadence_if_possible",
-                "no_spend_for_cadence_change": True,
-            },
-            "local_scheduler": {
-                "recommended_interval_minutes": codex_interval,
-                "max_interval_minutes": codex_max,
-                "unchanged_poll_backoff_multiplier": multiplier,
-                "example_progression_minutes": cadence_progression,
-                "unchanged_poll_limit": cli_limit,
-                "after_limit": "stop_tick_loop" if cli_limit is not None else "continue",
-                "final_quota_replan_check": final_replan_check,
-                "no_spend_for_cadence_change": True,
-            },
-            "codex_cli_tui": {
-                "unchanged_poll_limit": cli_limit,
-                "after_limit": "exit_goal_loop" if cli_limit is not None else "continue",
-                "final_quota_replan_check": final_replan_check,
-                "no_spend_for_exit": True,
-            },
-            "claude_code_loop": {
-                "unchanged_poll_limit": claude_limit,
-                "after_limit": "stop_loop" if claude_limit is not None else "continue",
-                "final_quota_replan_check": final_replan_check,
-                "no_spend_for_stop": True,
-            },
-            "unchanged_identity_keys": identity_keys,
-            "reset_policy": reset_policy,
-        }
-
-    if (
-        recommended_mode in {"mapped_noop_if_unchanged", "post_handoff_observe_if_unchanged"}
-        or heartbeat_recommendation.get("stop_if_unchanged")
-        or automation_action == "keep_active_noop_if_unchanged"
-    ):
-        return hint(
-            action="backoff_until_fresh_evidence",
-            cadence_class="unchanged_noop",
-            reason=(
-                "the current mapped or post-handoff source is unchanged; do not "
-                "keep a tight loop while waiting for fresh evidence or a concrete handoff"
-            ),
-            codex_interval=60,
-            codex_max=240,
-            cli_limit=3,
-            claude_limit=3,
-        )
-
-    if (
-        payload.get("should_run") is True
-        or must_attempt_work
-        or automation_action
-        in {
-            "execute_bounded_work",
-            "repair_automation_prompt_identity",
-        }
-    ):
-        return hint(
-            action="run_now",
-            cadence_class="active_work",
-            reason=(
-                "quota projects runnable work or a required repair; keep the active "
-                "scheduler cadence until the turn validates or blocks"
-            ),
-            codex_interval=3,
-            codex_max=10,
-            cli_limit=None,
-            claude_limit=None,
-        )
-
-    if user_required or recommended_mode in {"ask_operator_gate", "blocker_push_notify"}:
-        return hint(
-            action="backoff_waiting_for_user",
-            cadence_class="human_gate",
-            reason=(
-                "user/controller action is the next unlock; after surfacing the "
-                "concrete todo or gate, external loops should stop repeating the "
-                "same quiet poll"
-            ),
-            codex_interval=30,
-            codex_max=120,
-            cli_limit=3,
-            claude_limit=3,
-        )
-
-    if _agent_scope_frontier_action(effective_action) is not None:
-        return hint(
-            action="backoff_until_reassigned",
-            cadence_class="agent_scope_wait",
-            reason=(
-                "this registered agent has no in-scope advancement candidate; "
-                "agent-to-agent handoffs may change quickly, so stay closer to "
-                "the prior scheduler cadence while waiting for handoff owner "
-                "progress, reassignment, or a current-agent todo"
-            ),
-            codex_interval=10,
-            codex_max=60,
-            cli_limit=3,
-            claude_limit=3,
-            cadence_progression_override=[10, 20, 30, 60],
-        )
-
-    if (
-        effective_action == "monitor_quiet_skip"
-        or recommended_mode == "monitor_quiet_until_material_transition"
-    ):
-        return hint(
-            action="backoff_until_material_transition",
-            cadence_class="monitor_wait",
-            reason=(
-                "monitor-only quiet polls should remain alive but use a slower "
-                "cadence until material evidence, a blocker, or replan obligation appears"
-            ),
-            codex_interval=15,
-            codex_max=60,
-            cli_limit=3,
-            claude_limit=3,
-        )
-
-    if payload.get("should_run") is False:
-        return hint(
-            action="backoff_until_state_change",
-            cadence_class="quiet_wait",
-            reason=(
-                "quota blocks delivery and no immediate user/monitor-specific path "
-                "is projected; poll at a slower cadence until the status changes"
-            ),
-            codex_interval=30,
-            codex_max=120,
-            cli_limit=3,
-            claude_limit=3,
-        )
-
-    return hint(
-        action="keep_default_cadence",
-        cadence_class="default",
-        reason="no scheduler backoff condition is projected",
-        codex_interval=3,
-        codex_max=30,
-        cli_limit=None,
-        claude_limit=None,
+def _scheduler_hint(payload: dict[str, Any], *, include_detail: bool = False) -> dict[str, Any]:
+    return build_scheduler_hint(
+        payload,
+        user_action_required=_user_channel_action_required(payload),
+        agent_scope_frontier_actions=[action.value for action in AgentScopeFrontierAction],
+        include_detail=include_detail,
     )
 
 
@@ -4976,7 +4648,11 @@ def _automation_prompt_upgrade(
     }
 
 
-def _build_gate_prompt(item: dict[str, Any]) -> str | None:
+def _build_gate_prompt(
+    item: dict[str, Any],
+    *,
+    user_todo_summary: dict[str, Any] | None = None,
+) -> str | None:
     question = str(item.get("operator_question") or "").strip()
     recommended_action = str(item.get("recommended_action") or "").strip()
     next_handoff_condition = str(item.get("next_handoff_condition") or "").strip()
@@ -4985,14 +4661,30 @@ def _build_gate_prompt(item: dict[str, Any]) -> str | None:
         for gate in (item.get("missing_gates") if isinstance(item.get("missing_gates"), list) else [])
         if str(gate).strip()
     ]
-    user_todo_summary = _summarize_user_todos(item.get("user_todos"))
+    if user_todo_summary is None:
+        user_todo_summary = _summarize_user_todos(item.get("user_todos"))
     first_open = (
         user_todo_summary.get("first_open_items")
         if isinstance(user_todo_summary, dict) and isinstance(user_todo_summary.get("first_open_items"), list)
         else []
     )
+    other_agent_scoped_items = (
+        user_todo_summary.get("other_agent_scoped_items")
+        if isinstance(user_todo_summary, dict)
+        and isinstance(user_todo_summary.get("other_agent_scoped_items"), list)
+        else []
+    )
 
-    if not any([question, recommended_action, next_handoff_condition, missing_gates, first_open]):
+    if not any(
+        [
+            question,
+            recommended_action,
+            next_handoff_condition,
+            missing_gates,
+            first_open,
+            other_agent_scoped_items,
+        ]
+    ):
         return None
 
     lines = ["请用户/控制器确认当前 gate："]
@@ -5008,6 +4700,16 @@ def _build_gate_prompt(item: dict[str, Any]) -> str | None:
         open_count = user_todo_summary.get("open_count")
         lines.append(f"- 用户待办：{open_count} 项未完成，优先确认：")
         for todo in first_open:
+            index = todo.get("index")
+            prefix = f"  {index}. " if index is not None else "  - "
+            lines.append(f"{prefix}{todo.get('text')}")
+    elif isinstance(user_todo_summary, dict) and other_agent_scoped_items:
+        scoped_count = user_todo_summary.get("other_agent_scoped_open_count")
+        all_open_count = user_todo_summary.get("all_open_count")
+        count = scoped_count if scoped_count is not None else len(other_agent_scoped_items)
+        suffix = f"（全局共 {all_open_count} 项）" if all_open_count is not None else ""
+        lines.append(f"- 当前 agent 无阻塞用户待办；其他 agent/global 用户待办：{count} 项{suffix}，优先确认：")
+        for todo in other_agent_scoped_items[:3]:
             index = todo.get("index")
             prefix = f"  {index}. " if index is not None else "  - "
             lines.append(f"{prefix}{todo.get('text')}")
@@ -5123,16 +4825,35 @@ def _todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
     return _parse_timestamp(item.get("next_due_at"))
 
 
+def _todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
+    return _parse_timestamp(item.get("expires_at"))
+
+
+def _todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
+    expires_at = _todo_item_expires_at(item)
+    if expires_at is None:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return expires_at <= current_time
+
+
 def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
     if not _todo_item_is_actionable_open(item):
         return False
     if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+        return False
+    if _todo_item_is_expired_monitor(item, now=now):
         return False
     next_due_at = _todo_item_next_due_at(item)
     if next_due_at is None:
         return False
     current_time = now or datetime.now(timezone.utc)
     return next_due_at <= current_time
+
+
+def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
+    claim_scope = summary.get("claim_scope") if isinstance(summary.get("claim_scope"), dict) else {}
+    return normalize_todo_claimed_by(claim_scope.get("agent_id"))
 
 
 def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -5155,6 +4876,13 @@ def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict
             if isinstance(item, dict)
             if _todo_item_is_due_monitor(item)
         ]
+    agent_id = _todo_summary_claim_scope_agent_id(summary)
+    if agent_id:
+        due_items = [
+            item
+            for item in due_items
+            if _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+        ]
     return sorted(due_items, key=_todo_projection_sort_key)
 
 
@@ -5165,6 +4893,20 @@ def _todo_summary_monitor_due_count(
 ) -> int:
     if not isinstance(summary, dict):
         return 0
+    agent_id = _todo_summary_claim_scope_agent_id(summary)
+    if agent_id:
+        raw_items = summary.get("monitor_open_items")
+        if isinstance(raw_items, list):
+            return len(
+                [
+                    item
+                    for item in raw_items
+                    if isinstance(item, dict)
+                    if _todo_item_is_due_monitor(item)
+                    if _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+                ]
+            )
+        return len(due_items if due_items is not None else _todo_summary_monitor_due_items(summary))
     projected_count = summary.get("monitor_due_count")
     if isinstance(projected_count, int):
         return max(0, projected_count)
@@ -5194,7 +4936,27 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
     open_count = _open_todo_count(summary)
     classified_items: list[dict[str, Any]] = []
     seen: set[tuple[Any, str]] = set()
+    executable_backlog_items: list[dict[str, Any]] | None = None
+    monitor_open_items: list[dict[str, Any]] | None = None
     if isinstance(summary, dict):
+        raw_executable_backlog = summary.get("executable_backlog_items")
+        if isinstance(raw_executable_backlog, list):
+            executable_backlog_items = [
+                item
+                for item in raw_executable_backlog
+                if isinstance(item, dict)
+                if _todo_item_is_actionable_open(item)
+                if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+            ]
+        raw_monitor_open = summary.get("monitor_open_items")
+        if isinstance(raw_monitor_open, list):
+            monitor_open_items = [
+                item
+                for item in raw_monitor_open
+                if isinstance(item, dict)
+                if _todo_item_is_actionable_open(item)
+                if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+            ]
         for key in (
             "first_executable_items",
             "first_open_items",
@@ -5214,22 +4976,30 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
                     continue
                 seen.add(identity)
                 classified_items.append(item)
-    visible_open = min(open_count, len(classified_items))
-    advancement_visible_count = sum(
-        1
-        for item in classified_items[:visible_open]
-        if _todo_item_is_actionable_open(item)
-        and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    )
-    monitor_visible_count = sum(
-        1
-        for item in classified_items[:visible_open]
-        if _todo_item_is_actionable_open(item)
-        and _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-    )
+    if executable_backlog_items is not None:
+        advancement_count = len(executable_backlog_items)
+    else:
+        visible_open = min(open_count, len(classified_items))
+        advancement_visible_count = sum(
+            1
+            for item in classified_items[:visible_open]
+            if _todo_item_is_actionable_open(item)
+            and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+        )
+        hidden_count = max(0, open_count - visible_open)
+        advancement_count = advancement_visible_count + hidden_count
+    if monitor_open_items is not None:
+        monitor_visible_count = len(monitor_open_items)
+    else:
+        visible_open = min(open_count, len(classified_items))
+        monitor_visible_count = sum(
+            1
+            for item in classified_items[:visible_open]
+            if _todo_item_is_actionable_open(item)
+            and _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
+        )
     monitor_due_count = _todo_summary_monitor_due_count(summary)
-    hidden_count = max(0, open_count - visible_open)
-    advancement_count = advancement_visible_count + hidden_count
+    hidden_count = max(0, open_count - len(classified_items))
     return {
         "open": open_count,
         "advancement": advancement_count,
@@ -5954,187 +5724,14 @@ def _execution_obligation(
     work_lane_contract: dict[str, Any] | None = None,
     external_evidence_observation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Separate the worker execution contract from user-facing notification."""
-
-    recommended_mode = str(heartbeat_recommendation.get("recommended_mode") or "")
-    work_lane_contract = work_lane_contract if isinstance(work_lane_contract, dict) else {}
-    external_evidence_observation = (
-        external_evidence_observation
-        if isinstance(external_evidence_observation, dict)
-        else {}
+    return build_execution_obligation(
+        should_run=should_run,
+        effective_action=effective_action,
+        heartbeat_recommendation=heartbeat_recommendation,
+        work_lane_contract=work_lane_contract,
+        external_evidence_observation=external_evidence_observation,
+        successor_replan_mode=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
     )
-    if should_run and recommended_mode == "repair_side_agent_workspace":
-        return {
-            "must_attempt_work": True,
-            "kind": "side_agent_workspace_repair",
-            "minimum": "one_workspace_move_then_guard_rerun",
-            "delivery_allowed": False,
-            "notify_is_execution_gate": False,
-            "contract": "side_agent_workspace_guard",
-            "contract_obligation": (
-                "do not edit repository files from the registered primary checkout; "
-                "create or switch to an independent worktree/branch, then rerun "
-                "quota should-run with the same agent id"
-            ),
-            "spend_policy": heartbeat_recommendation.get("spend_policy"),
-            "reason": (
-                "side-agent identity is active while the current workspace is the "
-                "registered primary checkout"
-            ),
-        }
-    if external_evidence_observation.get("required") is True:
-        return {
-            "must_attempt_work": True,
-            "kind": "external_evidence_observation_required",
-            "minimum": "one_read_only_observation_or_compact_blocker",
-            "delivery_allowed": False,
-            "notify_is_execution_gate": False,
-            "contract": "external_evidence_observation",
-            "contract_obligation": (
-                "verify the watched controller/thread/job/marker/writeback handle; "
-                "if it is absent or never launched, write a compact blocker instead "
-                "of treating the poll as unchanged evidence"
-            ),
-            "spend_policy": external_evidence_observation.get("spend_policy"),
-            "reason": (
-                "waiting external evidence still requires a read-only observation "
-                "contract before a quiet no-op is allowed"
-            ),
-        }
-    if heartbeat_recommendation.get("stop_if_unchanged"):
-        return {
-            "must_attempt_work": False,
-            "kind": "quiet_noop_if_unchanged",
-            "notify_is_execution_gate": False,
-            "reason": (
-                "this mode allows a quiet no-op only after confirming the current state "
-                "source is unchanged and no concrete safe handoff exists"
-            ),
-        }
-    if should_run and recommended_mode == "autonomous_replan_required":
-        replan_obligation = (
-            heartbeat_recommendation.get("replan_obligation")
-            if isinstance(heartbeat_recommendation.get("replan_obligation"), dict)
-            else {}
-        )
-        return {
-            "must_attempt_work": True,
-            "kind": "autonomous_replan_required",
-            "minimum": "one_bounded_replan_segment",
-            "notify_is_execution_gate": False,
-            "stall_threshold": replan_obligation.get("stall_threshold"),
-            "contract_obligation": "apply autonomous_replan_obligation before monitor-only work",
-            "reason": (
-                "autonomous_replan_obligation is a machine execution contract; "
-                "quiet no-op is not allowed until the replan slice is validated or blocked"
-            ),
-        }
-    if should_run and recommended_mode == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value:
-        return {
-            "must_attempt_work": True,
-            "kind": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-            "minimum": "one_successor_replan_or_no_followup_writeback",
-            "delivery_allowed": False,
-            "notify_is_execution_gate": False,
-            "contract": "deferred_resume_projection",
-            "contract_obligation": (
-                "reopen or supersede the ready deferred successor, or record a "
-                "public-safe no-follow-up rationale before another quiet no-op"
-            ),
-            "spend_policy": heartbeat_recommendation.get("spend_policy"),
-            "reason": (
-                "a deferred successor resume condition is satisfied; the agent must "
-                "repair the todo projection before normal delivery"
-            ),
-        }
-    if should_run and recommended_mode == "repair_state_projection_gap":
-        return {
-            "must_attempt_work": True,
-            "kind": "state_projection_gap_repair",
-            "minimum": "one_replan_or_todo_expansion_or_blocker_writeback_segment",
-            "delivery_allowed": False,
-            "notify_is_execution_gate": False,
-            "contract": "state_projection_gap",
-            "contract_obligation": (
-                "repair the active-state projection before normal delivery: expand "
-                "Next Action into open Agent Todo/User Todo or write a compact blocker"
-            ),
-            "spend_policy": heartbeat_recommendation.get("spend_policy"),
-            "reason": (
-                "should_run=true exposed actionable prose but no open todo projection; "
-                "normal bounded delivery is blocked until projection is repaired"
-            ),
-        }
-    if should_run and recommended_mode == "repair_boundary_projection":
-        return {
-            "must_attempt_work": True,
-            "kind": "boundary_projection_repair",
-            "minimum": "one_boundary_projection_or_blocker_writeback_segment",
-            "delivery_allowed": False,
-            "notify_is_execution_gate": False,
-            "contract": "goal_boundary.write_scope",
-            "contract_obligation": (
-                "do not execute the selected write; repair goal_boundary.write_scope "
-                "projection, rewrite the selected todo within boundary, or create a "
-                "concrete user/controller gate"
-            ),
-            "spend_policy": heartbeat_recommendation.get("spend_policy"),
-            "reason": (
-                "selected executable todo requires a write scope that the current "
-                "goal_boundary does not project"
-            ),
-        }
-    if should_run and recommended_mode == "repair_capability_bridge":
-        return {
-            "must_attempt_work": True,
-            "kind": "capability_bridge_repair",
-            "minimum": "one_bridge_or_environment_repair_or_blocker_writeback_segment",
-            "delivery_allowed": False,
-            "notify_is_execution_gate": False,
-            "contract": "capability_gate",
-            "contract_obligation": (
-                "do not execute the selected capability-blocked todo; repair or "
-                "materialize the missing bridge/capability, rewrite the todo to an "
-                "available capability, or write a compact blocker"
-            ),
-            "spend_policy": heartbeat_recommendation.get("spend_policy"),
-            "reason": (
-                "all executable todos require unavailable bridge-style capabilities, "
-                "but a bounded bridge repair may be attempted"
-            ),
-        }
-    if should_run and work_lane_contract:
-        return {
-            "must_attempt_work": bool(work_lane_contract.get("must_attempt_work", should_run)),
-            "kind": "work_lane_contract",
-            "contract": "work_lane_contract",
-            "contract_obligation": work_lane_contract.get("obligation"),
-            "notify_is_execution_gate": False,
-            "reason": (
-                "work_lane_contract.obligation is the machine execution contract; "
-                "heartbeat_recommendation is explanatory"
-            ),
-        }
-    if should_run:
-        return {
-            "must_attempt_work": True,
-            "kind": effective_action or recommended_mode or "bounded_delivery",
-            "minimum": "one_bounded_segment",
-            "notify_is_execution_gate": False,
-            "reason": (
-                "should_run=true means a Codex-actionable turn exists; heartbeat notify "
-                "only controls whether to interrupt the user"
-            ),
-        }
-    return {
-        "must_attempt_work": False,
-        "kind": effective_action or recommended_mode or "skip",
-        "notify_is_execution_gate": False,
-        "reason": (
-            "should_run=false blocks delivery unless an explicit safe-bypass or "
-            "self-repair action is exposed"
-        ),
-    }
 
 
 def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") -> dict[str, Any]:
@@ -6562,6 +6159,7 @@ def build_quota_should_run(
     goal_id: str,
     agent_id: str | None = None,
     available_capabilities: Any = None,
+    include_scheduler_detail: bool = False,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     plan = build_quota_plan(status_payload, mode="should-run")
@@ -7255,7 +6853,11 @@ def build_quota_should_run(
         )
         if reward_lesson_warning:
             payload["reward_lesson_projection_warning"] = reward_lesson_warning
-        gate_prompt = _build_gate_prompt(item) if state == "operator_gate" else None
+        gate_prompt = (
+            _build_gate_prompt(item, user_todo_summary=user_todo_summary)
+            if state == "operator_gate"
+            else None
+        )
         if gate_prompt:
             payload["gate_prompt"] = gate_prompt
             payload["notify_user_on_gate"] = True
@@ -7265,7 +6867,7 @@ def build_quota_should_run(
             payload["agent_command"] = item.get("agent_command")
         payload["automation_liveness"] = _automation_liveness(payload)
         payload["interaction_contract"] = _interaction_contract(payload)
-        payload["scheduler_hint"] = _scheduler_hint(payload)
+        payload["scheduler_hint"] = _scheduler_hint(payload, include_detail=include_scheduler_detail)
         payload["protocol_action_packet"] = _protocol_action_packet(payload)
         return payload
 
@@ -7677,9 +7279,14 @@ def _allows_due_monitor_poll(
     todo_id: str | None = None,
     target_key: str | None = None,
 ) -> bool:
-    if decision.get("should_run") is not True:
+    contract = (
+        decision.get("work_lane_contract")
+        if isinstance(decision.get("work_lane_contract"), dict)
+        else {}
+    )
+    if contract.get("obligation") != "attempt_due_monitor":
         return False
-    if decision.get("requires_user_action") is True:
+    if contract.get("must_attempt_work") is not True:
         return False
     item = _quota_decision_due_monitor_item(decision)
     if not item:
@@ -8139,30 +7746,31 @@ def record_quota_monitor_poll(
     before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
     normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
     safe_target_key = str(target_key or "").strip() or None
+    safe_result_hash = str(result_hash or "").strip() or None
+
+    def failure(reason: str) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "mode": "monitor-poll",
+            "dry_run": not execute,
+            "goal_id": safe_goal_id,
+            "appended": False,
+            "registry_mutated": False,
+            "source": str(source or DEFAULT_SLOT_SPEND_SOURCE).strip() or DEFAULT_SLOT_SPEND_SOURCE,
+            "agent_id": normalize_todo_claimed_by(agent_id),
+            "todo_id": normalized_todo_id,
+            "target_key": safe_target_key,
+            "result_hash": safe_result_hash,
+            "material_change": material_change,
+            "reason": reason,
+            "before": before,
+            "after": None,
+        }
+
     if material_change and not (normalized_todo_id or safe_target_key):
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": "`quota monitor-poll --material-change` requires --todo-id or --target-key",
-            "before": before,
-            "after": None,
-        }
+        return failure("`quota monitor-poll --material-change` requires --todo-id or --target-key")
     if (next_agent_todo or next_user_todo) and not material_change:
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": "`--next-agent-todo` and `--next-user-todo` require --material-change",
-            "before": before,
-            "after": None,
-        }
+        return failure("`--next-agent-todo` and `--next-user-todo` require --material-change")
     due_monitor_poll = _allows_due_monitor_poll(
         before,
         todo_id=normalized_todo_id,
@@ -8173,20 +7781,10 @@ def record_quota_monitor_poll(
         and not _allows_no_spend_external_monitor_poll(before)
         and not due_monitor_poll
     ):
-        return {
-            "ok": False,
-            "mode": "monitor-poll",
-            "dry_run": not execute,
-            "goal_id": safe_goal_id,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": (
-                "monitor-poll requires monitor_quiet_skip, due monitor todo, "
-                "or external monitor observation"
-            ),
-            "before": before,
-            "after": None,
-        }
+        return failure(
+            "monitor-poll requires monitor_quiet_skip, due monitor todo, "
+            "or external monitor observation"
+        )
 
     generated_at = _now_local()
     todo_writeback = None
@@ -9441,6 +9039,12 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             if isinstance(scheduler_hint.get("codex_app"), dict)
             else {}
         )
+        unchanged_poll = (
+            scheduler_hint.get("unchanged_poll")
+            if isinstance(scheduler_hint.get("unchanged_poll"), dict)
+            else {}
+        )
+        limits = unchanged_poll.get("limits") if isinstance(unchanged_poll.get("limits"), dict) else {}
         codex_cli_tui = (
             scheduler_hint.get("codex_cli_tui")
             if isinstance(scheduler_hint.get("codex_cli_tui"), dict)
@@ -9451,6 +9055,16 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             if isinstance(scheduler_hint.get("claude_code_loop"), dict)
             else {}
         )
+        cli_unchanged_limit = (
+            limits.get("codex_cli_tui")
+            if "codex_cli_tui" in limits
+            else codex_cli_tui.get("unchanged_poll_limit")
+        )
+        claude_unchanged_limit = (
+            limits.get("claude_code_loop")
+            if "claude_code_loop" in limits
+            else claude_code_loop.get("unchanged_poll_limit")
+        )
         lines.append(
             "- scheduler_hint: "
             f"action={scheduler_hint.get('action')} "
@@ -9458,8 +9072,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"codex_app_minutes={codex_app.get('recommended_interval_minutes')} "
             f"codex_app_rrule={codex_app.get('recommended_rrule')} "
             f"codex_app_progression={codex_app.get('example_progression_minutes')} "
-            f"cli_unchanged_limit={codex_cli_tui.get('unchanged_poll_limit')} "
-            f"claude_unchanged_limit={claude_code_loop.get('unchanged_poll_limit')}"
+            f"cli_unchanged_limit={cli_unchanged_limit} "
+            f"claude_unchanged_limit={claude_unchanged_limit}"
         )
         if scheduler_hint.get("reason"):
             lines.append(f"- scheduler_hint_reason: {scheduler_hint.get('reason')}")

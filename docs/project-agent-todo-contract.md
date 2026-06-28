@@ -82,6 +82,11 @@ inserts the metadata comment instead of creating a duplicate checkbox.
 lanes for owner input and concrete blockers; quota/executor code must not treat
 them as advancement work.
 
+For scheduled monitors, keep the contract minimal: `--next-due-at` is the first
+eligible time, `--cadence` is the retry interval, `--monitor-target-key` is the
+stable idempotency key, and optional `--expires-at` is the hard stop after
+which the monitor must not catch up.
+
 Terminology: a `goal_id` is the LoopX control-plane boundary: registry
 entry, active-state file, quota lane, status projection, and run-history stream.
 A `todo_id` is a structured work item inside that goal. LoopX does not
@@ -101,6 +106,30 @@ for a lane-scoped decision or `global_gate=true` / `--global-gate` for a
 genuine goal-wide owner gate. Unscoped multi-agent user gates are an authoring
 error because every registered agent would otherwise see another lane's
 question as its own stop condition.
+
+When a user gate only blocks one concrete action, add the blocked todo id with
+`unblocks_todo_id=<todo_id>`. When multiple todos share the same broad
+`action_kind`, use the schema-backed decision-scope fields instead of relying
+on title/body token overlap:
+
+```bash
+loopx todo add \
+  --goal-id <goal-id> \
+  --role user \
+  --task-class user_gate \
+  --agent-id codex-main-control \
+  --decision-scope direction:action:benchmark_target_choice \
+  --text "Choose the benchmark target before running that case."
+
+loopx todo update \
+  --goal-id <goal-id> \
+  --todo-id <agent-todo-id> \
+  --required-decision-scope direction:action:benchmark_target_choice
+```
+
+Quota treats a gate as covering an agent todo when `decision_scope` matches or
+dominates one of that todo's `required_decision_scopes`; otherwise the todo is
+independent and can be selected as a safe fallback when the boundary permits it.
 
 Each goal should have one `coordination.primary_agent`: the primary agent owns
 final review, verification, merge, publication, and reassignment decisions. All
@@ -225,8 +254,13 @@ todo text. If a dashboard or controller needs the new checklist immediately,
 refresh the status projection after the write:
 
 ```bash
-loopx refresh-state --goal-id <goal-id>
+loopx refresh-state --goal-id <goal-id> --agent-id <registered-agent>
 ```
+
+For multi-agent goals, `refresh-state` requires an explicit `--agent-id`.
+The default scoped refresh is an agent-lane run: it is useful for keeping the
+same turn's writeback/accounting identity intact, but it does not replace the
+goal-level status route.
 
 ## Lifecycle Contract
 
@@ -335,7 +369,9 @@ loopx refresh-state \
   --goal-id <goal-id> \
   --classification <public-safe-progress-classification> \
   --delivery-batch-scale multi_surface \
-  --delivery-outcome outcome_progress
+  --delivery-outcome outcome_progress \
+  --agent-id <primary-agent> \
+  --progress-scope goal
 ```
 
 This keeps validated side-agent product work from being misread as another

@@ -230,8 +230,8 @@ def main() -> int:
         "loopx todo add --goal-id public-heartbeat-goal --role user|agent",
         "blockers/plans, not prose",
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
-        "validated progress artifacts pass explicit `--delivery-batch-scale` and `--delivery-outcome`",
-        "Do not append spend for quiet skips",
+        "progress: `loopx refresh-state --goal-id public-heartbeat-goal",
+        "No spend for quiet skips",
     ):
         assert phrase in compact_task, phrase
     registry_default_task = normalized(str(registry_default_payload["task_body"]))

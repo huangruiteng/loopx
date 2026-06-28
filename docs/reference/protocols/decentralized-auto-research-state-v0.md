@@ -49,6 +49,13 @@ LoopX should preserve these product lessons, not Arbor's centralized topology.
 Source state is writable only through LoopX lifecycle commands, project-owned
 state files, or future narrow kernel APIs.
 
+The companion
+[`auto_research_lane_contract_v1`](auto-research-lane-contract-v1.md) defines
+which decentralized agent lanes may create, execute, evaluate, promote, retire,
+or narrate these records. This file defines the record shapes and projections;
+the lane contract defines capability ownership without introducing a leader
+agent.
+
 | Source state | Existing or proposed anchor | Purpose |
 | --- | --- | --- |
 | `research_contract_v0` | proposed packet, registry goal metadata | Public-safe objective, editable scope, protected scope, metric direction, dev/held-out commands, budget, and stopping condition. |
@@ -255,15 +262,29 @@ Already available:
   with an editable candidate solver, protected evaluator, dev/held-out splits,
   exactness guard, deterministic speedup metric, no-upload boundary, and smoke
   coverage.
+- `loopx auto-research evidence --contract <research_contract.json>
+  --eval-result <eval.json>...` now builds an
+  `auto_research_evidence_packet_v0` containing a public-safe
+  `research_hypothesis_v0` and split-aware `research_evidence_event_v0`
+  records. It preserves `needs_retry`, negative evidence,
+  `protected_scope_clean`, and branch/artifact refs without recording raw logs
+  or private artifacts.
+- `loopx auto-research append-evidence --packet <packet.json>` appends that
+  packet into the existing `loopx_rollout_event_v0` log as one
+  `research_hypothesis` event plus one `research_evidence` event per split.
+  Re-running the same packet skips existing event ids, so heartbeat retries do
+  not duplicate evidence.
+- `loopx auto-research frontier --goal-id <goal> --agent-id <agent>` reads
+  `research_hypothesis` and `research_evidence` rollout events back into
+  `research_evidence_graph_v0` and derives promotion/retirement candidates for
+  the live frontier and showcase projection.
 
 Needed next:
 
-- expose `research_hypothesis_v0` as a public-safe rollout-event subtype
-  beyond fixture projection;
-- append runnable pack outputs as `research_evidence_event_v0` records through
-  a write path rather than hand-maintained fixture evidence;
-- add a showcase page that reports baseline, dev result, held-out result,
-  retired directions, and LoopX's decentralized coordination pattern.
+- render the lane contract, per-agent frontier, promotion candidates, retirement
+  candidates, and retry candidates in a non-first-screen product board;
+- add a public showcase page that reports baseline, dev result, held-out
+  result, retired directions, and LoopX's decentralized coordination pattern.
 
 ## Acceptance Checks
 

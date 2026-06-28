@@ -26,6 +26,7 @@ UPDATED_AGENT_TODO = "Publish the compact evidence summary after validation pass
 MONITOR_TODO = "Monitor the release-note draft PR until the next scheduled check."
 MONITOR_DUE_AT = "2026-01-02T00:00:00+00:00"
 MONITOR_NEXT_DUE_AT = "2026-01-03T00:00:00+00:00"
+MONITOR_EXPIRES_AT = "2026-01-04T00:00:00+00:00"
 
 
 def write_fixture(root: Path, *, register_agents: bool = True) -> tuple[Path, Path]:
@@ -217,6 +218,8 @@ def main() -> int:
             "benchmark_runner",
             "--target-capability",
             "benchmark_runner",
+            "--required-decision-scope",
+            "direction:action:read_only_evidence_review",
         )
         assert metadata_payload["added"] is False, metadata_payload
         assert metadata_payload["already_exists"] is True, metadata_payload
@@ -225,6 +228,14 @@ def main() -> int:
         assert metadata_payload["action_kind"] == "run_eval", metadata_payload
         assert metadata_payload["required_capabilities"] == ["shell", "benchmark_runner"], metadata_payload
         assert metadata_payload["target_capabilities"] == ["benchmark_runner"], metadata_payload
+        assert metadata_payload["required_decision_scopes"] == [
+            {
+                "schema_version": "decision_scope_v0",
+                "kind": "direction",
+                "granularity": "action",
+                "scope_key": "read_only_evidence_review",
+            }
+        ], metadata_payload
         after_metadata = state_file.read_text(encoding="utf-8")
         assert after_metadata.count("- [ ] Summarize the read-only evidence after the user") == 1, after_metadata
         agent_block_start = after_metadata.index("- [ ] Summarize the read-only evidence after the user")
@@ -233,6 +244,10 @@ def main() -> int:
         assert "status=open task_class=advancement_task action_kind=run_eval" in after_metadata
         assert "required_capabilities=shell%2Cbenchmark_runner" in after_metadata
         assert "target_capabilities=benchmark_runner" in after_metadata
+        assert (
+            "required_decision_scopes=direction:action:read_only_evidence_review"
+            in after_metadata
+        )
         fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
         assert fields["user_todos"]["items"][0]["text"] == USER_TODO, fields
         assert fields["user_todos"]["items"][0]["todo_id"].startswith("todo_"), fields
@@ -252,6 +267,27 @@ def main() -> int:
         assert fields["agent_todos"]["items"][0]["target_capabilities"] == [
             "benchmark_runner",
         ], fields
+        assert fields["agent_todos"]["items"][0]["required_decision_scopes"][0]["scope_key"] == (
+            "read_only_evidence_review"
+        ), fields
+        scoped_gate_scope = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            scoped_gate["todo_id"],
+            "--decision-scope",
+            "direction:lane:external_publish_channel",
+        )
+        assert scoped_gate_scope["changed"] is True, scoped_gate_scope
+        assert scoped_gate_scope["decision_scope"]["scope_key"] == "external_publish_channel", scoped_gate_scope
+        fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
+        scoped_user_item = next(
+            item for item in fields["user_todos"]["items"] if item["text"] == SCOPED_USER_GATE
+        )
+        assert scoped_user_item["decision_scope"]["granularity"] == "lane", scoped_user_item
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
         assert fields["agent_todos"]["source_section"] == "Agent Todo", fields
 
@@ -275,6 +311,8 @@ def main() -> int:
             "1d",
             "--next-due-at",
             MONITOR_DUE_AT,
+            "--expires-at",
+            MONITOR_EXPIRES_AT,
             "--claimed-by",
             "codex-side-bypass",
         )
@@ -282,6 +320,7 @@ def main() -> int:
         assert monitor_payload["target_key"] == "release-note-draft-pr", monitor_payload
         assert monitor_payload["cadence"] == "1d", monitor_payload
         assert monitor_payload["next_due_at"] == MONITOR_DUE_AT, monitor_payload
+        assert monitor_payload["expires_at"] == MONITOR_EXPIRES_AT, monitor_payload
         monitor_update = run_cli(
             registry_path,
             "todo",
@@ -300,6 +339,7 @@ def main() -> int:
         assert monitor_update["changed"] is True, monitor_update
         assert monitor_update["cadence"] == "2d", monitor_update
         assert monitor_update["next_due_at"] == MONITOR_NEXT_DUE_AT, monitor_update
+        assert monitor_update["expires_at"] == MONITOR_EXPIRES_AT, monitor_update
         invalid_monitor_schedule = run_cli_error(
             registry_path,
             "todo",
@@ -320,6 +360,7 @@ def main() -> int:
         assert monitor_item["target_key"] == "release-note-draft-pr", fields
         assert monitor_item["cadence"] == "2d", fields
         assert monitor_item["next_due_at"] == MONITOR_NEXT_DUE_AT, fields
+        assert monitor_item["expires_at"] == MONITOR_EXPIRES_AT, fields
 
         status_payload = {
             "ok": True,

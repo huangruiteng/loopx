@@ -13,6 +13,7 @@ from .feedback import validate_public_safe_text
 from .file_lock import exclusive_file_lock
 from .global_registry import sync_project_registry_to_global
 from .history import load_registry, reserve_unique_run_paths, unique_run_paths
+from .local_state_write_correctness import build_local_state_write_correctness_dry_run_packet
 from .paths import resolve_runtime_root
 from .registry import registry_goals, resolve_state_file
 from .runtime import validate_goal_id_path_segment
@@ -23,8 +24,6 @@ from .todo_contract import (
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
     normalize_todo_claimed_by,
-    normalize_todo_id,
-    parse_todo_metadata_line,
 )
 
 
@@ -34,14 +33,15 @@ RECOMMENDED_ACTION_SOURCE_EXPLICIT = "explicit_arg"
 RECOMMENDED_ACTION_SOURCE_ACTIVE_NEXT_ACTION = "active_state_next_action"
 RECOMMENDED_ACTION_SOURCE_AGENT_TODO_FALLBACK = "agent_todo_fallback"
 RECOMMENDED_ACTION_SOURCE_DEFAULT = "default_refresh_action"
+GOAL_PROGRESS_SCOPE = "goal"
 AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
+PROGRESS_SCOPE_CHOICES = (GOAL_PROGRESS_SCOPE, AGENT_LANE_PROGRESS_SCOPE)
 RECOMMENDED_ACTION_SECTION_LINE_LIMIT = 16
 BULLET_PREFIX_RE = re.compile(r"^(?:[-*]\s+|\d+[.)]\s+)")
 CHECKBOX_PREFIX_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s+")
 ACTIVE_STATE_NEXT_ACTION_UPDATE_SCHEMA_VERSION = "active_state_next_action_update_v0"
 REPAIR_DELTA_CONTRACT_SCHEMA_VERSION = "repair_delta_contract_v0"
 REPAIR_NOOP_SCHEMA_VERSION = "repair_noop_v0"
-TODO_ID_REFERENCE_RE = re.compile(r"\btodo_[a-z0-9_-]{3,64}\b", flags=re.IGNORECASE)
 REPAIR_DELTA_KIND_CHOICES = (
     "effective_action",
     "interaction_contract",
@@ -171,155 +171,16 @@ def primary_agent_for_goal(registry_goal: dict[str, Any] | None) -> str | None:
     return normalize_todo_claimed_by(coordination.get("primary_agent") if coordination else None)
 
 
-def todo_claims_by_id(state_text: str) -> dict[str, str]:
-    claims: dict[str, str] = {}
-    for line in state_text.splitlines():
-        metadata = parse_todo_metadata_line(line)
-        if not metadata:
-            continue
-        todo_id = normalize_todo_id(metadata.get("todo_id"))
-        claimed_by = normalize_todo_claimed_by(metadata.get("claimed_by"))
-        if todo_id and claimed_by:
-            claims[todo_id] = claimed_by
-    return claims
-
-
-def normalize_action_match_text(value: str | None) -> str:
-    text = " ".join(str(value or "").strip().lower().split())
-    text = BULLET_PREFIX_RE.sub("", text).strip()
-    checkbox = CHECKBOX_PREFIX_RE.match(text)
-    if checkbox:
-        text = text[checkbox.end() :].strip()
-    return text
-
-
-def todo_claims_by_action_text(state_text: str) -> list[dict[str, str]]:
-    claims: list[dict[str, str]] = []
-    previous_todo_text: str | None = None
-    for line in state_text.splitlines():
-        stripped = line.strip()
-        if BULLET_PREFIX_RE.match(stripped):
-            bullet_text = BULLET_PREFIX_RE.sub("", stripped).strip()
-            if CHECKBOX_PREFIX_RE.match(bullet_text):
-                previous_todo_text = CHECKBOX_PREFIX_RE.sub("", bullet_text).strip()
-            else:
-                previous_todo_text = None
-        metadata = parse_todo_metadata_line(line)
-        if not metadata:
-            continue
-        todo_id = normalize_todo_id(metadata.get("todo_id"))
-        claimed_by = normalize_todo_claimed_by(metadata.get("claimed_by"))
-        status = str(metadata.get("status") or "").strip().lower()
-        if (
-            not todo_id
-            or not claimed_by
-            or not previous_todo_text
-            or status in {"done", "deferred", "blocked"}
-        ):
-            continue
-        normalized_text = normalize_action_match_text(previous_todo_text)
-        if len(normalized_text) < 32:
-            continue
-        claims.append(
-            {
-                "todo_id": todo_id,
-                "claimed_by": claimed_by,
-                "action_text": normalized_text,
-            }
+def normalize_progress_scope(value: str | None) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    validate_public_safe_text("progress_scope", normalized)
+    if normalized not in PROGRESS_SCOPE_CHOICES:
+        raise ValueError(
+            "--progress-scope must be one of: " + ", ".join(PROGRESS_SCOPE_CHOICES)
         )
-    return claims
-
-
-def referenced_todo_ids(*values: str | None) -> list[str]:
-    todo_ids: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        for match in TODO_ID_REFERENCE_RE.findall(str(value or "")):
-            todo_id = normalize_todo_id(match)
-            if todo_id and todo_id not in seen:
-                seen.add(todo_id)
-                todo_ids.append(todo_id)
-    return todo_ids
-
-
-def referenced_non_primary_agent(
-    *,
-    registered_agents: list[str],
-    primary_agent: str,
-    values: list[str | None],
-) -> str | None:
-    for value in values:
-        text = str(value or "")
-        for agent_id in registered_agents:
-            if agent_id == primary_agent:
-                continue
-            pattern = rf"(?<![a-z0-9_.:@-]){re.escape(agent_id)}(?![a-z0-9_.:@-])"
-            if re.search(pattern, text):
-                return agent_id
-    return None
-
-
-def infer_agent_lane_scope(
-    *,
-    registry_goal: dict[str, Any] | None,
-    state_text: str,
-    recommended_action: str | None,
-    next_action: str | None,
-) -> dict[str, Any] | None:
-    registered_agents = registered_agents_for_goal(registry_goal)
-    primary_agent = primary_agent_for_goal(registry_goal)
-    if not registered_agents or not primary_agent:
-        return None
-    claims_by_id = todo_claims_by_id(state_text)
-    for todo_id in referenced_todo_ids(recommended_action, next_action):
-        claimed_by = claims_by_id.get(todo_id)
-        if not claimed_by or claimed_by == primary_agent or claimed_by not in registered_agents:
-            continue
-        return {
-            "schema_version": "refresh_state_agent_lane_scope_inference_v0",
-            "inferred": True,
-            "agent_id": claimed_by,
-            "agent_lane": claimed_by,
-            "todo_id": todo_id,
-            "primary_agent": primary_agent,
-            "source": "referenced_claimed_todo",
-        }
-    values = [recommended_action, next_action]
-    normalized_values = [normalize_action_match_text(value) for value in values if value]
-    for claim in todo_claims_by_action_text(state_text):
-        claimed_by = claim["claimed_by"]
-        if claimed_by == primary_agent or claimed_by not in registered_agents:
-            continue
-        todo_text = claim["action_text"]
-        for value in normalized_values:
-            if not value or len(value) < 32:
-                continue
-            if value == todo_text or value in todo_text or todo_text in value:
-                return {
-                    "schema_version": "refresh_state_agent_lane_scope_inference_v0",
-                    "inferred": True,
-                    "agent_id": claimed_by,
-                    "agent_lane": claimed_by,
-                    "todo_id": claim["todo_id"],
-                    "primary_agent": primary_agent,
-                    "source": "matched_claimed_todo_text",
-                }
-    agent_id = referenced_non_primary_agent(
-        registered_agents=registered_agents,
-        primary_agent=primary_agent,
-        values=values,
-    )
-    if agent_id:
-        return {
-            "schema_version": "refresh_state_agent_lane_scope_inference_v0",
-            "inferred": True,
-            "agent_id": agent_id,
-            "agent_lane": agent_id,
-            "todo_id": None,
-            "primary_agent": primary_agent,
-            "source": "referenced_registered_non_primary_agent",
-        }
-    return None
+    return normalized
 
 
 def _noop_classification_for(classification: str) -> str:
@@ -581,6 +442,7 @@ def build_state_refresh_record(
     registry_goal: dict[str, Any] | None,
     delivery_batch_scale: str | None = None,
     delivery_outcome: str | None = None,
+    progress_scope: str | None = None,
     agent_id: str | None = None,
     agent_lane: str | None = None,
     autonomous_replan_recorded: bool = False,
@@ -635,9 +497,11 @@ def build_state_refresh_record(
         }
         if repair_delta_contract:
             record["autonomous_replan_ack"]["delta_contract"] = repair_delta_contract
+    if progress_scope:
+        record["progress_scope"] = progress_scope
     if agent_id:
-        record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
         record["agent_id"] = agent_id
+    if progress_scope == AGENT_LANE_PROGRESS_SCOPE and agent_id:
         record["agent_lane"] = agent_lane or agent_id
     return record
 
@@ -714,6 +578,27 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
                 f"- active_state_next_action: {next_action_update.get('next_action')}"
             )
 
+    write_correctness = (
+        payload.get("local_state_write_correctness")
+        if isinstance(payload.get("local_state_write_correctness"), dict)
+        else {}
+    )
+    if write_correctness:
+        intent = write_correctness.get("write_intent") if isinstance(write_correctness.get("write_intent"), dict) else {}
+        preview = write_correctness.get("preview") if isinstance(write_correctness.get("preview"), dict) else {}
+        apply_result = (
+            write_correctness.get("apply_result")
+            if isinstance(write_correctness.get("apply_result"), dict)
+            else {}
+        )
+        lines.append(
+            "- local_state_write_correctness: "
+            f"schema={write_correctness.get('schema_version')} "
+            f"write_class={intent.get('write_class')} "
+            f"status={apply_result.get('status')} "
+            f"non_destructive={preview.get('non_destructive')}"
+        )
+
     global_sync = payload.get("global_sync") if isinstance(payload.get("global_sync"), dict) else {}
     if global_sync:
         lines.extend(
@@ -757,6 +642,7 @@ def refresh_state_run(
     delivery_outcome: str | None = None,
     agent_id: str | None = None,
     agent_lane: str | None = None,
+    progress_scope: str | None = None,
     autonomous_replan_recorded: bool = False,
     repair_delta_kinds: list[str] | None = None,
     dry_run: bool,
@@ -772,6 +658,7 @@ def refresh_state_run(
         validate_public_safe_text("agent_lane", normalized_agent_lane)
     if normalized_agent_lane and not normalized_agent_id:
         raise ValueError("--agent-lane requires --agent-id so the lane has an owner")
+    normalized_progress_scope = normalize_progress_scope(progress_scope)
     normalized_delivery_batch_scale = (
         require_delivery_batch_scale(delivery_batch_scale).value if delivery_batch_scale else None
     )
@@ -790,51 +677,48 @@ def refresh_state_run(
     if not resolved_state_file.exists():
         raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
     state_text = resolved_state_file.read_text(encoding="utf-8")
+    expected_write_state_text = state_text
     normalized_next_action = normalize_next_action_text(next_action) if next_action else None
-    agent_lane_scope_inference: dict[str, Any] | None = None
-    if not normalized_agent_id:
-        inferred_scope = infer_agent_lane_scope(
-            registry_goal=registry_goal,
-            state_text=state_text,
-            recommended_action=recommended_action,
-            next_action=normalized_next_action,
+    registered_agents = registered_agents_for_goal(registry_goal)
+    primary_agent = primary_agent_for_goal(registry_goal)
+    known_agents = {agent for agent in registered_agents if agent}
+    if primary_agent:
+        known_agents.add(primary_agent)
+    multi_agent_goal = len(known_agents) > 1
+    if normalized_agent_id and known_agents and normalized_agent_id not in known_agents:
+        raise ValueError(
+            f"agent_id {normalized_agent_id!r} is not registered for goal {safe_goal_id!r}"
         )
-        if inferred_scope:
-            if normalized_next_action:
-                raise ValueError(
-                    "unscoped refresh-state inferred non-primary agent-lane scope "
-                    f"from todo_id={inferred_scope.get('todo_id')!r}; rerun with "
-                    f"--agent-id {inferred_scope.get('agent_id')} without --next-action, "
-                    "or have the primary agent update the durable active-state Next Action"
-                )
-            if inferred_scope.get("source") == "referenced_registered_non_primary_agent":
-                raise ValueError(
-                    "unscoped refresh-state mentions registered non-primary agent "
-                    f"{inferred_scope.get('agent_id')!r}; rerun with explicit "
-                    f"--agent-id {inferred_scope.get('agent_id')} because text-only "
-                    "agent references are ambiguous"
-                )
-            normalized_agent_id = str(inferred_scope["agent_id"])
-            normalized_agent_lane = str(inferred_scope["agent_lane"])
-            agent_lane_scope_inference = inferred_scope
-    if normalized_agent_id and registry_goal:
-        registered_agents = registered_agents_for_goal(registry_goal)
-        if registered_agents and normalized_agent_id not in registered_agents:
+    if multi_agent_goal and not normalized_agent_id:
+        raise ValueError(
+            "multi-agent refresh-state requires --agent-id; text inference is disabled"
+        )
+    if not normalized_progress_scope:
+        normalized_progress_scope = (
+            AGENT_LANE_PROGRESS_SCOPE if normalized_agent_id else GOAL_PROGRESS_SCOPE
+        )
+    if normalized_progress_scope == AGENT_LANE_PROGRESS_SCOPE:
+        if not normalized_agent_id:
+            raise ValueError("--progress-scope agent_lane requires --agent-id")
+        if normalized_next_action:
             raise ValueError(
-                f"agent_id {normalized_agent_id!r} is not registered for goal {safe_goal_id!r}"
+                "agent-lane refresh-state cannot update the durable active-state Next Action; "
+                "rerun without --next-action or use --progress-scope goal with the primary agent"
             )
-        primary_agent = primary_agent_for_goal(registry_goal)
-        if normalized_next_action and primary_agent and normalized_agent_id != primary_agent:
+    if normalized_progress_scope == GOAL_PROGRESS_SCOPE:
+        if normalized_agent_lane:
+            raise ValueError("--agent-lane requires --progress-scope agent_lane")
+        if primary_agent and normalized_agent_id and normalized_agent_id != primary_agent:
             raise ValueError(
-                "non-primary agent "
-                f"{normalized_agent_id!r} cannot update the durable active-state Next Action; "
-                "rerun without --next-action or have the primary agent update the global Next Action"
+                "goal-scope refresh-state requires the primary agent "
+                f"{primary_agent!r}; got {normalized_agent_id!r}"
             )
     generated_at = now_local()
     active_state_next_action_update: dict[str, Any] | None = None
     if normalized_next_action:
         with exclusive_file_lock(resolved_state_file):
             locked_state_text = resolved_state_file.read_text(encoding="utf-8")
+            expected_write_state_text = locked_state_text
             updated_state_text, state_updated = replace_next_action_section(
                 locked_state_text,
                 next_action=normalized_next_action,
@@ -884,13 +768,12 @@ def refresh_state_run(
         registry_goal=registry_goal,
         delivery_batch_scale=normalized_delivery_batch_scale,
         delivery_outcome=normalized_delivery_outcome,
+        progress_scope=normalized_progress_scope,
         agent_id=normalized_agent_id or None,
         agent_lane=normalized_agent_lane or None,
         autonomous_replan_recorded=effective_autonomous_replan_recorded,
         repair_delta_contract=repair_delta_contract,
     )
-    if agent_lane_scope_inference:
-        record["agent_lane_scope_inference"] = agent_lane_scope_inference
     if autonomous_replan_recorded:
         if "autonomous_replan_ack" not in record:
             record["autonomous_replan_ack"] = {
@@ -944,9 +827,11 @@ def refresh_state_run(
         index_record["autonomous_replan_ack"] = record["autonomous_replan_ack"]
         if requested_classification != classification:
             index_record["requested_classification"] = requested_classification
+    if normalized_progress_scope:
+        index_record["progress_scope"] = normalized_progress_scope
     if normalized_agent_id:
-        index_record["progress_scope"] = AGENT_LANE_PROGRESS_SCOPE
         index_record["agent_id"] = normalized_agent_id
+    if normalized_progress_scope == AGENT_LANE_PROGRESS_SCOPE and normalized_agent_id:
         index_record["agent_lane"] = normalized_agent_lane or normalized_agent_id
     payload = {
         "ok": True,
@@ -973,6 +858,36 @@ def refresh_state_run(
         "index_path": str(index_path),
         **record,
     }
+    if dry_run:
+        expected_write_scopes = ["runtime_history"]
+        if active_state_next_action_update and active_state_next_action_update.get("would_update"):
+            expected_write_scopes.insert(0, "active_state")
+        if sync_global:
+            expected_write_scopes.append("global_registry")
+        patch_parts = [f"append refresh-state run classification={classification}"]
+        if active_state_next_action_update:
+            if active_state_next_action_update.get("would_update"):
+                patch_parts.append("preview active-state Next Action update")
+            else:
+                patch_parts.append("preserve active-state Next Action")
+        if sync_global:
+            patch_parts.append("sync public-safe registry projection")
+        payload["local_state_write_correctness"] = build_local_state_write_correctness_dry_run_packet(
+            goal_id=safe_goal_id,
+            writer_id=normalized_agent_id or "loopx.refresh-state",
+            write_class="refresh_state",
+            state_text=expected_write_state_text,
+            target_refs={
+                "state_file_ref": "registry.goal.state_file",
+                "run_history_ref": "runtime.goal.runs",
+                "index_ref": "runtime.goal.runs.index",
+                "global_registry_ref": "runtime.registry.global" if sync_global else None,
+            },
+            patch_summary="; ".join(patch_parts),
+            expected_write_scopes=expected_write_scopes,
+            lease_ref=None,
+            projection_status_surface=f"refresh-state dry-run: {classification}",
+        )
     if not dry_run:
         runs_dir.mkdir(parents=True, exist_ok=True)
         json_path, markdown_path = reserve_unique_run_paths(runs_dir, generated_at)
