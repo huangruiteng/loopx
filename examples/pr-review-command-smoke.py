@@ -113,6 +113,25 @@ def main() -> int:
     first = payload["pull_requests"][0]
     assert first["number"] == 773, first
     assert "newcomer command path" in first["motivation"], first
+    card = first["guided_review_card"]
+    assert card["schema_version"] == "guided_pr_review_card_v0", card
+    assert 100 <= len(card["brief"]) <= 210, card["brief"]
+    assert card["brief"].startswith("动机："), card["brief"]
+    assert "改动：" in card["brief"], card["brief"]
+    assert "风险：" in card["brief"], card["brief"]
+    assert "检查：" in card["brief"], card["brief"]
+    assert "Review：" in card["brief"], card["brief"]
+    assert "concrete_changes" in card, card
+    detailed = first["detailed_change_analysis"]
+    assert detailed["schema_version"] == "pr_detailed_change_analysis_v0", detailed
+    assert "具体改动集中" in detailed["summary"], detailed
+    assert detailed["area_breakdown"], detailed
+    assert detailed["file_walkthrough"], detailed
+    assert detailed["review_order"][0] == "docs/guides/newcomer-command-path.md", detailed
+    first_file = detailed["file_walkthrough"][0]
+    assert first_file["path"] == "docs/guides/newcomer-command-path.md", first_file
+    assert "Review focus" not in first_file["meaning"], first_file
+    assert first_file["review_focus"], first_file
     assert first["checks"]["counts"]["success"] == 2, first["checks"]
     assert "public_docs" in first["areas"], first["areas"]
     main_risk = first["main_regression_analysis"]
@@ -169,6 +188,16 @@ def main() -> int:
     assert "state_filter: `all`" in markdown, markdown
     assert "merged=`" in markdown, markdown
     assert "main_risk=`low`" in markdown, markdown
+    assert "> 动机：" in markdown, markdown
+    assert "- 动机:" in markdown, markdown
+    assert "- 具体改动:" in markdown, markdown
+    assert "- 详细改动分析:" in markdown, markdown
+    assert "- 改动拆解:" in markdown, markdown
+    assert "- 文件 walkthrough:" in markdown, markdown
+    assert "- 推荐阅读顺序:" in markdown, markdown
+    assert "- 风险:" in markdown, markdown
+    assert "- 检查:" in markdown, markdown
+    assert "- Review prompt:" in markdown, markdown
     assert "main regression risk:" in markdown, markdown
     assert "potential main regressions:" in markdown, markdown
     assert "verification focus:" in markdown, markdown

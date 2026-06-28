@@ -78,6 +78,13 @@ def _redact_text(value: object, *, limit: int = 320) -> str:
     return text
 
 
+def _join_short(items: list[str], *, limit: int = 3, fallback: str = "未提供") -> str:
+    compact = [str(item).strip() for item in items if str(item).strip()]
+    if not compact:
+        return fallback
+    return "、".join(compact[:limit])
+
+
 def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -339,6 +346,233 @@ def _area_counts(files: list[dict[str, Any]]) -> dict[str, int]:
         area = str(item.get("area") or "other")
         counts[area] = counts.get(area, 0) + 1
     return counts
+
+
+AREA_LABELS = {
+    "public_entry_or_policy": "README/政策入口",
+    "public_docs": "公开文档",
+    "test_or_example": "smoke/示例",
+    "app_or_ui_surface": "前端/展示面",
+    "product_runtime": "运行时/CLI",
+    "ci_or_release": "CI/发布",
+    "build_or_config": "构建配置",
+    "other": "其他文件",
+}
+
+
+RISK_LEVEL_LABELS = {
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+    "unknown": "未知",
+}
+
+
+def _area_phrase(areas: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for area, count in sorted(areas.items(), key=lambda item: (-int(item[1] or 0), str(item[0]))):
+        label = AREA_LABELS.get(str(area), str(area))
+        parts.append(f"{label} {count}")
+    return _join_short(parts, limit=4, fallback="未知区域")
+
+
+def _top_file_phrase(files: list[dict[str, Any]], *, limit: int = 3) -> str:
+    return _join_short([str(item.get("path") or "") for item in files if item.get("path")], limit=limit, fallback="未返回关键文件")
+
+
+def _top_file_name_phrase(files: list[dict[str, Any]], *, limit: int = 2) -> str:
+    names = [str(item.get("path") or "").rsplit("/", 1)[-1] for item in files if item.get("path")]
+    return _join_short(names, limit=limit, fallback="关键文件")
+
+
+def _int_or_zero(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _file_delta(item: dict[str, Any]) -> str:
+    return f"+{_int_or_zero(item.get('additions'))}/-{_int_or_zero(item.get('deletions'))}"
+
+
+def _file_churn(item: dict[str, Any]) -> int:
+    return _int_or_zero(item.get("additions")) + _int_or_zero(item.get("deletions"))
+
+
+def _area_change_intent(area: str) -> str:
+    if area == "product_runtime":
+        return "改变运行时、CLI 或控制面行为，属于最需要确认兼容性的改动。"
+    if area == "app_or_ui_surface":
+        return "改变用户可见页面或 dashboard/frontstage 展示，需要看真实浏览器效果。"
+    if area == "public_entry_or_policy":
+        return "改变 README、入口或贡献者政策，会影响新用户第一眼理解和仓库治理。"
+    if area == "public_docs":
+        return "沉淀公开说明、协议或使用路径，需要确认文档与实际 CLI/产品行为一致。"
+    if area == "test_or_example":
+        return "补充 smoke、fixture 或示例，把预期行为固定成可回归的验证面。"
+    if area == "ci_or_release":
+        return "改变 CI 或发布链路，风险主要在后续 PR 检查和发布稳定性。"
+    if area == "build_or_config":
+        return "改变构建、依赖或配置入口，需要确认安装、lint、测试命令仍可运行。"
+    return "改变仓库其他辅助文件，需要结合 PR 动机判断是否属于必要范围。"
+
+
+def _area_review_focus(area: str) -> str:
+    if area == "product_runtime":
+        return "重点看 JSON schema、默认行为、旧自动化兼容性和失败路径。"
+    if area == "app_or_ui_surface":
+        return "重点看首屏、状态可读性、响应式布局和公开/私有信息边界。"
+    if area == "public_entry_or_policy":
+        return "重点看第一屏承诺、CTA、安装路径和维护者规则是否准确。"
+    if area == "public_docs":
+        return "重点看命令示例、概念定义、用户路径和 shipped 行为是否一致。"
+    if area == "test_or_example":
+        return "重点看 smoke 是否覆盖 durable behavior，而不是过拟合临时文本。"
+    if area == "ci_or_release":
+        return "重点看 workflow 触发条件、权限、缓存和 required checks。"
+    if area == "build_or_config":
+        return "重点看依赖版本、入口脚本和跨环境可重复性。"
+    return "重点看该文件是否应随本 PR 一起改，以及是否缺少对应验证。"
+
+
+def _file_change_meaning(item: dict[str, Any]) -> str:
+    path = str(item.get("path") or "")
+    area = str(item.get("area") or "other")
+    name = path.rsplit("/", 1)[-1]
+    delta = _file_delta(item)
+    if path == "loopx/pr_review.py":
+        return f"`{name}` 是 PR-review packet 的核心生成逻辑，本次 {delta} 会直接改变用户看到的 review 队列内容。"
+    if path.startswith("loopx/cli_commands/") or path == "loopx/cli.py":
+        return f"`{name}` 改变 CLI 入口或参数/输出绑定，本次 {delta} 需要确认 slash command 和 shell 命令仍一致。"
+    if path.startswith(("loopx/quota.py", "loopx/status.py", "loopx/todos.py", "loopx/todo_contract.py")):
+        return f"`{name}` 属于控制面关键路径，本次 {delta} 可能影响 gate、todo、quota 或 status 投影。"
+    if area == "test_or_example":
+        return f"`{name}` 是验证或示例面，本次 {delta} 用来锁定行为预期，review 时要看断言是否真的覆盖产品合同。"
+    if area == "public_docs":
+        return f"`{name}` 是公开文档，本次 {delta} 主要改变用户/维护者理解路径，要检查命令和概念是否准确。"
+    if area == "public_entry_or_policy":
+        return f"`{name}` 是公开入口或政策文件，本次 {delta} 会影响新用户第一眼和维护者规则。"
+    if area == "app_or_ui_surface":
+        return f"`{name}` 是用户可见展示面，本次 {delta} 需要结合真实页面或截图确认体验。"
+    if area == "ci_or_release":
+        return f"`{name}` 是 CI/发布配置，本次 {delta} 需要确认 required checks 和权限没有倒退。"
+    if area == "build_or_config":
+        return f"`{name}` 是构建配置，本次 {delta} 需要确认安装、测试或打包路径稳定。"
+    return f"`{name}` 本次 {delta}，需要确认它和 PR 动机属于同一 review 范围。"
+
+
+def _detailed_change_analysis(item: dict[str, Any]) -> dict[str, Any]:
+    scale = _as_dict(item.get("scale"))
+    key_files = [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)]
+    ranked_files = sorted(key_files, key=_file_churn, reverse=True)
+    areas = _as_dict(item.get("areas"))
+    summary = _redact_text(
+        f"这个 PR 的具体改动集中在{_area_phrase(areas)}，"
+        f"总规模 {scale.get('changed_files', 0)} 个文件、+{scale.get('additions', 0)}/-{scale.get('deletions', 0)}。"
+        f"建议先读 {_top_file_phrase(ranked_files, limit=3)}，确认最大 diff 是否兑现 PR 动机；"
+        "再看 smoke/文档/检查结果是否能证明这些改动不会让 main 倒退。",
+        limit=420,
+    )
+    area_breakdown: list[dict[str, Any]] = []
+    for area, count in sorted(areas.items(), key=lambda pair: (-int(pair[1] or 0), str(pair[0]))):
+        files = [file for file in ranked_files if str(file.get("area") or "other") == str(area)]
+        area_breakdown.append(
+            {
+                "area": str(area),
+                "label": AREA_LABELS.get(str(area), str(area)),
+                "file_count": int(count or 0),
+                "top_files": [str(file.get("path") or "") for file in files[:3]],
+                "change_intent": _area_change_intent(str(area)),
+                "review_focus": _area_review_focus(str(area)),
+            }
+        )
+    file_walkthrough = [
+        {
+            "path": str(file.get("path") or ""),
+            "area": str(file.get("area") or "other"),
+            "delta": _file_delta(file),
+            "meaning": _file_change_meaning(file),
+            "review_focus": _area_review_focus(str(file.get("area") or "other")),
+        }
+        for file in ranked_files[:8]
+    ]
+    return {
+        "schema_version": "pr_detailed_change_analysis_v0",
+        "summary": summary,
+        "area_breakdown": area_breakdown,
+        "file_walkthrough": file_walkthrough,
+        "review_order": [str(file.get("path") or "") for file in ranked_files[:5]],
+    }
+
+
+def _main_risk_phrase(main_risk: dict[str, Any]) -> str:
+    level = str(main_risk.get("risk_level") or "unknown")
+    regressions = [str(item) for item in _as_list(main_risk.get("potential_regressions")) if item]
+    bug_risks = [str(item) for item in _as_list(main_risk.get("bug_risks")) if item]
+    source = regressions[:1] or bug_risks[:1] or [str(main_risk.get("risk_summary") or "需人工确认主干影响")]
+    return f"{level}，{_redact_text(source[0], limit=80)}"
+
+
+def _check_phrase(checks: dict[str, Any]) -> str:
+    failures = [str(item) for item in _as_list(checks.get("failures")) if item]
+    pending = [str(item) for item in _as_list(checks.get("pending")) if item]
+    if failures:
+        return f"失败：{_join_short(failures, limit=2)}"
+    if pending:
+        return f"等待：{_join_short(pending, limit=2)}"
+    return str(checks.get("summary") or "未返回检查结果")
+
+
+def _check_brief_phrase(checks: dict[str, Any]) -> str:
+    counts = _as_dict(checks.get("counts"))
+    if checks.get("failures"):
+        return f"{len(_as_list(checks.get('failures')))} fail"
+    if checks.get("pending"):
+        return f"{len(_as_list(checks.get('pending')))} pending"
+    if counts.get("success"):
+        return f"{counts.get('success')} pass"
+    if int(checks.get("total") or 0) == 0:
+        return "无 checks"
+    return str(checks.get("summary") or "unknown")
+
+
+def _guided_review_card(item: dict[str, Any]) -> dict[str, Any]:
+    scale = _as_dict(item.get("scale"))
+    checks = _as_dict(item.get("checks"))
+    main_risk = _as_dict(item.get("main_regression_analysis"))
+    motivation = _redact_text(item.get("motivation"), limit=90)
+    short_motivation = _redact_text(item.get("motivation"), limit=50)
+    key_files = [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)]
+    short_files = _top_file_name_phrase(key_files, limit=2)
+    risk_level = str(main_risk.get("risk_level") or "unknown").lower()
+    risk_label = RISK_LEVEL_LABELS.get(risk_level, risk_level)
+    concrete_changes = (
+        f"{_area_phrase(_as_dict(item.get('areas')))}；"
+        f"{scale.get('changed_files', 0)} 个文件，+{scale.get('additions', 0)}/-{scale.get('deletions', 0)}；"
+        f"重点看 {_top_file_phrase(key_files)}。"
+    )
+    risk = _main_risk_phrase(main_risk) if main_risk else "unknown，需人工确认主干影响"
+    checks_summary = _check_phrase(checks)
+    checks_brief = _check_brief_phrase(checks)
+    first_prompt = "先判断 PR 是否应该存在，再确认改动范围、验证和主干风险是否对齐。"
+    brief = _redact_text(
+        f"动机：{short_motivation}。改动：{_area_phrase(_as_dict(item.get('areas')))}，"
+        f"{scale.get('changed_files', 0)} 个文件 +{scale.get('additions', 0)}/-{scale.get('deletions', 0)}，"
+        f"重点看 {short_files}。风险：{risk_label}；检查：{checks_brief}。"
+        "Review：先看范围和验证是否对齐。",
+        limit=200,
+    )
+    return {
+        "schema_version": "guided_pr_review_card_v0",
+        "brief": brief,
+        "motivation": motivation,
+        "concrete_changes": concrete_changes,
+        "risk": risk,
+        "checks": checks_summary,
+        "review_prompt": first_prompt,
+        "target_length": "100-200 Chinese characters when source metadata is compact",
+    }
 
 
 def _check_name(item: dict[str, Any]) -> str:
@@ -616,6 +850,8 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
         if number
         else [],
     }
+    item["detailed_change_analysis"] = _detailed_change_analysis(item)
+    item["guided_review_card"] = _guided_review_card(item)
     return item
 
 
@@ -689,7 +925,9 @@ def build_pr_review_packet(
             },
             "source": source,
             "include": [
+                "guided_review_card",
                 "motivation",
+                "detailed_change_analysis",
                 "change_scope",
                 "checks",
                 "risk_notes",
@@ -786,20 +1024,27 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         )
 
     for pr in [item for item in _as_list(payload.get("pull_requests")) if isinstance(item, dict)]:
+        card = _as_dict(pr.get("guided_review_card"))
         lines.extend(
             [
                 "",
                 f"## PR #{pr.get('number')}: {pr.get('title')}",
+                "",
+                f"> {card.get('brief') or pr.get('motivation')}",
                 "",
                 f"- url: {pr.get('url')}",
                 f"- state: `{pr.get('state')}`",
                 f"- merged_at: `{pr.get('merged_at') or 'n/a'}`",
                 f"- branch: `{pr.get('head_ref')}` -> `{pr.get('base_ref')}`",
                 f"- status: review=`{pr.get('review_decision')}`, merge=`{pr.get('merge_state')}`, draft=`{pr.get('is_draft')}`",
-                f"- motivation: {pr.get('motivation')}",
+                f"- 动机: {card.get('motivation') or pr.get('motivation')}",
+                f"- 具体改动: {card.get('concrete_changes') or 'n/a'}",
+                f"- 详细改动分析: {_as_dict(pr.get('detailed_change_analysis')).get('summary') or 'n/a'}",
+                f"- 风险: {card.get('risk') or 'n/a'}",
+                f"- 检查: {card.get('checks') or _as_dict(pr.get('checks')).get('summary')}",
+                f"- Review prompt: {card.get('review_prompt') or '确认范围、验证和风险是否匹配。'}",
                 f"- scale: files=`{_as_dict(pr.get('scale')).get('changed_files')}`, +`{_as_dict(pr.get('scale')).get('additions')}`, -`{_as_dict(pr.get('scale')).get('deletions')}`",
                 f"- areas: `{json.dumps(pr.get('areas') or {}, ensure_ascii=False)}`",
-                f"- checks: {_as_dict(pr.get('checks')).get('summary')}",
             ]
         )
         commits = [item for item in _as_list(pr.get("commit_headlines")) if item]
@@ -810,6 +1055,27 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
             lines.append("- key files:")
             for item in key_files[:8]:
                 lines.append(f"  - `{item.get('path')}` ({item.get('area')})")
+        detailed = _as_dict(pr.get("detailed_change_analysis"))
+        area_breakdown = [item for item in _as_list(detailed.get("area_breakdown")) if isinstance(item, dict)]
+        if area_breakdown:
+            lines.append("- 改动拆解:")
+            for item in area_breakdown[:5]:
+                top_files = _join_short([str(path) for path in _as_list(item.get("top_files"))], limit=3, fallback="无关键文件")
+                lines.append(
+                    f"  - {item.get('label')}（{item.get('file_count')} 个文件，{top_files}）："
+                    f"{item.get('change_intent')} Review 重点：{item.get('review_focus')}"
+                )
+        walkthrough = [item for item in _as_list(detailed.get("file_walkthrough")) if isinstance(item, dict)]
+        if walkthrough:
+            lines.append("- 文件 walkthrough:")
+            for item in walkthrough[:6]:
+                lines.append(
+                    f"  - `{item.get('path')}` {item.get('delta')}: "
+                    f"{item.get('meaning')} Review 重点：{item.get('review_focus')}"
+                )
+        review_order = [str(item) for item in _as_list(detailed.get("review_order")) if item]
+        if review_order:
+            lines.append("- 推荐阅读顺序: " + " -> ".join(f"`{item}`" for item in review_order))
         risks = [item for item in _as_list(pr.get("risk_notes")) if item]
         lines.append("- risk notes: " + ("; ".join(str(item) for item in risks) if risks else "none"))
         main_risk = _as_dict(pr.get("main_regression_analysis"))
