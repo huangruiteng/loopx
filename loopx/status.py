@@ -1071,6 +1071,20 @@ def build_skillsbench_post_run_debug_gate(
             "open_todo_count_public": _benchmark_positive_int(
                 counters.get("open_todo_count")
             ),
+            "no_open_todo_below_passing_reward_streak": _benchmark_positive_int(
+                counters.get(
+                    "product_mode_no_open_todo_below_passing_reward_streak"
+                )
+            ),
+            "no_open_todo_below_passing_reward_streak_threshold": _benchmark_positive_int(
+                counters.get(
+                    "product_mode_no_open_todo_below_passing_reward_streak_threshold"
+                )
+            ),
+            "no_open_todo_below_passing_reward_stop": counters.get(
+                "product_mode_no_open_todo_below_passing_reward_stop"
+            )
+            is True,
         },
         "controller": {
             "status": (
@@ -1165,6 +1179,7 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_solver_activity_required",
         "product_mode_solver_activity_gap",
         "product_mode_declared_done_below_passing_reward",
+        "product_mode_no_open_todo_below_passing_reward_stop",
         "product_mode_final_closeout_superseded_by_official_success",
         "product_mode_no_tool_call_lifecycle_abort",
         "agent_declared_done",
@@ -1231,6 +1246,13 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_solver_activity_gap_round",
         "product_mode_declared_done_below_passing_reward_count",
         "product_mode_declared_done_below_passing_reward_round",
+        "open_todo_count",
+        "product_mode_no_open_todo_below_passing_reward_streak",
+        "product_mode_no_open_todo_below_passing_reward_streak_threshold",
+        "product_mode_no_open_todo_below_passing_reward_round",
+        "product_mode_no_open_todo_below_passing_reward_stop_count",
+        "product_mode_no_open_todo_below_passing_reward_stop_round",
+        "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
         "product_mode_final_closeout_superseded_round",
         "product_mode_no_tool_call_lifecycle_abort_count",
         "product_mode_no_tool_call_lifecycle_abort_round",
@@ -1317,7 +1339,10 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
-    for field in ("product_mode_declared_done_below_passing_reward_score",):
+    for field in (
+        "product_mode_declared_done_below_passing_reward_score",
+        "product_mode_no_open_todo_below_passing_reward_score",
+    ):
         raw = value.get(field)
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
             compact[field] = float(raw)
@@ -1332,6 +1357,7 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_lifecycle_checkpoint_missing_reason",
         "product_mode_solver_activity_missing_reason",
         "product_mode_declared_done_below_passing_reward_score_status",
+        "product_mode_no_open_todo_below_passing_reward_score_status",
         "product_mode_declared_done_policy",
         "product_mode_final_closeout_superseded_reason",
         "controller_budget_cutoff_reason",
@@ -1637,6 +1663,8 @@ def _compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
         "official_feedback_blinded",
         "reward_feedback_forwarded",
         "agent_declared_done",
+        "agent_declared_no_remaining_goals",
+        "product_mode_no_open_todo_below_passing_reward_stop",
         "official_score_recovered_from_controller_trace",
     ):
         if isinstance(value.get(field), bool):
@@ -1648,14 +1676,28 @@ def _compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:
         "final_round",
         "best_reward_round",
         "official_score_recovered_round",
+        "product_mode_no_open_todo_below_passing_reward_streak",
+        "product_mode_no_open_todo_below_passing_reward_streak_threshold",
+        "product_mode_no_open_todo_below_passing_reward_round",
+        "product_mode_no_open_todo_below_passing_reward_stop_round",
+        "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
     ):
         raw = value.get(field)
         if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
             compact[field] = raw
-    for field in ("final_round_reward", "best_round_reward", "declared_done_score"):
+    for field in (
+        "final_round_reward",
+        "best_round_reward",
+        "declared_done_score",
+        "product_mode_no_open_todo_below_passing_reward_score",
+    ):
         raw = value.get(field)
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
             compact[field] = float(raw)
+    for field in ("product_mode_no_open_todo_below_passing_reward_score_status",):
+        text = public_safe_compact_text(value.get(field), limit=100)
+        if text:
+            compact[field] = text
     for field in ("final_round_passed", "best_round_passed", "best_round_is_final"):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]

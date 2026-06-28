@@ -2140,6 +2140,10 @@ def _skillsbench_controller_trace_counters(
             "product_mode_declared_done_below_passing_reward"
         )
         is True,
+        "product_mode_no_open_todo_below_passing_reward_stop": controller_trace.get(
+            "product_mode_no_open_todo_below_passing_reward_stop"
+        )
+        is True,
         "agent_declared_done": controller_trace.get("agent_declared_done") is True,
         "agent_declared_no_remaining_goals": controller_trace.get(
             "agent_declared_no_remaining_goals"
@@ -2425,6 +2429,25 @@ def _skillsbench_controller_trace_counters(
         "product_mode_declared_done_below_passing_reward_round": count(
             "product_mode_declared_done_below_passing_reward_round"
         ),
+        "open_todo_count": count("open_todo_count"),
+        "product_mode_no_open_todo_below_passing_reward_streak": count(
+            "product_mode_no_open_todo_below_passing_reward_streak"
+        ),
+        "product_mode_no_open_todo_below_passing_reward_streak_threshold": count(
+            "product_mode_no_open_todo_below_passing_reward_streak_threshold"
+        ),
+        "product_mode_no_open_todo_below_passing_reward_round": count(
+            "product_mode_no_open_todo_below_passing_reward_round"
+        ),
+        "product_mode_no_open_todo_below_passing_reward_stop_count": count(
+            "product_mode_no_open_todo_below_passing_reward_stop_count"
+        ),
+        "product_mode_no_open_todo_below_passing_reward_stop_round": count(
+            "product_mode_no_open_todo_below_passing_reward_stop_round"
+        ),
+        "product_mode_no_open_todo_below_passing_reward_open_todo_count_public": count(
+            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
+        ),
         "product_mode_final_closeout_superseded_by_official_success": (
             controller_trace.get(
                 "product_mode_final_closeout_superseded_by_official_success"
@@ -2593,6 +2616,16 @@ def _skillsbench_controller_trace_counters(
         counters["product_mode_declared_done_below_passing_reward_score"] = float(
             below_passing_score
         )
+    no_open_todo_score = controller_trace.get(
+        "product_mode_no_open_todo_below_passing_reward_score"
+    )
+    if (
+        isinstance(no_open_todo_score, (int, float))
+        and not isinstance(no_open_todo_score, bool)
+    ):
+        counters["product_mode_no_open_todo_below_passing_reward_score"] = float(
+            no_open_todo_score
+        )
     below_passing_score_status = _skillsbench_public_safe_label(
         controller_trace.get(
             "product_mode_declared_done_below_passing_reward_score_status"
@@ -2602,6 +2635,16 @@ def _skillsbench_controller_trace_counters(
     if below_passing_score_status:
         counters["product_mode_declared_done_below_passing_reward_score_status"] = (
             below_passing_score_status
+        )
+    no_open_todo_score_status = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_no_open_todo_below_passing_reward_score_status"
+        )
+        or ""
+    )
+    if no_open_todo_score_status:
+        counters["product_mode_no_open_todo_below_passing_reward_score_status"] = (
+            no_open_todo_score_status
         )
     declared_done_policy = _skillsbench_public_safe_label(
         controller_trace.get("product_mode_declared_done_policy") or ""
@@ -3483,6 +3526,19 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             if item not in failure_labels:
                 failure_labels.append(item)
+    product_mode_no_open_todo_below_passing_reward_stop = bool(
+        controller_counters.get(
+            "product_mode_no_open_todo_below_passing_reward_stop"
+        )
+        is True
+    )
+    if product_mode_no_open_todo_below_passing_reward_stop and not official_passed:
+        for item in (
+            "skillsbench_product_mode_no_open_todo_below_passing_reward_stop",
+            "skillsbench_solver_exhausted_no_open_todos",
+        ):
+            if item not in failure_labels:
+                failure_labels.append(item)
     user_loop_final_verify_recovery_triggered = bool(
         controller_counters.get("benchflow_user_loop_final_verify_recovery_triggered")
     )
@@ -3740,7 +3796,30 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 "agent_declared_no_remaining_goals"
             )
             is True,
+            "product_mode_no_open_todo_below_passing_reward_stop": (
+                controller_counters.get(
+                    "product_mode_no_open_todo_below_passing_reward_stop"
+                )
+                is True
+            ),
         }
+        for source_key in (
+            "product_mode_no_open_todo_below_passing_reward_streak",
+            "product_mode_no_open_todo_below_passing_reward_streak_threshold",
+            "product_mode_no_open_todo_below_passing_reward_round",
+            "product_mode_no_open_todo_below_passing_reward_stop_round",
+            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+        ):
+            value = controller_counters.get(source_key)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                round_reward_trace[source_key] = value
+        score_status = controller_counters.get(
+            "product_mode_no_open_todo_below_passing_reward_score_status"
+        )
+        if isinstance(score_status, str) and score_status:
+            round_reward_trace[
+                "product_mode_no_open_todo_below_passing_reward_score_status"
+            ] = score_status
         declared_done_round = controller_counters.get("declared_done_round")
         if (
             isinstance(declared_done_round, int)
@@ -3754,6 +3833,16 @@ def build_skillsbench_benchflow_result_benchmark_run(
             and not isinstance(declared_done_score, bool)
         ):
             round_reward_trace["declared_done_score"] = float(declared_done_score)
+        no_open_todo_score = controller_counters.get(
+            "product_mode_no_open_todo_below_passing_reward_score"
+        )
+        if (
+            isinstance(no_open_todo_score, (int, float))
+            and not isinstance(no_open_todo_score, bool)
+        ):
+            round_reward_trace[
+                "product_mode_no_open_todo_below_passing_reward_score"
+            ] = float(no_open_todo_score)
         round_reward_trace.update(round_stats)
 
     post_success_score = {}
@@ -4168,6 +4257,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode_declared_done_below_passing_reward": controller_counters.get(
                 "product_mode_declared_done_below_passing_reward", False
             ),
+            "product_mode_no_open_todo_below_passing_reward_stop": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_stop", False
+            ),
             "product_mode_lifecycle_checkpoint_count": controller_counters.get(
                 "product_mode_lifecycle_checkpoint_count", 0
             ),
@@ -4200,6 +4292,33 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "product_mode_declared_done_policy": controller_counters.get(
                 "product_mode_declared_done_policy", ""
+            ),
+            "open_todo_count": controller_counters.get("open_todo_count", 0),
+            "product_mode_no_open_todo_below_passing_reward_streak": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_streak", 0
+            ),
+            "product_mode_no_open_todo_below_passing_reward_streak_threshold": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_streak_threshold",
+                0,
+            ),
+            "product_mode_no_open_todo_below_passing_reward_round": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_round", 0
+            ),
+            "product_mode_no_open_todo_below_passing_reward_stop_count": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_stop_count", 0
+            ),
+            "product_mode_no_open_todo_below_passing_reward_stop_round": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_stop_round", 0
+            ),
+            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+                0,
+            ),
+            "product_mode_no_open_todo_below_passing_reward_score": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_score"
+            ),
+            "product_mode_no_open_todo_below_passing_reward_score_status": controller_counters.get(
+                "product_mode_no_open_todo_below_passing_reward_score_status", ""
             ),
             "product_mode_final_closeout_superseded_by_official_success": (
                 controller_counters.get(

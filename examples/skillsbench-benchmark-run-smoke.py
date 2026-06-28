@@ -2286,7 +2286,7 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         assert trace.get("agent_declared_done") is not True, trace
 
 
-def test_product_mode_declared_done_below_passing_reward_continues() -> None:
+def test_product_mode_declared_done_stops_after_two_no_open_todo_rounds() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-declared-done-score-zero-") as tmp:
         root = Path(tmp)
         jobs_dir = root / "jobs"
@@ -2426,8 +2426,52 @@ def test_product_mode_declared_done_below_passing_reward_continues() -> None:
         assert trace["product_mode_declared_done_policy"] == (
             "continue_until_official_success_or_budget"
         )
+        assert trace[
+            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
+        ] == 0
+        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 1
+        assert (
+            trace[
+                "product_mode_no_open_todo_below_passing_reward_streak_threshold"
+            ]
+            == 2
+        )
+        assert (
+            trace["product_mode_no_open_todo_below_passing_reward_stop"]
+            is not True
+        )
         assert trace["followup_prompt_count"] == 1, trace
         assert trace["stop_decision_count"] == 0, trace
+
+        prompt = asyncio.run(
+            user.run(
+                3,
+                "Continue fixing the fixture.",
+                round_result=FakeRoundResult(),
+            )
+        )
+        assert prompt is None, trace
+        assert trace["last_decision"] == (
+            "stop_after_product_mode_two_no_open_todo_rounds_without_passing_reward"
+        )
+        assert trace["agent_declared_done"] is True, trace
+        assert trace["declared_done_round"] == 3, trace
+        assert trace["declared_done_score"] == 0.0, trace
+        assert trace["product_mode_declared_done_below_passing_reward_count"] == 2
+        assert trace["product_mode_declared_done_below_passing_reward_round"] == 3
+        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 2
+        assert (
+            trace["product_mode_no_open_todo_below_passing_reward_stop"] is True
+        )
+        assert trace["product_mode_no_open_todo_below_passing_reward_stop_round"] == 3
+        assert (
+            trace["product_mode_no_open_todo_below_passing_reward_stop_count"] == 1
+        )
+        assert trace["product_mode_declared_done_policy"] == (
+            "stop_after_two_no_open_todo_rounds_without_passing_reward"
+        )
+        assert trace["followup_prompt_count"] == 1, trace
+        assert trace["stop_decision_count"] == 1, trace
 
 
 def test_product_mode_declared_done_missing_reward_continues() -> None:
@@ -2570,6 +2614,18 @@ def test_product_mode_declared_done_missing_reward_continues() -> None:
         )
         assert trace["product_mode_declared_done_policy"] == (
             "continue_until_official_success_or_budget"
+        )
+        assert trace[
+            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
+        ] == 0
+        assert trace["product_mode_no_open_todo_below_passing_reward_streak"] == 1
+        assert (
+            trace["product_mode_no_open_todo_below_passing_reward_score_status"]
+            == "missing"
+        )
+        assert (
+            trace["product_mode_no_open_todo_below_passing_reward_stop"]
+            is not True
         )
         assert trace["followup_prompt_count"] == 1, trace
         assert trace["stop_decision_count"] == 0, trace
@@ -7552,8 +7608,8 @@ def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacte
             "heartbeat_count": 3,
             "controller_action_decisions": 3,
             "initial_prompt_count": 1,
-            "followup_prompt_count": 2,
-            "stop_decision_count": 0,
+            "followup_prompt_count": 1,
+            "stop_decision_count": 1,
             "reward_observation_count": 2,
             "round_rewards": [
                 {"agent_round": 1, "reward_present": True, "reward": 0.0},
@@ -7564,17 +7620,29 @@ def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacte
             "declared_done_round": 2,
             "declared_done_score": 0.0,
             "product_mode_declared_done_below_passing_reward": True,
-            "product_mode_declared_done_below_passing_reward_count": 1,
+            "product_mode_declared_done_below_passing_reward_count": 2,
             "product_mode_declared_done_below_passing_reward_round": 2,
             "product_mode_declared_done_below_passing_reward_score": 0.0,
             "product_mode_declared_done_below_passing_reward_score_status": (
                 "observed_below_passing"
             ),
+            "open_todo_count": 0,
+            "product_mode_no_open_todo_below_passing_reward_stop": True,
+            "product_mode_no_open_todo_below_passing_reward_streak": 2,
+            "product_mode_no_open_todo_below_passing_reward_streak_threshold": 2,
+            "product_mode_no_open_todo_below_passing_reward_round": 2,
+            "product_mode_no_open_todo_below_passing_reward_stop_count": 1,
+            "product_mode_no_open_todo_below_passing_reward_stop_round": 2,
+            "product_mode_no_open_todo_below_passing_reward_open_todo_count_public": 0,
+            "product_mode_no_open_todo_below_passing_reward_score": 0.0,
+            "product_mode_no_open_todo_below_passing_reward_score_status": (
+                "observed_below_passing"
+            ),
             "product_mode_declared_done_policy": (
-                "continue_until_official_success_or_budget"
+                "stop_after_two_no_open_todo_rounds_without_passing_reward"
             ),
             "last_decision": (
-                "send_product_mode_success_or_budget_continuation_after_declared_done"
+                "stop_after_product_mode_two_no_open_todo_rounds_without_passing_reward"
             ),
             "raw_task_text_recorded": False,
             "raw_verifier_output_recorded": False,
@@ -7591,7 +7659,7 @@ def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacte
         counters = compact["interaction_counters"]
         assert counters["product_mode_declared_done_below_passing_reward"] is True
         assert (
-            counters["product_mode_declared_done_below_passing_reward_count"] == 1
+            counters["product_mode_declared_done_below_passing_reward_count"] == 2
         )
         assert (
             counters["product_mode_declared_done_below_passing_reward_round"] == 2
@@ -7606,13 +7674,54 @@ def test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacte
             == "observed_below_passing"
         )
         assert counters["product_mode_declared_done_policy"] == (
-            "continue_until_official_success_or_budget"
+            "stop_after_two_no_open_todo_rounds_without_passing_reward"
         )
+        assert (
+            counters["product_mode_no_open_todo_below_passing_reward_stop"] is True
+        )
+        assert counters["product_mode_no_open_todo_below_passing_reward_streak"] == 2
+        assert (
+            counters[
+                "product_mode_no_open_todo_below_passing_reward_streak_threshold"
+            ]
+            == 2
+        )
+        assert (
+            counters[
+                "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
+            ]
+            == 0
+        )
+        assert (
+            counters["product_mode_no_open_todo_below_passing_reward_score"] == 0.0
+        )
+        round_trace = compact["round_reward_trace"]
+        assert (
+            round_trace["product_mode_no_open_todo_below_passing_reward_stop"]
+            is True
+        ), round_trace
+        assert (
+            round_trace["product_mode_no_open_todo_below_passing_reward_streak"] == 2
+        ), round_trace
+        post_run_gate = compact["post_run_debug_gate"]
+        assert (
+            post_run_gate["todo_flow"]["no_open_todo_below_passing_reward_stop"]
+            is True
+        ), post_run_gate
+        assert (
+            post_run_gate["todo_flow"]["no_open_todo_below_passing_reward_streak"]
+            == 2
+        ), post_run_gate
         labels = compact["failure_attribution_labels"]
         assert (
             "skillsbench_product_mode_declared_done_below_passing_reward" in labels
         )
         assert "skillsbench_agent_premature_done_signal" in labels
+        assert (
+            "skillsbench_product_mode_no_open_todo_below_passing_reward_stop"
+            in labels
+        )
+        assert "skillsbench_solver_exhausted_no_open_todos" in labels
 
 
 def test_skillsbench_declared_done_missing_reward_status_is_compacted() -> None:
@@ -10813,7 +10922,7 @@ if __name__ == "__main__":
     test_product_mode_case_state_seed_uses_active_goal_shape()
     test_product_mode_declared_done_requires_case_state_depth()
     test_product_mode_declared_done_requires_solver_activity_after_driver_lifecycle()
-    test_product_mode_declared_done_below_passing_reward_continues()
+    test_product_mode_declared_done_stops_after_two_no_open_todo_rounds()
     test_product_mode_declared_done_missing_reward_continues()
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()
     test_product_mode_no_tool_call_continues_before_checkpoint_loop()

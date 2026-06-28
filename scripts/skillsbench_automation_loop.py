@@ -305,6 +305,7 @@ PROTECTED_DIRECTIVE_RE = re.compile(
 )
 DECLARED_DONE_MARKER = "AGENT_DECLARED_DONE_NO_REMAINING_GOALS"
 PRODUCT_MODE_FINAL_CLOSEOUT_MAX_CHECKPOINTS = 3
+PRODUCT_MODE_NO_OPEN_TODO_STOP_STREAK_THRESHOLD = 2
 CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD = (
     "set -e; "
     "export DEBIAN_FRONTEND=noninteractive; "
@@ -3539,7 +3540,11 @@ def _build_goal_start_product_mode_control_score(
         counters.get("product_mode_declared_done_below_passing_reward_count")
     )
     premature_done_stop_reason = ""
-    if (
+    if counters.get("product_mode_no_open_todo_below_passing_reward_stop") is True:
+        premature_done_stop_reason = (
+            last_decision or "no_open_todo_below_passing_reward_stop"
+        )
+    elif (
         counters.get("product_mode_declared_done_below_passing_reward") is True
         and last_decision.startswith("stop_after")
         and "below_passing_reward" in last_decision
@@ -3879,6 +3884,11 @@ def _build_case_event_timeline(
     controller_status = "not_observed"
     if counters.get("controller_official_success_observed") is True:
         controller_status = "official_success_observed"
+    elif (
+        counters.get("product_mode_no_open_todo_below_passing_reward_stop")
+        is True
+    ):
+        controller_status = "no_open_todo_below_passing_reward_stop"
     elif counters.get("product_mode_declared_done_below_passing_reward") is True:
         controller_status = "declared_done_below_passing_reward"
     elif counters.get("agent_declared_done") is True:
@@ -5675,6 +5685,13 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         "agent_declared_no_remaining_goals": False,
         "declared_done_round": None,
         "declared_done_score": None,
+        "product_mode_no_open_todo_below_passing_reward_stop": False,
+        "product_mode_no_open_todo_below_passing_reward_streak": 0,
+        "product_mode_no_open_todo_below_passing_reward_streak_threshold": (
+            PRODUCT_MODE_NO_OPEN_TODO_STOP_STREAK_THRESHOLD
+            if loopx_product_mode
+            else 0
+        ),
         "loopx_state_reads": 0,
         "loopx_state_writes": 0,
         "loopx_case_state_reads": 0,
@@ -6739,6 +6756,50 @@ def _record_product_mode_declared_done_below_passing_reward(
     if not isinstance(current, int) or isinstance(current, bool):
         current = 0
     trace["product_mode_declared_done_below_passing_reward_count"] = current + 1
+
+
+def _record_product_mode_no_open_todo_below_passing_reward(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+    reward: float | None,
+) -> bool:
+    current = trace.get("product_mode_no_open_todo_below_passing_reward_streak")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    streak = current + 1
+    threshold = PRODUCT_MODE_NO_OPEN_TODO_STOP_STREAK_THRESHOLD
+    trace["open_todo_count"] = 0
+    trace["product_mode_no_open_todo_below_passing_reward_open_todo_count_public"] = 0
+    trace["product_mode_no_open_todo_below_passing_reward_streak"] = streak
+    trace["product_mode_no_open_todo_below_passing_reward_streak_threshold"] = (
+        threshold
+    )
+    trace.setdefault("product_mode_no_open_todo_below_passing_reward_stop", False)
+    trace["product_mode_no_open_todo_below_passing_reward_round"] = agent_round
+    if reward is None:
+        trace["product_mode_no_open_todo_below_passing_reward_score_status"] = (
+            "missing"
+        )
+    else:
+        trace["product_mode_no_open_todo_below_passing_reward_score"] = reward
+        trace["product_mode_no_open_todo_below_passing_reward_score_status"] = (
+            "observed_below_passing"
+        )
+    if streak < threshold:
+        return False
+    trace["product_mode_no_open_todo_below_passing_reward_stop"] = True
+    trace["product_mode_no_open_todo_below_passing_reward_stop_round"] = agent_round
+    trace["product_mode_declared_done_policy"] = (
+        "stop_after_two_no_open_todo_rounds_without_passing_reward"
+    )
+    stop_count = trace.get("product_mode_no_open_todo_below_passing_reward_stop_count")
+    if not isinstance(stop_count, int) or isinstance(stop_count, bool):
+        stop_count = 0
+    trace["product_mode_no_open_todo_below_passing_reward_stop_count"] = (
+        stop_count + 1
+    )
+    return True
 
 
 def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
@@ -7893,6 +7954,25 @@ def _build_product_mode_user(
                             ),
                         )
                         _inc_counter(trace, "controller_action_decisions")
+                        no_open_todo_stop = (
+                            _record_product_mode_no_open_todo_below_passing_reward(
+                                trace,
+                                agent_round=round,
+                                reward=(
+                                    float(reward)
+                                    if isinstance(reward, (int, float))
+                                    and not isinstance(reward, bool)
+                                    else None
+                                ),
+                            )
+                        )
+                        if no_open_todo_stop:
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_two_no_open_todo_rounds_"
+                                "without_passing_reward"
+                            )
+                            return None
                         if round >= max_rounds:
                             _inc_counter(trace, "stop_decision_count")
                             trace["last_decision"] = (
