@@ -4539,7 +4539,11 @@ def _automation_prompt_upgrade(
     }
 
 
-def _build_gate_prompt(item: dict[str, Any]) -> str | None:
+def _build_gate_prompt(
+    item: dict[str, Any],
+    *,
+    user_todo_summary: dict[str, Any] | None = None,
+) -> str | None:
     question = str(item.get("operator_question") or "").strip()
     recommended_action = str(item.get("recommended_action") or "").strip()
     next_handoff_condition = str(item.get("next_handoff_condition") or "").strip()
@@ -4548,14 +4552,30 @@ def _build_gate_prompt(item: dict[str, Any]) -> str | None:
         for gate in (item.get("missing_gates") if isinstance(item.get("missing_gates"), list) else [])
         if str(gate).strip()
     ]
-    user_todo_summary = _summarize_user_todos(item.get("user_todos"))
+    if user_todo_summary is None:
+        user_todo_summary = _summarize_user_todos(item.get("user_todos"))
     first_open = (
         user_todo_summary.get("first_open_items")
         if isinstance(user_todo_summary, dict) and isinstance(user_todo_summary.get("first_open_items"), list)
         else []
     )
+    other_agent_scoped_items = (
+        user_todo_summary.get("other_agent_scoped_items")
+        if isinstance(user_todo_summary, dict)
+        and isinstance(user_todo_summary.get("other_agent_scoped_items"), list)
+        else []
+    )
 
-    if not any([question, recommended_action, next_handoff_condition, missing_gates, first_open]):
+    if not any(
+        [
+            question,
+            recommended_action,
+            next_handoff_condition,
+            missing_gates,
+            first_open,
+            other_agent_scoped_items,
+        ]
+    ):
         return None
 
     lines = ["请用户/控制器确认当前 gate："]
@@ -4571,6 +4591,16 @@ def _build_gate_prompt(item: dict[str, Any]) -> str | None:
         open_count = user_todo_summary.get("open_count")
         lines.append(f"- 用户待办：{open_count} 项未完成，优先确认：")
         for todo in first_open:
+            index = todo.get("index")
+            prefix = f"  {index}. " if index is not None else "  - "
+            lines.append(f"{prefix}{todo.get('text')}")
+    elif isinstance(user_todo_summary, dict) and other_agent_scoped_items:
+        scoped_count = user_todo_summary.get("other_agent_scoped_open_count")
+        all_open_count = user_todo_summary.get("all_open_count")
+        count = scoped_count if scoped_count is not None else len(other_agent_scoped_items)
+        suffix = f"（全局共 {all_open_count} 项）" if all_open_count is not None else ""
+        lines.append(f"- 当前 agent 无阻塞用户待办；其他 agent/global 用户待办：{count} 项{suffix}，优先确认：")
+        for todo in other_agent_scoped_items[:3]:
             index = todo.get("index")
             prefix = f"  {index}. " if index is not None else "  - "
             lines.append(f"{prefix}{todo.get('text')}")
@@ -6699,7 +6729,11 @@ def build_quota_should_run(
         )
         if reward_lesson_warning:
             payload["reward_lesson_projection_warning"] = reward_lesson_warning
-        gate_prompt = _build_gate_prompt(item) if state == "operator_gate" else None
+        gate_prompt = (
+            _build_gate_prompt(item, user_todo_summary=user_todo_summary)
+            if state == "operator_gate"
+            else None
+        )
         if gate_prompt:
             payload["gate_prompt"] = gate_prompt
             payload["notify_user_on_gate"] = True
