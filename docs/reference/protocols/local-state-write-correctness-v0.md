@@ -148,6 +148,45 @@ A local-state writer is compatible with this protocol when:
    raw local files, private paths, credentials, raw logs, or raw transcripts;
 7. every destructive or external effect remains behind a separate explicit gate.
 
+## Runtime Promotion Gate
+
+The current implementation target is preview-first. A follow-up patch that
+changes real write behavior must carry a small promotion gate before it enforces
+hard idempotency, revision checks, or lease conflicts on the canonical write
+path. The gate is a public-safe fixture contract, not a permission grant.
+
+```json
+{
+  "schema_version": "local_state_write_correctness_rollout_gate_v0",
+  "writer_id": "loopx.todo",
+  "write_class": "todo_update",
+  "current_mode": "dry_run_preview",
+  "promotion_target": "shadow_validate",
+  "allowed_to_change_write_behavior": false,
+  "required_evidence": {
+    "dry_run_packet_smoke": "examples/todo-write-correctness-smoke.py",
+    "idempotency_key_stability": "same logical input produces the same idempotency_key",
+    "expected_revision_fixture": "expected_revision is computed from the active state before mutation",
+    "revision_conflict_fixture": "stale expected_revision returns revision_conflict before mutation",
+    "lease_projection_fixture": "foreign or expired lease returns lease_conflict before mutation",
+    "public_boundary_scan": "loopx check --scan-path <changed-public-paths>"
+  },
+  "exit_criteria": [
+    "dry-run JSON and markdown projections stay stable",
+    "duplicate retries cannot duplicate todos, evidence, events, or refresh runs",
+    "revision and lease conflicts are observable without copying raw state",
+    "status and review packets expose only compact public-safe write refs"
+  ]
+}
+```
+
+`allowed_to_change_write_behavior=false` means the patch may add fixtures,
+projection, or shadow-validation scaffolding, but must not reject or rewrite a
+previously accepted real write. A later enforcement patch may flip that field
+only when the corresponding writer has the required conflict fixtures and its
+rollback behavior is documented. This keeps the rollout small: first prove the
+contract on one writer, then tighten behavior in a separate validated step.
+
 ## Rollout Notes
 
 The first implementation step should be non-destructive: add protocol docs and
