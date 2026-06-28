@@ -11,6 +11,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.pr_review import _github_search_date
+
 FIXTURE = REPO_ROOT / "examples" / "fixtures" / "pr-review.public.json"
 PRIVATE_PATTERNS = [
     re.compile(r"/" + r"Users/[A-Za-z0-9._-]+/"),
@@ -40,6 +44,9 @@ def assert_public_safe(payload: dict[str, object]) -> None:
 
 
 def main() -> int:
+    assert _github_search_date("2026-06-28T00:00:00+08:00") == "2026-06-27"
+    assert _github_search_date("2026-06-28T00:00:00Z") == "2026-06-28"
+
     payload = json.loads(
         run_cli("--format", "json", "pr-review", "--fixture", str(FIXTURE), "--limit", "5").stdout
     )

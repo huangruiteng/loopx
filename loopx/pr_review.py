@@ -125,7 +125,7 @@ def _parse_timestamp(value: object) -> datetime | None:
 def _github_search_date(value: object) -> str | None:
     parsed = _parse_timestamp(value)
     if parsed:
-        return parsed.date().isoformat()
+        return parsed.astimezone(timezone.utc).date().isoformat()
     text = str(value or "").strip()
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
         return text
