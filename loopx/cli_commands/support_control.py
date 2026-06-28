@@ -11,7 +11,11 @@ from ..agent_registry import (
     require_registered_agent_id,
     side_agent_handoff_agent_id_from_registry,
 )
-from ..heartbeat_prompt import build_heartbeat_prompt, render_heartbeat_prompt_markdown
+from ..heartbeat_prompt import (
+    build_heartbeat_prompt,
+    build_heartbeat_prompt_error_payload,
+    render_heartbeat_prompt_markdown,
+)
 from ..history import load_registry
 from ..paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from ..promotion_gate import build_promotion_gate, render_promotion_gate_markdown
@@ -287,6 +291,13 @@ def handle_support_control_command(
         return None
 
     if args.command == "heartbeat-prompt":
+        active_state = None
+        resolved_active_state = None
+        active_state_source = None
+        registered_agents = None
+        primary_agent = None
+        side_agent_handoff_agent = None
+        effective_agent_id = args.agent_id
         try:
             active_state, resolved_active_state, active_state_source = resolve_heartbeat_active_state(
                 goal_id=args.goal_id,
@@ -300,7 +311,6 @@ def handle_support_control_command(
                 agent_registry_path = Path(active_state_source.removeprefix("registry:"))
             registered_agents = registered_agent_ids_from_registry(agent_registry_path, args.goal_id)
             primary_agent = primary_agent_id_from_registry(agent_registry_path, args.goal_id)
-            effective_agent_id = None
             agent_profile = None
             if args.agent_id:
                 effective_agent_id = require_registered_agent_id(
@@ -334,11 +344,33 @@ def handle_support_control_command(
                 side_agent_handoff_agent=side_agent_handoff_agent,
             )
         except Exception as exc:
-            payload = {
-                "ok": False,
-                "goal_id": args.goal_id,
-                "error": str(exc),
-            }
+            fallback_active_state = active_state
+            fallback_resolved_active_state = resolved_active_state
+            fallback_active_state_source = active_state_source
+            if fallback_active_state is None and args.active_state:
+                fallback_active_state = Path(args.active_state).expanduser()
+                fallback_resolved_active_state = fallback_resolved_active_state or fallback_active_state
+                fallback_active_state_source = fallback_active_state_source or "explicit"
+            elif fallback_active_state_source is None:
+                fallback_active_state_source = "registry"
+            payload = build_heartbeat_prompt_error_payload(
+                goal_id=args.goal_id,
+                error=str(exc),
+                active_state=fallback_active_state,
+                active_state_source=fallback_active_state_source,
+                resolved_active_state=fallback_resolved_active_state,
+                material_queue_rule=args.material_rule,
+                permission_rule=args.permission_rule,
+                compact=bool(args.compact),
+                brief=bool(args.brief),
+                thin=bool(args.thin),
+                cli_bin=args.cli_bin,
+                agent_id=effective_agent_id or args.agent_id,
+                agent_scopes=args.agent_scopes,
+                registered_agents=registered_agents,
+                primary_agent=primary_agent,
+                side_agent_handoff_agent=side_agent_handoff_agent,
+            )
         print_payload(payload, output_format(args), render_heartbeat_prompt_markdown)
         return 0 if payload.get("ok") else 1
 
