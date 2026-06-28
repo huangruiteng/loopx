@@ -56,6 +56,24 @@ def expect_raises(callable_obj, needle: str) -> None:
     raise AssertionError(f"expected ValueError containing {needle!r}")
 
 
+def assert_no_execution_attempt_accounting(payload: dict[str, object]) -> None:
+    attempt_accounting = payload["attempt_accounting"]
+    assert isinstance(attempt_accounting, dict), payload
+    assert (
+        attempt_accounting["schema_version"] == "benchmark_attempt_accounting_v0"
+    ), attempt_accounting
+    assert attempt_accounting["lifecycle_phase"] == "not_started", attempt_accounting
+    assert attempt_accounting["failure_label"] == "", attempt_accounting
+    assert attempt_accounting["failure_class"] == "none", attempt_accounting
+    assert attempt_accounting["launcher_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["case_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["solver_attempt_countable"] is False, attempt_accounting
+    assert attempt_accounting["verifier_attempt_countable"] is False, attempt_accounting
+    assert (
+        attempt_accounting["official_score_attempt_countable"] is False
+    ), attempt_accounting
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-task-material-") as tmp:
         dataset = Path(tmp) / "terminal-bench-local"
@@ -610,6 +628,7 @@ def main() -> None:
     assert case_run_payload["run_permission_quota_projection"][
         "compact_observation_only"
     ] is True, case_run_payload
+    assert_no_execution_attempt_accounting(case_run_payload)
     assert case_run_payload["launch_summary"][
         "worker_materialization_probe_only"
     ] is False, case_run_payload
@@ -648,6 +667,7 @@ def main() -> None:
     assert managed_case_run_payload["run_permission_quota_projection"][
         "delivery_allowed"
     ] is True, managed_case_run_payload
+    assert_no_execution_attempt_accounting(managed_case_run_payload)
     assert managed_case_run_payload["launch_summary"][
         "loopx_agent_kwargs_present"
     ] is True, managed_case_run_payload

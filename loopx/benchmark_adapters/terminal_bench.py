@@ -1807,6 +1807,12 @@ def launch_terminal_bench_case_run(
     run_permission_projection = compact_run_permission_policy_for_quota(
         run_permission_policy
     )
+    attempt_accounting = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(),
+        failure_label="",
+        failure_class=BenchmarkFailureClass.NONE,
+        official_score_attempted=False,
+    )
 
     parsed_wait_seconds = max(0, int(wait_seconds))
     parsed_materialization_wait_seconds = max(0, int(materialization_wait_seconds))
@@ -1833,6 +1839,7 @@ def launch_terminal_bench_case_run(
         "launch_summary": summary,
         "run_permission_policy": run_permission_policy,
         "run_permission_quota_projection": run_permission_projection,
+        "attempt_accounting": attempt_accounting,
         "command_ref": (
             argv[2]
             if len(argv) > 2 and argv[:2] == ["uvx", "--from"]
