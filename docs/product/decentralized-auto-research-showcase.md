@@ -238,6 +238,14 @@ The packet has two important product properties:
 - every lane receives its own `quota should-run` and `auto-research frontier`
   command, so work routing still comes from LoopX state, todo claims, gates,
   and evidence graph projections.
+- the default "one-click" path is a dry-run rehearsal script: it checks the
+  required environment variables and prints the tmux start, attach, and stop
+  commands without starting tmux, launching Codex, writing LoopX state, or
+  spending quota.
+- the packet names user takeover controls up front: inspect the rehearsal
+  output, paste the real start script only when ready, attach to tmux before
+  accepting any Codex prompt, and use the stop command or terminal interrupt to
+  take over.
 
 Operators can pass explicit lanes when rehearsing a real local demo:
 
