@@ -45,7 +45,7 @@ The important product phrase is:
 > the control plane, and each agent receives only the frontier it is allowed to
 > attempt.
 
-The executable product contract is split in two:
+The executable product contract is split into three peer artifacts:
 
 - `decentralized_auto_research_state_v0` defines the records and projections:
   contracts, todo-linked hypotheses, evidence events, frontier, evidence graph,
@@ -54,6 +54,9 @@ The executable product contract is split in two:
   hypothesis proposer, executor, evaluator/promoter, and product narrator. Each
   lane contributes typed records through claims and gates; none owns the whole
   graph.
+- `auto_research_role_state_machine_v0` defines the always-on digital employee
+  role map, state vocabulary, transition evidence, gate handoff, and user
+  takeover implications.
 - [Auto-research product metrics](auto-research-product-metrics.md) defines
   which user-value metrics the product surface should show. It intentionally
   favors scored attempts, held-out lift, negative-evidence reuse, retry
@@ -343,7 +346,7 @@ P1 candidates:
 - Promotion requires evidence and gate policy, not a persuasive chat summary.
 - A user can inspect every branch of the research graph from source refs.
 - Public showcase pages must distinguish "fixture target" from "achieved run".
-- Private docs, internal links, raw logs, credentials, local paths, and raw
+- Private docs, non-public links, raw logs, credentials, local paths, and raw
   benchmark traces stay out of public artifacts.
 
 ## Suggested Public Narrative

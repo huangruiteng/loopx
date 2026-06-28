@@ -15,6 +15,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = ROOT / "docs/reference/protocols/decentralized-auto-research-state-v0.md"
 LANE_CONTRACT = ROOT / "docs/reference/protocols/auto-research-lane-contract-v1.md"
+ROLE_STATE_MACHINE = ROOT / "docs/reference/protocols/auto-research-role-state-machine-v0.md"
 PROTOCOL_README = ROOT / "docs/reference/protocols/README.md"
 BLUEPRINT = ROOT / "docs/product/decentralized-auto-research-showcase.md"
 
@@ -45,11 +46,23 @@ def _assert_public_safe(text: str, label: str) -> None:
 def main() -> None:
     protocol = _read(PROTOCOL)
     lane_contract = _read(LANE_CONTRACT)
+    role_state_machine = _read(ROLE_STATE_MACHINE)
     protocol_readme = _read(PROTOCOL_README)
     blueprint = _read(BLUEPRINT)
-    combined = protocol + "\n" + lane_contract + "\n" + protocol_readme + "\n" + blueprint
+    combined = (
+        protocol
+        + "\n"
+        + lane_contract
+        + "\n"
+        + role_state_machine
+        + "\n"
+        + protocol_readme
+        + "\n"
+        + blueprint
+    )
     compact_protocol = re.sub(r"\s+", " ", protocol)
     compact_lane_contract = re.sub(r"\s+", " ", lane_contract)
+    compact_role_state_machine = re.sub(r"\s+", " ", role_state_machine)
 
     _assert_public_safe(combined, "decentralized auto-research docs")
 
@@ -72,7 +85,9 @@ def main() -> None:
         assert term in protocol, f"protocol missing {term!r}"
     assert "No agent owns the whole research tree" in compact_protocol
     assert "auto_research_lane_contract_v1" in protocol
+    assert "auto_research_role_state_machine_v0" in protocol
     assert "auto_research_lane_contract_v1" in protocol_readme
+    assert "auto_research_role_state_machine_v0" in protocol_readme
 
     required_lane_terms = [
         "auto_research_lane_contract_v1",
@@ -97,6 +112,35 @@ def main() -> None:
     assert "not a lock on the full graph" in compact_lane_contract
     assert "no public surface needs a leader or coordinator agent" in compact_lane_contract
 
+    required_role_state_machine_terms = [
+        "auto_research_role_state_machine_v0",
+        "auto_research_state_transition_v0",
+        "Research curator",
+        "Hypothesis mapper",
+        "Evidence runner",
+        "Evidence verifier",
+        "Gate steward",
+        "Synthesis narrator",
+        "Frontier janitor",
+        "contract_ready",
+        "hypothesis_proposed",
+        "frontier_selected",
+        "attempt_running",
+        "evidence_recorded",
+        "evaluated",
+        "promotion_gate",
+        "research_showcase_projection_v0",
+        "quota should-run --agent-id",
+        "operator_gate",
+        "todo_id",
+        "claimed_by",
+        "No role owns the full graph",
+    ]
+    for term in required_role_state_machine_terms:
+        assert term in role_state_machine, f"role state machine missing {term!r}"
+    assert "not a coordinator" in compact_role_state_machine
+    assert "not start Codex, write LoopX state, or spend quota" in compact_role_state_machine
+
     required_blueprint_terms = [
         "Decentralized Auto Research: k-NN Speedup",
         "not a claim that LoopX has already achieved",
@@ -106,6 +150,7 @@ def main() -> None:
         "Promotion decision",
         "no leader agent owns the graph",
         "auto_research_lane_contract_v1",
+        "auto_research_role_state_machine_v0",
         "curator",
         "hypothesis proposer",
         "executor",
@@ -123,6 +168,7 @@ def main() -> None:
         r"Coordinator owns the tree",
         r"Coordinator.*promotion decisions live",
         r"single agent owns the whole research tree",
+        r"supervisor owns the full",
     ]
     for pattern in forbidden_patterns:
         assert not re.search(pattern, combined, re.IGNORECASE), (
