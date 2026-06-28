@@ -24,7 +24,6 @@ SOURCE_SURFACES = [
     "GitHub pull request metadata",
     "GitHub pull request body summary",
     "GitHub pull request changed-file list",
-    "GitHub pull request public diff summary",
     "GitHub pull request status check rollup",
 ]
 
@@ -44,15 +43,34 @@ RUNTIME_OR_CLI_PREFIXES = (
     "backend/",
     "app/",
     "apps/",
-    "loopx/",
     "scripts/",
     "bin/",
     "tools/",
 )
 
-PATCH_ANALYSIS_MAX_BYTES = 24_000
-PATCH_FILE_INSIGHT_LIMIT = 8
-PATCH_SIGNAL_LIMIT = 8
+CODE_EXTENSIONS = (
+    ".py",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".kt",
+    ".kts",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".rb",
+    ".php",
+    ".swift",
+    ".m",
+    ".mm",
+)
 
 UI_PREFIXES = (
     "apps/dashboard/",
@@ -108,18 +126,6 @@ def _run_gh_json(args: list[str], *, cwd: Path | None = None) -> Any:
         stderr=subprocess.PIPE,
     )
     return json.loads(proc.stdout or "null")
-
-
-def _run_gh_text(args: list[str], *, cwd: Path | None = None) -> str:
-    proc = subprocess.run(
-        ["gh", *args],
-        cwd=cwd,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return proc.stdout or ""
 
 
 def resolve_current_github_repository(*, cwd: Path | None = None) -> str | None:
@@ -239,11 +245,6 @@ def fetch_github_pull_requests(
             continue
         if _include_pr_in_window(row, since=since):
             detailed.append(row)
-    for row in detailed[: max(1, limit)]:
-        number = row.get("number")
-        if not number:
-            continue
-        row["diff_analysis"] = fetch_public_pr_diff_analysis(number=number, repo=repo, cwd=cwd)
     return detailed
 
 
@@ -323,6 +324,8 @@ def _file_area(path: str) -> str:
         return "app_or_ui_surface"
     if path.startswith(RUNTIME_OR_CLI_PREFIXES):
         return "product_runtime"
+    if lowered.endswith(CODE_EXTENSIONS):
+        return "product_runtime"
     if path.endswith((".toml", ".yaml", ".yml", ".json", ".ini")) or name in {
         "package.json",
         "pyproject.toml",
@@ -360,200 +363,6 @@ def _files(pr: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return files
-
-
-def _patch_path_from_header(line: str) -> str:
-    match = re.match(r"diff --git a/(.+?) b/(.+)$", line)
-    if match:
-        return match.group(2)
-    return ""
-
-
-def _compact_signal(value: str, *, limit: int = 96) -> str:
-    return _redact_text(value.strip("`'\" "), limit=limit)
-
-
-def _extract_changed_symbol(line: str) -> str | None:
-    text = line[1:].strip() if line.startswith(("+", "-")) else line.strip()
-    patterns = [
-        r"\bdef\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\b",
-        r"\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        r"\bconst\s+([A-Za-z_][A-Za-z0-9_]*)\s*=",
-        r"\b([A-Z][A-Z0-9_]{4,})\s*=",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            return _compact_signal(match.group(1))
-    flag = re.search(r"['\"](--[A-Za-z0-9][A-Za-z0-9_-]*)['\"]", text)
-    if flag:
-        return _compact_signal(flag.group(1))
-    field = re.search(r"['\"]([A-Za-z_][A-Za-z0-9_]{2,})['\"]\s*:", text)
-    if field:
-        return _compact_signal(field.group(1))
-    return None
-
-
-def _patch_signal_from_line(line: str) -> str | None:
-    lowered = line.lower()
-    text = line[1:].strip() if line.startswith(("+", "-")) else line.strip()
-    if "schema_version" in lowered or "schema version" in lowered:
-        return "schema/packet field changed"
-    if "add_argument" in lowered or re.search(r"['\"]--[A-Za-z0-9_-]+['\"]", text):
-        return "CLI flag or command surface changed"
-    if "statuscheckrollup" in lowered or "check" in lowered:
-        return "validation/check handling changed"
-    if "review_prompt" in lowered or "guided_review_card" in lowered or "detailed_change_analysis" in lowered:
-        return "review packet narrative changed"
-    if "assert " in lowered or lowered.strip().startswith("assert"):
-        return "smoke/assertion coverage changed"
-    if "private" in lowered or "credential" in lowered or "boundary" in lowered or "redact" in lowered:
-        return "public/private boundary handling changed"
-    if "dry_run" in lowered or "execute" in lowered or "launch" in lowered or "tmux" in lowered:
-        return "execution or dry-run boundary changed"
-    if "quota" in lowered or "gate" in lowered or "todo" in lowered:
-        return "control-plane routing signal changed"
-    if text.startswith("#") or text.startswith("##"):
-        return "public docs heading changed"
-    return None
-
-
-def _append_unique(items: list[str], value: str | None, *, limit: int = PATCH_SIGNAL_LIMIT) -> None:
-    if not value:
-        return
-    compact = _compact_signal(value)
-    if compact and compact not in items and len(items) < limit:
-        items.append(compact)
-
-
-def _new_patch_file(path: str) -> dict[str, Any]:
-    return {
-        "path": _redact_text(path, limit=180),
-        "area": _file_area(path),
-        "added_lines": 0,
-        "removed_lines": 0,
-        "hunk_count": 0,
-        "hunk_contexts": [],
-        "changed_symbols": [],
-        "change_signals": [],
-    }
-
-
-def _finalize_patch_file(item: dict[str, Any]) -> dict[str, Any]:
-    path = str(item.get("path") or "")
-    signals = [str(value) for value in _as_list(item.get("change_signals")) if value]
-    symbols = [str(value) for value in _as_list(item.get("changed_symbols")) if value]
-    contexts = [str(value) for value in _as_list(item.get("hunk_contexts")) if value]
-    area = str(item.get("area") or _file_area(path))
-    if signals:
-        behavior = _join_short(signals, limit=3)
-    elif symbols:
-        behavior = f"touched symbols: {_join_short(symbols, limit=3)}"
-    else:
-        behavior = _area_change_intent(area)
-    review_question = _area_review_focus(area)
-    if signals:
-        review_question = f"{review_question} 同时确认 {_join_short(signals, limit=2)} 是否有配套验证。"
-    return {
-        **item,
-        "change_story": _redact_text(
-            f"`{path.rsplit('/', 1)[-1]}` 的真实 diff 显示 +{item.get('added_lines', 0)}/-{item.get('removed_lines', 0)}、"
-            f"{item.get('hunk_count', 0)} 个 hunk；主要信号是 {behavior}。",
-            limit=260,
-        ),
-        "review_question": review_question,
-        "hunk_contexts": contexts[:PATCH_SIGNAL_LIMIT],
-        "changed_symbols": symbols[:PATCH_SIGNAL_LIMIT],
-        "change_signals": signals[:PATCH_SIGNAL_LIMIT],
-    }
-
-
-def summarize_public_patch(patch_text: str) -> dict[str, Any]:
-    truncated = len(patch_text.encode("utf-8", errors="ignore")) > PATCH_ANALYSIS_MAX_BYTES
-    bounded = patch_text[:PATCH_ANALYSIS_MAX_BYTES]
-    files: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
-    for raw_line in bounded.splitlines():
-        if raw_line.startswith("diff --git "):
-            if current:
-                files.append(_finalize_patch_file(current))
-            path = _patch_path_from_header(raw_line)
-            current = _new_patch_file(path) if path else None
-            continue
-        if current is None:
-            continue
-        if raw_line.startswith("@@"):
-            current["hunk_count"] = int(current.get("hunk_count") or 0) + 1
-            context = raw_line.split("@@", 2)[-1].strip()
-            _append_unique(current["hunk_contexts"], context)
-            continue
-        if raw_line.startswith("+++") or raw_line.startswith("---"):
-            continue
-        if raw_line.startswith("+"):
-            current["added_lines"] = int(current.get("added_lines") or 0) + 1
-            _append_unique(current["changed_symbols"], _extract_changed_symbol(raw_line))
-            _append_unique(current["change_signals"], _patch_signal_from_line(raw_line))
-        elif raw_line.startswith("-"):
-            current["removed_lines"] = int(current.get("removed_lines") or 0) + 1
-            _append_unique(current["changed_symbols"], _extract_changed_symbol(raw_line))
-            _append_unique(current["change_signals"], _patch_signal_from_line(raw_line))
-    if current:
-        files.append(_finalize_patch_file(current))
-    files = files[:PATCH_FILE_INSIGHT_LIMIT]
-    signal_counts: dict[str, int] = {}
-    for item in files:
-        for signal in _as_list(item.get("change_signals")):
-            signal_counts[str(signal)] = signal_counts.get(str(signal), 0) + 1
-    top_signals = [
-        signal
-        for signal, _count in sorted(signal_counts.items(), key=lambda pair: (-pair[1], pair[0]))[:PATCH_SIGNAL_LIMIT]
-    ]
-    return {
-        "schema_version": "public_pr_diff_analysis_v0",
-        "available": bool(files),
-        "source": "public_pr_diff",
-        "truncated": truncated,
-        "files_analyzed": len(files),
-        "top_signals": top_signals,
-        "file_insights": files,
-        "omitted_raw_patch": True,
-    }
-
-
-def fetch_public_pr_diff_analysis(
-    *, number: object, repo: str | None, cwd: Path | None = None
-) -> dict[str, Any]:
-    repo_args = ["--repo", repo] if repo else []
-    try:
-        patch = _run_gh_text(["pr", "diff", str(number), "--patch", *repo_args], cwd=cwd)
-    except Exception as exc:
-        return {
-            "schema_version": "public_pr_diff_analysis_v0",
-            "available": False,
-            "source": "public_pr_diff",
-            "reason": _redact_text(exc, limit=220),
-            "omitted_raw_patch": True,
-        }
-    return summarize_public_patch(patch)
-
-
-def _diff_analysis(pr: dict[str, Any]) -> dict[str, Any]:
-    existing = pr.get("diff_analysis")
-    if isinstance(existing, dict):
-        return existing
-    patch = pr.get("patch") or pr.get("diff") or pr.get("public_patch")
-    if isinstance(patch, str) and patch.strip():
-        payload = summarize_public_patch(patch)
-        payload["source"] = "fixture_public_patch"
-        return payload
-    return {
-        "schema_version": "public_pr_diff_analysis_v0",
-        "available": False,
-        "source": "not_provided",
-        "reason": "public diff summary not provided by fixture or live GitHub diff read",
-        "omitted_raw_patch": True,
-    }
 
 
 def _area_counts(files: list[dict[str, Any]]) -> dict[str, int]:
@@ -596,11 +405,6 @@ def _top_file_phrase(files: list[dict[str, Any]], *, limit: int = 3) -> str:
     return _join_short([str(item.get("path") or "") for item in files if item.get("path")], limit=limit, fallback="未返回关键文件")
 
 
-def _top_file_name_phrase(files: list[dict[str, Any]], *, limit: int = 2) -> str:
-    names = [str(item.get("path") or "").rsplit("/", 1)[-1] for item in files if item.get("path")]
-    return _join_short(names, limit=limit, fallback="关键文件")
-
-
 def _int_or_zero(value: object) -> int:
     try:
         return int(value or 0)
@@ -608,160 +412,8 @@ def _int_or_zero(value: object) -> int:
         return 0
 
 
-def _file_delta(item: dict[str, Any]) -> str:
-    return f"+{_int_or_zero(item.get('additions'))}/-{_int_or_zero(item.get('deletions'))}"
-
-
 def _file_churn(item: dict[str, Any]) -> int:
     return _int_or_zero(item.get("additions")) + _int_or_zero(item.get("deletions"))
-
-
-def _area_change_intent(area: str) -> str:
-    if area == "product_runtime":
-        return "改变运行时、CLI 或控制面行为，属于最需要确认兼容性的改动。"
-    if area == "app_or_ui_surface":
-        return "改变用户可见页面或 dashboard/frontstage 展示，需要看真实浏览器效果。"
-    if area == "public_entry_or_policy":
-        return "改变 README、入口或贡献者政策，会影响新用户第一眼理解和仓库治理。"
-    if area == "public_docs":
-        return "沉淀公开说明、协议或使用路径，需要确认文档与实际 CLI/产品行为一致。"
-    if area == "test_or_example":
-        return "补充 smoke、fixture 或示例，把预期行为固定成可回归的验证面。"
-    if area == "ci_or_release":
-        return "改变 CI 或发布链路，风险主要在后续 PR 检查和发布稳定性。"
-    if area == "build_or_config":
-        return "改变构建、依赖或配置入口，需要确认安装、lint、测试命令仍可运行。"
-    return "改变仓库其他辅助文件，需要结合 PR 动机判断是否属于必要范围。"
-
-
-def _area_review_focus(area: str) -> str:
-    if area == "product_runtime":
-        return "重点看 JSON schema、默认行为、旧自动化兼容性和失败路径。"
-    if area == "app_or_ui_surface":
-        return "重点看首屏、状态可读性、响应式布局和公开/私有信息边界。"
-    if area == "public_entry_or_policy":
-        return "重点看第一屏承诺、CTA、安装路径和维护者规则是否准确。"
-    if area == "public_docs":
-        return "重点看命令示例、概念定义、用户路径和 shipped 行为是否一致。"
-    if area == "test_or_example":
-        return "重点看 smoke 是否覆盖 durable behavior，而不是过拟合临时文本。"
-    if area == "ci_or_release":
-        return "重点看 workflow 触发条件、权限、缓存和 required checks。"
-    if area == "build_or_config":
-        return "重点看依赖版本、入口脚本和跨环境可重复性。"
-    return "重点看该文件是否应随本 PR 一起改，以及是否缺少对应验证。"
-
-
-def _file_change_meaning(item: dict[str, Any]) -> str:
-    path = str(item.get("path") or "")
-    area = str(item.get("area") or "other")
-    name = path.rsplit("/", 1)[-1]
-    delta = _file_delta(item)
-    if path == "loopx/pr_review.py":
-        return f"`{name}` 是 PR-review packet 的核心生成逻辑，本次 {delta} 会直接改变用户看到的 review 队列内容。"
-    if path.startswith("loopx/cli_commands/") or path == "loopx/cli.py":
-        return f"`{name}` 改变 CLI 入口或参数/输出绑定，本次 {delta} 需要确认 slash command 和 shell 命令仍一致。"
-    if path.startswith(("loopx/quota.py", "loopx/status.py", "loopx/todos.py", "loopx/todo_contract.py")):
-        return f"`{name}` 属于控制面关键路径，本次 {delta} 可能影响 gate、todo、quota 或 status 投影。"
-    if area == "test_or_example":
-        return f"`{name}` 是验证或示例面，本次 {delta} 用来锁定行为预期，review 时要看断言是否真的覆盖产品合同。"
-    if area == "public_docs":
-        return f"`{name}` 是公开文档，本次 {delta} 主要改变用户/维护者理解路径，要检查命令和概念是否准确。"
-    if area == "public_entry_or_policy":
-        return f"`{name}` 是公开入口或政策文件，本次 {delta} 会影响新用户第一眼和维护者规则。"
-    if area == "app_or_ui_surface":
-        return f"`{name}` 是用户可见展示面，本次 {delta} 需要结合真实页面或截图确认体验。"
-    if area == "ci_or_release":
-        return f"`{name}` 是 CI/发布配置，本次 {delta} 需要确认 required checks 和权限没有倒退。"
-    if area == "build_or_config":
-        return f"`{name}` 是构建配置，本次 {delta} 需要确认安装、测试或打包路径稳定。"
-    return f"`{name}` 本次 {delta}，需要确认它和 PR 动机属于同一 review 范围。"
-
-
-def _detailed_change_analysis(item: dict[str, Any]) -> dict[str, Any]:
-    scale = _as_dict(item.get("scale"))
-    key_files = [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)]
-    ranked_files = sorted(key_files, key=_file_churn, reverse=True)
-    areas = _as_dict(item.get("areas"))
-    diff_analysis = _as_dict(item.get("diff_analysis"))
-    diff_available = bool(diff_analysis.get("available"))
-    diff_files = [
-        file for file in _as_list(diff_analysis.get("file_insights")) if isinstance(file, dict)
-    ]
-    diff_signal_phrase = _join_short(
-        [str(signal) for signal in _as_list(diff_analysis.get("top_signals"))],
-        limit=3,
-        fallback="无 public diff 信号",
-    )
-    diff_sentence = (
-        f"真实 diff 摘要显示 {diff_analysis.get('files_analyzed', 0)} 个文件有 hunk 级信号：{diff_signal_phrase}。"
-        if diff_available
-        else f"未拿到 public diff 摘要（{diff_analysis.get('reason') or 'source unavailable'}），只能按文件列表和 PR 描述推断。"
-    )
-    summary = _redact_text(
-        f"这个 PR 的具体改动集中在{_area_phrase(areas)}，"
-        f"总规模 {scale.get('changed_files', 0)} 个文件、+{scale.get('additions', 0)}/-{scale.get('deletions', 0)}。"
-        f"建议先读 {_top_file_phrase(ranked_files, limit=3)}，确认最大 diff 是否兑现 PR 动机；"
-        f"{diff_sentence}再看 smoke/文档/检查结果是否能证明这些改动不会让 main 倒退。",
-        limit=560,
-    )
-    area_breakdown: list[dict[str, Any]] = []
-    for area, count in sorted(areas.items(), key=lambda pair: (-int(pair[1] or 0), str(pair[0]))):
-        files = [file for file in ranked_files if str(file.get("area") or "other") == str(area)]
-        area_breakdown.append(
-            {
-                "area": str(area),
-                "label": AREA_LABELS.get(str(area), str(area)),
-                "file_count": int(count or 0),
-                "top_files": [str(file.get("path") or "") for file in files[:3]],
-                "change_intent": _area_change_intent(str(area)),
-                "review_focus": _area_review_focus(str(area)),
-            }
-        )
-    file_walkthrough = [
-        {
-            "path": str(file.get("path") or ""),
-            "area": str(file.get("area") or "other"),
-            "delta": _file_delta(file),
-            "meaning": _file_change_meaning(file),
-            "review_focus": _area_review_focus(str(file.get("area") or "other")),
-        }
-        for file in ranked_files[:8]
-    ]
-    return {
-        "schema_version": "pr_detailed_change_analysis_v0",
-        "summary": summary,
-        "area_breakdown": area_breakdown,
-        "file_walkthrough": file_walkthrough,
-        "diff_evidence": {
-            "available": diff_available,
-            "source": diff_analysis.get("source"),
-            "truncated": bool(diff_analysis.get("truncated")),
-            "top_signals": diff_analysis.get("top_signals") or [],
-            "omitted_raw_patch": diff_analysis.get("omitted_raw_patch") is not False,
-            "reason": diff_analysis.get("reason"),
-        },
-        "per_file_diff_insights": diff_files[:PATCH_FILE_INSIGHT_LIMIT],
-        "review_order": [str(file.get("path") or "") for file in ranked_files[:5]],
-    }
-
-
-def _main_risk_phrase(main_risk: dict[str, Any]) -> str:
-    level = str(main_risk.get("risk_level") or "unknown")
-    regressions = [str(item) for item in _as_list(main_risk.get("potential_regressions")) if item]
-    bug_risks = [str(item) for item in _as_list(main_risk.get("bug_risks")) if item]
-    source = regressions[:1] or bug_risks[:1] or [str(main_risk.get("risk_summary") or "需人工确认主干影响")]
-    return f"{level}，{_redact_text(source[0], limit=80)}"
-
-
-def _check_phrase(checks: dict[str, Any]) -> str:
-    failures = [str(item) for item in _as_list(checks.get("failures")) if item]
-    pending = [str(item) for item in _as_list(checks.get("pending")) if item]
-    if failures:
-        return f"失败：{_join_short(failures, limit=2)}"
-    if pending:
-        return f"等待：{_join_short(pending, limit=2)}"
-    return str(checks.get("summary") or "未返回检查结果")
 
 
 def _check_brief_phrase(checks: dict[str, Any]) -> str:
@@ -777,45 +429,82 @@ def _check_brief_phrase(checks: dict[str, Any]) -> str:
     return str(checks.get("summary") or "unknown")
 
 
-def _guided_review_card(item: dict[str, Any]) -> dict[str, Any]:
-    scale = _as_dict(item.get("scale"))
-    checks = _as_dict(item.get("checks"))
-    main_risk = _as_dict(item.get("main_regression_analysis"))
-    motivation = _redact_text(item.get("motivation"), limit=90)
-    short_motivation = _redact_text(item.get("motivation"), limit=50)
-    key_files = sorted(
-        [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)],
-        key=_file_churn,
-        reverse=True,
+def _review_order(files: list[dict[str, Any]], *, limit: int = 5) -> list[str]:
+    ranked = sorted(files, key=_file_churn, reverse=True)
+    return [str(file.get("path") or "") for file in ranked[:limit] if file.get("path")]
+
+
+def _metadata_risk_hint(pr: dict[str, Any], files: list[dict[str, Any]], checks: dict[str, Any]) -> dict[str, Any]:
+    areas = _area_counts(files)
+    changed = int(pr.get("changedFiles") or len(files) or 0)
+    additions = int(pr.get("additions") or 0)
+    deletions = int(pr.get("deletions") or 0)
+    has_runtime = any(
+        str(item.get("area")) in {"product_runtime", "app_or_ui_surface", "ci_or_release", "build_or_config"}
+        for item in files
     )
-    short_files = _top_file_name_phrase(key_files, limit=2)
-    risk_level = str(main_risk.get("risk_level") or "unknown").lower()
-    risk_label = RISK_LEVEL_LABELS.get(risk_level, risk_level)
-    concrete_changes = (
-        f"{_area_phrase(_as_dict(item.get('areas')))}；"
-        f"{scale.get('changed_files', 0)} 个文件，+{scale.get('additions', 0)}/-{scale.get('deletions', 0)}；"
-        f"重点看 {_top_file_phrase(key_files)}。"
-    )
-    risk = _main_risk_phrase(main_risk) if main_risk else "unknown，需人工确认主干影响"
-    checks_summary = _check_phrase(checks)
-    checks_brief = _check_brief_phrase(checks)
-    first_prompt = "先判断 PR 是否应该存在，再确认改动范围、验证和主干风险是否对齐。"
-    brief = _redact_text(
-        f"动机：{short_motivation}。改动：{_area_phrase(_as_dict(item.get('areas')))}，"
-        f"{scale.get('changed_files', 0)} 个文件 +{scale.get('additions', 0)}/-{scale.get('deletions', 0)}，"
-        f"重点看 {short_files}。风险：{risk_label}；检查：{checks_brief}。"
-        "Review：先看范围和验证是否对齐。",
-        limit=200,
-    )
+    if checks.get("failures") or changed >= 12 or additions + deletions >= 800:
+        level = "high"
+    elif has_runtime or checks.get("pending") or not checks.get("total"):
+        level = "medium"
+    else:
+        level = "low"
     return {
-        "schema_version": "guided_pr_review_card_v0",
-        "brief": brief,
-        "motivation": motivation,
-        "concrete_changes": concrete_changes,
-        "risk": risk,
-        "checks": checks_summary,
-        "review_prompt": first_prompt,
-        "target_length": "100-200 Chinese characters when source metadata is compact",
+        "schema_version": "pr_metadata_risk_hint_v0",
+        "level": level,
+        "basis": [
+            f"areas={_area_phrase(areas)}",
+            f"scale={changed} files +{additions}/-{deletions}",
+            f"checks={_check_brief_phrase(checks)}",
+        ],
+        "disclaimer": "Metadata-only hint for queue ordering; agentloop must read the PR diff before judging main risk.",
+    }
+
+
+def _section(label: str, word_hint: str, instruction: str) -> dict[str, str]:
+    return {
+        "label": label,
+        "word_hint": word_hint,
+        "content": "",
+        "agent_instruction": instruction,
+    }
+
+
+def _review_template(item: dict[str, Any]) -> dict[str, Any]:
+    key_files = [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)]
+    sections = [
+        _section(
+            "动机",
+            "40-80字",
+            "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题。",
+        ),
+        _section(
+            "改动思路",
+            "40-100字",
+            "读关键 diff 后填写：作者采用什么路线解决问题，不要只复述文件名。",
+        ),
+        _section(
+            "具体改动",
+            "60-140字",
+            "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试，只保留决策相关细节。",
+        ),
+        _section(
+            "对主干的风险",
+            "40-100字",
+            "读 diff 和 checks 后填写：合入 main 可能破坏什么，哪些验证能覆盖。",
+        ),
+        _section(
+            "我的整体评价",
+            "30-80字",
+            "读完整 PR 后填写：approve / request changes / defer / merge after checks，并给一句理由。",
+        ),
+    ]
+    return {
+        "schema_version": "pr_review_five_block_template_v0",
+        "purpose": "Empty scaffold only; agentloop fills it after reading PR body and diff.",
+        "sections": sections,
+        "review_order": _review_order(key_files),
+        "output_hint": "Keep each PR concise; the filled five-block review is usually 100-200 Chinese characters total for small PRs and longer only when risk demands it.",
     }
 
 
@@ -896,110 +585,6 @@ def _risk_notes(pr: dict[str, Any], files: list[dict[str, Any]]) -> list[str]:
     return notes
 
 
-def _file_paths(files: list[dict[str, Any]]) -> list[str]:
-    return [str(item.get("path") or "") for item in files if item.get("path")]
-
-
-def _matches_any(path: str, prefixes: tuple[str, ...]) -> bool:
-    return any(path.startswith(prefix) for prefix in prefixes)
-
-
-def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]]) -> dict[str, Any]:
-    paths = _file_paths(files)
-    areas = _area_counts(files)
-    checks = _checks(pr)
-    state = str(pr.get("state") or "").upper()
-    changed = int(pr.get("changedFiles") or len(files) or 0)
-    additions = int(pr.get("additions") or 0)
-    deletions = int(pr.get("deletions") or 0)
-
-    potential_regressions: list[str] = []
-    bug_risks: list[str] = []
-    verification_focus: list[str] = []
-
-    if any(path.startswith(("loopx/quota.py", "loopx/status.py", "loopx/todos.py", "loopx/todo_contract.py")) for path in paths):
-        potential_regressions.append(
-            "Control-plane routing can regress: user gates, agent lane selection, monitor due projection, or quota spend/no-spend decisions may change on main."
-        )
-        bug_risks.append("A small projection mismatch can strand automation behind a wrong gate or hide runnable work.")
-        verification_focus.append("Run focused quota/status/todo smokes and inspect one live quota/status packet after merge.")
-    if any(path.startswith("loopx/cli_commands/") or path == "loopx/cli.py" for path in paths):
-        potential_regressions.append(
-            "CLI compatibility can regress: flags, JSON schema, markdown output, or shell-facing command examples may change for existing users."
-        )
-        bug_risks.append("Existing automation may parse older fields or rely on previous default command behavior.")
-        verification_focus.append("Run the affected CLI smoke plus one live command against public-safe GitHub metadata or fixture data.")
-    if any(path.startswith("loopx/benchmark_adapters/") or "skillsbench" in path.lower() or "terminal_bench" in path.lower() for path in paths):
-        potential_regressions.append(
-            "Benchmark launch or attribution behavior can regress: readiness blockers, attempt accounting, runner boundaries, or public/private evidence filtering may shift."
-        )
-        bug_risks.append("A benchmark helper change can misclassify a blocked launch as an attempted run, or expose raw benchmark evidence if boundaries slip.")
-        verification_focus.append("Run the adapter's focused public smoke; avoid raw task text, trajectories, verifier output, and private logs.")
-    if any(_matches_any(path, UI_PREFIXES) for path in paths):
-        potential_regressions.append(
-            "Frontstage/dashboard rendering can regress: routes, first viewport, responsive layout, hover affordances, or public-safe projection display may change."
-        )
-        bug_risks.append("A visual or routing change may look correct in fixture data but fail in the browser or hide important review context.")
-        verification_focus.append("Run browser/frontstage smoke or capture the affected route when the first screen or interaction changes.")
-    if any(path.startswith(".github/workflows/") or path.endswith(("pyproject.toml", "package.json", "uv.lock")) for path in paths):
-        potential_regressions.append(
-            "Build, install, or CI behavior can regress: dependency resolution, workflow triggers, or required checks may change for main."
-        )
-        bug_risks.append("A config-only diff can block future PR validation even when runtime code is unchanged.")
-        verification_focus.append("Check workflow syntax or the smallest install/build command that exercises the changed config.")
-    if areas and set(areas) <= {"public_docs", "test_or_example"}:
-        potential_regressions.append(
-            "Runtime regression risk is low, but public guidance or smoke expectations can drift from shipped behavior."
-        )
-        bug_risks.append("Docs-only or smoke-only changes can bless stale contracts if the example no longer matches the real CLI/runtime path.")
-        verification_focus.append("Run `git diff --check` and the touched smoke; compare docs examples with current CLI help when command syntax is involved.")
-    if not potential_regressions:
-        potential_regressions.append("Main impact is localized to the touched files; verify the stated scope matches the diff before merge.")
-        bug_risks.append("Unknown-area changes may still affect consumers if they alter shared data, examples, or public contracts.")
-        verification_focus.append("Review changed files directly and run the narrowest smoke that exercises the touched surface.")
-
-    if checks.get("failures"):
-        bug_risks.append("Failing checks are present; merging would carry known red validation into main.")
-    elif checks.get("pending"):
-        bug_risks.append("Pending checks leave main-risk unresolved until they complete.")
-    elif not checks.get("total"):
-        bug_risks.append("No status-check rollup was available; rely on explicit local validation evidence before merge.")
-
-    if changed >= 12 or additions + deletions >= 800:
-        bug_risks.append("Large diff size increases reviewer miss risk; split by area or require stronger smoke coverage.")
-        verification_focus.append("Review by area buckets and confirm each high-risk area has direct validation.")
-
-    if state == "MERGED":
-        verification_focus.append("Because this is already merged, prioritize post-merge canary, regression symptoms, and follow-up todos over merge readiness.")
-    else:
-        verification_focus.append("Before merge, confirm branch policy, conflict state, public/private boundary, and required checks.")
-
-    high_area = (
-        any(path.startswith(("loopx/quota.py", "loopx/status.py", "loopx/todos.py", "loopx/todo_contract.py")) for path in paths)
-        or any(path.startswith("loopx/benchmark_adapters/") for path in paths)
-        or bool(checks.get("failures"))
-    )
-    if high_area or changed >= 12 or additions + deletions >= 800:
-        risk_level = "high"
-    elif any(str(item.get("area")) in {"product_runtime", "app_or_ui_surface", "ci_or_release", "build_or_config"} for item in files):
-        risk_level = "medium"
-    else:
-        risk_level = "low"
-
-    return {
-        "schema_version": "main_regression_analysis_v0",
-        "risk_level": risk_level,
-        "risk_summary": _redact_text(
-            f"{risk_level} main regression risk across {', '.join(sorted(areas)) or 'unknown'}; "
-            f"{changed} file(s), +{additions}/-{deletions}."
-        ),
-        "potential_regressions": potential_regressions[:5],
-        "bug_risks": bug_risks[:6],
-        "verification_focus": verification_focus[:6],
-        "post_merge_review": state == "MERGED",
-    }
-
-
 def _review_depth(files: list[dict[str, Any]]) -> str:
     areas = {str(item.get("area") or "") for item in files}
     if "product_runtime" in areas:
@@ -1046,7 +631,6 @@ def _review_priority(pr: dict[str, Any], files: list[dict[str, Any]]) -> tuple[i
 def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
     files = _files(pr)
     checks = _checks(pr)
-    diff_analysis = _diff_analysis(pr)
     number = pr.get("number")
     url = pr.get("url") or (f"https://github.com/pull/{number}" if number else "")
     raw_state = str(pr.get("state") or "").upper()
@@ -1077,27 +661,21 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
         },
         "areas": _area_counts(files),
         "key_files": files[:10],
-        "diff_analysis": diff_analysis,
         "commit_headlines": _commit_headlines(pr),
         "checks": checks,
         "review_depth": _review_depth(files),
         "risk_notes": _risk_notes(pr, files),
-        "main_regression_analysis": _main_regression_analysis(pr, files),
-        "review_prompts": [
-            "What user or maintainer value does this PR unlock now?",
-            "Do the touched files match that stated scope?",
-            "Are validation evidence and risk boundaries strong enough for merge?",
-            "What could regress on main, and which focused validation would catch it?",
-        ],
+        "metadata_risk_hint": _metadata_risk_hint(pr, files, checks),
+        "review_goal": "Fill the five-block review template after reading the PR body and diff.",
         "evidence_commands": [
             f"gh pr view {number} --json title,body,files,commits,statusCheckRollup",
-            f"gh pr diff {number} --stat",
+            f"gh pr diff {number} --name-only",
+            f"gh pr diff {number} --patch",
         ]
         if number
         else [],
     }
-    item["detailed_change_analysis"] = _detailed_change_analysis(item)
-    item["guided_review_card"] = _guided_review_card(item)
+    item["review_template"] = _review_template(item)
     return item
 
 
@@ -1128,7 +706,7 @@ def build_pr_review_packet(
             "url": item.get("url"),
             "state": item.get("state"),
             "review_depth": item.get("review_depth"),
-            "main_risk_level": _as_dict(item.get("main_regression_analysis")).get("risk_level"),
+            "risk_hint_level": _as_dict(item.get("metadata_risk_hint")).get("level"),
             "why_now": _review_why_now(item),
         }
         for index, item in enumerate(normalized, start=1)
@@ -1171,14 +749,12 @@ def build_pr_review_packet(
             },
             "source": source,
             "include": [
-                "guided_review_card",
-                "motivation",
-                "detailed_change_analysis",
-                "public_diff_analysis",
+                "pull_request_list",
+                "review_template",
                 "change_scope",
                 "checks",
+                "metadata_risk_hint",
                 "risk_notes",
-                "main_regression_analysis",
                 "review_sequence",
             ],
             "privacy_mode": "public_safe_github_metadata",
@@ -1267,33 +843,35 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         lines.append(
             f"{item.get('rank')}. [#{item.get('number')} {item.get('title')}]({item.get('url')}) "
             f"[{item.get('state')}] - "
-            f"{item.get('review_depth')} / main_risk=`{item.get('main_risk_level')}`: {item.get('why_now')}"
+            f"{item.get('review_depth')} / risk_hint=`{item.get('risk_hint_level')}`: {item.get('why_now')}"
         )
 
     for pr in [item for item in _as_list(payload.get("pull_requests")) if isinstance(item, dict)]:
-        card = _as_dict(pr.get("guided_review_card"))
+        template = _as_dict(pr.get("review_template"))
         lines.extend(
             [
                 "",
                 f"## PR #{pr.get('number')}: {pr.get('title')}",
                 "",
-                f"> {card.get('brief') or pr.get('motivation')}",
+                "> Agentloop should fill the five-block review after reading the PR body and diff. The template below is intentionally blank.",
                 "",
                 f"- url: {pr.get('url')}",
                 f"- state: `{pr.get('state')}`",
                 f"- merged_at: `{pr.get('merged_at') or 'n/a'}`",
                 f"- branch: `{pr.get('head_ref')}` -> `{pr.get('base_ref')}`",
                 f"- status: review=`{pr.get('review_decision')}`, merge=`{pr.get('merge_state')}`, draft=`{pr.get('is_draft')}`",
-                f"- 动机: {card.get('motivation') or pr.get('motivation')}",
-                f"- 具体改动: {card.get('concrete_changes') or 'n/a'}",
-                f"- 详细改动分析: {_as_dict(pr.get('detailed_change_analysis')).get('summary') or 'n/a'}",
-                f"- 风险: {card.get('risk') or 'n/a'}",
-                f"- 检查: {card.get('checks') or _as_dict(pr.get('checks')).get('summary')}",
-                f"- Review prompt: {card.get('review_prompt') or '确认范围、验证和风险是否匹配。'}",
                 f"- scale: files=`{_as_dict(pr.get('scale')).get('changed_files')}`, +`{_as_dict(pr.get('scale')).get('additions')}`, -`{_as_dict(pr.get('scale')).get('deletions')}`",
                 f"- areas: `{json.dumps(pr.get('areas') or {}, ensure_ascii=False)}`",
+                f"- checks: {_as_dict(pr.get('checks')).get('summary')}",
             ]
         )
+        risk_hint = _as_dict(pr.get("metadata_risk_hint"))
+        if risk_hint:
+            lines.append(
+                f"- metadata risk hint: `{risk_hint.get('level')}` "
+                f"({'; '.join(str(item) for item in _as_list(risk_hint.get('basis')))})"
+            )
+            lines.append(f"- risk hint disclaimer: {risk_hint.get('disclaimer')}")
         commits = [item for item in _as_list(pr.get("commit_headlines")) if item]
         if commits:
             lines.append("- commits: " + "; ".join(f"`{item}`" for item in commits))
@@ -1301,83 +879,28 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         if key_files:
             lines.append("- key files:")
             for item in key_files[:8]:
-                lines.append(f"  - `{item.get('path')}` ({item.get('area')})")
-        detailed = _as_dict(pr.get("detailed_change_analysis"))
-        area_breakdown = [item for item in _as_list(detailed.get("area_breakdown")) if isinstance(item, dict)]
-        if area_breakdown:
-            lines.append("- 改动拆解:")
-            for item in area_breakdown[:5]:
-                top_files = _join_short([str(path) for path in _as_list(item.get("top_files"))], limit=3, fallback="无关键文件")
                 lines.append(
-                    f"  - {item.get('label')}（{item.get('file_count')} 个文件，{top_files}）："
-                    f"{item.get('change_intent')} Review 重点：{item.get('review_focus')}"
+                    f"  - `{item.get('path')}` ({item.get('area')}, "
+                    f"+{_int_or_zero(item.get('additions'))}/-{_int_or_zero(item.get('deletions'))})"
                 )
-        walkthrough = [item for item in _as_list(detailed.get("file_walkthrough")) if isinstance(item, dict)]
-        if walkthrough:
-            lines.append("- 文件 walkthrough:")
-            for item in walkthrough[:6]:
-                lines.append(
-                    f"  - `{item.get('path')}` {item.get('delta')}: "
-                    f"{item.get('meaning')} Review 重点：{item.get('review_focus')}"
-                )
-        diff_evidence = _as_dict(detailed.get("diff_evidence"))
-        lines.append(
-            "- 真实 diff 证据: "
-            + (
-                f"available=`{diff_evidence.get('available')}`, source=`{diff_evidence.get('source')}`, "
-                f"signals=`{_join_short([str(signal) for signal in _as_list(diff_evidence.get('top_signals'))], limit=4, fallback='none')}`, "
-                f"raw_patch_omitted=`{diff_evidence.get('omitted_raw_patch')}`"
-            )
-        )
-        diff_insights = [
-            item for item in _as_list(detailed.get("per_file_diff_insights")) if isinstance(item, dict)
-        ]
-        if diff_insights:
-            lines.append("- hunk-level insights:")
-            for item in diff_insights[:6]:
-                symbols = _join_short(
-                    [str(value) for value in _as_list(item.get("changed_symbols"))],
-                    limit=3,
-                    fallback="无显式 symbol",
-                )
-                contexts = _join_short(
-                    [str(value) for value in _as_list(item.get("hunk_contexts"))],
-                    limit=2,
-                    fallback="无 hunk context",
-                )
-                lines.append(
-                    f"  - `{item.get('path')}` +{item.get('added_lines')}/-{item.get('removed_lines')}: "
-                    f"{item.get('change_story')} symbols={symbols}; hunk={contexts}; "
-                    f"Review：{item.get('review_question')}"
-                )
-        review_order = [str(item) for item in _as_list(detailed.get("review_order")) if item]
+        commands = [item for item in _as_list(pr.get("evidence_commands")) if item]
+        if commands:
+            lines.append("- suggested read commands:")
+            for item in commands[:4]:
+                lines.append(f"  - `{item}`")
+        review_order = [str(item) for item in _as_list(template.get("review_order")) if item]
         if review_order:
             lines.append("- 推荐阅读顺序: " + " -> ".join(f"`{item}`" for item in review_order))
         risks = [item for item in _as_list(pr.get("risk_notes")) if item]
         lines.append("- risk notes: " + ("; ".join(str(item) for item in risks) if risks else "none"))
-        main_risk = _as_dict(pr.get("main_regression_analysis"))
-        if main_risk:
-            lines.append(
-                f"- main regression risk: `{main_risk.get('risk_level')}` - {main_risk.get('risk_summary')}"
-            )
-            regressions = [item for item in _as_list(main_risk.get("potential_regressions")) if item]
-            if regressions:
-                lines.append("- potential main regressions:")
-                for item in regressions[:4]:
-                    lines.append(f"  - {item}")
-            bug_risks = [item for item in _as_list(main_risk.get("bug_risks")) if item]
-            if bug_risks:
-                lines.append("- bug risks:")
-                for item in bug_risks[:4]:
-                    lines.append(f"  - {item}")
-            verification = [item for item in _as_list(main_risk.get("verification_focus")) if item]
-            if verification:
-                lines.append("- verification focus:")
-                for item in verification[:4]:
-                    lines.append(f"  - {item}")
-        prompts = [item for item in _as_list(pr.get("review_prompts")) if item]
-        if prompts:
-            lines.append("- review prompts: " + " / ".join(str(item) for item in prompts))
+        sections = [item for item in _as_list(template.get("sections")) if isinstance(item, dict)]
+        if sections:
+            lines.append("- 五块模板（留空给 agentloop 填写）:")
+            for item in sections:
+                lines.append(
+                    f"  - {item.get('label')}（{item.get('word_hint')}）："
+                    f" {item.get('agent_instruction')}"
+                )
 
     lines.extend(["", "## Boundary", "- Public PR metadata only; raw/private material is omitted."])
     return "\n".join(lines)

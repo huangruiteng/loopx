@@ -16,7 +16,7 @@ push, spend LoopX quota, or mark LoopX todos complete.
 
 | Command | CLI reference | Intent |
 | --- | --- | --- |
-| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository and build a guided review packet with a 100-200 character review card, detailed change analysis, checks, main regression risk, and review prompts. |
+| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository and provide a blank five-block review template for each PR. Agentloop reads the PR body/diff and fills the review. |
 
 ## Source Reads
 
@@ -26,14 +26,11 @@ Implementations may read compact public PR surfaces:
   and review decision;
 - PR body summary;
 - changed-file list and diff scale;
-- bounded public PR diff summary, reduced to hunk context, changed symbols,
-  behavior signals, and per-file review questions;
 - status-check rollup;
 - merge-state metadata.
 
-Commit headlines may be used as optional single-PR deep-review evidence. Public
-patch reads should stay bounded and derived: summarize hunk-level signals and
-file intent, but do not record raw patch bodies.
+Commit headlines may be used as optional single-PR deep-review evidence, but
+the default window review should not require fetching them for every PR.
 
 They must not include raw logs, private connector payloads, credentials, local
 absolute paths, private source bodies, or hidden CI artifacts.
@@ -80,89 +77,66 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "url": "https://github.com/owner/repo/pull/773",
       "state": "OPEN",
       "review_depth": "docs_and_smoke_review",
-      "main_risk_level": "low",
+      "risk_hint_level": "low",
       "why_now": "Open and awaiting reviewer decision."
     }
   ],
   "pull_requests": [
     {
       "number": 773,
-      "guided_review_card": {
-        "schema_version": "guided_pr_review_card_v0",
-        "brief": "动机：Adds a newcomer command path...。改动：公开文档 3，3 个文件 +90/-4，重点看 docs/guides/newcomer-command-path.md、docs/README.md。风险：低；检查：2 pass。Review：先看范围和验证是否对齐。",
-        "motivation": "Adds a newcomer command path...",
-        "concrete_changes": "公开文档 3；3 个文件，+90/-4；重点看 docs/guides/newcomer-command-path.md、docs/README.md、docs/guides/getting-started.md。",
-        "risk": "low，Runtime regression risk is low...",
-        "checks": "2 successful check(s).",
-        "review_prompt": "先判断 PR 是否应该存在，再确认改动范围、验证和主干风险是否对齐。"
-      },
-      "detailed_change_analysis": {
-        "schema_version": "pr_detailed_change_analysis_v0",
-        "summary": "这个 PR 的具体改动集中在公开文档 3，总规模 3 个文件、+90/-4。建议先读 docs/guides/newcomer-command-path.md、docs/README.md，确认最大 diff 是否兑现 PR 动机；再看 smoke/文档/检查结果是否能证明这些改动不会让 main 倒退。",
-        "area_breakdown": [
+      "review_template": {
+        "schema_version": "pr_review_five_block_template_v0",
+        "purpose": "Empty scaffold only; agentloop fills it after reading PR body and diff.",
+        "sections": [
           {
-            "area": "public_docs",
-            "label": "公开文档",
-            "file_count": 3,
-            "top_files": ["docs/guides/newcomer-command-path.md", "docs/README.md"],
-            "change_intent": "沉淀公开说明、协议或使用路径，需要确认文档与实际 CLI/产品行为一致。",
-            "review_focus": "重点看命令示例、概念定义、用户路径和 shipped 行为是否一致。"
+            "label": "动机",
+            "word_hint": "40-80字",
+            "content": "",
+            "agent_instruction": "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题。"
+          },
+          {
+            "label": "改动思路",
+            "word_hint": "40-100字",
+            "content": "",
+            "agent_instruction": "读关键 diff 后填写：作者采用什么路线解决问题，不要只复述文件名。"
+          },
+          {
+            "label": "具体改动",
+            "word_hint": "60-140字",
+            "content": "",
+            "agent_instruction": "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试，只保留决策相关细节。"
+          },
+          {
+            "label": "对主干的风险",
+            "word_hint": "40-100字",
+            "content": "",
+            "agent_instruction": "读 diff 和 checks 后填写：合入 main 可能破坏什么，哪些验证能覆盖。"
+          },
+          {
+            "label": "我的整体评价",
+            "word_hint": "30-80字",
+            "content": "",
+            "agent_instruction": "读完整 PR 后填写：approve / request changes / defer / merge after checks，并给一句理由。"
           }
         ],
-        "file_walkthrough": [
-          {
-            "path": "docs/guides/newcomer-command-path.md",
-            "area": "public_docs",
-            "delta": "+75/-0",
-            "meaning": "`newcomer-command-path.md` 是公开文档，本次 +75/-0 主要改变用户/维护者理解路径，要检查命令和概念是否准确。",
-            "review_focus": "重点看命令示例、概念定义、用户路径和 shipped 行为是否一致。"
-          }
-        ],
-        "review_order": ["docs/guides/newcomer-command-path.md", "docs/README.md"]
-      },
-      "diff_analysis": {
-        "schema_version": "public_pr_diff_analysis_v0",
-        "available": true,
-        "source": "public_pr_diff",
-        "truncated": false,
-        "top_signals": ["public docs heading changed", "review packet narrative changed"],
-        "file_insights": [
-          {
-            "path": "docs/guides/newcomer-command-path.md",
-            "added_lines": 75,
-            "removed_lines": 0,
-            "hunk_count": 1,
-            "changed_symbols": [],
-            "change_signals": ["public docs heading changed"],
-            "change_story": "`newcomer-command-path.md` 的真实 diff 显示 +75/-0、1 个 hunk；主要信号是 public docs heading changed。",
-            "review_question": "重点看命令示例、概念定义、用户路径和 shipped 行为是否一致。"
-          }
-        ],
-        "omitted_raw_patch": true
+        "review_order": ["docs/guides/newcomer-command-path.md", "docs/README.md"],
+        "output_hint": "Keep each PR concise; the filled five-block review is usually 100-200 Chinese characters total for small PRs and longer only when risk demands it."
       },
       "motivation": "Adds a newcomer command path...",
       "scale": {"changed_files": 3, "additions": 90, "deletions": 4},
       "areas": {"public_docs": 3},
       "checks": {"summary": "2 successful check(s)."},
-      "risk_notes": [],
-      "main_regression_analysis": {
-        "schema_version": "main_regression_analysis_v0",
-        "risk_level": "low",
-        "risk_summary": "low main regression risk across public_docs; 3 file(s), +90/-4.",
-        "potential_regressions": [
-          "Runtime regression risk is low, but public guidance or smoke expectations can drift from shipped behavior."
-        ],
-        "bug_risks": [
-          "Docs-only or smoke-only changes can bless stale contracts if the example no longer matches the real CLI/runtime path."
-        ],
-        "verification_focus": [
-          "Run `git diff --check` and the touched smoke; compare docs examples with current CLI help when command syntax is involved."
-        ],
-        "post_merge_review": false
+      "metadata_risk_hint": {
+        "schema_version": "pr_metadata_risk_hint_v0",
+        "level": "low",
+        "basis": ["areas=公开文档 3", "scale=3 files +90/-4", "checks=2 pass"],
+        "disclaimer": "Metadata-only hint for queue ordering; agentloop must read the PR diff before judging main risk."
       },
-      "review_prompts": [
-        "What user or maintainer value does this PR unlock now?",
-        "What could regress on main, and which focused validation would catch it?"
+      "risk_notes": [],
+      "evidence_commands": [
+        "gh pr view 773 --json title,body,files,commits,statusCheckRollup",
+        "gh pr diff 773 --name-only",
+        "gh pr diff 773 --patch"
       ]
     }
   ],
@@ -178,20 +152,14 @@ absolute paths, private source bodies, or hidden CI artifacts.
 
 The packet should let a reviewer move through PRs in order:
 
-1. Read `guided_review_card.brief` first. It should be compact enough to paste
-   into chat while still naming motivation, concrete changes, risk, checks, and
-   the next review question.
-2. Read `detailed_change_analysis.summary`, then follow its `review_order` and
-   `file_walkthrough` before opening the full diff.
-3. Read `detailed_change_analysis.diff_evidence` and
-   `per_file_diff_insights` to see which hunk-level signals the public diff
-   actually shows. This is the core "real change" analysis; changed-file lists
-   alone are not enough.
-4. Compare the touched areas and key files with the card's stated scope.
-5. Inspect validation, risk notes, and `main_regression_analysis`.
-6. Decide which regression class matters most on main and which focused
-   validation would catch it.
-7. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
+1. Use `review_sequence` to choose the next PR.
+2. Use `evidence_commands`, key files, changed-file scale, and checks to open
+   the actual PR body and diff.
+3. Let agentloop fill the blank five-block template:
+   `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.
+4. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
+   copied as the final risk judgement.
+5. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
 
 ## Acceptance Checks
 
@@ -205,17 +173,15 @@ A first implementation is acceptable when:
   preserves the old open-only review queue;
 - `--since` can bound an overnight or release-window review without relying on
   private chat memory;
-- the response includes review sequence, motivation, changed-file scope,
-  detailed change analysis, bounded public diff evidence, status checks, risk
-  notes, main regression analysis, and review prompts;
-- each PR includes `guided_review_card` with a compact `brief` that is suitable
-  for a 100-200 character human-facing Chinese review introduction when source
-  metadata is compact;
-- each PR includes `detailed_change_analysis` with area breakdown, file
-  walkthrough, and review order so the user can understand concrete changes
-  before opening GitHub diff;
-- each PR should include hunk-level public diff insights when available, while
-  omitting raw patch bodies from the packet;
+- the response includes review sequence, changed-file scope, status checks,
+  key files, risk notes, metadata-only risk hints, evidence commands, and a
+  blank five-block review template;
+- each PR includes `review_template.sections` for `动机`, `改动思路`,
+  `具体改动`, `对主干的风险`, and `我的整体评价`;
+- template sections must leave `content` empty so agentloop reads the real PR
+  before writing the review;
+- `metadata_risk_hint` must be repository-generic and must not special-case
+  LoopX files or domains;
 - live GitHub reads and fixture-based smokes share the same schema;
 - no raw logs, private payloads, credentials, local paths, or private source
   bodies are recorded.

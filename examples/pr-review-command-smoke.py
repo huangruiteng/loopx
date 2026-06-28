@@ -60,7 +60,7 @@ def main() -> int:
                 "url": "https://github.com/owner/repo/pull/900",
                 "state": "OPEN",
                 "updatedAt": "2026-06-28T00:01:00Z",
-                "files": [{"path": "loopx/status.py", "additions": 4, "deletions": 1}],
+                "files": [{"path": "src/status.py", "additions": 4, "deletions": 1}],
                 "changedFiles": 1,
                 "additions": 4,
                 "deletions": 1,
@@ -81,7 +81,7 @@ def main() -> int:
         pr_review_module._run_gh_json = original_run_gh_json
     assert len(calls) == 1, calls
     assert fetched[0]["number"] == 900, fetched
-    assert fetched[0]["files"][0]["path"] == "loopx/status.py", fetched
+    assert fetched[0]["files"][0]["path"] == "src/status.py", fetched
 
     payload = json.loads(
         run_cli("--format", "json", "pr-review", "--fixture", str(FIXTURE), "--limit", "5").stdout
@@ -95,7 +95,7 @@ def main() -> int:
     ), request
     assert request["privacy_mode"] == "public_safe_github_metadata", request
     assert request["dry_run"] is True, request
-    assert request["repository"] == "huangruiteng/loopx", request
+    assert request["repository"] == "owner/repo", request
     assert request["state_filter"] == "all", request
     assert payload["summary"]["total_pr_count"] == 4, payload["summary"]
     assert payload["summary"]["open_pr_count"] == 3, payload["summary"]
@@ -107,54 +107,34 @@ def main() -> int:
     assert sequence[0]["number"] == 773, sequence
     assert sequence[-1]["number"] == 775, sequence
     assert any(item["number"] == 770 and item["state"] == "MERGED" for item in sequence), sequence
-    assert sequence[0]["main_risk_level"] == "low", sequence[0]
+    assert sequence[0]["risk_hint_level"] == "low", sequence[0]
     merged_sequence = next(item for item in sequence if item["number"] == 770)
-    assert merged_sequence["main_risk_level"] == "high", merged_sequence
+    assert merged_sequence["risk_hint_level"] == "medium", merged_sequence
     first = payload["pull_requests"][0]
     assert first["number"] == 773, first
     assert "newcomer command path" in first["motivation"], first
-    card = first["guided_review_card"]
-    assert card["schema_version"] == "guided_pr_review_card_v0", card
-    assert 100 <= len(card["brief"]) <= 210, card["brief"]
-    assert card["brief"].startswith("动机："), card["brief"]
-    assert "改动：" in card["brief"], card["brief"]
-    assert "风险：" in card["brief"], card["brief"]
-    assert "检查：" in card["brief"], card["brief"]
-    assert "Review：" in card["brief"], card["brief"]
-    assert "concrete_changes" in card, card
-    detailed = first["detailed_change_analysis"]
-    assert detailed["schema_version"] == "pr_detailed_change_analysis_v0", detailed
-    assert "具体改动集中" in detailed["summary"], detailed
-    assert detailed["area_breakdown"], detailed
-    assert detailed["file_walkthrough"], detailed
-    diff_evidence = detailed["diff_evidence"]
-    assert diff_evidence["available"] is True, diff_evidence
-    assert diff_evidence["source"] == "fixture_public_patch", diff_evidence
-    assert diff_evidence["omitted_raw_patch"] is True, diff_evidence
-    assert "public docs heading changed" in diff_evidence["top_signals"], diff_evidence
-    assert detailed["per_file_diff_insights"], detailed
-    first_insight = detailed["per_file_diff_insights"][0]
-    assert first_insight["path"] == "docs/guides/newcomer-command-path.md", first_insight
-    assert first_insight["added_lines"] >= 3, first_insight
-    assert first_insight["change_story"], first_insight
-    assert first_insight["review_question"], first_insight
-    assert detailed["review_order"][0] == "docs/guides/newcomer-command-path.md", detailed
-    first_file = detailed["file_walkthrough"][0]
-    assert first_file["path"] == "docs/guides/newcomer-command-path.md", first_file
-    assert "Review focus" not in first_file["meaning"], first_file
-    assert first_file["review_focus"], first_file
+    template = first["review_template"]
+    assert template["schema_version"] == "pr_review_five_block_template_v0", template
+    assert "Empty scaffold only" in template["purpose"], template
+    assert "100-200 Chinese characters" in template["output_hint"], template
+    labels = [section["label"] for section in template["sections"]]
+    assert labels == ["动机", "改动思路", "具体改动", "对主干的风险", "我的整体评价"], template
+    for section in template["sections"]:
+        assert section["content"] == "", section
+        assert section["word_hint"], section
+        assert section["agent_instruction"], section
+        assert "quota.py" not in section["agent_instruction"], section
+    assert template["review_order"][0] == "docs/guides/newcomer-command-path.md", template
     assert first["checks"]["counts"]["success"] == 2, first["checks"]
     assert "public_docs" in first["areas"], first["areas"]
-    main_risk = first["main_regression_analysis"]
-    assert main_risk["schema_version"] == "main_regression_analysis_v0", main_risk
-    assert main_risk["risk_level"] == "low", main_risk
-    assert any("Runtime regression risk is low" in item for item in main_risk["potential_regressions"]), main_risk
+    risk_hint = first["metadata_risk_hint"]
+    assert risk_hint["schema_version"] == "pr_metadata_risk_hint_v0", risk_hint
+    assert risk_hint["level"] == "low", risk_hint
+    assert "Metadata-only" in risk_hint["disclaimer"], risk_hint
+    assert "quota.py" not in json.dumps(risk_hint), risk_hint
     merged = next(item for item in payload["pull_requests"] if item["number"] == 770)
-    merged_main_risk = merged["main_regression_analysis"]
-    assert merged_main_risk["risk_level"] == "high", merged_main_risk
-    assert merged_main_risk["post_merge_review"] is True, merged_main_risk
-    assert any("Control-plane routing" in item for item in merged_main_risk["potential_regressions"]), merged_main_risk
-    assert any("post-merge" in item for item in merged_main_risk["verification_focus"]), merged_main_risk
+    merged_risk_hint = merged["metadata_risk_hint"]
+    assert merged_risk_hint["level"] == "medium", merged_risk_hint
     assert payload["boundary"]["absolute_paths_recorded"] is False, payload["boundary"]
     assert_public_safe(payload)
 
@@ -198,26 +178,18 @@ def main() -> int:
     assert "current gh repository" not in markdown, markdown
     assert "state_filter: `all`" in markdown, markdown
     assert "merged=`" in markdown, markdown
-    assert "main_risk=`low`" in markdown, markdown
-    assert "> 动机：" in markdown, markdown
-    assert "- 动机:" in markdown, markdown
-    assert "- 具体改动:" in markdown, markdown
-    assert "- 详细改动分析:" in markdown, markdown
-    assert "- 改动拆解:" in markdown, markdown
-    assert "- 文件 walkthrough:" in markdown, markdown
-    assert "- 真实 diff 证据:" in markdown, markdown
-    assert "- hunk-level insights:" in markdown, markdown
-    assert "raw_patch_omitted=`True`" in markdown, markdown
+    assert "risk_hint=`low`" in markdown, markdown
+    assert "template below is intentionally blank" in markdown, markdown
     assert "- 推荐阅读顺序:" in markdown, markdown
-    assert "- 风险:" in markdown, markdown
-    assert "- 检查:" in markdown, markdown
-    assert "- Review prompt:" in markdown, markdown
-    assert "main regression risk:" in markdown, markdown
-    assert "potential main regressions:" in markdown, markdown
-    assert "verification focus:" in markdown, markdown
+    assert "- 五块模板（留空给 agentloop 填写）:" in markdown, markdown
+    assert "动机（40-80字）" in markdown, markdown
+    assert "改动思路（40-100字）" in markdown, markdown
+    assert "具体改动（60-140字）" in markdown, markdown
+    assert "对主干的风险（40-100字）" in markdown, markdown
+    assert "我的整体评价（30-80字）" in markdown, markdown
+    assert "main regression risk:" not in markdown, markdown
     assert "## Review Sequence" in markdown, markdown
     assert "PR #773" in markdown, markdown
-    assert "review prompts" in markdown, markdown
 
     print("pr-review-command-smoke ok")
     return 0

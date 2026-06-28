@@ -1,10 +1,10 @@
 {
-  "repository": "huangruiteng/loopx",
+  "repository": "owner/repo",
   "pull_requests": [
     {
       "number": 773,
       "title": "docs: add newcomer command path",
-      "url": "https://github.com/huangruiteng/loopx/pull/773",
+      "url": "https://github.com/owner/repo/pull/773",
       "author": {"login": "huangruiteng"},
       "baseRefName": "main",
       "headRefName": "codex/side-bypass-command-surface-20260627",
@@ -25,7 +25,6 @@
         {"messageHeadline": "docs: add newcomer command path"},
         {"messageHeadline": "docs: mention global manager slash commands"}
       ],
-      "patch": "diff --git a/docs/guides/newcomer-command-path.md b/docs/guides/newcomer-command-path.md\nnew file mode 100644\n--- /dev/null\n+++ b/docs/guides/newcomer-command-path.md\n@@ -0,0 +1,75 @@\n+# Newcomer Command Path\n+Use `/loopx` for project status before opening the full command catalog.\n+Use `/loopx <goal>` to start a plan-before-todo workflow.\n+Review with `/loopx-pr-review` when open pull requests need guided inspection.\ndiff --git a/docs/README.md b/docs/README.md\n--- a/docs/README.md\n+++ b/docs/README.md\n@@ -8,6 +8,12 @@\n+## First Useful Commands\n+- `/loopx` shows project status.\n+- `/loopx-pr-review` opens a review queue for public GitHub PR metadata.\n",
       "statusCheckRollup": [
         {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
         {"name": "docs-smoke", "status": "COMPLETED", "conclusion": "SUCCESS"}
@@ -34,7 +33,7 @@
     {
       "number": 771,
       "title": "docs: add public showcase pages and experimental value path",
-      "url": "https://github.com/huangruiteng/loopx/pull/771",
+      "url": "https://github.com/owner/repo/pull/771",
       "author": {"login": "huangruiteng"},
       "baseRefName": "main",
       "headRefName": "codex/hardware-canonical-showcases",
@@ -65,7 +64,7 @@
     {
       "number": 775,
       "title": "draft: explore PR review dashboard cards",
-      "url": "https://github.com/huangruiteng/loopx/pull/775",
+      "url": "https://github.com/owner/repo/pull/775",
       "author": {"login": "huangruiteng"},
       "baseRefName": "main",
       "headRefName": "codex/pr-review-dashboard-cards",
@@ -88,7 +87,7 @@
     {
       "number": 770,
       "title": "runtime: align quota gate prompt",
-      "url": "https://github.com/huangruiteng/loopx/pull/770",
+      "url": "https://github.com/owner/repo/pull/770",
       "state": "MERGED",
       "author": {"login": "huangruiteng"},
       "baseRefName": "main",
@@ -105,7 +104,7 @@
       "additions": 60,
       "deletions": 8,
       "files": [
-        {"path": "loopx/quota.py", "additions": 42, "deletions": 6},
+        {"path": "src/gate_prompt.py", "additions": 42, "deletions": 6},
         {"path": "examples/protocol-action-packet-smoke.py", "additions": 18, "deletions": 2}
       ],
       "commits": [
