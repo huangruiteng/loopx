@@ -119,9 +119,9 @@ def main() -> None:
         "Hypothesis mapper",
         "Evidence runner",
         "Evidence verifier",
-        "Gate steward",
-        "Synthesis narrator",
-        "Frontier janitor",
+        "always-on role set small",
+        "transition duties",
+        "Read-only projection builder",
         "contract_ready",
         "hypothesis_proposed",
         "frontier_selected",
@@ -140,6 +140,11 @@ def main() -> None:
         assert term in role_state_machine, f"role state machine missing {term!r}"
     assert "not a coordinator" in compact_role_state_machine
     assert "not start Codex, write LoopX state, or spend quota" in compact_role_state_machine
+    assert "Future versions may split gate stewardship" in compact_role_state_machine
+    assert "Gate handling is a transition duty" in compact_role_state_machine
+    assert "Frontier janitor" not in role_state_machine
+    assert "Synthesis narrator" not in role_state_machine
+    assert "Gate steward" not in role_state_machine
 
     required_blueprint_terms = [
         "Decentralized Auto Research: k-NN Speedup",

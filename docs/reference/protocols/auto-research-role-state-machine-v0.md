@@ -25,21 +25,24 @@ Together they are the public-safe control-plane map for auto research.
 ## Digital Employee Role Map
 
 These roles can run continuously as separate LoopX agent todos, monitors, or
-Codex sessions. None owns the full graph.
+Codex sessions. None owns the full graph. The first version intentionally keeps
+the always-on role set small; gate handling, public narration, and frontier
+cleanup are transition duties rather than separate permanent workers.
 
 | Role | Capability token | Primary job | May write | Must not |
 | --- | --- | --- | --- | --- |
-| Research curator | `research_curator` | Keep the objective, editable scope, protected scope, metric, and stop policy explicit. | `research_contract_v0`, protected-boundary notes, owner gate todos. | Pick winners, run experiments, or publish showcase claims. |
-| Hypothesis mapper | `hypothesis_mapper` | Turn research ideas into todo-backed hypotheses with parent links and mechanism families. | `research_hypothesis_v0`, successor todos, grounding refs. | Claim novelty from the same source used to ideate. |
+| Research curator | `research_curator` | Keep the objective, editable scope, protected scope, metric, stop policy, and operator gates explicit. | `research_contract_v0`, protected-boundary notes, owner gate todos, public projection requests. | Pick winners, run experiments, or publish unsupported showcase claims. |
+| Hypothesis mapper | `hypothesis_mapper` | Turn research ideas into todo-backed hypotheses, parent links, mechanism families, and bounded retire/successor decisions. | `research_hypothesis_v0`, successor todos, grounding refs, no-follow-up rationale. | Claim novelty from the same source used to ideate or delete negative evidence. |
 | Evidence runner | `evidence_runner` | Execute one selected hypothesis in an isolated worktree and preserve scored or unscored attempt evidence. | branch refs, `research_evidence_event_v0`, retry packets. | Edit protected scope, hide failures, or promote results. |
-| Evidence verifier | `evidence_verifier` | Classify evidence as supported, contradicted, retry-needed, or promotion-ready. | evaluation summary, promotion candidate, retirement candidate, gate todo. | Treat dev-only lift as promoted or override missing held-out evidence. |
-| Gate steward | `gate_steward` | Surface operator gates for promotion, merge, private boundary, or first-screen publication. | `operator_gate` todo/projection, gate outcome summary. | Bypass a gate or convert chat praise into write permission. |
-| Synthesis narrator | `synthesis_narrator` | Render the public-safe story from projections: timeline, evidence graph, metrics, and decisions. | `research_showcase_projection_v0`, public docs/pages after applicable gates. | Invent metrics, read private source bodies, or mutate source records. |
-| Frontier janitor | `frontier_janitor` | Retire stale, contradicted, duplicate, or retry-exhausted hypotheses while preserving negative evidence. | retirement candidate, successor todo, no-follow-up rationale. | Delete evidence or silently collapse failed branches. |
+| Evidence verifier | `evidence_verifier` | Classify evidence as supported, contradicted, retry-needed, promotion-ready, or retirement-ready. | evaluation summary, promotion candidate, retirement candidate, gate todo, projection-ready evidence. | Treat dev-only lift as promoted or override missing held-out evidence. |
 
 The role names are product-facing labels. A single Codex session may perform
 multiple roles only when it has the corresponding todo claim, capability, and
 write boundary; the appended record must still name the role that produced it.
+
+Future versions may split gate stewardship, public narration, or frontier
+janitor work into separate always-on roles after the demo proves those duties
+need independent ownership.
 
 ## State Vocabulary
 
@@ -115,10 +118,10 @@ flowchart TD
 | `evaluated -> supported` | Evidence verifier | dev evidence improves or otherwise satisfies the contract's support threshold. |
 | `evaluated -> contradicted` | Evidence verifier | regression, correctness failure, boundary violation, or novelty failure. |
 | `evaluated -> needs_retry` | Evidence verifier | unscored attempt with resumable ref or explicit bounded retry reason. |
-| `evaluated -> promotion_gate` | Evidence verifier or gate steward | holdout candidate, clean boundary, pending owner/merge/publication decision. |
-| `promotion_gate -> promoted` | Gate steward plus verifier | held-out evidence when required, clean boundary, and applicable operator gate accepted. |
-| `supported|contradicted|needs_retry -> retired` | Frontier janitor | negative evidence, retry exhaustion, duplicate proof, or no-follow-up rationale. |
-| `promoted|retired -> research_showcase_projection_v0` | Synthesis narrator | projection refs only; no direct mutation of source records. |
+| `evaluated -> promotion_gate` | Evidence verifier | holdout candidate, clean boundary, pending owner/merge/publication decision. |
+| `promotion_gate -> promoted` | Research curator plus evidence verifier | held-out evidence when required, clean boundary, and applicable operator gate accepted. |
+| `supported|contradicted|needs_retry -> retired` | Hypothesis mapper plus evidence verifier | negative evidence, retry exhaustion, duplicate proof, or no-follow-up rationale. |
+| `promoted|retired -> research_showcase_projection_v0` | Read-only projection builder | projection refs only; no direct mutation of source records. |
 
 ## No-Leader Invariants
 
@@ -126,9 +129,9 @@ flowchart TD
 - `quota should-run --agent-id ...` selects only the current agent frontier.
 - Every executable hypothesis remains backed by a `todo_id` and `claimed_by`.
 - Promotion is evidence plus gate policy, not a persuasive summary.
-- A narrator reads `research_showcase_projection_v0`; it does not certify
-  scores or mutate source state.
-- A gate steward can surface or record a decision; it cannot bypass the gate.
+- Public narration reads `research_showcase_projection_v0`; it does not
+  certify scores or mutate source state.
+- Gate handling is a transition duty; no role can bypass an operator gate.
 - Failed, contradicted, and retry-exhausted attempts stay visible as negative
   evidence unless a public/private boundary requires redaction.
 
