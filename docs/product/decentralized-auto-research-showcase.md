@@ -287,6 +287,25 @@ loopx --format json auto-research demo-supervisor \
   --agent codex-main-control:control-plane-guard
 ```
 
+For a tighter user handoff, render the demo acceptance packet. It links the
+experimental board output, the dry-run supervisor plan, and the takeover
+checklist into one operator-facing packet:
+
+```bash
+loopx --format json auto-research acceptance \
+  --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass \
+  --agent codex-side-bypass:hypothesis-runner \
+  --agent codex-product-capability:evidence-promoter \
+  --agent codex-main-control:control-plane-guard
+```
+
+The user should accept the demo only when the packet says the board is
+read-only, the supervisor is still `dry_run`, every lane has quota/frontier/
+bootstrap checks before Codex, and attach/stop controls are visible. It is
+still not a public-first-screen approval; `ready_for_public_first_screen` stays
+false until the first-screen review gate is explicitly cleared.
+
 ### Visible Operator Rehearsal Path
 
 The first user-facing demo step is a single inspection command, not a hidden

@@ -24,6 +24,7 @@ AUTO_RESEARCH_BOARD_SCHEMA_VERSION = "auto_research_frontstage_board_v0"
 AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = "auto_research_rollout_append_v0"
 AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION = "auto_research_quickstart_v0"
 AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_plan_v0"
+AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION = "auto_research_demo_acceptance_packet_v0"
 AUTO_RESEARCH_DEFAULT_GOAL_ID = "loopx-auto-research-knn"
 AUTO_RESEARCH_DEFAULT_OBJECTIVE = "Improve exact k-nearest-neighbor inference under a protected evaluator."
 AUTO_RESEARCH_QUICKSTART_TEMPLATE = "knn-exact"
@@ -884,6 +885,226 @@ def build_auto_research_demo_supervisor_plan(
             "Attach to tmux before accepting any Codex prompt so every lane stays visible and interruptible.",
             "Use the printed quota/frontier packet in each pane to decide whether that lane should continue, ask, or stop.",
         ],
+    }
+
+
+def _command_available(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def build_auto_research_demo_acceptance_packet(
+    board: dict[str, Any],
+    supervisor: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind board and dry-run supervisor output into a user acceptance packet.
+
+    The packet is a read-only operator aid. It does not re-run research,
+    launch tmux/Codex, write state, spend quota, or decide promotion. It only
+    names the visible checks a user should inspect before turning the
+    experimental auto-research demo into a real local launch.
+    """
+
+    board = _json_obj(board, field="board")
+    supervisor = _json_obj(supervisor, field="supervisor")
+    board_schema = _compact_public_token(
+        board.get("schema_version"),
+        field="board.schema_version",
+    )
+    supervisor_schema = _compact_public_token(
+        supervisor.get("schema_version"),
+        field="supervisor.schema_version",
+    )
+    if board_schema != AUTO_RESEARCH_BOARD_SCHEMA_VERSION:
+        raise ValueError(f"board.schema_version must be {AUTO_RESEARCH_BOARD_SCHEMA_VERSION}")
+    if supervisor_schema != AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION:
+        raise ValueError(f"supervisor.schema_version must be {AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION}")
+    if not board.get("ok"):
+        raise ValueError("board must be ok")
+    if not supervisor.get("ok"):
+        raise ValueError("supervisor must be ok")
+
+    binding = _json_obj(board.get("projection_binding"), field="board.projection_binding")
+    surface = _json_obj(board.get("surface"), field="board.surface")
+    research_contract = _json_obj(board.get("research_contract"), field="board.research_contract")
+    decisions = _json_obj(board.get("decision_candidates"), field="board.decision_candidates")
+    commands = _json_obj(supervisor.get("commands"), field="supervisor.commands")
+    one_click = _json_obj(supervisor.get("one_click_demo"), field="supervisor.one_click_demo")
+    acceptance = _json_obj(supervisor.get("demo_acceptance"), field="supervisor.demo_acceptance")
+    takeover = _json_obj(supervisor.get("user_takeover"), field="supervisor.user_takeover")
+    boundary = _json_obj(supervisor.get("boundary"), field="supervisor.boundary")
+    lanes = [item for item in supervisor.get("lanes") or [] if isinstance(item, dict)]
+    gates = [item for item in board.get("user_gates") or [] if isinstance(item, dict)]
+    metrics = [item for item in board.get("value_metrics") or [] if isinstance(item, dict)]
+    promotion_candidates = [
+        item for item in decisions.get("promotion_candidates") or [] if isinstance(item, dict)
+    ]
+    retirement_candidates = [
+        item for item in decisions.get("retirement_candidates") or [] if isinstance(item, dict)
+    ]
+
+    attach = _compact_optional_text(
+        commands.get("attach"),
+        field="acceptance.attach",
+        default="attach command missing",
+    )
+    stop = _compact_optional_text(
+        commands.get("stop"),
+        field="acceptance.stop",
+        default="stop command missing",
+    )
+    start_script = [str(item) for item in commands.get("start_script") or []]
+    rehearsal_script = [str(item) for item in one_click.get("script") or []]
+    attach_visible = _command_available(commands.get("attach"))
+    stop_visible = _command_available(commands.get("stop"))
+    dry_run_safe = all(
+        boundary.get(field) is expected
+        for field, expected in {
+            "dry_run_plan_only": True,
+            "starts_tmux": False,
+            "runs_codex": False,
+            "writes_loopx_state": False,
+            "spends_loopx_quota": False,
+            "reads_credentials": False,
+            "reads_session_files": False,
+        }.items()
+    )
+    lane_checks = [
+        {
+            "lane_id": _compact_public_token(lane.get("lane_id"), field="acceptance.lane_id"),
+            "agent_id": _compact_public_token(lane.get("agent_id"), field="acceptance.agent_id"),
+            "quota_guard_visible": _command_available(lane.get("quota_guard")),
+            "frontier_visible": _command_available(lane.get("frontier")),
+            "bootstrap_visible": _command_available(lane.get("bootstrap_message")),
+            "visible_codex_tui": _compact_optional_token(
+                lane.get("visible_codex_tui"),
+                field="acceptance.visible_codex_tui",
+                default="codex",
+            ),
+        }
+        for lane in lanes
+    ]
+    lanes_ready = bool(lane_checks) and all(
+        check["quota_guard_visible"] and check["frontier_visible"] and check["bootstrap_visible"]
+        for check in lane_checks
+    )
+
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION,
+        "goal_id": _compact_public_token(
+            research_contract.get("goal_id"),
+            field="acceptance.goal_id",
+        ),
+        "surface": {
+            "title": _compact_optional_text(
+                surface.get("title"),
+                field="acceptance.title",
+                default="Auto Research Demo Acceptance",
+            ),
+            "stage": _compact_optional_token(surface.get("stage"), field="acceptance.stage", default="experimental"),
+            "first_screen_policy": _compact_optional_token(
+                binding.get("first_screen_policy"),
+                field="acceptance.first_screen_policy",
+                default="experimental_only_not_first_screen_without_owner_review",
+            ),
+        },
+        "readiness_summary": {
+            "operator_can_review_now": True,
+            "ready_for_real_launch": bool(
+                binding.get("read_only")
+                and dry_run_safe
+                and attach_visible
+                and stop_visible
+                and lanes_ready
+            ),
+            "ready_for_public_first_screen": False,
+            "reason": (
+                "Board and dry-run supervisor are inspectable; real launch still requires explicit local user action."
+                if dry_run_safe and lanes_ready
+                else "Missing a visible lane, attach/stop control, or dry-run boundary field."
+            ),
+        },
+        "board_output": {
+            "schema_version": board.get("schema_version"),
+            "read_only": bool(binding.get("read_only")),
+            "source_kind": _compact_optional_token(
+                binding.get("source_kind"),
+                field="acceptance.source_kind",
+                default="unknown_source",
+            ),
+            "rollout_backed": bool(binding.get("rollout_backed")),
+            "value_metric_count": len(metrics),
+            "promotion_candidate_count": len(promotion_candidates),
+            "retirement_candidate_count": len(retirement_candidates),
+            "user_gate_count": len(gates),
+        },
+        "supervisor_rehearsal": {
+            "schema_version": supervisor.get("schema_version"),
+            "mode": _compact_optional_token(supervisor.get("mode"), field="acceptance.mode", default="dry_run"),
+            "session_name": _compact_optional_token(
+                supervisor.get("session_name"),
+                field="acceptance.session_name",
+                default="loopx-auto-research",
+            ),
+            "lane_count": len(lanes),
+            "one_click_mode": _compact_optional_token(
+                one_click.get("mode"),
+                field="acceptance.one_click_mode",
+                default="copy_paste_dry_run_rehearsal",
+            ),
+            "default_safe": bool(one_click.get("default_safe")),
+            "rehearsal_script_visible": bool(rehearsal_script),
+            "start_script_visible": bool(start_script),
+            "attach": attach,
+            "stop": stop,
+        },
+        "lane_checks": lane_checks,
+        "operator_checklist": [
+            "Run the dry-run rehearsal first and inspect the printed start script.",
+            "Confirm every lane prints quota should-run before frontier, bootstrap, or Codex.",
+            "Confirm attach and stop commands are visible before accepting any Codex prompt.",
+            "Confirm the board is read-only and still experimental.",
+            "Confirm promotion candidates remain decision items, not automatic public claims.",
+        ],
+        "accept_when": _compact_public_text_list(
+            acceptance.get("operator_can_accept_when") or [],
+            field="acceptance.accept_when",
+        ),
+        "reject_when": _compact_public_text_list(
+            acceptance.get("operator_must_reject_when") or [],
+            field="acceptance.reject_when",
+        ),
+        "user_takeover": {
+            "operator_controls": _compact_public_text_list(
+                takeover.get("operator_controls") or [],
+                field="acceptance.operator_controls",
+            ),
+            "visible_status_cues": _compact_public_text_list(
+                takeover.get("visible_status_cues") or [],
+                field="acceptance.visible_status_cues",
+            ),
+            "handoff_boundary": _compact_optional_text(
+                takeover.get("handoff_boundary"),
+                field="acceptance.handoff_boundary",
+                default="supervisor owns layout only; LoopX remains source of truth",
+            ),
+        },
+        "upgrade_path": [
+            "Keep this packet as the required preflight before any real tmux/Codex launch.",
+            "Only after user approval, paste the printed start_script in a visible shell.",
+            "Attach to the tmux session before accepting any Codex prompt.",
+            "Use normal LoopX todo/evidence writeback; the supervisor never writes state directly.",
+        ],
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "local_paths_recorded": False,
+            "credentials_recorded": False,
+            "starts_tmux": bool(boundary.get("starts_tmux")),
+            "runs_codex": bool(boundary.get("runs_codex")),
+            "writes_loopx_state": bool(boundary.get("writes_loopx_state")),
+            "spends_loopx_quota": bool(boundary.get("spends_loopx_quota")),
+        },
     }
 
 
@@ -2582,6 +2803,58 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
 def render_auto_research_markdown(payload: dict[str, object]) -> str:
     if not payload.get("ok"):
         return f"# LoopX Auto Research\n\n- ok: `False`\n- error: `{payload.get('error')}`\n"
+    if payload.get("schema_version") == AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION:
+        surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
+        summary = (
+            payload.get("readiness_summary")
+            if isinstance(payload.get("readiness_summary"), dict)
+            else {}
+        )
+        board = payload.get("board_output") if isinstance(payload.get("board_output"), dict) else {}
+        rehearsal = (
+            payload.get("supervisor_rehearsal")
+            if isinstance(payload.get("supervisor_rehearsal"), dict)
+            else {}
+        )
+        checks = payload.get("operator_checklist") if isinstance(payload.get("operator_checklist"), list) else []
+        controls = (
+            payload.get("user_takeover")
+            if isinstance(payload.get("user_takeover"), dict)
+            else {}
+        )
+        control_items = (
+            controls.get("operator_controls")
+            if isinstance(controls.get("operator_controls"), list)
+            else []
+        )
+        lines = [
+            "# LoopX Auto Research Demo Acceptance",
+            "",
+            f"- schema: `{payload.get('schema_version')}`",
+            f"- goal_id: `{payload.get('goal_id')}`",
+            f"- title: {surface.get('title')}",
+            f"- stage: `{surface.get('stage')}`",
+            f"- operator_can_review_now: `{summary.get('operator_can_review_now')}`",
+            f"- ready_for_real_launch: `{summary.get('ready_for_real_launch')}`",
+            f"- ready_for_public_first_screen: `{summary.get('ready_for_public_first_screen')}`",
+            f"- board_read_only: `{board.get('read_only')}`",
+            f"- board_source_kind: `{board.get('source_kind')}`",
+            f"- board_rollout_backed: `{board.get('rollout_backed')}`",
+            f"- supervisor_mode: `{rehearsal.get('mode')}`",
+            f"- lane_count: `{rehearsal.get('lane_count')}`",
+            f"- attach: `{rehearsal.get('attach')}`",
+            f"- stop: `{rehearsal.get('stop')}`",
+            "",
+            "## Operator Checklist",
+            "",
+        ]
+        for item in checks:
+            lines.append(f"- {item}")
+        if control_items:
+            lines.extend(["", "## User Takeover", ""])
+            for item in control_items:
+                lines.append(f"- {item}")
+        return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_BOARD_SCHEMA_VERSION:
         surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
         binding = (

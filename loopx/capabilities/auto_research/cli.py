@@ -11,6 +11,7 @@ from . import (
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
     build_auto_research_board_projection,
+    build_auto_research_demo_acceptance_packet,
     build_auto_research_demo_supervisor_plan,
     build_auto_research_quickstart,
     build_auto_research_rollout_events,
@@ -126,6 +127,42 @@ def register_auto_research_commands(
         required=True,
         help="Agent id whose board/frontier should be projected.",
     )
+
+    acceptance_parser = auto_research_sub.add_parser(
+        "acceptance",
+        help="Render an operator acceptance packet that links board output, dry-run supervisor, and takeover checks.",
+    )
+    add_subcommand_format(acceptance_parser)
+    acceptance_parser.add_argument(
+        "--fixture",
+        help="Path to a decentralized_auto_research_fixture_v0 JSON file.",
+    )
+    acceptance_parser.add_argument(
+        "--goal-id",
+        help="Goal id for live LoopX quota/status input. Mutually exclusive with --fixture.",
+    )
+    acceptance_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="Agent id whose board/frontier should be projected.",
+    )
+    acceptance_parser.add_argument(
+        "--agent",
+        action="append",
+        default=[],
+        help=(
+            "Supervisor agent/lane pair as agent_id:lane_id. Repeat for each visible lane. "
+            "Omit to use the default LoopX auto-research demo lane set."
+        ),
+    )
+    acceptance_parser.add_argument(
+        "--session-name",
+        default="loopx-auto-research",
+        help="Public-safe tmux session name for the dry-run supervisor packet.",
+    )
+    acceptance_parser.add_argument("--cli-bin", default="loopx", help="LoopX CLI executable name.")
+    acceptance_parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable name.")
+    acceptance_parser.add_argument("--tmux-bin", default="tmux", help="tmux executable name.")
 
     evidence_parser = auto_research_sub.add_parser(
         "evidence",
@@ -264,7 +301,7 @@ def handle_auto_research_command(
                 execute=args.execute,
                 cwd=Path.cwd(),
             )
-        elif args.auto_research_command in {"frontier", "board"}:
+        elif args.auto_research_command in {"frontier", "board", "acceptance"}:
             if bool(args.fixture) == bool(args.goal_id):
                 raise ValueError(f"auto-research {args.auto_research_command} requires exactly one of --fixture or --goal-id")
             if args.fixture:
@@ -296,8 +333,18 @@ def handle_auto_research_command(
                     quota_payload=quota_payload,
                     rollout_events=rollout_events,
                 )
-            if args.auto_research_command == "board":
+            if args.auto_research_command in {"board", "acceptance"}:
                 payload = build_auto_research_board_projection(payload)
+            if args.auto_research_command == "acceptance":
+                supervisor = build_auto_research_demo_supervisor_plan(
+                    goal_id=args.goal_id or payload["research_contract"]["goal_id"],
+                    agent_specs=args.agent,
+                    session_name=args.session_name,
+                    cli_bin=args.cli_bin,
+                    codex_bin=args.codex_bin,
+                    tmux_bin=args.tmux_bin,
+                )
+                payload = build_auto_research_demo_acceptance_packet(payload, supervisor)
         elif args.auto_research_command == "evidence":
             payload = load_auto_research_evidence_packet_inputs(
                 contract_path=args.contract,
@@ -333,7 +380,7 @@ def handle_auto_research_command(
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
-                "`board`, `append-evidence`, or `demo-supervisor` subcommand"
+                "`board`, `acceptance`, `append-evidence`, or `demo-supervisor` subcommand"
             )
     except Exception as exc:
         payload = {
