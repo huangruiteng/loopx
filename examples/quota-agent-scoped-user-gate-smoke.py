@@ -216,6 +216,78 @@ def scoped_no_candidate_status_payload() -> dict:
     }
 
 
+def other_agent_gate_with_non_due_monitor_payload() -> dict:
+    primary_review_gate = todo_item(
+        todo_id="todo_primary_pr_review_gate",
+        text="Review the main-control PR gate before primary merge.",
+        role="user",
+        task_class="user_gate",
+        action_kind="review_pr",
+        blocks_agent="codex-main-control",
+    )
+    primary_agent_todo = todo_item(
+        todo_id="todo_primary_pr_review",
+        text="[P0] Review and merge the primary-control PR.",
+        claimed_by="codex-main-control",
+    )
+    value_monitor = todo_item(
+        todo_id="todo_value_external_signal_monitor",
+        text="[P1-monitor] Monitor value-lane external signal when it becomes due.",
+        task_class="continuous_monitor",
+        claimed_by="codex-value-explorer",
+    )
+    return {
+        "ok": True,
+        "goal_count": 1,
+        "run_count": 0,
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "status": "active_state_user_todo",
+                    "waiting_on": "controller",
+                    "severity": "action",
+                    "source": "active_state",
+                    "recommended_action": "Primary-control PR review gate is pending.",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 1440,
+                        "spent_slots": 0,
+                        "state": "operator_gate",
+                        "reason": "open user gate",
+                    },
+                    "user_todos": todo_summary_items([primary_review_gate], source_section="User Todo"),
+                    "agent_todos": todo_summary_items(
+                        [primary_agent_todo, value_monitor],
+                        source_section="Agent Todo",
+                    ),
+                }
+            ]
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": "active",
+                    "adapter_kind": "fixture_adapter_v0",
+                    "adapter_status": "connected",
+                    "coordination": {
+                        "primary_agent": "codex-main-control",
+                        "registered_agents": [
+                            "codex-main-control",
+                            "codex-value-explorer",
+                        ],
+                    },
+                    "latest_runs": [],
+                }
+            ]
+        },
+    }
+
+
 def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     payload = build_quota_should_run(
         status_payload(),
@@ -238,6 +310,31 @@ def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     assert override["from_state"] == "operator_gate", override
     assert override["to_state"] == "eligible", override
     assert payload["agent_lane_next_action"]["todo_id"] == "todo_benchmark_driver", payload
+
+
+def assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane() -> None:
+    payload = build_quota_should_run(
+        other_agent_gate_with_non_due_monitor_payload(),
+        goal_id=GOAL_ID,
+        agent_id="codex-value-explorer",
+    )
+    assert payload["decision"] == "skip", payload
+    assert payload["effective_action"] == "monitor_quiet_skip", payload
+    assert payload["should_run"] is False, payload
+    assert payload["requires_user_action"] is False, payload
+    assert payload["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", payload
+    assert payload["interaction_contract"]["user_channel"]["action_required"] is False, payload
+    assert payload["interaction_contract"]["user_channel"]["notify"] == "DONT_NOTIFY", payload
+    assert payload["interaction_contract"]["mode"] == "monitor_quiet_skip", payload
+    assert "scoped_user_gate_fallback" not in payload, payload
+    summary = payload["user_todo_summary"]
+    assert summary["open_count"] == 0, summary
+    assert summary["other_agent_scoped_open_count"] == 1, summary
+    assert summary["other_agent_scoped_items"][0]["blocks_agent"] == "codex-main-control", summary
+    agent_summary = payload["agent_todo_summary"]
+    assert agent_summary["current_agent_claimed_monitor_count"] == 1, agent_summary
+    claim_scope = agent_summary["claim_scope"]
+    assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only", claim_scope
 
 
 def assert_target_agent_still_blocks_on_its_user_gate() -> None:
@@ -539,6 +636,7 @@ def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet
 
 def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
+    assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane()
     assert_target_agent_still_blocks_on_its_user_gate()
     assert_unscoped_user_gate_remains_global()
     assert_unrelated_user_gate_allows_feishu_fallback()

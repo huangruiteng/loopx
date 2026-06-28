@@ -2297,6 +2297,24 @@ def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> st
     return None
 
 
+def _first_monitor_todo_text(agent_todo_summary: dict[str, Any] | None) -> str | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    for key in ("monitor_due_items", "monitor_open_items"):
+        items = agent_todo_summary.get(key) if isinstance(agent_todo_summary.get(key), list) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if not _todo_item_is_actionable_open(item):
+                continue
+            if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+                continue
+            text = _protocol_action_text(item.get("text"), limit=320)
+            if text:
+                return text
+    return None
+
+
 def _agent_scoped_user_gate_override(
     *,
     state: str,
@@ -2321,6 +2339,8 @@ def _agent_scoped_user_gate_override(
     if item.get("operator_question") or item.get("missing_gates"):
         return None
     selected_action = _first_executable_todo_text(agent_todo_summary)
+    if not selected_action:
+        selected_action = _first_monitor_todo_text(agent_todo_summary)
     if not selected_action:
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
