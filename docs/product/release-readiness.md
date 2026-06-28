@@ -59,6 +59,45 @@ projection, or workflow. Do not require benchmark raw logs, raw task text,
 trajectories, verifier output, credentials, or local private artifact paths as
 release evidence.
 
+## Canary Model
+
+A release canary is a catalog-driven readiness slice. It is near-E2E in the
+sense that it follows a real promotion or operator path across several seams,
+but it is intentionally smaller than a full end-to-end test suite. Its job is
+to answer "can the touched public surfaces be promoted under this declared
+boundary?" rather than "is every LoopX path correct?"
+
+Choose the canary group from the interaction pattern catalog:
+
+- status/quota/scheduler changes should include Work Routing checks such as
+  `quota should-run`, scheduler hints, and hot-path interface budget;
+- state projection or public/private changes should include State And Boundary
+  checks such as `loopx check`, task graph or todo detail cold-path contracts;
+- dashboard/frontstage changes should include catalog or fixture route checks,
+  with browser smokes only when the visual surface itself is being promoted;
+- release/install changes should include installer, update, wrapper, doctor,
+  and public-boundary checks;
+- benchmark or external-evidence changes should use compact lifecycle
+  evidence only, never raw task text, raw logs, trajectories, or verifier tails.
+
+The default promotion canary is:
+
+```bash
+python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
+```
+
+Use the writeback form only when you intentionally want to append fresh
+promotion-readiness evidence:
+
+```bash
+python3 examples/canary-promotion-readiness-smoke.py
+```
+
+If the source checkout has optional frontend dependencies installed, dashboard
+readiness can be included in the same canary. If a release snapshot omits the
+dashboard app, record that as a release-boundary decision or follow-up instead
+of silently treating the dashboard path as covered.
+
 ## What Is Safe To Depend On
 
 Treat these v0.x surfaces as stable enough for user guides, examples, and
@@ -111,3 +150,4 @@ and shipped CLI behavior remain the source of truth.
 - [Getting started](../guides/getting-started.md)
 - [Update notes](../update-notes/README.md)
 - [Public/private boundary](../public-private-boundary.md)
+- [Interaction pattern catalog](../interaction-pattern-catalog.md)
