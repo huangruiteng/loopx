@@ -249,6 +249,40 @@ loopx --format json auto-research demo-supervisor \
   --agent codex-main-control:control-plane-guard
 ```
 
+### Visible Operator Rehearsal Path
+
+The first user-facing demo step is a single inspection command, not a hidden
+launcher:
+
+```bash
+loopx --format json auto-research demo-supervisor \
+  --goal-id loopx-auto-research-knn \
+  --agent codex-side-bypass:hypothesis-runner \
+  --agent codex-product-capability:evidence-promoter \
+  --agent codex-main-control:control-plane-guard
+```
+
+The user should see four concrete things in the packet:
+
+- `mode: dry_run`, plus a boundary block showing `starts_tmux`,
+  `runs_codex`, `writes_loopx_state`, and `spends_loopx_quota` are all false;
+- one pane plan per digital worker lane, with that lane's own
+  `quota should-run`, `auto-research frontier`, and
+  `codex-cli-bootstrap-message` commands;
+- a `start_script` array that can be copied into the user's shell only after
+  the user sets `LOOPX_PROJECT`, `LOOPX_REGISTRY`, and
+  `LOOPX_RUNTIME_ROOT`;
+- explicit takeover controls: `tmux attach -t loopx-auto-research` to inspect
+  every lane before accepting Codex prompts, and
+  `tmux kill-session -t loopx-auto-research` to stop the rehearsal.
+
+The safe demo acceptance bar is that the user can inspect the plan, attach to
+the visible tmux session before any Codex prompt is accepted, interrupt any
+lane manually, and confirm that each lane still routes through LoopX quota,
+todo claims, frontier projection, and normal evidence writeback. The
+supervisor never becomes a leader agent; it is only a shell layout that makes
+the decentralized workers visible and interruptible.
+
 The generated shell plan uses environment placeholders such as `LOOPX_PROJECT`,
 `LOOPX_REGISTRY`, and `LOOPX_RUNTIME_ROOT` instead of embedding local absolute
 paths. A future `--execute` path must remain user-visible: attach to tmux
