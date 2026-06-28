@@ -80,6 +80,18 @@ assert(
   autoResearchBoard.decision_candidates.retirement_candidates.length >= 1,
   "auto-research board retirement candidate",
 );
+assert(autoResearchBoard.user_gates.length >= 4, "auto-research board user gates");
+for (const gateId of [
+  "first_screen_review_gate",
+  "promotion_gate",
+  "protected_scope_gate",
+  "real_launch_gate",
+]) {
+  assert(
+    autoResearchBoard.user_gates.some((gate: { gate_id: string }) => gate.gate_id === gateId),
+    `auto-research board user gate ${gateId}`,
+  );
+}
 for (const forbidden of [
   "/Users/",
   "/private/",
@@ -425,9 +437,11 @@ includes(frontstageAutoResearchSource, 'data-testid="auto-research-lane-contract
 includes(frontstageAutoResearchSource, 'data-testid="auto-research-frontier"', "auto-research per-agent frontier");
 includes(frontstageAutoResearchSource, 'data-testid="auto-research-evidence-graph"', "auto-research evidence graph");
 includes(frontstageAutoResearchSource, 'data-testid="auto-research-decision-candidates"', "auto-research decision candidates");
+includes(frontstageAutoResearchSource, 'data-testid="auto-research-user-gates"', "auto-research user gates");
 includes(frontstageAutoResearchSource, 'data-testid="auto-research-showcase-projection"', "auto-research showcase projection");
 includes(autoResearchBoardSource, "single leader agent owns the whole hypothesis tree", "auto-research hidden leader anti-pattern");
 includes(autoResearchBoardSource, "Public fixture and protected-evaluator outputs only", "auto-research public boundary");
+includes(autoResearchBoardSource, "first_screen_review_gate", "auto-research first-screen gate data");
 includes(frontstageAutoResearchSource, "BoardPanel", "auto-research board panel component");
 excludes(frontstageAutoResearchSource, "<form", "auto-research board write form");
 excludes(frontstageAutoResearchSource, "method=", "auto-research board form method");

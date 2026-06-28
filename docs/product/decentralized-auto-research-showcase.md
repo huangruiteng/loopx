@@ -90,10 +90,14 @@ preserving exact output.
    status.
 4. Promotion decision: what got promoted, which alternatives were retired, and
    which evidence proves the boundary.
-5. Product metrics: time to first scored attempt, useful hypotheses per active
+5. User gates and takeover controls: first-screen review, promotion approval,
+   protected-scope stop, and real local-session launch must stay visible before
+   agents can convert experimental evidence into public positioning or live
+   process startup.
+6. Product metrics: time to first scored attempt, useful hypotheses per active
    day, held-out lift, negative-evidence reuse, retry recovery, and human
    promotion decisions required.
-6. Report: concise public-safe final summary with commands and artifacts.
+7. Report: concise public-safe final summary with commands and artifacts.
 
 ## Candidate Hypothesis Graph
 

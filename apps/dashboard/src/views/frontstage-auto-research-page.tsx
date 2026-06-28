@@ -76,6 +76,15 @@ type BoardDecisionCandidate = {
   user_value?: string;
 };
 
+type BoardUserGate = {
+  gate_id: string;
+  decision_owner: string;
+  purpose: string;
+  trigger: string;
+  takeover_action: string;
+  public_evidence: string;
+};
+
 type AutoResearchBoard = {
   schema_version: "auto_research_frontstage_board_v0";
   generated_at: string;
@@ -132,6 +141,7 @@ type AutoResearchBoard = {
     retry_candidates: BoardDecisionCandidate[];
     retirement_candidates: BoardDecisionCandidate[];
   };
+  user_gates: BoardUserGate[];
   showcase_projection: {
     schema_version: string;
     title: string;
@@ -459,6 +469,34 @@ function DecisionCandidatesPanel() {
   );
 }
 
+function UserGatesPanel() {
+  return (
+    <BoardPanel eyebrow="human takeover" title="User Gates">
+      <div className="grid gap-3 lg:grid-cols-4" data-testid="auto-research-user-gates">
+        {board.user_gates.map((gate) => (
+          <article className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4" key={gate.gate_id}>
+            <div className="flex items-center justify-between gap-3">
+              <Badge variant="warning">{gate.gate_id}</Badge>
+              <ShieldCheck className="h-4 w-4 text-amber-300" />
+            </div>
+            <div className="mt-3 font-mono text-xs text-zinc-500">{gate.decision_owner}</div>
+            <p className="mt-3 text-sm leading-6 text-zinc-300">{gate.purpose}</p>
+            <div className="mt-4 rounded-md border border-zinc-800 bg-black/30 p-3 text-xs leading-5 text-zinc-400">
+              <span className="font-semibold text-zinc-200">Trigger: </span>
+              {gate.trigger}
+            </div>
+            <div className="mt-3 text-sm leading-6 text-zinc-400">
+              <span className="font-semibold text-zinc-200">Takeover: </span>
+              {gate.takeover_action}
+            </div>
+            <div className="mt-4 font-mono text-xs text-zinc-500">{gate.public_evidence}</div>
+          </article>
+        ))}
+      </div>
+    </BoardPanel>
+  );
+}
+
 function ShowcaseProjectionPanel() {
   return (
     <BoardPanel eyebrow={board.showcase_projection.schema_version} title={board.showcase_projection.title}>
@@ -531,6 +569,7 @@ export function FrontstageAutoResearchPage() {
         <FrontierPanel />
         <EvidenceGraphPanel />
         <DecisionCandidatesPanel />
+        <UserGatesPanel />
         <ShowcaseProjectionPanel />
       </div>
     </main>
