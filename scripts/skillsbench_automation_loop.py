@@ -149,6 +149,7 @@ DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
 DEFAULT_MAX_ROUNDS = 16
+PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS = 10
 RUNNER_PREREQUISITES_PUBLIC_FILENAME = "runner_prerequisites.public.json"
 HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
@@ -6388,7 +6389,9 @@ def _merge_host_local_acp_relay_trace_summary(
         prerequisites["remote_command_file_bridge_consumption_status"] = (
             "solver_prompt_probe_ready"
         )
-        trace["last_decision"] = "remote_command_file_bridge_solver_trace_recorded"
+        trace["remote_command_file_bridge_consumption_decision"] = (
+            "remote_command_file_bridge_solver_trace_recorded"
+        )
     elif solver_trace_count:
         prerequisites["remote_command_file_bridge_consumption_status"] = (
             "solver_prompt_probe_failed"
@@ -7917,21 +7920,13 @@ def _build_product_mode_user(
                     round_result,
                     task_instruction_sent=self._task_instruction_sent,
                 ):
-                    _record_product_mode_solver_activity_gap(
-                        trace,
-                        agent_round=round,
+                    trace[
+                        "product_mode_final_closeout_superseded_by_official_success"
+                    ] = True
+                    trace["product_mode_final_closeout_superseded_round"] = round
+                    trace["product_mode_final_closeout_superseded_reason"] = (
+                        "official_success_observed_before_selected_p0_closeout"
                     )
-                    record_final_closeout_checkpoint(
-                        agent_round=round,
-                        reason=(
-                            "official_success_observed_before_selected_p0_closeout"
-                        ),
-                    )
-                    _inc_counter(trace, "followup_prompt_count")
-                    trace["last_decision"] = (
-                        "send_product_mode_final_closeout_after_success_boundary"
-                    )
-                    return final_closeout_prompt(round + 1)
                 _inc_counter(trace, "stop_decision_count")
                 trace["last_decision"] = (
                     "stop_after_product_mode_official_success_observed_without_feedback"
@@ -9975,7 +9970,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "failure instead of spending a full case attempt."
         ),
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if (
+        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
+        and not args.plan_only
+        and not args.reduce_only
+        and args.max_rounds < PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS
+    ):
+        parser.error(
+            "--max-rounds below "
+            f"{PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS} is not allowed for formal "
+            "product-mode/paired autonomous runs; use the default "
+            f"{DEFAULT_MAX_ROUNDS}, pass at least "
+            f"{PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS}, or use --plan-only/"
+            "--reduce-only for fixture inspection."
+        )
+    return args
 
 
 async def async_main(

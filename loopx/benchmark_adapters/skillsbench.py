@@ -2425,6 +2425,15 @@ def _skillsbench_controller_trace_counters(
         "product_mode_declared_done_below_passing_reward_round": count(
             "product_mode_declared_done_below_passing_reward_round"
         ),
+        "product_mode_final_closeout_superseded_by_official_success": (
+            controller_trace.get(
+                "product_mode_final_closeout_superseded_by_official_success"
+            )
+            is True
+        ),
+        "product_mode_final_closeout_superseded_round": count(
+            "product_mode_final_closeout_superseded_round"
+        ),
         "product_mode_no_tool_call_lifecycle_abort": controller_trace.get(
             "product_mode_no_tool_call_lifecycle_abort"
         )
@@ -2451,6 +2460,20 @@ def _skillsbench_controller_trace_counters(
     )
     if last_decision:
         counters["last_decision"] = last_decision
+    final_closeout_superseded_reason = _skillsbench_public_safe_label(
+        controller_trace.get("product_mode_final_closeout_superseded_reason") or ""
+    )
+    if final_closeout_superseded_reason:
+        counters["product_mode_final_closeout_superseded_reason"] = (
+            final_closeout_superseded_reason
+        )
+    bridge_consumption_decision = _skillsbench_public_safe_label(
+        controller_trace.get("remote_command_file_bridge_consumption_decision") or ""
+    )
+    if bridge_consumption_decision:
+        counters["remote_command_file_bridge_consumption_decision"] = (
+            bridge_consumption_decision
+        )
     selected_p0_todo_id = _skillsbench_public_safe_label(
         controller_trace.get("selected_p0_todo_id") or ""
     )
@@ -4178,6 +4201,18 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode_declared_done_policy": controller_counters.get(
                 "product_mode_declared_done_policy", ""
             ),
+            "product_mode_final_closeout_superseded_by_official_success": (
+                controller_counters.get(
+                    "product_mode_final_closeout_superseded_by_official_success",
+                    False,
+                )
+            ),
+            "product_mode_final_closeout_superseded_round": controller_counters.get(
+                "product_mode_final_closeout_superseded_round", 0
+            ),
+            "product_mode_final_closeout_superseded_reason": controller_counters.get(
+                "product_mode_final_closeout_superseded_reason", ""
+            ),
             "product_mode_no_tool_call_lifecycle_abort": controller_counters.get(
                 "product_mode_no_tool_call_lifecycle_abort", False
             ),
@@ -4202,6 +4237,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "controller_trace_publicness": controller_counters.get(
                 "controller_trace_publicness", ""
+            ),
+            "remote_command_file_bridge_consumption_decision": controller_counters.get(
+                "remote_command_file_bridge_consumption_decision", ""
             ),
             "private_trajectory_summary_present": bool(trajectory_summary),
             "private_trajectory_event_count": trajectory_summary.get("event_count", 0),

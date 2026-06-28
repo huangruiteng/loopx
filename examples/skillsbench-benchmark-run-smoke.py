@@ -62,6 +62,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
     DOCKER_HOST_CPU_ENV,
     LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
+    PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS,
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
     RUNNER_PREREQUISITES_PUBLIC_FILENAME,
@@ -126,6 +127,44 @@ def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 16, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+
+
+def test_skillsbench_formal_product_mode_rejects_tiny_round_budget() -> None:
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            parse_args(
+                [
+                    "--route",
+                    "loopx-goal-start-product-mode",
+                    "--max-rounds",
+                    str(PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS - 1),
+                ]
+            )
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("formal product-mode accepted a tiny max-round budget")
+
+    args = parse_args(
+        [
+            "--route",
+            "loopx-goal-start-product-mode",
+            "--max-rounds",
+            str(PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS),
+        ]
+    )
+    assert args.max_rounds == PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS, args
+
+    reduce_args = parse_args(
+        [
+            "--route",
+            "loopx-goal-start-product-mode",
+            "--max-rounds",
+            "2",
+            "--reduce-only",
+        ]
+    )
+    assert reduce_args.max_rounds == 2, reduce_args
 
 
 def test_skillsbench_product_mode_soft_verify_default_is_every_round() -> None:
@@ -2903,7 +2942,7 @@ def test_product_mode_workflow_driver_task_bridge_activity_avoids_no_tool_abort(
     assert trace["stop_decision_count"] == 0, trace
 
 
-def test_product_mode_official_success_requires_final_closeout_checkpoint() -> None:
+def test_product_mode_official_success_stops_without_final_closeout_checkpoint() -> None:
     trace = {
         "schema_version": "skillsbench_loopx_controller_trace_v0",
         "route": "loopx-goal-start-product-mode",
@@ -3007,47 +3046,49 @@ def test_product_mode_official_success_requires_final_closeout_checkpoint() -> N
             round_result=FakeRoundResult(),
         )
     )
-    assert prompt is not None, trace
-    assert "Mandatory product-mode closeout checkpoint before finalization" in prompt
-    assert "This is not official reward" in prompt
-    assert "todo complete" in prompt
-    assert "benchmark_case_agent_closeout" in prompt
-    assert "quota spend-slot" in prompt
-    assert "--source adapter --execute" in prompt
+    assert prompt is None, trace
     assert (
         trace["last_decision"]
-        == "send_product_mode_final_closeout_after_success_boundary"
+        == "stop_after_product_mode_official_success_observed_without_feedback"
     ), trace
     assert trace["official_success_observed"] is True, trace
-    assert trace["product_mode_final_closeout_required"] is True, trace
-    assert trace["product_mode_final_closeout_checkpoint_round"] == 2, trace
-    assert trace["product_mode_final_closeout_checkpoint_count"] == 1, trace
-    assert trace["product_mode_final_closeout_checkpoint_max"] == 3, trace
-    assert trace["product_mode_final_closeout_reason"] == (
+    assert (
+        trace["product_mode_final_closeout_superseded_by_official_success"] is True
+    ), trace
+    assert trace["product_mode_final_closeout_superseded_round"] == 2, trace
+    assert trace["product_mode_final_closeout_superseded_reason"] == (
         "official_success_observed_before_selected_p0_closeout"
     )
-    assert trace["product_mode_solver_activity_gap"] is True, trace
-    assert trace["followup_prompt_count"] == 1, trace
-    assert trace["stop_decision_count"] == 0, trace
-
-    retry_prompt = asyncio.run(
-        user.run(
-            3,
-            "Fix the fixture.",
-            round_result=FakeRoundResult(),
+    assert trace.get("product_mode_final_closeout_required") is not True, trace
+    assert trace.get("product_mode_final_closeout_checkpoint_count", 0) == 0, trace
+    assert trace.get("product_mode_solver_activity_gap") is not True, trace
+    assert trace["followup_prompt_count"] == 0, trace
+    assert trace["stop_decision_count"] == 1, trace
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-success-supersedes-closeout-"
+    ) as tmp:
+        result_path = write_official_skillsbench_result(
+            Path(tmp),
+            reward=1.0,
+            task_id="sample-task",
         )
-    )
-    assert retry_prompt is not None, trace
-    assert "Mandatory product-mode closeout checkpoint before finalization" in retry_prompt
-    assert "todo complete" in retry_prompt
-    assert trace["product_mode_final_closeout_checkpoint_round"] == 3, trace
-    assert trace["product_mode_final_closeout_checkpoint_count"] == 2, trace
-    assert (
-        trace["last_decision"]
-        == "send_product_mode_final_closeout_after_success_boundary"
-    ), trace
-    assert trace["followup_prompt_count"] == 2, trace
-    assert trace["stop_decision_count"] == 0, trace
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-goal-start-product-mode",
+                controller_trace=trace,
+            )
+        )
+        assert compact is not None
+        counters = compact["interaction_counters"]
+        assert (
+            counters["product_mode_final_closeout_superseded_by_official_success"]
+            is True
+        ), compact
+        assert counters["product_mode_final_closeout_superseded_round"] == 2, compact
+        assert counters["product_mode_final_closeout_superseded_reason"] == (
+            "official_success_observed_before_selected_p0_closeout"
+        ), compact
 
 
 def test_product_mode_agent_trace_no_requests_stops_before_verifier() -> None:
@@ -10730,6 +10771,7 @@ def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> N
 
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
+    test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_reverse_channel_first_action_timeout_stops_codex_process()
     test_reverse_channel_timeout_survives_blocked_stdin_write()
@@ -10776,7 +10818,7 @@ if __name__ == "__main__":
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()
     test_product_mode_no_tool_call_continues_before_checkpoint_loop()
     test_product_mode_workflow_driver_task_bridge_activity_avoids_no_tool_abort()
-    test_product_mode_official_success_requires_final_closeout_checkpoint()
+    test_product_mode_official_success_stops_without_final_closeout_checkpoint()
     test_skillsbench_skeleton_builder()
     test_skillsbench_official_result_builder()
     test_skillsbench_result_reward_artifact_recovery()
