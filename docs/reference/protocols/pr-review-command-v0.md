@@ -24,6 +24,12 @@ CLI packet's `review_groups.unmerged`, `review_groups.merged`, and
 `pull_requests[].review_template` are the authoritative queue. The packet's
 `evidence_commands` are for the second step: reading one selected PR deeply.
 
+When `--state all` is used, the command must preserve both lifecycle groups.
+The `--limit` value is applied per group so a busy open queue cannot consume the
+whole packet and make `review_groups.merged` empty while merged PRs exist in the
+window. Live GitHub reads should fetch open and closed/merged windows
+separately before constructing the grouped packet.
+
 ## Source Reads
 
 Implementations may read compact public PR surfaces:
@@ -197,8 +203,10 @@ A first implementation is acceptable when:
 - `loopx pr-review` returns `loopx_pr_review_command_response_v0`;
 - default live reads use the caller's current `gh` repository, while
   `--repo owner/repo` can review another GitHub project;
-- `--state all` includes merged PRs in the same packet, while `--state open`
-  preserves the old open-only review queue;
+- `--state all` includes merged PRs in the same packet, applies `--limit` per
+  lifecycle group, and keeps `review_groups.merged` non-empty when merged PRs
+  exist in the requested window; `--state open` preserves the old open-only
+  review queue;
 - `--since` can bound an overnight or release-window review without relying on
   private chat memory;
 - the response includes review sequence, changed-file scope, status checks,

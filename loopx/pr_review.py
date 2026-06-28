@@ -221,30 +221,45 @@ def fetch_github_pull_requests(
     fetch_limit = max(1, limit)
     if since:
         fetch_limit = max(fetch_limit, min(100, fetch_limit * 3))
-    rows = _run_gh_json(
-        [
-            "pr",
-            "list",
-            "--state",
-            normalized_state,
-            "--limit",
-            str(fetch_limit),
-            "--json",
-            ",".join(list_fields),
-            *search_args,
-            *repo_args,
-        ],
-        cwd=cwd,
-    )
-    if not isinstance(rows, list):
-        return []
 
     detailed: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if _include_pr_in_window(row, since=since):
+    seen_numbers: set[str] = set()
+
+    def append_state(state: str) -> None:
+        rows = _run_gh_json(
+            [
+                "pr",
+                "list",
+                "--state",
+                state,
+                "--limit",
+                str(fetch_limit),
+                "--json",
+                ",".join(list_fields),
+                *search_args,
+                *repo_args,
+            ],
+            cwd=cwd,
+        )
+        if not isinstance(rows, list):
+            return
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if not _include_pr_in_window(row, since=since):
+                continue
+            number = str(row.get("number") or row.get("url") or "")
+            if number and number in seen_numbers:
+                continue
+            if number:
+                seen_numbers.add(number)
             detailed.append(row)
+
+    if normalized_state == "all":
+        append_state("open")
+        append_state("closed")
+    else:
+        append_state(normalized_state)
     return detailed
 
 
@@ -710,7 +725,17 @@ def build_pr_review_packet(
         and _include_pr_in_window(item, since=since)
     ]
     normalized_all.sort(key=lambda item: _review_priority(item, item.get("key_files") or []))
-    normalized = normalized_all[: max(1, limit)]
+    packet_limit = max(1, limit)
+    unmerged_all = [item for item in normalized_all if str(item.get("state") or "").upper() != "MERGED"]
+    merged_all = [item for item in normalized_all if str(item.get("state") or "").upper() == "MERGED"]
+    if normalized_state_filter == "all":
+        unmerged_items = unmerged_all[:packet_limit]
+        merged_items = merged_all[:packet_limit]
+        normalized = unmerged_items + merged_items
+    else:
+        normalized = normalized_all[:packet_limit]
+        unmerged_items = [item for item in normalized if str(item.get("state") or "").upper() != "MERGED"]
+        merged_items = [item for item in normalized if str(item.get("state") or "").upper() == "MERGED"]
     review_sequence = [_review_sequence_entry(item, rank=index) for index, item in enumerate(normalized, start=1)]
     open_review_required = [
         item
@@ -719,12 +744,10 @@ def build_pr_review_packet(
         and not item.get("is_draft")
         and str(item.get("review_decision") or "").upper() in {"", "REVIEW_REQUIRED", "CHANGES_REQUESTED", "UNKNOWN"}
     ]
-    merged_items = [item for item in normalized if str(item.get("state") or "").upper() == "MERGED"]
     closed_items = [item for item in normalized if str(item.get("state") or "").upper() == "CLOSED"]
     first = review_sequence[0] if review_sequence else None
     review_attention_count = len(open_review_required) + len(merged_items)
     open_items = [item for item in normalized if str(item.get("state") or "").upper() == "OPEN"]
-    unmerged_items = [item for item in normalized if str(item.get("state") or "").upper() != "MERGED"]
     review_groups = {
         "unmerged": {
             "schema_version": "pr_review_group_v0",

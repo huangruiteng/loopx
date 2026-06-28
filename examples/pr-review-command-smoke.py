@@ -53,20 +53,40 @@ def main() -> int:
         calls.append(args)
         assert args[:2] == ["pr", "list"], calls
         assert "--search" in args and "updated:>=2026-06-27" in args, args
-        return [
-            {
-                "number": 900,
-                "title": "Runtime review fixture",
-                "url": "https://github.com/owner/repo/pull/900",
-                "state": "OPEN",
-                "updatedAt": "2026-06-28T00:01:00Z",
-                "files": [{"path": "src/status.py", "additions": 4, "deletions": 1}],
-                "changedFiles": 1,
-                "additions": 4,
-                "deletions": 1,
-                "statusCheckRollup": [],
-            }
-        ]
+        state = args[args.index("--state") + 1]
+        if state == "open":
+            return [
+                {
+                    "number": 900,
+                    "title": "Runtime review fixture",
+                    "url": "https://github.com/owner/repo/pull/900",
+                    "state": "OPEN",
+                    "updatedAt": "2026-06-28T00:01:00Z",
+                    "files": [{"path": "src/status.py", "additions": 4, "deletions": 1}],
+                    "changedFiles": 1,
+                    "additions": 4,
+                    "deletions": 1,
+                    "statusCheckRollup": [],
+                }
+            ]
+        if state == "closed":
+            return [
+                {
+                    "number": 901,
+                    "title": "Merged review fixture",
+                    "url": "https://github.com/owner/repo/pull/901",
+                    "state": "MERGED",
+                    "updatedAt": "2026-06-27T23:59:00Z",
+                    "closedAt": "2026-06-28T00:03:00Z",
+                    "mergedAt": "2026-06-28T00:03:00Z",
+                    "files": [{"path": "docs/review.md", "additions": 2, "deletions": 0}],
+                    "changedFiles": 1,
+                    "additions": 2,
+                    "deletions": 0,
+                    "statusCheckRollup": [],
+                }
+            ]
+        raise AssertionError(args)
 
     original_run_gh_json = pr_review_module._run_gh_json
     try:
@@ -79,9 +99,12 @@ def main() -> int:
         )
     finally:
         pr_review_module._run_gh_json = original_run_gh_json
-    assert len(calls) == 1, calls
+    assert len(calls) == 2, calls
+    assert [args[args.index("--state") + 1] for args in calls] == ["open", "closed"], calls
     assert fetched[0]["number"] == 900, fetched
     assert fetched[0]["files"][0]["path"] == "src/status.py", fetched
+    assert fetched[1]["number"] == 901, fetched
+    assert fetched[1]["state"] == "MERGED", fetched
 
     payload = json.loads(
         run_cli("--format", "json", "pr-review", "--fixture", str(FIXTURE), "--limit", "5").stdout
@@ -114,7 +137,7 @@ def main() -> int:
     assert groups["merged"]["review_sequence"][0]["number"] == 770, groups
     sequence = payload["review_sequence"]
     assert sequence[0]["number"] == 773, sequence
-    assert sequence[-1]["number"] == 775, sequence
+    assert any(item["number"] == 775 for item in sequence), sequence
     assert any(item["number"] == 770 and item["state"] == "MERGED" for item in sequence), sequence
     assert sequence[0]["risk_hint_level"] == "low", sequence[0]
     merged_sequence = next(item for item in sequence if item["number"] == 770)
@@ -146,6 +169,23 @@ def main() -> int:
     assert merged_risk_hint["level"] == "medium", merged_risk_hint
     assert payload["boundary"]["absolute_paths_recorded"] is False, payload["boundary"]
     assert_public_safe(payload)
+
+    group_limited = json.loads(
+        run_cli("--format", "json", "pr-review", "--fixture", str(FIXTURE), "--limit", "1").stdout
+    )
+    assert group_limited["summary"]["total_pr_count"] == 2, group_limited["summary"]
+    assert group_limited["summary"]["open_pr_count"] == 1, group_limited["summary"]
+    assert group_limited["summary"]["merged_pr_count"] == 1, group_limited["summary"]
+    assert group_limited["review_groups"]["unmerged"]["pr_numbers"] == [773], group_limited[
+        "review_groups"
+    ]
+    assert group_limited["review_groups"]["merged"]["pr_numbers"] == [770], group_limited[
+        "review_groups"
+    ]
+    assert [item["number"] for item in group_limited["pull_requests"]] == [
+        773,
+        770,
+    ], group_limited["pull_requests"]
 
     open_only = json.loads(
         run_cli(
@@ -190,6 +230,7 @@ def main() -> int:
     assert "tool contract: run `loopx pr-review` first" in markdown, markdown
     assert "## Unmerged PRs" in markdown, markdown
     assert "## Merged PRs" in markdown, markdown
+    assert "#770" in markdown, markdown
     assert "## Combined Review Sequence" in markdown, markdown
     assert markdown.index("## Unmerged PRs") < markdown.index("## Merged PRs"), markdown
     assert "risk_hint=`low`" in markdown, markdown
