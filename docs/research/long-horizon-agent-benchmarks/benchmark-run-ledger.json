@@ -69,11 +69,10 @@
           "latest_decision": {
             "baseline_failure_scope": "passed",
             "baseline_run_id": "fac3a39fdd9a",
-            "decision": "paired_treatment_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
-            "official_score_delta": -1.0,
-            "treatment_failure_scope": "runner_or_setup",
-            "treatment_run_id": "decbde35b3b4"
+            "decision": "paired_baseline_solved_treatment_preserved",
+            "official_score_delta": 0.0,
+            "treatment_failure_scope": "passed",
+            "treatment_run_id": "7ea835b649e7"
           },
           "runs": [
             {
@@ -773,6 +772,191 @@
                 "task_skills_removed": true
               },
               "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111718Z/3d-scan-calc__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "3d-scan-calc",
+              "case_ids": [
+                "3d-scan-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_preflight_failed_bridge_command_failed",
+              "failure_labels": [
+                "skillsbench_host_local_acp_codex_exec_preflight_failed_bridge_command_failed",
+                "skillsbench_runner_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111718Z",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-06-28T19:17:44+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "loopx-goal-start-product-mode",
+              "run_group_id": "skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111718Z",
+              "run_id": "e5259992d4a3",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "canonical_task_present": true,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "apt_risk_detected",
+                "task_id": "3d-scan-calc",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "staged": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": true,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": ".local/private-benchmark-jobs/skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111849Z/3d-scan-calc__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "none",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 2,
+              "best_round_is_final": true,
+              "best_round_passed": true,
+              "best_round_reward": 1.0,
+              "case_attempt_countable": true,
+              "case_id": "3d-scan-calc",
+              "case_ids": [
+                "3d-scan-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "declared_done_round": 4,
+              "declared_done_score": 1.0,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "final_round": 4,
+              "final_round_passed": true,
+              "final_round_reward": 1.0,
+              "first_success_round": 2,
+              "job_name": "skillsbench_1_1_3d_scan_calc_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 5,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_passed": true,
+              "official_score": 1.0,
+              "official_score_attempt_countable": true,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 4,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 4,
+                "state_write_count": 12
+              },
+              "recorded_at": "2026-06-28T19:33:21+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 4,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": true,
+                  "reward": 1.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": true,
+                  "reward": 1.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": true,
+                  "reward": 1.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": true,
+              "run_group_id": "skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111849Z",
+              "run_id": "7ea835b649e7",
+              "score_status": "passed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "effective_cpus": 1.0,
+                  "host_cpus": 2.0,
+                  "requested_cpus": 1.0
+                },
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
             }
           ]
         },
@@ -9736,7 +9920,7 @@
           ]
         }
       },
-      "run_count": 159
+      "run_count": 161
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -13788,5 +13972,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-28T15:08:52+08:00"
+  "updated_at": "2026-06-28T19:33:21+08:00"
 }
