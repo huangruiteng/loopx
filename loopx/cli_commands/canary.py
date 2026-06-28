@@ -70,10 +70,27 @@ def register_canary_commands(
         help="Force-select a catalog family such as 'Work Routing'. Repeat for multiple families.",
     )
     plan_parser.add_argument(
+        "--profile",
+        action="append",
+        default=[],
+        help="Force-select a current-repo profile such as 'monitor-scheduler'. Repeat for multiple profiles.",
+    )
+    plan_parser.add_argument(
+        "--include-deep-checks",
+        action="store_true",
+        help="Include deep/browser/integration checks. Defaults stay bounded and fixture-level.",
+    )
+    plan_parser.add_argument(
         "--max-checks-per-family",
         type=int,
         default=3,
         help="Maximum candidate checks to include per selected family.",
+    )
+    plan_parser.add_argument(
+        "--max-checks-per-profile",
+        type=int,
+        default=3,
+        help="Maximum candidate checks to include per selected current-repo profile.",
     )
 
 
@@ -94,7 +111,10 @@ def handle_canary_command(
             changed_files=list(args.changed_file or []),
             surfaces=list(args.surface or []),
             families=list(args.family or []),
+            profiles=list(args.profile or []),
+            include_deep_checks=bool(args.include_deep_checks),
             max_checks_per_family=int(args.max_checks_per_family or 3),
+            max_checks_per_profile=int(args.max_checks_per_profile or 3),
         )
         renderer = render_catalog_canary_plan_markdown
     else:

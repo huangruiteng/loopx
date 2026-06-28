@@ -35,6 +35,15 @@ def assert_profiles_come_from_catalog_matrix() -> None:
     assert "IP-001" in work_routing["pattern_ids"], work_routing
     assert work_routing["candidate_checks"], work_routing
     assert all("command" in check and "reason" in check for check in work_routing["candidate_checks"])
+    domain_profile_ids = {profile["id"] for profile in payload["domain_profiles"]}
+    assert {
+        "release-promotion",
+        "control-plane-refactor",
+        "monitor-scheduler",
+        "state-write-correctness",
+        "frontstage-rollout",
+        "benchmark-adapter-readiness",
+    } <= domain_profile_ids, payload
 
 
 def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
@@ -50,7 +59,28 @@ def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
     for profile in payload["profiles"]:
         assert len(profile["candidate_checks"]) <= 2, profile
         assert profile["selection_reasons"], profile
+    domain_profiles = {profile["id"]: profile for profile in payload["domain_profiles"]}
+    assert "control-plane-refactor" in domain_profiles, payload
+    assert "monitor-scheduler" in domain_profiles, payload
+    for profile in domain_profiles.values():
+        assert all(check["tier"] == "default" for check in profile["checks"]), profile
+        assert profile["deep_checks_available"] is True, profile
+        assert profile["deep_checks_included"] is False, profile
     assert payload["executes_checks"] is False, payload
+
+
+def assert_explicit_profile_can_include_deep_checks() -> None:
+    payload = build_catalog_canary_plan(
+        profiles=["benchmark-adapter-readiness"],
+        include_deep_checks=True,
+        max_checks_per_profile=3,
+    )
+    assert payload["profile_count"] == 0, payload
+    assert payload["domain_profile_count"] == 1, payload
+    profile = payload["domain_profiles"][0]
+    assert profile["id"] == "benchmark-adapter-readiness", profile
+    assert profile["deep_checks_included"] is True, profile
+    assert any(check["tier"] == "deep" for check in profile["checks"]), profile
 
 
 def assert_cli_json_plan_is_dry_run() -> None:
@@ -81,11 +111,13 @@ def assert_cli_json_plan_is_dry_run() -> None:
     assert payload["profile_count"] >= 1, payload
     work_routing = next(profile for profile in payload["profiles"] if profile["family"] == "Work Routing")
     assert len(work_routing["candidate_checks"]) == 1, work_routing
+    assert any(profile["id"] == "monitor-scheduler" for profile in payload["domain_profiles"]), payload
 
 
 def main() -> int:
     assert_profiles_come_from_catalog_matrix()
     assert_plan_selects_minimal_profiles_from_changed_surfaces()
+    assert_explicit_profile_can_include_deep_checks()
     assert_cli_json_plan_is_dry_run()
     print("catalog-canary-planner-smoke ok")
     return 0
