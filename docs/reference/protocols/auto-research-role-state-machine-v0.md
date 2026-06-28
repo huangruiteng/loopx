@@ -42,7 +42,24 @@ write boundary; the appended record must still name the role that produced it.
 
 Future versions may split gate stewardship, public narration, or frontier
 janitor work into separate always-on roles after the demo proves those duties
-need independent ownership.
+need independent ownership. Until then, they remain transition duties owned by
+the four-role v0 map above.
+
+## Future Role Splits
+
+These candidate roles are intentionally outside the v0 always-on role set. They
+are recorded so the product roadmap can grow the digital-employee map without
+reintroducing a leader or coordinator agent.
+
+| Future role | Current v0 duty | Split trigger | Still must not |
+| --- | --- | --- | --- |
+| Gate steward | Research curator plus evidence verifier handle `operator_gate` and `promotion_gate` transitions. | Gates become frequent enough that wait reasons, owner questions, and unblock evidence need independent monitoring. | Approve its own gate, bypass owner decisions, or select experiments. |
+| Synthesis narrator | Read-only projection builder creates `research_showcase_projection_v0` from promoted/retired evidence. | Users need a continuously updated report lane that summarizes evidence without slowing runners or verifiers. | Certify scores, hide negative evidence, or mutate source records. |
+| Frontier janitor | Hypothesis mapper and evidence verifier retire duplicates, exhausted retries, and no-follow-up branches. | The frontier grows large enough that stale hypotheses crowd out active research. | Delete evidence, rewrite todo ownership, or prune without a public rationale. |
+
+Promoting any future role requires a smoke update that proves the role is a
+bounded lane over the shared control plane, not a coordinator with authority
+over the full graph.
 
 ## State Vocabulary
 

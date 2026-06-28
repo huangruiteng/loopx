@@ -122,6 +122,10 @@ def main() -> None:
         "always-on role set small",
         "transition duties",
         "Read-only projection builder",
+        "Future Role Splits",
+        "Gate steward",
+        "Synthesis narrator",
+        "Frontier janitor",
         "contract_ready",
         "hypothesis_proposed",
         "frontier_selected",
@@ -141,10 +145,11 @@ def main() -> None:
     assert "not a coordinator" in compact_role_state_machine
     assert "not start Codex, write LoopX state, or spend quota" in compact_role_state_machine
     assert "Future versions may split gate stewardship" in compact_role_state_machine
+    assert "outside the v0 always-on role set" in compact_role_state_machine
+    assert "Promoting any future role requires a smoke update" in compact_role_state_machine
     assert "Gate handling is a transition duty" in compact_role_state_machine
-    assert "Frontier janitor" not in role_state_machine
-    assert "Synthesis narrator" not in role_state_machine
-    assert "Gate steward" not in role_state_machine
+    for future_role in ("Frontier janitor", "Synthesis narrator", "Gate steward"):
+        assert f"| {future_role} |" in role_state_machine, f"future split missing {future_role}"
 
     required_blueprint_terms = [
         "Decentralized Auto Research: k-NN Speedup",
