@@ -76,6 +76,7 @@ from .bootstrap_connect import (
     handle_bootstrap_connect_command,
     register_bootstrap_connect_command,
 )
+from .canary import handle_canary_command, register_canary_commands
 from .capability import handle_capability_command, register_capability_commands
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
@@ -177,6 +178,7 @@ __all__ = [
     "handle_benchmark_run_ledger_maintenance_command",
     "handle_benchmark_run_ledger_parity_command",
     "handle_bootstrap_connect_command",
+    "handle_canary_command",
     "handle_capability_command",
     "handle_check_command",
     "handle_codex_cli_bounded_visible_pilot_adapter_command",
@@ -240,6 +242,7 @@ __all__ = [
     "register_benchmark_run_ledger_maintenance_commands",
     "register_benchmark_run_ledger_parity_commands",
     "register_bootstrap_connect_command",
+    "register_canary_commands",
     "register_capability_commands",
     "register_doctor_command",
     "register_dreaming_commands",

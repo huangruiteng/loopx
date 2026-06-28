@@ -25,6 +25,7 @@ from .capabilities.value_connectors.cli import (
 from .cli_commands import (
     handle_benchmark_command,
     handle_bootstrap_connect_command,
+    handle_canary_command,
     handle_capability_command,
     handle_check_command,
     handle_diagnose_command,
@@ -47,6 +48,7 @@ from .cli_commands import (
     handle_worker_bridge_command,
     register_benchmark_command_group,
     register_bootstrap_connect_command,
+    register_canary_commands,
     register_capability_commands,
     register_doctor_command,
     register_dreaming_commands,
@@ -135,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
 
     register_support_control_commands(sub, add_subcommand_format)
 
+    register_canary_commands(sub, add_subcommand_format)
+
     register_capability_commands(sub, add_subcommand_format)
 
     register_content_ops_commands(sub, add_subcommand_format)
@@ -187,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
             "codex-cli-visible-driver-run",
             "codex-cli-visible-driver-plan",
             "codex-cli-visible-session-proof",
+            "canary",
             "demo",
             "doctor",
             "new-project-prompt",
@@ -240,6 +245,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if support_control_result is not None:
         return support_control_result
+
+    canary_result = handle_canary_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if canary_result is not None:
+        return canary_result
 
     capability_result = handle_capability_command(
         args,
