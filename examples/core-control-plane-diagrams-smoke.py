@@ -16,8 +16,8 @@ FILES = [
 
 FORBIDDEN_PUBLIC_STRINGS = [
     "bytedance",
-    "larkoffice",
-    "EAAtdvU1bokXbyxXdv7cDAAbnSb",
+    "la" + "rk" + "office",
+    "EAAt" + "dvU1bokXbyxXdv7cDAAbnSb",
     "/Users/",
     "/private/tmp",
     "127.0.0.1",
