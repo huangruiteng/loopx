@@ -159,7 +159,8 @@ def build_scheduler_hint(
             "profile_signature": profile_signature,
             "reset_condition_summary": "token_changed|user_feedback|new_or_reassigned_todo|gate_or_material_transition|active_work_projected",
             "after_reset": "apply_initial_interval_before_backoff",
-            "codex_app_apply": "update_rrule_to_initial_and_clear_unchanged_state_on_token_change",
+            "codex_app_tool": "automation_update",
+            "codex_app_apply": "call_automation_update_to_restore_initial_rrule_on_token_change",
             "no_spend_for_reset": True,
         }
         local_scheduler = {
@@ -198,6 +199,10 @@ def build_scheduler_hint(
                 "unchanged_poll_backoff_multiplier": multiplier,
                 "example_progression_minutes": cadence_progression,
                 "apply": "update_automation_cadence_if_possible",
+                "host_tool": "automation_update",
+                "host_action": "update_current_heartbeat_rrule",
+                "host_action_contract": "call_automation_update_update_with_recommended_rrule_when_available",
+                "rrule_source": "scheduler_hint.codex_app.recommended_rrule",
                 "no_spend_for_cadence_change": True,
             },
             "unchanged_poll": {

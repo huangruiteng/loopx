@@ -725,7 +725,7 @@ new or reassigned todo, a resolved gate, or material evidence transition. A
 reset applies
 `codex_app_initial_interval_minutes` (and the matching local scheduler initial
 interval) before starting unchanged backoff again; it never spends quota.
-For Codex App heartbeats, hosts and agents should use
+For Codex App heartbeats, hosts and agents should use `automation_update` with
 `codex_app.recommended_rrule` for the current cadence and
 `reset_policy.codex_app_initial_rrule` when the stored
 `reset_policy.reset_token` changes. This gives host runtimes a compact state key

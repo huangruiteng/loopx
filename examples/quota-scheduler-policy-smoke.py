@@ -82,6 +82,12 @@ def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, e
     assert extracted["source"] == "quota.should-run", (name, extracted)
     assert extracted["action"] == expected_action, (name, extracted)
     assert extracted["codex_app"]["recommended_rrule"] == expected_rrule, (name, extracted)
+    assert extracted["codex_app"]["host_tool"] == "automation_update", (name, extracted)
+    assert extracted["codex_app"]["host_action"] == "update_current_heartbeat_rrule", (name, extracted)
+    assert extracted["codex_app"]["rrule_source"] == "scheduler_hint.codex_app.recommended_rrule", (
+        name,
+        extracted,
+    )
     assert "local_scheduler" not in extracted, (name, extracted)
     assert "codex_cli_tui" not in extracted, (name, extracted)
     assert "claude_code_loop" not in extracted, (name, extracted)
@@ -92,6 +98,8 @@ def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, e
     assert detailed["cold_path_detail"]["claude_code_loop"]["after_limit"], (name, detailed)
     reset = extracted["reset_policy"]
     assert reset["schema_version"] == "scheduler_reset_policy_v0", (name, reset)
+    assert reset["codex_app_tool"] == "automation_update", (name, reset)
+    assert "automation_update" in reset["codex_app_apply"], (name, reset)
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, (name, reset)
     assert len(reset["identity_signature"]) == 12, (name, reset)
     assert len(reset["profile_signature"]) == 12, (name, reset)

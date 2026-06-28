@@ -360,7 +360,7 @@ def main() -> int:
         'never only "owner gate"',
         "If false/0: quiet/no-user-todo",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
-        "Apply `scheduler_hint`: automation_update for Codex App RRULE backoff/reset",
+        "Apply `scheduler_hint`: use `automation_update` for Codex App RRULE/reset",
         "CLI/Claude final-check/self-stop; no spend",
         "Bounded batch/quiet no-op; spend after writeback",
         "Plans/done -> LoopX todo/rationale; 2 no-progress -> self-repair",
@@ -662,6 +662,7 @@ def main() -> int:
     assert "execution_obligation" in doc, doc
     assert "Create a heartbeat automation starting at 3 minutes" in doc, doc
     assert "quota should-run.scheduler_hint" in doc, doc
+    assert "automation_update" in doc, doc
     assert "scheduler_hint.codex_app.recommended_rrule" in doc, doc
     assert "scheduler_hint.reset_policy.reset_token" in doc, doc
     assert "scheduler_hint.reset_policy.codex_app_initial_rrule" in doc, doc
@@ -717,6 +718,7 @@ def main() -> int:
     assert "heartbeat_recommendation" in project_skill, project_skill
     assert "execution_obligation" in project_skill, project_skill
     assert "scheduler_hint" in project_skill, project_skill
+    assert "automation_update" in project_skill, project_skill
     assert "scheduler_hint.codex_app.recommended_rrule" in project_skill, project_skill
     assert "scheduler_hint.reset_policy.reset_token" in project_skill, project_skill
     assert "scheduler_hint.reset_policy.codex_app_initial_rrule" in project_skill, project_skill

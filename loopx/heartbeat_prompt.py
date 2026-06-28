@@ -24,17 +24,17 @@ USER_TODO_FINAL_MESSAGE_RULE = (
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
     "Apply `scheduler_hint` for wait backoff and CLI/Claude final-check/self-stop; no spend. "
-    "Codex App: when automation_update is available, set RRULE from "
+    "Codex App: search/use `automation_update` to update the current heartbeat RRULE from "
     "`scheduler_hint.codex_app.recommended_rrule`; if "
     "`scheduler_hint.reset_policy.reset_token` changes, restore "
     "`scheduler_hint.reset_policy.codex_app_initial_rrule`."
 )
 SCHEDULER_HINT_COMPACT_RULE = (
     "Apply `scheduler_hint` for backoff/reset/self-stop; no spend. "
-    "Codex App RRULE follows hint; reset-token restores initial RRULE."
+    "Codex App: `automation_update` RRULE; reset-token restores initial RRULE."
 )
 SCHEDULER_HINT_THIN_RULE = (
-    "Apply `scheduler_hint`: automation_update for Codex App RRULE backoff/reset; "
+    "Apply `scheduler_hint`: use `automation_update` for Codex App RRULE/reset; "
     "CLI/Claude final-check/self-stop; no spend."
 )
 INTERFACE_BUDGET_CHARS = {
@@ -692,7 +692,8 @@ If the result says `should_run=true`:
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and no
    `notify_user_on_open_todo=true` blocker-push notification. Use
    `scheduler_hint` for next-wakeup cadence and external-loop unchanged limits;
-   for Codex App heartbeats, restore or update the RRULE from
+   for Codex App heartbeats, search/use `automation_update` to restore or
+   update the RRULE from
    `scheduler_hint.codex_app.recommended_rrule` /
    `scheduler_hint.reset_policy.codex_app_initial_rrule` when the reset token
    changes. It is scheduling only, not delivery permission. Then use

@@ -412,8 +412,9 @@ the next wakeup cadence and external-loop unchanged-poll self-stop; this is
 scheduling policy, not delivery permission. Codex CLI TUI and Claude Code loops
 should run the final quota/replan check from `scheduler_hint` before applying
 their `after_limit`; if the guard changes or returns `run_now`, follow the new
-quota contract instead of stopping. Codex App heartbeat workers should use
-`scheduler_hint.codex_app.recommended_rrule` for cadence updates, and when
+quota contract instead of stopping. Codex App heartbeat workers should
+search/use `automation_update` when available: update the current heartbeat
+RRULE from `scheduler_hint.codex_app.recommended_rrule`, and when
 `scheduler_hint.reset_policy.reset_token` changes because of user feedback,
 new/reassigned work, a resolved gate, material evidence, or active work, restore
 the heartbeat RRULE to `scheduler_hint.reset_policy.codex_app_initial_rrule`
