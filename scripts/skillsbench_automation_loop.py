@@ -4046,6 +4046,8 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "verifier_bootstrap_risk_detected",
+        "verifier_bootstrap_risk_preflight_blocked",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
@@ -4146,6 +4148,11 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "verifier_present",
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
@@ -4154,7 +4161,7 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    for field in ("nearest_canonical_task_ids",):
+    for field in ("nearest_canonical_task_ids", "verifier_bootstrap_risk_categories"):
         raw_items = value.get(field)
         if isinstance(raw_items, list):
             compact[field] = [
@@ -4560,6 +4567,12 @@ def skillsbench_task_setup_preflight(
         "alternate_source_supported_by_runner": False,
         "apt_setup_risk_detected": False,
         "apt_retry_patch_required": False,
+        "verifier_present": False,
+        "verifier_bootstrap_risk_detected": False,
+        "verifier_uv_bootstrap_risk_detected": False,
+        "verifier_external_download_risk_detected": False,
+        "verifier_package_install_risk_detected": False,
+        "verifier_bootstrap_risk_categories": [],
     }
     skillsbench_root = expanded_task_path.parent.parent
     canonical_task_exists = expanded_task_path.is_dir()
@@ -4609,19 +4622,82 @@ def skillsbench_task_setup_preflight(
         return preflight
 
     apt_risk = dockerfile_needs_apt_retry_patch(dockerfile)
+    verifier_risk = skillsbench_verifier_bootstrap_risk(expanded_task_path)
+    preflight.update(verifier_risk)
+    verifier_bootstrap_risk = bool(
+        verifier_risk.get("verifier_bootstrap_risk_detected")
+    )
+    if apt_risk and verifier_bootstrap_risk:
+        setup_status = "setup_bootstrap_risk_detected"
+    elif apt_risk:
+        setup_status = "apt_risk_detected"
+    elif verifier_bootstrap_risk:
+        setup_status = "verifier_bootstrap_risk_detected"
+    else:
+        setup_status = "ok"
     preflight.update(
         {
-            "status": "apt_risk_detected" if apt_risk else "ok",
+            "status": setup_status,
             "apt_setup_risk_detected": apt_risk,
             "apt_retry_patch_required": apt_risk,
             "selection_recommendation": (
                 "route_to_setup_repair_or_use_fail_fast_guard"
-                if apt_risk
+                if apt_risk or verifier_bootstrap_risk
                 else "eligible_for_full_pair"
             ),
         }
     )
     return preflight
+
+
+def skillsbench_verifier_bootstrap_risk(task_path: Path) -> dict[str, Any]:
+    """Return public-safe verifier dependency bootstrap risk flags.
+
+    The check reads only the verifier wrapper shape and records booleans, not
+    raw task text, logs, trajectories, or verifier output. It catches cases
+    where the official verifier would spend the final closeout on network
+    bootstrap such as uv installation, curl/wget downloads, or package install
+    commands.
+    """
+
+    verifier = task_path / "verifier" / "test.sh"
+    result: dict[str, Any] = {
+        "verifier_present": verifier.exists(),
+        "verifier_bootstrap_risk_detected": False,
+        "verifier_uv_bootstrap_risk_detected": False,
+        "verifier_external_download_risk_detected": False,
+        "verifier_package_install_risk_detected": False,
+        "verifier_bootstrap_risk_categories": [],
+    }
+    if not verifier.exists():
+        return result
+    try:
+        text = verifier.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return result
+
+    categories: list[str] = []
+    uv_bootstrap_pattern = (
+        r"astral\.sh/uv|"
+        r"(?:^|[;&|(\s])uv(?:x|\s+add|\s+sync|\s+pip|\s+tool)"
+    )
+    if re.search(uv_bootstrap_pattern, text):
+        result["verifier_uv_bootstrap_risk_detected"] = True
+        categories.append("uv_bootstrap")
+    if re.search(r"(?:curl|wget)\s+[^;\n]*(?:https?://|astral\.sh)", text):
+        result["verifier_external_download_risk_detected"] = True
+        categories.append("external_download")
+    if re.search(
+        r"(?:python\s+-m\s+pip|pip3?|uv\s+pip|uv\s+add|"
+        r"poetry\s+install|npm\s+install|pnpm\s+install|"
+        r"yarn\s+install|apt-get\s+(?:update|install))",
+        text,
+    ):
+        result["verifier_package_install_risk_detected"] = True
+        categories.append("package_install")
+    result["verifier_bootstrap_risk_categories"] = sorted(set(categories))
+    result["verifier_bootstrap_risk_detected"] = bool(categories)
+    return result
 
 
 def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
@@ -4777,6 +4853,8 @@ def stage_task_for_sandbox(
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
+    metadata["verifier_bootstrap_risk_detected"] = False
+    metadata["verifier_bootstrap_risk_preflight_blocked"] = False
     if (
         not has_task_skills
         and not needs_resource_cap
@@ -5033,6 +5111,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 setup_preflight.get("apt_retry_patch_required")
             ),
             "apt_risk_preflight_blocked": False,
+            "verifier_bootstrap_risk_detected": bool(
+                setup_preflight.get("verifier_bootstrap_risk_detected")
+            ),
+            "verifier_bootstrap_risk_preflight_blocked": False,
         },
         "runner_prerequisites": {
             "schema_version": "skillsbench_runner_prerequisites_v0",
@@ -10050,6 +10132,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "failure instead of spending a full case attempt."
         ),
     )
+    parser.add_argument(
+        "--fail-fast-on-verifier-bootstrap-risk",
+        action="store_true",
+        help=(
+            "Before a full run, block Docker tasks whose public verifier "
+            "preflight detects network/package bootstrap risk such as uv, "
+            "curl/wget downloads, pip, npm, or apt commands; writes a compact "
+            "setup-preflight failure instead of spending a full case attempt."
+        ),
+    )
     args = parser.parse_args(argv)
     if (
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
@@ -10122,6 +10214,19 @@ async def async_main(
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench apt setup risk preflight blocked: "
             "apt-based Docker setup risk detected before full case run"
+        )
+    if (
+        args.fail_fast_on_verifier_bootstrap_risk
+        and not args.reduce_only
+        and setup_preflight.get("verifier_bootstrap_risk_detected") is True
+    ):
+        staging = plan.setdefault("task_staging", {})
+        if isinstance(staging, dict):
+            staging["verifier_bootstrap_risk_detected"] = True
+            staging["verifier_bootstrap_risk_preflight_blocked"] = True
+        raise SkillsBenchSetupPreflightBlocked(
+            "skillsbench verifier bootstrap risk preflight blocked: "
+            "verifier dependency bootstrap risk detected before full case run"
         )
     if (
         not args.reduce_only

@@ -949,6 +949,28 @@ def _repair_route(
                 "raw_task_text_required": False,
             },
         }
+    if failure_class == "skillsbench_verifier_bootstrap_risk_preflight_blocked":
+        return {
+            "repair_priority": "P1",
+            "repair_class": "skillsbench_verifier_bootstrap_preflight_selection",
+            "next_action": (
+                "select a SkillsBench task whose verifier does not require "
+                "network/package bootstrap, or repair/cache the verifier "
+                "bootstrap route before spending another full arm"
+            ),
+            "repair_profile": {
+                "schema_version": "benchmark_repair_profile_v0",
+                "repair_class": "skillsbench_verifier_bootstrap_preflight_selection",
+                "rerun_allowed_after_profile_applied": True,
+                "required_preflight": [
+                    "skillsbench_task_setup_preflight",
+                    "verifier_bootstrap_risk_detected",
+                    "task_staging.verifier_bootstrap_risk_preflight_blocked",
+                ],
+                "raw_logs_required": False,
+                "raw_task_text_required": False,
+            },
+        }
     if failure_class == "skillsbench_task_source_preflight_blocked":
         return {
             "repair_priority": "P1",
@@ -1785,6 +1807,8 @@ def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
             decision = f"{prefix}_codex_acp_post_success_finalization_required"
         elif repair_class == "skillsbench_setup_preflight_selection":
             decision = f"{prefix}_setup_preflight_selection_required"
+        elif repair_class == "skillsbench_verifier_bootstrap_preflight_selection":
+            decision = f"{prefix}_verifier_bootstrap_preflight_selection_required"
         elif repair_class == "skillsbench_task_source_preflight_selection":
             decision = f"{prefix}_task_source_preflight_selection_required"
         elif repair_class == "worker_verifier_alignment":

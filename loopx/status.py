@@ -2083,6 +2083,8 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "apt_retry_patch_required",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "verifier_bootstrap_risk_detected",
+        "verifier_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
@@ -2133,6 +2135,11 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "verifier_present",
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
@@ -2147,6 +2154,12 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
     )
     if nearest_task_ids:
         compact["nearest_canonical_task_ids"] = nearest_task_ids
+    verifier_risk_categories = public_safe_compact_list(
+        value.get("verifier_bootstrap_risk_categories"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if verifier_risk_categories:
+        compact["verifier_bootstrap_risk_categories"] = verifier_risk_categories
     return compact
 
 

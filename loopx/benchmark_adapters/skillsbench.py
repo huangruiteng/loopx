@@ -1420,6 +1420,16 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             "skillsbench_docker_setup_preflight_blocked",
             "skillsbench_environment_setup_error",
         ]
+    if (
+        "verifier bootstrap risk preflight blocked" in text
+        or "verifier dependency bootstrap risk detected before full case run" in text
+    ):
+        label = "skillsbench_verifier_bootstrap_risk_preflight_blocked"
+        return label, label, [
+            label,
+            "skillsbench_verifier_setup_preflight_blocked",
+            "skillsbench_environment_setup_error",
+        ]
     if "docker compose command failed" in text:
         if (
             "cannot connect to the docker daemon" in text

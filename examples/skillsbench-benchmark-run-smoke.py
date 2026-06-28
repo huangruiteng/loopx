@@ -5029,6 +5029,87 @@ def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> N
         )
 
 
+def test_skillsbench_verifier_bootstrap_preflight_blocks_full_run_without_benchflow() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-verifier-preflight-") as tmp:
+        root = Path(tmp)
+        task = root / "skillsbench" / "tasks" / "organize-messy-files"
+        dockerfile = task / "environment" / "Dockerfile"
+        verifier = task / "verifier" / "test.sh"
+        dockerfile.parent.mkdir(parents=True)
+        verifier.parent.mkdir(parents=True)
+        dockerfile.write_text("FROM python:3.12-slim\n", encoding="utf-8")
+        verifier.write_text(
+            "#!/bin/sh\n"
+            "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n"
+            "uv add polars==1.37.1\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        jobs = root / "jobs"
+        ledger = root / "benchmark-run-ledger.json"
+        args = [
+            "--task-id",
+            "organize-messy-files",
+            "--route",
+            "codex-acp-blind-loop-baseline",
+            "--skillsbench-root",
+            str(root / "skillsbench"),
+            "--jobs-dir",
+            str(jobs),
+            "--job-name",
+            "organize-messy-files-verifier-bootstrap-preflight",
+            "--run-group-id",
+            "organize-messy-files-verifier-bootstrap-preflight",
+            "--ledger-path",
+            str(ledger),
+            "--fail-fast-on-verifier-bootstrap-risk",
+            "--update-ledger",
+        ]
+        plan = build_plan(parse_args(args))
+        preflight = plan["task_setup_preflight"]
+        assert preflight["status"] == "verifier_bootstrap_risk_detected", preflight
+        assert preflight["verifier_bootstrap_risk_detected"] is True, preflight
+        assert preflight["verifier_uv_bootstrap_risk_detected"] is True, preflight
+        assert preflight["verifier_external_download_risk_detected"] is True, preflight
+        assert preflight["verifier_package_install_risk_detected"] is True, preflight
+        assert preflight["raw_task_text_read"] is False, preflight
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(args)
+
+        assert rc == 0, stderr.getvalue()
+        compact_path = (
+            jobs
+            / "organize-messy-files-verifier-bootstrap-preflight"
+            / "organize-messy-files__codex_acp_blind_loop"
+            / "benchmark_run.compact.json"
+        )
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_verifier_bootstrap_risk_preflight_blocked"
+        ), compact
+        assert compact["task_setup_preflight"][
+            "verifier_bootstrap_risk_detected"
+        ] is True, compact
+        assert compact["task_staging"][
+            "verifier_bootstrap_risk_preflight_blocked"
+        ] is True, compact
+        assert compact["validation"]["no_raw_task_text_read"] is True, compact
+
+        update = load_benchmark_run_ledger(ledger)
+        case = update["benchmarks"]["skillsbench@1.1"]["cases"][
+            "organize-messy-files"
+        ]
+        assert case["latest_decision"]["decision"] == (
+            "baseline_verifier_bootstrap_preflight_selection_required"
+        ), case
+        entry = case["runs"][0]
+        assert entry["repair_class"] == (
+            "skillsbench_verifier_bootstrap_preflight_selection"
+        ), entry
+
+
 def test_skillsbench_docker_task_staging_caps_local_cpu_request() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-cpu-cap-stage-") as tmp:
         root = Path(tmp)
