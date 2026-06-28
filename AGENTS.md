@@ -29,6 +29,9 @@ adapters, smoke tests, public docs, or commit/push workflows, use the
 For small, low-risk PRs, maintainers may self-merge after validation when all
 of the following are true:
 
+Here, "自合并" means: 自己 review/refine, then admin-bypass merge after the
+required validation and authorization.
+
 - the PR only touches public docs, contributor metadata, or narrow cleanup;
 - the change is single-purpose and easy to review from the diff;
 - required checks or focused smokes have passed;

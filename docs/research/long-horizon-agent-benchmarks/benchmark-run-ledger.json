@@ -69,30 +69,11 @@
           "latest_decision": {
             "baseline_failure_scope": "passed",
             "baseline_run_id": "fac3a39fdd9a",
-            "decision": "paired_baseline_solved_treatment_preserved",
-            "official_score_delta": 0.0,
-            "product_mode_main_table_pair": {
-              "baseline_route_valid": true,
-              "benchmark_id": "skillsbench@1.1",
-              "case_id": "3d-scan-calc",
-              "claim_blocker": "none",
-              "comparison_id": "skillsbench_product_mode_main_table_v0",
-              "headline_metrics": [
-                "best_score",
-                "final_score",
-                "first_success_round",
-                "declared_done_score"
-              ],
-              "main_table_claim_allowed": true,
-              "max_rounds_budget": 8,
-              "official_feedback_blinded": true,
-              "product_mode_pair_complete": true,
-              "schema_version": "benchmark_product_mode_comparison_v0",
-              "treatment_loopx_lifecycle_observed": true,
-              "treatment_route_valid": true
-            },
-            "treatment_failure_scope": "passed",
-            "treatment_run_id": "10d4a914cccc"
+            "decision": "paired_treatment_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+            "official_score_delta": -1.0,
+            "treatment_failure_scope": "runner_or_setup",
+            "treatment_run_id": "decbde35b3b4"
           },
           "runs": [
             {
@@ -537,6 +518,261 @@
                 "task_skills_removed": true
               },
               "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_product_mode_lifecycle_missing",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "3d-scan-calc",
+              "case_ids": [
+                "3d-scan-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_acp_agent_message_only_no_tool_calls",
+              "failure_labels": [
+                "skillsbench_host_local_acp_codex_exec_failed_codex_network_or_api_unreachable",
+                "skillsbench_host_local_acp_codex_exec_failed",
+                "skillsbench_runner_setup_error",
+                "skillsbench_product_mode_transport_failure",
+                "skillsbench_product_mode_lifecycle_missing",
+                "skillsbench_acp_agent_message_only_no_tool_calls",
+                "skillsbench_agent_behavior_gap"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_3d_scan_calc_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": true,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 1,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": false,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "missing_reason": "remote_command_file_bridge_agent_no_requests",
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": false,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-28T13:57:12+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-3d-scan-goalstart-closeoutfix-20260628T055555Z",
+              "run_id": "df1d62653fac",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 1,
+              "best_round_is_final": true,
+              "best_round_passed": false,
+              "best_round_reward": 0.0,
+              "case_attempt_countable": false,
+              "case_id": "3d-scan-calc",
+              "case_ids": [
+                "3d-scan-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+              "failure_labels": [
+                "skillsbench_product_mode_solver_activity_gap",
+                "skillsbench_agent_behavior_gap",
+                "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+                "skillsbench_host_local_acp_codex_exec_failed",
+                "skillsbench_runner_setup_error",
+                "skillsbench_product_mode_transport_failure"
+              ],
+              "failure_scope": "runner_or_setup",
+              "final_round": 15,
+              "final_round_passed": false,
+              "final_round_reward": 0.0,
+              "job_name": "skillsbench_1_1_3d_scan_calc_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "official SkillsBench BenchFlow LoopX goal-start product-mode treatment; compact result only; no raw task/log/trajectory read into public state",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": false,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 16,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": false,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": false,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-28T15:08:52+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 12,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 3,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 4,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 5,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 6,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 7,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 8,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 9,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 10,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 11,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 12,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-3d-scan-goalstart-closeoutfix-revchan-20260628T060046Z",
+              "run_id": "decbde35b3b4",
+              "score_status": "failed",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true
+              },
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -9500,7 +9736,7 @@
           ]
         }
       },
-      "run_count": 157
+      "run_count": 159
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -13552,5 +13788,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-27T22:10:04+08:00"
+  "updated_at": "2026-06-28T15:08:52+08:00"
 }
