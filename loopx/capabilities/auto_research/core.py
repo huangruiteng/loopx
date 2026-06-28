@@ -19,6 +19,7 @@ RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION = "research_evidence_graph_v0"
 RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION = "research_showcase_projection_v0"
 AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projection_v0"
 AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION = "auto_research_evidence_packet_v0"
+AUTO_RESEARCH_ARTIFACT_PACKET_SCHEMA_VERSION = "auto_research_artifact_packet_v0"
 AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = "auto_research_rollout_append_v0"
 AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION = "auto_research_quickstart_v0"
 AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_plan_v0"
@@ -1436,6 +1437,10 @@ def build_auto_research_projection(
         "retirement_candidates": decision_candidates["retirement_candidates"],
     }
     showcase_projection = build_research_showcase_projection(fixture, evidence_graph=evidence_graph)
+    artifact_packet = build_research_artifact_packet(
+        evidence_graph,
+        question=contract["research_objective"],
+    )
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
@@ -1443,6 +1448,7 @@ def build_auto_research_projection(
         "frontier": frontier,
         "evidence_graph": evidence_graph,
         "showcase_projection": showcase_projection,
+        "artifact_packet": artifact_packet,
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
@@ -1802,6 +1808,10 @@ def build_live_auto_research_projection(
         ),
         "source_kind": source_kind,
     }
+    artifact_packet = build_research_artifact_packet(
+        evidence_graph,
+        question=str(showcase_projection["objective"]),
+    )
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
@@ -1809,6 +1819,7 @@ def build_live_auto_research_projection(
         "frontier": frontier,
         "evidence_graph": evidence_graph,
         "showcase_projection": showcase_projection,
+        "artifact_packet": artifact_packet,
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
@@ -1904,6 +1915,180 @@ def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[s
     }
 
 
+def build_research_artifact_packet(
+    evidence_graph: dict[str, Any],
+    *,
+    question: str | None = None,
+) -> dict[str, Any]:
+    """Project the evidence graph into a user-facing research artifact chain.
+
+    This is a read-only product packet. It does not introduce a leader agent or
+    a second source of truth; every claim points back to graph nodes, todo ids,
+    rollout/event source kind, and compact artifact references.
+    """
+
+    graph = _json_obj(evidence_graph, field="evidence_graph")
+    schema = _compact_public_token(graph.get("schema_version"), field="evidence_graph.schema_version")
+    if schema != RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION:
+        raise ValueError(f"evidence_graph.schema_version must be {RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION}")
+    goal = _compact_public_token(graph.get("goal_id"), field="evidence_graph.goal_id")
+    source_kind = _compact_optional_token(
+        graph.get("source_kind"),
+        field="evidence_graph.source_kind",
+        default="unknown_source",
+    )
+    artifact_question = _compact_optional_text(
+        question,
+        field="artifact_question",
+        default=f"What does the current auto-research evidence support for {goal}?",
+        max_len=240,
+    )
+    decision_candidates = build_research_decision_candidates(graph)
+
+    source_map: list[dict[str, Any]] = []
+    claim_ledger: list[dict[str, Any]] = []
+    citation_items: list[dict[str, Any]] = []
+    contradicted_items: list[dict[str, Any]] = []
+    retry_items: list[dict[str, Any]] = []
+    unresolved_items: list[dict[str, Any]] = []
+
+    for raw_node in graph.get("nodes") or []:
+        if not isinstance(raw_node, dict):
+            continue
+        hypothesis_id = _compact_public_token(raw_node.get("hypothesis_id"), field="artifact.node.hypothesis_id")
+        todo_id = _compact_public_token(raw_node.get("todo_id"), field="artifact.node.todo_id")
+        claimed_by = _compact_public_token(raw_node.get("claimed_by"), field="artifact.node.claimed_by")
+        status = _compact_optional_token(raw_node.get("status"), field="artifact.node.status", default="active")
+        evidence_count = int(raw_node.get("evidence_event_count") or 0)
+        negative_count = int(raw_node.get("negative_evidence_count") or 0)
+        retry_count = int(raw_node.get("needs_retry_count") or 0)
+        artifact_refs = _compact_public_text_list(raw_node.get("artifact_refs"), field="artifact.node.artifact_refs")
+        grounding_refs = _compact_public_text_list(raw_node.get("grounding_refs"), field="artifact.node.grounding_refs")
+        splits = [
+            _compact_public_token(split, field="artifact.node.splits[]")
+            for split in raw_node.get("splits", [])
+        ]
+        node_source_kind = _compact_optional_token(
+            raw_node.get("source_kind"),
+            field="artifact.node.source_kind",
+            default=source_kind,
+        )
+        source_refs = [f"hypothesis:{hypothesis_id}", *grounding_refs, *artifact_refs]
+        source_map.append(
+            {
+                "source_id": f"hypothesis:{hypothesis_id}",
+                "source_kind": node_source_kind,
+                "todo_id": todo_id,
+                "claimed_by": claimed_by,
+                "status": status,
+                "grounding_refs": grounding_refs,
+                "artifact_refs": artifact_refs,
+                "split_refs": splits,
+            }
+        )
+        claim_ledger.append(
+            {
+                "claim_id": f"claim:{hypothesis_id}",
+                "hypothesis_id": hypothesis_id,
+                "todo_id": todo_id,
+                "claimed_by": claimed_by,
+                "status": status,
+                "evidence_event_count": evidence_count,
+                "best_dev_metric": _finite_float(raw_node.get("best_dev_metric"), field="artifact.node.best_dev_metric"),
+                "best_holdout_metric": _finite_float(
+                    raw_node.get("best_holdout_metric"),
+                    field="artifact.node.best_holdout_metric",
+                ),
+                "source_id": f"hypothesis:{hypothesis_id}",
+            }
+        )
+        citation_items.append(
+            {
+                "citation_id": f"citation:{hypothesis_id}",
+                "supports_claim_id": f"claim:{hypothesis_id}",
+                "source_refs": source_refs,
+                "split_refs": splits,
+                "public_safe": True,
+            }
+        )
+        if status in {"contradicted", "retired"} or negative_count:
+            contradicted_items.append(
+                {
+                    "hypothesis_id": hypothesis_id,
+                    "todo_id": todo_id,
+                    "status": status,
+                    "negative_evidence_count": negative_count,
+                    "source_id": f"hypothesis:{hypothesis_id}",
+                }
+            )
+        elif status == "needs_retry" or retry_count:
+            retry_items.append(
+                {
+                    "hypothesis_id": hypothesis_id,
+                    "todo_id": todo_id,
+                    "status": status,
+                    "needs_retry_count": retry_count,
+                    "source_id": f"hypothesis:{hypothesis_id}",
+                }
+            )
+        elif status not in {"supported", "promoted"} and evidence_count == 0:
+            unresolved_items.append(
+                {
+                    "hypothesis_id": hypothesis_id,
+                    "todo_id": todo_id,
+                    "status": status,
+                    "source_id": f"hypothesis:{hypothesis_id}",
+                }
+            )
+
+    has_promotion = bool(decision_candidates["promotion_candidates"])
+    has_retirement = bool(decision_candidates["retirement_candidates"] or contradicted_items)
+    if has_promotion:
+        recommended_decision = "review_promotion_candidate"
+    elif has_retirement:
+        recommended_decision = "review_retirement_candidate"
+    elif retry_items:
+        recommended_decision = "review_retry_candidate"
+    else:
+        recommended_decision = "continue_research"
+
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_ARTIFACT_PACKET_SCHEMA_VERSION,
+        "goal_id": goal,
+        "question": artifact_question,
+        "source_kind": source_kind,
+        "rollout_backed": source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND,
+        "source_map": source_map,
+        "claim_ledger": claim_ledger,
+        "contradiction_review": {
+            "negative_evidence_count": int(graph.get("negative_evidence_count") or 0),
+            "needs_retry_count": int(graph.get("needs_retry_count") or 0),
+            "contradicted_or_retired": contradicted_items,
+            "needs_retry": retry_items,
+            "unresolved_without_evidence": unresolved_items,
+        },
+        "citation_packet": {
+            "schema_version": "auto_research_citation_packet_v0",
+            "items": citation_items,
+            "raw_source_bodies_included": False,
+        },
+        "decision_packet": {
+            "schema_version": "auto_research_decision_packet_v0",
+            "recommended_decision": recommended_decision,
+            "promotion_candidates": decision_candidates["promotion_candidates"],
+            "retirement_candidates": decision_candidates["retirement_candidates"],
+            "requires_operator_gate": has_promotion,
+        },
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "raw_source_bodies_recorded": False,
+            "source": source_kind,
+        },
+    }
+
+
 def build_research_evidence_graph_from_records(
     *,
     goal_id: str,
@@ -1937,6 +2122,15 @@ def build_research_evidence_graph_from_records(
         item_best_holdout = _best_metric(item_scored_events, split="holdout", direction=direction)
         item_negative_count = len([event for event in item_events if _is_negative_evidence_event(event)])
         item_retry_count = len([event for event in item_events if _is_retry_evidence_event(event)])
+        item_artifact_refs = sorted(
+            {
+                ref
+                for event in item_events
+                for ref in event.get("artifact_refs", [])
+                if ref
+            }
+        )
+        item_splits = sorted({event["split"] for event in item_events if event.get("split")})
         nodes.append(
             {
                 "hypothesis_id": item["hypothesis_id"],
@@ -1944,6 +2138,10 @@ def build_research_evidence_graph_from_records(
                 "todo_id": item["todo_id"],
                 "claimed_by": item["claimed_by"],
                 "status": item["status"],
+                "grounding_refs": item["grounding_refs"],
+                "novelty_audit_ref": item["novelty_audit_ref"],
+                "artifact_refs": item_artifact_refs,
+                "splits": item_splits,
                 "evidence_event_count": len(item_events),
                 "best_dev_metric": item_best_dev,
                 "best_holdout_metric": item_best_holdout,
@@ -2077,7 +2275,10 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
     frontier = payload["frontier"]  # type: ignore[index]
     graph = payload["evidence_graph"]  # type: ignore[index]
     showcase = payload["showcase_projection"]  # type: ignore[index]
+    artifact = payload.get("artifact_packet") if isinstance(payload.get("artifact_packet"), dict) else {}
     selected = frontier.get("selected") if isinstance(frontier, dict) else None
+    citation_packet = artifact.get("citation_packet") if isinstance(artifact.get("citation_packet"), dict) else {}
+    decision_packet = artifact.get("decision_packet") if isinstance(artifact.get("decision_packet"), dict) else {}
     lines = [
         "# LoopX Auto Research Frontier",
         "",
@@ -2092,6 +2293,11 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
         f"- holdout improved: `{graph.get('holdout_improved')}`",
         f"- promotion candidates: `{len(frontier.get('promotion_candidates') or [])}`",
         f"- retirement candidates: `{len(frontier.get('retirement_candidates') or [])}`",
+        f"- artifact packet: `{artifact.get('schema_version')}`",
+        f"- source map entries: `{len(artifact.get('source_map') or [])}`",
+        f"- claim ledger entries: `{len(artifact.get('claim_ledger') or [])}`",
+        f"- citation items: `{len(citation_packet.get('items') or [])}`",
+        f"- recommended decision: `{decision_packet.get('recommended_decision')}`",
     ]
     return "\n".join(lines) + "\n"
 
