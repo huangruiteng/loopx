@@ -10,12 +10,14 @@ from .todo_contract import (
     normalize_required_capabilities,
     normalize_required_write_scopes,
     normalize_target_capabilities,
+    normalize_todo_decision_scope,
     normalize_todo_action_kind,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
+    normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -78,6 +80,8 @@ TODO_METADATA_KEYS = (
     "required_write_scopes",
     "required_capabilities",
     "target_capabilities",
+    "decision_scope",
+    "required_decision_scopes",
     "claimed_by",
     "blocks_agent",
     "global_gate",
@@ -350,6 +354,14 @@ def _normalize_structured_todo_item(
     target_capabilities = normalize_target_capabilities(item.get("target_capabilities"))
     if target_capabilities:
         normalized["target_capabilities"] = target_capabilities
+    decision_scope = normalize_todo_decision_scope(item.get("decision_scope"))
+    if decision_scope:
+        normalized["decision_scope"] = decision_scope
+    required_decision_scopes = normalize_todo_required_decision_scopes(
+        item.get("required_decision_scopes")
+    )
+    if required_decision_scopes:
+        normalized["required_decision_scopes"] = required_decision_scopes
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     if claimed_by:
         normalized["claimed_by"] = claimed_by

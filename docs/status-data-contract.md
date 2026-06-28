@@ -54,9 +54,10 @@ this graph to preserve the dashboard interface budget; callers that need the
 graph can request it with `loopx --format json status --include-task-graph`, or
 use a full review packet. This is a compact graph-shaped view over existing
 todos, gates, leases, run ids, and event-ledger state. It is read-only and
-exists only to show dependency, validation, repair, and handoff relationships
-that are hard to scan in a flat todo list. It must not introduce a second
-scheduler, graph write API, hidden lease store, or alternate task truth.
+exists only to show dependency, validation, repair, audit, continuation, and
+handoff relationships that are hard to scan in a flat todo list. It must not
+introduce a second scheduler, graph write API, hidden lease store, or alternate
+task truth.
 The protocol is defined in
 [`docs/reference/protocols/task-graph-projection-v0.md`](reference/protocols/task-graph-projection-v0.md);
 consumers should ignore the field when absent.

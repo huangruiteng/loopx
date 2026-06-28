@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from ..contract import check_contract, render_contract_markdown
 from ..diagnose import collect_diagnosis, render_diagnosis_markdown
@@ -10,6 +11,7 @@ from ..handoff_budget import build_handoff_interface_budget
 from ..quota import build_quota_should_run
 from ..review_packet import build_review_packet, render_review_packet_markdown
 from ..status import collect_status, render_status_markdown
+from ..todo_contract import normalize_todo_claimed_by
 
 
 PrintPayload = Callable[
@@ -124,6 +126,10 @@ def register_status_commands(
         dest="review_packet_format",
         choices=["markdown", "json"],
         help="Output format for review-packet. This mirrors the global --format flag and may appear after the subcommand.",
+    )
+    review_packet_parser.add_argument(
+        "--agent-id",
+        help="Registered agent id for adding read-only agent-member status to the review packet.",
     )
     review_packet_parser.add_argument("--limit", type=int, default=5)
 
@@ -249,6 +255,149 @@ def handle_status_command(
     return 0 if payload.get("ok") else 1
 
 
+def _compact_member_text(value: Any, *, limit: int = 180) -> str | None:
+    if isinstance(value, list):
+        compact = "; ".join(str(item).strip() for item in value if str(item).strip())
+    elif isinstance(value, str):
+        compact = value
+    else:
+        return None
+    compact = " ".join(compact.split())
+    if not compact or any(char in compact for char in "<>"):
+        return None
+    if len(compact) > limit:
+        compact = compact[: limit - 1].rstrip() + "…"
+    return compact
+
+
+def _agent_profile_for(coordination: dict[str, Any], agent_id: str) -> dict[str, Any]:
+    profiles = coordination.get("agent_profiles")
+    if not isinstance(profiles, dict):
+        return {}
+    profile = profiles.get(agent_id)
+    return profile if isinstance(profile, dict) else {}
+
+
+def _profile_scope_summary(profile: dict[str, Any]) -> str | None:
+    for key in (
+        "scope_summary",
+        "default_scope",
+        "scope",
+        "scope_summaries",
+        "default_scopes",
+        "scopes",
+    ):
+        summary = _compact_member_text(profile.get(key))
+        if summary:
+            return summary
+    return None
+
+
+def _profile_worktree_policy(profile: dict[str, Any]) -> tuple[str | None, bool | None]:
+    policy = profile.get("worktree_policy")
+    if isinstance(policy, dict):
+        mode = _compact_member_text(policy.get("mode"), limit=80)
+        requires = policy.get("requires_independent_worktree")
+        return mode, requires if isinstance(requires, bool) else None
+    return _compact_member_text(policy, limit=80), None
+
+
+def _review_handoff_agent(
+    *,
+    coordination: dict[str, Any],
+    profile: dict[str, Any],
+    role: str | None,
+) -> str | None:
+    review_policy = profile.get("review_policy")
+    if isinstance(review_policy, dict):
+        handoff_agent = normalize_todo_claimed_by(review_policy.get("handoff_agent"))
+        if handoff_agent:
+            return handoff_agent
+    if role == "side-agent":
+        return normalize_todo_claimed_by(coordination.get("side_agent_handoff_agent"))
+    return None
+
+
+def _current_claims_for_agent(item: dict[str, Any], *, agent_id: str) -> list[str]:
+    claims: list[str] = []
+    todo_sources: list[Any] = [item.get("agent_todos")]
+    project_asset = item.get("project_asset")
+    if isinstance(project_asset, dict):
+        todo_sources.append(project_asset.get("agent_todos"))
+    for todos in todo_sources:
+        if not isinstance(todos, dict):
+            continue
+        raw_items = todos.get("items") if isinstance(todos.get("items"), list) else []
+        if not raw_items and isinstance(todos.get("first_open_items"), list):
+            raw_items = todos.get("first_open_items") or []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict) or raw_item.get("done"):
+                continue
+            if normalize_todo_claimed_by(raw_item.get("claimed_by")) != agent_id:
+                continue
+            todo_id = str(raw_item.get("todo_id") or "").strip()
+            if todo_id and todo_id not in claims:
+                claims.append(todo_id)
+    return claims
+
+
+def _build_agent_member_projection(
+    item: dict[str, Any],
+    *,
+    guard: dict[str, Any],
+    agent_id: str,
+) -> dict[str, Any] | None:
+    identity = guard.get("agent_identity")
+    if not isinstance(identity, dict):
+        return None
+    coordination = item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
+    profile = _agent_profile_for(coordination, agent_id)
+    role = _compact_member_text(profile.get("role"), limit=80) or _compact_member_text(
+        identity.get("role"),
+        limit=80,
+    )
+    worktree_policy, requires_independent_worktree = _profile_worktree_policy(profile)
+    claims = _current_claims_for_agent(item, agent_id=agent_id)
+    member: dict[str, Any] = {
+        "schema_version": "agent_member_v0",
+        "agent_id": agent_id,
+        "role": role,
+        "primary_agent": normalize_todo_claimed_by(identity.get("primary_agent")),
+        "profile_source": "registry.coordination.agent_profiles" if profile else "quota.agent_identity",
+        "authority_source": "registry+quota_should_run+todo_projection",
+        "role_is_advisory": True,
+        "current_claims": claims[:10],
+        "current_claim_count": len(claims),
+        "lease_projection": {
+            "source": "todo.claimed_by",
+            "hard_lease_available": False,
+        },
+    }
+    scope_summary = _profile_scope_summary(profile)
+    if scope_summary:
+        member["scope_summary"] = scope_summary
+    if worktree_policy:
+        member["worktree_policy"] = worktree_policy
+    if requires_independent_worktree is not None:
+        member["requires_independent_worktree"] = requires_independent_worktree
+    handoff_agent = _review_handoff_agent(
+        coordination=coordination,
+        profile=profile,
+        role=role,
+    )
+    if handoff_agent:
+        member["handoff_agent"] = handoff_agent
+        member["review_handoff_status"] = "handoff_agent_configured"
+    else:
+        member["review_handoff_status"] = "no_agent_specific_handoff"
+    review_policy = profile.get("review_policy")
+    if isinstance(review_policy, dict):
+        can_self_merge = review_policy.get("can_self_merge")
+        if isinstance(can_self_merge, (bool, str)):
+            member["can_self_merge"] = can_self_merge
+    return member
+
+
 def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str) -> dict[str, object]:
     safe_agent_id = str(agent_id or "").strip()
     if not safe_agent_id:
@@ -262,6 +411,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
     attached = 0
     frontier_attached = 0
     hint_attached = 0
+    member_attached = 0
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -295,16 +445,36 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
                 project_asset["agent_lane_frontier_hint"] = frontier_hint
             hint_attached += 1
             changed = True
+        agent_member = _build_agent_member_projection(
+            item,
+            guard=guard,
+            agent_id=safe_agent_id,
+        )
+        if isinstance(agent_member, dict):
+            item["agent_member"] = agent_member
+            if isinstance(project_asset, dict):
+                project_asset["agent_member"] = agent_member
+            member_attached += 1
+            changed = True
         if not changed:
             continue
-    if attached or frontier_attached or hint_attached:
+    if attached or frontier_attached or hint_attached or member_attached:
         payload["agent_lane_next_action_projection"] = {
             "schema_version": "agent_lane_next_action_projection_v0",
             "agent_id": safe_agent_id,
             "attached_count": attached,
             "frontier_attached_count": frontier_attached,
             "frontier_hint_attached_count": hint_attached,
+            "agent_member_attached_count": member_attached,
             "preserves_goal_next_action": True,
+        }
+    if member_attached:
+        payload["agent_member_projection"] = {
+            "schema_version": "agent_member_projection_v0",
+            "agent_id": safe_agent_id,
+            "attached_count": member_attached,
+            "source": "registry+quota_should_run+todo_projection",
+            "projection_is_authoritative": False,
         }
     return payload
 
@@ -369,6 +539,8 @@ def handle_review_packet_command(
             limit=max(0, args.limit),
             include_task_graph=not args.handoff_only,
         )
+        if args.agent_id:
+            attach_agent_lane_next_actions(status_payload, agent_id=args.agent_id)
         payload = build_review_packet(
             status_payload,
             goal_id=args.goal_id,

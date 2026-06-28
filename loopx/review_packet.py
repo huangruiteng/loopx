@@ -371,6 +371,41 @@ def todo_texts_from_project_asset(item: dict[str, Any] | None, key: str, *, limi
     return open_todo_texts(item.get(key), limit=limit, rank_for_handoff=rank_for_handoff)
 
 
+def agent_member_from_item(item: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
+    member = project_asset.get("agent_member") if isinstance(project_asset.get("agent_member"), dict) else None
+    if member is None and isinstance(item.get("agent_member"), dict):
+        member = item["agent_member"]
+    return member if isinstance(member, dict) else None
+
+
+def agent_member_summary(item: dict[str, Any] | None) -> str | None:
+    member = agent_member_from_item(item)
+    if not member:
+        return None
+    claims = [
+        str(claim).strip()
+        for claim in (member.get("current_claims") or [])
+        if str(claim).strip()
+    ]
+    parts = [
+        f"agent={member.get('agent_id')}",
+        f"role={member.get('role')}",
+        "authority=advisory_projection",
+    ]
+    if member.get("scope_summary"):
+        parts.append(f"scope={member.get('scope_summary')}")
+    if member.get("worktree_policy"):
+        parts.append(f"worktree_policy={member.get('worktree_policy')}")
+    if claims:
+        parts.append(f"claims={','.join(claims[:5])}")
+    if member.get("handoff_agent"):
+        parts.append(f"handoff_agent={member.get('handoff_agent')}")
+    return compact_packet_text(" ".join(str(part) for part in parts if part))
+
+
 def project_asset_source(item: dict[str, Any] | None) -> str:
     if isinstance(item, dict) and isinstance(item.get("project_asset"), dict):
         return "project_asset"
@@ -965,6 +1000,7 @@ def project_agent_section(
     agent_todo_items: list[str] | None = None,
     authority_summary: str | None = None,
     project_asset_source_text: str | None = None,
+    agent_member_text: str | None = None,
     handoff_followthrough_text: str | None = None,
     handoff_delivery_contract_text: str | None = None,
     approved_operator_gate: bool = False,
@@ -980,6 +1016,7 @@ def project_agent_section(
     ]
     authority_line = f"材料上下文：{authority_summary}；只用这些脱敏计数判断 freshness / owner gap，不要要求内部链接或原文。" if authority_summary else None
     source_line = f"项目资产来源：{project_asset_source_text}" if project_asset_source_text else None
+    member_line = f"Agent 成员：{agent_member_text}" if agent_member_text else None
     followthrough_line = f"交付观测：{handoff_followthrough_text}" if handoff_followthrough_text else None
     delivery_contract_line = f"交付合同：{handoff_delivery_contract_text}" if handoff_delivery_contract_text else None
     if approved_operator_gate:
@@ -987,6 +1024,7 @@ def project_agent_section(
             goal_guard,
             context_rule,
             source_line,
+            member_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1003,6 +1041,7 @@ def project_agent_section(
             goal_guard,
             context_rule,
             source_line,
+            member_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1019,6 +1058,7 @@ def project_agent_section(
             goal_guard,
             context_rule,
             source_line,
+            member_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1035,6 +1075,7 @@ def project_agent_section(
             goal_guard,
             context_rule,
             source_line,
+            member_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1051,6 +1092,7 @@ def project_agent_section(
             goal_guard,
             context_rule,
             source_line,
+            member_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1067,6 +1109,7 @@ def project_agent_section(
             goal_guard,
             context_rule,
             source_line,
+            member_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1106,6 +1149,7 @@ def build_review_packet(
     agent_todo_text = agent_todo_items[0] if agent_todo_items else None
     asset_source = project_asset_source(item)
     asset_source_line = project_asset_source_line(asset_source)
+    member_summary = agent_member_summary(item)
     authority_summary = authority_material_summary(goal)
     followthrough_summary = handoff_followthrough_summary(item)
     chain_handoff = benchmark_report_chain_handoff(item)
@@ -1149,6 +1193,7 @@ def build_review_packet(
         agent_todo_items=agent_todo_items,
         authority_summary=authority_summary,
         project_asset_source_text=asset_source_line,
+        agent_member_text=member_summary,
         handoff_followthrough_text=followthrough_summary,
         handoff_delivery_contract_text=delivery_contract_text,
         approved_operator_gate=approved_handoff,
@@ -1220,6 +1265,8 @@ def build_review_packet(
         "owner_blocker_text": owner_blocker_text,
         "agent_todo_text": agent_todo_text,
         "agent_todo_items": agent_todo_items,
+        "agent_member": agent_member_from_item(item),
+        "agent_member_summary": member_summary,
         "authority_summary": authority_summary,
         "handoff_followthrough_summary": followthrough_summary,
         "benchmark_report_chain_handoff": chain_handoff,

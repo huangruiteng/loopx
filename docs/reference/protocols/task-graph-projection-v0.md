@@ -102,12 +102,30 @@ Edges describe why one node affects another. Allowed `relation` values are:
 - `blocks`;
 - `validates`;
 - `repairs`;
+- `audits`;
+- `continues`;
 - `hands_off_to`;
 - `supersedes`.
 
 Each edge must name `from_node_id`, `to_node_id`, `relation`, and a compact
 public-safe `reason`. Edges may carry the same compact `refs` object as nodes.
 An edge does not grant permission to run a command or mutate state.
+
+`repairs`, `audits`, and `continues` are lineage relations, not lifecycle
+commands. They are derived from existing run history, todo/gate metadata, and
+compact blocker or validation writebacks:
+
+- `repairs` says a repair or replan node is intended to recover a selected
+  work lane.
+- `audits` says compact run-history evidence reviews, checks, or bounds a
+  selected work lane.
+- `continues` says compact run-history evidence is a continuation of a selected
+  work lane.
+
+These relations may help a dashboard or reviewer explain why a work item is
+still active, stale, repaired, or safe to hand off. They must not create a graph
+resume command, mutate todo status, or replace freshness checks against current
+quota, gates, claims, and run history.
 
 ## Write Boundary
 
@@ -140,6 +158,8 @@ A valid public fixture or implementation must prove:
 - every edge endpoint references an existing node;
 - every node and edge references existing LoopX ids rather than raw
   private material;
+- repair, audit, and continuation relations are rendered only as derived
+  read-only lineage over existing todos, gates, leases, and compact run ids;
 - no local absolute paths, credentials, raw transcripts, or raw logs are
   projected;
 - status/review-packet consumers can safely ignore the field when absent.

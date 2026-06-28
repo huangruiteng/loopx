@@ -559,8 +559,8 @@ control state and transient work state:
 This lets LoopX borrow graph-native recovery where it matters without
 forcing every goal into a multi-agent DAG. Small or linear goals can stay as
 ordinary todos. Multi-stage goals can project a graph for dispatch, review, and
-repair, while the append-only ledger still decides what happened and which
-worker may resume.
+repair, audit, and continuation, while the append-only ledger still decides
+what happened and which worker may resume.
 
 The first implementation should be read-mostly: expose an optional compact
 `task_graph_projection_v0` from status or review packets, backed by existing

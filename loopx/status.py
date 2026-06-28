@@ -96,9 +96,11 @@ from .todo_contract import (
     normalize_required_write_scopes,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_no_followup,
+    normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -5130,6 +5132,14 @@ def structured_todo_item(
     target_capabilities = normalize_target_capabilities(item.get("target_capabilities"))
     if target_capabilities:
         normalized["target_capabilities"] = target_capabilities
+    decision_scope = normalize_todo_decision_scope(item.get("decision_scope"))
+    if decision_scope:
+        normalized["decision_scope"] = decision_scope
+    required_decision_scopes = normalize_todo_required_decision_scopes(
+        item.get("required_decision_scopes")
+    )
+    if required_decision_scopes:
+        normalized["required_decision_scopes"] = required_decision_scopes
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     if claimed_by:
         normalized["claimed_by"] = claimed_by
@@ -5174,6 +5184,8 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",
+        "decision_scope",
+        "required_decision_scopes",
         "claimed_by",
         "blocks_agent",
         "global_gate",
@@ -5185,6 +5197,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "target_key",
         "cadence",
         "next_due_at",
+        "expires_at",
         "last_checked_at",
         "result_hash",
         "consecutive_no_change",
@@ -5235,10 +5248,24 @@ def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
     return parse_timestamp(item.get("next_due_at"))
 
 
+def todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
+    return parse_timestamp(item.get("expires_at"))
+
+
+def todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
+    expires_at = todo_item_expires_at(item)
+    if expires_at is None:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return expires_at <= current_time
+
+
 def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
     if not todo_item_is_actionable_open(item):
         return False
     if todo_item_task_class(item) != TODO_TASK_CLASS_MONITOR:
+        return False
+    if todo_item_is_expired_monitor(item, now=now):
         return False
     next_due_at = todo_item_next_due_at(item)
     if next_due_at is None:
@@ -10009,6 +10036,30 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                 lines.append(
                     "    - agent_lane_recommendation: "
                     f"agent={agent} lane={lane} action={recommendation}"
+                )
+            agent_member = (
+                project_asset.get("agent_member")
+                if isinstance(project_asset.get("agent_member"), dict)
+                else item.get("agent_member")
+                if isinstance(item.get("agent_member"), dict)
+                else {}
+            )
+            if agent_member:
+                current_claims = ",".join(
+                    _markdown_scalar(claim)
+                    for claim in (agent_member.get("current_claims") or [])
+                    if str(claim or "").strip()
+                )
+                lines.append(
+                    "    - agent_member: "
+                    f"agent={_markdown_scalar(agent_member.get('agent_id') or '')} "
+                    f"role={_markdown_scalar(agent_member.get('role') or '')} "
+                    f"scope={_markdown_scalar(agent_member.get('scope_summary') or '')} "
+                    f"worktree_policy={_markdown_scalar(agent_member.get('worktree_policy') or '')} "
+                    f"claims={_markdown_scalar(current_claims)} "
+                    f"handoff_agent={_markdown_scalar(agent_member.get('handoff_agent') or '')} "
+                    f"source={_markdown_scalar(agent_member.get('profile_source') or '')} "
+                    "authority=advisory_projection"
                 )
             if agent_lane_next_action:
                 agent = _markdown_scalar(agent_lane_next_action.get("agent_id") or "")

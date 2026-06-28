@@ -13,6 +13,7 @@ TODO_ACTION_KIND_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TODO_ID_PATTERN = re.compile(r"^todo_[a-z0-9_-]{3,64}$")
 TODO_AGENT_CLAIM_PATTERN = re.compile(r"^[a-z][a-z0-9_.:@-]{0,79}$")
 TODO_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_:-]{0,63}$")
+TODO_DECISION_SCOPE_KEY_PATTERN = re.compile(r"^(?:\*|[a-z0-9][a-z0-9_.:@*/-]{0,95})$")
 TODO_RESUME_KIND_TODO_DONE = "todo_done"
 TODO_RESUME_KIND_PR_MERGED = "pr_merged"
 TODO_RESUME_WHEN_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}(?::[a-z0-9_.:@-]{1,96})?$")
@@ -24,6 +25,7 @@ TODO_MONITOR_METADATA_FIELDS = (
     "target_key",
     "cadence",
     "next_due_at",
+    "expires_at",
     "last_checked_at",
     "result_hash",
     "consecutive_no_change",
@@ -40,6 +42,23 @@ TODO_TASK_CLASS_VALUES = {
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
     TODO_TASK_CLASS_BLOCKER,
+}
+TODO_DECISION_SCOPE_SCHEMA_VERSION = "decision_scope_v0"
+TODO_DECISION_SCOPE_KIND_VALUES = {
+    "private_read",
+    "write_scope",
+    "resource",
+    "production",
+    "public_claim",
+    "direction",
+    "other",
+}
+TODO_DECISION_SCOPE_GRANULARITY_VALUES = {
+    "action",
+    "lane",
+    "goal",
+    "project",
+    "global",
 }
 
 TODO_STATUS_OPEN = "open"
@@ -262,6 +281,90 @@ def normalize_target_capabilities(value: Any) -> list[str]:
     return normalize_required_capabilities(value)
 
 
+def normalize_todo_decision_scope(value: Any) -> dict[str, str] | None:
+    """Normalize the compact decision-scope metadata token.
+
+    Markdown todo metadata stores the v0 shape as
+    ``kind:granularity:scope_key`` so authors do not need to embed JSON in
+    active-state comments. Status and quota expose the normalized object.
+    """
+
+    raw_kind: Any = None
+    raw_granularity: Any = None
+    raw_scope_key: Any = None
+    raw_decision_id: Any = None
+    if isinstance(value, dict):
+        raw_kind = value.get("kind")
+        raw_granularity = value.get("granularity")
+        raw_scope_key = value.get("scope_key")
+        raw_decision_id = value.get("decision_id")
+    else:
+        candidate = compact_todo_text(value).lower()
+        parts = candidate.split(":", 2)
+        if len(parts) != 3:
+            return None
+        raw_kind, raw_granularity, raw_scope_key = parts
+
+    kind = compact_todo_text(raw_kind).lower()
+    granularity = compact_todo_text(raw_granularity).lower()
+    scope_key = compact_todo_text(raw_scope_key).lower()
+    if kind not in TODO_DECISION_SCOPE_KIND_VALUES:
+        return None
+    if granularity not in TODO_DECISION_SCOPE_GRANULARITY_VALUES:
+        return None
+    if not TODO_DECISION_SCOPE_KEY_PATTERN.match(scope_key):
+        return None
+
+    payload: dict[str, str] = {
+        "schema_version": TODO_DECISION_SCOPE_SCHEMA_VERSION,
+        "kind": kind,
+        "granularity": granularity,
+        "scope_key": scope_key,
+    }
+    decision_id = normalize_todo_id(raw_decision_id)
+    if decision_id:
+        payload["decision_id"] = decision_id
+    return payload
+
+
+def normalize_todo_required_decision_scopes(value: Any) -> list[dict[str, str]]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        raw_values = list(value)
+    else:
+        raw_values = re.split(r"[,;|]", str(value or ""))
+    scopes: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for raw in raw_values:
+        scope = normalize_todo_decision_scope(raw)
+        if not scope:
+            continue
+        identity = (scope["kind"], scope["granularity"], scope["scope_key"])
+        if identity in seen:
+            continue
+        seen.add(identity)
+        scopes.append(scope)
+    return scopes
+
+
+def decision_scope_metadata_value(value: Any) -> str | None:
+    scope = normalize_todo_decision_scope(value)
+    if not scope:
+        return None
+    return f"{scope['kind']}:{scope['granularity']}:{scope['scope_key']}"
+
+
+def required_decision_scopes_metadata_value(value: Any) -> str | None:
+    scopes = normalize_todo_required_decision_scopes(value)
+    if not scopes:
+        return None
+    return ",".join(
+        f"{scope['kind']}:{scope['granularity']}:{scope['scope_key']}"
+        for scope in scopes
+    )
+
+
 def build_todo_id(
     *,
     role: Any,
@@ -362,6 +465,14 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             capabilities = normalize_target_capabilities(value)
             if capabilities:
                 metadata["target_capabilities"] = capabilities
+        elif key == "decision_scope":
+            decision_scope = normalize_todo_decision_scope(value)
+            if decision_scope:
+                metadata["decision_scope"] = decision_scope
+        elif key in {"required_decision_scope", "required_decision_scopes"}:
+            scopes = normalize_todo_required_decision_scopes(value)
+            if scopes:
+                metadata["required_decision_scopes"] = scopes
         elif key == "claimed_by":
             claimed_by = normalize_todo_claimed_by(value)
             if claimed_by:
@@ -408,6 +519,8 @@ def format_todo_metadata_line(
     required_write_scopes: Any = None,
     required_capabilities: Any = None,
     target_capabilities: Any = None,
+    decision_scope: Any = None,
+    required_decision_scopes: Any = None,
     claimed_by: str | None = None,
     blocks_agent: str | None = None,
     global_gate: bool | None = None,
@@ -417,6 +530,7 @@ def format_todo_metadata_line(
     target_key: str | None = None,
     cadence: str | None = None,
     next_due_at: str | None = None,
+    expires_at: str | None = None,
     last_checked_at: str | None = None,
     result_hash: str | None = None,
     consecutive_no_change: str | None = None,
@@ -474,6 +588,19 @@ def format_todo_metadata_line(
             "target_capabilities="
             f"{encode_metadata_value(','.join(normalized_target_capabilities))}"
         )
+    normalized_decision_scope = decision_scope_metadata_value(decision_scope)
+    if decision_scope and not normalized_decision_scope:
+        raise ValueError("decision_scope must use kind:granularity:scope_key, such as private_read:project:authority")
+    if normalized_decision_scope:
+        fields.append(f"decision_scope={encode_metadata_value(normalized_decision_scope)}")
+    normalized_required_decision_scopes = required_decision_scopes_metadata_value(required_decision_scopes)
+    if required_decision_scopes and not normalized_required_decision_scopes:
+        raise ValueError("required_decision_scopes must contain kind:granularity:scope_key tokens")
+    if normalized_required_decision_scopes:
+        fields.append(
+            "required_decision_scopes="
+            f"{encode_metadata_value(normalized_required_decision_scopes)}"
+        )
     normalized_claimed_by = normalize_todo_claimed_by(claimed_by)
     if claimed_by and not normalized_claimed_by:
         raise ValueError("claimed_by must be a public-safe agent token such as codex-main-control")
@@ -502,6 +629,7 @@ def format_todo_metadata_line(
         ("target_key", target_key),
         ("cadence", cadence),
         ("next_due_at", next_due_at),
+        ("expires_at", expires_at),
         ("last_checked_at", last_checked_at),
         ("result_hash", result_hash),
         ("consecutive_no_change", consecutive_no_change),

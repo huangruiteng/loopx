@@ -39,6 +39,8 @@ ALLOWED_EDGE_RELATIONS = {
     "blocks",
     "validates",
     "repairs",
+    "audits",
+    "continues",
     "hands_off_to",
     "supersedes",
 }
@@ -201,12 +203,13 @@ def assert_runtime_projection_builder() -> None:
     latest_runs = [
         {
             "generated_at": "2026-06-21T13:00:00Z",
-            "classification": "task_graph_projection_runtime_smoke",
+            "classification": "task_graph_projection_audit_continuation_smoke",
+            "recommended_action": "Continue the selected projection lane after audit evidence is recorded.",
         }
     ]
     projection = build_task_graph_projection(item, goal=goal, goal_latest_runs=latest_runs)
     assert isinstance(projection, dict), projection
-    assert_projection_shape(projection, goal_id=goal_id, label="runtime projection", min_nodes=5, min_edges=4)
+    assert_projection_shape(projection, goal_id=goal_id, label="runtime projection", min_nodes=5, min_edges=6)
     kinds = {node["kind"] for node in projection["nodes"]}
     assert {"deliverable", "gate", "lease", "validation", "repair"} <= kinds, projection
     assert "gate_summary" in kinds, projection
@@ -221,7 +224,7 @@ def assert_runtime_projection_builder() -> None:
         "user_gate_truncated_count": 3,
     }, projection["limits"]
     relations = {edge["relation"] for edge in projection["edges"]}
-    assert {"blocks", "depends_on", "validates", "repairs"} <= relations, projection
+    assert {"blocks", "depends_on", "validates", "repairs", "audits", "continues"} <= relations, projection
     forbidden_keys = {"write_command", "agent_command", "raw_log", "raw_transcript"}
     projection_keys = set(json.dumps(projection, sort_keys=True).split('"'))
     assert not (projection_keys & forbidden_keys), projection_keys & forbidden_keys
@@ -276,6 +279,9 @@ def main() -> int:
         "gate_ids",
         "lease_ids",
         "run_ids",
+        "audits",
+        "continues",
+        "repair, audit, and continuation relations",
     ]:
         assert_contains(contract, needle, "contract")
 

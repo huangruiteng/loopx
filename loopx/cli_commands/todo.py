@@ -117,6 +117,22 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     todo_parser.add_argument(
+        "--decision-scope",
+        help=(
+            "For user_gate add/update, declare the concrete decision as "
+            "kind:granularity:scope_key, for example direction:action:benchmark_target."
+        ),
+    )
+    todo_parser.add_argument(
+        "--required-decision-scope",
+        dest="required_decision_scopes",
+        action="append",
+        help=(
+            "For agent todo add/update, declare a required decision scope as "
+            "kind:granularity:scope_key. Repeat for multiple scopes."
+        ),
+    )
+    todo_parser.add_argument(
         "--claimed-by",
         help=(
             "For todo add/claim/update/complete, soft-claim the todo for a registered "
@@ -174,6 +190,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "For agent continuous_monitor add/update, declare the next due ISO "
             "timestamp; due monitor scheduling is based on this field."
+        ),
+    )
+    todo_parser.add_argument(
+        "--expires-at",
+        dest="expires_at",
+        help=(
+            "For agent continuous_monitor add/update, declare the ISO timestamp "
+            "after which the monitor is no longer due and must not catch up."
         ),
     )
     todo_parser.add_argument(
@@ -306,6 +330,8 @@ def handle_todo_command(
                     ("--required-write-scope", args.required_write_scopes),
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
+                    ("--decision-scope", args.decision_scope),
+                    ("--required-decision-scope", args.required_decision_scopes),
                     ("--claimed-by", args.claimed_by),
                     ("--blocks-agent", args.blocks_agent),
                     ("--global-gate", args.global_gate),
@@ -314,6 +340,7 @@ def handle_todo_command(
                     ("--monitor-target-key", args.monitor_target_key),
                     ("--cadence", args.cadence),
                     ("--next-due-at", args.next_due_at),
+                    ("--expires-at", args.expires_at),
                     ("--clear-claim", args.clear_claim),
                     ("--no-follow-up", args.no_follow_up),
                     ("--next-agent-todo", args.next_agent_todo),
@@ -369,6 +396,8 @@ def handle_todo_command(
                 required_write_scopes=args.required_write_scopes,
                 required_capabilities=args.required_capabilities,
                 target_capabilities=args.target_capabilities,
+                decision_scope=args.decision_scope,
+                required_decision_scopes=args.required_decision_scopes,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
                 global_gate=bool(args.global_gate),
@@ -379,6 +408,7 @@ def handle_todo_command(
                     "target_key": args.monitor_target_key,
                     "cadence": args.cadence,
                     "next_due_at": args.next_due_at,
+                    "expires_at": args.expires_at,
                 },
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -404,6 +434,8 @@ def handle_todo_command(
                     ("--required-write-scope", args.required_write_scopes),
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
+                    ("--decision-scope", args.decision_scope),
+                    ("--required-decision-scope", args.required_decision_scopes),
                     ("--blocks-agent", args.blocks_agent),
                     ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
@@ -411,6 +443,7 @@ def handle_todo_command(
                     ("--monitor-target-key", args.monitor_target_key),
                     ("--cadence", args.cadence),
                     ("--next-due-at", args.next_due_at),
+                    ("--expires-at", args.expires_at),
                     ("--no-follow-up", args.no_follow_up),
                     ("--next-agent-todo", args.next_agent_todo),
                     ("--next-user-todo", args.next_user_todo),
@@ -456,6 +489,8 @@ def handle_todo_command(
                 args.required_write_scopes,
                 args.required_capabilities,
                 args.target_capabilities,
+                args.decision_scope,
+                args.required_decision_scopes,
                 args.claimed_by,
                 args.blocks_agent,
                 args.global_gate,
@@ -465,9 +500,10 @@ def handle_todo_command(
                 args.monitor_target_key,
                 args.cadence,
                 args.next_due_at,
+                args.expires_at,
                 args.clear_claim,
             ]):
-                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --resume-when, --monitor-target-key, --cadence, --next-due-at, --no-follow-up, or --clear-claim")
+                raise ValueError("todo update requires at least one of --text, --status, --note, --evidence, --reason, --task-class, --action-kind, --required-write-scope, --required-capability, --target-capability, --decision-scope, --required-decision-scope, --claimed-by, --blocks-agent, --global-gate, --unblocks-todo-id, --resume-when, --monitor-target-key, --cadence, --next-due-at, --expires-at, --no-follow-up, or --clear-claim")
             if args.no_follow_up and not (args.note or args.reason or args.evidence):
                 raise ValueError("--no-follow-up requires --note, --reason, or --evidence")
             if args.followups:
@@ -491,6 +527,8 @@ def handle_todo_command(
                 required_write_scopes=args.required_write_scopes,
                 required_capabilities=args.required_capabilities,
                 target_capabilities=args.target_capabilities,
+                decision_scope=args.decision_scope,
+                required_decision_scopes=args.required_decision_scopes,
                 claimed_by=args.claimed_by,
                 blocks_agent=args.blocks_agent,
                 global_gate=bool(args.global_gate),
@@ -502,6 +540,7 @@ def handle_todo_command(
                     "target_key": args.monitor_target_key,
                     "cadence": args.cadence,
                     "next_due_at": args.next_due_at,
+                    "expires_at": args.expires_at,
                 },
                 clear_claim=bool(args.clear_claim),
                 project=Path(args.project).expanduser() if args.project else None,
@@ -515,7 +554,7 @@ def handle_todo_command(
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
             if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo complete does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; use todo update before completion or side-agent handoff successor metadata")
-            if args.monitor_target_key or args.cadence or args.next_due_at:
+            if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
                 raise ValueError("todo complete does not support monitor schedule metadata; use todo update before completion")
             if args.no_follow_up and (args.next_agent_todo or args.next_user_todo):
                 raise ValueError("--no-follow-up cannot be combined with successor todos")
@@ -562,7 +601,7 @@ def handle_todo_command(
                 raise ValueError("todo supersede does not support --follow-up; use `todo capture-followups`")
             if args.blocks_agent or args.global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo supersede does not support --blocks-agent, --global-gate, --unblocks-todo-id, or --resume-when; update the source todo first so the successor can inherit dependency metadata")
-            if args.monitor_target_key or args.cadence or args.next_due_at:
+            if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
                 raise ValueError("todo supersede does not support monitor schedule metadata; use todo update before supersede")
             payload = supersede_goal_todo(
                 registry_path=registry_path,
@@ -615,6 +654,8 @@ def handle_todo_command(
                     ("--required-write-scope", args.required_write_scopes),
                     ("--required-capability", args.required_capabilities),
                     ("--target-capability", args.target_capabilities),
+                    ("--decision-scope", args.decision_scope),
+                    ("--required-decision-scope", args.required_decision_scopes),
                     ("--claimed-by", args.claimed_by),
                     ("--blocks-agent", args.blocks_agent),
                     ("--global-gate", args.global_gate),
@@ -623,6 +664,7 @@ def handle_todo_command(
                     ("--monitor-target-key", args.monitor_target_key),
                     ("--cadence", args.cadence),
                     ("--next-due-at", args.next_due_at),
+                    ("--expires-at", args.expires_at),
                     ("--no-follow-up", args.no_follow_up),
                     ("--clear-claim", args.clear_claim),
                     ("--next-agent-todo", args.next_agent_todo),
@@ -664,6 +706,7 @@ def handle_todo_command(
                     ("--status", args.status),
                     ("--note", args.note),
                     ("--reason", args.reason),
+                    ("--decision-scope", args.decision_scope),
                     ("--blocks-agent", args.blocks_agent),
                     ("--global-gate", args.global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
@@ -671,6 +714,7 @@ def handle_todo_command(
                     ("--monitor-target-key", args.monitor_target_key),
                     ("--cadence", args.cadence),
                     ("--next-due-at", args.next_due_at),
+                    ("--expires-at", args.expires_at),
                     ("--no-follow-up", args.no_follow_up),
                     ("--clear-claim", args.clear_claim),
                     ("--next-agent-todo", args.next_agent_todo),
@@ -707,6 +751,7 @@ def handle_todo_command(
                 required_write_scopes=args.required_write_scopes,
                 required_capabilities=args.required_capabilities,
                 target_capabilities=args.target_capabilities,
+                required_decision_scopes=args.required_decision_scopes,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),

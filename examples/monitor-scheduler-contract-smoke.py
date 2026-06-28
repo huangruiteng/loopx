@@ -17,6 +17,7 @@ GOAL_ID = "monitor-scheduler-fixture"
 AGENT_ID = "codex-product-capability"
 PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
+EXPIRED_AT = "2000-01-01T00:05:00+00:00"
 
 
 def status_payload(
@@ -91,8 +92,9 @@ def monitor_item(
     next_due_at: str,
     target_key: str,
     claimed_by: str = AGENT_ID,
+    expires_at: str | None = None,
 ) -> dict:
-    return {
+    item = {
         "index": index,
         "text": f"[{priority}] Monitor {target_key} and write back only material transitions.",
         "todo_id": todo_id,
@@ -106,6 +108,9 @@ def monitor_item(
         "cadence": "15m",
         "next_due_at": next_due_at,
     }
+    if expires_at:
+        item["expires_at"] = expires_at
+    return item
 
 
 def advancement_item(*, index: int, priority: str = "P1", claimed_by: str = AGENT_ID) -> dict:
@@ -175,6 +180,30 @@ def assert_due_monitor_requires_explicit_attempt() -> None:
     assert lane["selected_todo_id"] == "todo_monitor_due", lane
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
     assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, guard
+
+
+def assert_expired_monitor_does_not_catch_up() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_monitor_expired",
+                priority="P1",
+                next_due_at=PAST_DUE_AT,
+                expires_at=EXPIRED_AT,
+                target_key="expired-publish-window",
+            )
+        ]
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
+    assert lane["must_attempt_work"] is False, lane
+    assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
+    monitor_items = guard["agent_todo_summary"]["monitor_open_items"]
+    assert monitor_items[0]["todo_id"] == "todo_monitor_expired", monitor_items
+    assert monitor_items[0]["expires_at"] == EXPIRED_AT, monitor_items
 
 
 def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:
@@ -300,6 +329,7 @@ def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> N
 def main() -> int:
     assert_not_due_monitor_waits_quietly()
     assert_due_monitor_requires_explicit_attempt()
+    assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
     assert_multiple_due_monitor_cap_and_order()
     assert_other_agent_due_monitor_does_not_preempt_current_agent_lane()

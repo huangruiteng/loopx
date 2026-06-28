@@ -128,6 +128,36 @@
               }
             },
             {
+              "edge_id": "edge_fixture_audits_design",
+              "from_node_id": "node_fixture_validation",
+              "to_node_id": "node_design_contract",
+              "relation": "audits",
+              "reason": "The fixture audit records that lineage remains read-only and todo-backed.",
+              "refs": {
+                "run_ids": [
+                  "run_task_graph_fixture_smoke"
+                ],
+                "todo_ids": [
+                  "todo_8e138e5a1cc1"
+                ]
+              }
+            },
+            {
+              "edge_id": "edge_fixture_continues_design",
+              "from_node_id": "node_fixture_validation",
+              "to_node_id": "node_design_contract",
+              "relation": "continues",
+              "reason": "The fixture shows a continuation of the same design lane without creating a second task store.",
+              "refs": {
+                "run_ids": [
+                  "run_task_graph_fixture_smoke"
+                ],
+                "todo_ids": [
+                  "todo_8e138e5a1cc1"
+                ]
+              }
+            },
+            {
               "edge_id": "edge_fixture_hands_off_to_primary",
               "from_node_id": "node_fixture_validation",
               "to_node_id": "node_primary_review_handoff",

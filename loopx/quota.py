@@ -50,7 +50,9 @@ from .todo_contract import (
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
     normalize_todo_id,
+    normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_required_write_scopes,
     normalize_todo_status,
@@ -905,6 +907,8 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "required_write_scopes",
         "required_capabilities",
         "target_capabilities",
+        "decision_scope",
+        "required_decision_scopes",
         "claimed_by",
         "blocks_agent",
         "unblocks_todo_id",
@@ -915,6 +919,7 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "target_key",
         "cadence",
         "next_due_at",
+        "expires_at",
         "last_checked_at",
         "result_hash",
         "consecutive_no_change",
@@ -928,6 +933,18 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         compact["required_write_scopes"] = required_write_scopes
     else:
         compact.pop("required_write_scopes", None)
+    decision_scope = normalize_todo_decision_scope(compact.get("decision_scope"))
+    if decision_scope:
+        compact["decision_scope"] = decision_scope
+    else:
+        compact.pop("decision_scope", None)
+    required_decision_scopes = normalize_todo_required_decision_scopes(
+        compact.get("required_decision_scopes")
+    )
+    if required_decision_scopes:
+        compact["required_decision_scopes"] = required_decision_scopes
+    else:
+        compact.pop("required_decision_scopes", None)
     compact["task_class"] = _todo_task_class(compact)
     return compact
 
@@ -2151,7 +2168,78 @@ def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
     return _action_scope_tokens_from_text(text)
 
 
+_DECISION_SCOPE_GRANULARITY_RANK = {
+    "action": 0,
+    "lane": 1,
+    "goal": 2,
+    "project": 3,
+    "global": 4,
+}
+
+
+def _decision_scope_covers(gate_scope: dict[str, Any], required_scope: dict[str, Any]) -> bool:
+    gate = normalize_todo_decision_scope(gate_scope)
+    required = normalize_todo_decision_scope(required_scope)
+    if not gate or not required:
+        return False
+    if gate["kind"] != required["kind"]:
+        return False
+    if gate["scope_key"] not in {required["scope_key"], "*"}:
+        return False
+    return _DECISION_SCOPE_GRANULARITY_RANK[gate["granularity"]] >= _DECISION_SCOPE_GRANULARITY_RANK[
+        required["granularity"]
+    ]
+
+
+def _decision_scope_gate_relation(
+    gate: dict[str, Any],
+    agent_item: dict[str, Any],
+) -> dict[str, Any] | None:
+    gate_scope = normalize_todo_decision_scope(gate.get("decision_scope"))
+    required_scopes = normalize_todo_required_decision_scopes(
+        agent_item.get("required_decision_scopes")
+    )
+    if not gate_scope:
+        return None
+    if not required_scopes:
+        return {
+            "schema_version": "decision_scope_relation_v0",
+            "source": "decision_scope",
+            "state": "independent",
+            "reason": "agent_todo_has_no_required_decision_scopes",
+            "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
+            "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
+            "decision_scope": gate_scope,
+            "required_decision_scopes": [],
+        }
+    for required_scope in required_scopes:
+        if _decision_scope_covers(gate_scope, required_scope):
+            return {
+                "schema_version": "decision_scope_relation_v0",
+                "source": "decision_scope",
+                "state": "gate_covers_action",
+                "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
+                "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
+                "decision_scope": gate_scope,
+                "matched_required_decision_scope": required_scope,
+                "required_decision_scopes": required_scopes,
+            }
+    return {
+        "schema_version": "decision_scope_relation_v0",
+        "source": "decision_scope",
+        "state": "independent",
+        "gate_todo_id": normalize_todo_id(gate.get("todo_id")),
+        "agent_todo_id": normalize_todo_id(agent_item.get("todo_id")),
+        "decision_scope": gate_scope,
+        "required_decision_scopes": required_scopes,
+    }
+
+
 def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
+    decision_scope_relation = _decision_scope_gate_relation(gate, agent_item)
+    if decision_scope_relation:
+        return decision_scope_relation
+
     target_todo_id = normalize_todo_id(gate.get("unblocks_todo_id"))
     if not target_todo_id:
         return None
@@ -2169,7 +2257,7 @@ def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dic
 def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
     relation = _todo_gate_relation(gate, agent_item)
     if relation:
-        return relation.get("state") == "gate_targets_todo"
+        return relation.get("state") in {"gate_targets_todo", "gate_covers_action"}
 
     gate_action_tokens = _todo_action_kind_tokens(gate)
     agent_action_tokens = _todo_action_kind_tokens(agent_item)
@@ -4717,10 +4805,24 @@ def _todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
     return _parse_timestamp(item.get("next_due_at"))
 
 
+def _todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
+    return _parse_timestamp(item.get("expires_at"))
+
+
+def _todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
+    expires_at = _todo_item_expires_at(item)
+    if expires_at is None:
+        return False
+    current_time = now or datetime.now(timezone.utc)
+    return expires_at <= current_time
+
+
 def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
     if not _todo_item_is_actionable_open(item):
         return False
     if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+        return False
+    if _todo_item_is_expired_monitor(item, now=now):
         return False
     next_due_at = _todo_item_next_due_at(item)
     if next_due_at is None:

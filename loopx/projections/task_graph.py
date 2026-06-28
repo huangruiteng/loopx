@@ -16,6 +16,8 @@ TASK_GRAPH_SOURCE_OF_TRUTH = [
     "run_history",
 ]
 TASK_GRAPH_MAX_USER_GATE_NODES = 2
+TASK_GRAPH_AUDIT_MARKERS = ("audit", "audited")
+TASK_GRAPH_CONTINUATION_MARKERS = ("continuation", "continue", "continuing", "continued")
 
 
 def _task_graph_safe_id(
@@ -176,6 +178,49 @@ def _task_graph_latest_run_node(
             "refs": refs,
         }
     return None
+
+
+def _task_graph_latest_run_lineage_relations(
+    run_node_id: str | None,
+    selected_node_id: str | None,
+    *,
+    goal_latest_runs: list[dict[str, Any]],
+    public_safe_compact_text: Callable[..., str | None],
+) -> list[tuple[str, str]]:
+    if not run_node_id or not selected_node_id:
+        return []
+    for run in goal_latest_runs:
+        if not isinstance(run, dict):
+            continue
+        values = [
+            run.get("classification"),
+            run.get("recommended_action"),
+            run.get("delivery_outcome"),
+            run.get("delivery_batch_scale"),
+        ]
+        text = " ".join(
+            public_safe_compact_text(value, limit=160) or ""
+            for value in values
+        ).lower()
+        if not text.strip():
+            continue
+        relations: list[tuple[str, str]] = []
+        if any(marker in text for marker in TASK_GRAPH_AUDIT_MARKERS):
+            relations.append(
+                (
+                    "audits",
+                    "Compact run-history evidence audits the selected work lane without replacing todo or gate state.",
+                )
+            )
+        if any(marker in text for marker in TASK_GRAPH_CONTINUATION_MARKERS):
+            relations.append(
+                (
+                    "continues",
+                    "Compact run-history evidence records a continuation of the selected work lane.",
+                )
+            )
+        return relations
+    return []
 
 
 def _task_graph_visible_user_gate_items(
@@ -464,6 +509,24 @@ def build_task_graph_projection(
         reason="Latest compact run-history evidence validates or contextualizes the selected work.",
         refs=refs_by_node_id.get(run_node_id or ""),
     )
+    for relation, reason in _task_graph_latest_run_lineage_relations(
+        run_node_id,
+        selected_node_id,
+        goal_latest_runs=latest_runs,
+        public_safe_compact_text=public_safe_compact_text,
+    ):
+        add_edge(
+            edge_id=_task_graph_safe_id(
+                f"edge_{relation}",
+                f"{run_node_id}:{selected_node_id}",
+                public_safe_compact_text=public_safe_compact_text,
+            ),
+            from_node_id=run_node_id,
+            to_node_id=selected_node_id,
+            relation=relation,
+            reason=reason,
+            refs=refs_by_node_id.get(run_node_id or ""),
+        )
 
     replan = (
         item.get("autonomous_replan_obligation")
