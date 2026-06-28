@@ -32,6 +32,14 @@ from .execution_profile import (
 from .long_task_cadence import long_task_cadence_hint_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .policies.execution_obligation import build_execution_obligation
+from .policies.monitor_todo import (
+    monitor_todo_expires_at,
+    monitor_todo_is_actionable_open,
+    monitor_todo_is_due,
+    monitor_todo_is_expired,
+    monitor_todo_next_due_at,
+    monitor_todo_task_class,
+)
 from .policies.outcome_followthrough import build_outcome_followthrough_hint
 from .policies.scheduler_hint import build_scheduler_hint
 from .policies.work_lane import (
@@ -4726,48 +4734,32 @@ def _todo_task_class(item: dict[str, Any]) -> str:
         for value in (item.get("title"), item.get("text"))
         if str(value or "").strip()
     )
-    return normalize_todo_task_class(
-        item.get("task_class"),
-        text=text,
-        action_kind=item.get("action_kind"),
-    )
+    return monitor_todo_task_class(item, task_text=text)
 
 
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
-    if item.get("done") is True:
-        return False
-    status = normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN
-    return status == TODO_STATUS_OPEN
+    return monitor_todo_is_actionable_open(item)
 
 
 def _todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
-    return _parse_timestamp(item.get("next_due_at"))
+    return monitor_todo_next_due_at(item)
 
 
 def _todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
-    return _parse_timestamp(item.get("expires_at"))
+    return monitor_todo_expires_at(item)
 
 
 def _todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    expires_at = _todo_item_expires_at(item)
-    if expires_at is None:
-        return False
-    current_time = now or datetime.now(timezone.utc)
-    return expires_at <= current_time
+    return monitor_todo_is_expired(item, now=now)
 
 
 def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    if not _todo_item_is_actionable_open(item):
-        return False
-    if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
-        return False
-    if _todo_item_is_expired_monitor(item, now=now):
-        return False
-    next_due_at = _todo_item_next_due_at(item)
-    if next_due_at is None:
-        return False
-    current_time = now or datetime.now(timezone.utc)
-    return next_due_at <= current_time
+    text = " ".join(
+        str(value or "")
+        for value in (item.get("title"), item.get("text"))
+        if str(value or "").strip()
+    )
+    return monitor_todo_is_due(item, now=now, task_text=text)
 
 
 def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
