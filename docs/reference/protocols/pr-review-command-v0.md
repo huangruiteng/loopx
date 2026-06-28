@@ -26,11 +26,14 @@ Implementations may read compact public PR surfaces:
   and review decision;
 - PR body summary;
 - changed-file list and diff scale;
+- bounded public PR diff summary, reduced to hunk context, changed symbols,
+  behavior signals, and per-file review questions;
 - status-check rollup;
 - merge-state metadata.
 
-Commit headlines may be used as optional single-PR deep-review evidence, but
-the default window review should not require fetching them for every PR.
+Commit headlines may be used as optional single-PR deep-review evidence. Public
+patch reads should stay bounded and derived: summarize hunk-level signals and
+file intent, but do not record raw patch bodies.
 
 They must not include raw logs, private connector payloads, credentials, local
 absolute paths, private source bodies, or hidden CI artifacts.
@@ -117,6 +120,26 @@ absolute paths, private source bodies, or hidden CI artifacts.
         ],
         "review_order": ["docs/guides/newcomer-command-path.md", "docs/README.md"]
       },
+      "diff_analysis": {
+        "schema_version": "public_pr_diff_analysis_v0",
+        "available": true,
+        "source": "public_pr_diff",
+        "truncated": false,
+        "top_signals": ["public docs heading changed", "review packet narrative changed"],
+        "file_insights": [
+          {
+            "path": "docs/guides/newcomer-command-path.md",
+            "added_lines": 75,
+            "removed_lines": 0,
+            "hunk_count": 1,
+            "changed_symbols": [],
+            "change_signals": ["public docs heading changed"],
+            "change_story": "`newcomer-command-path.md` 的真实 diff 显示 +75/-0、1 个 hunk；主要信号是 public docs heading changed。",
+            "review_question": "重点看命令示例、概念定义、用户路径和 shipped 行为是否一致。"
+          }
+        ],
+        "omitted_raw_patch": true
+      },
       "motivation": "Adds a newcomer command path...",
       "scale": {"changed_files": 3, "additions": 90, "deletions": 4},
       "areas": {"public_docs": 3},
@@ -160,11 +183,15 @@ The packet should let a reviewer move through PRs in order:
    the next review question.
 2. Read `detailed_change_analysis.summary`, then follow its `review_order` and
    `file_walkthrough` before opening the full diff.
-3. Compare the touched areas and key files with the card's stated scope.
-4. Inspect validation, risk notes, and `main_regression_analysis`.
-5. Decide which regression class matters most on main and which focused
+3. Read `detailed_change_analysis.diff_evidence` and
+   `per_file_diff_insights` to see which hunk-level signals the public diff
+   actually shows. This is the core "real change" analysis; changed-file lists
+   alone are not enough.
+4. Compare the touched areas and key files with the card's stated scope.
+5. Inspect validation, risk notes, and `main_regression_analysis`.
+6. Decide which regression class matters most on main and which focused
    validation would catch it.
-6. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
+7. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
 
 ## Acceptance Checks
 
@@ -179,14 +206,16 @@ A first implementation is acceptable when:
 - `--since` can bound an overnight or release-window review without relying on
   private chat memory;
 - the response includes review sequence, motivation, changed-file scope,
-  detailed change analysis, status checks, risk notes, main regression analysis,
-  and review prompts;
+  detailed change analysis, bounded public diff evidence, status checks, risk
+  notes, main regression analysis, and review prompts;
 - each PR includes `guided_review_card` with a compact `brief` that is suitable
   for a 100-200 character human-facing Chinese review introduction when source
   metadata is compact;
 - each PR includes `detailed_change_analysis` with area breakdown, file
   walkthrough, and review order so the user can understand concrete changes
   before opening GitHub diff;
+- each PR should include hunk-level public diff insights when available, while
+  omitting raw patch bodies from the packet;
 - live GitHub reads and fixture-based smokes share the same schema;
 - no raw logs, private payloads, credentials, local paths, or private source
   bodies are recorded.

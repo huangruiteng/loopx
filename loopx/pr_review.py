@@ -24,6 +24,7 @@ SOURCE_SURFACES = [
     "GitHub pull request metadata",
     "GitHub pull request body summary",
     "GitHub pull request changed-file list",
+    "GitHub pull request public diff summary",
     "GitHub pull request status check rollup",
 ]
 
@@ -48,6 +49,10 @@ RUNTIME_OR_CLI_PREFIXES = (
     "bin/",
     "tools/",
 )
+
+PATCH_ANALYSIS_MAX_BYTES = 24_000
+PATCH_FILE_INSIGHT_LIMIT = 8
+PATCH_SIGNAL_LIMIT = 8
 
 UI_PREFIXES = (
     "apps/dashboard/",
@@ -103,6 +108,18 @@ def _run_gh_json(args: list[str], *, cwd: Path | None = None) -> Any:
         stderr=subprocess.PIPE,
     )
     return json.loads(proc.stdout or "null")
+
+
+def _run_gh_text(args: list[str], *, cwd: Path | None = None) -> str:
+    proc = subprocess.run(
+        ["gh", *args],
+        cwd=cwd,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return proc.stdout or ""
 
 
 def resolve_current_github_repository(*, cwd: Path | None = None) -> str | None:
@@ -222,6 +239,11 @@ def fetch_github_pull_requests(
             continue
         if _include_pr_in_window(row, since=since):
             detailed.append(row)
+    for row in detailed[: max(1, limit)]:
+        number = row.get("number")
+        if not number:
+            continue
+        row["diff_analysis"] = fetch_public_pr_diff_analysis(number=number, repo=repo, cwd=cwd)
     return detailed
 
 
@@ -338,6 +360,200 @@ def _files(pr: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     return files
+
+
+def _patch_path_from_header(line: str) -> str:
+    match = re.match(r"diff --git a/(.+?) b/(.+)$", line)
+    if match:
+        return match.group(2)
+    return ""
+
+
+def _compact_signal(value: str, *, limit: int = 96) -> str:
+    return _redact_text(value.strip("`'\" "), limit=limit)
+
+
+def _extract_changed_symbol(line: str) -> str | None:
+    text = line[1:].strip() if line.startswith(("+", "-")) else line.strip()
+    patterns = [
+        r"\bdef\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+        r"\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        r"\bconst\s+([A-Za-z_][A-Za-z0-9_]*)\s*=",
+        r"\b([A-Z][A-Z0-9_]{4,})\s*=",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return _compact_signal(match.group(1))
+    flag = re.search(r"['\"](--[A-Za-z0-9][A-Za-z0-9_-]*)['\"]", text)
+    if flag:
+        return _compact_signal(flag.group(1))
+    field = re.search(r"['\"]([A-Za-z_][A-Za-z0-9_]{2,})['\"]\s*:", text)
+    if field:
+        return _compact_signal(field.group(1))
+    return None
+
+
+def _patch_signal_from_line(line: str) -> str | None:
+    lowered = line.lower()
+    text = line[1:].strip() if line.startswith(("+", "-")) else line.strip()
+    if "schema_version" in lowered or "schema version" in lowered:
+        return "schema/packet field changed"
+    if "add_argument" in lowered or re.search(r"['\"]--[A-Za-z0-9_-]+['\"]", text):
+        return "CLI flag or command surface changed"
+    if "statuscheckrollup" in lowered or "check" in lowered:
+        return "validation/check handling changed"
+    if "review_prompt" in lowered or "guided_review_card" in lowered or "detailed_change_analysis" in lowered:
+        return "review packet narrative changed"
+    if "assert " in lowered or lowered.strip().startswith("assert"):
+        return "smoke/assertion coverage changed"
+    if "private" in lowered or "credential" in lowered or "boundary" in lowered or "redact" in lowered:
+        return "public/private boundary handling changed"
+    if "dry_run" in lowered or "execute" in lowered or "launch" in lowered or "tmux" in lowered:
+        return "execution or dry-run boundary changed"
+    if "quota" in lowered or "gate" in lowered or "todo" in lowered:
+        return "control-plane routing signal changed"
+    if text.startswith("#") or text.startswith("##"):
+        return "public docs heading changed"
+    return None
+
+
+def _append_unique(items: list[str], value: str | None, *, limit: int = PATCH_SIGNAL_LIMIT) -> None:
+    if not value:
+        return
+    compact = _compact_signal(value)
+    if compact and compact not in items and len(items) < limit:
+        items.append(compact)
+
+
+def _new_patch_file(path: str) -> dict[str, Any]:
+    return {
+        "path": _redact_text(path, limit=180),
+        "area": _file_area(path),
+        "added_lines": 0,
+        "removed_lines": 0,
+        "hunk_count": 0,
+        "hunk_contexts": [],
+        "changed_symbols": [],
+        "change_signals": [],
+    }
+
+
+def _finalize_patch_file(item: dict[str, Any]) -> dict[str, Any]:
+    path = str(item.get("path") or "")
+    signals = [str(value) for value in _as_list(item.get("change_signals")) if value]
+    symbols = [str(value) for value in _as_list(item.get("changed_symbols")) if value]
+    contexts = [str(value) for value in _as_list(item.get("hunk_contexts")) if value]
+    area = str(item.get("area") or _file_area(path))
+    if signals:
+        behavior = _join_short(signals, limit=3)
+    elif symbols:
+        behavior = f"touched symbols: {_join_short(symbols, limit=3)}"
+    else:
+        behavior = _area_change_intent(area)
+    review_question = _area_review_focus(area)
+    if signals:
+        review_question = f"{review_question} 同时确认 {_join_short(signals, limit=2)} 是否有配套验证。"
+    return {
+        **item,
+        "change_story": _redact_text(
+            f"`{path.rsplit('/', 1)[-1]}` 的真实 diff 显示 +{item.get('added_lines', 0)}/-{item.get('removed_lines', 0)}、"
+            f"{item.get('hunk_count', 0)} 个 hunk；主要信号是 {behavior}。",
+            limit=260,
+        ),
+        "review_question": review_question,
+        "hunk_contexts": contexts[:PATCH_SIGNAL_LIMIT],
+        "changed_symbols": symbols[:PATCH_SIGNAL_LIMIT],
+        "change_signals": signals[:PATCH_SIGNAL_LIMIT],
+    }
+
+
+def summarize_public_patch(patch_text: str) -> dict[str, Any]:
+    truncated = len(patch_text.encode("utf-8", errors="ignore")) > PATCH_ANALYSIS_MAX_BYTES
+    bounded = patch_text[:PATCH_ANALYSIS_MAX_BYTES]
+    files: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw_line in bounded.splitlines():
+        if raw_line.startswith("diff --git "):
+            if current:
+                files.append(_finalize_patch_file(current))
+            path = _patch_path_from_header(raw_line)
+            current = _new_patch_file(path) if path else None
+            continue
+        if current is None:
+            continue
+        if raw_line.startswith("@@"):
+            current["hunk_count"] = int(current.get("hunk_count") or 0) + 1
+            context = raw_line.split("@@", 2)[-1].strip()
+            _append_unique(current["hunk_contexts"], context)
+            continue
+        if raw_line.startswith("+++") or raw_line.startswith("---"):
+            continue
+        if raw_line.startswith("+"):
+            current["added_lines"] = int(current.get("added_lines") or 0) + 1
+            _append_unique(current["changed_symbols"], _extract_changed_symbol(raw_line))
+            _append_unique(current["change_signals"], _patch_signal_from_line(raw_line))
+        elif raw_line.startswith("-"):
+            current["removed_lines"] = int(current.get("removed_lines") or 0) + 1
+            _append_unique(current["changed_symbols"], _extract_changed_symbol(raw_line))
+            _append_unique(current["change_signals"], _patch_signal_from_line(raw_line))
+    if current:
+        files.append(_finalize_patch_file(current))
+    files = files[:PATCH_FILE_INSIGHT_LIMIT]
+    signal_counts: dict[str, int] = {}
+    for item in files:
+        for signal in _as_list(item.get("change_signals")):
+            signal_counts[str(signal)] = signal_counts.get(str(signal), 0) + 1
+    top_signals = [
+        signal
+        for signal, _count in sorted(signal_counts.items(), key=lambda pair: (-pair[1], pair[0]))[:PATCH_SIGNAL_LIMIT]
+    ]
+    return {
+        "schema_version": "public_pr_diff_analysis_v0",
+        "available": bool(files),
+        "source": "public_pr_diff",
+        "truncated": truncated,
+        "files_analyzed": len(files),
+        "top_signals": top_signals,
+        "file_insights": files,
+        "omitted_raw_patch": True,
+    }
+
+
+def fetch_public_pr_diff_analysis(
+    *, number: object, repo: str | None, cwd: Path | None = None
+) -> dict[str, Any]:
+    repo_args = ["--repo", repo] if repo else []
+    try:
+        patch = _run_gh_text(["pr", "diff", str(number), "--patch", *repo_args], cwd=cwd)
+    except Exception as exc:
+        return {
+            "schema_version": "public_pr_diff_analysis_v0",
+            "available": False,
+            "source": "public_pr_diff",
+            "reason": _redact_text(exc, limit=220),
+            "omitted_raw_patch": True,
+        }
+    return summarize_public_patch(patch)
+
+
+def _diff_analysis(pr: dict[str, Any]) -> dict[str, Any]:
+    existing = pr.get("diff_analysis")
+    if isinstance(existing, dict):
+        return existing
+    patch = pr.get("patch") or pr.get("diff") or pr.get("public_patch")
+    if isinstance(patch, str) and patch.strip():
+        payload = summarize_public_patch(patch)
+        payload["source"] = "fixture_public_patch"
+        return payload
+    return {
+        "schema_version": "public_pr_diff_analysis_v0",
+        "available": False,
+        "source": "not_provided",
+        "reason": "public diff summary not provided by fixture or live GitHub diff read",
+        "omitted_raw_patch": True,
+    }
 
 
 def _area_counts(files: list[dict[str, Any]]) -> dict[str, int]:
@@ -467,12 +683,27 @@ def _detailed_change_analysis(item: dict[str, Any]) -> dict[str, Any]:
     key_files = [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)]
     ranked_files = sorted(key_files, key=_file_churn, reverse=True)
     areas = _as_dict(item.get("areas"))
+    diff_analysis = _as_dict(item.get("diff_analysis"))
+    diff_available = bool(diff_analysis.get("available"))
+    diff_files = [
+        file for file in _as_list(diff_analysis.get("file_insights")) if isinstance(file, dict)
+    ]
+    diff_signal_phrase = _join_short(
+        [str(signal) for signal in _as_list(diff_analysis.get("top_signals"))],
+        limit=3,
+        fallback="无 public diff 信号",
+    )
+    diff_sentence = (
+        f"真实 diff 摘要显示 {diff_analysis.get('files_analyzed', 0)} 个文件有 hunk 级信号：{diff_signal_phrase}。"
+        if diff_available
+        else f"未拿到 public diff 摘要（{diff_analysis.get('reason') or 'source unavailable'}），只能按文件列表和 PR 描述推断。"
+    )
     summary = _redact_text(
         f"这个 PR 的具体改动集中在{_area_phrase(areas)}，"
         f"总规模 {scale.get('changed_files', 0)} 个文件、+{scale.get('additions', 0)}/-{scale.get('deletions', 0)}。"
         f"建议先读 {_top_file_phrase(ranked_files, limit=3)}，确认最大 diff 是否兑现 PR 动机；"
-        "再看 smoke/文档/检查结果是否能证明这些改动不会让 main 倒退。",
-        limit=420,
+        f"{diff_sentence}再看 smoke/文档/检查结果是否能证明这些改动不会让 main 倒退。",
+        limit=560,
     )
     area_breakdown: list[dict[str, Any]] = []
     for area, count in sorted(areas.items(), key=lambda pair: (-int(pair[1] or 0), str(pair[0]))):
@@ -502,6 +733,15 @@ def _detailed_change_analysis(item: dict[str, Any]) -> dict[str, Any]:
         "summary": summary,
         "area_breakdown": area_breakdown,
         "file_walkthrough": file_walkthrough,
+        "diff_evidence": {
+            "available": diff_available,
+            "source": diff_analysis.get("source"),
+            "truncated": bool(diff_analysis.get("truncated")),
+            "top_signals": diff_analysis.get("top_signals") or [],
+            "omitted_raw_patch": diff_analysis.get("omitted_raw_patch") is not False,
+            "reason": diff_analysis.get("reason"),
+        },
+        "per_file_diff_insights": diff_files[:PATCH_FILE_INSIGHT_LIMIT],
         "review_order": [str(file.get("path") or "") for file in ranked_files[:5]],
     }
 
@@ -543,7 +783,11 @@ def _guided_review_card(item: dict[str, Any]) -> dict[str, Any]:
     main_risk = _as_dict(item.get("main_regression_analysis"))
     motivation = _redact_text(item.get("motivation"), limit=90)
     short_motivation = _redact_text(item.get("motivation"), limit=50)
-    key_files = [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)]
+    key_files = sorted(
+        [file for file in _as_list(item.get("key_files")) if isinstance(file, dict)],
+        key=_file_churn,
+        reverse=True,
+    )
     short_files = _top_file_name_phrase(key_files, limit=2)
     risk_level = str(main_risk.get("risk_level") or "unknown").lower()
     risk_label = RISK_LEVEL_LABELS.get(risk_level, risk_level)
@@ -802,6 +1046,7 @@ def _review_priority(pr: dict[str, Any], files: list[dict[str, Any]]) -> tuple[i
 def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
     files = _files(pr)
     checks = _checks(pr)
+    diff_analysis = _diff_analysis(pr)
     number = pr.get("number")
     url = pr.get("url") or (f"https://github.com/pull/{number}" if number else "")
     raw_state = str(pr.get("state") or "").upper()
@@ -832,6 +1077,7 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
         },
         "areas": _area_counts(files),
         "key_files": files[:10],
+        "diff_analysis": diff_analysis,
         "commit_headlines": _commit_headlines(pr),
         "checks": checks,
         "review_depth": _review_depth(files),
@@ -928,6 +1174,7 @@ def build_pr_review_packet(
                 "guided_review_card",
                 "motivation",
                 "detailed_change_analysis",
+                "public_diff_analysis",
                 "change_scope",
                 "checks",
                 "risk_notes",
@@ -1072,6 +1319,36 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
                 lines.append(
                     f"  - `{item.get('path')}` {item.get('delta')}: "
                     f"{item.get('meaning')} Review 重点：{item.get('review_focus')}"
+                )
+        diff_evidence = _as_dict(detailed.get("diff_evidence"))
+        lines.append(
+            "- 真实 diff 证据: "
+            + (
+                f"available=`{diff_evidence.get('available')}`, source=`{diff_evidence.get('source')}`, "
+                f"signals=`{_join_short([str(signal) for signal in _as_list(diff_evidence.get('top_signals'))], limit=4, fallback='none')}`, "
+                f"raw_patch_omitted=`{diff_evidence.get('omitted_raw_patch')}`"
+            )
+        )
+        diff_insights = [
+            item for item in _as_list(detailed.get("per_file_diff_insights")) if isinstance(item, dict)
+        ]
+        if diff_insights:
+            lines.append("- hunk-level insights:")
+            for item in diff_insights[:6]:
+                symbols = _join_short(
+                    [str(value) for value in _as_list(item.get("changed_symbols"))],
+                    limit=3,
+                    fallback="无显式 symbol",
+                )
+                contexts = _join_short(
+                    [str(value) for value in _as_list(item.get("hunk_contexts"))],
+                    limit=2,
+                    fallback="无 hunk context",
+                )
+                lines.append(
+                    f"  - `{item.get('path')}` +{item.get('added_lines')}/-{item.get('removed_lines')}: "
+                    f"{item.get('change_story')} symbols={symbols}; hunk={contexts}; "
+                    f"Review：{item.get('review_question')}"
                 )
         review_order = [str(item) for item in _as_list(detailed.get("review_order")) if item]
         if review_order:

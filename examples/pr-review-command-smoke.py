@@ -127,6 +127,17 @@ def main() -> int:
     assert "具体改动集中" in detailed["summary"], detailed
     assert detailed["area_breakdown"], detailed
     assert detailed["file_walkthrough"], detailed
+    diff_evidence = detailed["diff_evidence"]
+    assert diff_evidence["available"] is True, diff_evidence
+    assert diff_evidence["source"] == "fixture_public_patch", diff_evidence
+    assert diff_evidence["omitted_raw_patch"] is True, diff_evidence
+    assert "public docs heading changed" in diff_evidence["top_signals"], diff_evidence
+    assert detailed["per_file_diff_insights"], detailed
+    first_insight = detailed["per_file_diff_insights"][0]
+    assert first_insight["path"] == "docs/guides/newcomer-command-path.md", first_insight
+    assert first_insight["added_lines"] >= 3, first_insight
+    assert first_insight["change_story"], first_insight
+    assert first_insight["review_question"], first_insight
     assert detailed["review_order"][0] == "docs/guides/newcomer-command-path.md", detailed
     first_file = detailed["file_walkthrough"][0]
     assert first_file["path"] == "docs/guides/newcomer-command-path.md", first_file
@@ -194,6 +205,9 @@ def main() -> int:
     assert "- 详细改动分析:" in markdown, markdown
     assert "- 改动拆解:" in markdown, markdown
     assert "- 文件 walkthrough:" in markdown, markdown
+    assert "- 真实 diff 证据:" in markdown, markdown
+    assert "- hunk-level insights:" in markdown, markdown
+    assert "raw_patch_omitted=`True`" in markdown, markdown
     assert "- 推荐阅读顺序:" in markdown, markdown
     assert "- 风险:" in markdown, markdown
     assert "- 检查:" in markdown, markdown
