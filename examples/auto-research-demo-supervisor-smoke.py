@@ -22,9 +22,10 @@ from loopx.capabilities.auto_research import (  # noqa: E402
 
 GOAL_ID = "loopx-auto-research-knn"
 LANES = [
-    "codex-side-bypass:hypothesis-runner",
-    "codex-product-capability:evidence-promoter",
-    "codex-main-control:control-plane-guard",
+    "codex-product-capability:research-curator:research_curator",
+    "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
+    "codex-main-control:evidence-runner:evidence_runner",
+    "codex-value-explorer:evidence-verifier:evidence_verifier",
 ]
 
 
@@ -56,11 +57,32 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
 
     lanes = payload["lanes"]
     assert [lane["lane_id"] for lane in lanes] == [
-        "hypothesis-runner",
-        "evidence-promoter",
-        "control-plane-guard",
+        "research-curator",
+        "hypothesis-mapper",
+        "evidence-runner",
+        "evidence-verifier",
+    ], payload
+    assert [lane["role_id"] for lane in lanes] == [
+        "research_curator",
+        "hypothesis_mapper",
+        "evidence_runner",
+        "evidence_verifier",
     ], payload
     for lane in lanes:
+        profile = lane["role_profile"]
+        assert profile["schema_version"] == "auto_research_role_profile_v0", profile
+        assert profile["goal_id"] == GOAL_ID, profile
+        assert profile["agent_id"] == lane["agent_id"], profile
+        assert profile["role_id"] == lane["role_id"], profile
+        assert profile["required_skill"] == "loopx-auto-research", profile
+        assert profile["skill_section"], profile
+        assert profile["write_scope"], profile
+        assert profile["protected_scope"], profile
+        assert profile["stop_conditions"], profile
+        assert profile["pane_title_is_authority"] is False, profile
+        assert "role profile" in lane["visible_launch_command"], lane
+        assert "LOOPX_ROLE_ID" in lane["visible_launch_command"], lane
+        assert "LOOPX_ROLE_PROFILE_REF" in lane["visible_launch_command"], lane
         assert "quota should-run" in lane["quota_guard"], lane
         assert f"--agent-id {lane['agent_id']}" in lane["quota_guard"], lane
         assert "auto-research frontier" in lane["frontier"], lane
@@ -68,12 +90,14 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert lane["visible_codex_tui"] == "codex", lane
         phases = [item["phase"] for item in lane["lane_timeline"]]
         assert phases == [
+            "role_profile",
             "quota_guard",
             "frontier_projection",
             "bootstrap_prompt",
             "visible_codex",
         ], lane
-        assert lane["lane_timeline"][0]["command_ref"] == "quota_guard", lane
+        assert lane["lane_timeline"][0]["command_ref"] == "role_profile", lane
+        assert lane["lane_timeline"][1]["command_ref"] == "quota_guard", lane
         assert "operator is attached" in lane["lane_timeline"][-1]["continue_when"], lane
 
     start_script = "\n".join(payload["commands"]["start_script"])
@@ -101,14 +125,18 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
 
     acceptance = payload["demo_acceptance"]
     assert acceptance["schema_version"] == "auto_research_demo_acceptance_v0", payload
+    assert "lanes[].role_profile" in acceptance["required_visible_fields"], acceptance
     assert "lanes[].lane_timeline" in acceptance["required_visible_fields"], acceptance
+    assert any("role_profile_v0" in item for item in acceptance["operator_can_accept_when"]), acceptance
     assert any("without executing it" in item for item in acceptance["operator_can_accept_when"]), acceptance
+    assert any("role_profile_v0" in item for item in acceptance["operator_must_reject_when"]), acceptance
     assert any("hides attach/stop" in item for item in acceptance["operator_must_reject_when"]), acceptance
 
     takeover = payload["user_takeover"]
     assert takeover["schema_version"] == "auto_research_user_takeover_v0", payload
     assert any("rehearsal script first" in item for item in takeover["operator_controls"]), takeover
     assert any("attach to tmux" in item for item in takeover["operator_controls"]), takeover
+    assert any("role_profile_v0" in item for item in takeover["visible_status_cues"]), takeover
     assert any("quota guard" in item for item in takeover["visible_status_cues"]), takeover
 
     boundary = payload["boundary"]
@@ -143,6 +171,8 @@ def run_cli_json() -> dict[str, Any]:
             LANES[1],
             "--agent",
             LANES[2],
+            "--agent",
+            LANES[3],
         ],
         cwd=REPO_ROOT,
         check=True,
@@ -181,7 +211,10 @@ def main() -> int:
     ).stdout
     assert "# LoopX Auto Research Demo Supervisor" in markdown, markdown
     assert "leader_agent_required: `False`" in markdown, markdown
+    assert "## Role Profiles" in markdown, markdown
+    assert "loopx-auto-research" in markdown, markdown
     assert "## Lane Timeline" in markdown, markdown
+    assert "`role_profile` via `role_profile`" in markdown, markdown
     assert "`quota_guard` via `quota_guard`" in markdown, markdown
     assert "## One-Click Dry Run" in markdown, markdown
     assert "copy_paste_dry_run_rehearsal" in markdown, markdown

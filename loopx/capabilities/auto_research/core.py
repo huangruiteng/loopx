@@ -31,26 +31,195 @@ AUTO_RESEARCH_QUICKSTART_TEMPLATE = "knn-exact"
 ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND = "loopx_rollout_event_log"
 AUTO_RESEARCH_DEMO_DEFAULT_LANES = (
     (
-        "codex-side-bypass",
-        "hypothesis-runner",
-        "Claim the next runnable hypothesis and run dev evidence without owning promotion.",
+        "codex-product-capability",
+        "research-curator",
+        "research_curator",
+        "Keep the research contract, protected boundary, metric, stop policy, and operator gates explicit.",
     ),
     (
-        "codex-product-capability",
-        "evidence-promoter",
-        "Read scored evidence, promotion candidates, and product metric gaps.",
+        "codex-side-bypass",
+        "hypothesis-mapper",
+        "hypothesis_mapper",
+        "Turn research ideas into todo-backed hypotheses, successor links, and retirement rationale.",
     ),
     (
         "codex-main-control",
-        "control-plane-guard",
-        "Guard repo, review, merge, and user-gate boundaries without acting as a research leader.",
+        "evidence-runner",
+        "evidence_runner",
+        "Execute one selected hypothesis in an isolated workspace and preserve scored or unscored evidence.",
     ),
     (
         "codex-value-explorer",
-        "research-narrator",
-        "Turn accepted evidence into public-safe showcase and value-metric summaries.",
+        "evidence-verifier",
+        "evidence_verifier",
+        "Classify evidence into supported, contradicted, retry-needed, promotion-ready, or retired states.",
     ),
 )
+AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION = "auto_research_role_profile_v0"
+AUTO_RESEARCH_ROLE_PROFILE_REF = AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION
+AUTO_RESEARCH_REQUIRED_SKILL = "loopx-auto-research"
+AUTO_RESEARCH_ROLE_PROFILE_ORDER = (
+    "research_curator",
+    "hypothesis_mapper",
+    "evidence_runner",
+    "evidence_verifier",
+)
+AUTO_RESEARCH_ROLE_PROFILE_TEMPLATES: dict[str, dict[str, Any]] = {
+    "research_curator": {
+        "display_name": "Research curator",
+        "phase": "contract_ready",
+        "skill_section": "Research curator",
+        "allowed_actions": [
+            "write_research_contract",
+            "record_protected_boundary",
+            "open_operator_gate_todo",
+            "request_public_projection",
+        ],
+        "write_scope": [
+            "research_contract_v0",
+            "protected_boundary_notes",
+            "owner_gate_todos",
+            "public_projection_requests",
+        ],
+        "protected_scope": [
+            "experiment_execution",
+            "promotion_decision_without_evidence",
+            "public_first_screen_without_owner_review",
+        ],
+        "stop_conditions": [
+            "the next step would pick a winner",
+            "the next step would run an experiment",
+            "the next step would publish unsupported evidence",
+            "operator gate is projected",
+        ],
+        "handoff_outputs": [
+            "research_contract_v0",
+            "protected_boundary_note",
+            "operator_gate_todo",
+        ],
+    },
+    "hypothesis_mapper": {
+        "display_name": "Hypothesis mapper",
+        "phase": "hypothesis_proposed",
+        "skill_section": "Hypothesis mapper",
+        "allowed_actions": [
+            "propose_hypothesis",
+            "link_parent_hypothesis",
+            "open_successor_todo",
+            "record_no_followup_rationale",
+        ],
+        "write_scope": [
+            "research_hypothesis_v0",
+            "successor_todos",
+            "grounding_refs",
+            "no_followup_rationale",
+        ],
+        "protected_scope": [
+            "evidence_execution",
+            "evidence_deletion",
+            "novelty_claim_from_ideation_source",
+        ],
+        "stop_conditions": [
+            "novelty requires the same source that inspired the idea",
+            "negative evidence would be hidden",
+            "quota frontier is empty or claimed by another agent",
+            "operator gate is projected",
+        ],
+        "handoff_outputs": [
+            "research_hypothesis_v0",
+            "successor_todo",
+            "retirement_or_no_followup_rationale",
+        ],
+    },
+    "evidence_runner": {
+        "display_name": "Evidence runner",
+        "phase": "attempt_running",
+        "skill_section": "Evidence runner",
+        "allowed_actions": [
+            "claim_attempt",
+            "edit_allowed_scope",
+            "run_dev_eval",
+            "write_evidence",
+        ],
+        "write_scope": [
+            "claimed_hypothesis_worktree",
+            "branch_refs",
+            "research_evidence_event_v0",
+            "retry_packets",
+        ],
+        "protected_scope": [
+            "protected_evaluator",
+            "promotion_gate",
+            "raw_private_artifacts",
+            "credentials",
+        ],
+        "stop_conditions": [
+            "protected scope would be edited",
+            "promotion decision is needed",
+            "private material or credentials are required",
+            "quota should-run returns false",
+        ],
+        "handoff_outputs": [
+            "research_evidence_event_v0",
+            "branch_or_artifact_ref",
+            "retry_or_retirement_rationale",
+        ],
+    },
+    "evidence_verifier": {
+        "display_name": "Evidence verifier",
+        "phase": "evaluated",
+        "skill_section": "Evidence verifier",
+        "allowed_actions": [
+            "classify_evidence",
+            "write_evaluation_summary",
+            "open_promotion_gate",
+            "open_retirement_candidate",
+        ],
+        "write_scope": [
+            "evaluation_summary",
+            "promotion_candidate",
+            "retirement_candidate",
+            "gate_todos",
+            "projection_ready_evidence",
+        ],
+        "protected_scope": [
+            "experiment_execution",
+            "dev_only_promotion",
+            "gate_bypass",
+            "hidden_negative_evidence",
+        ],
+        "stop_conditions": [
+            "held-out evidence is missing when required",
+            "dev-only lift would be presented as promoted",
+            "operator gate is projected",
+            "public/private boundary is unclear",
+        ],
+        "handoff_outputs": [
+            "evaluation_summary",
+            "promotion_or_retirement_candidate",
+            "gate_todo",
+        ],
+    },
+}
+AUTO_RESEARCH_ROLE_PROFILE_ALIASES = {
+    "curator": "research_curator",
+    "research-curator": "research_curator",
+    "research_curator": "research_curator",
+    "hypothesis-runner": "hypothesis_mapper",
+    "hypothesis-mapper": "hypothesis_mapper",
+    "hypothesis_mapper": "hypothesis_mapper",
+    "mapper": "hypothesis_mapper",
+    "runner": "evidence_runner",
+    "evidence-runner": "evidence_runner",
+    "evidence_runner": "evidence_runner",
+    "executor": "evidence_runner",
+    "promoter": "evidence_verifier",
+    "evidence-promoter": "evidence_verifier",
+    "evidence-verifier": "evidence_verifier",
+    "evidence_verifier": "evidence_verifier",
+    "verifier": "evidence_verifier",
+    "control-plane-guard": "research_curator",
+}
 
 HYPOTHESIS_STATUSES = {
     "proposed",
@@ -554,21 +723,45 @@ def _shell_arg(value: str) -> str:
     return shlex.quote(value)
 
 
+def _role_id_for_lane(*, lane_id: str, index: int, explicit_role_id: str | None = None) -> str:
+    raw = explicit_role_id or lane_id
+    role_id = AUTO_RESEARCH_ROLE_PROFILE_ALIASES.get(raw, raw)
+    if role_id in AUTO_RESEARCH_ROLE_PROFILE_TEMPLATES:
+        return role_id
+    return AUTO_RESEARCH_ROLE_PROFILE_ORDER[(index - 1) % len(AUTO_RESEARCH_ROLE_PROFILE_ORDER)]
+
+
 def _demo_lane_specs(agent_specs: Iterable[str] | None) -> list[dict[str, str]]:
     raw_specs = list(agent_specs or [])
-    parsed_specs: list[tuple[str, str, str]] = []
+    parsed_specs: list[tuple[str, str, str, str]] = []
     if raw_specs:
         for index, raw in enumerate(raw_specs, start=1):
             text = _compact_public_text(raw, field="agent[]", max_len=180)
             if ":" in text:
-                agent_id, lane_id = text.split(":", 1)
+                parts = text.split(":")
+                if len(parts) == 2:
+                    agent_id, lane_id = parts
+                    explicit_role_id = None
+                elif len(parts) == 3:
+                    agent_id, lane_id, explicit_role_id = parts
+                else:
+                    raise ValueError("agent[] must be agent_id:lane_id or agent_id:lane_id:role_id")
             else:
                 agent_id = text
                 lane_id = f"research-lane-{index}"
+                explicit_role_id = None
             parsed_specs.append(
                 (
                     _compact_public_token(agent_id, field="agent_id"),
                     _compact_public_token(lane_id, field="lane_id"),
+                    _compact_public_token(
+                        _role_id_for_lane(
+                            lane_id=lane_id,
+                            index=index,
+                            explicit_role_id=explicit_role_id,
+                        ),
+                        field="role_id",
+                    ),
                     "Work from the shared LoopX frontier for this lane; do not assume a leader agent.",
                 )
             )
@@ -578,7 +771,7 @@ def _demo_lane_specs(agent_specs: Iterable[str] | None) -> list[dict[str, str]]:
     lanes: list[dict[str, str]] = []
     seen_agents: set[str] = set()
     seen_lanes: set[str] = set()
-    for agent_id, lane_id, responsibility in parsed_specs:
+    for agent_id, lane_id, role_id, responsibility in parsed_specs:
         if agent_id in seen_agents:
             raise ValueError(f"duplicate agent_id in demo supervisor lane plan: {agent_id}")
         if lane_id in seen_lanes:
@@ -589,6 +782,7 @@ def _demo_lane_specs(agent_specs: Iterable[str] | None) -> list[dict[str, str]]:
             {
                 "agent_id": agent_id,
                 "lane_id": lane_id,
+                "role_id": role_id,
                 "responsibility": _compact_public_text(
                     responsibility,
                     field="lane.responsibility",
@@ -623,6 +817,32 @@ def _env_bootstrap_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
     )
 
 
+def _role_profile_for_lane(*, goal_id: str, lane: dict[str, str]) -> dict[str, Any]:
+    role_id = _compact_public_token(lane["role_id"], field="lane.role_id")
+    template = AUTO_RESEARCH_ROLE_PROFILE_TEMPLATES[role_id]
+    return {
+        "schema_version": AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "agent_id": lane["agent_id"],
+        "role_id": role_id,
+        "display_name": template["display_name"],
+        "phase": template["phase"],
+        "capability_token": role_id,
+        "todo_id": "pending_frontier_selection",
+        "hypothesis_id": "pending_frontier_selection",
+        "allowed_actions": list(template["allowed_actions"]),
+        "write_scope": list(template["write_scope"]),
+        "protected_scope": list(template["protected_scope"]),
+        "required_skill": AUTO_RESEARCH_REQUIRED_SKILL,
+        "skill_section": template["skill_section"],
+        "agents_overlay": ["workspace/AGENTS.md"],
+        "stop_conditions": list(template["stop_conditions"]),
+        "handoff_outputs": list(template["handoff_outputs"]),
+        "identity_source": "loopx_control_plane_profile_then_quota_frontier",
+        "pane_title_is_authority": False,
+    }
+
+
 _QUOTA_GATE_PY = (
     "import json,sys; "
     "p=json.load(sys.stdin); "
@@ -636,6 +856,8 @@ _QUOTA_GATE_PY = (
 
 def _env_lane_launch_command(
     *,
+    role_id: str,
+    role_profile_json: str,
     quota_command: str,
     frontier_command: str,
     bootstrap_command: str,
@@ -643,7 +865,11 @@ def _env_lane_launch_command(
 ) -> str:
     return (
         "set -euo pipefail; "
+        f"export LOOPX_ROLE_ID={_shell_arg(role_id)}; "
+        f"export LOOPX_ROLE_PROFILE_REF={_shell_arg(AUTO_RESEARCH_ROLE_PROFILE_REF)}; "
         'cd "$LOOPX_PROJECT"; '
+        "printf '\\n[LoopX role profile]\\n'; "
+        f"printf '%s\\n' {_shell_arg(role_profile_json)}; "
         "printf '\\n[LoopX quota guard]\\n'; "
         f"QUOTA_PACKET=\"$({quota_command})\"; "
         "printf '%s\\n' \"$QUOTA_PACKET\"; "
@@ -708,6 +934,13 @@ def build_auto_research_demo_supervisor_plan(
     for lane in lanes:
         agent_id = lane["agent_id"]
         lane_id = lane["lane_id"]
+        role_id = lane["role_id"]
+        role_profile = _role_profile_for_lane(goal_id=goal, lane=lane)
+        role_profile_json = json.dumps(
+            role_profile,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         quota_command = _env_quota_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
         frontier_command = _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
         bootstrap_command = _env_bootstrap_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
@@ -715,25 +948,37 @@ def build_auto_research_demo_supervisor_plan(
             {
                 "lane_id": lane_id,
                 "agent_id": agent_id,
+                "role_id": role_id,
                 "responsibility": lane["responsibility"],
+                "role_profile": role_profile,
                 "window_name": lane_id,
                 "quota_guard": quota_command,
                 "frontier": frontier_command,
                 "bootstrap_message": bootstrap_command,
                 "visible_codex_tui": codex,
                 "visible_launch_command": _env_lane_launch_command(
+                    role_id=role_id,
+                    role_profile_json=role_profile_json,
                     quota_command=quota_command,
                     frontier_command=frontier_command,
                     bootstrap_command=bootstrap_command,
                     codex_bin=codex,
                 ),
                 "start_sequence": [
+                    "print role_profile_v0 so the lane knows its identity before any work",
                     "run quota_guard and stop when user_channel.action_required=true",
                     "render the lane frontier from LoopX state",
                     "print the public-safe bootstrap message for this visible TUI",
                     "start Codex CLI visibly; do not inject hidden prompts into an existing session",
                 ],
                 "lane_timeline": [
+                    {
+                        "phase": "role_profile",
+                        "command_ref": "role_profile",
+                        "operator_visible_signal": f"{role_profile['role_id']} profile, skill section, write scope, and stop conditions",
+                        "continue_when": "profile identity matches the intended visible worker lane",
+                        "stop_when": "profile is missing, conflicts with AGENTS.md, or grants broader authority than quota/frontier",
+                    },
                     {
                         "phase": "quota_guard",
                         "command_ref": "quota_guard",
@@ -859,6 +1104,8 @@ def build_auto_research_demo_supervisor_plan(
                 "commands.start_script",
                 "commands.attach",
                 "commands.stop",
+                "lanes[].role_id",
+                "lanes[].role_profile",
                 "lanes[].quota_guard",
                 "lanes[].frontier",
                 "lanes[].bootstrap_message",
@@ -868,12 +1115,14 @@ def build_auto_research_demo_supervisor_plan(
             ],
             "operator_can_accept_when": [
                 "the rehearsal script prints the real start script without executing it",
+                "every lane prints auto_research_role_profile_v0 before quota/frontier/bootstrap",
                 "every lane has a quota guard before frontier/bootstrap/Codex startup",
                 "the attach command is visible before any Codex prompt is accepted",
                 "the stop command and terminal interrupt path are visible",
                 "boundary fields prove no tmux/Codex/state/quota side effects in dry-run mode",
             ],
             "operator_must_reject_when": [
+                "a lane lacks role_profile_v0, skill section, write scope, or stop conditions",
                 "a lane can start without quota should-run",
                 "the packet hides attach/stop controls",
                 "the packet embeds local absolute paths, credentials, raw sessions, or private links",
@@ -891,6 +1140,7 @@ def build_auto_research_demo_supervisor_plan(
             ],
             "visible_status_cues": [
                 "frontier window shows the shared research frontier",
+                "each lane window prints its role_profile_v0 before quota/frontier/bootstrap",
                 "each lane window prints its own quota guard before Codex starts",
                 "each lane window prints its own auto-research frontier before Codex starts",
                 "bootstrap message is visible in the same pane that would run Codex",
@@ -2989,7 +3239,17 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             if not isinstance(item, dict):
                 continue
             lines.append(
-                f"- `{item.get('lane_id')}` / `{item.get('agent_id')}`: {item.get('responsibility')}"
+                f"- `{item.get('lane_id')}` / `{item.get('agent_id')}` / `{item.get('role_id')}`: "
+                f"{item.get('responsibility')}"
+            )
+        lines.extend(["", "## Role Profiles", ""])
+        for item in lanes:
+            if not isinstance(item, dict):
+                continue
+            profile = item.get("role_profile") if isinstance(item.get("role_profile"), dict) else {}
+            lines.append(
+                f"- `{profile.get('role_id')}`: skill `{profile.get('required_skill')}` / "
+                f"section `{profile.get('skill_section')}` / phase `{profile.get('phase')}`"
             )
         lines.extend(["", "## Lane Timeline", ""])
         for item in lanes:
