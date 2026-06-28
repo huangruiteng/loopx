@@ -52,8 +52,11 @@ state files, or future narrow kernel APIs.
 The companion
 [`auto_research_lane_contract_v1`](auto-research-lane-contract-v1.md) defines
 which decentralized agent lanes may create, execute, evaluate, promote, retire,
-or narrate these records. This file defines the record shapes and projections;
-the lane contract defines capability ownership without introducing a leader
+or narrate these records. The companion
+[`auto_research_role_state_machine_v0`](auto-research-role-state-machine-v0.md)
+defines the always-on digital employee role map and state transitions. This
+file defines the record shapes and projections; the companion contracts define
+capability ownership and transition evidence without introducing a leader
 agent.
 
 | Source state | Existing or proposed anchor | Purpose |
@@ -297,5 +300,5 @@ An implementation is acceptable when:
 - grounded ideation and novelty audit are separated;
 - held-out promotion is explicit;
 - public projections contain no raw logs, private paths, credentials, or raw
-  internal documents;
+  private documents;
 - the showcase can be rendered from public-safe evidence refs.
