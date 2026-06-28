@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
+CATALOG = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
 
 from loopx.canary.planner import (  # noqa: E402
     build_catalog_canary_plan,
@@ -37,6 +38,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
     assert all("command" in check and "reason" in check for check in work_routing["candidate_checks"])
     domain_profile_ids = {profile["id"] for profile in payload["domain_profiles"]}
     assert {
+        "pr-review-and-merge",
         "release-promotion",
         "control-plane-refactor",
         "monitor-scheduler",
@@ -67,6 +69,43 @@ def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
         assert profile["deep_checks_available"] is True, profile
         assert profile["deep_checks_included"] is False, profile
     assert payload["executes_checks"] is False, payload
+
+
+def assert_catalog_documents_selection_rules() -> None:
+    catalog = CATALOG.read_text(encoding="utf-8")
+    for snippet in [
+        "Use this selection order for ordinary PR, release, and refactor review:",
+        "Start from changed files and touched surfaces, not from the PR title.",
+        "PR review or self-merge workflow",
+        "Release or install promotion",
+        "Control-plane refactor",
+        "Keep default profiles on fixture-level or dry-run checks.",
+        "When hot-path and cold-path surfaces both changed",
+    ]:
+        assert snippet in catalog, snippet
+
+
+def assert_pr_release_and_refactor_profiles_select() -> None:
+    pr_payload = build_catalog_canary_plan(
+        changed_files=["loopx/pr_review.py", "skills/loopx-pr-review/SKILL.md"],
+        surfaces=["pr-review public PR metadata"],
+    )
+    pr_profile_ids = {profile["id"] for profile in pr_payload["domain_profiles"]}
+    assert "pr-review-and-merge" in pr_profile_ids, pr_payload
+
+    release_payload = build_catalog_canary_plan(
+        changed_files=["docs/product/release-readiness.md"],
+        surfaces=["release promotion install update"],
+    )
+    release_profile_ids = {profile["id"] for profile in release_payload["domain_profiles"]}
+    assert "release-promotion" in release_profile_ids, release_payload
+
+    refactor_payload = build_catalog_canary_plan(
+        changed_files=["loopx/quota.py", "loopx/status.py"],
+        surfaces=["control-plane refactor scheduler hint"],
+    )
+    refactor_profile_ids = {profile["id"] for profile in refactor_payload["domain_profiles"]}
+    assert "control-plane-refactor" in refactor_profile_ids, refactor_payload
 
 
 def assert_explicit_profile_can_include_deep_checks() -> None:
@@ -116,7 +155,9 @@ def assert_cli_json_plan_is_dry_run() -> None:
 
 def main() -> int:
     assert_profiles_come_from_catalog_matrix()
+    assert_catalog_documents_selection_rules()
     assert_plan_selects_minimal_profiles_from_changed_surfaces()
+    assert_pr_release_and_refactor_profiles_select()
     assert_explicit_profile_can_include_deep_checks()
     assert_cli_json_plan_is_dry_run()
     print("catalog-canary-planner-smoke ok")

@@ -105,6 +105,30 @@ add evidence lifecycle checks for benchmark or external-handle changes, and add
 browser or deep integration only when a visual or end-to-end surface is being
 promoted.
 
+Use this selection order for ordinary PR, release, and refactor review:
+
+1. Start from changed files and touched surfaces, not from the PR title.
+2. Map those surfaces to catalog families and choose the cheapest archetype
+   that can catch the likely regression.
+3. Add one current-repo domain profile only when the surface has a known
+   product route, such as PR review, release promotion, monitor scheduling,
+   control-plane refactor, state-write correctness, frontstage rollout, or
+   benchmark adapter readiness.
+4. Keep default profiles on fixture-level or dry-run checks. Pull in deep,
+   browser, external, or writeback checks only when the PR promotes that exact
+   surface or the owner explicitly asks for promotion readiness.
+5. When hot-path and cold-path surfaces both changed, keep the hot-path canary
+   small enough to prove route/spend/notify behavior, then add a cold-path
+   detail check for the expanded inspector or review surface.
+
+Concrete examples:
+
+| Review Situation | Selector Shape | Default Profile Choice | Add Deep Checks Only When |
+| --- | --- | --- | --- |
+| PR review or self-merge workflow | changed files under `loopx/pr_review.py`, `skills/loopx-pr-review/`, GitHub public probe, or PR merge policy docs | PR review / merge domain profile plus Human Decision or Evidence Lifecycle when public-handle evidence changed | the PR changes posting, approval, merge, or external GitHub write behavior |
+| Release or install promotion | release-readiness docs, installer/update/wrapper code, `loopx doctor`, `loopx update`, or canary wrapper behavior | release-promotion domain profile plus Work Routing and State And Boundary checks | promoting a real release snapshot, app wrapper, dashboard, or writeback evidence |
+| Control-plane refactor | `loopx/quota.py`, `loopx/status.py`, scheduler policy, todo projection, or review-packet route changes | control-plane-refactor domain profile plus Work Routing and State And Boundary checks | moving a broad policy seam, changing public JSON fields, or touching monitor/scheduler writeback |
+
 ## Decision Scope Model
 
 User gates are not global booleans. The first-class model is a scoped decision:

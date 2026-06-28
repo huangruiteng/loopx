@@ -180,6 +180,30 @@ FAMILY_SELECTOR_HINTS: dict[str, tuple[str, ...]] = {
 
 CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
+        "id": "pr-review-and-merge",
+        "title": "PR review and merge workflow",
+        "purpose": "Check public PR review packets, public-handle evidence, and merge-gate boundaries without approving or merging anything.",
+        "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary"],
+        "trigger_hints": ("pr-review", "pull request", "github pr", "self-merge", "merge policy", "public pr metadata"),
+        "checks": [
+            {
+                "command": "python3 examples/pr-review-command-smoke.py",
+                "tier": "default",
+                "reason": "checks the public-safe /loopx-pr-review packet and review-card contract",
+            },
+            {
+                "command": "python3 examples/value-connectors-github-public-probe-smoke.py",
+                "tier": "default",
+                "reason": "guards public GitHub issue/PR metadata probes without raw body capture",
+            },
+            {
+                "command": "python3 examples/check-public-boundary-smoke.py",
+                "tier": "deep",
+                "reason": "runs broader public/private boundary checks when review artifacts are promoted",
+            },
+        ],
+    },
+    {
         "id": "release-promotion",
         "title": "Release promotion readiness",
         "purpose": "Check whether the release/canary promotion path is ready without mutating the install.",
