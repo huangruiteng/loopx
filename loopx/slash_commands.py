@@ -106,7 +106,19 @@ def build_slash_command_catalog(
                     "review_groups.merged",
                     "pull_requests[].review_template",
                     "pull_requests[].evidence_commands",
+                    "agent_response_contract.required_final_sections",
                 ],
+                "final_answer_contract": {
+                    "table_only_response_allowed": False,
+                    "required_sections": [
+                        "动机",
+                        "改动思路",
+                        "具体改动",
+                        "对主干的风险",
+                        "我的整体评价",
+                    ],
+                    "evidence_before_filling": "Read each selected PR body/files/diff/checks before filling the sections.",
+                },
                 "manual_gh_policy": (
                     "Use gh only after the CLI packet selects a PR; do not reconstruct "
                     "the review window or state grouping from ad hoc gh calls."

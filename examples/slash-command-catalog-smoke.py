@@ -45,6 +45,16 @@ def main() -> int:
     assert "loopx pr-review" in pr_review["agent_contract"]["primary_cli"], pr_review
     assert "review_groups.unmerged" in pr_review["agent_contract"]["authoritative_fields"], pr_review
     assert "review_groups.merged" in pr_review["agent_contract"]["authoritative_fields"], pr_review
+    assert "agent_response_contract.required_final_sections" in pr_review["agent_contract"]["authoritative_fields"], pr_review
+    final_contract = pr_review["agent_contract"]["final_answer_contract"]
+    assert final_contract["table_only_response_allowed"] is False, final_contract
+    assert final_contract["required_sections"] == [
+        "动机",
+        "改动思路",
+        "具体改动",
+        "对主干的风险",
+        "我的整体评价",
+    ], final_contract
     assert "do not reconstruct" in pr_review["agent_contract"]["manual_gh_policy"], pr_review
     onboarding = payload["onboarding"]
     assert onboarding["tell_new_users"] is True, onboarding

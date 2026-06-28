@@ -30,6 +30,12 @@ whole packet and make `review_groups.merged` empty while merged PRs exist in the
 window. Live GitHub reads should fetch open and closed/merged windows
 separately before constructing the grouped packet.
 
+The agent response must not stop at a queue table. For `/loopx-pr-review`, the
+queue is only the preface; the final answer should review selected PRs one by
+one with five sections: `动机`, `改动思路`, `具体改动`, `对主干的风险`, and
+`我的整体评价`. A stats/list-only response is valid only when the user
+explicitly asks for stats or a list without review.
+
 ## Source Reads
 
 Implementations may read compact public PR surfaces:
@@ -172,6 +178,18 @@ absolute paths, private source bodies, or hidden CI artifacts.
       ]
     }
   ],
+  "agent_response_contract": {
+    "schema_version": "pr_review_agent_response_contract_v0",
+    "table_only_response_allowed": false,
+    "queue_table_role": "preface_only",
+    "required_final_sections": [
+      "动机",
+      "改动思路",
+      "具体改动",
+      "对主干的风险",
+      "我的整体评价"
+    ]
+  },
   "boundary": {
     "raw_logs_recorded": false,
     "credential_values_recorded": false,
@@ -195,6 +213,10 @@ The packet should let a reviewer move through PRs in order:
    copied as the final risk judgement.
 6. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
 
+A response that only lists `Open` and `Merged` PRs, scale, and recommended next
+order is incomplete for `/loopx-pr-review`; it should continue into the
+per-PR five-block review cards after reading evidence.
+
 ## Acceptance Checks
 
 A first implementation is acceptable when:
@@ -213,6 +235,8 @@ A first implementation is acceptable when:
   key files, risk notes, metadata-only risk hints, evidence commands, explicit
   `review_groups.unmerged` / `review_groups.merged`, and a blank five-block
   review template;
+- the packet includes `agent_response_contract.table_only_response_allowed=false`
+  so slash-command agents know a table-only chat answer is incomplete;
 - the slash-command catalog marks `/loopx-pr-review` as `must_run_cli_first`
   and says manual `gh` calls are only per-PR deep-read commands after the CLI
   packet selects a PR;

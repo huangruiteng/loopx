@@ -164,6 +164,18 @@ def main() -> int:
     assert risk_hint["level"] == "low", risk_hint
     assert "Metadata-only" in risk_hint["disclaimer"], risk_hint
     assert "quota.py" not in json.dumps(risk_hint), risk_hint
+    response_contract = payload["agent_response_contract"]
+    assert response_contract["schema_version"] == "pr_review_agent_response_contract_v0", response_contract
+    assert response_contract["table_only_response_allowed"] is False, response_contract
+    assert response_contract["queue_table_role"] == "preface_only", response_contract
+    assert response_contract["required_final_sections"] == [
+        "动机",
+        "改动思路",
+        "具体改动",
+        "对主干的风险",
+        "我的整体评价",
+    ], response_contract
+    assert any("Do not stop at the queue/table summary" in item for item in response_contract["instructions"])
     merged = next(item for item in payload["pull_requests"] if item["number"] == 770)
     merged_risk_hint = merged["metadata_risk_hint"]
     assert merged_risk_hint["level"] == "medium", merged_risk_hint
@@ -228,6 +240,10 @@ def main() -> int:
     assert "state_filter: `all`" in markdown, markdown
     assert "merged=`" in markdown, markdown
     assert "tool contract: run `loopx pr-review` first" in markdown, markdown
+    assert "final answer contract: queue/table is only a preface" in markdown, markdown
+    assert "## Agent Output Contract" in markdown, markdown
+    assert "Do not stop at the queue/table summary" in markdown, markdown
+    assert "Required card headings: `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`" in markdown, markdown
     assert "## Unmerged PRs" in markdown, markdown
     assert "## Merged PRs" in markdown, markdown
     assert "#770" in markdown, markdown

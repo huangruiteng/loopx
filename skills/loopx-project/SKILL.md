@@ -89,6 +89,15 @@ current repository and the default `--state all`. The CLI packet's
 window by manually calling `gh pr view` or `gh pr list`; use the packet's
 `evidence_commands` only after selecting a PR from the CLI output.
 
+`/loopx-pr-review` is a review command, not a table-only statistics command.
+After the CLI packet selects the queue, the final answer must review the
+selected PRs one by one with these five headings: `动机`, `改动思路`,
+`具体改动`, `对主干的风险`, and `我的整体评价`. A queue table may be a short
+preface, but stopping after an open/merged table or summary is an invalid
+response unless the user explicitly asked for stats/list-only. Do not fill those
+five sections from metadata alone; first read the selected PR body/files/diff
+using the packet's `evidence_commands` or equivalent targeted `gh` commands.
+
 When a user has just connected a project or receives a bootstrap command pack
 for the first time, briefly tell them the usable commands instead of assuming
 they will inspect CLI help:

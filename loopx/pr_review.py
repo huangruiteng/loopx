@@ -523,6 +523,29 @@ def _review_template(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _agent_response_contract() -> dict[str, Any]:
+    return {
+        "schema_version": "pr_review_agent_response_contract_v0",
+        "table_only_response_allowed": False,
+        "queue_table_role": "preface_only",
+        "default_review_scope": "Review PRs in review_groups.unmerged first, then review_groups.merged, bounded by the requested limit.",
+        "required_final_sections": [
+            "动机",
+            "改动思路",
+            "具体改动",
+            "对主干的风险",
+            "我的整体评价",
+        ],
+        "instructions": [
+            "Run loopx pr-review first and use review_groups as the queue.",
+            "Do not stop at the queue/table summary when the user invokes /loopx-pr-review.",
+            "For each selected PR, run the evidence_commands or equivalent PR body/diff reads before filling the five sections.",
+            "Do not fill the five sections from metadata_risk_hint alone; metadata_risk_hint is only queue-ordering context.",
+            "If the user explicitly asks for stats/list-only, say that no detailed PR review was performed.",
+        ],
+    }
+
+
 def _check_name(item: dict[str, Any]) -> str:
     return str(item.get("name") or item.get("context") or item.get("workflowName") or "check")
 
@@ -803,6 +826,7 @@ def build_pr_review_packet(
                 "pull_request_list",
                 "review_groups",
                 "review_template",
+                "agent_response_contract",
                 "change_scope",
                 "checks",
                 "metadata_risk_hint",
@@ -829,6 +853,7 @@ def build_pr_review_packet(
         "review_sequence": review_sequence,
         "review_groups": review_groups,
         "pull_requests": normalized,
+        "agent_response_contract": _agent_response_contract(),
         "actions": [
             {
                 "action_id": "act_review_next_pr",
@@ -887,6 +912,14 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         f"- headline: {summary.get('headline')}",
         f"- counts: total=`{summary.get('total_pr_count')}`, open=`{summary.get('open_pr_count')}`, merged=`{summary.get('merged_pr_count')}`, review_attention=`{summary.get('review_attention_count')}`, draft=`{summary.get('draft_count')}`",
         "- tool contract: run `loopx pr-review` first and use its `review_groups`; use ad hoc `gh` commands only after selecting a PR from this packet.",
+        "- final answer contract: queue/table is only a preface; `/loopx-pr-review` must return filled five-block review cards after reading PR evidence.",
+        "",
+        "## Agent Output Contract",
+        "",
+        "- Do not stop at the queue/table summary.",
+        "- For each selected PR, read PR body/files/diff/checks first, then return one review card.",
+        "- Required card headings: `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.",
+        "- `metadata_risk_hint` is only queue-ordering metadata; do not copy it as the final risk judgment.",
         "",
         "## Unmerged PRs",
     ]
