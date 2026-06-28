@@ -175,6 +175,7 @@ def user_todo(
     *,
     task_class: str | None = None,
     action_kind: str | None = None,
+    claimed_by: str | None = None,
 ) -> dict:
     item = {
         "index": index,
@@ -187,6 +188,8 @@ def user_todo(
         item["task_class"] = task_class
     if action_kind:
         item["action_kind"] = action_kind
+    if claimed_by:
+        item["claimed_by"] = claimed_by
     return item
 
 
@@ -310,6 +313,49 @@ def assert_monitor_only_packet_keeps_user_todo_pending() -> None:
     assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
 
 
+def assert_agent_scoped_gate_prompt_matches_scoped_summary() -> None:
+    payload = status_payload(
+        status="operator_gate_fixture",
+        agent_todos=[
+            todo(1, MONITOR_TODO, priority="P2", task_class="continuous_monitor"),
+        ],
+        user_todos=[
+            user_todo(
+                82,
+                "[P0-decision] Review/merge PR #807 or explicitly authorize admin-bypass merge.",
+                task_class="user_gate",
+                action_kind="review_pr",
+                claimed_by="codex-main-control",
+            )
+        ],
+    )
+    payload["attention_queue"]["items"][0]["quota"]["state"] = "operator_gate"
+    payload["run_history"]["goals"][0]["coordination"] = {
+        "primary_agent": "codex-main-control",
+        "registered_agents": [
+            "codex-main-control",
+            "codex-product-capability",
+        ],
+    }
+    guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id="codex-product-capability",
+    )
+    user_summary = guard["user_todo_summary"]
+    assert user_summary["open_count"] == 0, user_summary
+    assert user_summary["other_agent_scoped_open_count"] == 1, user_summary
+    gate_prompt = guard["gate_prompt"]
+    assert "当前 agent 无阻塞用户待办" in gate_prompt, gate_prompt
+    assert "其他 agent/global 用户待办：1 项" in gate_prompt, gate_prompt
+    assert "用户待办：0 项未完成" not in gate_prompt, gate_prompt
+    assert "用户待办：1 项未完成" not in gate_prompt, gate_prompt
+    assert "PR #807" in gate_prompt, gate_prompt
+    contract = guard["interaction_contract"]
+    assert contract["mode"] == "user_gate", contract
+    assert contract["user_channel"]["action_required"] is True, contract
+
+
 def assert_explicit_non_gating_user_todo_stays_quiet() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -431,6 +477,7 @@ def main() -> None:
     assert_advancement_packet_keeps_user_todo_pending()
     assert_explicit_user_gate_still_allows_independent_agent_action()
     assert_monitor_only_packet_keeps_user_todo_pending()
+    assert_agent_scoped_gate_prompt_matches_scoped_summary()
     assert_explicit_non_gating_user_todo_stays_quiet()
     assert_monitor_only_packet_allows_quiet_noop()
     assert_executable_recommended_action_overrides_monitor_todo()
