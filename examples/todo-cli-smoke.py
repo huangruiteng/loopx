@@ -291,6 +291,69 @@ def main() -> int:
         assert fields["user_todos"]["source_section"] == "User Todo / Owner Review Reading Queue", fields
         assert fields["agent_todos"]["source_section"] == "Agent Todo", fields
 
+        default_list = run_cli(registry_path, "todo", "list", "--goal-id", GOAL_ID)
+        assert default_list["todo_count"] == 3, default_list
+        assert "todo_id_filter" not in default_list, default_list
+        assert "matched" not in default_list, default_list
+        assert "relations" not in default_list, default_list
+
+        scoped_gate_lookup = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            scoped_gate["todo_id"],
+        )
+        assert scoped_gate_lookup["ok"] is True, scoped_gate_lookup
+        assert scoped_gate_lookup["todo_id_filter"] == scoped_gate["todo_id"], scoped_gate_lookup
+        assert scoped_gate_lookup["todo_count"] == 1, scoped_gate_lookup
+        assert scoped_gate_lookup["matched"] is True, scoped_gate_lookup
+        assert scoped_gate_lookup["todo"]["todo_id"] == scoped_gate["todo_id"], scoped_gate_lookup
+        assert scoped_gate_lookup["relations"]["blocks_agent"] == "codex-side-bypass", scoped_gate_lookup
+        assert scoped_gate_lookup["relations"]["decision_scope"]["scope_key"] == (
+            "external_publish_channel"
+        ), scoped_gate_lookup
+        assert scoped_gate_lookup["user_todos"]["open_count"] == 1, scoped_gate_lookup
+        assert scoped_gate_lookup["agent_todos"]["open_count"] == 0, scoped_gate_lookup
+
+        agent_lookup = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            metadata_payload["todo_id"],
+        )
+        assert agent_lookup["todo_count"] == 1, agent_lookup
+        assert agent_lookup["matched"] is True, agent_lookup
+        assert agent_lookup["todo"]["todo_id"] == metadata_payload["todo_id"], agent_lookup
+        assert agent_lookup["todo"]["action_kind"] == "run_eval", agent_lookup
+        assert agent_lookup["relations"]["required_capabilities"] == [
+            "shell",
+            "benchmark_runner",
+        ], agent_lookup
+
+        missing_lookup = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            "todo_missing_lookup_0001",
+        )
+        assert missing_lookup["ok"] is True, missing_lookup
+        assert missing_lookup["todo_count"] == 0, missing_lookup
+        assert missing_lookup["matched"] is False, missing_lookup
+        assert missing_lookup["todo"] is None, missing_lookup
+        assert missing_lookup["relations"] == {}, missing_lookup
+        assert missing_lookup["not_found"] is True, missing_lookup
+
         monitor_payload = run_cli(
             registry_path,
             "todo",

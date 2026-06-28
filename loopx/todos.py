@@ -381,13 +381,50 @@ def filtered_todo_summary(
     *,
     role: str,
     status: str | None = None,
+    todo_id: str | None = None,
 ) -> dict[str, Any]:
     items = list((summary or {}).get("items") or [])
     normalized_status = normalize_todo_status(status)
     if normalized_status:
         items = [item for item in items if todo_item_status(item) == normalized_status]
+    normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
+    if normalized_todo_id:
+        items = [
+            item
+            for item in items
+            if normalize_todo_id(item.get("todo_id")) == normalized_todo_id
+        ]
     source_section = str((summary or {}).get("source_section") or TODO_SECTION_HEADINGS[role])
     return compact_todo_group(items, source_section=source_section, role=role) or empty_todo_summary(role=role)
+
+
+def todo_item_relations(item: dict[str, Any]) -> dict[str, Any]:
+    relations: dict[str, Any] = {}
+    for key in (
+        "claimed_by",
+        "blocks_agent",
+        "global_gate",
+        "unblocks_todo_id",
+        "superseded_by",
+        "resume_when",
+        "resume_condition",
+        "resume_ready",
+        "decision_scope",
+        "required_decision_scopes",
+        "required_write_scopes",
+        "required_capabilities",
+        "target_capabilities",
+        "task_class",
+        "action_kind",
+        "target_key",
+        "cadence",
+        "next_due_at",
+        "expires_at",
+    ):
+        value = item.get(key)
+        if value is not None and value != []:
+            relations[key] = value
+    return relations
 
 
 def list_goal_todos(
@@ -396,9 +433,13 @@ def list_goal_todos(
     goal_id: str,
     role: str | None = None,
     status: str | None = None,
+    todo_id: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
 ) -> dict[str, Any]:
+    normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
+    if todo_id and not normalized_todo_id:
+        raise ValueError("todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
     registry = load_registry(registry_path)
     goal, resolved_project, resolved_state_file = resolve_goal_state(
         registry=registry,
@@ -438,10 +479,12 @@ def list_goal_todos(
             fields.get(key) if isinstance(fields, dict) else None,
             role=item_role,
             status=status,
+            todo_id=normalized_todo_id,
         )
         summaries[key] = summary
         todos.extend(summary.get("items") or [])
 
+    matched_todo = todos[0] if len(todos) == 1 else None
     payload: dict[str, Any] = {
         "ok": True,
         "dry_run": True,
@@ -456,6 +499,15 @@ def list_goal_todos(
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
     }
+    if normalized_todo_id:
+        payload["todo_id_filter"] = normalized_todo_id
+        payload["matched"] = bool(todos)
+        payload["todo"] = matched_todo
+        payload["relations"] = todo_item_relations(matched_todo) if matched_todo else {}
+        if len(todos) > 1:
+            payload["ambiguous"] = True
+        if not todos:
+            payload["not_found"] = True
     payload.update(summaries)
     if source == "event_projection" and projection_fields.get("state_event_projection"):
         payload["state_event_projection"] = projection_fields["state_event_projection"]

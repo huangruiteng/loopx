@@ -321,7 +321,6 @@ def handle_todo_command(
                 for flag, value in (
                     ("--text", args.text),
                     ("--follow-up", args.followups),
-                    ("--todo-id", args.todo_id),
                     ("--note", args.note),
                     ("--evidence", args.evidence),
                     ("--reason", args.reason),
@@ -359,7 +358,7 @@ def handle_todo_command(
             ]
             if unsupported:
                 raise ValueError(
-                    "todo list only accepts --goal-id, optional --role, --status, "
+                    "todo list only accepts --goal-id, optional --role, --status, --todo-id, "
                     "--project, --state-file, --dry-run, and --format; unsupported: "
                     + ", ".join(unsupported)
                 )
@@ -368,6 +367,7 @@ def handle_todo_command(
                 goal_id=args.goal_id,
                 role=args.role,
                 status=args.status,
+                todo_id=args.todo_id,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
             )
