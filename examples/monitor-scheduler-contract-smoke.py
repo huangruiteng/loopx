@@ -225,6 +225,43 @@ def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:
     assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
 
 
+def assert_due_monitor_is_not_overridden_by_side_agent_scope_wait() -> None:
+    other_agent = "codex-main-control"
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_side_due_monitor",
+                priority="P1",
+                next_due_at=PAST_DUE_AT,
+                target_key="side-agent-due-watch",
+            ),
+            advancement_item(index=2, priority="P1", claimed_by=other_agent),
+        ],
+        coordination={
+            "registered_agents": [other_agent, AGENT_ID],
+            "primary_agent": other_agent,
+        },
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["agent_identity"]["role"] == "side-agent", guard
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert guard["should_run"] is True, guard
+    assert guard["normal_delivery_allowed"] is True, guard
+    assert lane["monitor_kind"] == "todo_monitor_due", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["selected_todo_id"] == "todo_side_due_monitor", lane
+    assert "agent_scope_frontier" not in guard, guard
+    assert "agent_lane_frontier_hint" not in guard, guard
+    claim_scope = guard["agent_todo_summary"]["claim_scope"]
+    assert claim_scope["other_agent_claimed_open_count"] == 1, claim_scope
+    assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only", claim_scope
+    contract = guard["interaction_contract"]
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
+
+
 def assert_multiple_due_monitor_cap_and_order() -> None:
     guard = guard_for(
         [
@@ -331,6 +368,7 @@ def main() -> int:
     assert_due_monitor_requires_explicit_attempt()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
+    assert_due_monitor_is_not_overridden_by_side_agent_scope_wait()
     assert_multiple_due_monitor_cap_and_order()
     assert_other_agent_due_monitor_does_not_preempt_current_agent_lane()
     assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane()

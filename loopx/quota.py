@@ -2607,6 +2607,9 @@ def _agent_lane_frontier_hint(
                 next_cli_action=action,
             )
 
+    if _work_lane_due_monitor_attempt(work_lane_contract):
+        return None
+
     frontier = agent_scope_frontier if isinstance(agent_scope_frontier, dict) else {}
     frontier_action = _agent_scope_frontier_action(frontier.get("action"))
     if frontier_action == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED:
@@ -2810,6 +2813,8 @@ def _agent_scope_no_candidate_frontier(
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
     if isinstance(agent_lane_next_action, dict):
+        return None
+    if _work_lane_due_monitor_attempt(work_lane_contract):
         return None
     has_advancement_contract = (
         isinstance(work_lane_contract, dict)
