@@ -23,7 +23,9 @@ from ..benchmark_case_state import (
 from ..benchmark_core import (
     BenchmarkFailureClass,
     build_benchmark_attempt_accounting,
+    build_run_permission_policy,
     canonical_lifecycle,
+    compact_run_permission_policy_for_quota,
 )
 from ..benchmark_core.io import (
     load_json_object as _load_json_object,
@@ -3429,6 +3431,13 @@ def build_agents_last_exam_local_launch_packet(
         if isinstance(runner_readiness.get("runner_probe"), dict)
         else {}
     )
+    run_permission_policy = build_run_permission_policy(
+        policy_id="agents_last_exam_local_launch_no_upload_policy",
+        max_wall_time_minutes=120,
+    )
+    run_permission_projection = compact_run_permission_policy_for_quota(
+        run_permission_policy
+    )
     return {
         "schema_version": AGENTS_LAST_EXAM_LOCAL_LAUNCH_PACKET_SCHEMA_VERSION,
         "benchmark_id": AGENTS_LAST_EXAM_BENCHMARK_ID,
@@ -3496,6 +3505,8 @@ def build_agents_last_exam_local_launch_packet(
             case_state_path=AGENTS_LAST_EXAM_CASE_STATE_PATH,
             initialized_by_launch_packet=False,
         ),
+        "run_permission_policy": run_permission_policy,
+        "run_permission_quota_projection": run_permission_projection,
         "boundary": {
             "local_only": True,
             "no_upload": True,

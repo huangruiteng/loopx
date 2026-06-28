@@ -204,6 +204,19 @@ def assert_no_execution(payload: dict[str, object]) -> None:
         "case_goal_state_path",
     ):
         assert field in case_state["proof_fields"], case_state
+    policy = payload["run_permission_policy"]
+    assert isinstance(policy, dict)
+    assert policy["schema_version"] == "run_permission_policy_v0", policy
+    assert policy["policy_id"] == "agents_last_exam_local_launch_no_upload_policy", policy
+    assert policy["no_upload_required"] is True, policy
+    assert policy["submit_allowed"] is False, policy
+    assert policy["leaderboard_claim_allowed"] is False, policy
+    projection = payload["run_permission_quota_projection"]
+    assert isinstance(projection, dict)
+    assert projection["schema_version"] == "run_permission_quota_projection_v0", projection
+    assert projection["delivery_allowed"] is True, projection
+    assert projection["no_upload_required"] is True, projection
+    assert projection["compact_observation_only"] is True, projection
 
 
 def run_fixture_smoke() -> None:
