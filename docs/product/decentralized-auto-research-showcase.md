@@ -287,6 +287,32 @@ loopx --format json auto-research demo-supervisor \
   --agent codex-main-control:control-plane-guard
 ```
 
+When the dry-run packet is acceptable, the same command can launch visible
+local Codex CLI TUIs. This is intentionally opt-in:
+
+```bash
+loopx auto-research demo-supervisor \
+  --goal-id loopx-auto-research-knn \
+  --agent codex-side-bypass:hypothesis-runner \
+  --agent codex-product-capability:evidence-promoter \
+  --agent codex-main-control:control-plane-guard \
+  --execute
+```
+
+`--execute` auto-selects `tmux` when available and otherwise falls back to
+macOS Terminal. Use `--launcher tmux` or `--launcher terminal` to make the
+choice explicit. With tmux, `--attach` immediately joins the session and
+`--replace-existing` replaces a stale session with the same name. Terminal mode
+opens visible windows directly, so takeover is the normal terminal interrupt
+or closing the launched windows.
+
+The executed launcher still is not a leader. Each lane window first runs its
+own `quota should-run`, then renders its own `auto-research frontier`, then
+prints the `codex-cli-bootstrap-message`, and only then starts `codex` with
+that visible bootstrap prompt. The launcher itself does not write LoopX state
+or spend LoopX quota; any writeback must happen through the visible Codex lane's
+normal LoopX todo/evidence commands.
+
 For a tighter user handoff, render the demo acceptance packet. It links the
 experimental board output, the dry-run supervisor plan, and the takeover
 checklist into one operator-facing packet:
@@ -335,6 +361,11 @@ The user should see four concrete things in the packet:
   every lane before accepting Codex prompts, and
   `tmux kill-session -t loopx-auto-research` to stop the rehearsal.
 
+After `--execute`, the packet includes `launch_result` with the selected
+launcher, started lanes, attach/stop command, and takeover instructions. For a
+first live demo, prefer `--execute --attach` when tmux is installed, or
+`--execute --launcher terminal` on a Mac without tmux.
+
 The safe demo acceptance bar is that the user can inspect the plan, attach to
 the visible tmux session before any Codex prompt is accepted, interrupt any
 lane manually, and confirm that each lane still routes through LoopX quota,
@@ -349,11 +380,12 @@ print without executing, each lane must show quota before frontier/bootstrap,
 attach and stop controls must be visible, and dry-run boundary fields must show
 no tmux, Codex, state, quota, credential, or session side effects.
 
-The generated shell plan uses environment placeholders such as `LOOPX_PROJECT`,
-`LOOPX_REGISTRY`, and `LOOPX_RUNTIME_ROOT` instead of embedding local absolute
-paths. A future `--execute` path must remain user-visible: attach to tmux
-before accepting any Codex prompt, preserve manual interrupt, and keep same-
-session prompt injection blocked until visible-attach and idle evidence pass.
+The generated dry-run shell plan uses environment placeholders such as
+`LOOPX_PROJECT`, `LOOPX_REGISTRY`, and `LOOPX_RUNTIME_ROOT` instead of embedding
+local absolute paths. The executed path resolves those values locally and
+injects them into the launched visible terminals without recording the local
+paths in the public packet. Same-session prompt injection remains blocked until
+visible-attach and idle evidence pass.
 
 Next reproduction steps:
 

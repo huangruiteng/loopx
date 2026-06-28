@@ -623,6 +623,41 @@ def _env_bootstrap_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
     )
 
 
+_QUOTA_GATE_PY = (
+    "import json,sys; "
+    "p=json.load(sys.stdin); "
+    "u=p.get('interaction_contract',{}).get('user_channel',{}); "
+    "a=p.get('interaction_contract',{}).get('agent_channel',{}); "
+    "delivery=a.get('delivery_allowed', p.get('should_run', True)); "
+    "ok=(not bool(u.get('action_required'))) and delivery is not False; "
+    "sys.exit(0 if ok else 42)"
+)
+
+
+def _env_lane_launch_command(
+    *,
+    quota_command: str,
+    frontier_command: str,
+    bootstrap_command: str,
+    codex_bin: str,
+) -> str:
+    return (
+        "set -euo pipefail; "
+        'cd "$LOOPX_PROJECT"; '
+        "printf '\\n[LoopX quota guard]\\n'; "
+        f"QUOTA_PACKET=\"$({quota_command})\"; "
+        "printf '%s\\n' \"$QUOTA_PACKET\"; "
+        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_shell_arg(_QUOTA_GATE_PY)}; "
+        "printf '\\n[LoopX auto-research frontier]\\n'; "
+        f"{frontier_command}; "
+        "printf '\\n[Codex bootstrap prompt]\\n'; "
+        f"BOOTSTRAP_PROMPT=\"$({bootstrap_command})\"; "
+        "printf '%s\\n' \"$BOOTSTRAP_PROMPT\"; "
+        "printf '\\n[Starting visible Codex CLI]\\n'; "
+        f"exec {_shell_arg(codex_bin)} \"$BOOTSTRAP_PROMPT\""
+    )
+
+
 def _demo_rehearsal_script(*, session: str, start_script: list[str], attach_command: str, stop_command: str) -> list[str]:
     """Return a copy-paste dry-run script that prints the real launch plan only."""
 
@@ -686,6 +721,12 @@ def build_auto_research_demo_supervisor_plan(
                 "frontier": frontier_command,
                 "bootstrap_message": bootstrap_command,
                 "visible_codex_tui": codex,
+                "visible_launch_command": _env_lane_launch_command(
+                    quota_command=quota_command,
+                    frontier_command=frontier_command,
+                    bootstrap_command=bootstrap_command,
+                    codex_bin=codex,
+                ),
                 "start_sequence": [
                     "run quota_guard and stop when user_channel.action_required=true",
                     "render the lane frontier from LoopX state",
@@ -731,24 +772,29 @@ def build_auto_research_demo_supervisor_plan(
         ": ${LOOPX_REGISTRY:?set LOOPX_REGISTRY to the LoopX registry path before running}",
         ": ${LOOPX_RUNTIME_ROOT:?set LOOPX_RUNTIME_ROOT to the LoopX runtime root before running}",
     ]
+    frontier_launch_command = (
+        'cd "$LOOPX_PROJECT"; '
+        + _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=lanes[0]["agent_id"])
+    )
     start_script = [
         *env_lines,
-        f"{_shell_arg(tmux)} new-session -d -s {_shell_arg(session)} -n frontier",
         (
-            f"{_shell_arg(tmux)} send-keys -t {_shell_arg(session)}:frontier "
-            f"{_shell_arg(_env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=lanes[0]['agent_id']))} C-m"
+            f"{_shell_arg(tmux)} new-session -d -s {_shell_arg(session)} -n frontier "
+            f"bash -lc {_shell_arg(frontier_launch_command)}"
+        ),
+        (
+            f"{_shell_arg(tmux)} display-message -t {_shell_arg(session)} "
+            f"{_shell_arg('LoopX auto-research supervisor started; attach before accepting prompts')}"
         ),
     ]
     for pane in pane_plans:
         lane_id = str(pane["lane_id"])
-        lane_command = (
-            f"cd \"$LOOPX_PROJECT\"; {pane['quota_guard']}; {pane['frontier']}; "
-            f"{pane['bootstrap_message']}; {pane['visible_codex_tui']}"
-        )
         start_script.extend(
             [
-                f"{_shell_arg(tmux)} new-window -d -t {_shell_arg(session)} -n {_shell_arg(lane_id)}",
-                f"{_shell_arg(tmux)} send-keys -t {_shell_arg(session)}:{_shell_arg(lane_id)} {_shell_arg(lane_command)} C-m",
+                (
+                    f"{_shell_arg(tmux)} new-window -d -t {_shell_arg(session)} "
+                    f"-n {_shell_arg(lane_id)} bash -lc {_shell_arg(str(pane['visible_launch_command']))}"
+                ),
             ]
         )
     attach_command = f"{_shell_arg(tmux)} attach -t {_shell_arg(session)}"
@@ -2922,6 +2968,11 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             if isinstance(payload.get("coordination_model"), dict)
             else {}
         )
+        launch_result = (
+            payload.get("launch_result")
+            if isinstance(payload.get("launch_result"), dict)
+            else {}
+        )
         lines = [
             "# LoopX Auto Research Demo Supervisor",
             "",
@@ -2983,6 +3034,14 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
                 lines.append(f"- accept when: {item}")
             for item in reject_when:
                 lines.append(f"- reject when: {item}")
+        if launch_result:
+            lines.extend(["", "## Visible Launch Result", ""])
+            lines.append(f"- launcher: `{launch_result.get('launcher')}`")
+            lines.append(f"- executed: `{launch_result.get('executed')}`")
+            lines.append(f"- started_lanes: `{launch_result.get('started_lane_count')}`")
+            lines.append(f"- attach: `{launch_result.get('attach_command')}`")
+            lines.append(f"- stop: `{launch_result.get('stop_command')}`")
+            lines.append(f"- takeover: {launch_result.get('operator_takeover')}")
         lines.extend(["", "## Shell Plan", ""])
         for line in commands.get("start_script") or []:
             lines.append(f"- `{line}`")

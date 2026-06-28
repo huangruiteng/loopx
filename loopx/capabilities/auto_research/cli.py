@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import os
+import platform
+import shlex
+import shutil
+import subprocess
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
@@ -227,6 +232,30 @@ def register_auto_research_commands(
     demo_supervisor_parser.add_argument("--cli-bin", default="loopx", help="LoopX CLI executable name.")
     demo_supervisor_parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable name.")
     demo_supervisor_parser.add_argument("--tmux-bin", default="tmux", help="tmux executable name.")
+    demo_supervisor_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help=(
+            "Actually launch visible Codex CLI lanes. Omit for the default dry-run packet. "
+            "This only starts local visible terminals; LoopX writeback still happens through normal lane commands."
+        ),
+    )
+    demo_supervisor_parser.add_argument(
+        "--launcher",
+        choices=["auto", "tmux", "terminal"],
+        default="auto",
+        help="Visible process launcher for --execute. auto prefers tmux, then macOS Terminal.",
+    )
+    demo_supervisor_parser.add_argument(
+        "--attach",
+        action="store_true",
+        help="After --execute with tmux, attach to the session. Terminal launcher opens visible windows directly.",
+    )
+    demo_supervisor_parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help="With tmux launcher, kill an existing session with the same name before launching.",
+    )
 
 
 def _append_auto_research_rollout_events(
@@ -280,6 +309,269 @@ def _append_auto_research_rollout_events(
             "source": "loopx_rollout_event_log",
         },
     }
+
+
+def _require_executable(command: str, *, field: str) -> str:
+    path = shutil.which(command)
+    if not path:
+        raise ValueError(f"{field} executable not found on PATH: {command}")
+    return path
+
+
+def _apple_script_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _runtime_shell_command(
+    command: str,
+    *,
+    project: Path,
+    registry: Path,
+    runtime_root: Path,
+) -> str:
+    exports = [
+        "set -euo pipefail",
+        f"export LOOPX_PROJECT={shlex.quote(str(project))}",
+        f"export LOOPX_REGISTRY={shlex.quote(str(registry))}",
+        f"export LOOPX_RUNTIME_ROOT={shlex.quote(str(runtime_root))}",
+    ]
+    return "; ".join([*exports, command])
+
+
+def _mac_terminal_available() -> bool:
+    if platform.system() != "Darwin" or not shutil.which("osascript"):
+        return False
+    result = subprocess.run(
+        ["osascript", "-e", 'id of application "Terminal"'],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def _resolve_auto_research_launcher(*, requested: str, tmux_bin: str) -> str:
+    if requested != "auto":
+        return requested
+    if shutil.which(tmux_bin):
+        return "tmux"
+    if _mac_terminal_available():
+        return "terminal"
+    raise ValueError("no visible launcher found: install tmux or run on macOS with Terminal available")
+
+
+def _launch_auto_research_with_tmux(
+    *,
+    payload: dict[str, object],
+    project: Path,
+    registry: Path,
+    runtime_root: Path,
+    tmux_bin: str,
+    attach: bool,
+    replace_existing: bool,
+) -> dict[str, object]:
+    _require_executable(tmux_bin, field="tmux_bin")
+    session = str(payload.get("session_name") or "loopx-auto-research")
+    lanes = [item for item in payload.get("lanes", []) if isinstance(item, dict)]
+    if not lanes:
+        raise ValueError("demo supervisor has no lanes to launch")
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "LOOPX_PROJECT": str(project),
+            "LOOPX_REGISTRY": str(registry),
+            "LOOPX_RUNTIME_ROOT": str(runtime_root),
+        }
+    )
+    exists = subprocess.run(
+        [tmux_bin, "has-session", "-t", session],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        env=env,
+    )
+    if exists.returncode == 0:
+        if not replace_existing:
+            raise ValueError(
+                f"tmux session already exists: {session}; use --replace-existing or attach manually"
+            )
+        subprocess.run([tmux_bin, "kill-session", "-t", session], check=True, env=env)
+
+    first_frontier = str(lanes[0].get("frontier") or "")
+    if not first_frontier:
+        raise ValueError("first lane is missing a frontier command")
+    frontier_command = _runtime_shell_command(
+        f'cd "$LOOPX_PROJECT"; {first_frontier}',
+        project=project,
+        registry=registry,
+        runtime_root=runtime_root,
+    )
+    subprocess.run(
+        [tmux_bin, "new-session", "-d", "-s", session, "-n", "frontier", "bash", "-lc", frontier_command],
+        check=True,
+        env=env,
+    )
+    started_lanes: list[str] = []
+    for lane in lanes:
+        lane_id = str(lane.get("lane_id") or "research-lane")
+        launch_command = str(lane.get("visible_launch_command") or "")
+        if not launch_command:
+            raise ValueError(f"lane {lane_id} is missing visible_launch_command")
+        subprocess.run(
+            [
+                tmux_bin,
+                "new-window",
+                "-d",
+                "-t",
+                session,
+                "-n",
+                lane_id,
+                "bash",
+                "-lc",
+                _runtime_shell_command(
+                    launch_command,
+                    project=project,
+                    registry=registry,
+                    runtime_root=runtime_root,
+                ),
+            ],
+            check=True,
+            env=env,
+        )
+        started_lanes.append(lane_id)
+    if attach:
+        subprocess.run([tmux_bin, "attach", "-t", session], check=True, env=env)
+    return {
+        "schema_version": "auto_research_demo_launch_result_v0",
+        "executed": True,
+        "launcher": "tmux",
+        "session_name": session,
+        "started_lane_count": len(started_lanes),
+        "started_lanes": started_lanes,
+        "attach_command": f"{tmux_bin} attach -t {session}",
+        "stop_command": f"{tmux_bin} kill-session -t {session}",
+        "attach_requested": attach,
+        "operator_takeover": "attach to the tmux session, interrupt any lane, or kill the session",
+    }
+
+
+def _launch_auto_research_with_terminal(
+    *,
+    payload: dict[str, object],
+    project: Path,
+    registry: Path,
+    runtime_root: Path,
+) -> dict[str, object]:
+    _require_executable("osascript", field="osascript")
+    if not _mac_terminal_available():
+        raise ValueError("macOS Terminal is not available for --launcher terminal")
+    lanes = [item for item in payload.get("lanes", []) if isinstance(item, dict)]
+    if not lanes:
+        raise ValueError("demo supervisor has no lanes to launch")
+
+    first_frontier = str(lanes[0].get("frontier") or "")
+    frontier_command = _runtime_shell_command(
+        f'cd "$LOOPX_PROJECT"; {first_frontier}; printf "\\n[Terminal window ready]\\n"; exec $SHELL -l',
+        project=project,
+        registry=registry,
+        runtime_root=runtime_root,
+    )
+    subprocess.run(
+        [
+            "osascript",
+            "-e",
+            f'tell application "Terminal" to do script {_apple_script_string(frontier_command)}',
+        ],
+        check=True,
+    )
+    started_lanes: list[str] = []
+    for lane in lanes:
+        lane_id = str(lane.get("lane_id") or "research-lane")
+        launch_command = str(lane.get("visible_launch_command") or "")
+        if not launch_command:
+            raise ValueError(f"lane {lane_id} is missing visible_launch_command")
+        command = _runtime_shell_command(
+            f"printf '\\n[LoopX auto-research lane: {lane_id}]\\n'; {launch_command}",
+            project=project,
+            registry=registry,
+            runtime_root=runtime_root,
+        )
+        subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'tell application "Terminal" to do script {_apple_script_string(command)}',
+            ],
+            check=True,
+        )
+        started_lanes.append(lane_id)
+    return {
+        "schema_version": "auto_research_demo_launch_result_v0",
+        "executed": True,
+        "launcher": "terminal",
+        "session_name": str(payload.get("session_name") or "loopx-auto-research"),
+        "started_lane_count": len(started_lanes),
+        "started_lanes": started_lanes,
+        "attach_command": "already visible in Terminal windows",
+        "stop_command": "interrupt or close the opened Terminal windows",
+        "attach_requested": False,
+        "operator_takeover": "use the visible Terminal windows; interrupt any lane before writeback",
+    }
+
+
+def _execute_auto_research_demo_supervisor(
+    payload: dict[str, object],
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    launcher: str,
+    tmux_bin: str,
+    cli_bin: str,
+    codex_bin: str,
+    attach: bool,
+    replace_existing: bool,
+) -> dict[str, object]:
+    _require_executable(cli_bin, field="cli_bin")
+    _require_executable(codex_bin, field="codex_bin")
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+    chosen = _resolve_auto_research_launcher(requested=launcher, tmux_bin=tmux_bin)
+    project = Path.cwd()
+    if chosen == "tmux":
+        result = _launch_auto_research_with_tmux(
+            payload=payload,
+            project=project,
+            registry=registry_path,
+            runtime_root=runtime_root,
+            tmux_bin=tmux_bin,
+            attach=attach,
+            replace_existing=replace_existing,
+        )
+    else:
+        result = _launch_auto_research_with_terminal(
+            payload=payload,
+            project=project,
+            registry=registry_path,
+            runtime_root=runtime_root,
+        )
+    payload["mode"] = "executed_visible_launch"
+    payload["launch_result"] = result
+    boundary = payload.get("boundary")
+    if isinstance(boundary, dict):
+        boundary.update(
+            {
+                "dry_run_plan_only": False,
+                "starts_tmux": chosen == "tmux",
+                "opens_terminal": chosen == "terminal",
+                "runs_codex": True,
+                "writes_loopx_state": False,
+                "spends_loopx_quota": False,
+                "external_service_call": False,
+            }
+        )
+    return payload
 
 
 def handle_auto_research_command(
@@ -377,6 +669,18 @@ def handle_auto_research_command(
                 codex_bin=args.codex_bin,
                 tmux_bin=args.tmux_bin,
             )
+            if args.execute:
+                payload = _execute_auto_research_demo_supervisor(
+                    payload,
+                    registry_path=registry_path,
+                    runtime_root_arg=runtime_root_arg,
+                    launcher=args.launcher,
+                    tmux_bin=args.tmux_bin,
+                    cli_bin=args.cli_bin,
+                    codex_bin=args.codex_bin,
+                    attach=args.attach,
+                    replace_existing=args.replace_existing,
+                )
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
