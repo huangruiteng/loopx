@@ -492,6 +492,75 @@ def build_heartbeat_prompt(
     }
 
 
+def build_heartbeat_prompt_error_payload(
+    *,
+    goal_id: str,
+    error: str,
+    active_state: Path | None = None,
+    active_state_source: str | None = None,
+    resolved_active_state: Path | None = None,
+    compact: bool = False,
+    brief: bool = False,
+    thin: bool = False,
+    cli_bin: str = "loopx",
+    agent_id: str | None = None,
+    agent_scopes: list[str] | tuple[str, ...] | None = None,
+    registered_agents: list[str] | tuple[str, ...] | None = None,
+    primary_agent: str | None = None,
+    side_agent_handoff_agent: str | None = None,
+    material_queue_rule: str | None = None,
+    permission_rule: str | None = None,
+) -> dict[str, Any]:
+    active_state_text = str(active_state.expanduser()) if active_state else "the registry-declared active state"
+    source = active_state_source or ("explicit" if active_state else "registry")
+    active_state_arg = f" --active-state {active_state_text}" if active_state else ""
+    projected_agent_scopes = []
+    for value in agent_scopes or []:
+        scope = " ".join(str(value or "").strip().split())
+        if scope and scope not in projected_agent_scopes:
+            projected_agent_scopes.append(scope)
+    agent_args = agent_prompt_command_args(
+        agent_id=str(agent_id).strip() if agent_id else None,
+        agent_scopes=projected_agent_scopes,
+    )
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --goal-id {goal_id}{active_state_arg}{agent_args}"
+    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}"
+    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}"
+    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}"
+    normalized_registered_agents = normalize_registered_agents(registered_agents)
+    return {
+        "ok": False,
+        "goal_id": goal_id,
+        "error": error,
+        "active_state": active_state_text,
+        "active_state_source": source,
+        "resolved_active_state": str(resolved_active_state.expanduser()) if resolved_active_state else None,
+        "compact": compact,
+        "brief": brief,
+        "thin": thin,
+        "cli_bin": cli_bin,
+        "agent_id": str(agent_id).strip() if agent_id else None,
+        "agent_role": None,
+        "agent_scopes": projected_agent_scopes,
+        "agent_scope_source": "argument" if projected_agent_scopes else None,
+        "agent_profile": None,
+        "registered_agents": normalized_registered_agents,
+        "primary_agent": str(primary_agent).strip() if primary_agent else None,
+        "side_agent_handoff_agent": str(side_agent_handoff_agent).strip() if side_agent_handoff_agent else None,
+        "expanded_prompt_command": expanded_prompt_command,
+        "compact_prompt_command": compact_prompt_command,
+        "brief_prompt_command": brief_prompt_command,
+        "thin_prompt_command": thin_prompt_command,
+        "quota_guard_command": None,
+        "quota_spend_command": None,
+        "cli_preflight": None,
+        "material_queue_rule": material_queue_rule,
+        "permission_rule": permission_rule,
+        "interface_budget": None,
+        "task_body": None,
+    }
+
+
 def render_heartbeat_task_body(
     *,
     goal_id: str,
@@ -911,25 +980,9 @@ No project-specific branches here. {material_sentence} Stop for private material
 credentials, destructive git, or unauthorized production actions{permission_tail}"""
 
 
-def render_heartbeat_prompt_markdown(payload: dict[str, Any]) -> str:
-    if payload.get("thin"):
-        style = "thin "
-    elif payload.get("brief"):
-        style = "brief "
-    elif payload.get("compact"):
-        style = "compact "
-    else:
-        style = ""
+def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:
     interface_budget = payload.get("interface_budget") if isinstance(payload.get("interface_budget"), dict) else {}
-    return f"""# Heartbeat Automation Prompt
-
-Copy this {style}task body into a Codex App heartbeat automation.
-
-````text
-{payload.get("task_body", "")}
-````
-
-## Generator Inputs
+    return f"""## Generator Inputs
 
 - goal_id: `{payload.get("goal_id")}`
 - active_state: `{payload.get("active_state")}`
@@ -953,3 +1006,39 @@ Copy this {style}task body into a Codex App heartbeat automation.
 - cli_preflight: `{payload.get("cli_preflight")}`
 - interface_budget: mode=`{interface_budget.get("mode")}` budget_chars=`{interface_budget.get("budget_char_count")}` max_chars=`{interface_budget.get("max_chars")}` within_budget=`{interface_budget.get("within_budget")}`
 """
+
+
+def render_heartbeat_prompt_error_markdown(payload: dict[str, Any]) -> str:
+    return f"""# Heartbeat Automation Prompt Error
+
+No heartbeat task body was generated.
+
+## Error
+
+```text
+{payload.get("error") or "unknown heartbeat-prompt generation error"}
+```
+
+{render_heartbeat_generator_inputs_markdown(payload)}"""
+
+
+def render_heartbeat_prompt_markdown(payload: dict[str, Any]) -> str:
+    if payload.get("ok") is False:
+        return render_heartbeat_prompt_error_markdown(payload)
+    if payload.get("thin"):
+        style = "thin "
+    elif payload.get("brief"):
+        style = "brief "
+    elif payload.get("compact"):
+        style = "compact "
+    else:
+        style = ""
+    return f"""# Heartbeat Automation Prompt
+
+Copy this {style}task body into a Codex App heartbeat automation.
+
+````text
+{payload.get("task_body", "")}
+````
+
+{render_heartbeat_generator_inputs_markdown(payload)}"""
