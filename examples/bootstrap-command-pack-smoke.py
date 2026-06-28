@@ -200,7 +200,11 @@ def test_skill_slash_fallback_contract() -> None:
     skill_text = (REPO_ROOT / "skills" / "loopx-project" / "SKILL.md").read_text(
         encoding="utf-8"
     )
+    pr_review_skill_text = (REPO_ROOT / "skills" / "loopx-pr-review" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
     normalized = " ".join(skill_text.split())
+    pr_review_normalized = " ".join(pr_review_skill_text.split())
 
     assert "## Slash Command Fallback" in skill_text
     assert "`/loopx`" in skill_text
@@ -216,15 +220,19 @@ def test_skill_slash_fallback_contract() -> None:
     assert "loopx slash-commands" in skill_text
     assert "not project bootstrap commands" in normalized
     assert "`/loopx-pr-review`" in skill_text
-    assert "loopx --format json pr-review --state all" in skill_text
-    assert "full JSON first" in normalized
-    assert "agent_response_contract" in skill_text
-    assert "pull_requests[].review_template" in skill_text
-    assert "pull_requests[].evidence_commands" in skill_text
-    assert "`.summary` and `.review_sequence`" in skill_text
-    assert "review_groups.unmerged" in skill_text
-    assert "review_groups.merged" in skill_text
-    assert "Do not reconstruct the review window" in normalized
+    assert "load the narrower `loopx-pr-review` skill" in normalized
+    assert "Do not handle `/loopx-pr-review` from this broader project skill" in normalized
+    assert "do not route it to `loopx-pr-merge` unless" in normalized
+    assert "loopx --format json pr-review --state all" not in skill_text
+    assert "loopx --format json pr-review --state all" in pr_review_skill_text
+    assert "full JSON first" in pr_review_normalized
+    assert "agent_response_contract" in pr_review_skill_text
+    assert "pull_requests[].review_template" in pr_review_skill_text
+    assert "pull_requests[].evidence_commands" in pr_review_skill_text
+    assert "`.summary`, `.review_sequence`, or a table" in pr_review_skill_text
+    assert "review_groups.unmerged" in pr_review_skill_text
+    assert "review_groups.merged" in pr_review_skill_text
+    assert "Do not fill the five-block review from title" in pr_review_normalized
 
 
 def main() -> int:
