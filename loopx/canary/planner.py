@@ -611,7 +611,10 @@ def build_catalog_canary_plan(
         "domain_profiles": selected_domain_profiles,
         "note": (
             "This planner only selects and explains candidate canary checks. "
-            "It does not execute smoke tests or create new runtime contracts."
+            "It does not execute smoke tests or create new runtime contracts. "
+            "Plan from existing public runtime/status contracts first; when a "
+            "new runtime contract seems necessary, stop at an owner-review "
+            "necessity/risk packet before implementation."
         ),
     }
 

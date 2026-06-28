@@ -129,6 +129,16 @@ Concrete examples:
 | Release or install promotion | release-readiness docs, installer/update/wrapper code, `loopx doctor`, `loopx update`, or canary wrapper behavior | release-promotion domain profile plus Work Routing and State And Boundary checks | promoting a real release snapshot, app wrapper, dashboard, or writeback evidence |
 | Control-plane refactor | `loopx/quota.py`, `loopx/status.py`, scheduler policy, todo projection, or review-packet route changes | control-plane-refactor domain profile plus Work Routing and State And Boundary checks | moving a broad policy seam, changing public JSON fields, or touching monitor/scheduler writeback |
 
+Existing-contract-first rule: canary planning should consume current public
+runtime/status surfaces before proposing a new runtime contract. Prefer
+`quota should-run`, `status`, `review-packet`, `loopx check`, current smoke
+fixtures, and `loopx canary plan` output as the first evidence layer. A new
+runtime contract is justified only when these surfaces cannot represent a
+repeatable interaction that future controllers must route. In that case, stop
+at a review packet first: name the minimal missing behavior, list the existing
+contract alternatives rejected, state compatibility and migration risk, and
+propose focused smokes for owner review before implementation.
+
 ## Decision Scope Model
 
 User gates are not global booleans. The first-class model is a scoped decision:

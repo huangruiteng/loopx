@@ -81,6 +81,10 @@ def assert_catalog_documents_selection_rules() -> None:
         "Control-plane refactor",
         "Keep default profiles on fixture-level or dry-run checks.",
         "When hot-path and cold-path surfaces both changed",
+        "Existing-contract-first rule: canary planning should consume current public\nruntime/status surfaces",
+        "`quota should-run`, `status`, `review-packet`, `loopx check`",
+        "stop\nat a review packet first",
+        "owner review before implementation",
     ]:
         assert snippet in catalog, snippet
 
@@ -120,6 +124,8 @@ def assert_explicit_profile_can_include_deep_checks() -> None:
     assert profile["id"] == "benchmark-adapter-readiness", profile
     assert profile["deep_checks_included"] is True, profile
     assert any(check["tier"] == "deep" for check in profile["checks"]), profile
+    assert "existing public runtime/status contracts first" in payload["note"], payload
+    assert "owner-review necessity/risk packet" in payload["note"], payload
 
 
 def assert_cli_json_plan_is_dry_run() -> None:
