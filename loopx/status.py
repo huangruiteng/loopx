@@ -50,6 +50,14 @@ from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .paths import global_registry_path, resolve_runtime_root
+from .policies.monitor_todo import (
+    monitor_todo_expires_at,
+    monitor_todo_is_actionable_open,
+    monitor_todo_is_due,
+    monitor_todo_is_expired,
+    monitor_todo_next_due_at,
+    monitor_todo_task_class,
+)
 from .projections.task_graph import (
     TASK_GRAPH_MAX_USER_GATE_NODES,
     TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
@@ -5230,48 +5238,27 @@ def compact_active_next_action_todo_item(item: dict[str, Any]) -> dict[str, Any]
 
 
 def todo_item_task_class(item: dict[str, Any]) -> str:
-    return normalize_todo_task_class(
-        item.get("task_class"),
-        text=str(item.get("text") or ""),
-        action_kind=item.get("action_kind"),
-    )
+    return monitor_todo_task_class(item, task_text=str(item.get("text") or ""))
 
 
 def todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
-    if item.get("done") is True:
-        return False
-    status = normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN
-    return status == TODO_STATUS_OPEN
+    return monitor_todo_is_actionable_open(item)
 
 
 def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
-    return parse_timestamp(item.get("next_due_at"))
+    return monitor_todo_next_due_at(item)
 
 
 def todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
-    return parse_timestamp(item.get("expires_at"))
+    return monitor_todo_expires_at(item)
 
 
 def todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    expires_at = todo_item_expires_at(item)
-    if expires_at is None:
-        return False
-    current_time = now or datetime.now(timezone.utc)
-    return expires_at <= current_time
+    return monitor_todo_is_expired(item, now=now)
 
 
 def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    if not todo_item_is_actionable_open(item):
-        return False
-    if todo_item_task_class(item) != TODO_TASK_CLASS_MONITOR:
-        return False
-    if todo_item_is_expired_monitor(item, now=now):
-        return False
-    next_due_at = todo_item_next_due_at(item)
-    if next_due_at is None:
-        return False
-    current_time = now or datetime.now(timezone.utc)
-    return next_due_at <= current_time
+    return monitor_todo_is_due(item, now=now, task_text=str(item.get("text") or ""))
 
 
 def todo_priority_rank(priority: Any) -> int:
