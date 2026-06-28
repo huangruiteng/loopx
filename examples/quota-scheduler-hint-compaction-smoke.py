@@ -20,6 +20,9 @@ from loopx.policies.scheduler_hint import build_scheduler_hint  # noqa: E402
 from loopx.quota import _scheduler_hint  # noqa: E402
 
 
+RUNTIME_KEYS = ("local_scheduler", "codex_cli_tui", "claude_code_loop")
+
+
 def _load_quota_plan_fixture_writer():
     module_path = REPO_ROOT / "examples" / "quota-plan-smoke.py"
     spec = importlib.util.spec_from_file_location("quota_plan_smoke_fixture", module_path)
@@ -61,6 +64,29 @@ def json_size(value: dict) -> int:
     return len(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
 
 
+def assert_compact_runtime_policy_complete(name: str, compact: dict) -> None:
+    codex_app = compact["codex_app"]
+    unchanged_poll = compact["unchanged_poll"]
+    assert codex_app["recommended_interval_minutes"], (name, compact)
+    assert codex_app["recommended_rrule"], (name, compact)
+    assert codex_app["max_interval_minutes"], (name, compact)
+    assert isinstance(codex_app["example_progression_minutes"], list), (name, compact)
+    assert set(unchanged_poll["limits"]) == set(RUNTIME_KEYS), (name, compact)
+    assert set(unchanged_poll["after_limits"]) == set(RUNTIME_KEYS), (name, compact)
+    assert "final_quota_replan_check_enabled" in unchanged_poll, (name, compact)
+    assert "final_quota_replan_check_action" in unchanged_poll, (name, compact)
+    assert unchanged_poll["spend_policy"], (name, compact)
+    assert compact["reset_policy"]["reset_token"], (name, compact)
+    assert compact["reset_policy"]["codex_app_initial_rrule"], (name, compact)
+    detail_ref = compact["detail_ref"]
+    assert detail_ref["omitted_by_default"] is True, (name, compact)
+    assert detail_ref["execution_required"] is False, (name, compact)
+    assert detail_ref["hot_path_runtime_fields"] == ["codex_app", "unchanged_poll", "reset_policy"], (
+        name,
+        compact,
+    )
+
+
 def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     compact = build_scheduler_hint(deepcopy(source_payload), user_action_required=False)
     wrapper = _scheduler_hint(deepcopy(source_payload))
@@ -77,7 +103,9 @@ def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     assert "claude_code_loop" not in compact, (name, compact)
     assert "cold_path_detail" not in compact, (name, compact)
     assert compact["detail_ref"]["omitted_by_default"] is True, (name, compact)
+    assert compact["detail_ref"]["execution_required"] is False, (name, compact)
     assert compact["detail_ref"]["request"] == "loopx quota should-run --include-scheduler-detail", (name, compact)
+    assert_compact_runtime_policy_complete(name, compact)
     assert compact["reset_policy"]["reset_token"], (name, compact)
     assert compact["reset_policy"]["codex_app_initial_rrule"] == compact["codex_app"]["recommended_rrule"], (
         name,
@@ -147,16 +175,12 @@ def assert_cli_compact_and_detail_contract() -> None:
             project=project,
         )["scheduler_hint"]
 
-    for key in ("local_scheduler", "codex_cli_tui", "claude_code_loop"):
+    assert_compact_runtime_policy_complete("cli-default", compact)
+    for key in RUNTIME_KEYS:
         assert key not in compact, (key, compact)
         assert key not in detailed, (key, detailed)
         assert detailed["cold_path_detail"][key], (key, detailed)
     assert "cold_path_detail" not in compact, compact
-    assert set(compact["unchanged_poll"]["limits"]) == {
-        "local_scheduler",
-        "codex_cli_tui",
-        "claude_code_loop",
-    }, compact
     assert compact["detail_ref"]["request"] == "loopx quota should-run --include-scheduler-detail", compact
     assert detailed["cold_path_detail"]["schema_version"] == "scheduler_hint_detail_v0", detailed
     assert detailed["cold_path_detail"]["codex_cli_tui"]["unchanged_poll_limit"] == (

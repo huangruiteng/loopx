@@ -222,7 +222,13 @@ def build_scheduler_hint(
             "detail_ref": {
                 "schema_version": SCHEDULER_HINT_DETAIL_SCHEMA_VERSION,
                 "omitted_by_default": True,
+                "execution_required": False,
                 "request": "loopx quota should-run --include-scheduler-detail",
+                "hot_path_runtime_fields": [
+                    "codex_app",
+                    "unchanged_poll",
+                    "reset_policy",
+                ],
                 "contains": [
                     "local_scheduler",
                     "codex_cli_tui",

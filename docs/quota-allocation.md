@@ -557,7 +557,13 @@ JSON or Markdown decision:
     "detail_ref": {
       "schema_version": "scheduler_hint_detail_v0",
       "omitted_by_default": true,
+      "execution_required": false,
       "request": "loopx quota should-run --include-scheduler-detail",
+      "hot_path_runtime_fields": [
+        "codex_app",
+        "unchanged_poll",
+        "reset_policy"
+      ],
       "contains": [
         "local_scheduler",
         "codex_cli_tui",
@@ -740,7 +746,11 @@ older per-runtime detail objects must opt in with
 `quota should-run --include-scheduler-detail` and read
 `scheduler_hint.cold_path_detail.local_scheduler`,
 `scheduler_hint.cold_path_detail.codex_cli_tui`, or
-`scheduler_hint.cold_path_detail.claude_code_loop`.
+`scheduler_hint.cold_path_detail.claude_code_loop`. That opt-in is diagnostic
+and migration support only: a host or agent that forgets
+`--include-scheduler-detail` must still retain the core scheduling abilities by
+reading the default hot-path fields named in
+`scheduler_hint.detail_ref.hot_path_runtime_fields`.
 The response also includes `execution_obligation`, which is the compatibility
 field that separates worker execution from user-facing notification.
 `heartbeat_recommendation.notify` answers "should this heartbeat interrupt the
