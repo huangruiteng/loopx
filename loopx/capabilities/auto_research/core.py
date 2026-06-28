@@ -689,6 +689,36 @@ def build_auto_research_demo_supervisor_plan(
                     "print the public-safe bootstrap message for this visible TUI",
                     "start Codex CLI visibly; do not inject hidden prompts into an existing session",
                 ],
+                "lane_timeline": [
+                    {
+                        "phase": "quota_guard",
+                        "command_ref": "quota_guard",
+                        "operator_visible_signal": "should-run packet for this agent lane",
+                        "continue_when": "agent_channel.delivery_allowed=true and user_channel.action_required=false",
+                        "stop_when": "user_channel.action_required=true or quota says do not run",
+                    },
+                    {
+                        "phase": "frontier_projection",
+                        "command_ref": "frontier",
+                        "operator_visible_signal": "current auto-research frontier and todo/evidence hints",
+                        "continue_when": "frontier contains a bounded lane-local next action",
+                        "stop_when": "frontier is empty, contradictory, private, or asks for owner input",
+                    },
+                    {
+                        "phase": "bootstrap_prompt",
+                        "command_ref": "bootstrap_message",
+                        "operator_visible_signal": "public-safe Codex bootstrap message printed in the lane pane",
+                        "continue_when": "bootstrap scope matches the lane frontier",
+                        "stop_when": "bootstrap would bypass LoopX quota, todo claims, or evidence writeback",
+                    },
+                    {
+                        "phase": "visible_codex",
+                        "command_ref": "visible_codex_tui",
+                        "operator_visible_signal": "Codex CLI starts only in the visible tmux lane",
+                        "continue_when": "operator is attached and can interrupt the lane",
+                        "stop_when": "pane is hidden, detached, or starts mutating state before review",
+                    },
+                ],
             }
         )
 
@@ -771,6 +801,34 @@ def build_auto_research_demo_supervisor_plan(
                 "read session files",
                 "write LoopX state",
                 "spend quota",
+            ],
+        },
+        "demo_acceptance": {
+            "schema_version": "auto_research_demo_acceptance_v0",
+            "required_visible_fields": [
+                "commands.one_click_dry_run_rehearsal",
+                "commands.start_script",
+                "commands.attach",
+                "commands.stop",
+                "lanes[].quota_guard",
+                "lanes[].frontier",
+                "lanes[].bootstrap_message",
+                "lanes[].lane_timeline",
+                "user_takeover.operator_controls",
+                "boundary",
+            ],
+            "operator_can_accept_when": [
+                "the rehearsal script prints the real start script without executing it",
+                "every lane has a quota guard before frontier/bootstrap/Codex startup",
+                "the attach command is visible before any Codex prompt is accepted",
+                "the stop command and terminal interrupt path are visible",
+                "boundary fields prove no tmux/Codex/state/quota side effects in dry-run mode",
+            ],
+            "operator_must_reject_when": [
+                "a lane can start without quota should-run",
+                "the packet hides attach/stop controls",
+                "the packet embeds local absolute paths, credentials, raw sessions, or private links",
+                "the supervisor becomes a leader or writes LoopX state directly",
             ],
         },
         "user_takeover": {
@@ -2068,6 +2126,11 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
         commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
         one_click = payload.get("one_click_demo") if isinstance(payload.get("one_click_demo"), dict) else {}
         takeover = payload.get("user_takeover") if isinstance(payload.get("user_takeover"), dict) else {}
+        acceptance = (
+            payload.get("demo_acceptance")
+            if isinstance(payload.get("demo_acceptance"), dict)
+            else {}
+        )
         coordination = (
             payload.get("coordination_model")
             if isinstance(payload.get("coordination_model"), dict)
@@ -2091,6 +2154,22 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             lines.append(
                 f"- `{item.get('lane_id')}` / `{item.get('agent_id')}`: {item.get('responsibility')}"
             )
+        lines.extend(["", "## Lane Timeline", ""])
+        for item in lanes:
+            if not isinstance(item, dict):
+                continue
+            timeline = item.get("lane_timeline") if isinstance(item.get("lane_timeline"), list) else []
+            if not timeline:
+                continue
+            lines.append(f"### {item.get('lane_id')}")
+            for phase in timeline:
+                if not isinstance(phase, dict):
+                    continue
+                lines.append(
+                    f"- `{phase.get('phase')}` via `{phase.get('command_ref')}`: "
+                    f"{phase.get('operator_visible_signal')}"
+                )
+            lines.append("")
         lines.extend(["", "## One-Click Dry Run", ""])
         lines.append(f"- mode: `{one_click.get('mode')}`")
         lines.append(f"- default_safe: `{one_click.get('default_safe')}`")
@@ -2110,6 +2189,14 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             lines.extend(["", "## Visible Status Cues", ""])
             for item in cues:
                 lines.append(f"- {item}")
+        accept_when = acceptance.get("operator_can_accept_when") or []
+        reject_when = acceptance.get("operator_must_reject_when") or []
+        if accept_when or reject_when:
+            lines.extend(["", "## Demo Acceptance", ""])
+            for item in accept_when:
+                lines.append(f"- accept when: {item}")
+            for item in reject_when:
+                lines.append(f"- reject when: {item}")
         lines.extend(["", "## Shell Plan", ""])
         for line in commands.get("start_script") or []:
             lines.append(f"- `{line}`")

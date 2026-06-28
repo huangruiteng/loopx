@@ -283,6 +283,8 @@ The user should see four concrete things in the packet:
 - a `start_script` array that can be copied into the user's shell only after
   the user sets `LOOPX_PROJECT`, `LOOPX_REGISTRY`, and
   `LOOPX_RUNTIME_ROOT`;
+- a `lane_timeline` for each lane, making the visible sequence explicit:
+  quota guard, frontier projection, bootstrap prompt, then visible Codex TUI;
 - explicit takeover controls: `tmux attach -t loopx-auto-research` to inspect
   every lane before accepting Codex prompts, and
   `tmux kill-session -t loopx-auto-research` to stop the rehearsal.
@@ -293,6 +295,13 @@ lane manually, and confirm that each lane still routes through LoopX quota,
 todo claims, frontier projection, and normal evidence writeback. The
 supervisor never becomes a leader agent; it is only a shell layout that makes
 the decentralized workers visible and interruptible.
+
+The packet also carries `demo_acceptance`: a compact, smoke-backed checklist
+for what must be visible before a human accepts the rehearsal. It is deliberately
+about observable behavior, not private demo notes: the rehearsal script must
+print without executing, each lane must show quota before frontier/bootstrap,
+attach and stop controls must be visible, and dry-run boundary fields must show
+no tmux, Codex, state, quota, credential, or session side effects.
 
 The generated shell plan uses environment placeholders such as `LOOPX_PROJECT`,
 `LOOPX_REGISTRY`, and `LOOPX_RUNTIME_ROOT` instead of embedding local absolute

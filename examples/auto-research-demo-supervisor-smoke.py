@@ -66,6 +66,15 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "auto-research frontier" in lane["frontier"], lane
         assert "codex-cli-bootstrap-message" in lane["bootstrap_message"], lane
         assert lane["visible_codex_tui"] == "codex", lane
+        phases = [item["phase"] for item in lane["lane_timeline"]]
+        assert phases == [
+            "quota_guard",
+            "frontier_projection",
+            "bootstrap_prompt",
+            "visible_codex",
+        ], lane
+        assert lane["lane_timeline"][0]["command_ref"] == "quota_guard", lane
+        assert "operator is attached" in lane["lane_timeline"][-1]["continue_when"], lane
 
     start_script = "\n".join(payload["commands"]["start_script"])
     assert "tmux new-session" in start_script, start_script
@@ -89,6 +98,12 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "tmux kill-session -t loopx-auto-research" in rehearsal, rehearsal
     assert "start tmux" in one_click["does_not"], one_click
     assert "launch Codex" in one_click["does_not"], one_click
+
+    acceptance = payload["demo_acceptance"]
+    assert acceptance["schema_version"] == "auto_research_demo_acceptance_v0", payload
+    assert "lanes[].lane_timeline" in acceptance["required_visible_fields"], acceptance
+    assert any("without executing it" in item for item in acceptance["operator_can_accept_when"]), acceptance
+    assert any("hides attach/stop" in item for item in acceptance["operator_must_reject_when"]), acceptance
 
     takeover = payload["user_takeover"]
     assert takeover["schema_version"] == "auto_research_user_takeover_v0", payload
@@ -166,10 +181,14 @@ def main() -> int:
     ).stdout
     assert "# LoopX Auto Research Demo Supervisor" in markdown, markdown
     assert "leader_agent_required: `False`" in markdown, markdown
+    assert "## Lane Timeline" in markdown, markdown
+    assert "`quota_guard` via `quota_guard`" in markdown, markdown
     assert "## One-Click Dry Run" in markdown, markdown
     assert "copy_paste_dry_run_rehearsal" in markdown, markdown
     assert "## User Takeover" in markdown, markdown
     assert "## Visible Status Cues" in markdown, markdown
+    assert "## Demo Acceptance" in markdown, markdown
+    assert "accept when:" in markdown, markdown
     assert "tmux attach -t loopx-auto-research" in markdown, markdown
 
     print("auto-research-demo-supervisor-smoke ok")
