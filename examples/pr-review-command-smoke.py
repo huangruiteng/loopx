@@ -103,6 +103,15 @@ def main() -> int:
     assert payload["summary"]["post_merge_review_count"] == 1, payload["summary"]
     assert payload["summary"]["review_attention_count"] == 3, payload["summary"]
     assert payload["summary"]["draft_count"] == 1, payload["summary"]
+    groups = payload["review_groups"]
+    assert groups["unmerged"]["group_id"] == "unmerged", groups
+    assert groups["merged"]["group_id"] == "merged", groups
+    assert groups["unmerged"]["count"] == 3, groups
+    assert groups["merged"]["count"] == 1, groups
+    assert 770 not in groups["unmerged"]["pr_numbers"], groups
+    assert groups["merged"]["pr_numbers"] == [770], groups
+    assert groups["unmerged"]["review_sequence"][0]["number"] == 773, groups
+    assert groups["merged"]["review_sequence"][0]["number"] == 770, groups
     sequence = payload["review_sequence"]
     assert sequence[0]["number"] == 773, sequence
     assert sequence[-1]["number"] == 775, sequence
@@ -178,6 +187,11 @@ def main() -> int:
     assert "current gh repository" not in markdown, markdown
     assert "state_filter: `all`" in markdown, markdown
     assert "merged=`" in markdown, markdown
+    assert "tool contract: run `loopx pr-review` first" in markdown, markdown
+    assert "## Unmerged PRs" in markdown, markdown
+    assert "## Merged PRs" in markdown, markdown
+    assert "## Combined Review Sequence" in markdown, markdown
+    assert markdown.index("## Unmerged PRs") < markdown.index("## Merged PRs"), markdown
     assert "risk_hint=`low`" in markdown, markdown
     assert "template below is intentionally blank" in markdown, markdown
     assert "- 推荐阅读顺序:" in markdown, markdown
@@ -188,7 +202,7 @@ def main() -> int:
     assert "对主干的风险（40-100字）" in markdown, markdown
     assert "我的整体评价（30-80字）" in markdown, markdown
     assert "main regression risk:" not in markdown, markdown
-    assert "## Review Sequence" in markdown, markdown
+    assert "## Combined Review Sequence" in markdown, markdown
     assert "PR #773" in markdown, markdown
 
     print("pr-review-command-smoke ok")

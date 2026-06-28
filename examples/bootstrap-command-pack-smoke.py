@@ -215,6 +215,11 @@ def test_skill_slash_fallback_contract() -> None:
     assert "Legacy `/loop-global-*` forms" in normalized
     assert "loopx slash-commands" in skill_text
     assert "not project bootstrap commands" in normalized
+    assert "`/loopx-pr-review`" in skill_text
+    assert "loopx pr-review --state all" in skill_text
+    assert "review_groups.unmerged" in skill_text
+    assert "review_groups.merged" in skill_text
+    assert "Do not reconstruct the review window" in normalized
 
 
 def main() -> int:

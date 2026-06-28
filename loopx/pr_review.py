@@ -628,6 +628,19 @@ def _review_priority(pr: dict[str, Any], files: list[dict[str, Any]]) -> tuple[i
     return (bucket, -_parse_updated_epoch(activity_at))
 
 
+def _review_sequence_entry(item: dict[str, Any], *, rank: int) -> dict[str, Any]:
+    return {
+        "rank": rank,
+        "number": item.get("number"),
+        "title": item.get("title"),
+        "url": item.get("url"),
+        "state": item.get("state"),
+        "review_depth": item.get("review_depth"),
+        "risk_hint_level": _as_dict(item.get("metadata_risk_hint")).get("level"),
+        "why_now": _review_why_now(item),
+    }
+
+
 def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
     files = _files(pr)
     checks = _checks(pr)
@@ -698,19 +711,7 @@ def build_pr_review_packet(
     ]
     normalized_all.sort(key=lambda item: _review_priority(item, item.get("key_files") or []))
     normalized = normalized_all[: max(1, limit)]
-    review_sequence = [
-        {
-            "rank": index,
-            "number": item.get("number"),
-            "title": item.get("title"),
-            "url": item.get("url"),
-            "state": item.get("state"),
-            "review_depth": item.get("review_depth"),
-            "risk_hint_level": _as_dict(item.get("metadata_risk_hint")).get("level"),
-            "why_now": _review_why_now(item),
-        }
-        for index, item in enumerate(normalized, start=1)
-    ]
+    review_sequence = [_review_sequence_entry(item, rank=index) for index, item in enumerate(normalized, start=1)]
     open_review_required = [
         item
         for item in normalized
@@ -723,6 +724,33 @@ def build_pr_review_packet(
     first = review_sequence[0] if review_sequence else None
     review_attention_count = len(open_review_required) + len(merged_items)
     open_items = [item for item in normalized if str(item.get("state") or "").upper() == "OPEN"]
+    unmerged_items = [item for item in normalized if str(item.get("state") or "").upper() != "MERGED"]
+    review_groups = {
+        "unmerged": {
+            "schema_version": "pr_review_group_v0",
+            "group_id": "unmerged",
+            "title": "Unmerged PRs",
+            "intent": "Review before merge: decide approve, request changes, defer, or wait for checks.",
+            "count": len(unmerged_items),
+            "pr_numbers": [item.get("number") for item in unmerged_items],
+            "review_sequence": [
+                _review_sequence_entry(item, rank=index)
+                for index, item in enumerate(unmerged_items, start=1)
+            ],
+        },
+        "merged": {
+            "schema_version": "pr_review_group_v0",
+            "group_id": "merged",
+            "title": "Merged PRs",
+            "intent": "Post-merge audit: check outcome, regression risk, and follow-up quality without blocking already-merged work.",
+            "count": len(merged_items),
+            "pr_numbers": [item.get("number") for item in merged_items],
+            "review_sequence": [
+                _review_sequence_entry(item, rank=index)
+                for index, item in enumerate(merged_items, start=1)
+            ],
+        },
+    }
     headline = (
         (
             f"{len(normalized)} PR(s) in review window: "
@@ -750,6 +778,7 @@ def build_pr_review_packet(
             "source": source,
             "include": [
                 "pull_request_list",
+                "review_groups",
                 "review_template",
                 "change_scope",
                 "checks",
@@ -775,6 +804,7 @@ def build_pr_review_packet(
             "recommended_first_pr": first,
         },
         "review_sequence": review_sequence,
+        "review_groups": review_groups,
         "pull_requests": normalized,
         "actions": [
             {
@@ -833,9 +863,30 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         f"- since: `{request.get('since') or 'not set'}`",
         f"- headline: {summary.get('headline')}",
         f"- counts: total=`{summary.get('total_pr_count')}`, open=`{summary.get('open_pr_count')}`, merged=`{summary.get('merged_pr_count')}`, review_attention=`{summary.get('review_attention_count')}`, draft=`{summary.get('draft_count')}`",
+        "- tool contract: run `loopx pr-review` first and use its `review_groups`; use ad hoc `gh` commands only after selecting a PR from this packet.",
         "",
-        "## Review Sequence",
+        "## Unmerged PRs",
     ]
+    review_groups = _as_dict(payload.get("review_groups"))
+    unmerged = _as_dict(review_groups.get("unmerged"))
+    merged = _as_dict(review_groups.get("merged"))
+
+    def append_group(group: dict[str, Any]) -> None:
+        sequence = [item for item in _as_list(group.get("review_sequence")) if isinstance(item, dict)]
+        if not sequence:
+            lines.append("- none")
+            return
+        for item in sequence:
+            lines.append(
+                f"{item.get('rank')}. [#{item.get('number')} {item.get('title')}]({item.get('url')}) "
+                f"[{item.get('state')}] - "
+                f"{item.get('review_depth')} / risk_hint=`{item.get('risk_hint_level')}`: {item.get('why_now')}"
+            )
+
+    append_group(unmerged)
+    lines.extend(["", "## Merged PRs"])
+    append_group(merged)
+    lines.extend(["", "## Combined Review Sequence"])
     sequence = [item for item in _as_list(payload.get("review_sequence")) if isinstance(item, dict)]
     if not sequence:
         lines.append("- none")

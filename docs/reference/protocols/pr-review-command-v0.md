@@ -18,6 +18,12 @@ push, spend LoopX quota, or mark LoopX todos complete.
 | --- | --- | --- |
 | `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository and provide a blank five-block review template for each PR. Agentloop reads the PR body/diff and fills the review. |
 
+The slash command must run the CLI first. Agentloop must not reconstruct the
+review window by manually calling `gh pr view` / `gh pr list` for every PR. The
+CLI packet's `review_groups.unmerged`, `review_groups.merged`, and
+`pull_requests[].review_template` are the authoritative queue. The packet's
+`evidence_commands` are for the second step: reading one selected PR deeply.
+
 ## Source Reads
 
 Implementations may read compact public PR surfaces:
@@ -81,6 +87,26 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "why_now": "Open and awaiting reviewer decision."
     }
   ],
+  "review_groups": {
+    "unmerged": {
+      "schema_version": "pr_review_group_v0",
+      "group_id": "unmerged",
+      "title": "Unmerged PRs",
+      "intent": "Review before merge: decide approve, request changes, defer, or wait for checks.",
+      "count": 3,
+      "pr_numbers": [773, 775, 771],
+      "review_sequence": []
+    },
+    "merged": {
+      "schema_version": "pr_review_group_v0",
+      "group_id": "merged",
+      "title": "Merged PRs",
+      "intent": "Post-merge audit: check outcome, regression risk, and follow-up quality without blocking already-merged work.",
+      "count": 5,
+      "pr_numbers": [770],
+      "review_sequence": []
+    }
+  },
   "pull_requests": [
     {
       "number": 773,
@@ -152,14 +178,16 @@ absolute paths, private source bodies, or hidden CI artifacts.
 
 The packet should let a reviewer move through PRs in order:
 
-1. Use `review_sequence` to choose the next PR.
-2. Use `evidence_commands`, key files, changed-file scale, and checks to open
+1. Start from `review_groups.unmerged` for PRs that can still affect merge
+   decisions.
+2. Then use `review_groups.merged` for post-merge audit and follow-up quality.
+3. Use `evidence_commands`, key files, changed-file scale, and checks to open
    the actual PR body and diff.
-3. Let agentloop fill the blank five-block template:
+4. Let agentloop fill the blank five-block template:
    `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.
-4. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
+5. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
    copied as the final risk judgement.
-5. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
+6. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
 
 ## Acceptance Checks
 
@@ -174,8 +202,12 @@ A first implementation is acceptable when:
 - `--since` can bound an overnight or release-window review without relying on
   private chat memory;
 - the response includes review sequence, changed-file scope, status checks,
-  key files, risk notes, metadata-only risk hints, evidence commands, and a
-  blank five-block review template;
+  key files, risk notes, metadata-only risk hints, evidence commands, explicit
+  `review_groups.unmerged` / `review_groups.merged`, and a blank five-block
+  review template;
+- the slash-command catalog marks `/loopx-pr-review` as `must_run_cli_first`
+  and says manual `gh` calls are only per-PR deep-read commands after the CLI
+  packet selects a PR;
 - each PR includes `review_template.sections` for `动机`, `改动思路`,
   `具体改动`, `对主干的风险`, and `我的整体评价`;
 - template sections must leave `content` empty so agentloop reads the real PR

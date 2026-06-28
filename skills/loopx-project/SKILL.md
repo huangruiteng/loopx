@@ -33,6 +33,11 @@ Recognized project-local commands:
 - `/loopx`
 - `/loopx <goal text>`
 
+Recognized repo-review commands:
+
+- `/loopx-pr-review`
+- `/loopx-pr-review <time window or filter text>`
+
 From the target project root, run the bootstrap command pack before planning or
 writing project state:
 
@@ -68,6 +73,22 @@ or status summary surface instead of `bootstrap-command-pack`. Legacy
 `/loop-global-*` forms may be treated as aliases, but canonical help and
 packets should use `/loopx-global-*`.
 
+Repo-review slash commands are also not project bootstrap commands. For
+`/loopx-pr-review`, run the CLI tool first and treat its packet as the
+authoritative queue:
+
+```bash
+loopx pr-review --state all
+```
+
+If the user includes a repository, time window, or state filter, translate only
+those arguments into `--repo`, `--since`, and `--state`; otherwise keep the
+current repository and the default `--state all`. The CLI packet's
+`review_groups.unmerged`, `review_groups.merged`, and per-PR
+`review_template` are the source of truth. Do not reconstruct the review
+window by manually calling `gh pr view` or `gh pr list`; use the packet's
+`evidence_commands` only after selecting a PR from the CLI output.
+
 When a user has just connected a project or receives a bootstrap command pack
 for the first time, briefly tell them the usable commands instead of assuming
 they will inspect CLI help:
@@ -78,6 +99,8 @@ they will inspect CLI help:
 - `/loopx-global-summary`: read the global progress digest.
 - `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`: inspect
   manager-level gates, work, and risks.
+- `/loopx-pr-review`: run `loopx pr-review`, then review its unmerged and
+  merged PR groups one by one.
 
 For command-line discovery, use:
 
