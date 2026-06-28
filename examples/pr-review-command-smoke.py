@@ -156,8 +156,10 @@ def main() -> int:
     assert any(item["number"] == 775 for item in sequence), sequence
     assert any(item["number"] == 770 and item["state"] == "MERGED" for item in sequence), sequence
     assert sequence[0]["risk_hint_level"] == "low", sequence[0]
+    assert sequence[0]["main_risk_level"] == "low", sequence[0]
     merged_sequence = next(item for item in sequence if item["number"] == 770)
     assert merged_sequence["risk_hint_level"] == "medium", merged_sequence
+    assert merged_sequence["main_risk_level"] == "high", merged_sequence
     first = payload["pull_requests"][0]
     assert first["number"] == 773, first
     assert "newcomer command path" in first["motivation"], first
@@ -180,6 +182,14 @@ def main() -> int:
     assert risk_hint["level"] == "low", risk_hint
     assert "Metadata-only" in risk_hint["disclaimer"], risk_hint
     assert "quota.py" not in json.dumps(risk_hint), risk_hint
+    main_risk = first["main_regression_analysis"]
+    assert main_risk["schema_version"] == "main_regression_analysis_v0", main_risk
+    assert main_risk["risk_level"] == "low", main_risk
+    assert main_risk["post_merge_review"] is False, main_risk
+    assert main_risk["potential_regressions"], main_risk
+    assert main_risk["bug_risks"], main_risk
+    assert main_risk["verification_focus"], main_risk
+    assert "quota.py" not in json.dumps(main_risk), main_risk
     response_contract = payload["agent_response_contract"]
     assert response_contract["schema_version"] == "pr_review_agent_response_contract_v0", response_contract
     assert response_contract["table_only_response_allowed"] is False, response_contract
@@ -206,6 +216,10 @@ def main() -> int:
     merged = next(item for item in payload["pull_requests"] if item["number"] == 770)
     merged_risk_hint = merged["metadata_risk_hint"]
     assert merged_risk_hint["level"] == "medium", merged_risk_hint
+    merged_main_risk = merged["main_regression_analysis"]
+    assert merged_main_risk["risk_level"] == "high", merged_main_risk
+    assert merged_main_risk["post_merge_review"] is True, merged_main_risk
+    assert any("Runtime or CLI behavior" in item for item in merged_main_risk["potential_regressions"]), merged_main_risk
     assert payload["boundary"]["absolute_paths_recorded"] is False, payload["boundary"]
     assert_public_safe(payload)
 
