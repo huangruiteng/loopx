@@ -1,8 +1,8 @@
 # pr_review_command_v0
 
 `pr_review_command_v0` defines the `/loopx-pr-review` command. It helps a
-user review unmerged pull requests one by one by turning public GitHub PR
-metadata into a guided review queue.
+user review open and recently merged pull requests one by one by turning public
+GitHub PR metadata into a guided review queue.
 
 The reviewed repository is the caller's current GitHub project by default, as
 resolved by `gh`, or the explicit `--repo owner/repo` target. LoopX's own
@@ -16,13 +16,14 @@ push, spend LoopX quota, or mark LoopX todos complete.
 
 | Command | CLI reference | Intent |
 | --- | --- | --- |
-| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo]` | List open PRs for the current project or explicit repository and build a guided review packet with motivation, change scope, checks, risks, and review prompts. |
+| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository and build a guided review packet with motivation, change scope, checks, risks, and review prompts. |
 
 ## Source Reads
 
 Implementations may read compact public PR surfaces:
 
-- pull request title, number, URL, branch, author, state, and review decision;
+- pull request title, number, URL, branch, author, lifecycle state, merge time,
+  and review decision;
 - PR body summary;
 - changed-file list and diff scale;
 - commit headlines;
@@ -42,17 +43,23 @@ absolute paths, private source bodies, or hidden CI artifacts.
   "request": {
     "schema_version": "loopx_pr_review_command_request_v0",
     "command": "/loopx-pr-review",
-    "cli_command": "loopx pr-review [--repo owner/repo]",
+    "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
     "repository": "owner/repo",
     "limit": 10,
+    "state_filter": "all",
+    "since": "2026-06-28T00:00:00Z",
+    "window": {"state_filter": "all", "since": "2026-06-28T00:00:00Z"},
     "source": "github_cli",
     "privacy_mode": "public_safe_github_metadata",
     "dry_run": true
   },
   "summary": {
-    "headline": "5 open PR(s) found; 5 need review attention.",
-    "open_pr_count": 5,
-    "review_attention_count": 5,
+    "headline": "8 PR(s) in review window: 3 open, 5 merged; 8 need review attention.",
+    "total_pr_count": 8,
+    "open_pr_count": 3,
+    "merged_pr_count": 5,
+    "review_attention_count": 8,
+    "post_merge_review_count": 5,
     "draft_count": 0,
     "recommended_first_pr": {
       "rank": 1,
@@ -66,6 +73,7 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "number": 773,
       "title": "docs: add newcomer command path",
       "url": "https://github.com/owner/repo/pull/773",
+      "state": "OPEN",
       "review_depth": "docs_and_smoke_review",
       "why_now": "Open and awaiting reviewer decision."
     }
@@ -108,6 +116,10 @@ A first implementation is acceptable when:
 - `loopx pr-review` returns `loopx_pr_review_command_response_v0`;
 - default live reads use the caller's current `gh` repository, while
   `--repo owner/repo` can review another GitHub project;
+- `--state all` includes merged PRs in the same packet, while `--state open`
+  preserves the old open-only review queue;
+- `--since` can bound an overnight or release-window review without relying on
+  private chat memory;
 - the response includes review sequence, motivation, changed-file scope,
   status checks, risk notes, and review prompts;
 - live GitHub reads and fixture-based smokes share the same schema;

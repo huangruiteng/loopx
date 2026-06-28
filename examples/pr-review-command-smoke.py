@@ -46,16 +46,24 @@ def main() -> int:
     assert payload["schema_version"] == "loopx_pr_review_command_response_v0", payload
     request = payload["request"]
     assert request["command"] == "/loopx-pr-review", request
-    assert request["cli_command"] == "loopx pr-review [--repo owner/repo]", request
+    assert (
+        request["cli_command"]
+        == "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]"
+    ), request
     assert request["privacy_mode"] == "public_safe_github_metadata", request
     assert request["dry_run"] is True, request
     assert request["repository"] == "huangruiteng/loopx", request
+    assert request["state_filter"] == "all", request
+    assert payload["summary"]["total_pr_count"] == 4, payload["summary"]
     assert payload["summary"]["open_pr_count"] == 3, payload["summary"]
+    assert payload["summary"]["merged_pr_count"] == 1, payload["summary"]
+    assert payload["summary"]["post_merge_review_count"] == 1, payload["summary"]
     assert payload["summary"]["review_attention_count"] == 3, payload["summary"]
     assert payload["summary"]["draft_count"] == 1, payload["summary"]
     sequence = payload["review_sequence"]
     assert sequence[0]["number"] == 773, sequence
     assert sequence[-1]["number"] == 775, sequence
+    assert any(item["number"] == 770 and item["state"] == "MERGED" for item in sequence), sequence
     first = payload["pull_requests"][0]
     assert first["number"] == 773, first
     assert "newcomer command path" in first["motivation"], first
@@ -64,9 +72,46 @@ def main() -> int:
     assert payload["boundary"]["absolute_paths_recorded"] is False, payload["boundary"]
     assert_public_safe(payload)
 
+    open_only = json.loads(
+        run_cli(
+            "--format",
+            "json",
+            "pr-review",
+            "--fixture",
+            str(FIXTURE),
+            "--state",
+            "open",
+            "--limit",
+            "5",
+        ).stdout
+    )
+    assert open_only["summary"]["total_pr_count"] == 3, open_only["summary"]
+    assert open_only["summary"]["merged_pr_count"] == 0, open_only["summary"]
+
+    windowed = json.loads(
+        run_cli(
+            "--format",
+            "json",
+            "pr-review",
+            "--fixture",
+            str(FIXTURE),
+            "--since",
+            "2026-06-27T12:20:00Z",
+            "--limit",
+            "5",
+        ).stdout
+    )
+    assert windowed["request"]["since"] == "2026-06-27T12:20:00Z", windowed["request"]
+    assert windowed["summary"]["total_pr_count"] == 3, windowed["summary"]
+    assert windowed["summary"]["open_pr_count"] == 2, windowed["summary"]
+    assert windowed["summary"]["merged_pr_count"] == 1, windowed["summary"]
+    assert any(item["number"] == 770 for item in windowed["review_sequence"]), windowed["review_sequence"]
+
     markdown = run_cli("pr-review", "--fixture", str(FIXTURE), "--limit", "1").stdout
     assert "# Project PR Review Queue" in markdown, markdown
     assert "current gh repository" not in markdown, markdown
+    assert "state_filter: `all`" in markdown, markdown
+    assert "merged=`" in markdown, markdown
     assert "## Review Sequence" in markdown, markdown
     assert "PR #773" in markdown, markdown
     assert "review prompts" in markdown, markdown

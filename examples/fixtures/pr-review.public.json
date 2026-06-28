@@ -83,6 +83,36 @@
         {"messageHeadline": "draft: explore PR review cards"}
       ],
       "statusCheckRollup": []
+    },
+    {
+      "number": 770,
+      "title": "runtime: align quota gate prompt",
+      "url": "https://github.com/huangruiteng/loopx/pull/770",
+      "state": "MERGED",
+      "author": {"login": "huangruiteng"},
+      "baseRefName": "main",
+      "headRefName": "codex/quota-gate-prompt-alignment",
+      "updatedAt": "2026-06-27T12:25:00Z",
+      "closedAt": "2026-06-27T12:25:00Z",
+      "mergedAt": "2026-06-27T12:25:00Z",
+      "mergeCommit": {"oid": "abc1234def5678"},
+      "isDraft": false,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "mergeStateStatus": "UNKNOWN",
+      "body": "Aligns quota gate prompt wording with scoped user todo projection and keeps merged PRs visible for post-merge review.",
+      "changedFiles": 2,
+      "additions": 60,
+      "deletions": 8,
+      "files": [
+        {"path": "loopx/quota.py", "additions": 42, "deletions": 6},
+        {"path": "examples/protocol-action-packet-smoke.py", "additions": 18, "deletions": 2}
+      ],
+      "commits": [
+        {"messageHeadline": "runtime: align gate prompt with scoped todos"}
+      ],
+      "statusCheckRollup": [
+        {"name": "quota-smoke", "status": "COMPLETED", "conclusion": "SUCCESS"}
+      ]
     }
   ]
 }

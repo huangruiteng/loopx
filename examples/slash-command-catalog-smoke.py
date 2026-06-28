@@ -53,7 +53,7 @@ def main() -> int:
     assert "`/loopx-global-summary`" in markdown, markdown
     assert "`loopx global-summary`" in markdown, markdown
     assert "`/loopx-pr-review`" in markdown, markdown
-    assert "`loopx pr-review [--repo owner/repo]`" in markdown, markdown
+    assert "`loopx pr-review [--repo owner/repo] [--state open\\|merged\\|all] [--since ISO]`" in markdown, markdown
     assert "`/loopx-summary-all`" not in markdown, markdown
 
     top_help = run_cli("--help").stdout

@@ -109,17 +109,69 @@ def resolve_current_github_repository(*, cwd: Path | None = None) -> str | None:
     return str(payload.get("nameWithOwner") or "") or None
 
 
+def _parse_timestamp(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _github_search_date(value: object) -> str | None:
+    parsed = _parse_timestamp(value)
+    if parsed:
+        return parsed.date().isoformat()
+    text = str(value or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return text
+    return None
+
+
+def _pr_window_timestamp(pr: dict[str, Any]) -> datetime | None:
+    return (
+        _parse_timestamp(pr.get("mergedAt") or pr.get("merged_at"))
+        or _parse_timestamp(pr.get("closedAt") or pr.get("closed_at"))
+        or _parse_timestamp(pr.get("updatedAt") or pr.get("updated_at"))
+    )
+
+
+def _include_pr_in_window(pr: dict[str, Any], *, since: object | None) -> bool:
+    since_dt = _parse_timestamp(since)
+    if since_dt is None:
+        return True
+    activity_dt = _pr_window_timestamp(pr)
+    return bool(activity_dt and activity_dt >= since_dt)
+
+
+def normalize_pr_state_filter(value: object) -> str:
+    state = str(value or "all").strip().lower()
+    return state if state in {"open", "merged", "all"} else "all"
+
+
 def fetch_github_pull_requests(
     *,
     repo: str | None,
     limit: int,
     cwd: Path | None = None,
+    state_filter: str = "all",
+    since: str | None = None,
 ) -> list[dict[str, Any]]:
     repo_args = ["--repo", repo] if repo else []
+    normalized_state = normalize_pr_state_filter(state_filter)
+    search_args: list[str] = []
+    search_date = _github_search_date(since)
+    if search_date:
+        search_args = ["--search", f"updated:>={search_date}"]
     list_fields = [
         "number",
         "title",
         "url",
+        "state",
         "isDraft",
         "reviewDecision",
         "mergeStateStatus",
@@ -127,17 +179,23 @@ def fetch_github_pull_requests(
         "baseRefName",
         "author",
         "updatedAt",
+        "closedAt",
+        "mergedAt",
     ]
+    fetch_limit = max(1, limit)
+    if since:
+        fetch_limit = max(fetch_limit, min(100, fetch_limit * 3))
     rows = _run_gh_json(
         [
             "pr",
             "list",
             "--state",
-            "open",
+            normalized_state,
             "--limit",
-            str(max(1, limit)),
+            str(fetch_limit),
             "--json",
             ",".join(list_fields),
+            *search_args,
             *repo_args,
         ],
         cwd=cwd,
@@ -149,6 +207,7 @@ def fetch_github_pull_requests(
         "number",
         "title",
         "url",
+        "state",
         "isDraft",
         "reviewDecision",
         "mergeStateStatus",
@@ -157,6 +216,9 @@ def fetch_github_pull_requests(
         "baseRefName",
         "author",
         "updatedAt",
+        "closedAt",
+        "mergedAt",
+        "mergeCommit",
         "body",
         "files",
         "commits",
@@ -185,11 +247,14 @@ def fetch_github_pull_requests(
                 cwd=cwd,
             )
             if isinstance(view, dict):
-                detailed.append({**row, **view})
+                merged = {**row, **view}
+                if _include_pr_in_window(merged, since=since):
+                    detailed.append(merged)
                 continue
         except Exception:
             pass
-        detailed.append(row)
+        if _include_pr_in_window(row, since=since):
+            detailed.append(row)
     return detailed
 
 
@@ -371,9 +436,14 @@ def _checks(pr: dict[str, Any]) -> dict[str, Any]:
 
 def _risk_notes(pr: dict[str, Any], files: list[dict[str, Any]]) -> list[str]:
     notes: list[str] = []
+    state = str(pr.get("state") or "").upper()
+    if state == "MERGED" or pr.get("mergedAt") or pr.get("merged_at"):
+        notes.append("Already merged: review for post-merge quality, regression risk, and follow-up work.")
+    elif state in {"CLOSED"}:
+        notes.append("Closed without a merge signal; review only if it still informs a replacement path.")
     if pr.get("isDraft"):
         notes.append("Draft PR: review may be advisory until it is marked ready.")
-    if str(pr.get("mergeStateStatus") or "").upper() not in {"", "CLEAN", "HAS_HOOKS", "UNKNOWN"}:
+    if state != "MERGED" and str(pr.get("mergeStateStatus") or "").upper() not in {"", "CLEAN", "HAS_HOOKS", "UNKNOWN"}:
         notes.append(f"Merge state is {pr.get('mergeStateStatus')}; check conflict or branch-protection details.")
     if any(str(item.get("path") or "").startswith(RUNTIME_OR_CLI_PREFIXES) for item in files):
         notes.append("Touches runtime, app, CLI, or automation paths; review behavior and compatibility before merge.")
@@ -400,28 +470,35 @@ def _review_depth(files: list[dict[str, Any]]) -> str:
 
 
 def _parse_updated_epoch(value: object) -> float:
-    text = str(value or "").strip()
-    if not text:
-        return 0.0
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return 0.0
+    parsed = _parse_timestamp(value)
+    return parsed.timestamp() if parsed else 0.0
 
 
 def _review_priority(pr: dict[str, Any], files: list[dict[str, Any]]) -> tuple[int, float]:
     is_draft = bool(pr.get("isDraft") or pr.get("is_draft"))
     review_decision = str(pr.get("reviewDecision") or pr.get("review_decision") or "").upper()
-    updated_at = pr.get("updatedAt") or pr.get("updated_at")
+    state = str(pr.get("state") or "").upper()
+    activity_at = (
+        pr.get("mergedAt")
+        or pr.get("merged_at")
+        or pr.get("closedAt")
+        or pr.get("closed_at")
+        or pr.get("updatedAt")
+        or pr.get("updated_at")
+    )
     if is_draft:
         bucket = 4
+    elif state == "MERGED":
+        bucket = 3
+    elif state == "CLOSED":
+        bucket = 5
     elif review_decision in {"", "REVIEW_REQUIRED", "CHANGES_REQUESTED", "UNKNOWN"}:
         bucket = 0
     elif _review_depth(files) == "runtime_behavior_review":
         bucket = 1
     else:
         bucket = 2
-    return (bucket, -_parse_updated_epoch(updated_at))
+    return (bucket, -_parse_updated_epoch(activity_at))
 
 
 def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
@@ -429,12 +506,21 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
     checks = _checks(pr)
     number = pr.get("number")
     url = pr.get("url") or (f"https://github.com/pull/{number}" if number else "")
+    raw_state = str(pr.get("state") or "").upper()
+    if not raw_state:
+        raw_state = "MERGED" if pr.get("mergedAt") or pr.get("merged_at") else "OPEN"
+    merge_commit = pr.get("mergeCommit") or pr.get("merge_commit")
+    merge_commit_oid = _as_dict(merge_commit).get("oid") if isinstance(merge_commit, dict) else None
     item: dict[str, Any] = {
         "number": number,
         "title": _redact_text(pr.get("title"), limit=180),
         "url": _redact_text(url, limit=220),
+        "state": raw_state,
         "author": _redact_text(_as_dict(pr.get("author")).get("login") or pr.get("author"), limit=80),
         "updated_at": pr.get("updatedAt"),
+        "closed_at": pr.get("closedAt"),
+        "merged_at": pr.get("mergedAt"),
+        "merge_commit": _redact_text(merge_commit_oid, limit=80) if merge_commit_oid else None,
         "base_ref": _redact_text(pr.get("baseRefName"), limit=80),
         "head_ref": _redact_text(pr.get("headRefName"), limit=120),
         "is_draft": bool(pr.get("isDraft")),
@@ -473,30 +559,51 @@ def build_pr_review_packet(
     repository: str | None,
     limit: int,
     source: str,
+    state_filter: str = "all",
+    since: str | None = None,
 ) -> dict[str, Any]:
-    normalized = [_normalize_pr(item) for item in pull_requests[: max(1, limit)]]
-    normalized.sort(key=lambda item: _review_priority(item, item.get("key_files") or []))
+    normalized_state_filter = normalize_pr_state_filter(state_filter)
+    normalized_all = [_normalize_pr(item) for item in pull_requests]
+    normalized_all = [
+        item
+        for item in normalized_all
+        if (normalized_state_filter == "all" or str(item.get("state") or "").lower() == normalized_state_filter)
+        and _include_pr_in_window(item, since=since)
+    ]
+    normalized_all.sort(key=lambda item: _review_priority(item, item.get("key_files") or []))
+    normalized = normalized_all[: max(1, limit)]
     review_sequence = [
         {
             "rank": index,
             "number": item.get("number"),
             "title": item.get("title"),
             "url": item.get("url"),
+            "state": item.get("state"),
             "review_depth": item.get("review_depth"),
             "why_now": _review_why_now(item),
         }
         for index, item in enumerate(normalized, start=1)
     ]
-    review_required = [
+    open_review_required = [
         item
         for item in normalized
-        if str(item.get("review_decision") or "").upper() in {"", "REVIEW_REQUIRED", "CHANGES_REQUESTED", "UNKNOWN"}
+        if str(item.get("state") or "").upper() == "OPEN"
+        and not item.get("is_draft")
+        and str(item.get("review_decision") or "").upper() in {"", "REVIEW_REQUIRED", "CHANGES_REQUESTED", "UNKNOWN"}
     ]
+    merged_items = [item for item in normalized if str(item.get("state") or "").upper() == "MERGED"]
+    closed_items = [item for item in normalized if str(item.get("state") or "").upper() == "CLOSED"]
     first = review_sequence[0] if review_sequence else None
+    review_attention_count = len(open_review_required) + len(merged_items)
+    open_items = [item for item in normalized if str(item.get("state") or "").upper() == "OPEN"]
     headline = (
-        f"{len(normalized)} open PR(s) found; {len(review_required)} need review attention."
+        (
+            f"{len(normalized)} PR(s) in review window: "
+            f"{len(open_items)} open, "
+            f"{len(merged_items)} merged; {review_attention_count} need review attention."
+        )
         if normalized
-        else "No open pull requests found."
+        else "No pull requests found for the requested review window."
     )
     return {
         "ok": True,
@@ -504,9 +611,15 @@ def build_pr_review_packet(
         "request": {
             "schema_version": "loopx_pr_review_command_request_v0",
             "command": COMMAND,
-            "cli_command": "loopx pr-review [--repo owner/repo]",
+            "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
             "repository": repository,
             "limit": max(1, limit),
+            "state_filter": normalized_state_filter,
+            "since": since,
+            "window": {
+                "since": since,
+                "state_filter": normalized_state_filter,
+            },
             "source": source,
             "include": ["motivation", "change_scope", "checks", "risk_notes", "review_sequence"],
             "privacy_mode": "public_safe_github_metadata",
@@ -515,8 +628,13 @@ def build_pr_review_packet(
         "generated_at": _now_iso(),
         "summary": {
             "headline": headline,
-            "open_pr_count": len(normalized),
-            "review_attention_count": len(review_required),
+            "total_pr_count": len(normalized),
+            "open_pr_count": len(open_items),
+            "merged_pr_count": len(merged_items),
+            "closed_pr_count": len(closed_items),
+            "review_attention_count": review_attention_count,
+            "open_review_attention_count": len(open_review_required),
+            "post_merge_review_count": len(merged_items),
             "draft_count": sum(1 for item in normalized if item.get("is_draft")),
             "source_surfaces": SOURCE_SURFACES,
             "recommended_first_pr": first,
@@ -548,6 +666,11 @@ def build_pr_review_packet(
 
 
 def _review_why_now(item: dict[str, Any]) -> str:
+    state = str(item.get("state") or "").upper()
+    if state == "MERGED":
+        return "Merged in the review window; audit outcome, validation, and follow-up quality."
+    if state == "CLOSED":
+        return "Closed without a merge signal; check whether a replacement or cleanup is needed."
     if item.get("is_draft"):
         return "Draft PR; skim for early direction but do not treat as merge-ready."
     decision = str(item.get("review_decision") or "").upper()
@@ -571,8 +694,10 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         "",
         f"- command: `{request.get('command')}`",
         f"- repository: `{request.get('repository') or 'current gh repository'}`",
+        f"- state_filter: `{request.get('state_filter') or 'all'}`",
+        f"- since: `{request.get('since') or 'not set'}`",
         f"- headline: {summary.get('headline')}",
-        f"- counts: open=`{summary.get('open_pr_count')}`, review_attention=`{summary.get('review_attention_count')}`, draft=`{summary.get('draft_count')}`",
+        f"- counts: total=`{summary.get('total_pr_count')}`, open=`{summary.get('open_pr_count')}`, merged=`{summary.get('merged_pr_count')}`, review_attention=`{summary.get('review_attention_count')}`, draft=`{summary.get('draft_count')}`",
         "",
         "## Review Sequence",
     ]
@@ -581,7 +706,8 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         lines.append("- none")
     for item in sequence:
         lines.append(
-            f"{item.get('rank')}. [#{item.get('number')} {item.get('title')}]({item.get('url')}) - "
+            f"{item.get('rank')}. [#{item.get('number')} {item.get('title')}]({item.get('url')}) "
+            f"[{item.get('state')}] - "
             f"{item.get('review_depth')}: {item.get('why_now')}"
         )
 
@@ -592,6 +718,8 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
                 f"## PR #{pr.get('number')}: {pr.get('title')}",
                 "",
                 f"- url: {pr.get('url')}",
+                f"- state: `{pr.get('state')}`",
+                f"- merged_at: `{pr.get('merged_at') or 'n/a'}`",
                 f"- branch: `{pr.get('head_ref')}` -> `{pr.get('base_ref')}`",
                 f"- status: review=`{pr.get('review_decision')}`, merge=`{pr.get('merge_state')}`, draft=`{pr.get('is_draft')}`",
                 f"- motivation: {pr.get('motivation')}",
