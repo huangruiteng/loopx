@@ -9,6 +9,7 @@ CANARY_PROFILE_SCHEMA_VERSION = "catalog_canary_profile_v0"
 CANARY_DOMAIN_PROFILE_SCHEMA_VERSION = "catalog_canary_domain_profile_v0"
 CANARY_PROFILES_SCHEMA_VERSION = "catalog_canary_profiles_v0"
 CANARY_PLAN_SCHEMA_VERSION = "catalog_canary_plan_v0"
+CANARY_COVERAGE_AUDIT_SCHEMA_VERSION = "catalog_canary_coverage_audit_v0"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CATALOG_PATH = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
@@ -475,6 +476,125 @@ def build_catalog_canary_profiles(catalog_path: Path | None = None) -> dict[str,
     }
 
 
+def _catalog_pattern_rows(text: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for line in text.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        cells = _split_table_row(line)
+        if len(cells) < 3:
+            continue
+        if cells[0] not in {"P0", "P1", "P2"} or not re.fullmatch(r"IP-\d{3}", cells[1]):
+            continue
+        rows.append(
+            {
+                "importance": cells[0],
+                "pattern_id": cells[1],
+                "name": cells[2],
+            }
+        )
+    return rows
+
+
+def _coverage_exception_rows(text: str) -> dict[str, dict[str, str]]:
+    table = _first_table_after(text, "| Pattern ID | Canary Coverage Status |")
+    exceptions: dict[str, dict[str, str]] = {}
+    for row in table:
+        pattern_id = next(iter(_pattern_ids(row.get("Pattern ID", ""))), "")
+        if not pattern_id:
+            continue
+        status = _slug(row.get("Canary Coverage Status", ""))
+        if status not in {"non-applicable", "not-applicable", "deferred"}:
+            continue
+        exceptions[pattern_id] = {
+            "pattern_id": pattern_id,
+            "status": "non-applicable" if status == "not-applicable" else status,
+            "rationale": row.get("Rationale", ""),
+            "owner": row.get("Owner", ""),
+        }
+    return exceptions
+
+
+def _coverage_exception_is_valid(exception: dict[str, str]) -> bool:
+    status = exception.get("status")
+    rationale = bool(str(exception.get("rationale") or "").strip())
+    owner = bool(str(exception.get("owner") or "").strip())
+    if status == "non-applicable":
+        return rationale
+    if status == "deferred":
+        return rationale and owner
+    return False
+
+
+def build_catalog_canary_coverage_audit(
+    *,
+    catalog_path: Path | None = None,
+    priorities: list[str] | None = None,
+) -> dict[str, Any]:
+    path, text = _read_catalog(catalog_path)
+    profile_packet = build_catalog_canary_profiles(catalog_path)
+    required_priorities = tuple(priorities or ["P0", "P1"])
+    pattern_rows = [
+        row
+        for row in _catalog_pattern_rows(text)
+        if row.get("importance") in required_priorities
+    ]
+    profile_coverage: dict[str, list[str]] = {}
+    for profile in profile_packet.get("profiles", []):
+        if not isinstance(profile, dict):
+            continue
+        profile_id = str(profile.get("id") or "")
+        for pattern_id in profile.get("pattern_ids", []):
+            if isinstance(pattern_id, str):
+                profile_coverage.setdefault(pattern_id, []).append(profile_id)
+    exceptions = _coverage_exception_rows(text)
+
+    covered: list[dict[str, Any]] = []
+    excepted: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    invalid_exceptions: list[dict[str, Any]] = []
+    for row in pattern_rows:
+        pattern_id = row["pattern_id"]
+        profile_ids = profile_coverage.get(pattern_id, [])
+        if profile_ids:
+            covered.append({**row, "profile_ids": profile_ids})
+            continue
+        exception = exceptions.get(pattern_id)
+        if exception and _coverage_exception_is_valid(exception):
+            excepted.append({**row, **exception})
+            continue
+        if exception:
+            invalid_exceptions.append({**row, **exception})
+        else:
+            missing.append(row)
+
+    drift_count = len(missing) + len(invalid_exceptions)
+    return {
+        "ok": bool(profile_packet.get("ok")) and drift_count == 0,
+        "schema_version": CANARY_COVERAGE_AUDIT_SCHEMA_VERSION,
+        "source": _display_path(path),
+        "dry_run": True,
+        "executes_checks": False,
+        "priorities": list(required_priorities),
+        "required_pattern_count": len(pattern_rows),
+        "covered_count": len(covered),
+        "excepted_count": len(excepted),
+        "missing_count": len(missing),
+        "invalid_exception_count": len(invalid_exceptions),
+        "drift_count": drift_count,
+        "covered_patterns": covered,
+        "excepted_patterns": excepted,
+        "missing_patterns": missing,
+        "invalid_exceptions": invalid_exceptions,
+        "note": (
+            "Coverage means each selected catalog pattern is listed in a canary "
+            "family profile, or has an explicit non-applicable rationale or "
+            "deferred owner in a catalog coverage exception table. This audit "
+            "reports drift only; it does not force one giant canary or execute checks."
+        ),
+    }
+
+
 def _selector_blob(changed_files: list[str], surfaces: list[str]) -> str:
     return "\n".join([*changed_files, *surfaces]).lower()
 
@@ -737,6 +857,44 @@ def render_catalog_canary_plan_markdown(payload: dict[str, Any]) -> str:
             if isinstance(check, dict):
                 lines.append(
                     f"  - `{check.get('command')}` [{check.get('tier')}] - {check.get('reason')}"
+                )
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_catalog_canary_coverage_audit_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# Catalog Canary Coverage Audit",
+        "",
+        f"- source: `{payload.get('source')}`",
+        "- dry_run: `true`",
+        "- executes_checks: `false`",
+        f"- priorities: `{', '.join(payload.get('priorities') or [])}`",
+        f"- required_patterns: `{payload.get('required_pattern_count')}`",
+        f"- covered: `{payload.get('covered_count')}`",
+        f"- excepted: `{payload.get('excepted_count')}`",
+        f"- missing: `{payload.get('missing_count')}`",
+        f"- invalid_exceptions: `{payload.get('invalid_exception_count')}`",
+        f"- drift: `{payload.get('drift_count')}`",
+        "",
+        str(payload.get("note") or ""),
+        "",
+    ]
+    if payload.get("missing_patterns"):
+        lines.extend(["## Missing Coverage", ""])
+        for row in payload.get("missing_patterns", []):
+            if isinstance(row, dict):
+                lines.append(
+                    f"- `{row.get('pattern_id')}` {row.get('name')} ({row.get('importance')})"
+                )
+        lines.append("")
+    if payload.get("invalid_exceptions"):
+        lines.extend(["## Invalid Exceptions", ""])
+        for row in payload.get("invalid_exceptions", []):
+            if isinstance(row, dict):
+                lines.append(
+                    f"- `{row.get('pattern_id')}` {row.get('status')}: "
+                    f"rationale={row.get('rationale')!r}; owner={row.get('owner')!r}"
                 )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"

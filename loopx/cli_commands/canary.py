@@ -5,8 +5,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..canary.planner import (
+    build_catalog_canary_coverage_audit,
     build_catalog_canary_plan,
     build_catalog_canary_profiles,
+    render_catalog_canary_coverage_audit_markdown,
     render_catalog_canary_plan_markdown,
     render_catalog_canary_profiles_markdown,
 )
@@ -125,6 +127,24 @@ def register_canary_commands(
         help="Per-check timeout for executed canaries.",
     )
 
+    coverage_parser = canary_sub.add_parser(
+        "coverage-audit",
+        help="Report P0/P1 catalog patterns missing canary profile coverage or explicit exception rationale.",
+    )
+    add_subcommand_format(coverage_parser)
+    coverage_parser.add_argument(
+        "--catalog",
+        type=Path,
+        help="Override the interaction-pattern catalog path.",
+    )
+    coverage_parser.add_argument(
+        "--priority",
+        action="append",
+        choices=["P0", "P1", "P2"],
+        default=[],
+        help="Pattern priority to audit. Defaults to P0 and P1; repeat for multiple priorities.",
+    )
+
 
 def handle_canary_command(
     args: argparse.Namespace,
@@ -164,7 +184,13 @@ def handle_canary_command(
             timeout_seconds=float(args.timeout_seconds or 120.0),
         )
         renderer = render_catalog_canary_run_markdown
+    elif args.canary_command == "coverage-audit":
+        payload = build_catalog_canary_coverage_audit(
+            catalog_path=args.catalog,
+            priorities=list(args.priority or []) or None,
+        )
+        renderer = render_catalog_canary_coverage_audit_markdown
     else:
-        raise ValueError("canary requires `profiles`, `plan`, or `run`")
+        raise ValueError("canary requires `profiles`, `plan`, `run`, or `coverage-audit`")
     print_payload(payload, output_format(args), renderer)
     return 0 if payload.get("ok") else 1

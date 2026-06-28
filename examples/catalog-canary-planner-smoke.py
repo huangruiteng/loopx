@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -14,6 +15,7 @@ sys.path.insert(0, str(REPO_ROOT))
 CATALOG = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
 
 from loopx.canary.planner import (  # noqa: E402
+    build_catalog_canary_coverage_audit,
     build_catalog_canary_plan,
     build_catalog_canary_profiles,
 )
@@ -130,6 +132,50 @@ def assert_explicit_profile_can_include_deep_checks() -> None:
     assert "owner-review necessity/risk packet" in payload["note"], payload
 
 
+def assert_coverage_audit_tracks_p0_p1_patterns() -> None:
+    payload = build_catalog_canary_coverage_audit()
+    assert payload["ok"] is True, payload
+    assert payload["dry_run"] is True, payload
+    assert payload["executes_checks"] is False, payload
+    assert payload["priorities"] == ["P0", "P1"], payload
+    assert payload["required_pattern_count"] >= 20, payload
+    assert payload["missing_count"] == 0, payload
+    assert payload["invalid_exception_count"] == 0, payload
+    covered_ids = {row["pattern_id"] for row in payload["covered_patterns"]}
+    assert {"IP-001", "IP-004", "IP-024", "IP-029"} <= covered_ids, payload
+
+
+def assert_coverage_audit_reports_matrix_drift(tmp_dir: Path) -> None:
+    catalog_text = CATALOG.read_text(encoding="utf-8")
+    drift_text = catalog_text.replace(
+        "| Planning Governance | IP-010, IP-013, IP-018, IP-024 |",
+        "| Planning Governance | IP-010, IP-013, IP-018 |",
+        1,
+    )
+    drift_catalog = tmp_dir / "catalog-drift.md"
+    drift_catalog.write_text(drift_text, encoding="utf-8")
+    payload = build_catalog_canary_coverage_audit(catalog_path=drift_catalog)
+    assert payload["ok"] is False, payload
+    assert payload["missing_count"] == 1, payload
+    assert payload["missing_patterns"][0]["pattern_id"] == "IP-024", payload
+
+    excepted_catalog = tmp_dir / "catalog-deferred.md"
+    excepted_catalog.write_text(
+        drift_text
+        + "\n\n"
+        "## Canary Coverage Exceptions\n\n"
+        "| Pattern ID | Canary Coverage Status | Rationale | Owner |\n"
+        "| --- | --- | --- | --- |\n"
+        "| IP-024 | deferred | waits for a repair-delta profile owner before default canary coverage | codex-main-control |\n",
+        encoding="utf-8",
+    )
+    excepted_payload = build_catalog_canary_coverage_audit(catalog_path=excepted_catalog)
+    assert excepted_payload["ok"] is True, excepted_payload
+    assert excepted_payload["missing_count"] == 0, excepted_payload
+    assert excepted_payload["excepted_count"] == 1, excepted_payload
+    assert excepted_payload["excepted_patterns"][0]["pattern_id"] == "IP-024", excepted_payload
+
+
 def assert_cli_json_plan_is_dry_run() -> None:
     completed = subprocess.run(
         [
@@ -161,13 +207,40 @@ def assert_cli_json_plan_is_dry_run() -> None:
     assert any(profile["id"] == "monitor-scheduler" for profile in payload["domain_profiles"]), payload
 
 
+def assert_cli_json_coverage_audit_is_dry_run() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "canary",
+            "coverage-audit",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["dry_run"] is True, payload
+    assert payload["executes_checks"] is False, payload
+    assert payload["drift_count"] == 0, payload
+
+
 def main() -> int:
     assert_profiles_come_from_catalog_matrix()
     assert_catalog_documents_selection_rules()
     assert_plan_selects_minimal_profiles_from_changed_surfaces()
     assert_pr_release_and_refactor_profiles_select()
     assert_explicit_profile_can_include_deep_checks()
+    assert_coverage_audit_tracks_p0_p1_patterns()
+    with tempfile.TemporaryDirectory(prefix="loopx-catalog-canary-smoke-") as tmp:
+        tmp_dir = Path(tmp)
+        assert_coverage_audit_reports_matrix_drift(tmp_dir)
     assert_cli_json_plan_is_dry_run()
+    assert_cli_json_coverage_audit_is_dry_run()
     print("catalog-canary-planner-smoke ok")
     return 0
 
