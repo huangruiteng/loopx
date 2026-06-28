@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = ROOT / "docs/reference/protocols/decentralized-auto-research-state-v0.md"
 LANE_CONTRACT = ROOT / "docs/reference/protocols/auto-research-lane-contract-v1.md"
 ROLE_STATE_MACHINE = ROOT / "docs/reference/protocols/auto-research-role-state-machine-v0.md"
+ROLE_PROFILE = ROOT / "docs/reference/protocols/auto-research-role-profile-v0.md"
 PROTOCOL_README = ROOT / "docs/reference/protocols/README.md"
 BLUEPRINT = ROOT / "docs/product/decentralized-auto-research-showcase.md"
 
@@ -47,6 +48,7 @@ def main() -> None:
     protocol = _read(PROTOCOL)
     lane_contract = _read(LANE_CONTRACT)
     role_state_machine = _read(ROLE_STATE_MACHINE)
+    role_profile = _read(ROLE_PROFILE)
     protocol_readme = _read(PROTOCOL_README)
     blueprint = _read(BLUEPRINT)
     combined = (
@@ -56,6 +58,8 @@ def main() -> None:
         + "\n"
         + role_state_machine
         + "\n"
+        + role_profile
+        + "\n"
         + protocol_readme
         + "\n"
         + blueprint
@@ -63,6 +67,7 @@ def main() -> None:
     compact_protocol = re.sub(r"\s+", " ", protocol)
     compact_lane_contract = re.sub(r"\s+", " ", lane_contract)
     compact_role_state_machine = re.sub(r"\s+", " ", role_state_machine)
+    compact_role_profile = re.sub(r"\s+", " ", role_profile)
 
     _assert_public_safe(combined, "decentralized auto-research docs")
 
@@ -95,6 +100,7 @@ def main() -> None:
     assert "auto_research_role_state_machine_v0" in protocol
     assert "auto_research_lane_contract_v1" in protocol_readme
     assert "auto_research_role_state_machine_v0" in protocol_readme
+    assert "auto_research_role_profile_v0" in protocol_readme
 
     required_lane_terms = [
         "auto_research_lane_contract_v1",
@@ -157,6 +163,35 @@ def main() -> None:
     assert "Gate handling is a transition duty" in compact_role_state_machine
     for future_role in ("Frontier janitor", "Synthesis narrator", "Gate steward"):
         assert f"| {future_role} |" in role_state_machine, f"future split missing {future_role}"
+
+    required_role_profile_terms = [
+        "auto_research_role_profile_v0",
+        "LoopX control plane",
+        "Role-aware skill",
+        "AGENTS.md",
+        "Host launcher",
+        "agent_id",
+        "role_id",
+        "phase",
+        "capability_token",
+        "allowed_actions",
+        "write_scope",
+        "protected_scope",
+        "required_skill",
+        "skill_section",
+        "stop_conditions",
+        "research_curator",
+        "hypothesis_mapper",
+        "evidence_runner",
+        "evidence_verifier",
+        "loopx-auto-research",
+        "quota should-run --goal-id",
+        "The pane title is cosmetic",
+    ]
+    for term in required_role_profile_terms:
+        assert term in role_profile, f"role profile missing {term!r}"
+    assert "skills useful without letting them become a second source of identity" in compact_role_profile
+    assert "identity comes from the profile and quota/frontier" in compact_role_profile
 
     required_blueprint_terms = [
         "Decentralized Auto Research: k-NN Speedup",

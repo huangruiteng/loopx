@@ -18,6 +18,7 @@ The auto-research kernel is intentionally split into three protocol surfaces:
 | `decentralized_auto_research_state_v0` | Record and projection shapes: contract, todo-linked hypothesis, evidence event, frontier, evidence graph, showcase projection. | Which role may write each transition. |
 | `auto_research_lane_contract_v1` | Capability ownership for curator, proposer, executor, evaluator, and narrator lanes. | The ordered state machine and transition evidence. |
 | `auto_research_role_state_machine_v0` | Digital employee role map, state transition rules, takeover gates, and no-leader invariants. | Runtime scheduling, model prompts, or hidden orchestration. |
+| `auto_research_role_profile_v0` | Per-worker identity packet: `agent_id`, role, phase, capability, write scope, required skill section, AGENTS overlay, and stop conditions. | Research source records, phase checklist prose, or authority beyond quota/frontier. |
 
 All three contracts are peer artifacts under `docs/reference/protocols/`.
 Together they are the public-safe control-plane map for auto research.

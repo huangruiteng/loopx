@@ -20,6 +20,7 @@ Current contracts:
 - [decentralized_auto_research_state_v0](decentralized-auto-research-state-v0.md)
 - [auto_research_lane_contract_v1](auto-research-lane-contract-v1.md)
 - [auto_research_role_state_machine_v0](auto-research-role-state-machine-v0.md)
+- [auto_research_role_profile_v0](auto-research-role-profile-v0.md)
 - [global_manager_command_v0](global-manager-command-v0.md)
 - [pr_review_command_v0](pr-review-command-v0.md)
 - [event_sourced_state_contract_v0](event-sourced-state-contract-v0.md)
