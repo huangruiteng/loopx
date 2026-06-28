@@ -17,6 +17,7 @@ from loopx.status import collect_status
 
 GOAL_ID = "refresh-state-agent-lane-goal"
 PRIMARY_ACTION = "Run the primary benchmark bootstrap hardening slice."
+PRIMARY_AGENT_LANE_ACTION = "Continue the primary adapter lifecycle rollout repair."
 SIDE_ACTION = "Polish the hosted frontstage showcase for external developers."
 
 
@@ -139,12 +140,59 @@ def main() -> None:
             item = next(item for item in items if item["goal_id"] == GOAL_ID)
             assert item["status"] == "terminal_bench_primary_ready", item
             assert item["recommended_action"] == PRIMARY_ACTION, item
+            assert item["latest_run_recommended_action"] == PRIMARY_ACTION, item
+            assert item["latest_run_recommended_action_source"] == "latest_status_run", item
             lane = item["agent_lane_recommendation"]
             assert lane["progress_scope"] == "agent_lane", lane
             assert lane["agent_id"] == "codex-side-bypass", lane
             assert lane["agent_lane"] == "productization_frontstage", lane
             assert lane["recommended_action"] == SIDE_ACTION, lane
             assert item["project_asset"]["agent_lane_recommendation"] == lane, item
+
+            state_refresh.now_local = lambda: "2026-06-20T00:02:00+00:00"
+            primary_lane_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="adapter_lifecycle_primary_lane_next",
+                recommended_action=PRIMARY_AGENT_LANE_ACTION,
+                next_action=PRIMARY_AGENT_LANE_ACTION,
+                delivery_batch_scale="single_surface",
+                delivery_outcome="outcome_progress",
+                agent_id="codex-main-control",
+                agent_lane="adapter_lifecycle_rollout",
+                dry_run=False,
+                sync_global=False,
+            )
+            assert primary_lane_payload["progress_scope"] == "agent_lane", primary_lane_payload
+            assert primary_lane_payload["agent_id"] == "codex-main-control", primary_lane_payload
+
+            primary_lane_status = collect_status(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                scan_roots=[project],
+                limit=5,
+            )
+            primary_lane_item = next(
+                item
+                for item in primary_lane_status["attention_queue"]["items"]
+                if item["goal_id"] == GOAL_ID
+            )
+            assert primary_lane_item["status"] == "terminal_bench_primary_ready", primary_lane_item
+            assert primary_lane_item["recommended_action"] == PRIMARY_ACTION, primary_lane_item
+            assert (
+                primary_lane_item["active_state_next_action"] == PRIMARY_AGENT_LANE_ACTION
+            ), primary_lane_item
+            assert (
+                primary_lane_item["latest_run_recommended_action"] == PRIMARY_AGENT_LANE_ACTION
+            ), primary_lane_item
+            assert (
+                primary_lane_item["latest_run_recommended_action_source"]
+                == "agent_lane_recommendation"
+            ), primary_lane_item
+            assert "next_action_projection_warning" not in primary_lane_item, primary_lane_item
     finally:
         state_refresh.now_local = original_now_local
 

@@ -1891,6 +1891,44 @@
           }
         }
       },
+      "goal_start_transport_monitor": {
+        "schema_version": "skillsbench_goal_start_transport_monitor_v0",
+        "observed_at": "2026-06-27T23:32:28Z",
+        "run_group_id": "skillsbench-raw-new-goal-start-20260627T0420Z",
+        "arm_id": "raw_codex_autonomous_max5",
+        "route": "raw_codex_autonomous_max5",
+        "monitor_todo_id": "todo_45357c108d81",
+        "monitor_target_key": "skillsbench-goalstart-remote-public-compact-poll",
+        "source_artifact_count": 3,
+        "source_artifacts": [
+          "benchmark_run.compact.json",
+          "loopx_controller_trace.public.json",
+          "runner_prerequisites.public.json"
+        ],
+        "official_score_status": "missing",
+        "official_task_score_passed": false,
+        "score_failure_attribution": "skillsbench_codex_acp_provider_zero_activity",
+        "first_blocker": "skillsbench_codex_acp_provider_zero_activity",
+        "last_decision": "break_after_agent_round_preserve_final_verify",
+        "benchflow_user_loop_final_verify_recovery_triggered": true,
+        "benchflow_user_loop_recovery_exception_type": "timeouterror",
+        "benchflow_user_loop_recovery_stage": "soft_verify",
+        "codex_acp_text_bytes": 0,
+        "loopx_cli_call_count": 0,
+        "max_round_observed": 0,
+        "tool_call_count": 0,
+        "loopx_controller_trace_present": true,
+        "loopx_lifecycle_observed": false,
+        "goal_start_product_mode": false,
+        "matrix_unblocked": false,
+        "semantic_unblock_condition": "not_met_no_solver_output_no_goal_start_new_arm_compact",
+        "conclusion": "The current host-local goal-start transport monitor observed only raw-arm compact/public artifacts. The compact result still attributes the raw arm to provider zero activity with zero ACP text bytes, so it does not unblock the raw/new matrix or contradict the existing citation-check product-mode solution-quality attribution.",
+        "raw_logs_read": false,
+        "raw_task_text_read": false,
+        "raw_trajectory_read": false,
+        "raw_verifier_output_read": false,
+        "local_paths_recorded": false
+      },
       "canonical_product_mode_every_round_recheck": {
         "schema_version": "skillsbench_canonical_product_mode_recheck_v0",
         "protocol": "canonical_loopx_product_mode_lifecycle_driver",
@@ -1926,6 +1964,52 @@
         "reward_feedback_forwarded": false,
         "conclusion": "The every-round canonical product-mode rerun produced public-safe soft-verify counters and full LoopX lifecycle evidence. It stopped after round 1 because the agent declared done and final official scoring returned 0.0; attribution is solution/case failure, not missing lifecycle, transport, or final-only reward sampling.",
         "product_fix_status": "Every-round private soft verify is now the canonical product-mode default; the separate soft-timeout cleanup path is covered by runner smoke and did not need to trigger in this completed run."
+      },
+      "goal_start_bridge_timeout_recheck": {
+        "schema_version": "skillsbench_goal_start_bridge_timeout_recheck_v0",
+        "route": "loopx_goal_start_product_mode",
+        "official_score": 0.0,
+        "score_failure_attribution": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+        "first_blocker": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+        "every_round_reward_observation_count": 13,
+        "controller_followup_prompt_count": 13,
+        "controller_stop_decision_count": 0,
+        "controller_official_success_observed": false,
+        "trajectory_public_summary": {
+          "schema_version": "skillsbench_acp_trajectory_summary_v0",
+          "attribution_conclusion": "The goal-start citation-check treatment reached thirteen controller rounds with every-round reward observations but never produced tool calls, LoopX CLI calls, or LoopX state reads/writes in the ACP trajectory; compact runner evidence attributes the 0.0 score to a host-local Codex exec bridge idle timeout rather than task-solving content or verifier feedback being exposed to the agent.",
+          "private_trajectory_present": true,
+          "raw_text_copied_to_public": false,
+          "raw_task_text_copied_to_public": false,
+          "raw_verifier_output_copied_to_public": false,
+          "host_path_recorded": false,
+          "round_count": 13,
+          "event_count": 39,
+          "agent_message_count": 13,
+          "tool_call_count": 0,
+          "loopx_cli_call_count": 0,
+          "loopx_cli_calls": [],
+          "loopx_cli_state_usage_counts": {},
+          "loopx_cli_state_read_count": 0,
+          "loopx_cli_state_write_count": 0,
+          "loopx_case_state_path_count": 2,
+          "loopx_case_state_read_count": 0,
+          "loopx_case_state_write_count": 0,
+          "protected_path_edit_signal_count": 0,
+          "protected_path_mention_count": 0,
+          "codex_acp_text_present": false,
+          "codex_acp_text_bytes": 0,
+          "source_compact_run": {
+            "case_id": "citation-check",
+            "route": "skillsbench_loopx_goal_start_product_mode_treatment",
+            "official_score": 0.0,
+            "score_failure_attribution": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+            "first_blocker": "skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout",
+            "official_feedback_blinded": true,
+            "reward_feedback_forwarded": false,
+            "case_semantics_changed_by_harness": false
+          }
+        }
       }
     },
     {
@@ -4014,7 +4098,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-24T12:31:00Z",
+  "updated_at": "2026-06-28T17:56:06+08:00",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",

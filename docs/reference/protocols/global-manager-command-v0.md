@@ -24,7 +24,7 @@ Recommended first commands:
 | `/loopx-global-gates` | Show open user/controller gates and what each blocks. | current state |
 | `/loopx-global-todos` | Show top runnable, blocked, deferred-ready, and review todos. | current state |
 | `/loopx-global-risks` | Show stale runs, public/private boundary warnings, failing checks, and rollback candidates. | 24 hours |
-| `/loopx-pr-review` | Walk the current project's or explicit repository's unmerged GitHub PRs one by one with motivation, scope, checks, risks, and review prompts. | current open PRs |
+| `/loopx-pr-review` | Walk the current project's or explicit repository's open and merged GitHub PRs one by one with motivation, scope, checks, risks, and review prompts. | current open + merged PRs, optionally bounded by `--since` |
 | `/loop-goal-summary <goal id>` | Drill into one goal without scanning unrelated projects. | 24 hours |
 
 Commands are read-only by default. They can propose follow-up actions, but
@@ -49,7 +49,7 @@ and then enters the quota-gated automation flow.
 
 Related repo-review command: `/loopx-pr-review` is covered by
 [`pr_review_command_v0`](pr-review-command-v0.md). It is read-only and helps a
-human review open PRs in the caller's current project or an explicit
+human review open and merged PRs in the caller's current project or an explicit
 `--repo owner/repo` target; it does not approve, comment, merge, or spend quota.
 
 ## Request Shape

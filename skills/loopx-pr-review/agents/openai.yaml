@@ -1,0 +1,4 @@
+interface:
+  display_name: "LoopX PR Review"
+  short_description: "Guide agentloop through LoopX PR review queues"
+  default_prompt: "Use /loopx-pr-review to fetch the PR queue, preserve the full packet contract, read selected PR evidence, and produce five-block reviews."

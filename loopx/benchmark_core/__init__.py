@@ -64,7 +64,9 @@ from .io import (
     optional_positive_int,
 )
 from .observable_handles import (
+    BENCHMARK_LAUNCH_OBSERVABLE_HANDLE_SCHEMA_VERSION,
     BENCHMARK_OBSERVABLE_HANDLE_POLICY_SCHEMA_VERSION,
+    build_benchmark_launch_observable_handle,
     build_benchmark_observable_handle_policy,
 )
 from .parity import (
@@ -111,6 +113,7 @@ __all__ = [
     "BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION",
     "BENCHMARK_LOOP_CONTROLLER_TRACE_SCHEMA_VERSION",
     "BENCHMARK_LOOP_PROTOCOL_SCHEMA_VERSION",
+    "BENCHMARK_LAUNCH_OBSERVABLE_HANDLE_SCHEMA_VERSION",
     "BENCHMARK_OBSERVABLE_HANDLE_POLICY_SCHEMA_VERSION",
     "BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION",
     "BENCHMARK_ROUND_ARTIFACT_RESTORE_PLAN_SCHEMA_VERSION",
@@ -128,6 +131,7 @@ __all__ = [
     "build_benchmark_attempt_accounting",
     "build_benchmark_loop_contract",
     "build_benchmark_loop_controller_trace",
+    "build_benchmark_launch_observable_handle",
     "build_benchmark_observable_handle_policy",
     "build_round_artifact_restore_plan",
     "build_benchmark_candidate_source_boundary",

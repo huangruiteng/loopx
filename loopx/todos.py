@@ -148,7 +148,7 @@ def inherit_todo_priority(next_text: str, source_text: str | None) -> str:
 def normalize_monitor_metadata(metadata: dict[str, Any] | None) -> dict[str, str]:
     normalized: dict[str, str] = {}
     for key, value in (metadata or {}).items():
-        if key not in {"target_key", "cadence", "next_due_at"}:
+        if key not in TODO_MONITOR_METADATA_FIELDS:
             continue
         candidate = str(value or "").strip()
         if candidate:
@@ -157,6 +157,15 @@ def normalize_monitor_metadata(metadata: dict[str, Any] | None) -> dict[str, str
         raise ValueError("--cadence must look like 30m, 2h, or 1d")
     if "next_due_at" in normalized and parse_timestamp(normalized["next_due_at"]) is None:
         raise ValueError("--next-due-at must be an ISO timestamp")
+    if "last_checked_at" in normalized and parse_timestamp(normalized["last_checked_at"]) is None:
+        raise ValueError("--last-checked-at must be an ISO timestamp")
+    if "consecutive_no_change" in normalized:
+        try:
+            int(normalized["consecutive_no_change"])
+        except ValueError as exc:
+            raise ValueError("--consecutive-no-change must be an integer") from exc
+    if "material_change" in normalized and normalized["material_change"] not in {"true", "false"}:
+        raise ValueError("--material-change metadata must be true or false")
     return normalized
 
 

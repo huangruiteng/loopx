@@ -1,10 +1,10 @@
 {
-  "repository": "huangruiteng/loopx",
+  "repository": "owner/repo",
   "pull_requests": [
     {
       "number": 773,
       "title": "docs: add newcomer command path",
-      "url": "https://github.com/huangruiteng/loopx/pull/773",
+      "url": "https://github.com/owner/repo/pull/773",
       "author": {"login": "huangruiteng"},
       "baseRefName": "main",
       "headRefName": "codex/side-bypass-command-surface-20260627",
@@ -33,7 +33,7 @@
     {
       "number": 771,
       "title": "docs: add public showcase pages and experimental value path",
-      "url": "https://github.com/huangruiteng/loopx/pull/771",
+      "url": "https://github.com/owner/repo/pull/771",
       "author": {"login": "huangruiteng"},
       "baseRefName": "main",
       "headRefName": "codex/hardware-canonical-showcases",
@@ -64,7 +64,7 @@
     {
       "number": 775,
       "title": "draft: explore PR review dashboard cards",
-      "url": "https://github.com/huangruiteng/loopx/pull/775",
+      "url": "https://github.com/owner/repo/pull/775",
       "author": {"login": "huangruiteng"},
       "baseRefName": "main",
       "headRefName": "codex/pr-review-dashboard-cards",
@@ -83,6 +83,36 @@
         {"messageHeadline": "draft: explore PR review cards"}
       ],
       "statusCheckRollup": []
+    },
+    {
+      "number": 770,
+      "title": "runtime: align quota gate prompt",
+      "url": "https://github.com/owner/repo/pull/770",
+      "state": "MERGED",
+      "author": {"login": "huangruiteng"},
+      "baseRefName": "main",
+      "headRefName": "codex/quota-gate-prompt-alignment",
+      "updatedAt": "2026-06-27T12:25:00Z",
+      "closedAt": "2026-06-27T12:25:00Z",
+      "mergedAt": "2026-06-27T12:25:00Z",
+      "mergeCommit": {"oid": "abc1234def5678"},
+      "isDraft": false,
+      "reviewDecision": "REVIEW_REQUIRED",
+      "mergeStateStatus": "UNKNOWN",
+      "body": "Aligns quota gate prompt wording with scoped user todo projection and keeps merged PRs visible for post-merge review.",
+      "changedFiles": 2,
+      "additions": 60,
+      "deletions": 8,
+      "files": [
+        {"path": "src/gate_prompt.py", "additions": 42, "deletions": 6},
+        {"path": "examples/protocol-action-packet-smoke.py", "additions": 18, "deletions": 2}
+      ],
+      "commits": [
+        {"messageHeadline": "runtime: align gate prompt with scoped todos"}
+      ],
+      "statusCheckRollup": [
+        {"name": "quota-smoke", "status": "COMPLETED", "conclusion": "SUCCESS"}
+      ]
     }
   ]
 }

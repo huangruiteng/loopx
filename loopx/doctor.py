@@ -32,6 +32,12 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "--delivery-batch-scale multi_surface",
         "--delivery-outcome outcome_progress",
     ),
+    "loopx-pr-review": (
+        "loopx --format json pr-review --state all",
+        "agent_response_contract",
+        "Do not pipe the first packet through `jq`",
+        "Do not use this skill to approve",
+    ),
     "loopx-doc-registry": (
         "Use even when the user does not mention LoopX or doc registry",
         "use `.loopx/registry.json` as the project-local doc registry",

@@ -254,6 +254,21 @@ def test_benchmark_facade_has_no_shadowed_top_level_definitions() -> None:
     assert duplicates == []
 
 
+def test_adapter_rollout_matrix_records_current_migration_order() -> None:
+    doc = (
+        REPO_ROOT
+        / "docs"
+        / "research"
+        / "long-horizon-agent-benchmarks"
+        / "benchmark-core-adapter-contract-v0.md"
+    ).read_text(encoding="utf-8")
+    assert "## Adapter Rollout Matrix" in doc
+    assert "| Terminal-Bench | `loopx.benchmark_adapters.terminal_bench` | First migration target." in doc
+    assert "Map goal-start `/loopx` raw/new runs into the same launch/observe/ingest/classify/ledger fields" in doc
+    assert "| SWE-Marathon | no dedicated adapter yet |" in doc
+    assert "do not add SWE-specific conventions to `benchmark_core`" in doc
+
+
 def main() -> int:
     assert_adapter(FixtureAdapter())
     test_process_started_is_not_case_entry()
@@ -265,6 +280,7 @@ def main() -> int:
     test_benchmark_adapter_modules_own_public_config()
     test_benchmark_adapter_modules_own_helper_surfaces()
     test_benchmark_facade_has_no_shadowed_top_level_definitions()
+    test_adapter_rollout_matrix_records_current_migration_order()
     print("benchmark-core-adapter-contract-smoke ok")
     return 0
 

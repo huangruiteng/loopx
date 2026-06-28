@@ -15,7 +15,7 @@ missed migration work.
 - Python package/import: `loopx`.
 - Local project state: `.loopx/registry.json`.
 - Global runtime state: `~/.codex/loopx`.
-- Skill names: `loopx-project`, `loopx-doc-registry`, and
+- Skill names: `loopx-project`, `loopx-pr-review`, `loopx-doc-registry`, and
   `loopx-self-repair`.
 
 ## Migration Todo Batches

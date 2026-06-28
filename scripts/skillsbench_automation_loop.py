@@ -3902,7 +3902,15 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         return {}
 
     compact: dict[str, Any] = {}
-    for field in ("schema_version", "status", "sandbox", "selection_recommendation"):
+    for field in (
+        "schema_version",
+        "status",
+        "sandbox",
+        "task_id",
+        "first_blocker",
+        "alternate_source_kind",
+        "selection_recommendation",
+    ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
             compact[field] = raw[:180]
@@ -3913,9 +3921,21 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
         "dockerfile_present",
+        "canonical_task_present",
+        "alternate_source_supported_by_runner",
+        "task_source_path_recorded",
+        "task_source_content_recorded",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in ("nearest_canonical_task_ids",):
+        raw_items = value.get(field)
+        if isinstance(raw_items, list):
+            compact[field] = [
+                str(item)[:120]
+                for item in raw_items[:5]
+                if isinstance(item, str) and item
+            ]
     return compact
 
 
@@ -4279,6 +4299,19 @@ def dockerfile_needs_apt_retry_patch(dockerfile: Path) -> bool:
     return bool(re.search(r"\bapt(?:-get)?\s+update\b", text, flags=re.IGNORECASE))
 
 
+def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
+    text = str(value or "").strip()
+    cleaned = []
+    for char in text:
+        cleaned.append(
+            char.lower() if char.isalnum() or char in {"-", "_", "."} else "-"
+        )
+    label = "".join(cleaned).strip("-_.")
+    while "--" in label:
+        label = label.replace("--", "-")
+    return label[:limit]
+
+
 def skillsbench_task_setup_preflight(
     *,
     task_path: Path,
@@ -4286,20 +4319,63 @@ def skillsbench_task_setup_preflight(
 ) -> dict[str, Any]:
     """Return public-safe setup-shape facts before spending a full run."""
 
+    expanded_task_path = task_path.expanduser()
+    public_task_id = _skillsbench_public_task_label(expanded_task_path.name)
     preflight: dict[str, Any] = {
         "schema_version": "skillsbench_task_setup_preflight_v0",
         "sandbox": sandbox,
+        "task_id": public_task_id,
         "raw_task_text_read": False,
         "raw_logs_read": False,
         "raw_trajectory_read": False,
+        "task_source_path_recorded": False,
+        "task_source_content_recorded": False,
+        "canonical_task_present": False,
+        "alternate_source_supported_by_runner": False,
         "apt_setup_risk_detected": False,
         "apt_retry_patch_required": False,
     }
+    skillsbench_root = expanded_task_path.parent.parent
+    canonical_task_exists = expanded_task_path.is_dir()
+    preflight["canonical_task_present"] = canonical_task_exists
+    if not canonical_task_exists:
+        sanity_task = (
+            skillsbench_root
+            / "experiments"
+            / "sanity-tasks"
+            / expanded_task_path.name
+        )
+        alternate_source_kind = (
+            "experiments_sanity_tasks" if sanity_task.is_dir() else "none"
+        )
+        nearest: list[str] = []
+        canonical_root = skillsbench_root / "tasks"
+        if canonical_root.is_dir():
+            for child in sorted(canonical_root.iterdir(), key=lambda item: item.name):
+                if not child.is_dir():
+                    continue
+                label = _skillsbench_public_task_label(child.name)
+                if label:
+                    nearest.append(label)
+                if len(nearest) >= 5:
+                    break
+        preflight.update(
+            {
+                "status": "task_missing_from_canonical_tasks",
+                "first_blocker": "skillsbench_task_source_preflight_blocked",
+                "alternate_source_kind": alternate_source_kind,
+                "nearest_canonical_task_ids": nearest,
+                "selection_recommendation": (
+                    "choose_normal_tasks_candidate_or_use_explicit_sanity_source_runner"
+                ),
+            }
+        )
+        return preflight
     if sandbox != "docker":
         preflight["status"] = "not_applicable"
         return preflight
 
-    dockerfile = task_path.expanduser() / "environment" / "Dockerfile"
+    dockerfile = expanded_task_path / "environment" / "Dockerfile"
     dockerfile_exists = dockerfile.exists()
     preflight["dockerfile_present"] = dockerfile_exists
     if not dockerfile_exists:
@@ -8554,7 +8630,10 @@ def reduce_result(
     from loopx.benchmark import (
         build_skillsbench_benchflow_result_benchmark_run,
     )
-    from loopx.status import compact_benchmark_run
+    from loopx.status import (
+        build_skillsbench_post_run_debug_gate,
+        compact_benchmark_run,
+    )
 
     controller_trace = _read_controller_trace(plan)
     _merge_acp_trajectory_summary(plan, controller_trace)
@@ -8681,6 +8760,7 @@ def reduce_result(
     if goal_start_control_score:
         compact["goal_start_product_mode_control_score"] = goal_start_control_score
     compact["case_event_timeline"] = _build_case_event_timeline(compact, plan)
+    compact["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(compact)
     return compact
 
 
@@ -8756,7 +8836,10 @@ def build_runner_failure_compact(
         skillsbench_runner_error_attribution,
         skillsbench_runner_error_fingerprint,
     )
-    from loopx.status import compact_benchmark_run
+    from loopx.status import (
+        build_skillsbench_post_run_debug_gate,
+        compact_benchmark_run,
+    )
 
     plan.setdefault("runner_prerequisites", {})
     _ensure_runner_interruption_prerequisites(plan, exc)
@@ -8841,6 +8924,11 @@ def build_runner_failure_compact(
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
         _sync_relay_closeout_counts_into_compact(compact, runner_prerequisites)
+    task_setup_preflight = _public_task_setup_preflight(
+        plan.get("task_setup_preflight")
+    )
+    if task_setup_preflight:
+        compact["task_setup_preflight"] = task_setup_preflight
     task_staging = _effective_public_task_staging(plan)
     if task_staging:
         compact["task_staging"] = task_staging
@@ -8886,6 +8974,7 @@ def build_runner_failure_compact(
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
+    reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
     return reduced
 
 
@@ -9527,6 +9616,17 @@ async def async_main(
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench apt setup risk preflight blocked: "
             "apt-based Docker setup risk detected before full case run"
+        )
+    if (
+        not args.reduce_only
+        and setup_preflight.get("status") == "task_missing_from_canonical_tasks"
+    ):
+        staging = plan.setdefault("task_staging", {})
+        if isinstance(staging, dict):
+            staging["task_source_preflight_blocked"] = True
+        raise SkillsBenchSetupPreflightBlocked(
+            "skillsbench task source preflight blocked: "
+            "task missing from canonical tasks source before full case run"
         )
 
     if (
