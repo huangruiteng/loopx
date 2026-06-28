@@ -461,6 +461,89 @@ def _metadata_risk_hint(pr: dict[str, Any], files: list[dict[str, Any]], checks:
     }
 
 
+def _main_regression_analysis(pr: dict[str, Any], files: list[dict[str, Any]]) -> dict[str, Any]:
+    areas = _area_counts(files)
+    checks = _checks(pr)
+    state = str(pr.get("state") or "").upper()
+    changed = int(pr.get("changedFiles") or len(files) or 0)
+    additions = int(pr.get("additions") or 0)
+    deletions = int(pr.get("deletions") or 0)
+    churn = additions + deletions
+    area_names = {str(item.get("area") or "other") for item in files}
+
+    potential_regressions: list[str] = []
+    bug_risks: list[str] = []
+    verification_focus: list[str] = []
+
+    if "product_runtime" in area_names:
+        potential_regressions.append(
+            "Runtime or CLI behavior can regress: command output, data parsing, scheduling/routing, or public API compatibility may change on main."
+        )
+        bug_risks.append("A small runtime mismatch can break automation, hide actionable work, or make existing scripts parse stale fields.")
+        verification_focus.append("Run the affected CLI/runtime smoke and inspect one representative JSON or markdown packet.")
+    if "app_or_ui_surface" in area_names:
+        potential_regressions.append(
+            "User-facing surfaces can regress: navigation, first-screen hierarchy, responsive layout, or hover/review affordances may change."
+        )
+        bug_risks.append("Fixture data can pass while the browser view hides important review context or renders controls poorly.")
+        verification_focus.append("Run the affected UI/frontstage smoke or capture the route in a browser when presentation changes.")
+    if "ci_or_release" in area_names or "build_or_config" in area_names:
+        potential_regressions.append(
+            "Build, install, or CI behavior can regress: workflow triggers, dependency resolution, or required checks may change for later PRs."
+        )
+        bug_risks.append("A config-only diff can block future validation even when product code is unchanged.")
+        verification_focus.append("Run `git diff --check` and the narrow build/check command that consumes the touched config.")
+    if "public_entry_or_policy" in area_names:
+        potential_regressions.append(
+            "Public entry or policy wording can regress: first-screen promises, maintainer rules, or contributor expectations may drift."
+        )
+        bug_risks.append("A prominent docs change can authorize behavior that the runtime or repository policy does not actually support.")
+        verification_focus.append("Compare the public entry text with current CLI help, AGENTS policy, and any first-screen review gate.")
+    if areas and area_names <= {"public_docs", "test_or_example"}:
+        potential_regressions.append(
+            "Runtime regression risk is low, but public guidance or smoke expectations can drift from shipped behavior."
+        )
+        bug_risks.append("Docs-only or smoke-only changes can bless stale contracts if examples no longer match the real command path.")
+        verification_focus.append("Run `git diff --check` and the touched smoke; compare command examples with current CLI help when syntax is involved.")
+    if not potential_regressions:
+        potential_regressions.append(
+            "Regression shape is unclear from metadata alone; inspect the highest-churn files before approving."
+        )
+        bug_risks.append("Unclassified files may still affect generated assets, packaging, or reviewer workflow assumptions.")
+        verification_focus.append("Review the diff for the top changed files and run the nearest project smoke.")
+
+    if checks.get("failures"):
+        bug_risks.insert(0, "Failing status checks indicate the branch may already break a required validation surface.")
+        verification_focus.insert(0, "Inspect failing checks before merge and rerun them after fixes.")
+    elif checks.get("pending"):
+        bug_risks.append("Pending checks leave merge readiness uncertain.")
+        verification_focus.append("Wait for pending checks or run the equivalent local smoke before merge.")
+    elif not checks.get("total"):
+        bug_risks.append("No status-check rollup was available, so validation coverage must be inferred from local evidence.")
+        verification_focus.append("Run at least one focused local validation command before approving.")
+
+    has_sensitive_area = bool(area_names & {"product_runtime", "app_or_ui_surface", "ci_or_release", "build_or_config"})
+    if checks.get("failures") or changed >= 12 or churn >= 800 or (state == "MERGED" and has_sensitive_area):
+        level = "high"
+    elif has_sensitive_area or checks.get("pending") or not checks.get("total"):
+        level = "medium"
+    else:
+        level = "low"
+
+    return {
+        "schema_version": "main_regression_analysis_v0",
+        "risk_level": level,
+        "risk_summary": (
+            f"{RISK_LEVEL_LABELS.get(level, level)} main regression risk across {_area_phrase(areas)}; "
+            f"{changed} file(s), +{additions}/-{deletions}; checks={_check_brief_phrase(checks)}."
+        ),
+        "potential_regressions": potential_regressions[:5],
+        "bug_risks": bug_risks[:5],
+        "verification_focus": verification_focus[:5],
+        "post_merge_review": state == "MERGED" or bool(pr.get("mergedAt") or pr.get("merged_at")),
+    }
+
+
 def _section(label: str, word_hint: str, instruction: str) -> dict[str, str]:
     return {
         "label": label,
@@ -629,6 +712,7 @@ def _review_priority(pr: dict[str, Any], files: list[dict[str, Any]]) -> tuple[i
 
 
 def _review_sequence_entry(item: dict[str, Any], *, rank: int) -> dict[str, Any]:
+    main_risk = _as_dict(item.get("main_regression_analysis"))
     return {
         "rank": rank,
         "number": item.get("number"),
@@ -637,6 +721,7 @@ def _review_sequence_entry(item: dict[str, Any], *, rank: int) -> dict[str, Any]
         "state": item.get("state"),
         "review_depth": item.get("review_depth"),
         "risk_hint_level": _as_dict(item.get("metadata_risk_hint")).get("level"),
+        "main_risk_level": main_risk.get("risk_level"),
         "why_now": _review_why_now(item),
     }
 
@@ -679,6 +764,7 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
         "review_depth": _review_depth(files),
         "risk_notes": _risk_notes(pr, files),
         "metadata_risk_hint": _metadata_risk_hint(pr, files, checks),
+        "main_regression_analysis": _main_regression_analysis(pr, files),
         "review_goal": "Fill the five-block review template after reading the PR body and diff.",
         "evidence_commands": [
             f"gh pr view {number} --json title,body,files,commits,statusCheckRollup",
@@ -783,6 +869,7 @@ def build_pr_review_packet(
                 "change_scope",
                 "checks",
                 "metadata_risk_hint",
+                "main_regression_analysis",
                 "risk_notes",
                 "review_sequence",
             ],
@@ -880,7 +967,8 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
             lines.append(
                 f"{item.get('rank')}. [#{item.get('number')} {item.get('title')}]({item.get('url')}) "
                 f"[{item.get('state')}] - "
-                f"{item.get('review_depth')} / risk_hint=`{item.get('risk_hint_level')}`: {item.get('why_now')}"
+                f"{item.get('review_depth')} / main_risk=`{item.get('main_risk_level')}` "
+                f"/ risk_hint=`{item.get('risk_hint_level')}`: {item.get('why_now')}"
             )
 
     append_group(unmerged)
@@ -894,7 +982,8 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         lines.append(
             f"{item.get('rank')}. [#{item.get('number')} {item.get('title')}]({item.get('url')}) "
             f"[{item.get('state')}] - "
-            f"{item.get('review_depth')} / risk_hint=`{item.get('risk_hint_level')}`: {item.get('why_now')}"
+            f"{item.get('review_depth')} / main_risk=`{item.get('main_risk_level')}` "
+            f"/ risk_hint=`{item.get('risk_hint_level')}`: {item.get('why_now')}"
         )
 
     for pr in [item for item in _as_list(payload.get("pull_requests")) if isinstance(item, dict)]:
@@ -923,6 +1012,20 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
                 f"({'; '.join(str(item) for item in _as_list(risk_hint.get('basis')))})"
             )
             lines.append(f"- risk hint disclaimer: {risk_hint.get('disclaimer')}")
+        main_risk = _as_dict(pr.get("main_regression_analysis"))
+        if main_risk:
+            lines.append(
+                f"- main regression analysis: `{main_risk.get('risk_level')}` - "
+                f"{main_risk.get('risk_summary')}"
+            )
+            for label, key in (
+                ("potential regressions", "potential_regressions"),
+                ("bug risks", "bug_risks"),
+                ("verification focus", "verification_focus"),
+            ):
+                values = [str(item) for item in _as_list(main_risk.get(key)) if item]
+                if values:
+                    lines.append(f"  - {label}: " + "; ".join(values[:3]))
         commits = [item for item in _as_list(pr.get("commit_headlines")) if item]
         if commits:
             lines.append("- commits: " + "; ".join(f"`{item}`" for item in commits))

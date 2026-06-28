@@ -16,7 +16,7 @@ push, spend LoopX quota, or mark LoopX todos complete.
 
 | Command | CLI reference | Intent |
 | --- | --- | --- |
-| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository and provide a blank five-block review template for each PR. Agentloop reads the PR body/diff and fills the review. |
+| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO]` | List open and merged PRs for the current project or explicit repository, provide concrete main-regression analysis for each PR, and include a blank five-block template that agentloop fills after reading the selected PR body/diff. |
 
 The slash command must run the CLI first. Agentloop must not reconstruct the
 review window by manually calling `gh pr view` / `gh pr list` for every PR. The
@@ -84,6 +84,7 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "state": "OPEN",
       "review_depth": "docs_and_smoke_review",
       "risk_hint_level": "low",
+      "main_risk_level": "low",
       "why_now": "Open and awaiting reviewer decision."
     }
   ],
@@ -158,6 +159,21 @@ absolute paths, private source bodies, or hidden CI artifacts.
         "basis": ["areas=公开文档 3", "scale=3 files +90/-4", "checks=2 pass"],
         "disclaimer": "Metadata-only hint for queue ordering; agentloop must read the PR diff before judging main risk."
       },
+      "main_regression_analysis": {
+        "schema_version": "main_regression_analysis_v0",
+        "risk_level": "low",
+        "risk_summary": "低 main regression risk across 公开文档 3; 3 file(s), +90/-4; checks=2 pass.",
+        "potential_regressions": [
+          "Runtime regression risk is low, but public guidance or smoke expectations can drift from shipped behavior."
+        ],
+        "bug_risks": [
+          "Docs-only or smoke-only changes can bless stale contracts if examples no longer match the real command path."
+        ],
+        "verification_focus": [
+          "Run `git diff --check` and the touched smoke; compare command examples with current CLI help when syntax is involved."
+        ],
+        "post_merge_review": false
+      },
       "risk_notes": [],
       "evidence_commands": [
         "gh pr view 773 --json title,body,files,commits,statusCheckRollup",
@@ -183,11 +199,14 @@ The packet should let a reviewer move through PRs in order:
 2. Then use `review_groups.merged` for post-merge audit and follow-up quality.
 3. Use `evidence_commands`, key files, changed-file scale, and checks to open
    the actual PR body and diff.
-4. Let agentloop fill the blank five-block template:
+4. Read `main_regression_analysis` before filling risk prose. It is the CLI's
+   concrete, generated view of potential main regressions, bug risks, and
+   focused validation.
+5. Let agentloop fill the blank five-block template:
    `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.
-5. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
+6. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
    copied as the final risk judgement.
-6. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
+7. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
 
 ## Acceptance Checks
 
@@ -202,7 +221,8 @@ A first implementation is acceptable when:
 - `--since` can bound an overnight or release-window review without relying on
   private chat memory;
 - the response includes review sequence, changed-file scope, status checks,
-  key files, risk notes, metadata-only risk hints, evidence commands, explicit
+  key files, risk notes, metadata-only risk hints, concrete
+  `main_regression_analysis`, evidence commands, explicit
   `review_groups.unmerged` / `review_groups.merged`, and a blank five-block
   review template;
 - the slash-command catalog marks `/loopx-pr-review` as `must_run_cli_first`
@@ -214,6 +234,9 @@ A first implementation is acceptable when:
   before writing the review;
 - `metadata_risk_hint` must be repository-generic and must not special-case
   LoopX files or domains;
+- `main_regression_analysis` must be repository-generic, must include
+  `potential_regressions`, `bug_risks`, and `verification_focus`, and must not
+  be replaced by a blank template;
 - live GitHub reads and fixture-based smokes share the same schema;
 - no raw logs, private payloads, credentials, local paths, or private source
   bodies are recorded.
