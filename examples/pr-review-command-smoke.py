@@ -167,7 +167,15 @@ def main() -> int:
     response_contract = payload["agent_response_contract"]
     assert response_contract["schema_version"] == "pr_review_agent_response_contract_v0", response_contract
     assert response_contract["table_only_response_allowed"] is False, response_contract
+    assert response_contract["slash_prefix_dominates_intent"] is True, response_contract
+    assert response_contract["stats_only_requires_explicit_opt_out"] is True, response_contract
     assert response_contract["queue_table_role"] == "preface_only", response_contract
+    assert response_contract["required_packet_fields_to_preserve"] == [
+        "agent_response_contract",
+        "review_groups",
+        "pull_requests[].review_template",
+        "pull_requests[].evidence_commands",
+    ], response_contract
     assert response_contract["required_final_sections"] == [
         "动机",
         "改动思路",
@@ -176,6 +184,9 @@ def main() -> int:
         "我的整体评价",
     ], response_contract
     assert any("Do not stop at the queue/table summary" in item for item in response_contract["instructions"])
+    assert any("open, closed, merged, today" in item for item in response_contract["instructions"])
+    assert any("drops agent_response_contract" in item or "Do not pipe the JSON packet" in item for item in response_contract["instructions"])
+    assert any("intended checked-out LoopX worktree" in item for item in response_contract["instructions"])
     merged = next(item for item in payload["pull_requests"] if item["number"] == 770)
     merged_risk_hint = merged["metadata_risk_hint"]
     assert merged_risk_hint["level"] == "medium", merged_risk_hint

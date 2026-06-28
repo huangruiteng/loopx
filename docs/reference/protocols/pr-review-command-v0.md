@@ -23,6 +23,18 @@ review window by manually calling `gh pr view` / `gh pr list` for every PR. The
 CLI packet's `review_groups.unmerged`, `review_groups.merged`, and
 `pull_requests[].review_template` are the authoritative queue. The packet's
 `evidence_commands` are for the second step: reading one selected PR deeply.
+Use the JSON form for the first pass so the response contract and per-PR blank
+templates enter the model context:
+
+```bash
+loopx --format json pr-review --state all [--repo owner/repo] [--since ISO]
+```
+
+Do not pipe that first packet through `jq` or another projection that only
+keeps `.summary` and `.review_sequence`; that drops
+`agent_response_contract`, `review_groups`, `pull_requests[].review_template`,
+and `pull_requests[].evidence_commands`, which are the fields that make the
+command a guided review instead of a statistics table.
 
 When `--state all` is used, the command must preserve both lifecycle groups.
 The `--limit` value is applied per group so a busy open queue cannot consume the
@@ -34,7 +46,11 @@ The agent response must not stop at a queue table. For `/loopx-pr-review`, the
 queue is only the preface; the final answer should review selected PRs one by
 one with five sections: `动机`, `改动思路`, `具体改动`, `对主干的风险`, and
 `我的整体评价`. A stats/list-only response is valid only when the user
-explicitly asks for stats or a list without review.
+explicitly asks for stats or a list without review. When the visible message
+starts with `/loopx-pr-review`, words such as `open`, `closed`, `merged`,
+`today`, or a time window are filters on the review queue, not permission to
+skip the review. Downgrade only for explicit opt-out phrases such as `只统计`,
+`只列出`, `stats only`, `list only`, `不要 review`, or `不用分析`.
 
 ## Source Reads
 
@@ -181,7 +197,15 @@ absolute paths, private source bodies, or hidden CI artifacts.
   "agent_response_contract": {
     "schema_version": "pr_review_agent_response_contract_v0",
     "table_only_response_allowed": false,
+    "slash_prefix_dominates_intent": true,
+    "stats_only_requires_explicit_opt_out": true,
     "queue_table_role": "preface_only",
+    "required_packet_fields_to_preserve": [
+      "agent_response_contract",
+      "review_groups",
+      "pull_requests[].review_template",
+      "pull_requests[].evidence_commands"
+    ],
     "required_final_sections": [
       "动机",
       "改动思路",
@@ -217,6 +241,11 @@ A response that only lists `Open` and `Merged` PRs, scale, and recommended next
 order is incomplete for `/loopx-pr-review`; it should continue into the
 per-PR five-block review cards after reading evidence.
 
+Similarly, a response that says it ran `loopx pr-review` but used a command like
+`loopx --format json pr-review ... | jq '.summary, .review_sequence'` is still
+incomplete: the tool call happened, but the contract/template fields were
+discarded before the agent planned its answer.
+
 ## Acceptance Checks
 
 A first implementation is acceptable when:
@@ -236,10 +265,11 @@ A first implementation is acceptable when:
   `review_groups.unmerged` / `review_groups.merged`, and a blank five-block
   review template;
 - the packet includes `agent_response_contract.table_only_response_allowed=false`
-  so slash-command agents know a table-only chat answer is incomplete;
+  and `agent_response_contract.required_packet_fields_to_preserve` so
+  slash-command agents know a table-only chat answer is incomplete;
 - the slash-command catalog marks `/loopx-pr-review` as `must_run_cli_first`
-  and says manual `gh` calls are only per-PR deep-read commands after the CLI
-  packet selects a PR;
+  and `slash_prefix_dominates_intent`, and says manual `gh` calls are only
+  per-PR deep-read commands after the CLI packet selects a PR;
 - each PR includes `review_template.sections` for `动机`, `改动思路`,
   `具体改动`, `对主干的风险`, and `我的整体评价`;
 - template sections must leave `content` empty so agentloop reads the real PR

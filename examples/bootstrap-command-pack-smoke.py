@@ -216,7 +216,12 @@ def test_skill_slash_fallback_contract() -> None:
     assert "loopx slash-commands" in skill_text
     assert "not project bootstrap commands" in normalized
     assert "`/loopx-pr-review`" in skill_text
-    assert "loopx pr-review --state all" in skill_text
+    assert "loopx --format json pr-review --state all" in skill_text
+    assert "full JSON first" in normalized
+    assert "agent_response_contract" in skill_text
+    assert "pull_requests[].review_template" in skill_text
+    assert "pull_requests[].evidence_commands" in skill_text
+    assert "`.summary` and `.review_sequence`" in skill_text
     assert "review_groups.unmerged" in skill_text
     assert "review_groups.merged" in skill_text
     assert "Do not reconstruct the review window" in normalized

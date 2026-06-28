@@ -101,15 +101,36 @@ def build_slash_command_catalog(
                 "schema_version": "slash_command_agent_contract_v0",
                 "must_run_cli_first": True,
                 "primary_cli": f"{cli_bin} pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
+                "visibility_cli": (
+                    f"{cli_bin} --format json pr-review [--repo owner/repo] "
+                    "[--state open|merged|all] [--since ISO]"
+                ),
+                "slash_prefix_dominates_intent": True,
+                "stats_only_requires_explicit_opt_out": True,
                 "authoritative_fields": [
+                    "agent_response_contract",
                     "review_groups.unmerged",
                     "review_groups.merged",
                     "pull_requests[].review_template",
                     "pull_requests[].evidence_commands",
                     "agent_response_contract.required_final_sections",
                 ],
+                "required_packet_fields_to_preserve": [
+                    "agent_response_contract",
+                    "review_groups",
+                    "pull_requests[].review_template",
+                    "pull_requests[].evidence_commands",
+                ],
                 "final_answer_contract": {
                     "table_only_response_allowed": False,
+                    "stats_only_opt_out_examples": [
+                        "只统计",
+                        "只列出",
+                        "stats only",
+                        "list only",
+                        "不要 review",
+                        "不用分析",
+                    ],
                     "required_sections": [
                         "动机",
                         "改动思路",
@@ -122,6 +143,12 @@ def build_slash_command_catalog(
                 "manual_gh_policy": (
                     "Use gh only after the CLI packet selects a PR; do not reconstruct "
                     "the review window or state grouping from ad hoc gh calls."
+                ),
+                "json_projection_policy": (
+                    "Do not pipe the first JSON packet to a summary-only projection. "
+                    "The agent must keep agent_response_contract, review_groups, "
+                    "pull_requests[].review_template, and pull_requests[].evidence_commands "
+                    "visible before planning the final answer."
                 ),
             },
         ),

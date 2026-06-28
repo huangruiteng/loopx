@@ -527,8 +527,24 @@ def _agent_response_contract() -> dict[str, Any]:
     return {
         "schema_version": "pr_review_agent_response_contract_v0",
         "table_only_response_allowed": False,
+        "slash_prefix_dominates_intent": True,
+        "stats_only_requires_explicit_opt_out": True,
         "queue_table_role": "preface_only",
         "default_review_scope": "Review PRs in review_groups.unmerged first, then review_groups.merged, bounded by the requested limit.",
+        "required_packet_fields_to_preserve": [
+            "agent_response_contract",
+            "review_groups",
+            "pull_requests[].review_template",
+            "pull_requests[].evidence_commands",
+        ],
+        "stats_only_opt_out_examples": [
+            "只统计",
+            "只列出",
+            "stats only",
+            "list only",
+            "不要 review",
+            "不用分析",
+        ],
         "required_final_sections": [
             "动机",
             "改动思路",
@@ -538,10 +554,13 @@ def _agent_response_contract() -> dict[str, Any]:
         ],
         "instructions": [
             "Run loopx pr-review first and use review_groups as the queue.",
+            "When the visible message starts with /loopx-pr-review, treat words such as open, closed, merged, today, or time windows as filters, not as permission to return stats only.",
             "Do not stop at the queue/table summary when the user invokes /loopx-pr-review.",
+            "Do not pipe the JSON packet through jq or another projection that drops agent_response_contract, review_groups, pull_requests[].review_template, or pull_requests[].evidence_commands before planning the final answer.",
             "For each selected PR, run the evidence_commands or equivalent PR body/diff reads before filling the five sections.",
             "Do not fill the five sections from metadata_risk_hint alone; metadata_risk_hint is only queue-ordering context.",
-            "If the user explicitly asks for stats/list-only, say that no detailed PR review was performed.",
+            "Use the installed loopx command or the intended checked-out LoopX worktree; if using python -m loopx.cli from a checkout, first confirm that checkout includes this response contract.",
+            "Only treat the request as stats/list-only when the user explicitly opts out of review with wording such as 只统计, 只列出, stats only, list only, 不要 review, or 不用分析; then say that no detailed PR review was performed.",
         ],
     }
 
@@ -913,10 +932,12 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         f"- counts: total=`{summary.get('total_pr_count')}`, open=`{summary.get('open_pr_count')}`, merged=`{summary.get('merged_pr_count')}`, review_attention=`{summary.get('review_attention_count')}`, draft=`{summary.get('draft_count')}`",
         "- tool contract: run `loopx pr-review` first and use its `review_groups`; use ad hoc `gh` commands only after selecting a PR from this packet.",
         "- final answer contract: queue/table is only a preface; `/loopx-pr-review` must return filled five-block review cards after reading PR evidence.",
+        "- intent contract: the `/loopx-pr-review` prefix dominates; words like open/closed/merged/today are filters unless the user explicitly asks for stats/list-only.",
         "",
         "## Agent Output Contract",
         "",
         "- Do not stop at the queue/table summary.",
+        "- Do not collapse this packet to `.summary` and `.review_sequence` only; preserve `agent_response_contract`, `review_groups`, `pull_requests[].review_template`, and `pull_requests[].evidence_commands`.",
         "- For each selected PR, read PR body/files/diff/checks first, then return one review card.",
         "- Required card headings: `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.",
         "- `metadata_risk_hint` is only queue-ordering metadata; do not copy it as the final risk judgment.",

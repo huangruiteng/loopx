@@ -43,11 +43,22 @@ def main() -> int:
     pr_review = commands["/loopx-pr-review"]
     assert pr_review["agent_contract"]["must_run_cli_first"] is True, pr_review
     assert "loopx pr-review" in pr_review["agent_contract"]["primary_cli"], pr_review
+    assert "loopx --format json pr-review" in pr_review["agent_contract"]["visibility_cli"], pr_review
+    assert pr_review["agent_contract"]["slash_prefix_dominates_intent"] is True, pr_review
+    assert pr_review["agent_contract"]["stats_only_requires_explicit_opt_out"] is True, pr_review
+    assert "agent_response_contract" in pr_review["agent_contract"]["authoritative_fields"], pr_review
     assert "review_groups.unmerged" in pr_review["agent_contract"]["authoritative_fields"], pr_review
     assert "review_groups.merged" in pr_review["agent_contract"]["authoritative_fields"], pr_review
     assert "agent_response_contract.required_final_sections" in pr_review["agent_contract"]["authoritative_fields"], pr_review
+    assert pr_review["agent_contract"]["required_packet_fields_to_preserve"] == [
+        "agent_response_contract",
+        "review_groups",
+        "pull_requests[].review_template",
+        "pull_requests[].evidence_commands",
+    ], pr_review
     final_contract = pr_review["agent_contract"]["final_answer_contract"]
     assert final_contract["table_only_response_allowed"] is False, final_contract
+    assert "只统计" in final_contract["stats_only_opt_out_examples"], final_contract
     assert final_contract["required_sections"] == [
         "动机",
         "改动思路",
@@ -56,6 +67,7 @@ def main() -> int:
         "我的整体评价",
     ], final_contract
     assert "do not reconstruct" in pr_review["agent_contract"]["manual_gh_policy"], pr_review
+    assert "summary-only projection" in pr_review["agent_contract"]["json_projection_policy"], pr_review
     onboarding = payload["onboarding"]
     assert onboarding["tell_new_users"] is True, onboarding
     assert "CLI help: `loopx slash-commands`." in onboarding["suggested_user_note"], onboarding
