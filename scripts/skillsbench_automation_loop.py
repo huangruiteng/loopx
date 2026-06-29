@@ -58,6 +58,7 @@ import importlib
 import inspect
 import json
 import logging
+import math
 import os
 import re
 import shlex
@@ -5320,6 +5321,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     result_path = jobs_dir / job_name / rollout_name / "result.json"
     compact_path = jobs_dir / job_name / rollout_name / "benchmark_run.compact.json"
     controller_trace_path = jobs_dir / job_name / "loopx_controller_trace.public.json"
+    runner_config_path = jobs_dir / job_name / "skillsbench_runner_config.public.json"
     app_server_goal_worker_trace_dir = (
         jobs_dir / job_name / "app_server_goal_worker_traces"
     )
@@ -5458,7 +5460,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "result_json": str(result_path),
         "compact_benchmark_run_json": str(compact_path),
         "controller_trace_json": str(controller_trace_path),
+        "runner_config_json": str(runner_config_path),
         "build_stall_timeout_sec": int(args.build_stall_timeout_sec or 0),
+        "product_mode_soft_verify_policy": intermediate_soft_verify_policy,
+        "soft_verifier_timeout_sec": int(args.soft_verifier_timeout_sec or 0),
+        "final_verifier_timeout_sec": int(args.final_verifier_timeout_sec or 0),
+        "case_success_stop_policy": "stop_on_first_official_reward_at_least_1",
+        "round_budget_policy": "formal_product_mode_min_10_default_16",
         "app_server_goal_worker_trace_dir": (
             str(app_server_goal_worker_trace_dir)
             if is_app_server_goal_route
@@ -5732,6 +5740,92 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             app_server_goal_worker_contract
         )
     return launch_plan
+
+
+def _runner_artifact_ref(plan: dict[str, Any], path_key: str) -> str:
+    raw_path = plan.get(path_key)
+    if not isinstance(raw_path, str) or not raw_path:
+        return ""
+    path = Path(raw_path)
+    rollout_name = str(plan.get("rollout_name") or "")
+    if rollout_name and path.name:
+        try:
+            return str(path.relative_to(path.parent.parent))
+        except ValueError:
+            return f"{rollout_name}/{path.name}"
+    return path.name
+
+
+def _build_public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
+    runner_prerequisites = (
+        plan.get("runner_prerequisites")
+        if isinstance(plan.get("runner_prerequisites"), dict)
+        else {}
+    )
+    return {
+        "schema_version": "skillsbench_runner_config_public_v0",
+        "task_id": str(plan.get("task_id") or ""),
+        "benchmark_id": str(plan.get("benchmark_id") or ""),
+        "route": str(plan.get("route") or ""),
+        "model": str(plan.get("model") or ""),
+        "run_group_id": str(plan.get("run_group_id") or ""),
+        "job_name": str(plan.get("job_name") or ""),
+        "rollout_name": str(plan.get("rollout_name") or ""),
+        "max_rounds": plan.get("max_rounds"),
+        "outer_timeout_sec": plan.get("outer_timeout_sec"),
+        "agent_idle_timeout_sec": plan.get("agent_idle_timeout_sec"),
+        "sandbox_setup_timeout_sec": plan.get("sandbox_setup_timeout_sec"),
+        "product_mode_soft_verify_policy": plan.get(
+            "product_mode_soft_verify_policy"
+        ),
+        "soft_verifier_timeout_sec": plan.get("soft_verifier_timeout_sec"),
+        "final_verifier_timeout_sec": plan.get("final_verifier_timeout_sec"),
+        "case_success_stop_policy": plan.get("case_success_stop_policy"),
+        "round_budget_policy": plan.get("round_budget_policy"),
+        "host_local_acp_launch": plan.get("host_local_acp_launch"),
+        "remote_command_file_bridge_ready": plan.get(
+            "remote_command_file_bridge_ready"
+        ),
+        "goal_start_product_mode": runner_prerequisites.get(
+            "goal_start_product_mode"
+        ),
+        "loopx_workflow_lifecycle_checkpoint": runner_prerequisites.get(
+            "loopx_workflow_lifecycle_checkpoint"
+        ),
+        "result_json_ref": _runner_artifact_ref(plan, "result_json"),
+        "compact_benchmark_run_json_ref": _runner_artifact_ref(
+            plan,
+            "compact_benchmark_run_json",
+        ),
+        "controller_trace_json_ref": Path(
+            str(plan.get("controller_trace_json") or "")
+        ).name,
+        "raw_material_recorded": False,
+    }
+
+
+def _write_public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
+    raw_path = plan.get("runner_config_json")
+    if not isinstance(raw_path, str) or not raw_path:
+        return {
+            "schema_version": "skillsbench_runner_config_write_v0",
+            "written": False,
+            "reason": "runner_config_json_missing",
+        }
+    path = Path(raw_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    config = _build_public_runner_config(plan)
+    path.write_text(
+        json.dumps(config, indent=2, sort_keys=True, default=_json_default) + "\n",
+        encoding="utf-8",
+    )
+    plan["runner_config"] = config
+    return {
+        "schema_version": "skillsbench_runner_config_write_v0",
+        "written": True,
+        "runner_config_json": str(path),
+        "raw_material_recorded": False,
+    }
 
 
 def _private_runner_output_log_path(plan: dict[str, Any]) -> Path:
@@ -10088,6 +10182,74 @@ def _runner_failure_trace_score_attribution(
     return "official_verifier_solution_failure"
 
 
+def _read_skillsbench_reward_artifact(path: Path) -> float | None:
+    try:
+        raw_reward = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    try:
+        reward = float(raw_reward)
+    except ValueError:
+        return None
+    if not math.isfinite(reward):
+        return None
+    return reward
+
+
+def _skillsbench_reward_artifact_candidate_paths(plan: dict[str, Any]) -> list[Path]:
+    candidates: list[Path] = []
+    result_json = plan.get("result_json")
+    if isinstance(result_json, str) and result_json:
+        result_parent = Path(result_json).expanduser().parent
+        candidates.extend(
+            [
+                result_parent / "verifier" / "reward.txt",
+                result_parent / "reward.txt",
+            ]
+        )
+    jobs_dir = plan.get("jobs_dir")
+    job_name = plan.get("job_name")
+    if isinstance(jobs_dir, str) and jobs_dir and isinstance(job_name, str) and job_name:
+        job_root = Path(jobs_dir).expanduser() / job_name
+        rollout_name = plan.get("rollout_name")
+        if isinstance(rollout_name, str) and rollout_name:
+            rollout_root = job_root / rollout_name
+            candidates.extend(
+                [
+                    rollout_root / "verifier" / "reward.txt",
+                    rollout_root / "reward.txt",
+                ]
+            )
+        if job_root.exists():
+            candidates.extend(
+                path
+                for path in job_root.rglob("reward.txt")
+                if path.parent.name == "verifier"
+            )
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped
+
+
+def _discover_skillsbench_reward_artifact(
+    plan: dict[str, Any],
+) -> tuple[Path, float] | None:
+    for path in _skillsbench_reward_artifact_candidate_paths(plan):
+        if not path.exists():
+            continue
+        reward = _read_skillsbench_reward_artifact(path)
+        if reward is not None:
+            return path, reward
+    return None
+
+
 def _product_mode_lifecycle_contract_from_controller_counters(
     counters: dict[str, Any],
 ) -> dict[str, Any]:
@@ -10119,10 +10281,18 @@ def _product_mode_lifecycle_contract_from_controller_counters(
     quota_spend_count = _nonbool_int(
         counters.get("remote_command_file_bridge_agent_quota_spend_slot_count")
     )
+    closeout_superseded_by_official_success = bool(
+        counters.get("product_mode_final_closeout_superseded_by_official_success")
+        is True
+        and counters.get("official_success_observed") is True
+    )
     closeout_satisfied = bool(
-        todo_closeout_count > 0
-        and refresh_state_count > 0
-        and quota_spend_count > 0
+        (
+            todo_closeout_count > 0
+            and refresh_state_count > 0
+            and quota_spend_count > 0
+        )
+        or closeout_superseded_by_official_success
     )
     operation_trace_status = str(
         counters.get("remote_command_file_bridge_agent_operation_trace_status")
@@ -10171,6 +10341,9 @@ def _product_mode_lifecycle_contract_from_controller_counters(
         "checkpoint_count": driver_checkpoint_count,
         "closeout_required": required,
         "closeout_satisfied": closeout_satisfied,
+        "closeout_superseded_by_official_success": (
+            closeout_superseded_by_official_success
+        ),
         "agent_operation_trace_required": required,
         "agent_operation_trace_satisfied": operation_trace_satisfied,
         "agent_operation_trace_status": operation_trace_status,
@@ -10195,6 +10368,176 @@ def _product_mode_lifecycle_contract_from_controller_counters(
     if isinstance(execution_style, str) and execution_style:
         contract["execution_style"] = execution_style
     return contract
+
+
+def _merge_runner_prerequisite_counters(
+    interaction_counters: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+) -> None:
+    for key in (
+        "remote_command_file_bridge_driver_lifecycle_execution_style",
+        "remote_command_file_bridge_driver_lifecycle_checkpoint_count",
+        "remote_command_file_bridge_driver_lifecycle_success_count",
+        "remote_command_file_bridge_driver_lifecycle_failure_count",
+        "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count",
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count",
+        "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count",
+        "remote_command_file_bridge_agent_operation_trace_satisfied",
+        "remote_command_file_bridge_agent_operation_trace_status",
+        "remote_command_file_bridge_agent_request_count",
+        "remote_command_file_bridge_agent_task_facing_operation_count",
+        "remote_command_file_bridge_agent_task_facing_success_count",
+        "remote_command_file_bridge_agent_loopx_state_read_count",
+        "remote_command_file_bridge_agent_loopx_state_write_count",
+        "remote_command_file_bridge_agent_todo_closeout_count",
+        "remote_command_file_bridge_agent_refresh_state_count",
+        "remote_command_file_bridge_agent_quota_spend_slot_count",
+    ):
+        value = runner_prerequisites.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            interaction_counters[key] = bool(
+                interaction_counters.get(key) is True or value is True
+            )
+            continue
+        if isinstance(value, int):
+            current = interaction_counters.get(key)
+            if not isinstance(current, int) or isinstance(current, bool):
+                current = 0
+            interaction_counters[key] = max(current, value)
+            continue
+        if isinstance(value, str) and value and not interaction_counters.get(key):
+            interaction_counters[key] = value
+
+
+def _recover_runner_failure_score_from_reward_artifact(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> bool:
+    discovered = _discover_skillsbench_reward_artifact(plan)
+    if discovered is None:
+        return False
+    _reward_path, reward = discovered
+    passed = reward >= 1.0
+    attribution = _runner_failure_trace_score_attribution(
+        reward=reward,
+        passed=passed,
+    )
+    runner_prerequisites = (
+        plan.get("runner_prerequisites")
+        if isinstance(plan.get("runner_prerequisites"), dict)
+        else {}
+    )
+    interaction_counters = compact.get("interaction_counters")
+    if not isinstance(interaction_counters, dict):
+        interaction_counters = {
+            "schema_version": "skillsbench_interaction_counters_v0",
+        }
+    _merge_runner_prerequisite_counters(interaction_counters, runner_prerequisites)
+    interaction_counters["official_reward_artifact_recovered_without_result_json"] = True
+    interaction_counters["controller_official_success_observed"] = bool(passed)
+    interaction_counters["official_success_observed"] = bool(passed)
+    if passed and compact.get("product_mode") is True:
+        interaction_counters[
+            "product_mode_final_closeout_superseded_by_official_success"
+        ] = True
+        interaction_counters["product_mode_final_closeout_superseded_reason"] = (
+            "official_reward_artifact_passed_before_result_json_closeout"
+        )
+    compact["interaction_counters"] = interaction_counters
+
+    compact["runner_return_status"] = (
+        "official_reward_artifact_recovered_after_runner_exception"
+    )
+    compact["official_score_status"] = "completed"
+    compact["official_score"] = reward
+    compact["official_task_score"] = {
+        "kind": "skillsbench_verifier_reward_recovered_from_reward_txt",
+        "value": reward,
+        "passed": passed,
+    }
+    compact["official_score_source"] = (
+        "official_skillsbench_rollout_verifier_reward_txt"
+    )
+    compact["score_failure_attribution"] = attribution
+    compact["first_blocker"] = attribution
+    compact["repeat_blocked_by"] = attribution
+    stale_missing_score_labels = {
+        "skillsbench_runner_interrupted_before_official_result",
+        "skillsbench_result_json_missing_after_runner_exit",
+        "official_score_missing",
+        "skillsbench_reward_artifact_missing",
+    }
+    labels = [
+        label
+        for label in compact.get("failure_attribution_labels", [])
+        if isinstance(label, str) and label and label not in stale_missing_score_labels
+    ]
+    if attribution != "none" and attribution not in labels:
+        labels.append(attribution)
+    if "skillsbench_runner_reward_artifact_recovered_without_result_json" not in labels:
+        labels.append("skillsbench_runner_reward_artifact_recovered_without_result_json")
+    compact["failure_attribution_labels"] = labels
+    evidence_files = [
+        item
+        for item in compact.get("evidence_files", [])
+        if isinstance(item, str) and item
+    ]
+    if "official_skillsbench:verifier/reward.txt" not in evidence_files:
+        evidence_files.append("official_skillsbench:verifier/reward.txt")
+    compact["evidence_files"] = evidence_files
+
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["failure_class"] = (
+            "skillsbench_runner_reward_artifact_recovered_without_result_json"
+        )
+        runner_failure["score_recovered_from_reward_artifact"] = True
+    compact["result_recovery"] = {
+        "schema_version": "skillsbench_result_recovery_v0",
+        "status": "official_reward_artifact_recovered_without_result_json",
+        "official_result_json_materialized": False,
+        "official_reward_artifact_materialized": True,
+        "official_reward_artifact_public_ref": (
+            "official_skillsbench:verifier/reward.txt"
+        ),
+        "raw_exception_recorded": False,
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+    }
+    compact["product_mode_lifecycle_contract"] = (
+        _product_mode_lifecycle_contract_from_controller_counters(
+            interaction_counters
+        )
+    )
+    progress = compact.get("progress")
+    if isinstance(progress, dict):
+        progress.update(
+            {
+                "n_completed_trials": 1,
+                "n_errored_trials": 0,
+                "n_running_trials": 0,
+                "n_pending_trials": 0,
+            }
+        )
+    validation = compact.get("validation")
+    if not isinstance(validation, dict):
+        validation = {}
+    validation.update(
+        {
+            "official_verifier_status": "completed",
+            "official_verifier_validation_present": True,
+            "official_case_success": passed,
+            "official_reward_artifact_recovered_without_result_json": True,
+            "validation_scope": (
+                "official_reward_artifact_without_result_json"
+            ),
+        }
+    )
+    compact["validation"] = validation
+    return True
 
 
 def _recover_runner_failure_score_from_controller_trace(
@@ -10549,7 +10892,12 @@ def build_runner_failure_compact(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
-    _recover_runner_failure_score_from_controller_trace(reduced, plan)
+    recovered_from_reward_artifact = _recover_runner_failure_score_from_reward_artifact(
+        reduced,
+        plan,
+    )
+    if not recovered_from_reward_artifact:
+        _recover_runner_failure_score_from_controller_trace(reduced, plan)
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
     reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
     return reduced
@@ -10679,6 +11027,7 @@ def _build_runner_exception_closeout_payload(
         return recovered_payload, 0
 
     closeout_recorded = False
+    compact: dict[str, Any] | None = None
     try:
         compact = build_runner_failure_compact(args, plan, exc)
         compact_path = Path(plan["compact_benchmark_run_json"])
@@ -10695,11 +11044,15 @@ def _build_runner_exception_closeout_payload(
         compact_path = None
         ledger_update = None
         history_append = None
+    recovered_official_score = bool(
+        compact is not None and compact.get("official_score_status") == "completed"
+    )
     payload = {
-        "ok": False,
+        "ok": recovered_official_score,
         "error_type": type(exc).__name__,
         "error_recorded": closeout_recorded,
         "compact_closeout_recorded": closeout_recorded,
+        "official_score_recovered": recovered_official_score,
         "task_id": args.task_id,
         "compact_benchmark_run_json": str(compact_path) if compact_path else None,
         "ledger_update": ledger_update,
@@ -11207,6 +11560,7 @@ async def async_main(
         plan = build_plan(args)
     if args.plan_only:
         return {"ok": True, "plan_only": True, "launch_plan": plan}
+    runner_config_write = _write_public_runner_config(plan)
     runtime_layer = (
         plan.get("benchflow_agent_runtime_layer")
         if isinstance(plan.get("benchflow_agent_runtime_layer"), dict)
@@ -11311,6 +11665,7 @@ async def async_main(
         "ok": True,
         "plan_only": False,
         "launch_plan": plan,
+        "runner_config_write": runner_config_write,
         "result_json": str(result_path),
         "compact_benchmark_run_json": str(compact_path),
         "result_discovery": plan.get("result_discovery"),

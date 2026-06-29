@@ -72,6 +72,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
     RUNNER_PREREQUISITES_PUBLIC_FILENAME,
+    SkillsBenchRunnerInterrupted,
     SkillsBenchProductModeNoLifecycleRequests,
     VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
     _tail,
@@ -234,6 +235,64 @@ def test_skillsbench_formal_product_mode_rejects_tiny_round_budget() -> None:
         ]
     )
     assert reduce_args.max_rounds == 2, reduce_args
+
+
+def test_skillsbench_public_runner_config_records_control_policy() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-runner-config-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "sample-task"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        args = parse_args(
+            [
+                "--task-id",
+                "sample-task",
+                "--route",
+                "loopx-goal-start-product-mode",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+                "--job-name",
+                "skillsbench-sample-task-loopx-goalstart",
+                "--rollout-name",
+                "sample-task__loopx_goal_start_product_mode",
+                "--max-rounds",
+                "16",
+                "--outer-timeout-sec",
+                "7200",
+                "--product-mode-soft-verify-policy",
+                "every-round",
+                "--soft-verifier-timeout-sec",
+                "600",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+            ]
+        )
+        plan = build_plan(args)
+        write_result = skillsbench_loop._write_public_runner_config(plan)
+
+        assert write_result["written"] is True, write_result
+        config_path = Path(plan["runner_config_json"])
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert config["route"] == "loopx-goal-start-product-mode", config
+        assert config["max_rounds"] == 16, config
+        assert config["outer_timeout_sec"] == 7200, config
+        assert config["product_mode_soft_verify_policy"] == "every-round", config
+        assert config["soft_verifier_timeout_sec"] == 600, config
+        assert config["case_success_stop_policy"] == (
+            "stop_on_first_official_reward_at_least_1"
+        ), config
+        assert config["round_budget_policy"] == (
+            "formal_product_mode_min_10_default_16"
+        ), config
+        assert config["result_json_ref"] == (
+            "sample-task__loopx_goal_start_product_mode/result.json"
+        ), config
+        config_text = json.dumps(config)
+        assert "/Users/" not in config_text
+        assert str(root) not in config_text
 
 
 def test_skillsbench_product_mode_soft_verify_default_is_every_round() -> None:
@@ -4286,6 +4345,90 @@ def test_skillsbench_result_reward_artifact_recovery() -> None:
         ), compact
         assert compact["progress"]["n_completed_trials"] == 1, compact
         assert compact["progress"]["n_errored_trials"] == 0, compact
+
+
+def test_skillsbench_runner_failure_reward_artifact_without_result_json_recovers_success() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-reward-no-result-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "sample-task"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        args = parse_args(
+            [
+                "--task-id",
+                "sample-task",
+                "--route",
+                "loopx-goal-start-product-mode",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+                "--job-name",
+                "skillsbench-sample-task-loopx-goalstart",
+                "--rollout-name",
+                "sample-task__loopx_goal_start_product_mode",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--remote-command-file-bridge-solver-command",
+                "fixture-solver",
+            ]
+        )
+        plan = build_plan(args)
+        prerequisites = plan["runner_prerequisites"]
+        prerequisites.update(
+            {
+                "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 1,
+                "remote_command_file_bridge_driver_lifecycle_success_count": 4,
+                "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+                "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 4,
+                "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 1,
+                "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 3,
+                "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+                "remote_command_file_bridge_agent_operation_trace_status": (
+                    "agent_operation_trace_recorded"
+                ),
+                "remote_command_file_bridge_agent_request_count": 5,
+                "remote_command_file_bridge_agent_task_facing_operation_count": 5,
+                "remote_command_file_bridge_agent_task_facing_success_count": 5,
+            }
+        )
+        reward_path = Path(plan["result_json"]).parent / "verifier" / "reward.txt"
+        reward_path.parent.mkdir(parents=True, exist_ok=True)
+        reward_path.write_text("1\n", encoding="utf-8")
+
+        compact = build_runner_failure_compact(
+            args,
+            plan,
+            SkillsBenchRunnerInterrupted("outer timeout after verifier reward"),
+        )
+
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_score"] == 1.0, compact
+        assert compact["official_task_score"] == {
+            "kind": "skillsbench_verifier_reward_recovered_from_reward_txt",
+            "passed": True,
+            "value": 1.0,
+        }, compact
+        assert compact["runner_return_status"] == (
+            "official_reward_artifact_recovered_after_runner_exception"
+        ), compact
+        assert compact["score_failure_attribution"] == "none", compact
+        assert compact["result_recovery"]["status"] == (
+            "official_reward_artifact_recovered_without_result_json"
+        ), compact
+        assert "official_skillsbench:verifier/reward.txt" in compact[
+            "evidence_files"
+        ], compact
+        counters = compact["interaction_counters"]
+        assert counters["official_reward_artifact_recovered_without_result_json"] is True
+        assert counters["product_mode_final_closeout_superseded_by_official_success"] is True
+        contract = compact["product_mode_lifecycle_contract"]
+        assert contract["closeout_satisfied"] is True, compact
+        assert contract["satisfied"] is True, compact
+        gate = compact["post_run_debug_gate"]
+        assert gate["attribution_layer"] == "clean_pass", compact
+        assert gate["normal_progress_allowed"] is True, compact
 
 
 def test_skillsbench_runner_error_zero_reward_is_case_score_failure() -> None:
