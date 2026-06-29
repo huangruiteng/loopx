@@ -243,6 +243,34 @@ def _bridge_summary_has_meaningful_agent_progress(
     return False
 
 
+def _bridge_summary_has_successful_task_file_write(path: Path | None) -> bool:
+    """Return true after the worker successfully writes task-facing files."""
+
+    if path is None or not path.exists():
+        return False
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        phase = str(record.get("record_phase") or "").strip().lower()
+        if phase != "complete" or _bridge_operation_record_interrupted(record):
+            continue
+        if record.get("operation") != "write_file":
+            continue
+        if record.get("task_facing_operation") is not True:
+            continue
+        if record.get("success") is True or record.get("returncode") == 0:
+            return True
+    return False
+
+
 def _bridge_operation_record_interrupted(record: dict[str, Any]) -> bool:
     rc = record.get("returncode")
     if isinstance(rc, int) and not isinstance(rc, bool) and rc < 0:
@@ -346,6 +374,8 @@ def _codex_exec_failure_category(
         return "codex_usage_limit"
     if "codex_exec_first_action_timeout" in text:
         return "codex_exec_first_action_timeout"
+    if "codex_exec_task_output_quiet_timeout" in text:
+        return "codex_exec_task_output_quiet_timeout"
     if "codex_exec_bridge_idle_timeout" in text:
         return "codex_exec_bridge_idle_timeout"
     if "unexpected argument" in text or "unrecognized option" in text:
@@ -375,6 +405,7 @@ def _codex_exec_failure_category(
 
 RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES = {
     "codex_exec_first_action_timeout",
+    "codex_exec_task_output_quiet_timeout",
     "codex_exec_bridge_idle_timeout",
 }
 
@@ -445,6 +476,7 @@ class CodexExecConfig:
     stream_heartbeat_interval_sec: float = 120.0
     first_action_timeout_sec: float = 0.0
     bridge_idle_timeout_sec: float = 0.0
+    task_output_quiet_timeout_sec: float = 0.0
     reasoning_effort: str | None = "high"
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
@@ -2027,6 +2059,10 @@ raise SystemExit(proc.returncode)
                     0.0,
                     float(self._config.bridge_idle_timeout_sec or 0.0),
                 )
+                task_output_quiet_timeout_sec = max(
+                    0.0,
+                    float(self._config.task_output_quiet_timeout_sec or 0.0),
+                )
                 bridge_first_action_deadline = 0.0
                 if (
                     bridge_summary_path is not None
@@ -2055,6 +2091,7 @@ raise SystemExit(proc.returncode)
                         time.monotonic()
                         + max(1.0, self._config.first_action_timeout_sec)
                     )
+                task_output_write_seen = False
                 while proc.poll() is None:
                     now = time.monotonic()
                     if bridge_summary_path is not None:
@@ -2073,6 +2110,15 @@ raise SystemExit(proc.returncode)
                                 _bridge_summary_has_meaningful_agent_progress(
                                     bridge_summary_path,
                                     allow_loopx_closeout=allow_loopx_closeout_progress,
+                                )
+                            )
+                        if (
+                            not task_output_write_seen
+                            and task_output_quiet_timeout_sec > 0
+                        ):
+                            task_output_write_seen = (
+                                _bridge_summary_has_successful_task_file_write(
+                                    bridge_summary_path
                                 )
                             )
                     if (
@@ -2119,6 +2165,34 @@ raise SystemExit(proc.returncode)
                         self._terminate_bridge_server_process(bridge_server_proc)
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
+                        )
+                    if (
+                        task_output_write_seen
+                        and bridge_summary_path is not None
+                        and task_output_quiet_timeout_sec > 0
+                        and not _bridge_summary_has_inflight_operation(
+                            bridge_summary_path
+                        )
+                        and now - last_bridge_activity_at
+                        >= task_output_quiet_timeout_sec
+                    ):
+                        proc.terminate()
+                        stdout_text, stderr_text = proc.communicate(timeout=2)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        if not self._publish_worker_trace(output_json):
+                            self._publish_worker_failure_trace(
+                                stage="task_output_quiet_timeout",
+                                returncode=proc.returncode,
+                                stdout_text=stdout_text,
+                                stderr_text=(
+                                    "codex_exec_task_output_quiet_timeout\n"
+                                ),
+                            )
+                        self._terminate_bridge_server_process(bridge_server_proc)
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_task_output_quiet_timeout"
                         )
                     if (
                         bridge_activity_seen
@@ -2341,6 +2415,10 @@ raise SystemExit(proc.returncode)
         )
         if not safe_stage:
             safe_stage = "worker_failed_before_public_trace"
+        failure_category = _codex_exec_failure_category(
+            returncode=returncode,
+            stderr_text=stderr_text,
+        )
         trace = {
             "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
             "ok": False,
@@ -2351,6 +2429,7 @@ raise SystemExit(proc.returncode)
             "worker_process": {
                 "schema_version": "skillsbench_host_worker_process_failure_v0",
                 "stage": safe_stage,
+                "failure_category": failure_category,
                 "returncode": returncode
                 if isinstance(returncode, int) and not isinstance(returncode, bool)
                 else None,
