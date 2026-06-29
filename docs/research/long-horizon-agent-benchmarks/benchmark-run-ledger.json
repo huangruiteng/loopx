@@ -2114,14 +2114,10 @@
           "latest_decision": {
             "baseline_failure_scope": "passed",
             "baseline_run_id": "2297b9236dc2",
-            "decision": "paired_treatment_verifier_or_infra_repair_required",
-            "failure_class": "verifier_infrastructure_failure",
-            "next_action": "repair verifier or infra attribution before comparing arms",
-            "official_score_delta": null,
-            "repair_class": "verifier_or_infra_repair",
-            "repair_priority": "P0",
-            "treatment_failure_scope": "score_missing",
-            "treatment_run_id": "c3b9fa70421c"
+            "decision": "paired_baseline_solved_treatment_preserved",
+            "official_score_delta": 0.0,
+            "treatment_failure_scope": "passed",
+            "treatment_run_id": "15ba747b3be5"
           },
           "runs": [
             {
@@ -3288,6 +3284,114 @@
                 },
                 "staged": true,
                 "task_skills_removed": true
+              },
+              "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_loopx_treatment",
+              "artifact_refs": {
+                "compact_artifact_ref": "cloud-ecs/skillsbench-citation-check-goalstart-taskrecenter-20260629T091301Z/jobs/skillsbench-citation-check-goalstart-taskrecenter-20260629T091301Z-goalstart/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "none",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "best_reward_round": 2,
+              "best_round_is_final": true,
+              "best_round_passed": true,
+              "best_round_reward": 1.0,
+              "case_attempt_countable": true,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "final_round": 2,
+              "final_round_passed": true,
+              "final_round_reward": 1.0,
+              "first_success_round": 2,
+              "job_name": "skillsbench_1_1_citation_check_loopx_goal_start_product_mode",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loop_score_policy": "best_round_for_offline_controller_analysis",
+              "loopx_inside_case": true,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_loopx_goal_start_product_mode_treatment",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "Goal-start reverse-channel task-recenter rerun on main 762c1c5f reached official score 1.0 in round 2; controller stopped after official success while keeping reward/verifier feedback blinded from the agent. Residual ...",
+              "official_feedback_blinded": true,
+              "official_passed": true,
+              "official_score": 1.0,
+              "official_score_attempt_countable": true,
+              "official_score_policy": "final_workspace_official_result",
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 2,
+                "checkpoint_required": true,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "execution_style": "orchestrated_agentloop_loopx_cli",
+                "orchestrated_driver_counts_as_product_mode": true,
+                "orchestrated_driver_lifecycle_satisfied": true,
+                "required": true,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 2,
+                "state_write_count": 6
+              },
+              "recorded_at": "2026-06-29T17:31:26+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 2,
+              "round_rewards": [
+                {
+                  "agent_round": 1,
+                  "passed": false,
+                  "reward": 0.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                },
+                {
+                  "agent_round": 2,
+                  "passed": true,
+                  "reward": 1.0,
+                  "reward_present": true,
+                  "tool_calls": 0
+                }
+              ],
+              "round_success_observed": true,
+              "run_group_id": "skillsbench-citation-check-goalstart-taskrecenter-20260629T091301Z",
+              "run_id": "15ba747b3be5",
+              "score_status": "passed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true,
+                "verifier_bootstrap_risk_detected": true,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_host": "releases.astral.sh",
+                "verifier_uv_bootstrap_mirror_patch_applied": true,
+                "verifier_uv_bootstrap_mirror_patch_required": true,
+                "verifier_uv_bootstrap_risk_detected": true,
+                "verifier_uv_bootstrap_version": "0.9.7"
               },
               "verifier_attempt_countable": true
             }
@@ -10098,7 +10202,7 @@
           ]
         }
       },
-      "run_count": 162
+      "run_count": 163
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -14150,5 +14254,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-28T21:45:07+08:00"
+  "updated_at": "2026-06-29T17:31:26+08:00"
 }
