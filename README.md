@@ -241,22 +241,27 @@ points:
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental notes below.
 
-### Experimental: Today Value Path
+### Experimental: Long-Running Agent App Paths
 
 This is not replacing the first screen. It is an experimental entry point for
 users who already understand the control-plane idea and want to pick one useful
-LoopX capability today:
+LoopX capability today. Each path uses the same goal, todo, quota, evidence,
+and review contract, so users can feel the capability lift without learning a
+new control plane every time:
 
-| Capability / path | Expected output | User value metric |
-| --- | --- | --- |
-| PR review/comment -> fix loop | Branch-ready fix packet with repro, smoke result, and remaining review owner. | Fewer dropped review threads; faster path from comment to validated patch. |
-| Overnight PR-sized refactor | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged commits without turning the next morning into a giant diff audit. |
-| P0 blocked -> safe fallback | Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary inside an active goal. | Less idle agent time while preserving human judgment on the blocked path. |
+| App path | Start with | Expected output | User-visible lift |
+| --- | --- | --- | --- |
+| Issue / PR fix loop | `/loopx Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | Branch-ready fix packet with repro, smoke result, remaining review owner, and PR-review-ready evidence. | Review comments and issues become a closed loop instead of reminders humans must shepherd by hand. |
+| PR-sized refactor loop | `/loopx <refactor goal>`<br>`loopx canary plan` | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged changes without turning the next morning into a giant diff audit. |
+| Research or experiment loop | `loopx auto-research`<br>`loopx ml-experiment preview --format json` | Hypothesis, source/evidence packet, replay or experiment boundary, and next validated question. | Research becomes a resumable long-horizon loop, not just a one-off report. |
+| Multi-agent work routing | `/loopx <goal text>`<br>`loopx quota should-run`<br>`loopx todo claim` | Claimed agent lanes with scope, lease, next action, quota decision, and handoff state. | Multiple agents can work in parallel without hiding ownership or stepping on the same todo. |
+| Knowledge / workflow connector | `loopx connect`<br>`loopx lark-kanban`<br>`loopx value-connectors` | LoopX state projected into docs, boards, GitHub, or domain workflows while LoopX remains the source of truth. | Existing work surfaces become agent-aware without copying private state into public artifacts. |
+| P0 blocked -> safe fallback | `loopx quota should-run`<br>`loopx todo claim` | Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary inside an active goal. | Less idle agent time while preserving human judgment on the blocked path. |
+| Candidate: PR conflict resolution | `/loopx Resolve merge conflicts for <github-pr-url>` | Conflict patch, semantic risk note, focused validation, and review handoff before merge. | Less mechanical conflict work after high-throughput agent branches, with humans still judging risky merges. |
 
-Start the goal normally with `/loopx <goal text>`. The PR review and refactor
-paths can be requested directly in plain language; the P0 safe-fallback path is
-a repository kernel behavior that appears when an active goal has a concrete
-blocking user gate and safe P1/P2 work remains.
+Start the goal normally with `/loopx <goal text>`. The commands above are short
+entry points, not separate state systems: each adapter still writes into the
+same LoopX control-plane contract.
 
 ## User Mental Model
 

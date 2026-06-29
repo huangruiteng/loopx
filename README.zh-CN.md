@@ -128,20 +128,25 @@ loopx bootstrap \
 完整案例目录见 [docs/showcases/README.md](docs/showcases/README.md)。
 更完整的演示材料放在文末实验性能力里。
 
-### Experimental: Today Value Path
+### Experimental: 长程 Agent 应用路径
 
 这不会替代首屏。它先作为实验性入口放在案例区下面，给已经理解控制面价值的用户
-快速选一个今天就能用的 LoopX 能力：
+快速选一个今天就能用的 LoopX 能力。同一套 goal / todo / quota / evidence /
+review contract 可以承接不同应用入口，让用户直接感知到“agent 能持续把事情往前推”
+的增量：
 
-| 能力 / 路径 | 预期产物 | 用户价值指标 |
-| --- | --- | --- |
-| PR review/comment -> fix loop | 可复核的修复包：repro、smoke 结果、剩余 review owner。 | 更少遗漏 review 线程，更快从 comment 走到 validated patch。 |
-| Overnight PR-sized refactor | 可 review 的 slice 列表、验证记录、后续 todo、merge 边界。 | 增加可合并 commit，而不是第二天早上面对一个巨型 diff。 |
-| P0 blocked -> safe fallback | 在已有 goal 内由 kernel 投影具体 user gate、安全 fallback todo、quota 决策和证据边界。 | 等人决策时减少 agent 空转，同时保留人类判断。 |
+| 应用路径 | 精简命令入口 | 预期产物 | 用户可感知增量 |
+| --- | --- | --- | --- |
+| Issue / PR fix loop | `/loopx Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | 可复核的修复包：repro、smoke 结果、剩余 review owner 和 PR-ready evidence。 | issue 和 review comment 不再只是提醒人，而是驱动 agent 闭环的入口。 |
+| PR-sized refactor loop | `/loopx <refactor goal>`<br>`loopx canary plan` | 可 review 的 slice 列表、验证记录、后续 todo、merge 边界。 | 增加可合并 change，而不是第二天早上面对一个巨型 diff。 |
+| Research / experiment loop | `loopx auto-research`<br>`loopx ml-experiment preview --format json` | hypothesis、source/evidence packet、replay 或实验边界，以及下一步可验证问题。 | research 不只是一次性报告，而是可继续、可沉淀的 long-horizon loop。 |
+| Multi-agent work routing | `/loopx <goal text>`<br>`loopx quota should-run`<br>`loopx todo claim` | 带 scope、lease、next action、quota 决策和 handoff state 的已认领 agent lane。 | 多个 agent 可以并行推进，同时不隐藏 ownership，也不抢同一个 todo。 |
+| Knowledge / workflow connector | `loopx connect`<br>`loopx lark-kanban`<br>`loopx value-connectors` | 把 LoopX 状态投影到文档、看板、GitHub 或领域 workflow，但 LoopX 仍是状态源。 | 现有工作界面可以 agent-aware，而不是把私有状态复制进公开材料。 |
+| P0 blocked -> safe fallback | `loopx quota should-run`<br>`loopx todo claim` | 在已有 goal 内由 kernel 投影具体 user gate、安全 fallback todo、quota 决策和证据边界。 | 等人决策时减少 agent 空转，同时保留人类判断。 |
+| Candidate: PR conflict resolution | `/loopx Resolve merge conflicts for <github-pr-url>` | conflict patch、语义风险提示、focused validation 和 merge 前 review handoff。 | 长程 agent 高速产出后，减少机械解冲突成本，但高风险合并仍由人判断。 |
 
-正常用 `/loopx <goal text>` 启动目标即可。PR review 和 refactor 路径可以用自然语言
-直接描述；P0 safe fallback 不是单独命令，而是已有 goal 出现具体阻塞 user gate、
-且还有安全 P1/P2 工作时触发的仓库 kernel 行为。
+正常用 `/loopx <goal text>` 启动目标即可。表格里的命令是短入口，不是新的状态系统；
+每个 adapter 仍然写入同一套 LoopX control-plane contract。
 
 ## 它是什么
 
