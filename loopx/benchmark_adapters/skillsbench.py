@@ -463,9 +463,15 @@ def _skillsbench_attempt_failure_class(
     if _skillsbench_attempt_setup_blocked(failure_labels):
         return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
     if score_failure_attribution in {
+        "skillsbench_host_local_acp_idle_no_task_output_progress",
         "skillsbench_product_mode_solver_activity_gap",
         "skillsbench_acp_agent_message_only_no_tool_calls",
     }:
+        if (
+            score_failure_attribution
+            == "skillsbench_host_local_acp_idle_no_task_output_progress"
+        ):
+            return BenchmarkFailureClass.OFFICIAL_SCORE_FAILED
         return BenchmarkFailureClass.SOLVER_FAILED
     if verifier_error_text and reward_value is None:
         return BenchmarkFailureClass.VERIFIER_FAILED
@@ -2154,6 +2160,14 @@ def _skillsbench_controller_trace_counters(
             "product_mode_no_open_todo_below_passing_reward_stop"
         )
         is True,
+        "product_mode_host_local_idle_no_task_output_progress": controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress"
+        )
+        is True,
+        "product_mode_host_local_idle_no_task_output_progress_stop": controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_stop"
+        )
+        is True,
         "agent_declared_done": controller_trace.get("agent_declared_done") is True,
         "agent_declared_no_remaining_goals": controller_trace.get(
             "agent_declared_no_remaining_goals"
@@ -2458,6 +2472,33 @@ def _skillsbench_controller_trace_counters(
         "product_mode_no_open_todo_below_passing_reward_open_todo_count_public": count(
             "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
         ),
+        "product_mode_host_local_idle_no_task_output_progress_streak": count(
+            "product_mode_host_local_idle_no_task_output_progress_streak"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_streak_threshold": count(
+            "product_mode_host_local_idle_no_task_output_progress_streak_threshold"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_round": count(
+            "product_mode_host_local_idle_no_task_output_progress_round"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_stop_count": count(
+            "product_mode_host_local_idle_no_task_output_progress_stop_count"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_stop_round": count(
+            "product_mode_host_local_idle_no_task_output_progress_stop_round"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count": count(
+            "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls": count(
+            "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops": count(
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes": count(
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes"
+        ),
         "product_mode_final_closeout_superseded_by_official_success": (
             controller_trace.get(
                 "product_mode_final_closeout_superseded_by_official_success"
@@ -2585,6 +2626,20 @@ def _skillsbench_controller_trace_counters(
         counters["host_local_acp_codex_exec_failure_category"] = (
             host_codex_failure_category
         )
+    bridge_progress_status = _skillsbench_public_safe_label(
+        controller_trace.get("host_local_acp_bridge_progress_status") or ""
+    )
+    if bridge_progress_status:
+        counters["host_local_acp_bridge_progress_status"] = (
+            bridge_progress_status
+        )
+    bridge_progress_source = _skillsbench_public_safe_label(
+        controller_trace.get("host_local_acp_bridge_progress_signal_source") or ""
+    )
+    if bridge_progress_source:
+        counters["host_local_acp_bridge_progress_signal_source"] = (
+            bridge_progress_source
+        )
     host_codex_failure_categories: list[str] = []
     raw_host_codex_failure_categories = controller_trace.get(
         "host_local_acp_codex_exec_failure_categories"
@@ -2655,6 +2710,46 @@ def _skillsbench_controller_trace_counters(
     if no_open_todo_score_status:
         counters["product_mode_no_open_todo_below_passing_reward_score_status"] = (
             no_open_todo_score_status
+        )
+    host_idle_score = controller_trace.get(
+        "product_mode_host_local_idle_no_task_output_progress_score"
+    )
+    if (
+        isinstance(host_idle_score, (int, float))
+        and not isinstance(host_idle_score, bool)
+    ):
+        counters["product_mode_host_local_idle_no_task_output_progress_score"] = float(
+            host_idle_score
+        )
+    host_idle_score_status = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_score_status"
+        )
+        or ""
+    )
+    if host_idle_score_status:
+        counters["product_mode_host_local_idle_no_task_output_progress_score_status"] = (
+            host_idle_score_status
+        )
+    host_idle_category = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_category"
+        )
+        or ""
+    )
+    if host_idle_category:
+        counters["product_mode_host_local_idle_no_task_output_progress_category"] = (
+            host_idle_category
+        )
+    host_idle_policy = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_policy"
+        )
+        or ""
+    )
+    if host_idle_policy:
+        counters["product_mode_host_local_idle_no_task_output_progress_policy"] = (
+            host_idle_policy
         )
     declared_done_policy = _skillsbench_public_safe_label(
         controller_trace.get("product_mode_declared_done_policy") or ""
@@ -3639,13 +3734,27 @@ def build_skillsbench_benchflow_result_benchmark_run(
         and agent_bridge_task_facing_operation_count > 0
         and agent_bridge_final_closeout_satisfied
     )
+    host_local_acp_idle_no_task_output_progress_stop = bool(
+        controller_counters.get(
+            "product_mode_host_local_idle_no_task_output_progress_stop"
+        )
+        is True
+    )
     if (
         host_local_acp_codex_exec_failure_present
         and not official_passed
         and not host_local_acp_idle_timeout_after_countable_closeout
     ):
-        host_failure_label = "skillsbench_host_local_acp_codex_exec_failed"
-        if host_local_acp_codex_exec_failure_category:
+        if host_local_acp_idle_no_task_output_progress_stop:
+            host_failure_label = (
+                "skillsbench_host_local_acp_idle_no_task_output_progress"
+            )
+        else:
+            host_failure_label = "skillsbench_host_local_acp_codex_exec_failed"
+        if (
+            host_local_acp_codex_exec_failure_category
+            and not host_local_acp_idle_no_task_output_progress_stop
+        ):
             host_failure_label = (
                 f"{host_failure_label}_{host_local_acp_codex_exec_failure_category}"
             )
@@ -3674,14 +3783,20 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ]
         controller_budget_cutoff_before_followup = False
         controller_budget_cutoff_reason = "none"
-        for item in (
+        host_failure_extra_labels = [
             host_failure_label,
-            "skillsbench_host_local_acp_codex_exec_failed",
-            "skillsbench_runner_setup_error",
             "skillsbench_product_mode_transport_failure"
             if _is_skillsbench_loopx_product_mode_treatment_route(route)
             else "",
-        ):
+        ]
+        if not host_local_acp_idle_no_task_output_progress_stop:
+            host_failure_extra_labels.extend(
+                [
+                    "skillsbench_host_local_acp_codex_exec_failed",
+                    "skillsbench_runner_setup_error",
+                ]
+            )
+        for item in host_failure_extra_labels:
             if item and item not in failure_labels:
                 failure_labels.append(item)
     elif host_local_acp_idle_timeout_after_countable_closeout:
@@ -4270,6 +4385,13 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode_no_open_todo_below_passing_reward_stop": controller_counters.get(
                 "product_mode_no_open_todo_below_passing_reward_stop", False
             ),
+            "product_mode_host_local_idle_no_task_output_progress": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress", False
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_stop": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop",
+                False,
+            ),
             "product_mode_lifecycle_checkpoint_count": controller_counters.get(
                 "product_mode_lifecycle_checkpoint_count", 0
             ),
@@ -4329,6 +4451,53 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "product_mode_no_open_todo_below_passing_reward_score_status": controller_counters.get(
                 "product_mode_no_open_todo_below_passing_reward_score_status", ""
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_streak": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_streak",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_streak_threshold": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_streak_threshold",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_round": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_round",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_stop_count": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop_count",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_stop_round": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop_round",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_score": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_score"
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_score_status": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_score_status",
+                "",
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_category": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_category",
+                "",
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_policy": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_policy",
+                "",
             ),
             "product_mode_final_closeout_superseded_by_official_success": (
                 controller_counters.get(
@@ -4621,6 +4790,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 controller_counters.get(
                     "host_local_acp_codex_exec_failure_trace_present", False
                 )
+            ),
+            "host_local_acp_bridge_progress_status": controller_counters.get(
+                "host_local_acp_bridge_progress_status", ""
+            ),
+            "host_local_acp_bridge_progress_signal_source": controller_counters.get(
+                "host_local_acp_bridge_progress_signal_source", ""
             ),
             "host_local_acp_codex_exec_failure_trace_count": (
                 controller_counters.get(

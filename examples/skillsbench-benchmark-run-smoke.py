@@ -48,7 +48,10 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
-from loopx.status import compact_benchmark_run  # noqa: E402
+from loopx.status import (  # noqa: E402
+    build_skillsbench_post_run_debug_gate,
+    compact_benchmark_run,
+)
 from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD,
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
@@ -7823,6 +7826,222 @@ def test_skillsbench_host_local_idle_timeout_after_closeout_is_countable() -> No
         assert accounting["failure_class"] == "solver_failed", accounting
 
 
+def test_skillsbench_host_local_idle_no_output_progress_is_distinct() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-host-acp-idle-progress-") as tmp:
+        root = Path(tmp)
+        run_dir = root / "official" / "2026-06-15__00-00-00" / "sample-task__abc123"
+        result_path = run_dir / "result.json"
+        write_json(
+            result_path,
+            {
+                "task_name": "sample-task",
+                "rollout_name": "sample-task__abc123",
+                "rewards": None,
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 0,
+                "n_prompts": 2,
+                "error": "ACP error -32002: local codex execution timeout",
+                "verifier_error": None,
+                "partial_trajectory": True,
+                "trajectory_source": "partial_acp",
+                "trajectory_summary": {
+                    "steps": 2,
+                    "round_count": 2,
+                    "tool_call_count": 0,
+                    "partial_trajectory": True,
+                },
+            },
+        )
+        write_json(
+            run_dir / "timing.json",
+            {
+                "environment_setup": 2.0,
+                "agent_setup": 1.0,
+                "agent_execution": 30.0,
+                "total": 33.0,
+            },
+        )
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-goal-start-product-mode",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "product_mode": True,
+            "max_rounds_budget": 16,
+            "initial_prompt_count": 1,
+            "followup_prompt_count": 2,
+            "stop_decision_count": 1,
+            "controller_action_decisions": 3,
+            "reward_observation_count": 2,
+            "remote_command_file_bridge_driver_lifecycle_execution_style": (
+                "orchestrated_agentloop_loopx_cli"
+            ),
+            "remote_command_file_bridge_driver_lifecycle_trace_count": 2,
+            "remote_command_file_bridge_driver_lifecycle_checkpoint_count": 2,
+            "remote_command_file_bridge_driver_lifecycle_request_count": 8,
+            "remote_command_file_bridge_driver_lifecycle_success_count": 8,
+            "remote_command_file_bridge_driver_lifecycle_failure_count": 0,
+            "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count": 8,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count": 2,
+            "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count": 2,
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_count": 2,
+            "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+            "remote_command_file_bridge_agent_request_count": 5,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 5,
+            "remote_command_file_bridge_agent_task_facing_success_count": 5,
+            "host_local_acp_bridge_progress_status": (
+                "bridge_task_facing_success_observed"
+            ),
+            "host_local_acp_bridge_progress_signal_source": (
+                "remote_command_file_bridge_agent_operations"
+            ),
+            "host_local_acp_codex_exec_failure_trace_present": True,
+            "host_local_acp_codex_exec_failure_trace_count": 2,
+            "host_local_acp_codex_exec_failure_category": (
+                "codex_exec_bridge_idle_timeout"
+            ),
+            "host_local_acp_codex_exec_failure_categories": [
+                "codex_exec_bridge_idle_timeout"
+            ],
+            "host_local_acp_codex_exec_failure_raw_material_recorded": False,
+            "product_mode_host_local_idle_no_task_output_progress": True,
+            "product_mode_host_local_idle_no_task_output_progress_stop": True,
+            "product_mode_host_local_idle_no_task_output_progress_streak": 2,
+            "product_mode_host_local_idle_no_task_output_progress_streak_threshold": 2,
+            "product_mode_host_local_idle_no_task_output_progress_round": 4,
+            "product_mode_host_local_idle_no_task_output_progress_stop_round": 4,
+            "product_mode_host_local_idle_no_task_output_progress_stop_count": 1,
+            "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls": 0,
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops": 5,
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes": 5,
+            "product_mode_host_local_idle_no_task_output_progress_score_status": (
+                "missing"
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_category": (
+                "codex_exec_bridge_idle_timeout"
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_policy": (
+                "stop_after_two_host_local_idle_rounds_without_task_output_or_closeout"
+            ),
+            "last_decision": (
+                "stop_after_product_mode_host_local_idle_no_task_output_progress"
+            ),
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="loopx-goal-start-product-mode",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        expected = "skillsbench_host_local_acp_idle_no_task_output_progress"
+        assert compact["score_failure_attribution"] == expected, compact
+        labels = compact["failure_attribution_labels"]
+        assert expected in labels, compact
+        assert "skillsbench_product_mode_transport_failure" in labels, compact
+        assert "skillsbench_runner_setup_error" not in labels, compact
+        assert "skillsbench_acp_agent_message_only_no_tool_calls" not in labels, compact
+        assert "official_score_zero_case_failure" not in labels, compact
+        accounting = compact["attempt_accounting"]
+        assert accounting["failure_class"] == "official_score_failed", accounting
+
+        counters = compact["interaction_counters"]
+        assert counters["private_trajectory_tool_call_count"] == 0, counters
+        assert counters["remote_command_file_bridge_agent_request_count"] == 5, counters
+        assert (
+            counters["remote_command_file_bridge_agent_task_facing_operation_count"]
+            == 5
+        ), counters
+        assert counters["host_local_acp_bridge_progress_status"] == (
+            "bridge_task_facing_success_observed"
+        ), counters
+        assert (
+            counters["product_mode_host_local_idle_no_task_output_progress_stop"]
+            is True
+        ), counters
+
+        timeline = skillsbench_loop._build_case_event_timeline(
+            compact,
+            {"runner_prerequisites": {}},
+        )
+        compact["case_event_timeline"] = timeline
+        gate = build_skillsbench_post_run_debug_gate(compact)
+        assert gate["todo_flow"]["task_facing_activity_status"] == (
+            "task_activity_observed"
+        ), gate
+        assert gate["todo_flow"]["host_local_acp_bridge_progress_status"] == (
+            "bridge_task_facing_success_observed"
+        ), gate
+        assert gate["todo_flow"]["acp_protocol_tool_call_count"] == 0, gate
+        assert gate["todo_flow"]["agent_bridge_task_facing_operation_count"] == 5, gate
+        assert gate["controller"]["status"] == (
+            "host_local_idle_no_task_output_progress_stop"
+        ), gate
+
+
+def test_product_mode_host_local_idle_no_output_progress_requires_new_trace() -> None:
+    trace: dict[str, Any] = {
+        "host_local_acp_codex_exec_failure_category": (
+            "codex_exec_bridge_idle_timeout"
+        ),
+        "host_local_acp_codex_exec_failure_trace_count": 1,
+        "remote_command_file_bridge_agent_request_count": 2,
+        "remote_command_file_bridge_agent_task_facing_operation_count": 2,
+        "remote_command_file_bridge_agent_task_facing_success_count": 2,
+    }
+    round_result = types.SimpleNamespace(n_tool_calls=0)
+
+    assert skillsbench_loop._product_mode_host_local_idle_no_task_output_progress_applicable(
+        trace,
+        round_result,
+        reward=None,
+    )
+    stopped = skillsbench_loop._record_product_mode_host_local_idle_no_task_output_progress(
+        trace,
+        agent_round=2,
+        reward=None,
+        round_result=round_result,
+    )
+    assert stopped is False, trace
+    assert (
+        trace["product_mode_host_local_idle_no_task_output_progress_streak"] == 1
+    ), trace
+    assert not skillsbench_loop._product_mode_host_local_idle_no_task_output_progress_applicable(
+        trace,
+        round_result,
+        reward=None,
+    )
+
+    trace["host_local_acp_codex_exec_failure_trace_count"] = 2
+    assert skillsbench_loop._product_mode_host_local_idle_no_task_output_progress_applicable(
+        trace,
+        round_result,
+        reward=0.0,
+    )
+    stopped = skillsbench_loop._record_product_mode_host_local_idle_no_task_output_progress(
+        trace,
+        agent_round=3,
+        reward=0.0,
+        round_result=round_result,
+    )
+    assert stopped is True, trace
+    assert trace["product_mode_host_local_idle_no_task_output_progress_stop"] is True
+    assert (
+        trace["product_mode_host_local_idle_no_task_output_progress_streak"] == 2
+    ), trace
+    assert trace["product_mode_host_local_idle_no_task_output_progress_policy"] == (
+        "stop_after_two_host_local_idle_rounds_without_task_output_or_closeout"
+    )
+
+
 def test_goal_start_host_local_defers_codex_exec_preflight_until_bridge_command() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-goal-start-preflight-") as tmp:
         args = parse_args(
@@ -11473,6 +11692,8 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_solver_activity_gap_overrides_zero_score()
     test_skillsbench_product_mode_first_action_timeout_is_uncountable()
     test_skillsbench_host_local_idle_timeout_after_closeout_is_countable()
+    test_skillsbench_host_local_idle_no_output_progress_is_distinct()
+    test_product_mode_host_local_idle_no_output_progress_requires_new_trace()
     test_goal_start_host_local_defers_codex_exec_preflight_until_bridge_command()
     test_goal_start_host_exec_failure_overrides_zero_score_recovery()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()

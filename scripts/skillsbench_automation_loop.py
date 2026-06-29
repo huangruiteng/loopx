@@ -317,6 +317,7 @@ PROTECTED_DIRECTIVE_RE = re.compile(
 DECLARED_DONE_MARKER = "AGENT_DECLARED_DONE_NO_REMAINING_GOALS"
 PRODUCT_MODE_FINAL_CLOSEOUT_MAX_CHECKPOINTS = 3
 PRODUCT_MODE_NO_OPEN_TODO_STOP_STREAK_THRESHOLD = 2
+PRODUCT_MODE_HOST_LOCAL_IDLE_NO_PROGRESS_STREAK_THRESHOLD = 2
 CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD = (
     "set -e; "
     "export DEBIAN_FRONTEND=noninteractive; "
@@ -1606,6 +1607,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
         "host_local_acp_codex_exec_failure_category",
+        "host_local_acp_bridge_progress_status",
+        "host_local_acp_bridge_progress_signal_source",
         "runner_interruption_kind",
         "runner_interruption_status",
         "reduce_only_prerequisites_source",
@@ -3213,10 +3216,24 @@ def _apply_agent_message_only_no_tool_calls_attribution(
     bridge_request_count = counters.get(
         "remote_command_file_bridge_agent_request_count"
     )
+    bridge_task_facing_count = counters.get(
+        "remote_command_file_bridge_agent_task_facing_operation_count"
+    )
+    bridge_progress_status = str(
+        counters.get("host_local_acp_bridge_progress_status") or ""
+    )
     if (
-        isinstance(bridge_request_count, int)
-        and not isinstance(bridge_request_count, bool)
-        and bridge_request_count > 0
+        (
+            isinstance(bridge_request_count, int)
+            and not isinstance(bridge_request_count, bool)
+            and bridge_request_count > 0
+        )
+        or (
+            isinstance(bridge_task_facing_count, int)
+            and not isinstance(bridge_task_facing_count, bool)
+            and bridge_task_facing_count > 0
+        )
+        or bridge_progress_status.startswith("bridge_")
     ):
         return False
 
@@ -3880,8 +3897,17 @@ def _build_case_event_timeline(
         trajectory_event_count=trajectory_event_count,
         trajectory_round_count=trajectory_round_count,
         trajectory_tool_call_count=trajectory_tool_call_count,
+        acp_protocol_tool_call_count=trajectory_tool_call_count,
         agent_bridge_request_count=agent_request_count,
         agent_bridge_task_facing_operation_count=task_facing_count,
+        host_local_acp_bridge_progress_status=(
+            counters.get("host_local_acp_bridge_progress_status")
+            or runner_prerequisites.get("host_local_acp_bridge_progress_status")
+        ),
+        host_local_acp_bridge_progress_signal_source=(
+            counters.get("host_local_acp_bridge_progress_signal_source")
+            or runner_prerequisites.get("host_local_acp_bridge_progress_signal_source")
+        ),
         agent_operation_trace_status=(
             counters.get("remote_command_file_bridge_agent_operation_trace_status")
             or runner_prerequisites.get(
@@ -3898,6 +3924,11 @@ def _build_case_event_timeline(
     controller_status = "not_observed"
     if counters.get("controller_official_success_observed") is True:
         controller_status = "official_success_observed"
+    elif (
+        counters.get("product_mode_host_local_idle_no_task_output_progress_stop")
+        is True
+    ):
+        controller_status = "host_local_idle_no_task_output_progress_stop"
     elif (
         counters.get("product_mode_no_open_todo_below_passing_reward_stop")
         is True
@@ -3929,6 +3960,14 @@ def _build_case_event_timeline(
         max_rounds_budget=_case_timeline_max_int(
             counters.get("controller_max_rounds_budget"),
             compact.get("controller_max_rounds_budget"),
+        ),
+        host_local_idle_no_task_output_progress_streak=_case_timeline_max_int(
+            counters.get("product_mode_host_local_idle_no_task_output_progress_streak")
+        ),
+        host_local_idle_no_task_output_progress_streak_threshold=_case_timeline_max_int(
+            counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_streak_threshold"
+            )
         ),
         final_round=round_reward_trace.get("final_round"),
         best_round_reward=round_reward_trace.get("best_round_reward"),
@@ -6423,6 +6462,26 @@ def _merge_host_local_acp_relay_trace_summary(
             prerequisites.get("remote_command_file_bridge_agent_operation_trace_status")
             or "not_required"
         )
+    if agent_bridge_task_facing_success_count > 0:
+        host_local_acp_bridge_progress_status = (
+            "bridge_task_facing_success_observed"
+        )
+    elif agent_bridge_task_facing_operation_count > 0:
+        host_local_acp_bridge_progress_status = (
+            "bridge_task_facing_operation_observed_without_success"
+        )
+    elif agent_bridge_request_count > 0:
+        host_local_acp_bridge_progress_status = (
+            "bridge_agent_request_observed_no_task_facing"
+        )
+    elif host_local_acp_codex_exec_failure_category == "codex_exec_bridge_idle_timeout":
+        host_local_acp_bridge_progress_status = (
+            "codex_exec_bridge_idle_timeout_no_bridge_progress"
+        )
+    elif agent_trace_required:
+        host_local_acp_bridge_progress_status = "agent_operation_trace_missing"
+    else:
+        host_local_acp_bridge_progress_status = "not_required"
     trace["remote_command_file_bridge_agent_command_configured"] = (
         prerequisites.get("remote_command_file_bridge_agent_command_configured") is True
     )
@@ -6438,6 +6497,12 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     trace["remote_command_file_bridge_agent_operation_trace_status"] = (
         agent_trace_status
+    )
+    trace["host_local_acp_bridge_progress_status"] = (
+        host_local_acp_bridge_progress_status
+    )
+    trace["host_local_acp_bridge_progress_signal_source"] = (
+        "remote_command_file_bridge_agent_operations"
     )
     trace["remote_command_file_bridge_agent_request_count"] = (
         agent_bridge_request_count
@@ -6592,6 +6657,12 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     prerequisites["remote_command_file_bridge_agent_operation_trace_status"] = (
         agent_trace_status
+    )
+    prerequisites["host_local_acp_bridge_progress_status"] = (
+        host_local_acp_bridge_progress_status
+    )
+    prerequisites["host_local_acp_bridge_progress_signal_source"] = (
+        "remote_command_file_bridge_agent_operations"
     )
     prerequisites["remote_command_file_bridge_agent_request_count"] = (
         agent_bridge_request_count
@@ -7222,6 +7293,121 @@ def _product_mode_agent_bridge_closeout_observed(trace: dict[str, Any]) -> bool:
         )
         > 0
     )
+
+
+def _product_mode_host_local_idle_no_task_output_progress_applicable(
+    trace: dict[str, Any],
+    round_result: Any | None,
+    *,
+    reward: float | None,
+) -> bool:
+    if isinstance(reward, (int, float)) and not isinstance(reward, bool) and reward >= 1.0:
+        return False
+    if _product_mode_agent_bridge_closeout_observed(trace):
+        return False
+    if trace.get("host_local_acp_codex_exec_failure_category") != (
+        "codex_exec_bridge_idle_timeout"
+    ):
+        return False
+    failure_trace_count = _trace_max_int(
+        trace,
+        "host_local_acp_codex_exec_failure_trace_count",
+    )
+    if failure_trace_count <= 0:
+        return False
+    last_counted = _trace_max_int(
+        trace,
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count",
+    )
+    if failure_trace_count <= last_counted:
+        return False
+    tool_call_count = (
+        _round_result_tool_call_count(round_result)
+        if round_result is not None
+        else None
+    )
+    return bool(
+        (isinstance(tool_call_count, int) and tool_call_count == 0)
+        or _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_task_facing_operation_count",
+            "remote_command_file_bridge_agent_request_count",
+        )
+        > 0
+    )
+
+
+def _record_product_mode_host_local_idle_no_task_output_progress(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+    reward: float | None,
+    round_result: Any | None,
+) -> bool:
+    current = trace.get("product_mode_host_local_idle_no_task_output_progress_streak")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    streak = current + 1
+    threshold = PRODUCT_MODE_HOST_LOCAL_IDLE_NO_PROGRESS_STREAK_THRESHOLD
+    trace["product_mode_host_local_idle_no_task_output_progress"] = True
+    trace["product_mode_host_local_idle_no_task_output_progress_round"] = agent_round
+    trace["product_mode_host_local_idle_no_task_output_progress_streak"] = streak
+    trace["product_mode_host_local_idle_no_task_output_progress_streak_threshold"] = (
+        threshold
+    )
+    trace["product_mode_host_local_idle_no_task_output_progress_category"] = (
+        "codex_exec_bridge_idle_timeout"
+    )
+    trace[
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count"
+    ] = _trace_max_int(trace, "host_local_acp_codex_exec_failure_trace_count")
+    tool_call_count = (
+        _round_result_tool_call_count(round_result)
+        if round_result is not None
+        else None
+    )
+    trace["product_mode_host_local_idle_no_task_output_progress_acp_tool_calls"] = (
+        tool_call_count if isinstance(tool_call_count, int) else 0
+    )
+    trace[
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops"
+    ] = _trace_max_int(
+        trace,
+        "remote_command_file_bridge_agent_task_facing_operation_count",
+    )
+    trace[
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes"
+    ] = _trace_max_int(
+        trace,
+        "remote_command_file_bridge_agent_task_facing_success_count",
+    )
+    if reward is None:
+        trace["product_mode_host_local_idle_no_task_output_progress_score_status"] = (
+            "missing"
+        )
+    else:
+        trace["product_mode_host_local_idle_no_task_output_progress_score"] = reward
+        trace["product_mode_host_local_idle_no_task_output_progress_score_status"] = (
+            "observed_below_passing"
+        )
+    if streak < threshold:
+        return False
+    trace["product_mode_host_local_idle_no_task_output_progress_stop"] = True
+    trace["product_mode_host_local_idle_no_task_output_progress_stop_round"] = (
+        agent_round
+    )
+    trace["product_mode_host_local_idle_no_task_output_progress_policy"] = (
+        "stop_after_two_host_local_idle_rounds_without_task_output_or_closeout"
+    )
+    stop_count = trace.get(
+        "product_mode_host_local_idle_no_task_output_progress_stop_count"
+    )
+    if not isinstance(stop_count, int) or isinstance(stop_count, bool):
+        stop_count = 0
+    trace["product_mode_host_local_idle_no_task_output_progress_stop_count"] = (
+        stop_count + 1
+    )
+    return True
 
 
 def _product_mode_solver_activity_observed(
@@ -7922,6 +8108,35 @@ def _build_product_mode_user(
             "has been recorded."
         )
 
+    def host_local_idle_no_progress_prompt(
+        round_number: int,
+        *,
+        task_instruction: str | None = None,
+    ) -> str:
+        task_clause = ""
+        if task_instruction:
+            task_clause = (
+                "\n\n--- TASK INSTRUCTION ---\n"
+                f"{task_instruction}\n\n"
+            )
+        return (
+            f"Mandatory host-local bridge recovery checkpoint before round "
+            f"{round_number}. The previous host-local Codex exec turn idled "
+            "after bridge activity and did not produce scored task output or "
+            "case closeout. This is not official reward or verifier feedback. "
+            "Do not wait for another local Codex process and do not answer with "
+            "status-only prose. Use the existing sandbox command/file bridge "
+            "now for one concrete task-facing action from `/app`: inspect the "
+            "task workspace, write or validate the scored output path if the "
+            "task names one, or record a compact blocker in the selected P0 "
+            "todo. If local task evidence proves completion, run the exact "
+            "case-local closeout sequence (`todo complete`, `refresh-state`, "
+            "`quota spend-slot --source adapter --execute`) before declaring "
+            "done.\n\n"
+            f"{closeout_commands(round_number)}"
+            f"{task_clause}"
+        )
+
     def final_closeout_prompt(round_number: int) -> str:
         return (
             f"Mandatory product-mode closeout checkpoint before finalization "
@@ -8169,6 +8384,50 @@ def _build_product_mode_user(
                         )
                         return self._scheduled_continuation_prompt(
                             scheduled_round=round + 1,
+                            task_instruction=instruction,
+                        )
+                    if (
+                        self._task_instruction_sent
+                        and product_mode_entry_lifecycle_gate_satisfied()
+                        and _product_mode_host_local_idle_no_task_output_progress_applicable(
+                            trace,
+                            round_result,
+                            reward=(
+                                float(reward)
+                                if isinstance(reward, (int, float))
+                                and not isinstance(reward, bool)
+                                else None
+                            ),
+                        )
+                    ):
+                        host_idle_stop = (
+                            _record_product_mode_host_local_idle_no_task_output_progress(
+                                trace,
+                                agent_round=round,
+                                reward=(
+                                    float(reward)
+                                    if isinstance(reward, (int, float))
+                                    and not isinstance(reward, bool)
+                                    else None
+                                ),
+                                round_result=round_result,
+                            )
+                        )
+                        _inc_counter(trace, "controller_action_decisions")
+                        if host_idle_stop or round >= max_rounds:
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_host_local_idle_no_"
+                                "task_output_progress"
+                            )
+                            return None
+                        _inc_counter(trace, "followup_prompt_count")
+                        trace["last_decision"] = (
+                            "send_product_mode_host_local_idle_no_task_output_"
+                            "progress_recovery"
+                        )
+                        return host_local_idle_no_progress_prompt(
+                            round + 1,
                             task_instruction=instruction,
                         )
                 if _round_result_declared_done(round_result):

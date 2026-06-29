@@ -714,6 +714,8 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
         for field in (
             "execution_style",
             "agent_operation_trace_status",
+            "host_local_acp_bridge_progress_status",
+            "host_local_acp_bridge_progress_signal_source",
             "last_decision",
             "recovery_stage",
             "recovery_exception_type",
@@ -742,6 +744,7 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "trajectory_event_count",
             "trajectory_round_count",
             "trajectory_tool_call_count",
+            "acp_protocol_tool_call_count",
             "agent_bridge_request_count",
             "agent_bridge_task_facing_operation_count",
             "action_decision_count",
@@ -749,6 +752,8 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "followup_prompt_count",
             "stop_decision_count",
             "max_rounds_budget",
+            "host_local_idle_no_task_output_progress_streak",
+            "host_local_idle_no_task_output_progress_streak_threshold",
             "final_round",
             "recovery_delta_events",
             "recovery_delta_tool_calls",
@@ -1068,9 +1073,53 @@ def build_skillsbench_post_run_debug_gate(
                 in {"passed", "satisfied", "not_required"}
             ),
             "task_facing_activity_status": activity_status,
+            "host_local_acp_bridge_progress_status": (
+                public_safe_compact_text(
+                    activity_event.get("host_local_acp_bridge_progress_status"),
+                    limit=140,
+                )
+                or public_safe_compact_text(
+                    counters.get("host_local_acp_bridge_progress_status"),
+                    limit=140,
+                )
+                or "unknown"
+            ),
+            "host_local_acp_bridge_progress_signal_source": (
+                public_safe_compact_text(
+                    activity_event.get("host_local_acp_bridge_progress_signal_source"),
+                    limit=140,
+                )
+                or public_safe_compact_text(
+                    counters.get("host_local_acp_bridge_progress_signal_source"),
+                    limit=140,
+                )
+                or "unknown"
+            ),
+            "acp_protocol_tool_call_count": _benchmark_positive_int(
+                activity_event.get("acp_protocol_tool_call_count")
+            )
+            or _benchmark_positive_int(counters.get("private_trajectory_tool_call_count")),
+            "agent_bridge_task_facing_operation_count": _benchmark_positive_int(
+                activity_event.get("agent_bridge_task_facing_operation_count")
+            )
+            or _benchmark_positive_int(
+                counters.get("remote_command_file_bridge_agent_task_facing_operation_count")
+            ),
             "open_todo_count_public": _benchmark_positive_int(
                 counters.get("open_todo_count")
             ),
+            "host_local_idle_no_task_output_progress_streak": _benchmark_positive_int(
+                counters.get("product_mode_host_local_idle_no_task_output_progress_streak")
+            ),
+            "host_local_idle_no_task_output_progress_streak_threshold": _benchmark_positive_int(
+                counters.get(
+                    "product_mode_host_local_idle_no_task_output_progress_streak_threshold"
+                )
+            ),
+            "host_local_idle_no_task_output_progress_stop": counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop"
+            )
+            is True,
             "no_open_todo_below_passing_reward_streak": _benchmark_positive_int(
                 counters.get(
                     "product_mode_no_open_todo_below_passing_reward_streak"
@@ -1180,6 +1229,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_solver_activity_gap",
         "product_mode_declared_done_below_passing_reward",
         "product_mode_no_open_todo_below_passing_reward_stop",
+        "product_mode_host_local_idle_no_task_output_progress",
+        "product_mode_host_local_idle_no_task_output_progress_stop",
         "product_mode_final_closeout_superseded_by_official_success",
         "product_mode_no_tool_call_lifecycle_abort",
         "agent_declared_done",
@@ -1253,6 +1304,15 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_no_open_todo_below_passing_reward_stop_count",
         "product_mode_no_open_todo_below_passing_reward_stop_round",
         "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+        "product_mode_host_local_idle_no_task_output_progress_streak",
+        "product_mode_host_local_idle_no_task_output_progress_streak_threshold",
+        "product_mode_host_local_idle_no_task_output_progress_round",
+        "product_mode_host_local_idle_no_task_output_progress_stop_count",
+        "product_mode_host_local_idle_no_task_output_progress_stop_round",
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count",
+        "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls",
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops",
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes",
         "product_mode_final_closeout_superseded_round",
         "product_mode_no_tool_call_lifecycle_abort_count",
         "product_mode_no_tool_call_lifecycle_abort_round",
@@ -1342,6 +1402,7 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     for field in (
         "product_mode_declared_done_below_passing_reward_score",
         "product_mode_no_open_todo_below_passing_reward_score",
+        "product_mode_host_local_idle_no_task_output_progress_score",
     ):
         raw = value.get(field)
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
@@ -1358,6 +1419,9 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_solver_activity_missing_reason",
         "product_mode_declared_done_below_passing_reward_score_status",
         "product_mode_no_open_todo_below_passing_reward_score_status",
+        "product_mode_host_local_idle_no_task_output_progress_score_status",
+        "product_mode_host_local_idle_no_task_output_progress_category",
+        "product_mode_host_local_idle_no_task_output_progress_policy",
         "product_mode_declared_done_policy",
         "product_mode_final_closeout_superseded_reason",
         "controller_budget_cutoff_reason",
@@ -1371,6 +1435,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_consumption_decision",
         "remote_command_file_bridge_driver_lifecycle_execution_style",
         "host_local_acp_codex_exec_failure_category",
+        "host_local_acp_bridge_progress_status",
+        "host_local_acp_bridge_progress_signal_source",
         "last_decision",
         "worker_submit_eligible_mismatch_reason",
         "worker_bridge_writeback_loss_reason",
