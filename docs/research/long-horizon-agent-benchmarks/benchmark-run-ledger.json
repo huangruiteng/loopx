@@ -62,15 +62,15 @@
     },
     "skillsbench@1.1": {
       "benchmark_id": "skillsbench@1.1",
-      "case_count": 23,
+      "case_count": 43,
       "cases": {
         "3d-scan-calc": {
           "case_id": "3d-scan-calc",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
-            "baseline_run_id": "fac3a39fdd9a",
-            "decision": "paired_baseline_solved_treatment_preserved",
-            "official_score_delta": 0.0,
+            "baseline_failure_scope": "case_or_solution",
+            "baseline_run_id": "295919e0907d",
+            "decision": "paired_treatment_improved",
+            "official_score_delta": 1.0,
             "treatment_failure_scope": "passed",
             "treatment_run_id": "7ea835b649e7"
           },
@@ -957,16 +957,75 @@
                 "task_skills_removed": true
               },
               "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-01-3d-scan-calc",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-01-3d-scan-calc/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "3d-scan-calc",
+              "case_ids": [
+                "3d-scan-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_3d_scan_calc_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:03+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "295919e0907d",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
         "ada-bathroom-plan-repair": {
           "case_id": "ada-bathroom-plan-repair",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
-            "baseline_run_id": "7d919631a765",
-            "decision": "paired_baseline_solved_treatment_preserved",
-            "official_score_delta": 0.0,
+            "baseline_failure_scope": "case_or_solution",
+            "baseline_run_id": "a054b365d9fc",
+            "decision": "paired_treatment_improved",
+            "official_score_delta": 1.0,
             "treatment_failure_scope": "passed",
             "treatment_run_id": "52a934d39c59"
           },
@@ -1154,16 +1213,74 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-02-ada-bathroom-plan-repair",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-02-ada-bathroom-plan-repair/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "ada-bathroom-plan-repair",
+              "case_ids": [
+                "ada-bathroom-plan-repair"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_ada_bathroom_plan_repair_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:04+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "a054b365d9fc",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
         "adaptive-cruise-control": {
           "case_id": "adaptive-cruise-control",
           "latest_decision": {
-            "baseline_run_id": "235f52dc6a5b",
-            "decision": "baseline_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_docker_compose_apt_repository_failure",
-            "failure_scope": "score_missing"
+            "baseline_run_id": "f7cfe8be0f89",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
           },
           "runs": [
             {
@@ -1217,19 +1334,78 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-03-adaptive-cruise-control",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-03-adaptive-cruise-control/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "adaptive-cruise-control",
+              "case_ids": [
+                "adaptive-cruise-control"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_adaptive_cruise_control_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:04+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "f7cfe8be0f89",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
         "azure-bgp-oscillation-route-leak": {
           "case_id": "azure-bgp-oscillation-route-leak",
           "latest_decision": {
-            "baseline_run_id": "788c64ee1ddd",
+            "baseline_run_id": "c1555cacf1d1",
             "decision": "product_mode_pair_incomplete",
             "product_mode_main_table_pair": {
-              "baseline_route_valid": true,
+              "baseline_route_valid": false,
               "benchmark_id": "skillsbench@1.1",
               "case_id": "azure-bgp-oscillation-route-leak",
-              "claim_blocker": "treatment_loopx_lifecycle_not_observed",
+              "claim_blocker": "baseline_not_raw_codex_autonomous_max5,baseline_official_feedback_not_blinded,baseline_reward_feedback_forwarding_not_disabled,baseline_compact_metrics_missing,treatment_loopx_lifecycle_not_observed",
               "comparison_id": "skillsbench_product_mode_main_table_v0",
               "headline_metrics": [
                 "best_score",
@@ -1239,7 +1415,7 @@
               ],
               "main_table_claim_allowed": false,
               "max_rounds_budget": 5,
-              "official_feedback_blinded": true,
+              "official_feedback_blinded": false,
               "product_mode_pair_complete": false,
               "schema_version": "benchmark_product_mode_comparison_v0",
               "treatment_loopx_lifecycle_observed": false,
@@ -1967,16 +2143,75 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-04-azure-bgp-oscillation-route-leak",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-04-azure-bgp-oscillation-route-leak/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "azure-bgp-oscillation-route-leak",
+              "case_ids": [
+                "azure-bgp-oscillation-route-leak"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_azure_bgp_oscillation_route_leak_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "c1555cacf1d1",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
         "bike-rebalance": {
           "case_id": "bike-rebalance",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
-            "baseline_run_id": "7ab4d4e3f194",
-            "decision": "paired_baseline_solved_treatment_preserved",
-            "official_score_delta": 0.0,
+            "baseline_failure_scope": "case_or_solution",
+            "baseline_run_id": "be336852b280",
+            "decision": "paired_treatment_improved",
+            "official_score_delta": 1.0,
             "treatment_failure_scope": "passed",
             "treatment_run_id": "239aecc4f3a3"
           },
@@ -2106,16 +2341,75 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-05-bike-rebalance",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-05-bike-rebalance/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "bike-rebalance",
+              "case_ids": [
+                "bike-rebalance"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_bike_rebalance_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "be336852b280",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
         "citation-check": {
           "case_id": "citation-check",
           "latest_decision": {
-            "baseline_failure_scope": "passed",
-            "baseline_run_id": "2297b9236dc2",
-            "decision": "paired_baseline_solved_treatment_preserved",
-            "official_score_delta": 0.0,
+            "baseline_failure_scope": "case_or_solution",
+            "baseline_run_id": "1fac74f1baa0",
+            "decision": "paired_treatment_improved",
+            "official_score_delta": 1.0,
             "treatment_failure_scope": "passed",
             "treatment_run_id": "15ba747b3be5"
           },
@@ -3394,6 +3688,65 @@
                 "verifier_uv_bootstrap_version": "0.9.7"
               },
               "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-06-citation-check",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-06-citation-check/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_citation_check_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:06+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "1fac74f1baa0",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
@@ -3401,7 +3754,7 @@
           "case_id": "civ6-adjacency-optimizer",
           "latest_decision": {
             "baseline_failure_scope": "case_or_solution",
-            "baseline_run_id": "973d9618d7f6",
+            "baseline_run_id": "c2fdec5fa337",
             "decision": "paired_no_score_uplift",
             "official_score_delta": 0.0,
             "treatment_failure_scope": "case_or_solution",
@@ -3573,20 +3926,213 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-07-civ6-adjacency-optimizer",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-07-civ6-adjacency-optimizer/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "civ6-adjacency-optimizer",
+              "case_ids": [
+                "civ6-adjacency-optimizer"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_civ6_adjacency_optimizer_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:07+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "c2fdec5fa337",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "court-form-filling": {
+          "case_id": "court-form-filling",
+          "latest_decision": {
+            "baseline_run_id": "0da6cc981a51",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-08-court-form-filling",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-08-court-form-filling/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "court-form-filling",
+              "case_ids": [
+                "court-form-filling"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_court_form_filling_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:08+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "0da6cc981a51",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "crystallographic-wyckoff-position-analysis": {
+          "case_id": "crystallographic-wyckoff-position-analysis",
+          "latest_decision": {
+            "baseline_run_id": "59a046e9b96c",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-09-crystallographic-wyckoff-position-analysis",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-09-crystallographic-wyckoff-position-analysis/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "crystallographic-wyckoff-position-analysis",
+              "case_ids": [
+                "crystallographic-wyckoff-position-analysis"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_crystallographic_wyckoff_position_analysis_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:09+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "59a046e9b96c",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
         "dapt-intrusion-detection": {
           "case_id": "dapt-intrusion-detection",
           "latest_decision": {
-            "baseline_failure_scope": "score_missing",
-            "baseline_run_id": "d1aee11b0f7a",
-            "decision": "paired_baseline_setup_preflight_selection_required",
-            "failure_class": "skillsbench_docker_apt_setup_risk_preflight_blocked",
-            "next_action": "select a non-apt-risk SkillsBench task for the next full baseline/treatment pair or repair the Docker apt setup route before rerunning this task",
-            "official_score_delta": null,
-            "repair_class": "skillsbench_setup_preflight_selection",
-            "repair_priority": "P1",
+            "baseline_failure_scope": "case_or_solution",
+            "baseline_run_id": "a7ebcaf53915",
+            "decision": "paired_no_score_uplift",
+            "official_score_delta": 0.0,
             "treatment_failure_scope": "case_or_solution",
             "treatment_run_id": "0f8854fed0c1"
           },
@@ -3842,6 +4388,134 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-10-dapt-intrusion-detection",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-10-dapt-intrusion-detection/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "dapt-intrusion-detection",
+              "case_ids": [
+                "dapt-intrusion-detection"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_dapt_intrusion_detection_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:10+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "a7ebcaf53915",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "data-to-d3": {
+          "case_id": "data-to-d3",
+          "latest_decision": {
+            "baseline_run_id": "0329fd23dbdd",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-11-data-to-d3",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-11-data-to-d3/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "data-to-d3",
+              "case_ids": [
+                "data-to-d3"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_data_to_d3_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:10+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "0329fd23dbdd",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
@@ -3849,9 +4523,9 @@
           "case_id": "debug-trl-grpo",
           "latest_decision": {
             "baseline_failure_scope": "score_missing",
-            "baseline_run_id": "a684e81ddb98",
+            "baseline_run_id": "4c5f1d946f2f",
             "decision": "paired_baseline_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_docker_compose_apt_repository_failure",
+            "failure_class": "skillsbench_docker_compose_pip_bootstrap_failure",
             "official_score_delta": null,
             "treatment_failure_scope": "case_or_solution",
             "treatment_run_id": "eeabc7f865a1"
@@ -4359,15 +5033,1110 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-12-debug-trl-grpo",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-12-debug-trl-grpo/result.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_docker_compose_pip_bootstrap_failure",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "debug-trl-grpo",
+              "case_ids": [
+                "debug-trl-grpo"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_docker_compose_pip_bootstrap_failure",
+              "failure_labels": [
+                "skillsbench_docker_compose_pip_bootstrap_failure",
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_python_package_bootstrap_failure",
+                "skillsbench_environment_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_debug_trl_grpo_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:11+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "4c5f1d946f2f",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "verifier_attempt_countable": false
+            }
+          ]
+        },
+        "dialogue-parser": {
+          "case_id": "dialogue-parser",
+          "latest_decision": {
+            "baseline_run_id": "5643fe357128",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-13-dialogue-parser",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-13-dialogue-parser/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "dialogue-parser",
+              "case_ids": [
+                "dialogue-parser"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_dialogue_parser_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:11+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "5643fe357128",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "drone-planning-control": {
+          "case_id": "drone-planning-control",
+          "latest_decision": {
+            "baseline_run_id": "7f318e363c23",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-14-drone-planning-control",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-14-drone-planning-control/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "drone-planning-control",
+              "case_ids": [
+                "drone-planning-control"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_drone_planning_control_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:12+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "7f318e363c23",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "dynamic-object-aware-egomotion": {
+          "case_id": "dynamic-object-aware-egomotion",
+          "latest_decision": {
+            "baseline_run_id": "0de991278094",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-15-dynamic-object-aware-egomotion",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-15-dynamic-object-aware-egomotion/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "dynamic-object-aware-egomotion",
+              "case_ids": [
+                "dynamic-object-aware-egomotion"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_dynamic_object_aware_egomotion_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:12+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "0de991278094",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "earthquake-phase-association": {
+          "case_id": "earthquake-phase-association",
+          "latest_decision": {
+            "baseline_run_id": "53d45697e575",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-16-earthquake-phase-association",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-16-earthquake-phase-association/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "earthquake-phase-association",
+              "case_ids": [
+                "earthquake-phase-association"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_earthquake_phase_association_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:13+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "53d45697e575",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "earthquake-plate-calculation": {
+          "case_id": "earthquake-plate-calculation",
+          "latest_decision": {
+            "baseline_run_id": "f1205441799b",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-17-earthquake-plate-calculation",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-17-earthquake-plate-calculation/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "earthquake-plate-calculation",
+              "case_ids": [
+                "earthquake-plate-calculation"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_earthquake_plate_calculation_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:13+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "f1205441799b",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "econ-detrending-correlation": {
+          "case_id": "econ-detrending-correlation",
+          "latest_decision": {
+            "baseline_run_id": "e0c3c78a0b1d",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-18-econ-detrending-correlation",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-18-econ-detrending-correlation/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "econ-detrending-correlation",
+              "case_ids": [
+                "econ-detrending-correlation"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_econ_detrending_correlation_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:14+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "e0c3c78a0b1d",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "edit-pdf": {
+          "case_id": "edit-pdf",
+          "latest_decision": {
+            "baseline_run_id": "6a2963456c70",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-19-edit-pdf",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-19-edit-pdf/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "edit-pdf",
+              "case_ids": [
+                "edit-pdf"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_edit_pdf_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:15+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "6a2963456c70",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "energy-ac-optimal-power-flow": {
+          "case_id": "energy-ac-optimal-power-flow",
+          "latest_decision": {
+            "baseline_run_id": "c3b36b96183b",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-20-energy-ac-optimal-power-flow",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-20-energy-ac-optimal-power-flow/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "energy-ac-optimal-power-flow",
+              "case_ids": [
+                "energy-ac-optimal-power-flow"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_energy_ac_optimal_power_flow_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:15+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "c3b36b96183b",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "energy-market-pricing": {
+          "case_id": "energy-market-pricing",
+          "latest_decision": {
+            "baseline_run_id": "5cf3c3bd1902",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-21-energy-market-pricing",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-21-energy-market-pricing/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "energy-market-pricing",
+              "case_ids": [
+                "energy-market-pricing"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_energy_market_pricing_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:16+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "5cf3c3bd1902",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "energy-unit-commitment": {
+          "case_id": "energy-unit-commitment",
+          "latest_decision": {
+            "baseline_run_id": "f77d67af1286",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-22-energy-unit-commitment",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-22-energy-unit-commitment/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "energy-unit-commitment",
+              "case_ids": [
+                "energy-unit-commitment"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_energy_unit_commitment_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:17+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "f77d67af1286",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "enterprise-information-search": {
+          "case_id": "enterprise-information-search",
+          "latest_decision": {
+            "baseline_run_id": "b06fec85e54b",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-23-enterprise-information-search",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-23-enterprise-information-search/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "enterprise-information-search",
+              "case_ids": [
+                "enterprise-information-search"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_enterprise_information_search_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:17+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "b06fec85e54b",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "exam-block-sequencing": {
+          "case_id": "exam-block-sequencing",
+          "latest_decision": {
+            "baseline_run_id": "1a453af65859",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-24-exam-block-sequencing",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-24-exam-block-sequencing/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "exam-block-sequencing",
+              "case_ids": [
+                "exam-block-sequencing"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_exam_block_sequencing_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:18+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "1a453af65859",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "exceltable-in-ppt": {
+          "case_id": "exceltable-in-ppt",
+          "latest_decision": {
+            "baseline_run_id": "c1b1022377d5",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-25-exceltable-in-ppt",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-25-exceltable-in-ppt/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "exceltable-in-ppt",
+              "case_ids": [
+                "exceltable-in-ppt"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_exceltable_in_ppt_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:18+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "c1b1022377d5",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "exoplanet-detection-period": {
+          "case_id": "exoplanet-detection-period",
+          "latest_decision": {
+            "baseline_run_id": "bc1ab5e36ad8",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-26-exoplanet-detection-period",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-26-exoplanet-detection-period/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "exoplanet-detection-period",
+              "case_ids": [
+                "exoplanet-detection-period"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_exoplanet_detection_period_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:19+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "bc1ab5e36ad8",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
+            }
+          ]
+        },
+        "financial-modeling-qa": {
+          "case_id": "financial-modeling-qa",
+          "latest_decision": {
+            "baseline_run_id": "d0eec78e5720",
+            "decision": "baseline_failed_treatment_candidate",
+            "failure_scope": "case_or_solution"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-27-financial-modeling-qa",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-27-financial-modeling-qa/result.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "financial-modeling-qa",
+              "case_ids": [
+                "financial-modeling-qa"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_financial_modeling_qa_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:20+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "d0eec78e5720",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "verifier_attempt_countable": true
             }
           ]
         },
         "fix-build-agentops": {
           "case_id": "fix-build-agentops",
           "latest_decision": {
-            "baseline_run_id": "09caa24411c3",
+            "baseline_run_id": "dad69fa8c811",
             "decision": "baseline_runner_or_setup_repair_required",
-            "failure_class": "skillsbench_docker_compose_apt_repository_failure",
+            "failure_class": "skillsbench_environment_app_mount_missing",
             "failure_scope": "score_missing"
           },
           "runs": [
@@ -4526,6 +6295,204 @@
                 "staged": true,
                 "task_skills_removed": true
               }
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-28-fix-build-agentops",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-28-fix-build-agentops/result.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_environment_app_mount_missing",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "fix-build-agentops",
+              "case_ids": [
+                "fix-build-agentops"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_environment_app_mount_missing",
+              "failure_labels": [
+                "skillsbench_environment_app_mount_missing",
+                "skillsbench_environment_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_fix_build_agentops_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:20+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "dad69fa8c811",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "verifier_attempt_countable": false
+            }
+          ]
+        },
+        "fix-build-google-auto": {
+          "case_id": "fix-build-google-auto",
+          "latest_decision": {
+            "baseline_run_id": "4f179ead5235",
+            "decision": "baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_docker_compose_apt_repository_failure",
+            "failure_scope": "score_missing"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-29-fix-build-google-auto",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-29-fix-build-google-auto/result.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_docker_compose_apt_repository_failure",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "fix-build-google-auto",
+              "case_ids": [
+                "fix-build-google-auto"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_docker_compose_apt_repository_failure",
+              "failure_labels": [
+                "skillsbench_docker_compose_apt_repository_failure",
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_environment_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_fix_build_google_auto_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:21+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "4f179ead5235",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "verifier_attempt_countable": false
+            }
+          ]
+        },
+        "fix-druid-loophole-cve": {
+          "case_id": "fix-druid-loophole-cve",
+          "latest_decision": {
+            "baseline_run_id": "f2bb5c9e3888",
+            "decision": "baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_docker_compose_apt_repository_failure",
+            "failure_scope": "score_missing"
+          },
+          "runs": [
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "artifact_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-30-fix-druid-loophole-cve",
+                "result_ref": "skillsbench-goal-baseline-30case-20260629T1921Z-r12-30-fix-druid-loophole-cve/result.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_docker_compose_apt_repository_failure",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "fix-druid-loophole-cve",
+              "case_ids": [
+                "fix-druid-loophole-cve"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_docker_compose_apt_repository_failure",
+              "failure_labels": [
+                "skillsbench_docker_compose_apt_repository_failure",
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_environment_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_fix_druid_loophole_cve_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "r12 nested case-local official result ingested via result-root discovery",
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T06:18:22+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-goal-baseline-30case-20260629T1921Z-r12",
+              "run_id": "f2bb5c9e3888",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -10202,7 +12169,7 @@
           ]
         }
       },
-      "run_count": 163
+      "run_count": 193
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -14254,5 +16221,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-29T17:31:26+08:00"
+  "updated_at": "2026-06-30T06:18:22+08:00"
 }

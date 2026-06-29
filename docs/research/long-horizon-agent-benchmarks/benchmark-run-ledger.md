@@ -5,23 +5,43 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-29T17:31:26+08:00`
+- updated_at: `2026-06-30T06:18:22+08:00`
 
 ## Case Decisions
 
 | Benchmark | Case | Decision | Product Pair | Case Routing | Runs |
 | --- | --- | --- | --- | --- | --- |
 | `skillsbench-cloud-oracle-sanity@v0` | `hello-world` | `single_arm_recorded` | - | - | `1` |
-| `skillsbench@1.1` | `3d-scan-calc` | `paired_baseline_solved_treatment_preserved` | - | - | `11` |
-| `skillsbench@1.1` | `ada-bathroom-plan-repair` | `paired_baseline_solved_treatment_preserved` | - | - | `4` |
-| `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | - | `1` |
-| `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `treatment_loopx_lifecycle_not_observed` | - | `10` |
-| `skillsbench@1.1` | `bike-rebalance` | `paired_baseline_solved_treatment_preserved` | - | - | `3` |
-| `skillsbench@1.1` | `citation-check` | `paired_baseline_solved_treatment_preserved` | - | - | `14` |
-| `skillsbench@1.1` | `civ6-adjacency-optimizer` | `paired_no_score_uplift` | - | - | `4` |
-| `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_baseline_setup_preflight_selection_required` | - | - | `5` |
-| `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | - | `9` |
-| `skillsbench@1.1` | `fix-build-agentops` | `baseline_runner_or_setup_repair_required` | - | - | `2` |
+| `skillsbench@1.1` | `3d-scan-calc` | `paired_treatment_improved` | - | - | `12` |
+| `skillsbench@1.1` | `ada-bathroom-plan-repair` | `paired_treatment_improved` | - | - | `5` |
+| `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_failed_treatment_candidate` | - | - | `2` |
+| `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `baseline_not_raw_codex_autonomous_max5,baseline_official_feedback_not_blinded,baseline_reward_feedback_forwarding_not...` | - | `11` |
+| `skillsbench@1.1` | `bike-rebalance` | `paired_treatment_improved` | - | - | `4` |
+| `skillsbench@1.1` | `citation-check` | `paired_treatment_improved` | - | - | `15` |
+| `skillsbench@1.1` | `civ6-adjacency-optimizer` | `paired_no_score_uplift` | - | - | `5` |
+| `skillsbench@1.1` | `court-form-filling` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `crystallographic-wyckoff-position-analysis` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `dapt-intrusion-detection` | `paired_no_score_uplift` | - | - | `6` |
+| `skillsbench@1.1` | `data-to-d3` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `debug-trl-grpo` | `paired_baseline_runner_or_setup_repair_required` | - | - | `10` |
+| `skillsbench@1.1` | `dialogue-parser` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `drone-planning-control` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `dynamic-object-aware-egomotion` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `earthquake-phase-association` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `earthquake-plate-calculation` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `econ-detrending-correlation` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `edit-pdf` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `energy-ac-optimal-power-flow` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `energy-market-pricing` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `energy-unit-commitment` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `enterprise-information-search` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `exam-block-sequencing` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `exceltable-in-ppt` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `exoplanet-detection-period` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `financial-modeling-qa` | `baseline_failed_treatment_candidate` | - | - | `1` |
+| `skillsbench@1.1` | `fix-build-agentops` | `baseline_runner_or_setup_repair_required` | - | - | `3` |
+| `skillsbench@1.1` | `fix-build-google-auto` | `baseline_runner_or_setup_repair_required` | - | - | `1` |
+| `skillsbench@1.1` | `fix-druid-loophole-cve` | `baseline_runner_or_setup_repair_required` | - | - | `1` |
 | `skillsbench@1.1` | `hello-world` | `baseline_runner_or_setup_repair_required` | - | - | `2` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `paired_no_score_uplift` | - | - | `25` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | `paired_no_score_uplift` | - | - | `4` |
@@ -93,11 +113,14 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0` | `skillsbench_host_local_acp_codex_exec_failed_codex_exec_bridge_idle_timeout` | `` |
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_loopx_treatment` | `` | `missing` | `` | `` | `skillsbench_host_local_acp_codex_exec_preflight_failed_bridge_command_failed` | `.local/private-benchmark-jobs/skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111718Z/3d-scan-calc__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_loopx_treatment` | `case_attempt` | `1.0` | `2` | `1:0,2:1*,3:1*,4:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111849Z/3d-scan-calc__loopx_goal_start_product_mode/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `3d-scan-calc` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-01-3d-scan-calc/result.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_goal_mode_baseline` | `` | `missing` | `` | `` | `skillsbench_codex_acp_launch_failed` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-pair-20260615T2346CST/ada-bathroom-plan-repair__codex_goal_mode_baseline_20260615T2346CST/ada-bathroom-plan-repair__codex_goal_mode_baseline/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_goal_mode_baseline` | `` | `missing` | `` | `` | `skillsbench_codex_acp_binary_missing` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-preflight-rerun-20260616T0124CST/ada-bathroom-plan-repair__codex_goal_mode_baseline_preflight_rerun_20260616T0124CST/ada-bathroom-plan-repair__codex_goal_mode_baseline/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-blind-baseline-v0/ada-bathroom-plan-repair__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_loopx_treatment` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-blind-treatment-v0/ada-bathroom-plan-repair__loopx_blind_loop_v0/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-02-ada-bathroom-plan-repair/result.json` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_apt_repository_failure` | `.local/private-benchmark-jobs/skillsbench-adaptive-cruise-control-baseline-probe-20260616T0956CST/adaptive-cruise-control__codex_acp_blind_loop/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `adaptive-cruise-control` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-03-adaptive-cruise-control/result.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-baseline-20260616T101857CST/azure-bgp-oscillation-route-leak__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-baseline-20260616T102256CST/azure-bgp-oscillation-route-leak__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-baseline-20260616T102456CST/azure-bgp-oscillation-route-leak__codex_acp_blind_loop/benchmark_run.compact.json` |
@@ -108,9 +131,11 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:missing,2:0,3:0,4:0,5:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-oscillation-route-leak-blind-treatment-max5-popen-20260616T1710CST/azure-bgp-oscillation-route-leak__loopx_blind_loop_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `0.0` | `` | `1:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-product-mode-20260617T195844CST/azure-bgp-oscillation-route-leak__raw_codex_autonomous_max5/azure-bgp-oscillation-route-leak__raw_codex_autonomous_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0,2:0,3:0,4:0,5:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-product-mode-20260617T195844CST/azure-bgp-oscillation-route-leak__loopx_product_mode/azure-bgp-oscillation-route-leak__loopx_product_mode/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-04-azure-bgp-oscillation-route-leak/result.json` |
 | `skillsbench@1.1` | `bike-rebalance` | `loopx-blind-loop-treatment-baseline-safe` | `` | `1.0` | `1` | `1:1*` | `none` | `private-benchmark-jobs/skillsbench-bike-rebalance-treatment-blind-20260616T082339CST-popen/bike-rebalance__loopx_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `bike-rebalance` | `codex-acp-blind-loop-baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `private-benchmark-jobs/skillsbench-bike-rebalance-baseline-blind-20260616T082339CST-popen/bike-rebalance__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `bike-rebalance` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-bike-rebalance-baseline-rerun-20260616T0852CST/bike-rebalance__codex_acp_blind_loop/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `bike-rebalance` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-05-bike-rebalance/result.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_goal_mode_baseline` | `` | `missing` | `` | `` | `skillsbench_environment_app_mount_missing` | `result.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_goal_mode_baseline` | `` | `1.0` | `` | `` | `none` | `result.json` |
 | `skillsbench@1.1` | `citation-check` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-citation-check-blind-baseline-v0/citation-check__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
@@ -125,15 +150,21 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `missing` | `` | `` | `verifier_infrastructure_failure` | `.local/private-benchmark-jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z/remote-root/jobs/skillsbench-citation-check-goal-start-post777-20260627T133638Z-goalstart/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `missing` | `` | `1:missing,2:missing,3:missing,4:missing,5:missing,6:missing,7:missing,8:missing,9:missing,10:missing,11:missing,12:missing,13:missing,14:missing,15:missing` | `verifier_infrastructure_failure` | `.local/private-benchmark-jobs/skillsbench-citation-check-goalstart-earlyexit-20260628T1235Z/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `1.0` | `2` | `1:0,2:1*` | `none` | `cloud-ecs/skillsbench-citation-check-goalstart-taskrecenter-20260629T091301Z/jobs/skillsbench-citation-check-goalstart-taskrecenter-20260629T091301Z-goalstart/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `citation-check` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-06-citation-check/result.json` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `loopx_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-baseline-v0/civ6-adjacency-optimizer__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-treatment-v0/civ6-adjacency-optimizer__loopx_blind_loop_v0/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `civ6-adjacency-optimizer` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-07-civ6-adjacency-optimizer/result.json` |
+| `skillsbench@1.1` | `court-form-filling` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-08-court-form-filling/result.json` |
+| `skillsbench@1.1` | `crystallographic-wyckoff-position-analysis` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-09-crystallographic-wyckoff-position-analysis/result.json` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `loopx_automation_loop_treatment` | `` | `1.0` | `` | `` | `none` | `` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-dapt-intrusion-detection-blind-baseline-v0/dapt-intrusion-detection__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-dapt-intrusion-detection-blind-treatment-v0/dapt-intrusion-detection__loopx_blind_loop_v0/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `dapt-intrusion-detection` | `skillsbench_codex_acp_blind_loop_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_apt_setup_risk_preflight_blocked` | `.local/private-benchmark-jobs/skillsbench-dapt-intrusion-detection-codex-acp-blind-loop-baseline-20260616T230958CST/dapt-intrusion-detection__codex_acp_blind_loop/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `dapt-intrusion-detection` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-10-dapt-intrusion-detection/result.json` |
+| `skillsbench@1.1` | `data-to-d3` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-11-data-to-d3/result.json` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `codex_goal_mode_baseline` | `` | `0.25` | `` | `` | `none` | `` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `loopx_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `baseline` | `` | `0.25` | `` | `1:0.25,2:0.25` | `none` | `.local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-baseline-v0/debug-trl-grpo__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
@@ -143,8 +174,27 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `debug-trl-grpo` | `codex_loopx_treatment` | `` | `0.0` | `` | `1:0.25,2:0.25,3:0,4:0,5:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-debug-trl-grpo-blind-treatment-max5-launchd-20260616T150011CST/debug-trl-grpo__loopx_blind_loop_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_image_build_failure` | `.local/private-benchmark-jobs/skillsbench-product-mode-debug-trl-raw-baseline-20260616T1959CST/skillsbench_product_mode_debug_trl_raw_baseline_20260616T1959CST/debug-trl-grpo__raw_codex_autonomous_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_apt_repository_failure` | `.local/private-benchmark-jobs/skillsbench-product-mode-debug-trl-raw-baseline-after-runtime-apt-20260616T2011CST/skillsbench_product_mode_debug_trl_raw_baseline_after_runtime_apt_20260616T2011CST/debug-trl-grpo__raw_codex_autonomous_max5_runtime_apt/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `debug-trl-grpo` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_pip_bootstrap_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-12-debug-trl-grpo/result.json` |
+| `skillsbench@1.1` | `dialogue-parser` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-13-dialogue-parser/result.json` |
+| `skillsbench@1.1` | `drone-planning-control` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-14-drone-planning-control/result.json` |
+| `skillsbench@1.1` | `dynamic-object-aware-egomotion` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-15-dynamic-object-aware-egomotion/result.json` |
+| `skillsbench@1.1` | `earthquake-phase-association` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-16-earthquake-phase-association/result.json` |
+| `skillsbench@1.1` | `earthquake-plate-calculation` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-17-earthquake-plate-calculation/result.json` |
+| `skillsbench@1.1` | `econ-detrending-correlation` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-18-econ-detrending-correlation/result.json` |
+| `skillsbench@1.1` | `edit-pdf` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-19-edit-pdf/result.json` |
+| `skillsbench@1.1` | `energy-ac-optimal-power-flow` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-20-energy-ac-optimal-power-flow/result.json` |
+| `skillsbench@1.1` | `energy-market-pricing` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-21-energy-market-pricing/result.json` |
+| `skillsbench@1.1` | `energy-unit-commitment` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-22-energy-unit-commitment/result.json` |
+| `skillsbench@1.1` | `enterprise-information-search` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-23-enterprise-information-search/result.json` |
+| `skillsbench@1.1` | `exam-block-sequencing` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-24-exam-block-sequencing/result.json` |
+| `skillsbench@1.1` | `exceltable-in-ppt` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-25-exceltable-in-ppt/result.json` |
+| `skillsbench@1.1` | `exoplanet-detection-period` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-26-exoplanet-detection-period/result.json` |
+| `skillsbench@1.1` | `financial-modeling-qa` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-27-financial-modeling-qa/result.json` |
 | `skillsbench@1.1` | `fix-build-agentops` | `baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_setup_failure` | `.local/private-benchmark-jobs/skillsbench-fix-build-agentops-blind-baseline-20260616T102752CST/fix-build-agentops__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `fix-build-agentops` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_apt_repository_failure` | `.local/private-benchmark-jobs/skillsbench-fix-build-agentops-raw-codex-autonomous-max5-20260617T1412CST/fix-build-agentops__raw_codex_autonomous_max5/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `fix-build-agentops` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_environment_app_mount_missing` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-28-fix-build-agentops/result.json` |
+| `skillsbench@1.1` | `fix-build-google-auto` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_apt_repository_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-29-fix-build-google-auto/result.json` |
+| `skillsbench@1.1` | `fix-druid-loophole-cve` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_apt_repository_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-30-fix-druid-loophole-cve/result.json` |
 | `skillsbench@1.1` | `hello-world` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_failed_before_agent_install` | `.local/private-benchmark-jobs/skillsbench-canonical-hello-world-base-20260623T0211/skillsbench-canonical-hello-world-base-20260623T0211/hello-world__raw_codex_autonomous_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `hello-world` | `skillsbench_raw_codex_autonomous_max5_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_failed_before_agent_install` | `.local/private-benchmark-jobs/skillsbench-hello-world-canonical-lifecycle-20260622T225217Z-base/hello-world__raw_codex_autonomous_max5/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
