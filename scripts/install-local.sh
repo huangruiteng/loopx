@@ -15,6 +15,7 @@ release_id="${LOOPX_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 release_dir="$releases_dir/$release_id"
 release_tmp="$release_dir.tmp.$$"
 legacy_line=""
+installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 warn_stale_promotion_readiness() {
   local python_bin="${LOOPX_PYTHON:-python3}"
@@ -111,6 +112,10 @@ copy_path "$repo_root/README.md" "$release_tmp/README.md"
 copy_path "$repo_root/pyproject.toml" "$release_tmp/pyproject.toml"
 find "$release_tmp" -name __pycache__ -type d -prune -exec rm -rf {} +
 find "$release_tmp" -name '*.pyc' -type f -delete
+PYTHONPATH="$release_tmp${PYTHONPATH:+:$PYTHONPATH}" "${LOOPX_PYTHON:-python3}" -m loopx.release_manifest \
+  "$release_tmp" \
+  --release-id "$release_id" \
+  --installed-at "$installed_at"
 chmod +x "$release_tmp/scripts/loopx"
 if [[ -e "$release_dir" ]]; then
   rm -rf "$release_tmp"

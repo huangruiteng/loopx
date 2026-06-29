@@ -12,6 +12,7 @@ from typing import Any
 from . import __version__
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path
 from .registry_writability import probe_registry_write_path
+from .release_manifest import load_release_manifest
 
 
 PROMOTION_READINESS_CLASSIFICATIONS = {
@@ -114,6 +115,7 @@ def build_install_freshness(
     release_root: Path | None,
     repo_root: Path,
     skills: dict[str, dict[str, Any]],
+    release_manifest: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -153,6 +155,17 @@ def build_install_freshness(
         requires_upgrade = False
 
     contributor_upgrade_command = f"{repo_root / 'scripts' / 'install-local.sh'}\nloopx doctor"
+    manifest = release_manifest if isinstance(release_manifest, dict) else {}
+    manifest_body = manifest.get("manifest") if isinstance(manifest.get("manifest"), dict) else {}
+    manifest_package = (
+        manifest_body.get("package") if isinstance(manifest_body.get("package"), dict) else {}
+    )
+    manifest_source = (
+        manifest_body.get("source") if isinstance(manifest_body.get("source"), dict) else {}
+    )
+    manifest_skills = (
+        manifest_body.get("skills") if isinstance(manifest_body.get("skills"), dict) else {}
+    )
     return {
         "schema_version": "loopx_install_freshness_v0",
         "status": status,
@@ -166,6 +179,15 @@ def build_install_freshness(
         "no_clone_upgrade_command": NO_CLONE_UPGRADE_COMMAND,
         "contributor_upgrade_command": contributor_upgrade_command,
         "doctor_after_upgrade": "loopx doctor",
+        "release_manifest_available": manifest.get("available"),
+        "release_manifest_path": manifest.get("path"),
+        "release_manifest_reason": manifest.get("reason"),
+        "manifest_package_version": manifest_package.get("version"),
+        "manifest_source_kind": manifest_source.get("kind"),
+        "manifest_source_repo": manifest_source.get("repo"),
+        "manifest_source_ref": manifest_source.get("ref"),
+        "manifest_archive_sha256": manifest_source.get("archive_sha256"),
+        "manifest_skills_digest": manifest_skills.get("digest"),
     }
 
 
@@ -334,14 +356,18 @@ def collect_doctor() -> dict[str, Any]:
     wrapper_script = repo_root / "scripts" / "loopx"
     release_root = command_release_root(command_realpath)
     canary_root = command_release_root(canary_realpath)
+    release_manifest = load_release_manifest(release_root)
     path_entries = os.environ.get("PATH", "").split(os.pathsep)
     local_bin = user_local_bin()
     skills_root = codex_home() / "skills"
     skill_path = skills_root / "loopx-project" / "SKILL.md"
     skills = installed_skill_summary(skills_root)
+    default_release = command_root_summary(command_path, command_realpath)
+    default_release["release_manifest_available"] = release_manifest.get("available")
+    default_release["release_manifest_path"] = release_manifest.get("path")
     release_provenance = {
         "runtime_root": str(DEFAULT_RUNTIME_ROOT),
-        "default_release": command_root_summary(command_path, command_realpath),
+        "default_release": default_release,
         "live_canary": {
             **command_root_summary(canary_path, canary_realpath),
             "separate_from_default": bool(canary_realpath and command_realpath and canary_realpath != command_realpath),
@@ -360,6 +386,7 @@ def collect_doctor() -> dict[str, Any]:
         release_root=release_root,
         repo_root=repo_root,
         skills=skills,
+        release_manifest=release_manifest,
     )
     default_global_registry = global_registry_path(DEFAULT_RUNTIME_ROOT)
     global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
@@ -474,7 +501,9 @@ def collect_doctor() -> dict[str, Any]:
             "canary_root": str(canary_root) if canary_root else None,
             "install_script": str(install_script),
             "wrapper_script": str(wrapper_script),
+            "release_manifest_path": release_manifest.get("path"),
         },
+        "release_manifest": release_manifest,
         "release_provenance": release_provenance,
         "global_registry_writability": global_registry_writability,
         "install_freshness": install_freshness,
@@ -562,6 +591,8 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
         )
     freshness = payload.get("install_freshness") if isinstance(payload.get("install_freshness"), dict) else {}
     if freshness:
+        manifest_source_repo = freshness.get("manifest_source_repo") or freshness.get("manifest_source_kind")
+        manifest_source_ref = freshness.get("manifest_source_ref") or "n/a"
         lines.extend(
             [
                 "",
@@ -573,6 +604,10 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
                 f"- release_id: `{freshness.get('release_id')}`",
                 f"- release_age_hours: `{freshness.get('release_age_hours')}`",
                 f"- reason: `{freshness.get('reason')}`",
+                f"- release_manifest_available: `{freshness.get('release_manifest_available')}`",
+                f"- manifest_source: `{manifest_source_repo}` @ `{manifest_source_ref}`",
+                f"- manifest_archive_sha256: `{freshness.get('manifest_archive_sha256')}`",
+                f"- manifest_skills_digest: `{freshness.get('manifest_skills_digest')}`",
                 "- upgrade_command:",
                 "```bash",
                 str(freshness.get("upgrade_command") or ""),

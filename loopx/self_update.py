@@ -108,6 +108,16 @@ def build_update_plan(
         if isinstance(doctor.get("install_freshness"), dict)
         else {}
     )
+    release_manifest = (
+        doctor.get("release_manifest")
+        if isinstance(doctor.get("release_manifest"), dict)
+        else {}
+    )
+    release_manifest_body = (
+        release_manifest.get("manifest")
+        if isinstance(release_manifest.get("manifest"), dict)
+        else {}
+    )
     source = _source_config(repo=repo, ref=ref, archive_url=archive_url)
     install_command = _command_for_source(source)
     dry_run = not execute
@@ -140,6 +150,9 @@ def build_update_plan(
             "install_freshness_status": install_freshness.get("status"),
             "requires_upgrade": requires_upgrade,
             "reason": install_freshness.get("reason"),
+            "release_manifest_available": release_manifest.get("available"),
+            "release_manifest_path": release_manifest.get("path"),
+            "release_manifest": release_manifest_body,
         },
         "plan": {
             "action": "check_only" if check_only else "execute_installer" if execute else "dry_run",

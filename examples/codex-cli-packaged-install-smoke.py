@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tarfile
@@ -71,7 +72,27 @@ def main() -> None:
         )
         assert "ok: `True`" in doctor.stdout, doctor.stdout
         assert "## Install Freshness" in doctor.stdout, doctor.stdout
+        assert "release_manifest_available: `True`" in doctor.stdout, doctor.stdout
         assert "install-from-github.sh" in doctor.stdout, doctor.stdout
+        doctor_json = subprocess.run(
+            [str(installed), "--format", "json", "doctor"],
+            check=True,
+            env={**env, "PATH": f"{home / '.local' / 'bin'}:{env.get('PATH', '')}"},
+            text=True,
+            capture_output=True,
+        )
+        doctor_payload = json.loads(doctor_json.stdout)
+        release_root = Path(doctor_payload["package"]["release_root"])
+        manifest_path = release_root / "release.json"
+        assert manifest_path.is_file(), manifest_path
+        manifest = doctor_payload["release_manifest"]["manifest"]
+        assert manifest["schema_version"] == "loopx_release_manifest_v0", manifest
+        assert manifest["source"]["kind"] == "github_archive", manifest
+        assert manifest["source"]["repo"] == "huangruiteng/loopx", manifest
+        assert manifest["source"]["ref"] == "stable", manifest
+        assert manifest["source"]["archive_url"] == f"file://{archive}", manifest
+        assert manifest["source"]["archive_sha256"], manifest
+        assert manifest["skills"]["digest"], manifest
 
         for skill in (
             "loopx-project",

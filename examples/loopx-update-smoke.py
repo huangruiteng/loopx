@@ -31,6 +31,28 @@ def fake_doctor_payload() -> dict[str, object]:
             "current_version": "0.1.2",
             "release_id": "20260621T170342Z",
         },
+        "release_manifest": {
+            "available": True,
+            "path": "/home/user/.local/share/loopx/releases/20260621T170342Z/release.json",
+            "manifest": {
+                "schema_version": "loopx_release_manifest_v0",
+                "source": {
+                    "kind": "github_archive",
+                    "repo": "example/loopx",
+                    "ref": "stable",
+                    "archive_url": "https://codeload.github.com/example/loopx/tar.gz/stable",
+                    "archive_sha256": "abc123",
+                },
+                "package": {
+                    "name": "loopx",
+                    "version": "0.1.2",
+                },
+                "skills": {
+                    "digest": "skills123",
+                    "items": {},
+                },
+            },
+        },
     }
 
 
@@ -58,6 +80,9 @@ def test_module_plan() -> None:
     assert payload["dry_run"] is True, payload
     assert payload["execute_requested"] is False, payload
     assert payload["current"]["requires_upgrade"] is True, payload
+    assert payload["current"]["release_manifest_available"] is True, payload
+    assert payload["current"]["release_manifest"]["source"]["ref"] == "stable", payload
+    assert payload["current"]["release_manifest"]["source"]["archive_sha256"] == "abc123", payload
     assert payload["plan"]["mutates_loopx_runtime_state"] is False, payload
     assert payload["plan"]["mutates_release_install"] is False, payload
     assert payload["plan"]["backup"]["available"] is True, payload

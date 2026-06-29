@@ -4,6 +4,9 @@ set -euo pipefail
 repo="${LOOPX_REPO:-huangruiteng/loopx}"
 ref="${LOOPX_REF:-stable}"
 archive_url="${LOOPX_ARCHIVE_URL:-https://codeload.github.com/$repo/tar.gz/$ref}"
+export LOOPX_REPO="$repo"
+export LOOPX_REF="$ref"
+export LOOPX_ARCHIVE_URL="$archive_url"
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -28,6 +31,19 @@ mkdir -p "$extract_dir"
 
 echo "loopx installer: downloading $archive_url" >&2
 curl -fsSL "$archive_url" -o "$archive_path"
+archive_sha256="$(python3 - "$archive_path" <<'PY'
+from pathlib import Path
+import hashlib
+import sys
+
+digest = hashlib.sha256()
+with Path(sys.argv[1]).open("rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+print(digest.hexdigest())
+PY
+)"
+export LOOPX_ARCHIVE_SHA256="$archive_sha256"
 tar -xzf "$archive_path" -C "$extract_dir"
 
 repo_root="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d -print -quit)"
