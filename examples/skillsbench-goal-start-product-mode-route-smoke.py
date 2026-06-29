@@ -261,7 +261,10 @@ def _assert_control_score_surface() -> None:
 def _assert_host_local_acp_return_arity_compat() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from scripts.skillsbench_automation_loop import (
+        _benchflow_connect_as_unpack_arity,
         _benchflow_connect_acp_return_arity,
+        _benchflow_rollout_planes_class,
+        _tuple_annotation_arity,
     )
 
     async def current_benchflow_shape() -> tuple[object, object, str]:
@@ -276,6 +279,28 @@ def _assert_host_local_acp_return_arity_compat() -> None:
     assert _benchflow_connect_acp_return_arity(current_benchflow_shape) == 3
     assert _benchflow_connect_acp_return_arity(legacy_adapter_shape) == 4
     assert _benchflow_connect_acp_return_arity(unannotated_shape) == 3
+    assert _tuple_annotation_arity("tuple[object, ...]") is None
+
+    async def connect_as_shape():
+        (
+            self._acp_client,
+            self._session,
+            self._session_adapter,
+            self._agent_name,
+        ) = await self._planes.connect_acp()
+
+    assert _benchflow_connect_as_unpack_arity(connect_as_shape) == 4
+
+    class FactoryOnlyPlanes:
+        async def connect_acp(self):
+            raise AssertionError("signature-only helper should not call target")
+
+    class FactoryOnlyModule:
+        @staticmethod
+        def default_rollout_planes():
+            return FactoryOnlyPlanes()
+
+    assert _benchflow_rollout_planes_class(FactoryOnlyModule) is FactoryOnlyPlanes
 
 
 def _assert_verifier_failure_feedback_todo_prompt() -> None:

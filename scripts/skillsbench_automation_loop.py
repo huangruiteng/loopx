@@ -59,6 +59,7 @@ When invoked from the LoopX repository with a Python that cannot import
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
 import contextlib
 import importlib
@@ -74,6 +75,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
@@ -280,15 +282,22 @@ def _tuple_annotation_arity(annotation: Any) -> int | None:
     if start < 0 or end <= start:
         return None
     depth = 0
-    count = 1
+    parts: list[str] = []
+    current: list[str] = []
     for char in text[start + 1 : end]:
         if char == "[":
             depth += 1
         elif char == "]" and depth > 0:
             depth -= 1
         elif char == "," and depth == 0:
-            count += 1
-    return count
+            parts.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current).strip())
+    if parts and parts[-1] == "...":
+        return None
+    return len(parts)
 
 
 def _benchflow_connect_acp_return_arity(target: Any) -> int:
@@ -299,6 +308,49 @@ def _benchflow_connect_acp_return_arity(target: Any) -> int:
     if annotation is inspect.Signature.empty:
         return 3
     return _tuple_annotation_arity(annotation) or 3
+
+
+def _benchflow_connect_as_unpack_arity(target: Any) -> int | None:
+    try:
+        source = inspect.getsource(target)
+    except (OSError, TypeError):
+        return None
+    try:
+        tree = ast.parse(textwrap.dedent(source))
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value.value if isinstance(node.value, ast.Await) else node.value
+        if not isinstance(value, ast.Call):
+            continue
+        func = value.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "connect_acp"):
+            continue
+        if not node.targets:
+            continue
+        target_node = node.targets[0]
+        if isinstance(target_node, ast.Tuple):
+            return len(target_node.elts)
+    return None
+
+
+def _benchflow_rollout_planes_class(module: Any) -> type[Any] | None:
+    if module is None:
+        return None
+    direct = getattr(module, "DefaultRolloutPlanes", None)
+    if isinstance(direct, type):
+        return direct
+    factory = getattr(module, "default_rollout_planes", None)
+    if not callable(factory):
+        return None
+    try:
+        instance = factory()
+    except Exception:
+        return None
+    klass = instance.__class__
+    return klass if isinstance(klass, type) else None
 
 
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
@@ -9668,6 +9720,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     prerequisites["benchflow_rollout_planes_module_available"] = (
         benchflow_rollout_planes_module is not None
     )
+    connect_as_return_arity = _benchflow_connect_as_unpack_arity(Rollout.connect_as)
+    if connect_as_return_arity is not None:
+        prerequisites["host_local_acp_connect_as_unpack_return_arity"] = (
+            connect_as_return_arity
+        )
     prerequisites["benchflow_run_stage"] = "runtime_prepare"
 
     host_local_acp_command = _host_local_acp_launch_command(args, plan)
@@ -9787,7 +9844,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 controller_trace["last_decision"] = (
                     "host_app_server_goal_worker_connected"
                 )
-            return_arity = _benchflow_connect_acp_return_arity(
+            return_arity = connect_as_return_arity or _benchflow_connect_acp_return_arity(
                 original_runtime_connect_acp
             )
             prerequisites["host_local_acp_connect_return_arity"] = return_arity
@@ -9811,6 +9868,14 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             with contextlib.suppress(Exception):
                 await client.close()
             raise
+
+    async def connect_host_local_acp_method(
+        self: Any,
+        *call_args: Any,
+        **call_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        del self
+        return await connect_host_local_acp(*call_args, **call_kwargs)
 
     async def ensure_codex_acp_runtime_deps(env: Any) -> None:
         bootstrap = await env.exec(
@@ -10028,9 +10093,12 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         if benchflow_rollout_planes_module is not None
         else _MISSING
     )
-    rollout_planes_class = (
-        getattr(benchflow_rollout_planes_module, "DefaultRolloutPlanes", None)
-        if benchflow_rollout_planes_module is not None
+    rollout_planes_class = _benchflow_rollout_planes_class(
+        benchflow_rollout_planes_module
+    )
+    original_rollout_planes_class_connect_acp = (
+        getattr(rollout_planes_class, "connect_acp", None)
+        if rollout_planes_class is not None
         else None
     )
     original_create_environment = (
@@ -10497,6 +10565,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             and original_rollout_planes_connect_acp is not _MISSING
         ):
             benchflow_rollout_planes_module.connect_acp = connect_host_local_acp
+        if (
+            rollout_planes_class is not None
+            and original_rollout_planes_class_connect_acp is not None
+        ):
+            rollout_planes_class.connect_acp = connect_host_local_acp_method
     try:
         await run_benchflow_with_setup_stall_watchdog()
         result_path = discover_benchflow_result_path(plan)
@@ -10531,6 +10604,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             benchflow_rollout_planes_module.connect_acp = (
                 original_rollout_planes_connect_acp
             )
+        if (
+            rollout_planes_class is not None
+            and original_rollout_planes_class_connect_acp is not None
+        ):
+            rollout_planes_class.connect_acp = original_rollout_planes_class_connect_acp
         _merge_acp_trajectory_summary(plan, controller_trace)
         _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
         _merge_host_local_acp_relay_trace_summary(plan, controller_trace)
