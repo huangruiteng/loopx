@@ -1468,7 +1468,14 @@ def assert_side_agent_replans_route_continuation_before_blocking_wait() -> None:
     assert contract["agent_channel"]["must_attempt"] is True, contract
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
-    assert "loopx todo add" in contract["cli_channel"]["next_cli_actions"][0], contract
+    actions = contract["cli_channel"]["next_cli_actions"]
+    assert len(actions) == 3, actions
+    assert "loopx todo add" in actions[0], actions
+    assert "route_continuation_replan_recorded" in actions[1], actions
+    assert "loopx refresh-state" in actions[1], actions
+    assert "--agent-id codex-side-bypass" in actions[1], actions
+    assert "loopx quota spend-slot" in actions[2], actions
+    assert "--agent-id codex-side-bypass" in actions[2], actions
     markdown = render_quota_should_run_markdown(guard)
     assert "agent_scope_frontier: action=successor_replan_required" in markdown, markdown
     assert "route_continuation_replan_required" in markdown, markdown
@@ -1673,7 +1680,14 @@ def assert_side_agent_replans_when_deferred_successor_is_ready() -> None:
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
     assert contract["cli_channel"]["spend_after_validation"] is True, contract
-    assert "todo_issue_surface_deferred" in contract["cli_channel"]["next_cli_actions"][0], contract
+    actions = contract["cli_channel"]["next_cli_actions"]
+    assert len(actions) == 3, actions
+    assert "todo_issue_surface_deferred" in actions[0], actions
+    assert "successor_replan_recorded" in actions[1], actions
+    assert "loopx refresh-state" in actions[1], actions
+    assert "--agent-id codex-side-bypass" in actions[1], actions
+    assert "loopx quota spend-slot" in actions[2], actions
+    assert "--agent-id codex-side-bypass" in actions[2], actions
     assert guard["automation_liveness"]["automation_action"] == "execute_bounded_work", guard
     markdown = render_quota_should_run_markdown(guard)
     assert "agent_scope_frontier: action=successor_replan_required" in markdown, markdown

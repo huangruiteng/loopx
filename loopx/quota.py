@@ -4228,6 +4228,16 @@ def _interaction_primary_agent_action(payload: dict[str, Any], *, mode: str) -> 
 
 def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[str]:
     goal_id = str(payload.get("goal_id") or "<GOAL_ID>")
+    agent_identity = (
+        payload.get("agent_identity")
+        if isinstance(payload.get("agent_identity"), dict)
+        else {}
+    )
+    agent_arg = (
+        f" --agent-id {agent_identity.get('agent_id')}"
+        if agent_identity.get("agent_id")
+        else ""
+    )
     if mode == "automation_prompt_upgrade":
         automation_prompt_upgrade = (
             payload.get("automation_prompt_upgrade")
@@ -4260,8 +4270,8 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
         if route_candidates:
             return [
                 f"loopx todo add --goal-id {goal_id} --role agent --text '<public-safe route continuation advancement todo>'",
-                f"loopx refresh-state --goal-id {goal_id} --classification route_continuation_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress",
-                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+                f"loopx refresh-state --goal-id {goal_id} --classification route_continuation_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
             ]
         candidates = (
             agent_scope_frontier.get("deferred_resume_candidates")
@@ -4272,20 +4282,10 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
         todo_id = str(first_candidate.get("todo_id") or "<todo_id>")
         return [
             f"loopx todo update --goal-id {goal_id} --todo-id {todo_id} --status open --note '<public-safe successor replan reason>'",
-            f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+            f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
+            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
         ]
     if _agent_scope_frontier_action(mode) is not None:
-        agent_identity = (
-            payload.get("agent_identity")
-            if isinstance(payload.get("agent_identity"), dict)
-            else {}
-        )
-        agent_arg = (
-            f" --agent-id {agent_identity.get('agent_id')}"
-            if agent_identity.get("agent_id")
-            else ""
-        )
         return [
             "no quota spend while this agent has no in-scope runnable candidate",
             f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}",
