@@ -109,6 +109,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--task-output-quiet-timeout-sec",
+        type=float,
+        default=0.0,
+        help=(
+            "Optional timeout after a successful task-facing file write and no "
+            "inflight sandbox bridge operation. 0 disables the watchdog."
+        ),
+    )
+    parser.add_argument(
         "--worker-script",
         default=None,
         help="Optional path to skillsbench_host_codex_goal_worker.py.",
@@ -183,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
             first_action_timeout_sec=args.first_action_timeout_sec,
             bridge_idle_timeout_sec=args.bridge_idle_timeout_sec,
+            task_output_quiet_timeout_sec=args.task_output_quiet_timeout_sec,
             worker_public_trace_dir=args.worker_public_trace_dir,
             remote_command_file_bridge_command=(
                 args.remote_command_file_bridge_command

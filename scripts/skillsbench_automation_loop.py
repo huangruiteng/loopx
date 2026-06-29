@@ -160,6 +160,7 @@ DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC = 3600
+DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC = 600
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
@@ -986,6 +987,8 @@ def _host_local_acp_launch_command(
             ),
             "--bridge-idle-timeout-sec",
             str(_effective_local_codex_bridge_idle_timeout_sec(args)),
+            "--task-output-quiet-timeout-sec",
+            str(_effective_local_codex_task_output_quiet_timeout_sec(args)),
         ]
     )
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
@@ -1140,6 +1143,27 @@ def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> 
     if requested <= 0:
         return DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
     return min(requested, DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC)
+
+
+def _effective_local_codex_task_output_quiet_timeout_sec(
+    args: argparse.Namespace,
+) -> int:
+    configured = getattr(args, "local_codex_task_output_quiet_timeout_sec", None)
+    if configured is not None:
+        requested = max(0, int(configured or 0))
+        if requested <= 0:
+            return 0
+        bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
+        if bridge_idle_timeout <= 0:
+            return requested
+        return min(requested, bridge_idle_timeout)
+    bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
+    if bridge_idle_timeout <= 0:
+        return 0
+    return min(
+        DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC,
+        bridge_idle_timeout,
+    )
 
 
 def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
@@ -1953,6 +1977,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_agent_timeout_original_sec",
         "benchflow_agent_timeout_effective_sec",
         "benchflow_agent_timeout_host_local_acp_exec_timeout_sec",
+        "benchflow_agent_timeout_host_local_acp_task_output_quiet_timeout_sec",
         "benchflow_agent_timeout_host_local_acp_margin_sec",
         "host_local_acp_connect_return_arity",
         "benchflow_user_loop_recovery_round",
@@ -5941,6 +5966,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "outer_timeout_sec": args.outer_timeout_sec,
         "sandbox_setup_timeout_sec": args.sandbox_setup_timeout,
         "agent_idle_timeout_sec": args.agent_idle_timeout,
+        "local_codex_task_output_quiet_timeout_sec": (
+            _effective_local_codex_task_output_quiet_timeout_sec(args)
+        ),
         "include_task_skills": bool(args.include_task_skills),
         "host_local_acp_launch": bool(args.host_local_acp_launch),
         "remote_command_file_bridge_ready": bool(
@@ -6310,6 +6338,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "sandbox_setup_timeout_sec",
         "agent_idle_timeout_sec",
         "build_stall_timeout_sec",
+        "local_codex_task_output_quiet_timeout_sec",
     )
     for field in int_fields:
         value = plan.get(field)
@@ -6334,6 +6363,10 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             (
                 "benchflow_agent_timeout_host_local_acp_exec_timeout_sec",
                 "local_codex_exec_timeout_sec",
+            ),
+            (
+                "benchflow_agent_timeout_host_local_acp_task_output_quiet_timeout_sec",
+                "local_codex_task_output_quiet_timeout_sec",
             ),
         ):
             value = prerequisites.get(source)
@@ -10463,6 +10496,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             prerequisites["benchflow_agent_timeout_host_local_acp_exec_timeout_sec"] = (
                 _effective_local_codex_exec_timeout_sec(args)
             )
+            prerequisites[
+                "benchflow_agent_timeout_host_local_acp_task_output_quiet_timeout_sec"
+            ] = _effective_local_codex_task_output_quiet_timeout_sec(args)
             prerequisites["benchflow_agent_timeout_host_local_acp_margin_sec"] = (
                 HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
             )
@@ -12148,6 +12184,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "from a host-local Codex turn. Omit to use the host-local default "
             f"({DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC}s); 0 disables "
             "the watchdog."
+        ),
+    )
+    parser.add_argument(
+        "--local-codex-task-output-quiet-timeout-sec",
+        type=int,
+        default=None,
+        help=(
+            "Optional watchdog after a successful task-facing file write and no "
+            "inflight bridge operation. Omit to use the host-local default "
+            f"({DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC}s); "
+            "0 disables the watchdog."
         ),
     )
     parser.add_argument(

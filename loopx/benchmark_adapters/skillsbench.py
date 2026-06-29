@@ -1412,6 +1412,7 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
                 "bind source path" in text
                 or "mount" in text
                 or "volume" in text
+                or "task skills" in text
             )
         )
     ):
@@ -1565,6 +1566,9 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             "skillsbench_docker_compose_unclassified_setup_failure",
             "skillsbench_environment_setup_error",
         ]
+    if "codex_exec_task_output_quiet_timeout" in text:
+        label = "skillsbench_host_local_acp_task_output_quiet_timeout"
+        return label, label, [label, "skillsbench_host_local_acp_recoverable_timeout"]
     label = "skillsbench_runner_error"
     return label, label, [label]
 
@@ -1602,6 +1606,7 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, Any]:
         "volume_mount_failure": r"mount|volume|bind source path",
         "permission_denied": r"permission denied|operation not permitted",
         "missing_file": r"no such file|not found|does not exist",
+        "task_output_quiet_timeout": r"codex_exec_task_output_quiet_timeout",
         "image_build": r"failed to solve|failed to build|dockerfile|pull access denied|manifest unknown",
         "port_conflict": r"port is already allocated|address already in use|ports are not available|bind for",
         "apt_failure": r"apt-get|apt update|apt |gpg error|hash sum mismatch|failed to fetch",

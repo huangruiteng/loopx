@@ -1590,6 +1590,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_agent_refresh_state_count",
         "remote_command_file_bridge_agent_quota_spend_slot_count",
         "remote_command_file_bridge_agent_task_facing_operation_count",
+        "remote_command_file_bridge_agent_task_facing_success_count",
+        "remote_command_file_bridge_agent_task_facing_failure_count",
         "remote_command_file_bridge_driver_lifecycle_trace_count",
         "remote_command_file_bridge_driver_lifecycle_checkpoint_count",
         "remote_command_file_bridge_driver_lifecycle_request_count",
