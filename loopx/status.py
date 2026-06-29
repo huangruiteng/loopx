@@ -696,6 +696,39 @@ def _compact_numeric_map(value: Any, *, keys: tuple[str, ...] | None = None) -> 
     return compact
 
 
+def _compact_loopx_command_records(value: Any, *, limit: int = 128) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    allowed_subcommands = {
+        "quota should-run",
+        "todo claim",
+        "todo update",
+        "todo complete",
+        "refresh-state",
+        "quota spend-slot",
+        "status",
+        "diagnose",
+    }
+    records: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        subcommand = public_safe_compact_text(item.get("subcommand"), limit=80)
+        if subcommand not in allowed_subcommands:
+            continue
+        record: dict[str, str] = {"subcommand": subcommand}
+        todo_id = public_safe_compact_text(item.get("todo_id"), limit=100)
+        if todo_id and re.match(r"^todo_[A-Za-z0-9_-]{6,80}$", todo_id):
+            record["todo_id"] = todo_id
+        goal_id = public_safe_compact_text(item.get("goal_id"), limit=140)
+        if goal_id and re.match(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$", goal_id):
+            record["goal_id"] = goal_id
+        records.append(record)
+        if len(records) >= limit:
+            break
+    return records
+
+
 def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -731,6 +764,8 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "initialized_before_agent",
             "consumed_by_solver",
             "official_score_passed",
+            "selected_todo_completed_observed",
+            "quota_spend_missing_after_repeated_complete",
         ):
             if isinstance(raw_event.get(field), bool):
                 event[field] = raw_event[field]
@@ -762,6 +797,11 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "todo_closeout_count",
             "refresh_state_count",
             "quota_spend_slot_count",
+            "selected_todo_complete_count",
+            "selected_todo_duplicate_complete_count",
+            "agent_todo_complete_unique_todo_count",
+            "non_selected_todo_complete_count",
+            "todo_complete_without_todo_id_count",
         ):
             raw = raw_event.get(field)
             if isinstance(raw, int) and not isinstance(raw, bool):
@@ -788,6 +828,132 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
         "event_count": len(events),
         "events": events[:12],
     }
+    return compact
+
+
+def _compact_goal_start_todo_snapshot(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
+    if schema:
+        compact["schema_version"] = schema
+    for field in ("raw_material_recorded",):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "completed_todo_id_count",
+        "selected_todo_complete_count",
+        "selected_todo_duplicate_complete_count",
+        "non_selected_todo_complete_count",
+        "todo_complete_without_todo_id_count",
+    ):
+        raw = value.get(field)
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            compact[field] = max(0, raw)
+    for field in ("selected_p0_todo_id", "todo_identity_attribution"):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
+    if planned_ids:
+        compact["planned_todo_ids"] = planned_ids
+    completed_ids = public_safe_compact_list(value.get("completed_todo_ids"), limit=8)
+    if completed_ids:
+        compact["completed_todo_ids"] = completed_ids
+    planned_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_texts:
+        compact["planned_todo_texts_public_safe"] = planned_texts
+    planned_todos: list[dict[str, Any]] = []
+    source_todos = value.get("planned_todos")
+    if isinstance(source_todos, list):
+        for item in source_todos[:8]:
+            if not isinstance(item, dict):
+                continue
+            todo: dict[str, Any] = {}
+            for field in ("todo_id", "role", "status", "text_public_safe"):
+                text = public_safe_compact_text(item.get(field), limit=180)
+                if text:
+                    todo[field] = text
+            for field in ("claim_count", "update_count", "complete_count"):
+                raw = item.get(field)
+                if isinstance(raw, int) and not isinstance(raw, bool):
+                    todo[field] = max(0, raw)
+            if todo:
+                planned_todos.append(todo)
+    if planned_todos:
+        compact["planned_todos"] = planned_todos
+    return compact
+
+
+def _compact_goal_start_product_mode_control_score(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
+    if schema:
+        compact["schema_version"] = schema
+    for field in (
+        "required",
+        "satisfied",
+        "raw_material_recorded",
+        "goal_start_plan_observed",
+        "planner_before_todo_write",
+        "same_priority_order_preserved",
+        "selected_todo_claimed",
+        "selected_todo_updated_before_solver",
+        "selected_todo_completed_before_spend",
+        "selected_todo_completed_observed",
+        "selected_todo_spend_observed",
+        "non_selected_todos_preserved_open_or_deferred",
+        "quota_spend_missing_after_repeated_complete",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "component_count",
+        "satisfied_component_count",
+        "planned_todo_count",
+        "planned_todo_count_expected",
+        "planned_p0_count",
+        "premature_done_signal_count",
+        "agent_todo_claim_count",
+        "agent_todo_update_count",
+        "agent_todo_complete_count",
+        "agent_todo_complete_unique_todo_count",
+        "selected_todo_complete_count",
+        "selected_todo_duplicate_complete_count",
+        "non_selected_todo_complete_count",
+        "todo_complete_without_todo_id_count",
+        "agent_quota_spend_slot_count",
+        "driver_todo_claim_count",
+        "driver_todo_update_count",
+    ):
+        raw = value.get(field)
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            compact[field] = max(0, raw)
+    score = value.get("score")
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        compact["score"] = float(score)
+    for field in ("selected_p0_todo_id", "premature_done_stop_reason"):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
+    if planned_ids:
+        compact["planned_todo_ids"] = planned_ids
+    planned_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_texts:
+        compact["planned_todo_texts_public_safe"] = planned_texts
+    snapshot = _compact_goal_start_todo_snapshot(value.get("goal_start_todo_snapshot"))
+    if snapshot:
+        compact["goal_start_todo_snapshot"] = snapshot
     return compact
 
 
@@ -1242,7 +1408,9 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "selected_todo_claimed",
         "selected_todo_updated_before_solver",
         "selected_todo_completed_before_spend",
+        "selected_todo_completed_observed",
         "non_selected_todos_preserved_open_or_deferred",
+        "quota_spend_missing_after_repeated_complete",
         "blind_loop",
         "case_goal_state_packet_present",
         "case_goal_state_init_required",
@@ -1315,6 +1483,11 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "declared_done_round",
         "planned_todo_count",
         "planned_p0_count",
+        "agent_todo_complete_unique_todo_count",
+        "selected_todo_complete_count",
+        "selected_todo_duplicate_complete_count",
+        "non_selected_todo_complete_count",
+        "todo_complete_without_todo_id_count",
         "product_mode_lifecycle_checkpoint_count",
         "product_mode_lifecycle_checkpoint_round",
         "product_mode_solver_activity_gap_count",
@@ -1499,6 +1672,25 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     )
     if selected_p0_todo_id:
         compact["selected_p0_todo_id"] = selected_p0_todo_id
+    planned_todo_ids = public_safe_compact_list(
+        value.get("planned_todo_ids"),
+        limit=8,
+    )
+    if planned_todo_ids:
+        compact["planned_todo_ids"] = planned_todo_ids
+    planned_todo_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_todo_texts:
+        compact["planned_todo_texts_public_safe"] = planned_todo_texts
+    command_records = _compact_loopx_command_records(
+        value.get("remote_command_file_bridge_agent_successful_loopx_command_records")
+    )
+    if command_records:
+        compact[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
     raw_loopx_cli_calls = value.get("loopx_cli_calls")
     if isinstance(raw_loopx_cli_calls, dict):
         calls = _compact_numeric_map(raw_loopx_cli_calls)
@@ -1564,6 +1756,7 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
         "agent_operation_trace_missing",
         "orchestrated_driver_lifecycle_satisfied",
         "orchestrated_driver_counts_as_product_mode",
+        "quota_spend_missing_after_repeated_complete",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -2154,6 +2347,22 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         calls = _compact_numeric_map(value.get(field))
         if calls:
             compact[field] = calls
+    planned_todo_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
+    if planned_todo_ids:
+        compact["planned_todo_ids"] = planned_todo_ids
+    planned_todo_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_todo_texts:
+        compact["planned_todo_texts_public_safe"] = planned_todo_texts
+    command_records = _compact_loopx_command_records(
+        value.get("remote_command_file_bridge_agent_successful_loopx_command_records")
+    )
+    if command_records:
+        compact[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
     return compact
 
 
@@ -3702,6 +3911,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if interaction_counters:
         compact["interaction_counters"] = interaction_counters
+
+    goal_start_control_score = _compact_goal_start_product_mode_control_score(
+        source.get("goal_start_product_mode_control_score")
+    )
+    if goal_start_control_score:
+        compact["goal_start_product_mode_control_score"] = goal_start_control_score
 
     round_reward_trace = _compact_benchmark_round_reward_trace(
         source.get("round_reward_trace")

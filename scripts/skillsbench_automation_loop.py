@@ -81,6 +81,8 @@ from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     BENCHMARK_CASE_LOOPX_AGENT_ID,
     BENCHMARK_CASE_LOOPX_CLI_PATH,
+    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS,
+    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS,
     BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
     BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
     BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET,
@@ -1963,6 +1965,21 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
             for key in target_keys
             if isinstance(key, str) and key in HOST_LOCAL_ACP_TARGET_ENV_KEYS
         ][: len(HOST_LOCAL_ACP_TARGET_ENV_KEYS)]
+    planned_todo_ids = _goal_start_public_todo_id_list(value.get("planned_todo_ids"))
+    if planned_todo_ids:
+        compact["planned_todo_ids"] = planned_todo_ids
+    planned_todo_texts = _goal_start_public_text_list(
+        value.get("planned_todo_texts_public_safe")
+    )
+    if planned_todo_texts:
+        compact["planned_todo_texts_public_safe"] = planned_todo_texts
+    command_records = _goal_start_public_command_records(
+        value.get("remote_command_file_bridge_agent_successful_loopx_command_records")
+    )
+    if command_records:
+        compact[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
     for field in (
         "host_local_acp_codex_exec_preflight_bridge_returncode_counts",
         "host_local_acp_codex_exec_preflight_bridge_failure_category_counts",
@@ -3582,6 +3599,228 @@ def _goal_start_subcommand_count(
     )
 
 
+_GOAL_START_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
+_GOAL_START_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
+
+
+def _goal_start_safe_todo_id(value: Any) -> str:
+    text = _case_timeline_safe_string(value, limit=100)
+    return text if _GOAL_START_TODO_ID_RE.match(text) else ""
+
+
+def _goal_start_safe_goal_id(value: Any) -> str:
+    text = _case_timeline_safe_string(value, limit=140)
+    return text if _GOAL_START_GOAL_ID_RE.match(text) else ""
+
+
+def _goal_start_public_text_list(value: Any, *, limit: int = 8) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        text = _case_timeline_safe_string(item, limit=180)
+        if text:
+            result.append(text)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _goal_start_public_todo_id_list(value: Any, *, limit: int = 16) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        todo_id = _goal_start_safe_todo_id(item)
+        if todo_id and todo_id not in result:
+            result.append(todo_id)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _goal_start_public_command_records(*values: Any) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    allowed_subcommands = {
+        "quota should-run",
+        "todo claim",
+        "todo update",
+        "todo complete",
+        "refresh-state",
+        "quota spend-slot",
+        "status",
+        "diagnose",
+    }
+    for value in values:
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            subcommand = _case_timeline_safe_string(
+                item.get("subcommand"),
+                limit=80,
+            )
+            if subcommand not in allowed_subcommands:
+                continue
+            record: dict[str, str] = {"subcommand": subcommand}
+            todo_id = _goal_start_safe_todo_id(item.get("todo_id"))
+            if todo_id:
+                record["todo_id"] = todo_id
+            goal_id = _goal_start_safe_goal_id(item.get("goal_id"))
+            if goal_id:
+                record["goal_id"] = goal_id
+            records.append(record)
+            if len(records) >= 128:
+                return records
+    return records
+
+
+def _goal_start_planned_todo_packet(
+    counters: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    ids = (
+        _goal_start_public_todo_id_list(counters.get("planned_todo_ids"))
+        or _goal_start_public_todo_id_list(
+            runner_prerequisites.get("planned_todo_ids")
+        )
+    )
+    texts = (
+        _goal_start_public_text_list(counters.get("planned_todo_texts_public_safe"))
+        or _goal_start_public_text_list(
+            runner_prerequisites.get("planned_todo_texts_public_safe")
+        )
+    )
+    if not ids and (
+        counters.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_plan_required") is True
+    ):
+        ids = list(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS)
+    if not texts and ids:
+        texts = list(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS)
+    return ids[:8], texts[:8]
+
+
+def _build_goal_start_todo_snapshot(
+    *,
+    counters: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+    selected_p0_todo_id: str,
+    agent_claim_count: int,
+    agent_update_count: int,
+    agent_complete_count: int,
+    selected_todo_claimed: bool,
+    selected_todo_updated_before_solver: bool,
+) -> dict[str, Any]:
+    planned_ids, planned_texts = _goal_start_planned_todo_packet(
+        counters,
+        runner_prerequisites,
+    )
+    if not selected_p0_todo_id and planned_ids:
+        selected_p0_todo_id = planned_ids[0]
+    records = _goal_start_public_command_records(
+        counters.get("remote_command_file_bridge_agent_successful_loopx_command_records"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ),
+    )
+    counts_by_todo: dict[str, dict[str, int]] = {}
+    complete_without_todo_id = 0
+    for record in records:
+        subcommand = record.get("subcommand", "")
+        if subcommand not in {"todo claim", "todo update", "todo complete"}:
+            continue
+        todo_id = _goal_start_safe_todo_id(record.get("todo_id"))
+        if not todo_id:
+            if subcommand == "todo complete":
+                complete_without_todo_id += 1
+            continue
+        counts = counts_by_todo.setdefault(
+            todo_id,
+            {"claim": 0, "update": 0, "complete": 0},
+        )
+        counts[subcommand.split()[1]] += 1
+
+    inferred_identity = False
+    if not records and selected_p0_todo_id:
+        selected_counts = counts_by_todo.setdefault(
+            selected_p0_todo_id,
+            {"claim": 0, "update": 0, "complete": 0},
+        )
+        if agent_claim_count > 0 or selected_todo_claimed:
+            selected_counts["claim"] = max(selected_counts["claim"], agent_claim_count)
+        if agent_update_count > 0 or selected_todo_updated_before_solver:
+            selected_counts["update"] = max(
+                selected_counts["update"],
+                agent_update_count,
+            )
+        if agent_complete_count > 0:
+            selected_counts["complete"] = max(
+                selected_counts["complete"],
+                agent_complete_count,
+            )
+            inferred_identity = True
+
+    completed_ids = sorted(
+        todo_id
+        for todo_id, counts in counts_by_todo.items()
+        if counts.get("complete", 0) > 0
+    )
+    selected_counts = counts_by_todo.get(
+        selected_p0_todo_id,
+        {"claim": 0, "update": 0, "complete": 0},
+    )
+    selected_complete_count = max(0, selected_counts.get("complete", 0))
+    selected_duplicate_complete_count = max(0, selected_complete_count - 1)
+    non_selected_complete_count = sum(
+        max(0, counts.get("complete", 0))
+        for todo_id, counts in counts_by_todo.items()
+        if todo_id != selected_p0_todo_id
+    )
+
+    planned_todos: list[dict[str, Any]] = []
+    for index, todo_id in enumerate(planned_ids):
+        counts = counts_by_todo.get(todo_id, {"claim": 0, "update": 0, "complete": 0})
+        complete_count = max(0, counts.get("complete", 0))
+        if complete_count > 0:
+            status = "done_observed"
+        elif todo_id == selected_p0_todo_id:
+            status = "open_or_in_progress_observed"
+        else:
+            status = "open_or_deferred_observed"
+        item: dict[str, Any] = {
+            "todo_id": todo_id,
+            "role": "selected_p0" if todo_id == selected_p0_todo_id else "supporting",
+            "status": status,
+            "claim_count": max(0, counts.get("claim", 0)),
+            "update_count": max(0, counts.get("update", 0)),
+            "complete_count": complete_count,
+        }
+        if index < len(planned_texts):
+            item["text_public_safe"] = planned_texts[index]
+        planned_todos.append(item)
+
+    return {
+        "schema_version": "skillsbench_goal_start_todo_snapshot_v0",
+        "raw_material_recorded": False,
+        "planned_todos": planned_todos,
+        "planned_todo_ids": planned_ids,
+        "planned_todo_texts_public_safe": planned_texts,
+        "selected_p0_todo_id": selected_p0_todo_id,
+        "completed_todo_ids": completed_ids[:8],
+        "completed_todo_id_count": len(completed_ids),
+        "selected_todo_complete_count": selected_complete_count,
+        "selected_todo_duplicate_complete_count": selected_duplicate_complete_count,
+        "non_selected_todo_complete_count": non_selected_complete_count,
+        "todo_complete_without_todo_id_count": complete_without_todo_id,
+        "todo_identity_attribution": (
+            "inferred_from_counts" if inferred_identity else "command_record_observed"
+        ),
+    }
+
+
 def _build_goal_start_product_mode_control_score(
     compact: dict[str, Any],
     plan: dict[str, Any],
@@ -3644,11 +3883,21 @@ def _build_goal_start_product_mode_control_score(
         or runner_prerequisites.get("selected_p0_todo_id"),
         limit=100,
     )
+    planned_todo_ids, planned_todo_texts = _goal_start_planned_todo_packet(
+        counters,
+        runner_prerequisites,
+    )
+    if not selected_p0_todo_id and planned_todo_ids:
+        selected_p0_todo_id = planned_todo_ids[0]
     planned_todo_count = _case_timeline_max_int(counters.get("planned_todo_count"))
+    if planned_todo_ids:
+        planned_todo_count = max(planned_todo_count, len(planned_todo_ids))
     expected_todo_count = _case_timeline_max_int(
         runner_prerequisites.get("goal_start_planned_todo_count_expected")
     )
     planned_p0_count = _case_timeline_max_int(counters.get("planned_p0_count"))
+    if selected_p0_todo_id:
+        planned_p0_count = max(planned_p0_count, 1)
     closeout_spend_count = _case_timeline_max_int(
         counters.get("remote_command_file_bridge_agent_quota_spend_slot_count"),
         runner_prerequisites.get(
@@ -3710,6 +3959,38 @@ def _build_goal_start_product_mode_control_score(
     selected_todo_completed_before_spend = bool(
         counters.get("selected_todo_completed_before_spend") is True
         or (agent_complete_count > 0 and selected_todo_spend_observed)
+    )
+    todo_snapshot = _build_goal_start_todo_snapshot(
+        counters=counters,
+        runner_prerequisites=runner_prerequisites,
+        selected_p0_todo_id=selected_p0_todo_id,
+        agent_claim_count=agent_claim_count,
+        agent_update_count=agent_update_count,
+        agent_complete_count=agent_complete_count,
+        selected_todo_claimed=selected_todo_claimed,
+        selected_todo_updated_before_solver=selected_todo_updated_before_solver,
+    )
+    selected_todo_complete_count = _case_timeline_max_int(
+        todo_snapshot.get("selected_todo_complete_count")
+    )
+    selected_todo_duplicate_complete_count = _case_timeline_max_int(
+        todo_snapshot.get("selected_todo_duplicate_complete_count")
+    )
+    non_selected_todo_complete_count = _case_timeline_max_int(
+        todo_snapshot.get("non_selected_todo_complete_count")
+    )
+    todo_complete_without_todo_id_count = _case_timeline_max_int(
+        todo_snapshot.get("todo_complete_without_todo_id_count")
+    )
+    completed_todo_id_count = _case_timeline_max_int(
+        todo_snapshot.get("completed_todo_id_count")
+    )
+    selected_todo_completed_observed = bool(
+        selected_todo_complete_count > 0 or agent_complete_count > 0
+    )
+    quota_spend_missing_after_repeated_complete = bool(
+        selected_todo_duplicate_complete_count > 0
+        and not selected_todo_spend_observed
     )
     last_decision = _case_timeline_safe_string(counters.get("last_decision"), limit=100)
     premature_done_signal_count = _case_timeline_max_int(
@@ -3795,18 +4076,32 @@ def _build_goal_start_product_mode_control_score(
         "selected_todo_claimed": selected_todo_claimed,
         "selected_todo_updated_before_solver": selected_todo_updated_before_solver,
         "selected_todo_completed_before_spend": selected_todo_completed_before_spend,
+        "selected_todo_completed_observed": selected_todo_completed_observed,
         "selected_todo_spend_observed": selected_todo_spend_observed,
         "non_selected_todos_preserved_open_or_deferred": (
             counters.get("non_selected_todos_preserved_open_or_deferred") is True
+        ),
+        "quota_spend_missing_after_repeated_complete": (
+            quota_spend_missing_after_repeated_complete
         ),
         "premature_done_signal_count": premature_done_signal_count,
         "premature_done_stop_reason": premature_done_stop_reason,
         "agent_todo_claim_count": agent_claim_count,
         "agent_todo_update_count": agent_update_count,
         "agent_todo_complete_count": agent_complete_count,
+        "agent_todo_complete_unique_todo_count": completed_todo_id_count,
+        "selected_todo_complete_count": selected_todo_complete_count,
+        "selected_todo_duplicate_complete_count": (
+            selected_todo_duplicate_complete_count
+        ),
+        "non_selected_todo_complete_count": non_selected_todo_complete_count,
+        "todo_complete_without_todo_id_count": todo_complete_without_todo_id_count,
         "agent_quota_spend_slot_count": max(closeout_spend_count, agent_spend_count),
         "driver_todo_claim_count": driver_claim_count,
         "driver_todo_update_count": driver_update_count,
+        "planned_todo_ids": planned_todo_ids,
+        "planned_todo_texts_public_safe": planned_todo_texts,
+        "goal_start_todo_snapshot": todo_snapshot,
         "component_results": component_results,
     }
 
@@ -3907,8 +4202,31 @@ def _build_case_event_timeline(
             selected_todo_completed_before_spend=goal_start_control_score.get(
                 "selected_todo_completed_before_spend"
             ),
+            selected_todo_completed_observed=goal_start_control_score.get(
+                "selected_todo_completed_observed"
+            ),
             selected_todo_spend_observed=goal_start_control_score.get(
                 "selected_todo_spend_observed"
+            ),
+            selected_todo_complete_count=goal_start_control_score.get(
+                "selected_todo_complete_count"
+            ),
+            selected_todo_duplicate_complete_count=goal_start_control_score.get(
+                "selected_todo_duplicate_complete_count"
+            ),
+            agent_todo_complete_unique_todo_count=goal_start_control_score.get(
+                "agent_todo_complete_unique_todo_count"
+            ),
+            non_selected_todo_complete_count=goal_start_control_score.get(
+                "non_selected_todo_complete_count"
+            ),
+            todo_complete_without_todo_id_count=goal_start_control_score.get(
+                "todo_complete_without_todo_id_count"
+            ),
+            quota_spend_missing_after_repeated_complete=(
+                goal_start_control_score.get(
+                    "quota_spend_missing_after_repeated_complete"
+                )
             ),
             non_selected_todos_preserved_open_or_deferred=(
                 goal_start_control_score.get(
@@ -6445,6 +6763,7 @@ def _merge_host_local_acp_relay_trace_summary(
     agent_bridge_operation_counts: dict[str, int] = {}
     agent_bridge_loopx_subcommand_counts: dict[str, int] = {}
     agent_bridge_successful_loopx_subcommand_counts: dict[str, int] = {}
+    agent_bridge_successful_loopx_command_records: list[dict[str, str]] = []
     agent_bridge_returncode_counts: dict[str, int] = {}
     agent_bridge_failure_category_counts: dict[str, int] = {}
     driver_lifecycle_trace_count = 0
@@ -6577,6 +6896,15 @@ def _merge_host_local_acp_relay_trace_summary(
                     target_counts[safe_key] = (
                         target_counts.get(safe_key, 0) + max(0, value)
                     )
+            agent_bridge_successful_loopx_command_records.extend(
+                _goal_start_public_command_records(
+                    agent_ops.get("successful_loopx_cli_command_records")
+                )
+            )
+            if len(agent_bridge_successful_loopx_command_records) > 128:
+                agent_bridge_successful_loopx_command_records = (
+                    agent_bridge_successful_loopx_command_records[:128]
+                )
         elif trace_kind == "remote_command_file_bridge_driver_lifecycle_checkpoint":
             checkpoint = (
                 payload.get("remote_command_file_bridge_driver_lifecycle_checkpoint")
@@ -6808,6 +7136,9 @@ def _merge_host_local_acp_relay_trace_summary(
     trace[
         "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
     ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
+    trace[
+        "remote_command_file_bridge_agent_successful_loopx_command_records"
+    ] = agent_bridge_successful_loopx_command_records
     trace["remote_command_file_bridge_agent_returncode_counts"] = dict(
         sorted(agent_bridge_returncode_counts.items())
     )
@@ -6968,6 +7299,9 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites[
         "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
     ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
+    prerequisites[
+        "remote_command_file_bridge_agent_successful_loopx_command_records"
+    ] = agent_bridge_successful_loopx_command_records
     prerequisites["remote_command_file_bridge_agent_returncode_counts"] = dict(
         sorted(agent_bridge_returncode_counts.items())
     )
@@ -7777,6 +8111,24 @@ def _sync_relay_closeout_counts_into_compact(
         )
     ):
         product_contract["closeout_satisfied"] = True
+    elif (
+        product_contract.get("agent_bridge_todo_closeout_count", 0) > 1
+        and product_contract.get("agent_bridge_refresh_state_count", 0) > 0
+        and product_contract.get("agent_bridge_quota_spend_slot_count", 0) <= 0
+    ):
+        product_contract["quota_spend_missing_after_repeated_complete"] = True
+        product_contract["missing_reason"] = (
+            "quota_spend_missing_after_repeated_todo_closeout"
+        )
+    command_records = _goal_start_public_command_records(
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        )
+    )
+    if command_records:
+        interaction_counters[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
 
 
 def _record_product_mode_depth_gate_gap(
@@ -9349,6 +9701,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             "goal_start_product_mode",
             "goal_start_plan_observed",
             "planned_todo_count",
+            "planned_todo_ids",
+            "planned_todo_texts_public_safe",
             "planned_p0_count",
             "planner_before_todo_write",
             "same_priority_order_preserved",
@@ -10249,6 +10603,11 @@ def _product_mode_lifecycle_contract_from_controller_counters(
         and refresh_state_count > 0
         and quota_spend_count > 0
     )
+    quota_spend_missing_after_repeated_complete = bool(
+        todo_closeout_count > 1
+        and refresh_state_count > 0
+        and quota_spend_count <= 0
+    )
     operation_trace_status = str(
         counters.get("remote_command_file_bridge_agent_operation_trace_status")
         or ""
@@ -10283,7 +10642,10 @@ def _product_mode_lifecycle_contract_from_controller_counters(
         elif state_read_count <= 0 or state_write_count <= 0:
             missing_reason = "missing_case_local_loopx_state_read_or_write"
         elif not closeout_satisfied:
-            missing_reason = "missing_case_local_loopx_closeout"
+            if quota_spend_missing_after_repeated_complete:
+                missing_reason = "quota_spend_missing_after_repeated_todo_closeout"
+            else:
+                missing_reason = "missing_case_local_loopx_closeout"
 
     contract: dict[str, Any] = {
         "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
@@ -10296,6 +10658,9 @@ def _product_mode_lifecycle_contract_from_controller_counters(
         "checkpoint_count": driver_checkpoint_count,
         "closeout_required": required,
         "closeout_satisfied": closeout_satisfied,
+        "quota_spend_missing_after_repeated_complete": (
+            quota_spend_missing_after_repeated_complete
+        ),
         "agent_operation_trace_required": required,
         "agent_operation_trace_satisfied": operation_trace_satisfied,
         "agent_operation_trace_status": operation_trace_status,

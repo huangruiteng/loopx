@@ -31,6 +31,20 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (
 )
 
 
+SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
+SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
+
+
+def _safe_loopx_todo_id(value: object) -> str:
+    text = str(value or "")
+    return text if SAFE_LOOPX_TODO_ID_RE.match(text) else ""
+
+
+def _safe_loopx_goal_id(value: object) -> str:
+    text = str(value or "")
+    return text if SAFE_LOOPX_GOAL_ID_RE.match(text) else ""
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REVERSE_CHANNEL_BRIDGE_SCRIPT = (
     REPO_ROOT / "scripts" / "skillsbench_reverse_channel_bridge.py"
@@ -1262,6 +1276,32 @@ def loopx_subcommands(command: str) -> list[str]:
                 break
     return out
 
+SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{{6,80}}$")
+SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{{0,120}}$")
+
+def loopx_public_fields(command: str) -> dict[str, str]:
+    try:
+        tokens = shlex.split(command or "")
+    except ValueError:
+        tokens = (command or "").split()
+    fields: dict[str, str] = {{}}
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        name = token
+        value = ""
+        if token.startswith("--") and "=" in token:
+            name, value = token.split("=", 1)
+        elif token in {{"--goal-id", "--todo-id"}} and i + 1 < len(tokens):
+            value = tokens[i + 1]
+            i += 1
+        if name == "--todo-id" and SAFE_LOOPX_TODO_ID_RE.match(value or ""):
+            fields["loopx_todo_id"] = value
+        elif name == "--goal-id" and SAFE_LOOPX_GOAL_ID_RE.match(value or ""):
+            fields["loopx_goal_id"] = value
+        i += 1
+    return fields
+
 raw = sys.stdin.read()
 record: dict[str, object] = {{
     "schema_version": "skillsbench_remote_bridge_agent_operation_v0",
@@ -1298,12 +1338,15 @@ bridge_probe_operation = bool(
     )
 )
 subcommands: list[str] = []
+loopx_fields: dict[str, str] = {{}}
 if isinstance(payload, dict) and payload.get("operation") == "exec":
     command_text = payload.get("command")
     if isinstance(command_text, str):
         subcommands = loopx_subcommands(command_text)
+        loopx_fields = loopx_public_fields(command_text)
 record["loopx_cli_call"] = bool(subcommands)
 record["loopx_subcommands"] = subcommands[:2]
+record.update(loopx_fields)
 record["loopx_state_read"] = subcommands[:2] in (["quota", "should-run"], ["status"], ["diagnose"])
 record["loopx_state_write"] = bool(subcommands and (
     subcommands[0] in {{"todo", "refresh-state"}}
@@ -1376,6 +1419,7 @@ raise SystemExit(proc.returncode)
         operation_counts: dict[str, int] = {}
         loopx_subcommand_counts: dict[str, int] = {}
         successful_loopx_subcommand_counts: dict[str, int] = {}
+        successful_loopx_command_records: list[dict[str, object]] = []
         returncode_counts: dict[str, int] = {}
         failure_category_counts: dict[str, int] = {}
         request_count = 0
@@ -1506,6 +1550,17 @@ raise SystemExit(proc.returncode)
                             successful_loopx_subcommand_counts[key] = (
                                 successful_loopx_subcommand_counts.get(key, 0) + 1
                             )
+                            command_record: dict[str, object] = {
+                                "subcommand": key,
+                            }
+                            todo_id = _safe_loopx_todo_id(record.get("loopx_todo_id"))
+                            if todo_id:
+                                command_record["todo_id"] = todo_id
+                            goal_id = _safe_loopx_goal_id(record.get("loopx_goal_id"))
+                            if goal_id:
+                                command_record["goal_id"] = goal_id
+                            if len(successful_loopx_command_records) < 128:
+                                successful_loopx_command_records.append(command_record)
                 raw_material_recorded = raw_material_recorded or any(
                     record.get(field) is True
                     for field in (
@@ -1544,6 +1599,9 @@ raise SystemExit(proc.returncode)
                 ),
                 "successful_loopx_cli_subcommand_counts": dict(
                     sorted(successful_loopx_subcommand_counts.items())
+                ),
+                "successful_loopx_cli_command_records": (
+                    successful_loopx_command_records
                 ),
                 "loopx_state_read_count": state_read_count,
                 "loopx_state_write_count": state_write_count,
