@@ -2084,6 +2084,9 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
         "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
         "verifier_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "codex_acp_runtime_tools_patch_applied",
@@ -2092,6 +2095,10 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in ("verifier_uv_bootstrap_version", "verifier_uv_bootstrap_mirror_host"):
+        text = public_safe_compact_text(value.get(field), limit=180)
+        if text:
+            compact[field] = text
 
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
@@ -2148,6 +2155,12 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    text = public_safe_compact_text(
+        value.get("verifier_uv_bootstrap_version"),
+        limit=180,
+    )
+    if text:
+        compact["verifier_uv_bootstrap_version"] = text
     nearest_task_ids = public_safe_compact_list(
         value.get("nearest_canonical_task_ids"),
         limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
@@ -2195,6 +2208,9 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "runner_launch_preflight_passed",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
         "staged_task_prepared",
         "task_skills_removed",
         "codex_acp_runtime_tools_patch_applied",

@@ -286,6 +286,16 @@ DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_END = (
     "# END LOOPX_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
 )
+VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
+)
+VERIFIER_UV_BOOTSTRAP_MIRROR_END = (
+    "# END LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
+)
+DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE = (
+    "https://releases.astral.sh/github/uv/releases/download"
+)
+DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST = "releases.astral.sh"
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
 LOOPX_CLI_RE = re.compile(r"(?:^|\s|/)loopx(?:\s|$)")
@@ -4054,6 +4064,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
         "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
         "verifier_bootstrap_risk_preflight_blocked",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
@@ -4061,6 +4074,10 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in ("verifier_uv_bootstrap_version", "verifier_uv_bootstrap_mirror_host"):
+        raw = value.get(field)
+        if isinstance(raw, str) and raw:
+            compact[field] = raw[:180]
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -4098,8 +4115,18 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
     except OSError:
         dockerfile_text = ""
+    verifier = prepared_task / "verifier" / "test.sh"
+    try:
+        verifier_text = (
+            verifier.read_text(encoding="utf-8", errors="replace")
+            if verifier.exists()
+            else ""
+        )
+    except OSError:
+        verifier_text = ""
+    uv_versions = _verifier_uv_bootstrap_versions(verifier_text)
     include_task_skills = bool(plan.get("include_task_skills"))
-    return {
+    discovered = {
         "schema_version": "skillsbench_task_staging_v0",
         "staged": True,
         "include_task_skills": include_task_skills,
@@ -4116,6 +4143,20 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         ),
         "original_task_mutated": False,
     }
+    if VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in verifier_text:
+        discovered.update(
+            {
+                "verifier_uv_bootstrap_risk_detected": True,
+                "verifier_uv_bootstrap_mirror_patch_required": True,
+                "verifier_uv_bootstrap_mirror_patch_applied": True,
+                "verifier_uv_bootstrap_mirror_host": (
+                    DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+                ),
+            }
+        )
+        if uv_versions:
+            discovered["verifier_uv_bootstrap_version"] = uv_versions[0]
+    return discovered
 
 
 def _effective_public_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
@@ -4168,6 +4209,10 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in ("verifier_uv_bootstrap_version",):
+        raw = value.get(field)
+        if isinstance(raw, str) and raw:
+            compact[field] = raw[:180]
     for field in ("nearest_canonical_task_ids", "verifier_bootstrap_risk_categories"):
         raw_items = value.get(field)
         if isinstance(raw_items, list):
@@ -4340,6 +4385,19 @@ def build_compose_setup_diagnostic(
         )
         is True
         or task_staging.get("apt_retry_patch_required") is True,
+        "verifier_uv_bootstrap_risk_detected": setup_preflight.get(
+            "verifier_uv_bootstrap_risk_detected"
+        )
+        is True
+        or task_staging.get("verifier_uv_bootstrap_risk_detected") is True,
+        "verifier_uv_bootstrap_mirror_patch_required": task_staging.get(
+            "verifier_uv_bootstrap_mirror_patch_required"
+        )
+        is True,
+        "verifier_uv_bootstrap_mirror_patch_applied": task_staging.get(
+            "verifier_uv_bootstrap_mirror_patch_applied"
+        )
+        is True,
         "staged_task_prepared": task_staging.get("staged") is True,
         "task_skills_removed": task_staging.get("task_skills_removed") is True,
         "codex_acp_runtime_tools_patch_applied": task_staging.get(
@@ -4683,6 +4741,9 @@ def skillsbench_verifier_bootstrap_risk(task_path: Path) -> dict[str, Any]:
     except OSError:
         return result
 
+    uv_versions = _verifier_uv_bootstrap_versions(text)
+    if uv_versions:
+        result["verifier_uv_bootstrap_version"] = uv_versions[0]
     categories: list[str] = []
     uv_bootstrap_pattern = (
         r"astral\.sh/uv|"
@@ -4705,6 +4766,97 @@ def skillsbench_verifier_bootstrap_risk(task_path: Path) -> dict[str, Any]:
     result["verifier_bootstrap_risk_categories"] = sorted(set(categories))
     result["verifier_bootstrap_risk_detected"] = bool(categories)
     return result
+
+
+def _verifier_uv_bootstrap_versions(text: str) -> list[str]:
+    versions: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(
+        r"https?://astral\.sh/uv/(?P<version>[0-9A-Za-z][0-9A-Za-z._+-]*)/install\.sh",
+        text,
+    ):
+        version = match.group("version")
+        if version and version not in seen:
+            versions.append(version)
+            seen.add(version)
+    return versions
+
+
+def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
+    """Point staged uv installer bootstrap at a reachable public mirror.
+
+    The patch is applied only to the copied prepared task. It does not alter
+    scoring assertions, task instructions, or verifier command order; it only
+    supplies uv's installer with the tarball URL that the official installer
+    would otherwise derive from a GitHub release URL.
+    """
+
+    metadata: dict[str, Any] = {
+        "verifier_uv_bootstrap_risk_detected": False,
+        "verifier_uv_bootstrap_mirror_patch_required": False,
+        "verifier_uv_bootstrap_mirror_patch_applied": False,
+    }
+    if not verifier.exists():
+        return metadata
+    try:
+        original = verifier.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return metadata
+    text = _strip_marker_block(
+        original,
+        VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
+        VERIFIER_UV_BOOTSTRAP_MIRROR_END,
+    )
+    versions = _verifier_uv_bootstrap_versions(text)
+    if not versions:
+        return metadata
+
+    version = versions[0]
+    block = (
+        f"{VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
+        "# Use a public mirror for uv release tarballs when GitHub release\n"
+        "# downloads stall behind the benchmark runner network path.\n"
+        f"loopx_uv_release_mirror={shlex.quote(DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE)}\n"
+        f"loopx_uv_version={shlex.quote(version)}\n"
+        "loopx_uv_arch=$(uname -m 2>/dev/null || true)\n"
+        "case \"$loopx_uv_arch\" in\n"
+        "  x86_64|amd64) loopx_uv_target=x86_64-unknown-linux-gnu ;;\n"
+        "  aarch64|arm64) loopx_uv_target=aarch64-unknown-linux-gnu ;;\n"
+        "  *) loopx_uv_target=x86_64-unknown-linux-gnu ;;\n"
+        "esac\n"
+        "if [ -z \"${INSTALLER_DOWNLOAD_URL:-}\" ]; then\n"
+        "  export INSTALLER_DOWNLOAD_URL=\"${loopx_uv_release_mirror}/${loopx_uv_version}/uv-${loopx_uv_target}.tar.gz\"\n"
+        "fi\n"
+        f"{VERIFIER_UV_BOOTSTRAP_MIRROR_END}"
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        if (
+            not inserted
+            and "astral.sh/uv/" in line
+            and "install.sh" in line
+        ):
+            patched_lines.extend(block.splitlines())
+            inserted = True
+        patched_lines.append(line)
+    if not inserted:
+        patched_lines.extend(block.splitlines())
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(verifier, patched)
+    metadata.update(
+        {
+            "verifier_uv_bootstrap_risk_detected": True,
+            "verifier_uv_bootstrap_mirror_patch_required": True,
+            "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_uv_bootstrap_version": version,
+            "verifier_uv_bootstrap_mirror_host": (
+                DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+            ),
+        }
+    )
+    return metadata
 
 
 def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
@@ -4836,6 +4988,9 @@ def stage_task_for_sandbox(
         "app_skills_mount_patch_applied": False,
         "apt_retry_patch_applied": False,
         "codex_acp_runtime_tools_patch_applied": False,
+        "verifier_uv_bootstrap_risk_detected": False,
+        "verifier_uv_bootstrap_mirror_patch_required": False,
+        "verifier_uv_bootstrap_mirror_patch_applied": False,
         "task_skills_removed": False,
         "resource_cap_patch": {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -4856,17 +5011,35 @@ def stage_task_for_sandbox(
     needs_apt_retry_patch = dockerfile_needs_apt_retry_patch(
         task_path / "environment" / "Dockerfile"
     )
+    verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
+    needs_verifier_uv_mirror_patch = bool(
+        verifier_risk.get("verifier_uv_bootstrap_risk_detected")
+        and verifier_risk.get("verifier_uv_bootstrap_version")
+    )
     needs_runtime_tools_patch = (task_path / "environment" / "Dockerfile").exists()
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
-    metadata["verifier_bootstrap_risk_detected"] = False
+    metadata["verifier_bootstrap_risk_detected"] = bool(
+        verifier_risk.get("verifier_bootstrap_risk_detected")
+    )
+    metadata["verifier_uv_bootstrap_risk_detected"] = bool(
+        verifier_risk.get("verifier_uv_bootstrap_risk_detected")
+    )
+    metadata["verifier_uv_bootstrap_mirror_patch_required"] = (
+        needs_verifier_uv_mirror_patch
+    )
+    if isinstance(verifier_risk.get("verifier_uv_bootstrap_version"), str):
+        metadata["verifier_uv_bootstrap_version"] = verifier_risk[
+            "verifier_uv_bootstrap_version"
+        ]
     metadata["verifier_bootstrap_risk_preflight_blocked"] = False
     if (
         not has_task_skills
         and not needs_resource_cap
         and not needs_apt_retry_patch
         and not needs_runtime_tools_patch
+        and not needs_verifier_uv_mirror_patch
     ):
         metadata["resource_cap_patch"] = {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -4901,6 +5074,9 @@ def stage_task_for_sandbox(
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
     )
+    uv_mirror_metadata = patch_verifier_uv_bootstrap_mirror(
+        staged_path / "verifier" / "test.sh"
+    )
     resource_cap_patch = patch_task_cpu_cap_for_local_docker(
         staged_path / "task.toml",
         host_cpus=host_cpus,
@@ -4918,6 +5094,14 @@ def stage_task_for_sandbox(
             "resource_cap_patch": resource_cap_patch,
         }
     )
+    for key, value in uv_mirror_metadata.items():
+        if (
+            key == "verifier_uv_bootstrap_risk_detected"
+            and value is False
+            and metadata.get(key) is True
+        ):
+            continue
+        metadata[key] = value
     return staged_path, metadata
 
 
@@ -5120,6 +5304,19 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "apt_risk_preflight_blocked": False,
             "verifier_bootstrap_risk_detected": bool(
                 setup_preflight.get("verifier_bootstrap_risk_detected")
+            ),
+            "verifier_uv_bootstrap_risk_detected": bool(
+                setup_preflight.get("verifier_uv_bootstrap_risk_detected")
+            ),
+            "verifier_uv_bootstrap_mirror_patch_required": bool(
+                setup_preflight.get("verifier_uv_bootstrap_risk_detected")
+                and setup_preflight.get("verifier_uv_bootstrap_version")
+            ),
+            "verifier_uv_bootstrap_mirror_patch_applied": False,
+            "verifier_uv_bootstrap_version": (
+                str(setup_preflight.get("verifier_uv_bootstrap_version"))
+                if setup_preflight.get("verifier_uv_bootstrap_version")
+                else ""
             ),
             "verifier_bootstrap_risk_preflight_blocked": False,
         },

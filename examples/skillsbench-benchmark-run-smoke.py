@@ -56,6 +56,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DEFAULT_MAX_ROUNDS,
     DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
     DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
+    DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST,
     DECLARED_DONE_MARKER,
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
     DOCKER_APT_RETRY_BEGIN,
@@ -67,6 +68,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
     RUNNER_PREREQUISITES_PUBLIC_FILENAME,
     SkillsBenchProductModeNoLifecycleRequests,
+    VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
     _tail,
     _apply_agent_message_only_no_tool_calls_attribution,
     _blind_loop_persistent_continuation_clause,
@@ -5103,6 +5105,59 @@ def test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults() -> None:
         )
 
 
+def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-uv-verifier-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "citation-check"
+        dockerfile = task / "environment" / "Dockerfile"
+        verifier = task / "verifier" / "test.sh"
+        dockerfile.parent.mkdir(parents=True)
+        verifier.parent.mkdir(parents=True)
+        dockerfile.write_text("FROM python:3.12-slim\n", encoding="utf-8")
+        original_verifier = (
+            "#!/bin/sh\n"
+            "apt-get update\n"
+            "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n"
+            "uvx --with pytest==8.4.1 pytest /tests/test_outputs.py\n"
+        )
+        verifier.write_text(original_verifier, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="citation-check-goalstart",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["staged"] is True, metadata
+        assert metadata["verifier_bootstrap_risk_detected"] is True, metadata
+        assert metadata["verifier_uv_bootstrap_risk_detected"] is True, metadata
+        assert metadata["verifier_uv_bootstrap_mirror_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["verifier_uv_bootstrap_mirror_patch_applied"] is True, (
+            metadata
+        )
+        assert metadata["verifier_uv_bootstrap_version"] == "0.9.7", metadata
+        assert metadata["verifier_uv_bootstrap_mirror_host"] == (
+            DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+        ), metadata
+        assert verifier.read_text(encoding="utf-8") == original_verifier
+        staged_verifier = (staged_path / "verifier" / "test.sh").read_text(
+            encoding="utf-8"
+        )
+        assert VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in staged_verifier, staged_verifier
+        assert "INSTALLER_DOWNLOAD_URL" in staged_verifier, staged_verifier
+        assert "releases.astral.sh/github/uv/releases/download" in staged_verifier, (
+            staged_verifier
+        )
+        assert staged_verifier.index("INSTALLER_DOWNLOAD_URL") < staged_verifier.index(
+            "astral.sh/uv/0.9.7/install.sh"
+        ), staged_verifier
+
+
 def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-apt-preflight-") as tmp:
         root = Path(tmp)
@@ -5225,9 +5280,16 @@ def test_skillsbench_verifier_bootstrap_preflight_blocks_full_run_without_benchf
         assert preflight["status"] == "verifier_bootstrap_risk_detected", preflight
         assert preflight["verifier_bootstrap_risk_detected"] is True, preflight
         assert preflight["verifier_uv_bootstrap_risk_detected"] is True, preflight
+        assert preflight["verifier_uv_bootstrap_version"] == "0.9.7", preflight
         assert preflight["verifier_external_download_risk_detected"] is True, preflight
         assert preflight["verifier_package_install_risk_detected"] is True, preflight
         assert preflight["raw_task_text_read"] is False, preflight
+        assert plan["task_staging"][
+            "verifier_uv_bootstrap_mirror_patch_required"
+        ] is True, plan
+        assert plan["task_staging"][
+            "verifier_uv_bootstrap_mirror_patch_applied"
+        ] is False, plan
 
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
@@ -5933,6 +5995,13 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
             "apt_retry_patch_applied": True,
             "apt_risk_preflight_blocked": False,
             "codex_acp_runtime_tools_patch_applied": True,
+            "verifier_uv_bootstrap_risk_detected": True,
+            "verifier_uv_bootstrap_mirror_patch_required": True,
+            "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_uv_bootstrap_version": "0.9.7",
+            "verifier_uv_bootstrap_mirror_host": (
+                DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+            ),
             "task_skills_removed": False,
             "original_task_mutated": False,
             "resource_cap_patch": {
@@ -5957,6 +6026,13 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
             "apt_retry_patch_applied": True,
             "apt_risk_preflight_blocked": False,
             "codex_acp_runtime_tools_patch_applied": True,
+            "verifier_uv_bootstrap_risk_detected": True,
+            "verifier_uv_bootstrap_mirror_patch_required": True,
+            "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_uv_bootstrap_version": "0.9.7",
+            "verifier_uv_bootstrap_mirror_host": (
+                DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+            ),
             "task_skills_removed": False,
             "original_task_mutated": False,
             "resource_cap_patch": {
@@ -5981,6 +6057,9 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
         assert entry_staging["apt_retry_patch_applied"] is True, update
         assert entry_staging["apt_setup_risk_detected"] is True, update
         assert entry_staging["codex_acp_runtime_tools_patch_applied"] is True, update
+        assert entry_staging["verifier_uv_bootstrap_mirror_patch_applied"] is True, (
+            update
+        )
         assert "staged_task_path" not in json.dumps(update, sort_keys=True), update
 
 
@@ -6009,7 +6088,9 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
             / "setup-fuzzing-py"
         )
         dockerfile = prepared / "environment" / "Dockerfile"
+        verifier = prepared / "verifier" / "test.sh"
         dockerfile.parent.mkdir(parents=True)
+        verifier.parent.mkdir(parents=True)
         dockerfile.write_text(
             "FROM ubuntu:20.04\n"
             f"{DOCKER_APT_RETRY_BEGIN}\n"
@@ -6017,12 +6098,30 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
             "# END LOOPX_SKILLSBENCH_APT_RETRY\n",
             encoding="utf-8",
         )
+        verifier.write_text(
+            "#!/bin/sh\n"
+            f"{VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
+            "export INSTALLER_DOWNLOAD_URL="
+            "https://releases.astral.sh/github/uv/releases/download/0.9.7/"
+            "uv-x86_64-unknown-linux-gnu.tar.gz\n"
+            "# END LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR\n"
+            "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n",
+            encoding="utf-8",
+        )
 
         compact = reduce_result(args, result_path, plan)
 
         assert compact["task_staging"]["staged"] is True, compact
         assert compact["task_staging"]["apt_retry_patch_applied"] is True, compact
-        assert compact["task_staging"]["codex_acp_runtime_tools_patch_applied"] is False, compact
+        assert compact["task_staging"][
+            "codex_acp_runtime_tools_patch_applied"
+        ] is False, compact
+        assert compact["task_staging"][
+            "verifier_uv_bootstrap_mirror_patch_applied"
+        ] is True, compact
+        assert compact["task_staging"][
+            "verifier_uv_bootstrap_version"
+        ] == "0.9.7", compact
         assert compact["task_staging"]["task_skills_removed"] is True, compact
         compact_text = json.dumps(compact, sort_keys=True)
         assert "prepared-tasks" not in compact_text, compact
@@ -11332,7 +11431,9 @@ if __name__ == "__main__":
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
     test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults()
+    test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror()
     test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow()
+    test_skillsbench_verifier_bootstrap_preflight_blocks_full_run_without_benchflow()
     test_skillsbench_docker_task_staging_caps_local_cpu_request()
     test_skillsbench_volume_mount_failure_attribution()
     test_skillsbench_runner_plan_supports_baseline_route()

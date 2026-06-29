@@ -116,12 +116,21 @@ def _compact_task_staging(value: Any) -> dict[str, Any]:
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
+        "verifier_bootstrap_risk_preflight_blocked",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in ("verifier_uv_bootstrap_version", "verifier_uv_bootstrap_mirror_host"):
+        text = _compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
     cap = value.get("resource_cap_patch")
     if isinstance(cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -162,6 +171,11 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "verifier_present",
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
@@ -170,6 +184,9 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    text = _compact_text(value.get("verifier_uv_bootstrap_version"), limit=140)
+    if text:
+        compact["verifier_uv_bootstrap_version"] = text
     nearest_ids = value.get("nearest_canonical_task_ids")
     if isinstance(nearest_ids, list):
         compact_nearest: list[str] = []
@@ -179,6 +196,15 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
                 compact_nearest.append(text)
         if compact_nearest:
             compact["nearest_canonical_task_ids"] = compact_nearest
+    verifier_categories = value.get("verifier_bootstrap_risk_categories")
+    if isinstance(verifier_categories, list):
+        compact_categories: list[str] = []
+        for item in verifier_categories[:5]:
+            text = _compact_text(item, limit=120)
+            if text:
+                compact_categories.append(text)
+        if compact_categories:
+            compact["verifier_bootstrap_risk_categories"] = compact_categories
     return compact
 
 
@@ -212,6 +238,9 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "runner_launch_preflight_passed",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
         "staged_task_prepared",
         "task_skills_removed",
         "codex_acp_runtime_tools_patch_applied",
