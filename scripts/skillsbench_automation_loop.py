@@ -145,6 +145,7 @@ DEFAULT_LEDGER = (
 DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
+DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC = 600
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
@@ -953,7 +954,10 @@ def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> 
     configured = getattr(args, "local_codex_bridge_idle_timeout_sec", None)
     if configured is not None:
         return max(0, int(configured or 0))
-    return max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+    requested = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+    if requested <= 0:
+        return DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+    return min(requested, DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC)
 
 
 def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
@@ -7875,7 +7879,22 @@ def _build_product_mode_user(
             "instruction will be sent after that bridge action is observed."
         )
 
-    def solver_activity_prompt(round_number: int) -> str:
+    def solver_activity_prompt(
+        round_number: int,
+        *,
+        task_instruction: str | None = None,
+    ) -> str:
+        task_clause = ""
+        if task_instruction:
+            task_clause = (
+                "\n\n--- TASK INSTRUCTION ---\n"
+                f"{task_instruction}\n\n"
+                "The task above remains the primary objective for this turn. "
+                "Do not spend the turn only proving bridge access or repeating "
+                "status; use the bridge to finish the task-facing work, and if "
+                "the task names a scored output path, write or validate that "
+                "path before closeout."
+            )
         return (
             f"Mandatory product-mode solver checkpoint before round {round_number} "
             "continues. The previous round produced enough LoopX lifecycle "
@@ -7896,6 +7915,7 @@ def _build_product_mode_user(
             "selected P0 is complete, run this exact case-local closeout "
             "sequence from `/app`:\n\n"
             f"{closeout_commands(round_number)}"
+            f"{task_clause}\n\n"
             "Do not answer with prose only, and only end with "
             f"{DECLARED_DONE_MARKER} after meaningful local task work or "
             "validation and the corresponding LoopX closeout/spend evidence "
@@ -8217,7 +8237,10 @@ def _build_product_mode_user(
                             trace["last_decision"] = (
                                 "send_product_mode_solver_activity_continuation"
                             )
-                            return solver_activity_prompt(round + 1)
+                            return solver_activity_prompt(
+                                round + 1,
+                                task_instruction=instruction,
+                            )
                     if treatment:
                         _record_declared_done(
                             trace,
@@ -8375,7 +8398,10 @@ def _build_product_mode_user(
                 trace["last_decision"] = (
                     "send_product_mode_solver_activity_continuation"
                 )
-                return solver_activity_prompt(round + 1)
+                return solver_activity_prompt(
+                    round + 1,
+                    task_instruction=instruction,
+                )
             if round == 0:
                 _inc_counter(trace, "controller_action_decisions")
                 _inc_counter(trace, "initial_prompt_count")

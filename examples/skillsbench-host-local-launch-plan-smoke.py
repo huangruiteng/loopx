@@ -427,7 +427,7 @@ if out:
         heartbeat_index = launch_command.index("--stream-heartbeat-interval-sec")
         assert launch_command[heartbeat_index + 1] == "15.0"
         bridge_idle_index = launch_command.index("--bridge-idle-timeout-sec")
-        assert launch_command[bridge_idle_index + 1] == "7200"
+        assert launch_command[bridge_idle_index + 1] == "600"
         launch_args.local_codex_bridge_idle_timeout_sec = 0
         bridge_idle_disabled_command = _host_local_acp_launch_command(
             launch_args,

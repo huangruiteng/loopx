@@ -676,7 +676,10 @@ def test_product_mode_initial_prompt_keeps_task_visible_after_lifecycle_gate() -
         user.run(1, "Compute the requested coefficient.", FakeRoundResult())
     )
     assert task_prompt is not None
-    assert "--- TASK INSTRUCTION ---" not in task_prompt
+    assert "--- TASK INSTRUCTION ---" in task_prompt
+    assert "Compute the requested coefficient." in task_prompt
+    assert "The task above remains the primary objective" in task_prompt
+    assert "write or validate that path before closeout" in task_prompt
     assert "The task packet is now available" not in task_prompt
     assert "Mandatory product-mode solver checkpoint" in task_prompt
     assert "task-facing sandbox bridge operation" in task_prompt
@@ -2264,6 +2267,10 @@ def test_product_mode_declared_done_requires_solver_activity_after_driver_lifecy
         assert prompt is not None, trace
         assert "Mandatory product-mode solver checkpoint" in prompt
         assert "selected P0 solver/closeout evidence" in prompt
+        assert "--- TASK INSTRUCTION ---" in prompt
+        assert "Fix the fixture." in prompt
+        assert "The task above remains the primary objective" in prompt
+        assert "write or validate that path before closeout" in prompt
         assert "task-facing sandbox bridge operation" in prompt
         assert "todo complete" in prompt
         assert "benchmark_case_agent_closeout" in prompt
@@ -3140,6 +3147,10 @@ def test_product_mode_workflow_driver_task_bridge_activity_avoids_no_tool_abort(
     )
     assert prompt is not None, trace
     assert "Mandatory product-mode solver checkpoint" in prompt
+    assert "--- TASK INSTRUCTION ---" in prompt
+    assert "Fix the fixture." in prompt
+    assert "The task above remains the primary objective" in prompt
+    assert "write or validate that path before closeout" in prompt
     assert "task-facing sandbox bridge operation" in prompt
     assert "selected P0 closeout sequence" in prompt
     assert (
