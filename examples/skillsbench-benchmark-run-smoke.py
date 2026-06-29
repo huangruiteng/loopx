@@ -9420,6 +9420,96 @@ def test_cli_dry_run_skillsbench_official_result() -> None:
         assert payload["benchmark_cli"]["skillsbench_result_ingested"] is True, payload
 
 
+def test_cli_skillsbench_result_root_discovers_nested_case_result_for_ledger() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-cli-result-root-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, runtime = write_registry(root)
+        run_group_id = "skillsbench-goal-baseline-30case-r12-fixture"
+        task_id = "citation-check"
+        case_root = root / run_group_id / task_id
+        nested_result = case_root / task_id / "result.json"
+        write_json(
+            nested_result,
+            {
+                "task_name": task_id,
+                "rollout_name": f"{task_id}__nested_fixture",
+                "rewards": {"reward": 0.0},
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 9,
+                "n_prompts": 2,
+                "error": None,
+                "verifier_error": None,
+                "partial_trajectory": False,
+                "trajectory_source": "acp",
+            },
+        )
+        write_json(nested_result.with_name("timing.json"), {"total": 42.0})
+        write_json(
+            case_root / "other-task" / "result.json",
+            {
+                "task_name": "other-task",
+                "rollout_name": "other-task__nested_fixture",
+                "rewards": {"reward": 1.0},
+            },
+        )
+        ledger_path = root / "visible-ledger.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry_path),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "benchmark",
+                "run",
+                "skillsbench",
+                "--goal-id",
+                GOAL_ID,
+                "--skillsbench-route",
+                "codex-goal-mode-baseline",
+                "--include-task-name",
+                task_id,
+                "--skillsbench-result-root",
+                str(case_root),
+                "--update-run-ledger",
+                "--run-ledger-path",
+                str(ledger_path),
+                "--run-group-id",
+                run_group_id,
+                "--arm-id",
+                "codex_goal_mode_baseline",
+                "--execute",
+                "--no-global-sync",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        payload = json.loads(result.stdout)
+        assert payload["ok"] is True, payload
+        assert payload["benchmark_cli"]["skillsbench_result_ingested"] is True, payload
+        assert payload["benchmark_cli"]["skillsbench_result_root_ingested"] is True, payload
+        discovery = payload["skillsbench_result_discovery"]
+        assert discovery["status"] == "found", discovery
+        assert discovery["selected_relative_to_root"] == f"{task_id}/result.json", discovery
+        assert payload["benchmark_run"]["result_discovery"]["status"] == "found", payload
+        ledger_payload = payload["benchmark_run_ledger"]
+        assert ledger_payload["updated"] is True, ledger_payload
+        entry = ledger_payload["entry"]
+        assert entry["case_id"] == task_id, entry
+        refs = entry["artifact_refs"]
+        assert refs["artifact_ref"] == task_id, refs
+        assert refs["result_ref"] == f"{task_id}/result.json", refs
+        assert (root / "visible-ledger.md").exists(), "CLI should render markdown"
+
+
 def test_skillsbench_runner_plan_supports_controller_trace_path() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-trace-plan-") as tmp:
         root = Path(tmp)
@@ -12341,6 +12431,7 @@ if __name__ == "__main__":
     test_skillsbench_acp_trajectory_summary_is_compacted()
     test_cli_dry_run_skillsbench_skeleton()
     test_cli_dry_run_skillsbench_official_result()
+    test_cli_skillsbench_result_root_discovers_nested_case_result_for_ledger()
     test_skillsbench_runner_plan_supports_controller_trace_path()
     test_skillsbench_compact_runs_update_ledger_pair()
     test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()

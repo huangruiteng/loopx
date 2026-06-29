@@ -14,6 +14,7 @@ from ..benchmark_adapters.skillsbench import (
     SKILLSBENCH_ROUTES,
     build_skillsbench_benchmark_run,
     build_skillsbench_benchflow_result_benchmark_run,
+    discover_skillsbench_benchflow_result_json,
     skillsbench_recommended_action,
 )
 from ..benchmark_adapters.terminal_bench import (
@@ -69,6 +70,14 @@ PrintPayload = Callable[
 ]
 OutputFormat = Callable[[argparse.Namespace], str]
 AppendBenchmarkRunRolloutEvent = Callable[..., dict[str, object]]
+
+
+def _safe_relative_path(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.name
+
 
 BENCHMARK_RUN_LEDGER_COMMANDS = (
     {
@@ -132,6 +141,15 @@ def register_benchmark_run_ledger_commands(
             "benchmark_run_v0. This reducer reads only result.json and sibling "
             "timing.json; it does not read prompts, trajectories, verifier logs, "
             "task text, credentials, upload, or submit."
+        ),
+    )
+    benchmark_run_parser.add_argument(
+        "--skillsbench-result-root",
+        help=(
+            "Discover and ingest an official SkillsBench/BenchFlow result.json below "
+            "this job, case, or run-group directory. Discovery reads only compact "
+            "result.json metadata and supports nested paths such as "
+            "case_dir/case_dir/result.json."
         ),
     )
     benchmark_run_parser.add_argument(
@@ -369,10 +387,13 @@ def handle_benchmark_run_ledger_command(
         try:
             if args.dry_run and args.execute:
                 raise ValueError("benchmark run accepts either --dry-run or --execute, not both")
+            skillsbench_result_path: Path | None = None
+            skillsbench_result_root_path: Path | None = None
+            skillsbench_result_discovery: dict[str, object] | None = None
             if args.benchmark_name == "skillsbench":
                 classification = args.classification or (
                     "skillsbench_official_benchflow_result_ingest_v0"
-                    if args.skillsbench_result_json
+                    if args.skillsbench_result_json or args.skillsbench_result_root
                     else (
                         "skillsbench_"
                         + str(args.skillsbench_route).replace("-", "_")
@@ -454,6 +475,10 @@ def handle_benchmark_run_ledger_command(
                     "skillsbench skeleton does not accept Terminal-Bench runner, "
                     "Harbor ingest, preflight, timeout, fake-worker, or bridge flags"
                 )
+            if args.skillsbench_result_json and args.skillsbench_result_root:
+                raise ValueError(
+                    "--skillsbench-result-json and --skillsbench-result-root are mutually exclusive"
+                )
             if args.harbor_job_dir and (
                 args.fake_worker
                 or args.preflight_guard
@@ -522,12 +547,41 @@ def handle_benchmark_run_ledger_command(
                     else args.model
                 )
                 if args.skillsbench_result_json:
+                    skillsbench_result_path, skillsbench_result_discovery = (
+                        discover_skillsbench_benchflow_result_json(
+                            Path(args.skillsbench_result_json).expanduser(),
+                        )
+                    )
+                    if skillsbench_result_path is None:
+                        raise ValueError(
+                            "SkillsBench --skillsbench-result-json does not exist "
+                            "or is not a result.json file"
+                        )
+                elif args.skillsbench_result_root:
+                    skillsbench_result_root_path = Path(
+                        args.skillsbench_result_root
+                    ).expanduser()
+                    skillsbench_result_path, skillsbench_result_discovery = (
+                        discover_skillsbench_benchflow_result_json(
+                            skillsbench_result_root_path,
+                            task_id=skillsbench_task,
+                        )
+                    )
+                    if skillsbench_result_path is None:
+                        raise ValueError(
+                            "SkillsBench result discovery did not find a matching "
+                            f"result.json below --skillsbench-result-root; "
+                            f"status={skillsbench_result_discovery.get('status')} "
+                            f"candidate_count={skillsbench_result_discovery.get('candidate_count')}"
+                        )
+                if skillsbench_result_path is not None:
                     benchmark_run_input = build_skillsbench_benchflow_result_benchmark_run(
-                        args.skillsbench_result_json,
+                        skillsbench_result_path,
                         route=args.skillsbench_route,
                         dataset=skillsbench_dataset,
                         agent=args.agent,
                         model=skillsbench_model,
+                        result_discovery=skillsbench_result_discovery,
                     )
                 else:
                     benchmark_run_input = build_skillsbench_benchmark_run(
@@ -649,9 +703,8 @@ def handle_benchmark_run_ledger_command(
                     args.active_user_assisted_treatment
                 ),
                 "harbor_job_result_ingested": bool(args.harbor_job_dir),
-                "skillsbench_result_ingested": bool(
-                    getattr(args, "skillsbench_result_json", None)
-                ),
+                "skillsbench_result_ingested": skillsbench_result_path is not None,
+                "skillsbench_result_root_ingested": bool(args.skillsbench_result_root),
                 "timeout_multiplier_preview_requested": (
                     timeout_multiplier_preview_requested
                     or timeout_multiplier_preview_defaulted
@@ -666,15 +719,12 @@ def handle_benchmark_run_ledger_command(
                 "auth_values_read": False,
                 "submit_eligible": False,
             }
+            if skillsbench_result_discovery is not None:
+                payload["skillsbench_result_discovery"] = skillsbench_result_discovery
             if args.update_run_ledger:
                 harbor_job_path = (
                     Path(args.harbor_job_dir).expanduser()
                     if args.harbor_job_dir
-                    else None
-                )
-                skillsbench_result_path = (
-                    Path(args.skillsbench_result_json).expanduser()
-                    if getattr(args, "skillsbench_result_json", None)
                     else None
                 )
                 inferred_run_group_id = args.run_group_id
@@ -686,31 +736,43 @@ def handle_benchmark_run_ledger_command(
                     )
                 if (
                     not inferred_run_group_id
+                    and skillsbench_result_root_path is not None
+                ):
+                    inferred_run_group_id = skillsbench_result_root_path.name
+                if (
+                    not inferred_run_group_id
                     and skillsbench_result_path is not None
                 ):
                     inferred_run_group_id = (
                         skillsbench_result_path.parent.parent.name
                     )
+                skillsbench_artifact_ref = None
+                skillsbench_result_ref = None
+                if skillsbench_result_path is not None:
+                    if skillsbench_result_root_path is not None:
+                        skillsbench_artifact_ref = _safe_relative_path(
+                            skillsbench_result_path.parent,
+                            skillsbench_result_root_path,
+                        )
+                        skillsbench_result_ref = _safe_relative_path(
+                            skillsbench_result_path,
+                            skillsbench_result_root_path,
+                        )
+                    else:
+                        skillsbench_artifact_ref = skillsbench_result_path.parent.name
+                        skillsbench_result_ref = skillsbench_result_path.name
                 payload["benchmark_run_ledger"] = update_benchmark_run_ledger(
                     ledger_path=args.run_ledger_path,
                     benchmark_run=benchmark_run,
                     artifact_ref=(
                         str(harbor_job_path)
                         if harbor_job_path is not None
-                        else (
-                            skillsbench_result_path.parent.name
-                            if skillsbench_result_path is not None
-                            else None
-                        )
+                        else skillsbench_artifact_ref
                     ),
                     result_ref=(
                         str(harbor_job_path / "result.json")
                         if harbor_job_path is not None
-                        else (
-                            skillsbench_result_path.name
-                            if skillsbench_result_path is not None
-                            else None
-                        )
+                        else skillsbench_result_ref
                     ),
                     compact_artifact_ref=payload.get("json_path")
                     if isinstance(payload.get("json_path"), str)
@@ -754,6 +816,7 @@ def handle_benchmark_run_ledger_command(
                     (
                         "skillsbench_official_benchflow_result_ingest_v0"
                         if getattr(args, "skillsbench_result_json", None)
+                        or getattr(args, "skillsbench_result_root", None)
                         else (
                             "skillsbench_"
                             + str(getattr(args, "skillsbench_route", "")).replace("-", "_")

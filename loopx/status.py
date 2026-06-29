@@ -2553,6 +2553,41 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     return compact
 
 
+def _compact_benchmark_result_discovery(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "status",
+        "selection_policy",
+        "tie_breaker",
+        "selected_relative_to_root",
+        "selected_relative_to_job",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=180)
+        if text:
+            compact[field] = text
+    for field in (
+        "candidate_count",
+        "matched_candidate_count",
+        "top_score_candidate_count",
+    ):
+        if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in ("raw_logs_read", "raw_task_text_read", "raw_trajectory_read"):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    reasons = public_safe_compact_list(
+        value.get("selection_reasons"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if reasons:
+        compact["selection_reasons"] = reasons
+    return compact
+
+
 def _compact_active_user_assisted_treatment_preflight(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -3698,6 +3733,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+    result_discovery = _compact_benchmark_result_discovery(
+        source.get("result_discovery")
+    )
+    if result_discovery:
+        compact["result_discovery"] = result_discovery
     task_setup_preflight = _compact_benchmark_task_setup_preflight(
         source.get("task_setup_preflight")
     )
