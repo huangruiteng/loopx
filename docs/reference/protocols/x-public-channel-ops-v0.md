@@ -121,6 +121,20 @@ Generic default:
 - If the chosen time is outside the preferred window, mark it as a user or
   business constraint rather than a platform optimum.
 
+Exact publish windows are execution gates, not soft scheduler hints:
+
+- Store the approved window with an explicit timezone, for example
+  `2026-06-27 21:05-21:35 Asia/Shanghai`, plus any audience-time conversion.
+- Treat host wakeups, RRULEs, or heartbeat cadences as triggers to re-check the
+  gate, not as permission to post outside the approved window.
+- If the worker wakes before the window, it may preflight login/account/media
+  state but must not post early.
+- If the worker wakes after the window, record an `x_publish_result_v0` blocker
+  or local incident, ask for a new exact approval, and do not "catch up" by
+  posting late.
+- Do not rely on a wall-clock RRULE without confirming the host timezone
+  semantics for the publish surface.
+
 ## Content Rules
 
 For LoopX launch or education content:
