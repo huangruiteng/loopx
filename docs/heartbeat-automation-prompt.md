@@ -451,7 +451,9 @@ starts at 3 minutes; after the first guard, follow
 `quota should-run.scheduler_hint` to back off long waits and stop external loops
 after a final quota/replan check confirms repeated unchanged polls. Codex App
 heartbeats should search/use `automation_update` when available and apply
-`scheduler_hint.codex_app.recommended_rrule`. When
+`scheduler_hint.codex_app.stateful_backoff`: persist reset token, identity
+signature, and progression index; advance that index on unchanged identity; and
+update only the heartbeat RRULE. When
 `scheduler_hint.reset_policy.reset_token` changes because of user feedback,
 new/reassigned work, a resolved gate, material evidence, or active work, restore
 the automation RRULE to `scheduler_hint.reset_policy.codex_app_initial_rrule`
@@ -588,8 +590,8 @@ This prompt is intentionally a lifecycle template. Scheduling policy lives in
 `quota should-run.scheduler_hint`, so per-project heartbeats, a shared
 controller loop, Codex CLI TUI, Claude Code loop, or future Codex goal-mode
 automations can all share the same LoopX quota guard without hard-coding
-different wait loops. Host implementations should keep only a compact
-`reset_policy.reset_token` per automation when possible; if it changes, use
-`automation_update` to update the Codex App heartbeat RRULE to
-`reset_policy.codex_app_initial_rrule` and clear unchanged-poll state without
-spending quota.
+different wait loops. Host implementations should keep only compact
+`codex_app.stateful_backoff` state per automation when possible; if its
+`reset_token` changes, use `automation_update` to update the Codex App
+heartbeat RRULE to `reset_policy.codex_app_initial_rrule` and clear the
+progression index without spending quota.

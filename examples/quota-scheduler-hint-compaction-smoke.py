@@ -67,6 +67,7 @@ def json_size(value: dict) -> int:
 def assert_compact_runtime_policy_complete(name: str, compact: dict) -> None:
     codex_app = compact["codex_app"]
     unchanged_poll = compact["unchanged_poll"]
+    stateful_backoff = codex_app["stateful_backoff"]
     assert codex_app["recommended_interval_minutes"], (name, compact)
     assert codex_app["recommended_rrule"], (name, compact)
     assert codex_app["max_interval_minutes"], (name, compact)
@@ -75,6 +76,30 @@ def assert_compact_runtime_policy_complete(name: str, compact: dict) -> None:
     assert codex_app["host_action"] == "update_current_heartbeat_rrule", (name, compact)
     assert "automation_update" in codex_app["host_action_contract"], (name, compact)
     assert codex_app["rrule_source"] == "scheduler_hint.codex_app.recommended_rrule", (name, compact)
+    assert stateful_backoff["schema_version"] == "codex_app_stateful_backoff_v0", (name, compact)
+    assert stateful_backoff["state_key"] == "scheduler_hint.codex_app.stateful_backoff", (name, compact)
+    assert stateful_backoff["identity_signature"] == compact["reset_policy"]["identity_signature"], (
+        name,
+        compact,
+    )
+    assert stateful_backoff["reset_token"] == compact["reset_policy"]["reset_token"], (name, compact)
+    assert stateful_backoff["progression_minutes"] == codex_app["example_progression_minutes"], (
+        name,
+        compact,
+    )
+    assert "progression_index" in stateful_backoff["persist"], (name, compact)
+    assert stateful_backoff["same_identity_action"] == "advance_progression_index_until_max", (
+        name,
+        compact,
+    )
+    assert stateful_backoff["reset_action"] == "clear_progression_index_apply_initial_rrule", (
+        name,
+        compact,
+    )
+    assert stateful_backoff["automation_update_scope"] == "rrule_only_preserve_body_name_status", (
+        name,
+        compact,
+    )
     assert set(unchanged_poll["limits"]) == set(RUNTIME_KEYS), (name, compact)
     assert set(unchanged_poll["after_limits"]) == set(RUNTIME_KEYS), (name, compact)
     assert "final_quota_replan_check_enabled" in unchanged_poll, (name, compact)
@@ -131,7 +156,7 @@ def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     assert cold_path["codex_cli_tui"]["final_quota_replan_check"], (name, detailed)
     assert cold_path["claude_code_loop"]["after_limit"], (name, detailed)
     assert json_size(compact) < json_size(detailed), (name, json_size(compact), json_size(detailed))
-    assert json_size(compact) <= 2_800, (name, json_size(compact))
+    assert json_size(compact) <= 3_300, (name, json_size(compact))
 
 
 def run_should_run_cli(*, include_detail: bool, registry_path: Path, runtime: Path, project: Path) -> dict:

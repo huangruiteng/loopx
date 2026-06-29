@@ -56,7 +56,14 @@ def payload(
     }
 
 
-def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, expected_rrule: str) -> None:
+def assert_policy_case(
+    name: str,
+    base_payload: dict,
+    *,
+    expected_action: str,
+    expected_rrule: str,
+    expected_progression: list[int] | None = None,
+) -> None:
     quota_wrapper = _scheduler_hint(deepcopy(base_payload))
     extracted = build_scheduler_hint(
         deepcopy(base_payload),
@@ -88,6 +95,27 @@ def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, e
         name,
         extracted,
     )
+    stateful_backoff = extracted["codex_app"]["stateful_backoff"]
+    if expected_progression is not None:
+        assert extracted["codex_app"]["example_progression_minutes"] == expected_progression, (
+            name,
+            extracted,
+        )
+        assert stateful_backoff["progression_minutes"] == expected_progression, (name, extracted)
+    assert stateful_backoff["schema_version"] == "codex_app_stateful_backoff_v0", (name, extracted)
+    assert stateful_backoff["state_key"] == "scheduler_hint.codex_app.stateful_backoff", (name, extracted)
+    assert stateful_backoff["same_identity_action"] == "advance_progression_index_until_max", (
+        name,
+        extracted,
+    )
+    assert stateful_backoff["reset_action"] == "clear_progression_index_apply_initial_rrule", (
+        name,
+        extracted,
+    )
+    assert stateful_backoff["automation_update_scope"] == "rrule_only_preserve_body_name_status", (
+        name,
+        extracted,
+    )
     assert "local_scheduler" not in extracted, (name, extracted)
     assert "codex_cli_tui" not in extracted, (name, extracted)
     assert "claude_code_loop" not in extracted, (name, extracted)
@@ -103,6 +131,8 @@ def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, e
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, (name, reset)
     assert len(reset["identity_signature"]) == 12, (name, reset)
     assert len(reset["profile_signature"]) == 12, (name, reset)
+    assert stateful_backoff["reset_token"] == reset["reset_token"], (name, reset)
+    assert stateful_backoff["identity_signature"] == reset["identity_signature"], (name, reset)
     assert "identity_snapshot" not in reset, (name, reset)
     assert "profile_snapshot" not in reset, (name, reset)
 
@@ -144,6 +174,7 @@ def main() -> int:
         ),
         expected_action="backoff_until_reassigned",
         expected_rrule="FREQ=MINUTELY;INTERVAL=10",
+        expected_progression=[10, 20, 30, 60],
     )
     assert_policy_case(
         "monitor-wait",

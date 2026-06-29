@@ -9,6 +9,7 @@ from typing import Any
 SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
+CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 
 
 def build_scheduler_hint(
@@ -203,6 +204,17 @@ def build_scheduler_hint(
                 "host_action": "update_current_heartbeat_rrule",
                 "host_action_contract": "call_automation_update_update_with_recommended_rrule_when_available",
                 "rrule_source": "scheduler_hint.codex_app.recommended_rrule",
+                "stateful_backoff": {
+                    "schema_version": CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION,
+                    "state_key": "scheduler_hint.codex_app.stateful_backoff",
+                    "identity_signature": identity_signature,
+                    "reset_token": reset_token,
+                    "progression_minutes": cadence_progression,
+                    "persist": "reset_token|identity_signature|progression_index",
+                    "same_identity_action": "advance_progression_index_until_max",
+                    "reset_action": "clear_progression_index_apply_initial_rrule",
+                    "automation_update_scope": "rrule_only_preserve_body_name_status",
+                },
                 "no_spend_for_cadence_change": True,
             },
             "unchanged_poll": {

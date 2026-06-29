@@ -726,13 +726,16 @@ reset applies
 `codex_app_initial_interval_minutes` (and the matching local scheduler initial
 interval) before starting unchanged backoff again; it never spends quota.
 For Codex App heartbeats, hosts and agents should use `automation_update` with
-`codex_app.recommended_rrule` for the current cadence and
-`reset_policy.codex_app_initial_rrule` when the stored
-`reset_policy.reset_token` changes. This gives host runtimes a compact state key
-instead of requiring them to diff the whole quota payload. The token is derived
-from scheduler action plus identity/profile inputs, so a changed initial RRULE
-or scheduler profile also produces a new generation without projecting full
-snapshots in `quota should-run` JSON. User
+`codex_app.stateful_backoff`, not only the static
+`codex_app.recommended_rrule`. The stateful packet tells hosts to persist the
+current `reset_token`, `identity_signature`, and `progression_index`; repeated
+unchanged identity advances the index through `progression_minutes`, while a
+changed `reset_policy.reset_token` restores
+`reset_policy.codex_app_initial_rrule` and clears the index. This gives host
+runtimes a compact state key instead of requiring them to diff the whole quota
+payload. The token is derived from scheduler action plus identity/profile
+inputs, so a changed initial RRULE or scheduler profile also produces a new
+generation without projecting full snapshots in `quota should-run` JSON. User
 feedback, newly runnable work, reassignment, or material evidence should
 therefore restore the automation to the current profile's initial interval
 before backoff resumes.

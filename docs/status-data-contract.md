@@ -1263,11 +1263,13 @@ scheduler action plus identity/profile inputs, while the hot path carries only
 short identity/profile signatures instead of full snapshots. The reset moves
 Codex App/local cadence back to the current profile's initial interval before
 unchanged backoff resumes, and does not spend quota.
-Codex App heartbeats should use `automation_update` to apply
-`codex_app.recommended_rrule` for ordinary cadence updates. They should cache only
-`reset_policy.reset_token` plus the automation id when possible; when that token
-changes, or when user feedback/new work/reassignment/material evidence makes the
-goal active again, update the heartbeat RRULE through `automation_update` to
+Codex App heartbeats should use `automation_update` to apply the compact
+`codex_app.stateful_backoff` contract for cadence updates. Hosts should persist
+its `reset_token`, `identity_signature`, and `progression_index`; when the same
+identity repeats, advance the progression index until the max interval and
+update only the heartbeat RRULE. When the reset token changes, or when user
+feedback/new work/reassignment/material evidence makes the goal active again,
+update the heartbeat RRULE through `automation_update` to
 `reset_policy.codex_app_initial_rrule` and clear unchanged-poll state before
 starting a new backoff progression. The token is generated from scheduler
 action plus identity/profile inputs, so hosts do not need to diff the whole
