@@ -16,9 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 GOAL_ID = "loopx-auto-research-knn"
 LANES = [
-    "codex-side-bypass:hypothesis-runner",
-    "codex-product-capability:evidence-promoter",
-    "codex-main-control:control-plane-guard",
+    "codex-product-capability:research-curator:research_curator",
+    "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
+    "codex-main-control:evidence-runner:evidence_runner",
+    "codex-value-explorer:evidence-verifier:evidence_verifier",
 ]
 
 
@@ -103,6 +104,8 @@ def main() -> int:
                 LANES[1],
                 "--agent",
                 LANES[2],
+                "--agent",
+                LANES[3],
                 "--execute",
                 "--launcher",
                 "tmux",
@@ -128,14 +131,31 @@ def main() -> int:
         assert payload["boundary"]["shared_state_route"] == "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT", payload
         launch = payload["launch_result"]
         assert launch["launcher"] == "tmux", launch
-        assert launch["started_lane_count"] == 3, launch
+        assert launch["started_lane_count"] == 4, launch
         assert launch["attach_command"] == "tmux attach -t loopx-auto-research-smoke", launch
         assert launch["stop_command"] == "tmux kill-session -t loopx-auto-research-smoke", launch
         assert launch["workspace_mode"] == "explicit_workspace", launch
         assert workspace.is_dir(), workspace
 
         for lane in payload["lanes"]:
+            profile = lane["role_profile"]
+            assert profile["schema_version"] == "auto_research_role_profile_v0", profile
+            assert profile["role_id"] == lane["role_id"], profile
+            assert profile["required_skill"] == "loopx-auto-research", profile
+            assert profile["write_scope"], profile
+            assert profile["protected_scope"], profile
+            assert profile["stop_conditions"], profile
             command = lane["visible_launch_command"]
+            assert profile["schema_version"] == "auto_research_role_profile_v0", profile
+            assert profile["required_skill"] == "loopx-auto-research", profile
+            assert profile["agent_id"] == lane["agent_id"], profile
+            assert profile["lane_id"] == lane["lane_id"], profile
+            assert profile["stop_conditions"], profile
+            assert "[LoopX role profile]" in command, command
+            assert "LOOPX_ROLE_PROFILE_JSON" in command, command
+            assert "LOOPX_ROLE_ID" in command, command
+            assert "LOOPX_ROLE_PROFILE_REF" in command, command
+            assert "LOOPX_REQUIRED_SKILL" in command, command
             assert "quota should-run" in command, command
             assert "auto-research frontier" in command, command
             assert "codex-cli-bootstrap-message" in command, command
@@ -144,7 +164,7 @@ def main() -> int:
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert log_entries[0][:1] == ["has-session"], log_entries
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
-        assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 3, log_entries
+        assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 4, log_entries
         assert_public_safe(payload)
 
     print("auto-research-visible-launcher-smoke ok")

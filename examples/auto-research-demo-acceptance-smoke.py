@@ -79,12 +79,17 @@ def assert_acceptance_packet(payload: dict[str, Any]) -> None:
         "control-plane-guard",
     ], payload
     for lane in payload["lane_checks"]:
+        assert lane["role_profile_visible"] is True, lane
+        assert lane["role_id"] != "missing_role", lane
+        assert lane["phase"] != "missing_phase", lane
+        assert lane["required_skill"] == "loopx-auto-research", lane
         assert lane["quota_guard_visible"] is True, lane
         assert lane["frontier_visible"] is True, lane
         assert lane["bootstrap_visible"] is True, lane
         assert lane["visible_codex_tui"] == "codex", lane
     checklist = "\n".join(payload["operator_checklist"])
     assert "dry-run rehearsal" in checklist, checklist
+    assert "role_profile_v0" in checklist, checklist
     assert "quota should-run" in checklist, checklist
     assert "attach and stop" in checklist, checklist
     assert payload["accept_when"], payload

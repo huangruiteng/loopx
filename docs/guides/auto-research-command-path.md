@@ -75,10 +75,10 @@ The default visible digital employees are:
 
 | Pane | Role | What it owns |
 | --- | --- | --- |
-| `codex-side-bypass:hypothesis-runner` | Hypothesis runner | Claims a runnable hypothesis and produces dev evidence. |
-| `codex-product-capability:evidence-promoter` | Evidence promoter | Reviews scored evidence and promotion/retry candidates. |
-| `codex-main-control:control-plane-guard` | Control-plane guard | Checks gates, scope, PR boundaries, and takeover safety. |
-| `codex-value-explorer:research-narrator` | Research narrator | Turns accepted evidence into public-safe value summaries. |
+| `codex-product-capability:research-curator` | Research curator | Keeps the research contract, protected boundary, metric, stop policy, and operator gates explicit. |
+| `codex-side-bypass:hypothesis-mapper` | Hypothesis mapper | Turns ideas into todo-backed hypotheses, successor links, and retirement rationale. |
+| `codex-main-control:evidence-runner` | Evidence runner | Executes one selected hypothesis in an isolated workspace and preserves scored or unscored evidence. |
+| `codex-value-explorer:evidence-verifier` | Evidence verifier | Classifies evidence into supported, contradicted, retry-needed, promotion-ready, or retired states. |
 
 Each pane must route through its own quota/frontier/bootstrap path. The
 supervisor only makes those panes visible.
