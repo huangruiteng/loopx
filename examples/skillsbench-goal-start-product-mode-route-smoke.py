@@ -97,6 +97,33 @@ def _assert_adapter_route_contract_surface() -> None:
         reduced_counters["non_selected_todos_preserved_open_or_deferred"] is True
     ), reduced_counters
 
+    feedback_route = "loopx-goal-start-verifier-feedback-todo"
+    feedback_contract = skillsbench_route_contract(feedback_route)
+    assert (
+        feedback_contract["mode"]
+        == "skillsbench_loopx_goal_start_verifier_feedback_todo_experiment"
+    )
+    assert (
+        feedback_contract["arm_id"]
+        == "loopx_goal_start_verifier_feedback_todo"
+    )
+    assert feedback_contract["product_mode"] is True, feedback_contract
+    assert feedback_contract["official_feedback_blinded"] is False, feedback_contract
+    assert feedback_contract["reward_feedback_forwarded"] is True, feedback_contract
+    assert (
+        feedback_contract["verifier_failure_todo_required"] is True
+    ), feedback_contract
+
+    feedback_skeleton = build_skillsbench_benchmark_run(route=feedback_route)
+    assert feedback_skeleton["route"] == feedback_route, feedback_skeleton
+    feedback_counters = feedback_skeleton["interaction_counters"]
+    assert feedback_counters["goal_start_product_mode"] is True, feedback_counters
+    assert (
+        feedback_counters["verifier_failure_feedback_todo_route"] is True
+    ), feedback_counters
+    assert feedback_counters["verifier_failure_todo_required"] is True
+    assert "verifier_failure_feedback_todo" in feedback_skeleton["agent"]["kwargs_keys"]
+
 
 def _assert_control_score_surface() -> None:
     sys.path.insert(0, str(REPO_ROOT))
@@ -251,6 +278,28 @@ def _assert_host_local_acp_return_arity_compat() -> None:
     assert _benchflow_connect_acp_return_arity(unannotated_shape) == 3
 
 
+def _assert_verifier_failure_feedback_todo_prompt() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.skillsbench_automation_loop import (
+        _build_verifier_failure_feedback_todo_prompt,
+    )
+
+    prompt = _build_verifier_failure_feedback_todo_prompt(
+        round_number=3,
+        max_rounds=16,
+        case_cli_prefix="/app/.local/bin/loopx --registry /app/.loopx/registry.json",
+        case_goal_id="skillsbench-case",
+        case_agent_id="codex-main-control",
+        case_state_path="/app/.codex/goals/skillsbench-case/ACTIVE_GOAL_STATE.md",
+        reward=0.0,
+    )
+    assert "previous_reward=0.0" in prompt, prompt
+    assert "todo add --goal-id skillsbench-case --role agent" in prompt, prompt
+    assert "--action-kind verifier_failure_repair" in prompt, prompt
+    assert "refresh-state --goal-id skillsbench-case" in prompt, prompt
+    assert "Do not copy raw verifier output into LoopX state" in prompt
+
+
 def main() -> int:
     result = subprocess.run(
         [
@@ -281,9 +330,41 @@ def main() -> int:
     assert prerequisites["benchflow_intermediate_soft_verify_policy"] == "every-round"
     assert plan["public_boundary"]["public_raw_prompt"] is False, plan
     assert plan["public_boundary"]["public_raw_trajectory"] is False, plan
+    feedback_result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+            "--route",
+            "loopx-goal-start-verifier-feedback-todo",
+            "--task-id",
+            "planning-granularity",
+            "--plan-only",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    feedback_payload = json.loads(feedback_result.stdout)
+    feedback_plan = feedback_payload["launch_plan"]
+    assert (
+        feedback_plan["rollout_name"].endswith(
+            "__loopx_goal_start_verifier_feedback_todo"
+        )
+    ), feedback_plan
+    feedback_prereqs = feedback_plan["runner_prerequisites"]
+    assert feedback_prereqs["goal_start_product_mode"] is True, feedback_prereqs
+    assert (
+        feedback_prereqs["verifier_failure_feedback_todo_route"] is True
+    ), feedback_prereqs
+    assert (
+        feedback_prereqs["verifier_failure_feedback_forwarded_to_agent"] is True
+    ), feedback_prereqs
+    assert feedback_prereqs["verifier_failure_todo_required"] is True, feedback_prereqs
     _assert_adapter_route_contract_surface()
     _assert_control_score_surface()
     _assert_host_local_acp_return_arity_compat()
+    _assert_verifier_failure_feedback_todo_prompt()
     print("skillsbench-goal-start-product-mode-route-smoke ok")
     return 0
 

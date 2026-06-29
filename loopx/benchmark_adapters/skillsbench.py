@@ -31,10 +31,14 @@ SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
 SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE = "raw-codex-autonomous-max5"
 SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
 SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
+SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE = (
+    "loopx-goal-start-verifier-feedback-todo"
+)
 SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES = frozenset(
     {
         SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
         SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+        SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     }
 )
 SKILLSBENCH_ROUTES = (
@@ -48,6 +52,7 @@ SKILLSBENCH_ROUTES = (
     SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
     SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
     SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+    SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
 )
 SKILLSBENCH_DEFAULT_ROUTE = "loopx-blind-loop-treatment"
 
@@ -95,16 +100,27 @@ def _is_skillsbench_loopx_product_mode_treatment_route(route: str) -> bool:
 
 
 def _is_skillsbench_goal_start_product_mode_route(route: str) -> bool:
-    return route == SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
+    return route in {
+        SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
+        SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
+    }
+
+
+def _is_skillsbench_verifier_feedback_todo_route(route: str) -> bool:
+    return route == SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
 
 
 def _skillsbench_product_mode_arm_id(route: str) -> str:
+    if _is_skillsbench_verifier_feedback_todo_route(route):
+        return "loopx_goal_start_verifier_feedback_todo"
     if _is_skillsbench_goal_start_product_mode_route(route):
         return "loopx_goal_start_product_mode"
     return "loopx_product_mode"
 
 
 def _skillsbench_product_mode_outer_controller(route: str) -> str:
+    if _is_skillsbench_verifier_feedback_todo_route(route):
+        return "loopx_goal_start_verifier_feedback_todo"
     if _is_skillsbench_goal_start_product_mode_route(route):
         return "loopx_goal_start_product_mode"
     return "loopx_product_mode"
@@ -243,14 +259,21 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
         }
     if _is_skillsbench_loopx_product_mode_treatment_route(route):
         goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
+        verifier_feedback_todo_route = _is_skillsbench_verifier_feedback_todo_route(route)
         return {
             "mode": (
+                "skillsbench_loopx_goal_start_verifier_feedback_todo_experiment"
+                if verifier_feedback_todo_route
+                else
                 "skillsbench_loopx_goal_start_product_mode_treatment"
                 if goal_start_product_mode
                 else "skillsbench_loopx_product_mode_treatment"
             ),
             "arm_id": _skillsbench_product_mode_arm_id(route),
             "source_runner": (
+                "loopx_skillsbench_goal_start_verifier_feedback_todo_lifecycle_driver"
+                if verifier_feedback_todo_route
+                else
                 "loopx_skillsbench_goal_start_product_lifecycle_driver"
                 if goal_start_product_mode
                 else "loopx_skillsbench_canonical_product_lifecycle_driver"
@@ -261,6 +284,9 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
             "native_goal_mode_confirmation_status": "not_requested",
             "codex_acp_protocol_used": True,
             "skillsbench_route_semantics": (
+                "codex_agent_with_loopx_goal_start_ranked_todo_plan_selected_p0_lifecycle_and_verifier_failure_feedback_todo"
+                if verifier_feedback_todo_route
+                else
                 "codex_agent_with_loopx_goal_start_ranked_todo_plan_selected_p0_lifecycle_no_reward_feedback"
                 if goal_start_product_mode
                 else "codex_agent_with_loopx_state_todo_replan_cli_no_reward_feedback"
@@ -269,14 +295,23 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
             "loopx_automation_loop": True,
             "loopx_inside_case": True,
             "product_mode": True,
+            "verifier_failure_feedback_todo_route": verifier_feedback_todo_route,
+            "verifier_failure_feedback_forwarded": verifier_feedback_todo_route,
+            "verifier_failure_todo_required": verifier_feedback_todo_route,
             "blind_loop": False,
-            "official_feedback_blinded": True,
-            "reward_feedback_forwarded": False,
+            "official_feedback_blinded": not verifier_feedback_todo_route,
+            "reward_feedback_forwarded": verifier_feedback_todo_route,
             "case_semantics_changed_by_harness": True,
             "official_score_comparable_to_native_codex": True,
             "official_score_comparable_to_loopx_treatment": True,
             "first_blocker": "none",
             "next_action": (
+                "run LoopX goal-start product-mode with verifier failure "
+                "feedback enabled: when the previous official verifier reward "
+                "is below passing, create a new case-local LoopX todo for the "
+                "failure before the next repair attempt"
+                if verifier_feedback_todo_route
+                else
                 "run LoopX goal-start product-mode treatment with a compact ranked "
                 "todo plan, selected P0 todo lifecycle, replan/status writeback, "
                 "and LoopX CLI/ledger surfaces; do not return official reward or "
@@ -1592,6 +1627,9 @@ def build_skillsbench_benchmark_run(
         route
     )
     is_goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
+    is_verifier_feedback_todo_route = _is_skillsbench_verifier_feedback_todo_route(
+        route
+    )
     validation: dict[str, Any] = {
         "cli_skeleton_present": True,
         "skillsbench_route_declared": True,
@@ -1657,13 +1695,18 @@ def build_skillsbench_benchmark_run(
                 if route == "raw-codex-autonomous-max5"
                 else [
                     "ordinary_codex_cli_actor",
+                    "loopx_goal_start_verifier_feedback_todo"
+                    if is_verifier_feedback_todo_route
+                    else
                     "loopx_goal_start_product_mode"
                     if is_goal_start_product_mode
                     else "loopx_product_mode",
                     "ranked_todo_plan_selected_p0_lifecycle"
                     if is_goal_start_product_mode
                     else "goal_state_todos_replan_cli",
-                    "official_feedback_withheld",
+                    "verifier_failure_feedback_todo"
+                    if is_verifier_feedback_todo_route
+                    else "official_feedback_withheld",
                     "fixture_only",
                     "no_upload",
                     "single_task_planned",
@@ -1759,6 +1802,9 @@ def build_skillsbench_benchmark_run(
             ),
             "declared_done_requires_no_remaining_goals": is_product_mode_treatment,
             "goal_start_product_mode": is_goal_start_product_mode,
+            "verifier_failure_feedback_todo_route": is_verifier_feedback_todo_route,
+            "verifier_failure_feedback_forwarded_to_agent": False,
+            "verifier_failure_todo_required": is_verifier_feedback_todo_route,
             "goal_start_plan_observed": False,
             "planned_todo_count": 0,
             "planned_p0_count": 0,
@@ -2099,6 +2145,7 @@ def _skillsbench_controller_trace_counters(
             "verifier_feedback_observation_count"
         ),
         "official_feedback_blinded_count": count("official_feedback_blinded_count"),
+        "official_feedback_forwarded_count": count("official_feedback_forwarded_count"),
         "official_feedback_forwarded": controller_trace.get(
             "official_feedback_forwarded"
         )
@@ -2106,6 +2153,18 @@ def _skillsbench_controller_trace_counters(
         "blind_loop": controller_trace.get("blind_loop") is True,
         "product_mode": controller_trace.get("product_mode") is True,
         "goal_start_product_mode": controller_trace.get("goal_start_product_mode")
+        is True,
+        "verifier_failure_feedback_todo_route": controller_trace.get(
+            "verifier_failure_feedback_todo_route"
+        )
+        is True,
+        "verifier_failure_feedback_forwarded_to_agent": controller_trace.get(
+            "verifier_failure_feedback_forwarded_to_agent"
+        )
+        is True,
+        "verifier_failure_todo_required": controller_trace.get(
+            "verifier_failure_todo_required"
+        )
         is True,
         "goal_start_plan_observed": controller_trace.get("goal_start_plan_observed")
         is True,
@@ -2452,6 +2511,12 @@ def _skillsbench_controller_trace_counters(
         ),
         "product_mode_declared_done_below_passing_reward_round": count(
             "product_mode_declared_done_below_passing_reward_round"
+        ),
+        "verifier_failure_feedback_todo_prompt_count": count(
+            "verifier_failure_feedback_todo_prompt_count"
+        ),
+        "verifier_failure_feedback_todo_round": count(
+            "verifier_failure_feedback_todo_round"
         ),
         "open_todo_count": count("open_todo_count"),
         "product_mode_no_open_todo_below_passing_reward_streak": count(
@@ -4312,6 +4377,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "controller_official_feedback_blinded_count": controller_counters.get(
                 "official_feedback_blinded_count", 0
             ),
+            "controller_official_feedback_forwarded_count": controller_counters.get(
+                "official_feedback_forwarded_count", 0
+            ),
             "controller_official_feedback_forwarded": controller_counters.get(
                 "official_feedback_forwarded", False
             ),
@@ -4319,6 +4387,21 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode": controller_counters.get("product_mode", False),
             "goal_start_product_mode": controller_counters.get(
                 "goal_start_product_mode", False
+            ),
+            "verifier_failure_feedback_todo_route": controller_counters.get(
+                "verifier_failure_feedback_todo_route", False
+            ),
+            "verifier_failure_feedback_forwarded_to_agent": controller_counters.get(
+                "verifier_failure_feedback_forwarded_to_agent", False
+            ),
+            "verifier_failure_todo_required": controller_counters.get(
+                "verifier_failure_todo_required", False
+            ),
+            "verifier_failure_feedback_todo_prompt_count": controller_counters.get(
+                "verifier_failure_feedback_todo_prompt_count", 0
+            ),
+            "verifier_failure_feedback_todo_round": controller_counters.get(
+                "verifier_failure_feedback_todo_round", 0
             ),
             "goal_start_plan_observed": controller_counters.get(
                 "goal_start_plan_observed", False
