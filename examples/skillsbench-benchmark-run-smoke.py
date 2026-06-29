@@ -5153,6 +5153,7 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert "releases.astral.sh/github/uv/releases/download" in staged_verifier, (
             staged_verifier
         )
+        assert "uv-${loopx_uv_target}.tar.gz" not in staged_verifier, staged_verifier
         assert staged_verifier.index("INSTALLER_DOWNLOAD_URL") < staged_verifier.index(
             "astral.sh/uv/0.9.7/install.sh"
         ), staged_verifier
@@ -6102,8 +6103,7 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
             "#!/bin/sh\n"
             f"{VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
             "export INSTALLER_DOWNLOAD_URL="
-            "https://releases.astral.sh/github/uv/releases/download/0.9.7/"
-            "uv-x86_64-unknown-linux-gnu.tar.gz\n"
+            "https://releases.astral.sh/github/uv/releases/download/0.9.7\n"
             "# END LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR\n"
             "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n",
             encoding="utf-8",
