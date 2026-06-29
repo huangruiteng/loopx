@@ -320,6 +320,22 @@ RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES = {
 }
 
 
+def _prompt_with_app_server_closeout_instruction(prompt_text: str) -> str:
+    """Ask native Goal workers to end promptly after scored output exists."""
+
+    return (
+        prompt_text.rstrip()
+        + "\n\n"
+        + "Native Codex Goal worker closeout contract:\n"
+        + "- Solve the task using only the available benchmark workspace or the "
+        + "private bridge packet above.\n"
+        + "- After the task-required scored output file is written, immediately "
+        + "end the turn with one short confirmation.\n"
+        + "- Do not keep optimizing, narrating, or rechecking after the scored "
+        + "output exists unless the task explicitly requires more work.\n"
+    )
+
+
 def _recoverable_codex_turn_failure_message(category: str) -> str:
     return (
         "LoopX recoverable Codex turn failure: "
@@ -1791,7 +1807,47 @@ raise SystemExit(proc.returncode)
             prompt_path = tmp_path / "prompt.txt"
             output_json = tmp_path / "worker.compact.json"
             response_path = tmp_path / "response.txt"
-            prompt_path.write_text(prompt_text, encoding="utf-8")
+            prompt_for_worker = prompt_text
+            bridge_server_proc: subprocess.Popen[str] | None = None
+            bridge_summary_path: Path | None = None
+            if self._config.remote_command_file_bridge_command:
+                if _is_bridge_action_preflight_prompt(prompt_text):
+                    bridge_probe = self._reverse_channel_json_preflight_probe()
+                else:
+                    bridge_probe = self._consume_remote_bridge_for_solver()
+                self._publish_remote_bridge_consumption_trace(bridge_probe)
+                if bridge_probe.get("ready") is not True:
+                    raise RuntimeError("remote command/file bridge probe failed")
+                local_cwd = tmp_path / "local-codex-cwd"
+                local_cwd.mkdir(parents=True, exist_ok=True)
+                cwd = str(local_cwd)
+                bridge_summary_path = tmp_path / "remote-bridge-agent-ops.jsonl"
+                agent_bridge_command = (
+                    self._config.remote_command_file_bridge_agent_command
+                    or self._config.remote_command_file_bridge_command
+                    or ""
+                )
+                agent_bridge_command, bridge_server_proc = (
+                    self._start_json_file_bridge_server(
+                        tmp_path=tmp_path,
+                        local_cwd=local_cwd,
+                        bridge_command=agent_bridge_command,
+                    )
+                )
+                instrumented_bridge = self._write_instrumented_bridge_wrapper(
+                    tmp_path=tmp_path,
+                    summary_path=bridge_summary_path,
+                    bridge_command=agent_bridge_command,
+                )
+                prompt_for_worker = self._prompt_with_remote_bridge_packet(
+                    prompt_text,
+                    bridge_probe=bridge_probe,
+                    bridge_command_for_agent=str(instrumented_bridge),
+                )
+            prompt_for_worker = _prompt_with_app_server_closeout_instruction(
+                prompt_for_worker
+            )
+            prompt_path.write_text(prompt_for_worker, encoding="utf-8")
             worker_script = (
                 Path(self._config.worker_script).expanduser()
                 if self._config.worker_script
@@ -1849,11 +1905,58 @@ raise SystemExit(proc.returncode)
                     time.monotonic()
                     + max(1.0, self._config.stream_heartbeat_interval_sec)
                 )
+                bridge_activity_seen = False
+                last_bridge_summary_size = 0
+                last_bridge_activity_at = time.monotonic()
+                bridge_idle_timeout_sec = max(
+                    0.0,
+                    float(self._config.bridge_idle_timeout_sec or 0.0),
+                )
                 while proc.poll() is None:
                     now = time.monotonic()
+                    if bridge_summary_path is not None:
+                        try:
+                            current_bridge_summary_size = (
+                                bridge_summary_path.stat().st_size
+                            )
+                        except OSError:
+                            current_bridge_summary_size = 0
+                        if current_bridge_summary_size > last_bridge_summary_size:
+                            last_bridge_summary_size = current_bridge_summary_size
+                            last_bridge_activity_at = now
+                            bridge_activity_seen = True
+                    if (
+                        bridge_activity_seen
+                        and bridge_summary_path is not None
+                        and bridge_idle_timeout_sec > 0
+                        and not _bridge_summary_has_inflight_operation(
+                            bridge_summary_path
+                        )
+                        and now - last_bridge_activity_at >= bridge_idle_timeout_sec
+                    ):
+                        proc.terminate()
+                        stdout_text, stderr_text = proc.communicate(timeout=2)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        if not self._publish_worker_trace(output_json):
+                            self._publish_worker_failure_trace(
+                                stage="bridge_idle_timeout",
+                                returncode=proc.returncode,
+                                stdout_text=stdout_text,
+                                stderr_text=stderr_text,
+                            )
+                        self._terminate_bridge_server_process(bridge_server_proc)
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_bridge_idle_timeout"
+                        )
                     if now >= deadline:
                         proc.kill()
                         stdout_text, stderr_text = proc.communicate(timeout=2)
+                        if bridge_summary_path is not None:
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
                         if not self._publish_worker_trace(output_json):
                             self._publish_worker_failure_trace(
                                 stage="timeout",
@@ -1861,6 +1964,7 @@ raise SystemExit(proc.returncode)
                                 stdout_text=stdout_text,
                                 stderr_text=stderr_text,
                             )
+                        self._terminate_bridge_server_process(bridge_server_proc)
                         raise TimeoutError
                     if now >= next_heartbeat:
                         self._write_worker_heartbeat(
@@ -1874,6 +1978,10 @@ raise SystemExit(proc.returncode)
                     time.sleep(0.2)
                 stdout_text, stderr_text = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired as exc:
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
                 if not self._publish_worker_trace(output_json):
                     self._publish_worker_failure_trace(
                         stage="communicate_timeout",
@@ -1881,8 +1989,13 @@ raise SystemExit(proc.returncode)
                         stdout_text="",
                         stderr_text="",
                     )
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise TimeoutError from exc
             if proc.returncode != 0:
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
                 if not self._publish_worker_trace(output_json):
                     self._publish_worker_failure_trace(
                         stage="worker_exit_nonzero_before_public_trace",
@@ -1890,9 +2003,14 @@ raise SystemExit(proc.returncode)
                         stdout_text=stdout_text,
                         stderr_text=stderr_text,
                     )
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise RuntimeError("host app-server goal worker failed")
             trace_required = bool(self._config.worker_public_trace_dir)
             trace_published = self._publish_worker_trace(output_json)
+            if bridge_summary_path is not None:
+                self._publish_remote_bridge_agent_operations_trace(
+                    bridge_summary_path=bridge_summary_path,
+                )
             if trace_required and not trace_published:
                 self._publish_worker_failure_trace(
                     stage="worker_exit_zero_before_public_trace",
@@ -1900,11 +2018,14 @@ raise SystemExit(proc.returncode)
                     stdout_text=stdout_text,
                     stderr_text=stderr_text,
                 )
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise RuntimeError("host app-server goal worker public trace missing")
             try:
                 response = response_path.read_text(encoding="utf-8").strip()
             except OSError as exc:
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise RuntimeError("host app-server goal worker response missing") from exc
+            self._terminate_bridge_server_process(bridge_server_proc)
             return response or "host app-server goal worker returned an empty final message"
 
     def _publish_worker_trace(self, output_json: Path) -> bool:
