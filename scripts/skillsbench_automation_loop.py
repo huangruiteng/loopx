@@ -6833,7 +6833,11 @@ def _merge_host_local_acp_relay_trace_summary(
         return
     raw_trace_dir = plan.get("host_local_acp_relay_trace_dir")
     if not isinstance(raw_trace_dir, str) or not raw_trace_dir.strip():
-        return
+        if plan.get("route") != "codex-app-server-goal-baseline":
+            return
+        raw_trace_dir = plan.get("app_server_goal_worker_trace_dir")
+        if not isinstance(raw_trace_dir, str) or not raw_trace_dir.strip():
+            return
     trace_dir = Path(raw_trace_dir)
     files = sorted(trace_dir.glob("*.compact.json")) if trace_dir.exists() else []
     solver_trace_count = 0

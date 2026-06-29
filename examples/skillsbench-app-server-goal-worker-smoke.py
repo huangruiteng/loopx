@@ -1059,6 +1059,248 @@ sys.exit(0)
         proc.wait(timeout=2)
 
 
+def test_acp_relay_fails_fast_when_app_server_worker_never_uses_bridge() -> None:
+    fake_worker = """#!/usr/bin/env python3
+import time
+
+time.sleep(30)
+"""
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-bridge-first-action-") as tmp:
+        root = Path(tmp)
+        worker = root / "fake_worker.py"
+        work = root / "work"
+        trace_dir = root / "worker-traces"
+        worker.write_text(fake_worker, encoding="utf-8")
+        worker.chmod(0o755)
+        work.mkdir()
+        bridge_command = (
+            f"{sys.executable} "
+            f"{REPO_ROOT / 'scripts' / 'skillsbench_remote_command_file_bridge.py'} "
+            "--serve-probe"
+        )
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"),
+                "--app-server-goal-worker",
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--worker-script",
+                str(worker),
+                "--timeout-sec",
+                "20",
+                "--first-action-timeout-sec",
+                "1",
+                "--remote-command-file-bridge-command",
+                bridge_command,
+                "--worker-public-trace-dir",
+                str(trace_dir),
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+
+        def send(message: dict[str, Any]) -> None:
+            proc.stdin.write(json.dumps(message) + "\n")
+            proc.stdin.flush()
+
+        def read_response(request_id: int) -> dict[str, Any]:
+            while True:
+                line = proc.stdout.readline()
+                assert line, proc.stderr.read()
+                message = json.loads(line)
+                if message.get("id") == request_id and "method" not in message:
+                    return message
+
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        read_response(1)
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(work), "mcpServers": []},
+            }
+        )
+        session_id = read_response(2)["result"]["sessionId"]
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "private task placeholder"}],
+                },
+            }
+        )
+        final_response = read_response(3)
+        assert "result" in final_response, final_response
+        assert final_response["result"]["stopReason"] == "end_turn", final_response
+        traces = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted(trace_dir.glob("*.compact.json"))
+        ]
+        failure_traces = [
+            item
+            for item in traces
+            if item.get("trace_kind") == "host_worker_process_failure"
+        ]
+        assert len(failure_traces) == 1, traces
+        trace = failure_traces[0]
+        assert trace["ok"] is False, trace
+        assert trace["worker_process"]["stage"] == "first_action_timeout", trace
+        assert trace["worker_contract"]["first_blocker"] == "first_action_timeout", trace
+        assert trace["worker_process"]["stderr_bytes"] > 0, trace
+        trace_text = json.dumps(trace, sort_keys=True)
+        assert "private task placeholder" not in trace_text, trace
+        assert str(work) not in trace_text, trace
+        proc.terminate()
+        proc.wait(timeout=2)
+
+
+def test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge() -> None:
+    fake_worker = """#!/usr/bin/env python3
+import argparse
+import json
+import subprocess
+import time
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--prompt-file")
+args, _ = parser.parse_known_args()
+prompt = Path(args.prompt_file).read_text(encoding="utf-8")
+bridge = prompt.split("Private bridge command:\\n", 1)[1].splitlines()[0].strip()
+payload = {
+    "operation": "exec",
+    "cwd": "/app",
+    "command": "loopx status",
+    "timeout_sec": 1,
+}
+subprocess.run(
+    bridge,
+    input=json.dumps(payload),
+    shell=True,
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+)
+time.sleep(30)
+"""
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-bridge-status-only-") as tmp:
+        root = Path(tmp)
+        worker = root / "fake_worker.py"
+        work = root / "work"
+        trace_dir = root / "worker-traces"
+        worker.write_text(fake_worker, encoding="utf-8")
+        worker.chmod(0o755)
+        work.mkdir()
+        bridge_command = (
+            f"{sys.executable} "
+            f"{REPO_ROOT / 'scripts' / 'skillsbench_remote_command_file_bridge.py'} "
+            "--serve-probe"
+        )
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "skillsbench_local_acp_relay.py"),
+                "--app-server-goal-worker",
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--worker-script",
+                str(worker),
+                "--timeout-sec",
+                "20",
+                "--first-action-timeout-sec",
+                "1",
+                "--remote-command-file-bridge-command",
+                bridge_command,
+                "--worker-public-trace-dir",
+                str(trace_dir),
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert proc.stdin is not None
+        assert proc.stdout is not None
+
+        def send(message: dict[str, Any]) -> None:
+            proc.stdin.write(json.dumps(message) + "\n")
+            proc.stdin.flush()
+
+        def read_response(request_id: int) -> dict[str, Any]:
+            while True:
+                line = proc.stdout.readline()
+                assert line, proc.stderr.read()
+                message = json.loads(line)
+                if message.get("id") == request_id and "method" not in message:
+                    return message
+
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        read_response(1)
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "session/new",
+                "params": {"cwd": str(work), "mcpServers": []},
+            }
+        )
+        session_id = read_response(2)["result"]["sessionId"]
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {
+                    "sessionId": session_id,
+                    "prompt": [{"type": "text", "text": "private task placeholder"}],
+                },
+            }
+        )
+        final_response = read_response(3)
+        assert "result" in final_response, final_response
+        assert final_response["result"]["stopReason"] == "end_turn", final_response
+        traces = [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted(trace_dir.glob("*.compact.json"))
+        ]
+        failure_traces = [
+            item
+            for item in traces
+            if item.get("trace_kind") == "host_worker_process_failure"
+        ]
+        assert len(failure_traces) == 1, traces
+        trace = failure_traces[0]
+        assert trace["worker_process"]["stage"] == (
+            "meaningful_bridge_progress_timeout"
+        ), trace
+        bridge_traces = [
+            item
+            for item in traces
+            if item.get("trace_kind") == "remote_command_file_bridge_agent_operations"
+        ]
+        assert len(bridge_traces) == 1, traces
+        agent_ops = bridge_traces[0]["remote_command_file_bridge_agent_operations"]
+        assert agent_ops["request_count"] == 1, bridge_traces
+        assert agent_ops["loopx_cli_call_count"] == 1, bridge_traces
+        assert agent_ops["task_facing_operation_count"] == 0, bridge_traces
+        trace_text = json.dumps(traces, sort_keys=True)
+        assert "private task placeholder" not in trace_text, traces
+        assert str(work) not in trace_text, traces
+        proc.terminate()
+        proc.wait(timeout=2)
+
+
 def test_full_run_fails_closed_until_bridge_is_materialized() -> None:
     result = subprocess.run(
         [
@@ -1135,6 +1377,8 @@ if __name__ == "__main__":
     test_acp_relay_preserves_public_worker_trace_on_worker_failure()
     test_acp_relay_materializes_public_failure_trace_without_worker_output()
     test_acp_relay_fails_closed_when_zero_exit_worker_writes_no_public_output()
+    test_acp_relay_fails_fast_when_app_server_worker_never_uses_bridge()
+    test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge()
     test_full_run_fails_closed_until_bridge_is_materialized()
     test_full_run_with_bridge_ready_requires_host_acp_launch()
     test_launcher_patches_rollout_planes_connect_acp()

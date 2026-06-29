@@ -6545,6 +6545,57 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
                 },
             },
         )
+        write_json(
+            worker_trace_dir / "bridge-agent-ops.compact.json",
+            {
+                "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
+                "ok": True,
+                "route": "codex-app-server-goal-baseline",
+                "trace_kind": "remote_command_file_bridge_agent_operations",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "llm-prefix-cache-replay",
+                "remote_command_file_bridge_agent_operations": {
+                    "schema_version": (
+                        "skillsbench_remote_command_file_bridge_agent_operations_v0"
+                    ),
+                    "request_count": 2,
+                    "success_count": 2,
+                    "failure_count": 0,
+                    "operation_counts": {"exec": 2},
+                    "returncode_counts": {"0": 2},
+                    "failure_category_counts": {},
+                    "loopx_cli_call_count": 0,
+                    "loopx_cli_subcommand_counts": {},
+                    "successful_loopx_cli_subcommand_counts": {},
+                    "successful_loopx_cli_command_records": [],
+                    "loopx_state_read_count": 0,
+                    "loopx_state_write_count": 0,
+                    "task_facing_operation_count": 2,
+                    "preflight_success_count": 0,
+                    "preflight_failure_count": 0,
+                    "task_facing_success_count": 2,
+                    "task_facing_failure_count": 0,
+                    "probe_operation_count": 0,
+                    "inflight_operation_count": 0,
+                    "interrupted_operation_count": 0,
+                    "task_facing_interrupted_count": 0,
+                    "raw_material_recorded": False,
+                },
+                "boundary": {
+                    "raw_command_recorded": False,
+                    "raw_stdout_recorded": False,
+                    "raw_stderr_recorded": False,
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                    "remote_paths_recorded": False,
+                    "upload_performed": False,
+                    "submit_performed": False,
+                },
+            },
+        )
         app_server_trace = {
             "schema_version": "skillsbench_loopx_controller_trace_v0",
             "route": "codex-app-server-goal-baseline",
@@ -6557,6 +6608,13 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             "raw_agent_trajectory_recorded": False,
         }
         _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(worker_trace_dir),
+            },
+            app_server_trace,
+        )
+        _merge_host_local_acp_relay_trace_summary(
             {
                 "route": "codex-app-server-goal-baseline",
                 "app_server_goal_worker_trace_dir": str(worker_trace_dir),
@@ -6588,6 +6646,13 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert native_counters["native_goal_worker_turn_start_count"] == 1, native_compact
         assert native_counters["native_goal_worker_turn_completed_observed_count"] == 1, native_compact
         assert native_counters["native_goal_worker_raw_material_recorded"] is False, native_compact
+        assert native_counters["remote_command_file_bridge_agent_request_count"] == 2, native_compact
+        assert native_counters[
+            "remote_command_file_bridge_agent_task_facing_operation_count"
+        ] == 2, native_compact
+        assert native_counters[
+            "remote_command_file_bridge_agent_task_facing_success_count"
+        ] == 2, native_compact
         native_validation = native_compact["validation"]
         assert native_validation["native_goal_worker_trace_observed"] is True, native_compact
         assert native_validation["native_goal_worker_trace_count"] == 1, native_compact
