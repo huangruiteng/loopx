@@ -8392,8 +8392,9 @@ def _build_controller_user(max_output_chars: int, trace: dict[str, Any]):
                 "The previous attempt did not pass the verifier. Continue in the "
                 "same workspace, read /app/instruction.md if needed, inspect the "
                 "failure, make the smallest correct fix, and rerun validation. "
-                "Do not ask the human unless protected material or credentials are "
-                "required.\n\n"
+                "Do not ask or wait for a human during benchmark execution; if "
+                "the sandbox, task workspace, or required tooling is technically "
+                "unavailable, record that blocker and otherwise keep solving.\n\n"
                 + "\n".join(feedback)
             )
 
@@ -8651,8 +8652,33 @@ def _build_product_mode_user(
         "or verifier tail will be shown during this run.\n\n"
     )
 
+    def goal_start_loop_alignment_contract() -> str:
+        if not goal_start_product_mode:
+            return ""
+        return (
+            "Goal-start loop alignment: this benchmark treatment models "
+            "headless `/loopx goal-start`, not a bare benchmark prompt and not "
+            "a live-user chat. The case-local `quota should-run` guard carries "
+            "the same machine loop fields as `heartbeat-prompt` and Codex CLI "
+            "TUI `/goal`: read `interaction_contract`, `workspace_guard`, "
+            "`goal_boundary`, `execution_obligation`, and `scheduler_hint` "
+            "before choosing work. In this benchmark route there is no human "
+            "available for routine next-step decisions, so do not ask or wait "
+            "for the user when the task can proceed. `scheduler_hint` is only "
+            "scheduling/final-check/self-stop policy and never authorizes quota "
+            "spend. Proceed with the task-facing work available to the official "
+            "runner instead of projecting permission boundaries. Only record a "
+            "blocker when the sandbox bridge, task workspace, or required "
+            "tooling is technically unavailable. Do not turn ordinary benchmark "
+            "routing, verifier failure, or uncertainty into a user gate. If "
+            "delivery is possible, continue with one bounded task-facing "
+            "segment, validate it, write back the selected P0 todo, and spend "
+            "exactly once only after the validated closeout sequence. "
+        )
+
     def treatment_state_contract() -> str:
         goal_start_clause = ""
+        goal_start_alignment = goal_start_loop_alignment_contract()
         if goal_start_product_mode:
             planned_count = (
                 planned_todo_count
@@ -8662,7 +8688,7 @@ def _build_product_mode_user(
                 else 3
             )
             goal_start_clause = (
-                "This route simulates `/loopx <task objective>` goal start: "
+                "This route models `/loopx goal-start <task objective>`: "
                 f"a compact ranked {planned_count}-todo plan must exist before "
                 "todo writes, "
                 f"with selected runnable P0 todo `{selected_p0_todo_id}` entering "
@@ -8680,6 +8706,7 @@ def _build_product_mode_user(
                 "and `refresh-state` checkpoint through the sandbox bridge "
                 "before this prompt. "
                 f"{goal_start_clause}"
+                f"{goal_start_alignment}"
                 "Do not repeat that setup checkpoint as "
                 "your first action. The benchmark task remains the primary "
                 "objective; LoopX commands track control-plane state and do "
@@ -8710,6 +8737,7 @@ def _build_product_mode_user(
             "the scored sandbox, then wait for the scheduler to send the task "
             "packet. "
             f"{goal_start_clause}"
+            f"{goal_start_alignment}"
             "Before reading, planning, solving, or answering the task, your first "
             "agent action must be a shell/tool call that sends the case-local "
             "LoopX CLI commands through the available sandbox bridge; a prose-only "
@@ -8807,9 +8835,10 @@ def _build_product_mode_user(
             "--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
             "The canonical workflow lifecycle driver has already executed the "
             "case-local quota/todo/update/refresh checkpoint through the sandbox "
-            "bridge before this prompt. This route simulates `/loopx <task "
-            "objective>` goal start: a compact ranked todo plan and selected P0 "
+            "bridge before this prompt. This route models `/loopx goal-start "
+            "<task objective>`: a compact ranked todo plan and selected P0 "
             "todo have already been seeded in the case-local LoopX state. "
+            f"{goal_start_loop_alignment_contract()}"
             "Do not repeat setup lifecycle, do not solve from prose, and do not "
             "declare done in this bootstrap round. Your only job in this round "
             "is to prove task-facing sandbox access: copy and run the bridge "
@@ -8853,6 +8882,7 @@ def _build_product_mode_user(
             "changes, and continue solving. If local evidence shows the "
             "selected P0 is complete, run this exact case-local closeout "
             "sequence from `/app`:\n\n"
+            f"{goal_start_loop_alignment_contract()}"
             f"{closeout_commands(round_number)}"
             f"{task_clause}\n\n"
             "Do not answer with prose only, and only end with "
@@ -8886,6 +8916,7 @@ def _build_product_mode_user(
             "case-local closeout sequence (`todo complete`, `refresh-state`, "
             "`quota spend-slot --source adapter --execute`) before declaring "
             "done.\n\n"
+            f"{goal_start_loop_alignment_contract()}"
             f"{closeout_commands(round_number)}"
             f"{task_clause}"
         )
@@ -8902,6 +8933,7 @@ def _build_product_mode_user(
             "new broad exploration loop. If local task-facing validation "
             "indicates the selected P0 is complete, run this exact case-local "
             "closeout sequence from `/app` now:\n\n"
+            f"{goal_start_loop_alignment_contract()}"
             f"{closeout_commands(round_number)}"
             "If local validation does not support closeout, perform one "
             "focused task-facing validation or repair operation from `/app`, "
@@ -9039,6 +9071,7 @@ def _build_product_mode_user(
                     "verifier error, or verifier output. "
                 )
                 +
+                f"{goal_start_loop_alignment_contract()}"
                 f"{done_clause}"
                 f"{self._persistent_constraint_clause} {mode_clause} Keep scope "
                 "narrow, validate locally, and if there are no remaining goals, "
@@ -9108,7 +9141,8 @@ def _build_product_mode_user(
                                 "status-only prose. Use the available sandbox "
                                 "command/file bridge now to inspect or modify the task "
                                 "workspace, then update the selected LoopX todo with "
-                                "public-safe evidence before any done/closeout claim."
+                                "public-safe evidence before any done/closeout claim. "
+                                f"{goal_start_loop_alignment_contract()}"
                             )
                         if no_tool_calls:
                             _record_product_mode_no_tool_call_lifecycle_abort(
