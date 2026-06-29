@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _host_local_acp_codex_exec_preflight_command,
     _host_local_acp_docker_bridge_command,
     _host_local_acp_launch_command,
+    _host_local_proxy_endpoint_probe,
     _host_local_acp_target_env,
     _merge_host_local_acp_relay_trace_summary,
     _public_runner_prerequisites,
@@ -1431,8 +1433,95 @@ raise SystemExit(1)
                     "wss://chatgpt.com/backend-api/codex/responses"
                 ),
             )
-            == "codex_network_or_api_unreachable"
+            == "codex_responses_stream_unavailable"
         )
+        assert (
+            _codex_exec_failure_category(
+                returncode=1,
+                stderr_text=(
+                    "{\"type\":\"error\",\"status\":400,\"error\":{\"message\":"
+                    "\"The 'gpt-5' model is not supported when using Codex "
+                    "with a ChatGPT account.\"}}"
+                ),
+            )
+            == "codex_model_unavailable"
+        )
+
+        saved_proxy_env = {
+            key: os.environ.get(key)
+            for key in (
+                "HTTPS_PROXY",
+                "https_proxy",
+                "ALL_PROXY",
+                "all_proxy",
+                "HTTP_PROXY",
+                "http_proxy",
+            )
+        }
+        try:
+            for key in saved_proxy_env:
+                os.environ.pop(key, None)
+            os.environ["HTTPS_PROXY"] = "http://127.0.0.1:9"
+            proxy_probe = _host_local_proxy_endpoint_probe()
+            assert proxy_probe["status"] == "unreachable", proxy_probe
+            assert proxy_probe["raw_proxy_url_recorded"] is False, proxy_probe
+            os.environ["HTTPS_PROXY"] = "http://127.0.0.1:not-a-port"
+            invalid_proxy_probe = _host_local_proxy_endpoint_probe()
+            assert (
+                invalid_proxy_probe["status"] == "invalid_loopback_proxy_port"
+            ), invalid_proxy_probe
+            assert (
+                invalid_proxy_probe["raw_proxy_url_recorded"] is False
+            ), invalid_proxy_probe
+            os.environ["HTTPS_PROXY"] = "http://127.0.0.1:9"
+
+            preflight_plan = {"runner_prerequisites": {}}
+            proxy_blocked_args = SimpleNamespace(
+                route="loopx-product-mode",
+                dataset="skillsbench-v1.1",
+                task_id="demo-task",
+                local_acp_relay_command=None,
+                local_codex_bin=str(Path(tmp) / "not-run-codex"),
+                local_codex_sandbox="read-only",
+                host_local_acp_launch=True,
+                host_local_acp_codex_exec_preflight_timeout_sec=5,
+                host_local_acp_codex_exec_preflight_attempts=1,
+                model="gpt-5.5",
+                remote_command_file_bridge_solver_command="",
+                remote_command_file_bridge_ready=False,
+                remote_command_file_bridge_probe=False,
+                remote_command_file_bridge_probe_timeout_sec=10,
+                remote_command_file_bridge_agent_command="",
+                local_codex_first_action_timeout_sec=0,
+            )
+            try:
+                _run_host_local_acp_codex_exec_preflight(
+                    proxy_blocked_args,
+                    preflight_plan,
+                )
+            except RuntimeError as exc:
+                assert "proxy endpoint" in str(exc), exc
+            else:
+                raise AssertionError("proxy endpoint failure should block preflight")
+            proxy_prereqs = preflight_plan["runner_prerequisites"]
+            assert (
+                proxy_prereqs["host_local_acp_codex_exec_preflight_first_blocker"]
+                == "skillsbench_host_local_acp_proxy_endpoint_unreachable"
+            ), proxy_prereqs
+            assert (
+                proxy_prereqs["host_local_acp_codex_exec_failure_category"]
+                == "codex_proxy_endpoint_unreachable"
+            ), proxy_prereqs
+            assert (
+                proxy_prereqs["host_local_acp_proxy_endpoint_raw_url_recorded"]
+                is False
+            ), proxy_prereqs
+        finally:
+            for key, value in saved_proxy_env.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
         reverse_sleeping_codex = Path(tmp) / "reverse-sleeping-codex"
         reverse_sleeping_codex.write_text(
             """#!/usr/bin/env python3

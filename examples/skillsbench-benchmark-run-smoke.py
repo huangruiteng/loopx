@@ -2019,6 +2019,27 @@ def test_skillsbench_codex_exec_failure_category_is_actionable() -> None:
     assert (
         _codex_exec_failure_category(
             returncode=1,
+            stderr_text=(
+                "The 'gpt-5' model is not supported when using Codex "
+                "with a ChatGPT account."
+            ),
+        )
+        == "codex_model_unavailable"
+    )
+    assert (
+        _codex_exec_failure_category(
+            returncode=1,
+            stderr_text=(
+                "failed to connect to websocket: IO error: Connection refused "
+                "(os error 111), url: "
+                "wss://chatgpt.com/backend-api/codex/responses"
+            ),
+        )
+        == "codex_responses_stream_unavailable"
+    )
+    assert (
+        _codex_exec_failure_category(
+            returncode=1,
             stderr_text="codex: No such file or directory",
         )
         == "codex_cli_or_environment_missing"

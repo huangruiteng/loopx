@@ -228,9 +228,20 @@ def _codex_exec_failure_category(
             "invalid",
             "does not exist",
             "unavailable",
+            "not supported",
         )
     ):
         return "codex_model_unavailable"
+    if "codex/responses" in text and any(
+        token in text
+        for token in (
+            "failed to connect to websocket",
+            "stream disconnected before completion",
+            "error sending request",
+            "connection refused",
+        )
+    ):
+        return "codex_responses_stream_unavailable"
     if any(
         token in text
         for token in (

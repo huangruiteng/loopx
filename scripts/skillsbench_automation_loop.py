@@ -63,6 +63,7 @@ import re
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -71,6 +72,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from typing import Any, get_args, get_origin
+from urllib.parse import urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -534,6 +536,81 @@ def _compact_size_bucket(size: int) -> str:
     if size < 5000:
         return "1000_4999"
     return "5000_plus"
+
+
+LOCAL_PROXY_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+)
+LOOPBACK_PROXY_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _host_local_proxy_endpoint_probe(
+    *,
+    env: dict[str, str] | None = None,
+    timeout_sec: float = 1.0,
+) -> dict[str, Any]:
+    """Probe a configured loopback proxy without recording the raw proxy URL."""
+
+    source_env = env if env is not None else os.environ
+    for key in LOCAL_PROXY_ENV_KEYS:
+        raw_value = str(source_env.get(key) or "").strip()
+        if not raw_value:
+            continue
+        parsed = urlsplit(raw_value if "://" in raw_value else f"http://{raw_value}")
+        host = parsed.hostname or ""
+        if host not in LOOPBACK_PROXY_HOSTS:
+            return {
+                "configured": True,
+                "checked": False,
+                "status": "non_loopback_proxy",
+                "env_key": key,
+                "proxy_scheme": parsed.scheme[:20],
+                "raw_proxy_url_recorded": False,
+            }
+        if parsed.scheme in {"http", "https", "ws", "wss"}:
+            default_port = 443 if parsed.scheme in {"https", "wss"} else 80
+        else:
+            default_port = 1080
+        try:
+            port = parsed.port or default_port
+        except ValueError as exc:
+            return {
+                "configured": True,
+                "checked": False,
+                "status": "invalid_loopback_proxy_port",
+                "env_key": key,
+                "proxy_scheme": parsed.scheme[:20],
+                "raw_proxy_url_recorded": False,
+                "error_class": exc.__class__.__name__[:80],
+            }
+        result: dict[str, Any] = {
+            "configured": True,
+            "checked": True,
+            "status": "checking",
+            "env_key": key,
+            "proxy_scheme": parsed.scheme[:20],
+            "loopback_proxy_port": port,
+            "raw_proxy_url_recorded": False,
+        }
+        try:
+            with socket.create_connection((host, port), timeout=timeout_sec):
+                result["status"] = "reachable"
+                return result
+        except OSError as exc:
+            result["status"] = "unreachable"
+            result["error_class"] = exc.__class__.__name__[:80]
+            return result
+    return {
+        "configured": False,
+        "checked": False,
+        "status": "not_configured",
+        "raw_proxy_url_recorded": False,
+    }
 
 
 def materialize_local_codex_participant(
@@ -1297,6 +1374,44 @@ def _run_host_local_acp_codex_exec_preflight(
         int(getattr(args, "host_local_acp_codex_exec_preflight_attempts", 1) or 1),
     )
     command = _host_local_acp_codex_exec_preflight_command(args, plan)
+    proxy_probe = _host_local_proxy_endpoint_probe()
+    prerequisites["host_local_acp_proxy_endpoint_status"] = proxy_probe["status"]
+    prerequisites["host_local_acp_proxy_endpoint_checked"] = (
+        proxy_probe.get("checked") is True
+    )
+    prerequisites["host_local_acp_proxy_endpoint_raw_url_recorded"] = False
+    if proxy_probe.get("configured") is True:
+        prerequisites["host_local_acp_proxy_endpoint_env_key"] = str(
+            proxy_probe.get("env_key") or ""
+        )[:80]
+        prerequisites["host_local_acp_proxy_endpoint_scheme"] = str(
+            proxy_probe.get("proxy_scheme") or ""
+        )[:20]
+    if isinstance(proxy_probe.get("loopback_proxy_port"), int):
+        prerequisites["host_local_acp_proxy_endpoint_loopback_port"] = proxy_probe[
+            "loopback_proxy_port"
+        ]
+    if proxy_probe.get("error_class"):
+        prerequisites["host_local_acp_proxy_endpoint_error_class"] = str(
+            proxy_probe.get("error_class") or ""
+        )[:80]
+    if proxy_probe["status"] in {"unreachable", "invalid_loopback_proxy_port"}:
+        proxy_blocker = "skillsbench_host_local_acp_proxy_endpoint_unreachable"
+        proxy_failure_category = "codex_proxy_endpoint_unreachable"
+        proxy_error = "host-local ACP proxy endpoint unreachable"
+        if proxy_probe["status"] == "invalid_loopback_proxy_port":
+            proxy_blocker = "skillsbench_host_local_acp_proxy_endpoint_invalid"
+            proxy_failure_category = "codex_proxy_endpoint_invalid"
+            proxy_error = "host-local ACP proxy endpoint invalid"
+        prerequisites["host_local_acp_codex_exec_preflight_status"] = "failed"
+        prerequisites["host_local_acp_codex_exec_preflight_first_blocker"] = (
+            proxy_blocker
+        )
+        prerequisites["host_local_acp_codex_exec_failure_category"] = (
+            proxy_failure_category
+        )
+        prerequisites["host_local_acp_codex_exec_preflight_ready"] = False
+        raise RuntimeError(proxy_error)
     relay_trace_dir = str(plan.get("host_local_acp_relay_trace_dir") or "")
     preflight_trace_dir = (
         Path(relay_trace_dir) / "codex-exec-preflight" if relay_trace_dir else None
@@ -1629,6 +1744,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
         "host_local_acp_codex_exec_failure_category",
+        "host_local_acp_proxy_endpoint_status",
+        "host_local_acp_proxy_endpoint_env_key",
+        "host_local_acp_proxy_endpoint_scheme",
+        "host_local_acp_proxy_endpoint_error_class",
         "host_local_acp_bridge_progress_status",
         "host_local_acp_bridge_progress_signal_source",
         "runner_interruption_kind",
@@ -1657,6 +1776,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_action_success_observed",
         "host_local_acp_codex_exec_preflight_bridge_trace_present",
         "host_local_acp_codex_exec_preflight_bridge_raw_material_recorded",
+        "host_local_acp_proxy_endpoint_checked",
+        "host_local_acp_proxy_endpoint_raw_url_recorded",
         "container_codex_acp_install_skipped",
         "benchflow_agent_install_skipped_by_runtime_layer",
         "benchflow_rollout_planes_module_available",
@@ -1830,6 +1951,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_task_facing_success_count",
         "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count",
         "host_local_acp_codex_exec_failure_trace_count",
+        "host_local_acp_proxy_endpoint_loopback_port",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
