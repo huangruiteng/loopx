@@ -145,7 +145,7 @@ DEFAULT_LEDGER = (
 DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
-DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC = 600
+DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC = 3600
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
@@ -507,6 +507,15 @@ CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD = (
 
 def _now_stamp() -> str:
     return datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%Z")
+
+
+def _split_task_ids_arg(value: str | None) -> list[str]:
+    return [part for part in re.split(r"[,\s]+", value or "") if part]
+
+
+def _safe_batch_suffix(task_id: str, index: int) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", task_id).strip("-")
+    return f"{index + 1:02d}-{slug or 'task'}"
 
 
 def _json_default(value: Any) -> str:
@@ -929,9 +938,20 @@ def _host_local_acp_launch_command(
 
 
 def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
-    configured = max(1, int(args.local_codex_exec_timeout_sec or 0))
+    configured_raw = getattr(args, "local_codex_exec_timeout_sec", None)
+    configured = max(1, int(configured_raw or DEFAULT_TIMEOUT_SEC))
     idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
-    if configured == DEFAULT_TIMEOUT_SEC and idle_timeout > 0:
+    if (
+        configured_raw is None
+        and bool(getattr(args, "host_local_acp_launch", False))
+    ):
+        bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
+        if bridge_idle_timeout > 0:
+            return max(
+                1,
+                bridge_idle_timeout + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
+            )
+    if configured_raw is None and idle_timeout > 0:
         return min(configured, idle_timeout)
     return configured
 
@@ -955,6 +975,8 @@ def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> 
     configured = getattr(args, "local_codex_bridge_idle_timeout_sec", None)
     if configured is not None:
         return max(0, int(configured or 0))
+    if bool(getattr(args, "host_local_acp_launch", False)):
+        return DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
     requested = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
     if requested <= 0:
         return DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
@@ -10567,6 +10589,24 @@ def _build_runner_exception_closeout_payload(
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", default="react-performance-debugging")
+    parser.add_argument(
+        "--task-ids",
+        default=None,
+        help=(
+            "Comma- or whitespace-separated SkillsBench task ids to run as a "
+            "batch. When set, this replaces --task-id for the main runner path."
+        ),
+    )
+    parser.add_argument(
+        "--parallel-cases",
+        type=int,
+        default=1,
+        help=(
+            "Maximum number of SkillsBench cases to run concurrently when "
+            "--task-ids contains more than one task. Defaults to serial single "
+            "case behavior."
+        ),
+    )
     parser.add_argument("--dataset", default="skillsbench@1.1")
     parser.add_argument(
         "--route",
@@ -10783,8 +10823,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--local-codex-exec-timeout-sec",
         type=int,
-        default=DEFAULT_TIMEOUT_SEC,
-        help="Per-prompt timeout for local Codex exec in host-local ACP launch mode.",
+        default=None,
+        help=(
+            "Per-prompt timeout for local Codex exec in host-local ACP launch "
+            "mode. Omit to use the host-local bridge idle timeout plus a small "
+            "agent timeout margin."
+        ),
     )
     parser.add_argument(
         "--local-codex-first-action-timeout-sec",
@@ -10801,8 +10845,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Optional watchdog after the most recent sandbox bridge operation "
-            "from a host-local Codex turn. Omit to inherit --agent-idle-timeout; "
-            "0 disables the watchdog."
+            "from a host-local Codex turn. Omit to use the host-local default "
+            f"({DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC}s); 0 disables "
+            "the watchdog."
         ),
     )
     parser.add_argument(
@@ -11003,6 +11048,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if args.parallel_cases < 1:
+        parser.error("--parallel-cases must be >= 1")
+    batch_task_ids = _split_task_ids_arg(args.task_ids)
+    if args.task_ids is not None and not batch_task_ids:
+        parser.error("--task-ids must contain at least one task id")
+    if len(set(batch_task_ids)) != len(batch_task_ids):
+        parser.error("--task-ids must not contain duplicate task ids")
     if (
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and not args.plan_only
@@ -11144,6 +11196,84 @@ async def async_main(
         "score_failure_attribution": compact.get("score_failure_attribution"),
         "ledger_update": ledger_update,
         "history_append": history_append,
+    }
+
+
+def _batch_task_ids(args: argparse.Namespace) -> list[str]:
+    return _split_task_ids_arg(getattr(args, "task_ids", None)) or [
+        str(args.task_id)
+    ]
+
+
+def _clone_args_for_batch_case(
+    args: argparse.Namespace,
+    *,
+    task_id: str,
+    index: int,
+    total: int,
+    run_group_id: str,
+) -> argparse.Namespace:
+    case_args = argparse.Namespace(**vars(args))
+    case_args.task_id = task_id
+    case_args.task_ids = None
+    case_args.run_group_id = run_group_id
+    if total > 1:
+        suffix = _safe_batch_suffix(task_id, index)
+        if args.job_name:
+            case_args.job_name = f"{args.job_name}-{suffix}"
+        if args.rollout_name:
+            case_args.rollout_name = f"{args.rollout_name}-{suffix}"
+    return case_args
+
+
+async def async_batch_main(
+    args: argparse.Namespace,
+    *,
+    task_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    selected_task_ids = list(task_ids or _batch_task_ids(args))
+    run_group_id = str(
+        args.run_group_id
+        or f"skillsbench-batch-{args.route}-{_now_stamp()}"
+    )
+    parallel_cases = min(max(1, int(args.parallel_cases or 1)), len(selected_task_ids))
+    semaphore = asyncio.Semaphore(parallel_cases)
+
+    async def run_one(index: int, task_id: str) -> dict[str, Any]:
+        case_args = _clone_args_for_batch_case(
+            args,
+            task_id=task_id,
+            index=index,
+            total=len(selected_task_ids),
+            run_group_id=run_group_id,
+        )
+        case_plan = build_plan(case_args)
+        async with semaphore:
+            try:
+                payload = await async_main(case_args, plan=case_plan)
+                payload["runner_returncode"] = 0
+                return payload
+            except Exception as exc:
+                payload, returncode = _build_runner_exception_closeout_payload(
+                    case_args,
+                    case_plan,
+                    exc,
+                )
+                payload["runner_returncode"] = returncode
+                return payload
+
+    results = await asyncio.gather(
+        *(run_one(index, task_id) for index, task_id in enumerate(selected_task_ids))
+    )
+    returncode = max(int(result.get("runner_returncode") or 0) for result in results)
+    return {
+        "ok": all(result.get("ok") is True for result in results),
+        "batch": True,
+        "task_count": len(selected_task_ids),
+        "parallel_cases": parallel_cases,
+        "run_group_id": run_group_id,
+        "results": results,
+        "runner_returncode": returncode,
     }
 
 
@@ -11390,11 +11520,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
         return 0
+    task_ids = _batch_task_ids(args)
+    batch_mode = len(task_ids) > 1
     if args.run_group_id is None:
         args.run_group_id = (
-            f"skillsbench-{args.task_id}-{args.route}-{_now_stamp()}"
+            f"skillsbench-batch-{args.route}-{_now_stamp()}"
+            if batch_mode
+            else f"skillsbench-{args.task_id}-{args.route}-{_now_stamp()}"
         )
-    plan = build_plan(args)
+    plan = None if batch_mode else build_plan(args)
     previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
     def _closeout_sigterm_handler(signum: int, frame: Any) -> None:
@@ -11404,8 +11538,27 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGTERM, _closeout_sigterm_handler)
     try:
-        payload = asyncio.run(async_main(args, plan=plan))
+        if batch_mode:
+            payload = asyncio.run(async_batch_main(args, task_ids=task_ids))
+        else:
+            payload = asyncio.run(async_main(args, plan=plan))
     except (KeyboardInterrupt, SkillsBenchRunnerInterrupted) as exc:
+        if plan is None:
+            payload = {
+                "ok": False,
+                "batch": True,
+                "task_count": len(task_ids),
+                "parallel_cases": min(
+                    max(1, int(args.parallel_cases or 1)),
+                    len(task_ids),
+                ),
+                "run_group_id": args.run_group_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "compact_closeout_recorded": False,
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+            return 1
         payload, returncode = _build_runner_exception_closeout_payload(
             args, plan, exc
         )
@@ -11417,6 +11570,22 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=output_stream)
         return returncode
     except Exception as exc:
+        if plan is None:
+            payload = {
+                "ok": False,
+                "batch": True,
+                "task_count": len(task_ids),
+                "parallel_cases": min(
+                    max(1, int(args.parallel_cases or 1)),
+                    len(task_ids),
+                ),
+                "run_group_id": args.run_group_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "compact_closeout_recorded": False,
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+            return 1
         payload, returncode = _build_runner_exception_closeout_payload(
             args, plan, exc
         )
@@ -11430,7 +11599,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         signal.signal(signal.SIGTERM, previous_sigterm_handler)
     print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
-    return 0
+    return int(payload.get("runner_returncode") or 0)
 
 
 if __name__ == "__main__":

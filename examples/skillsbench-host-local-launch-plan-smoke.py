@@ -29,6 +29,7 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     build_skillsbench_remote_command_file_bridge_probe_request,
 )
 from scripts.skillsbench_automation_loop import (  # noqa: E402
+    DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
     _apply_agent_message_only_no_tool_calls_attribution,
     _effective_benchflow_agent_timeout_sec,
@@ -184,6 +185,18 @@ print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
     assert _effective_local_codex_exec_timeout_sec(timeout_args) == 21600
     assert _effective_benchflow_agent_timeout_sec(timeout_args) == (
         21600 + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
+    )
+    default_host_local_timeout_args = SimpleNamespace(
+        agent_idle_timeout=900,
+        host_local_acp_launch=True,
+        local_codex_bridge_idle_timeout_sec=None,
+        local_codex_exec_timeout_sec=None,
+    )
+    assert _effective_local_codex_exec_timeout_sec(
+        default_host_local_timeout_args
+    ) == (
+        DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+        + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
     )
     non_host_local_timeout_args = SimpleNamespace(
         agent_idle_timeout=7200,
@@ -409,7 +422,7 @@ if out:
             local_acp_relay_command=None,
             local_codex_bin="codex",
             local_codex_bridge_idle_timeout_sec=None,
-            local_codex_exec_timeout_sec=7200,
+            local_codex_exec_timeout_sec=None,
             local_codex_sandbox="workspace-write",
             max_rounds=24,
             model=None,
@@ -424,10 +437,17 @@ if out:
         )
         launch_plan = {"host_local_acp_relay_trace_dir": str(Path(tmp) / "trace")}
         launch_command = _host_local_acp_launch_command(launch_args, launch_plan)
+        timeout_index = launch_command.index("--timeout-sec")
+        assert launch_command[timeout_index + 1] == str(
+            DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+            + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
+        )
         heartbeat_index = launch_command.index("--stream-heartbeat-interval-sec")
         assert launch_command[heartbeat_index + 1] == "15.0"
         bridge_idle_index = launch_command.index("--bridge-idle-timeout-sec")
-        assert launch_command[bridge_idle_index + 1] == "600"
+        assert launch_command[bridge_idle_index + 1] == str(
+            DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+        )
         launch_args.local_codex_bridge_idle_timeout_sec = 0
         bridge_idle_disabled_command = _host_local_acp_launch_command(
             launch_args,
