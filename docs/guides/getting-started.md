@@ -64,6 +64,27 @@ Success looks like this:
 - `loopx status` shows the goal and who should act next;
 - local runtime state is ignored, not committed.
 
+## Local State Backup
+
+Before risky migrations, local scheduler changes, or release-install repair,
+preview the state archive:
+
+```bash
+loopx backup-state --project .
+```
+
+Write the archive only when the preview looks right:
+
+```bash
+loopx backup-state --project . --execute
+```
+
+The backup is written under `~/.codex/loopx/backups` by default and captures the
+shared LoopX runtime root, this project's `.loopx`, `.codex/goals`, and
+`.local/goals` state, Codex App automations, and installed `loopx-*` skills
+when present. Treat the archive and manifest as private local recovery
+material; do not commit them or publish their contents.
+
 ## Codex CLI TUI Setup
 
 For Codex CLI users, the product target is: start in the Codex TUI, send one

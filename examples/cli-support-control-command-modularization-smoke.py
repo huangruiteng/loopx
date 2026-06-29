@@ -42,6 +42,7 @@ def main() -> None:
     init_source = INIT.read_text(encoding="utf-8")
 
     forbidden_cli_markers = [
+        "backup_state_parser = sub.add_parser",
         "heartbeat_prompt_parser = sub.add_parser",
         "promotion_gate_parser = sub.add_parser",
         "upgrade_plan_parser = sub.add_parser",
@@ -53,9 +54,11 @@ def main() -> None:
         "build_promotion_gate(",
         "build_upgrade_plan(",
         "build_update_plan(",
+        "build_state_backup_plan(",
         "inspect_registry(",
         "inspect_registry_boundary(",
         "serve_status(",
+        'if args.command == "backup-state":',
         'if args.command == "heartbeat-prompt":',
         'if args.command == "promotion-gate":',
         'if args.command == "upgrade-plan":',
@@ -72,6 +75,7 @@ def main() -> None:
         "register_support_control_commands",
         "handle_support_control_command",
         "resolve_heartbeat_active_state",
+        "backup-state",
         "heartbeat-prompt",
         "promotion-gate",
         "upgrade-plan",
@@ -86,6 +90,7 @@ def main() -> None:
     require("handle_support_control_command" in init_source, "__init__ omitted support/control handler")
 
     for command, options in {
+        "backup-state": ("--project", "--output-dir", "--backup-id", "--execute"),
         "heartbeat-prompt": ("--goal-id", "--agent-id", "--thin"),
         "promotion-gate": ("--format",),
         "upgrade-plan": ("--installed-manifest", "--cli-bin", "--mode"),

@@ -28,6 +28,11 @@ from ..registry import (
     resolve_state_file,
 )
 from ..self_update import build_update_plan, execute_update_plan, render_update_plan_markdown
+from ..state_backup import (
+    build_state_backup_plan,
+    execute_state_backup_plan,
+    render_state_backup_markdown,
+)
 from ..status import render_status_markdown
 from ..status_server import (
     DEFAULT_STATUS_HOST,
@@ -46,6 +51,7 @@ FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
 
 SUPPORT_CONTROL_COMMANDS = {
+    "backup-state",
     "heartbeat-prompt",
     "promotion-gate",
     "upgrade-plan",
@@ -114,6 +120,40 @@ def register_support_control_commands(
     subparsers: argparse._SubParsersAction,
     add_subcommand_format: AddFormat,
 ) -> None:
+    backup_state_parser = subparsers.add_parser(
+        "backup-state",
+        help="Preview or create a private local archive of LoopX state.",
+    )
+    add_subcommand_format(backup_state_parser)
+    backup_state_parser.add_argument(
+        "--project",
+        default=".",
+        help="Project root whose .loopx, .codex/goals, and .local/goals state should be included.",
+    )
+    backup_state_parser.add_argument(
+        "--output-dir",
+        help="Directory for the backup archive and manifest. Defaults to <runtime-root>/backups.",
+    )
+    backup_state_parser.add_argument(
+        "--backup-id",
+        help="Stable id for the archive name. Defaults to a UTC timestamp.",
+    )
+    backup_state_parser.add_argument(
+        "--no-automations",
+        action="store_true",
+        help="Exclude $CODEX_HOME/automations from the backup.",
+    )
+    backup_state_parser.add_argument(
+        "--no-skills",
+        action="store_true",
+        help="Exclude $CODEX_HOME/skills/loopx-* skill directories from the backup.",
+    )
+    backup_state_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write the backup archive and manifest. Omit for a dry-run plan.",
+    )
+
     heartbeat_prompt_parser = subparsers.add_parser(
         "heartbeat-prompt",
         help="Generate a guarded Codex App heartbeat automation task body.",
@@ -289,6 +329,34 @@ def handle_support_control_command(
 ) -> int | None:
     if args.command not in SUPPORT_CONTROL_COMMANDS:
         return None
+
+    if args.command == "backup-state":
+        try:
+            backup_runtime_root = Path(args.runtime_root).expanduser() if args.runtime_root else None
+            if backup_runtime_root is None and registry_path.exists():
+                backup_runtime_root = resolve_runtime_root(load_registry(registry_path))
+            payload = build_state_backup_plan(
+                project=Path(args.project).expanduser(),
+                runtime_root=backup_runtime_root,
+                output_dir=Path(args.output_dir).expanduser() if args.output_dir else None,
+                backup_id=args.backup_id,
+                include_automations=not bool(args.no_automations),
+                include_skills=not bool(args.no_skills),
+            )
+            if args.execute:
+                payload = execute_state_backup_plan(payload)
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "schema_version": "loopx_state_backup_v0",
+                "mode": "state_backup",
+                "dry_run": not bool(getattr(args, "execute", False)),
+                "execute_requested": bool(getattr(args, "execute", False)),
+                "error": str(exc),
+                "recommended_action": "fix backup planning before retrying",
+            }
+        print_payload(payload, output_format(args), render_state_backup_markdown)
+        return 0 if payload.get("ok") else 1
 
     if args.command == "heartbeat-prompt":
         active_state = None
