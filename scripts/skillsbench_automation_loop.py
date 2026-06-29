@@ -3928,8 +3928,15 @@ def _build_case_event_timeline(
         or counters.get("benchflow_user_loop_recovery_exception_type")
     )
     runner_failure_class = runner_failure.get("failure_class")
-    if recovery_exception:
+    official_status_for_recovery = _case_timeline_safe_string(
+        compact.get("official_score_status")
+    )
+    if recovery_exception and official_status_for_recovery == "completed":
+        recovery_status = "runner_recovery_after_official_score"
+    elif recovery_exception:
         recovery_status = "user_loop_recovery_triggered"
+    elif runner_failure_class and official_status_for_recovery == "completed":
+        recovery_status = "runner_failure_after_official_score"
     elif runner_failure_class:
         recovery_status = "runner_failure_recorded"
     else:
@@ -6884,6 +6891,18 @@ def _record_product_mode_no_open_todo_below_passing_reward(
     return True
 
 
+def _product_mode_no_open_todo_below_passing_reward_applicable(
+    trace: dict[str, Any],
+    *,
+    reward: float | None,
+) -> bool:
+    if not isinstance(reward, (int, float)) or isinstance(reward, bool):
+        return False
+    if reward >= 1.0:
+        return False
+    return _product_mode_agent_bridge_closeout_observed(trace)
+
+
 def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
     def count(*fields: str) -> int:
         values = [
@@ -8075,6 +8094,36 @@ def _build_product_mode_user(
                     _inc_counter(trace, "stop_decision_count")
                     _record_declared_done(trace, agent_round=round, reward=reward)
                     trace["last_decision"] = "stop_after_agent_declared_done"
+                    return None
+            observed_reward = (
+                float(reward)
+                if isinstance(reward, (int, float)) and not isinstance(reward, bool)
+                else None
+            )
+            if (
+                treatment
+                and round_result is not None
+                and self._task_instruction_sent
+                and product_mode_entry_lifecycle_gate_satisfied()
+                and _product_mode_no_open_todo_below_passing_reward_applicable(
+                    trace,
+                    reward=observed_reward,
+                )
+            ):
+                no_open_todo_stop = (
+                    _record_product_mode_no_open_todo_below_passing_reward(
+                        trace,
+                        agent_round=round,
+                        reward=observed_reward,
+                    )
+                )
+                if no_open_todo_stop:
+                    _inc_counter(trace, "controller_action_decisions")
+                    _inc_counter(trace, "stop_decision_count")
+                    trace["last_decision"] = (
+                        "stop_after_product_mode_two_no_open_todo_rounds_"
+                        "without_passing_reward"
+                    )
                     return None
             if reward is not None and reward >= 1.0:
                 _inc_counter(trace, "controller_action_decisions")
@@ -9395,6 +9444,340 @@ def reduce_official_result_after_runner_exception(
     }
 
 
+def _nonbool_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 0
+
+
+def _nonbool_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _runner_failure_trace_score_attribution(
+    *,
+    reward: float,
+    passed: bool,
+) -> str:
+    if passed:
+        return "none"
+    if reward == 0:
+        return "official_score_zero_case_failure"
+    return "official_verifier_solution_failure"
+
+
+def _product_mode_lifecycle_contract_from_controller_counters(
+    counters: dict[str, Any],
+) -> dict[str, Any]:
+    required = bool(
+        counters.get("product_mode") is True
+        or counters.get("goal_start_product_mode") is True
+    )
+    driver_read_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_loopx_state_read_count")
+    )
+    driver_write_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_loopx_state_write_count")
+    )
+    driver_checkpoint_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_checkpoint_count")
+    )
+    agent_read_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_loopx_state_read_count")
+    )
+    agent_write_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_loopx_state_write_count")
+    )
+    todo_closeout_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_todo_closeout_count")
+    )
+    refresh_state_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_refresh_state_count")
+    )
+    quota_spend_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_quota_spend_slot_count")
+    )
+    closeout_satisfied = bool(
+        todo_closeout_count > 0
+        and refresh_state_count > 0
+        and quota_spend_count > 0
+    )
+    operation_trace_status = str(
+        counters.get("remote_command_file_bridge_agent_operation_trace_status")
+        or ""
+    )[:120]
+    operation_trace_satisfied = bool(
+        counters.get("remote_command_file_bridge_agent_operation_trace_satisfied")
+        is True
+        or _nonbool_int(
+            counters.get("remote_command_file_bridge_agent_task_facing_operation_count")
+        )
+        > 0
+    )
+    operation_trace_missing = bool(required and not operation_trace_satisfied)
+    state_read_count = max(driver_read_count, agent_read_count)
+    state_write_count = max(driver_write_count, agent_write_count)
+    orchestrated_driver_satisfied = bool(
+        driver_read_count > 0 and driver_write_count > 0
+    )
+    satisfied = bool(
+        not required
+        or (
+            not operation_trace_missing
+            and state_read_count > 0
+            and state_write_count > 0
+            and closeout_satisfied
+        )
+    )
+    missing_reason = ""
+    if required and not satisfied:
+        if operation_trace_missing:
+            missing_reason = "remote_command_file_bridge_agent_operation_trace_missing"
+        elif state_read_count <= 0 or state_write_count <= 0:
+            missing_reason = "missing_case_local_loopx_state_read_or_write"
+        elif not closeout_satisfied:
+            missing_reason = "missing_case_local_loopx_closeout"
+
+    contract: dict[str, Any] = {
+        "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+        "required": required,
+        "satisfied": satisfied,
+        "countable_treatment": satisfied,
+        "state_read_count": state_read_count,
+        "state_write_count": state_write_count,
+        "checkpoint_required": required,
+        "checkpoint_count": driver_checkpoint_count,
+        "closeout_required": required,
+        "closeout_satisfied": closeout_satisfied,
+        "agent_operation_trace_required": required,
+        "agent_operation_trace_satisfied": operation_trace_satisfied,
+        "agent_operation_trace_status": operation_trace_status,
+        "agent_operation_trace_missing": operation_trace_missing,
+        "orchestrated_driver_lifecycle_satisfied": orchestrated_driver_satisfied,
+        "orchestrated_driver_counts_as_product_mode": orchestrated_driver_satisfied,
+        "agent_bridge_state_read_count": agent_read_count,
+        "agent_bridge_state_write_count": agent_write_count,
+        "agent_bridge_todo_closeout_count": todo_closeout_count,
+        "agent_bridge_refresh_state_count": refresh_state_count,
+        "agent_bridge_quota_spend_slot_count": quota_spend_count,
+        "driver_lifecycle_state_read_count": driver_read_count,
+        "driver_lifecycle_state_write_count": driver_write_count,
+        "checkpoint_round": _nonbool_int(
+            counters.get("product_mode_lifecycle_checkpoint_round")
+        ),
+        "missing_reason": missing_reason,
+    }
+    execution_style = counters.get(
+        "remote_command_file_bridge_driver_lifecycle_execution_style"
+    )
+    if isinstance(execution_style, str) and execution_style:
+        contract["execution_style"] = execution_style
+    return contract
+
+
+def _recover_runner_failure_score_from_controller_trace(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> bool:
+    controller_trace = _read_controller_trace(plan)
+    if not isinstance(controller_trace, dict):
+        return False
+
+    from loopx.benchmark_adapters.skillsbench import (
+        _round_reward_trace_stats,
+        _skillsbench_controller_trace_counters,
+    )
+    from loopx.benchmark_core import (
+        BenchmarkFailureClass,
+        build_benchmark_attempt_accounting,
+        canonical_lifecycle,
+    )
+
+    counters = _skillsbench_controller_trace_counters(controller_trace)
+    records = counters.get("round_rewards")
+    if not isinstance(records, list):
+        return False
+    stats = _round_reward_trace_stats(records)
+    final_reward = _nonbool_float(stats.get("final_round_reward"))
+    if final_reward is None:
+        return False
+    passed = stats.get("final_round_passed") is True or final_reward >= 1.0
+    attribution = _runner_failure_trace_score_attribution(
+        reward=final_reward,
+        passed=passed,
+    )
+    round_reward_trace: dict[str, Any] = {
+        "schema_version": "benchmark_round_reward_trace_v0",
+        "source": "loopx_controller_trace",
+        "round_index_origin": "agent_round_1_is_first_completed_agent_attempt",
+        "records": records,
+        "first_success_round": counters.get("first_success_round"),
+        "success_observed": counters.get("official_success_observed") is True,
+        "max_rounds_budget": counters.get("max_rounds_budget", 0),
+        "official_feedback_returned_to_agent": (
+            counters.get("official_feedback_forwarded") is True
+        ),
+        "official_feedback_blinded": (
+            _nonbool_int(counters.get("official_feedback_blinded_count")) > 0
+        ),
+        "reward_feedback_forwarded": counters.get("official_feedback_forwarded")
+        is True,
+        "agent_declared_done": counters.get("agent_declared_done") is True,
+        "declared_done_requires_no_remaining_goals": (
+            counters.get("declared_done_requires_no_remaining_goals") is True
+        ),
+        "agent_declared_no_remaining_goals": (
+            counters.get("agent_declared_no_remaining_goals") is True
+        ),
+        "product_mode_no_open_todo_below_passing_reward_stop": (
+            counters.get("product_mode_no_open_todo_below_passing_reward_stop")
+            is True
+        ),
+        "official_score_policy": (
+            "final_observed_controller_trace_reward_after_runner_interruption"
+        ),
+        "official_score_recovered_from_controller_trace": True,
+        "official_score_recovered_round": stats.get("final_round"),
+    }
+    for source_key in (
+        "product_mode_no_open_todo_below_passing_reward_streak",
+        "product_mode_no_open_todo_below_passing_reward_streak_threshold",
+        "product_mode_no_open_todo_below_passing_reward_round",
+        "product_mode_no_open_todo_below_passing_reward_stop_round",
+        "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+    ):
+        value = counters.get(source_key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            round_reward_trace[source_key] = value
+    score_status = counters.get(
+        "product_mode_no_open_todo_below_passing_reward_score_status"
+    )
+    if isinstance(score_status, str) and score_status:
+        round_reward_trace[
+            "product_mode_no_open_todo_below_passing_reward_score_status"
+        ] = score_status
+    no_open_todo_score = _nonbool_float(
+        counters.get("product_mode_no_open_todo_below_passing_reward_score")
+    )
+    if no_open_todo_score is not None:
+        round_reward_trace[
+            "product_mode_no_open_todo_below_passing_reward_score"
+        ] = no_open_todo_score
+    round_reward_trace.update(stats)
+
+    interaction_counters = compact.get("interaction_counters")
+    if not isinstance(interaction_counters, dict):
+        interaction_counters = {
+            "schema_version": "skillsbench_interaction_counters_v0",
+        }
+    interaction_counters.update(counters)
+    for raw_key, compact_key in (
+        ("initial_prompt_count", "controller_initial_prompt_count"),
+        ("followup_prompt_count", "controller_followup_prompt_count"),
+        ("stop_decision_count", "controller_stop_decision_count"),
+        ("max_rounds_budget", "controller_max_rounds_budget"),
+    ):
+        value = counters.get(raw_key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            interaction_counters[compact_key] = value
+    if counters.get("official_success_observed") is True:
+        interaction_counters["controller_official_success_observed"] = True
+    compact["interaction_counters"] = interaction_counters
+    compact["product_mode"] = bool(
+        compact.get("product_mode") is True or counters.get("product_mode") is True
+    )
+    if counters.get("goal_start_product_mode") is True:
+        compact["goal_start_product_mode"] = True
+    compact["round_reward_trace"] = round_reward_trace
+    compact["runner_return_status"] = (
+        "interrupted_after_controller_reward_observation"
+    )
+    compact["official_score_status"] = "completed"
+    compact["official_score"] = final_reward
+    compact["official_task_score"] = {
+        "kind": "skillsbench_verifier_reward_recovered_from_controller_trace",
+        "value": final_reward,
+        "passed": passed,
+    }
+    compact["official_score_source"] = (
+        "loopx_controller_trace_every_round_verifier_reward"
+    )
+    compact["score_failure_attribution"] = attribution
+    compact["first_blocker"] = attribution
+    compact["repeat_blocked_by"] = attribution
+    stale_missing_score_labels = {
+        "skillsbench_runner_interrupted_before_official_result",
+        "skillsbench_result_json_missing_after_runner_exit",
+        "official_score_missing",
+    }
+    labels = [
+        label
+        for label in compact.get("failure_attribution_labels", [])
+        if isinstance(label, str) and label and label not in stale_missing_score_labels
+    ]
+    for label in (
+        attribution,
+        "skillsbench_runner_interrupted_after_controller_reward_observation",
+    ):
+        if label != "none" and label not in labels:
+            labels.append(label)
+    compact["failure_attribution_labels"] = labels
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["failure_class"] = (
+            "skillsbench_runner_interrupted_after_controller_reward_observation"
+        )
+        runner_failure["score_recovered_from_controller_trace"] = True
+    compact["product_mode_lifecycle_contract"] = (
+        _product_mode_lifecycle_contract_from_controller_counters(counters)
+    )
+    compact["attempt_accounting"] = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(
+            process_started=True,
+            runner_accepted_args=True,
+            job_root_materialized=True,
+            trial_started=True,
+            worker_started=True,
+            result_written=True,
+            verifier_scored=True,
+        ),
+        failure_label=attribution,
+        failure_class=(
+            BenchmarkFailureClass.NONE
+            if passed
+            else BenchmarkFailureClass.SOLVER_FAILED
+        ),
+        official_score_attempted=True,
+    )
+    progress = compact.get("progress")
+    if isinstance(progress, dict):
+        progress.update(
+            {
+                "n_completed_trials": 1,
+                "n_errored_trials": 0,
+                "n_running_trials": 0,
+                "n_pending_trials": 0,
+            }
+        )
+    validation = compact.get("validation")
+    if not isinstance(validation, dict):
+        validation = {}
+    validation.update(
+        {
+            "official_verifier_status": "completed",
+            "official_verifier_validation_present": True,
+            "official_case_success": passed,
+            "controller_trace_read": True,
+            "controller_trace_score_recovered": True,
+            "runner_failure_after_controller_reward_observation": True,
+        }
+    )
+    compact["validation"] = validation
+    return True
+
+
 def build_runner_failure_compact(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -9546,6 +9929,7 @@ def build_runner_failure_compact(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
+    _recover_runner_failure_score_from_controller_trace(reduced, plan)
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
     reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
     return reduced
