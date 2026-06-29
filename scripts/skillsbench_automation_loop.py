@@ -991,8 +991,11 @@ def _host_local_acp_launch_command(
         command.extend(["--stream-heartbeat-interval-sec", str(heartbeat_interval)])
     if args.model:
         command.extend(["--model", args.model])
+    bridge_enabled_route = args.route in PRODUCT_MODE_CONTROLLER_ROUTES or (
+        args.route == "codex-app-server-goal-baseline"
+    )
     if (
-        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
+        bridge_enabled_route
         and args.host_local_acp_launch
         and args.remote_command_file_bridge_solver_command
         and (

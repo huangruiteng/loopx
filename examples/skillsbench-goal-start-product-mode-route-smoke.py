@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
 import subprocess
 import sys
 import tempfile
@@ -303,6 +304,52 @@ def _assert_host_local_acp_return_arity_compat() -> None:
     assert _benchflow_rollout_planes_class(FactoryOnlyModule) is FactoryOnlyPlanes
 
 
+def _assert_app_server_goal_baseline_bridge_contract() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.benchmark_adapters.skillsbench_acp_relay import (
+        _prompt_with_app_server_closeout_instruction,
+    )
+    from scripts.skillsbench_automation_loop import (
+        _host_local_acp_launch_command,
+    )
+
+    args = Namespace(
+        local_acp_relay_command="",
+        route="codex-app-server-goal-baseline",
+        app_server_reasoning_effort="high",
+        app_server_acp_heartbeat_interval_sec=120.0,
+        dataset="skillsbench@1.1",
+        task_id="3d-scan-calc",
+        local_codex_bin="codex",
+        local_codex_sandbox="workspace-write",
+        local_codex_first_action_timeout_sec=0,
+        local_codex_bridge_idle_timeout_sec=3600,
+        local_codex_exec_timeout_sec=3600,
+        agent_idle_timeout=3600,
+        model="gpt-5.5",
+        host_local_acp_launch=True,
+        remote_command_file_bridge_solver_command="python bridge.py",
+        remote_command_file_bridge_ready=True,
+        remote_command_file_bridge_probe=False,
+        remote_command_file_bridge_probe_timeout_sec=10,
+        remote_command_file_bridge_agent_command="",
+    )
+    command = _host_local_acp_launch_command(
+        args,
+        {"app_server_goal_worker_trace_dir": "/tmp/worker-traces"},
+    )
+    assert "--app-server-goal-worker" in command, command
+    assert "--remote-command-file-bridge-command" in command, command
+    bridge_index = command.index("--remote-command-file-bridge-command")
+    assert command[bridge_index + 1] == "python bridge.py", command
+    assert "--worker-public-trace-dir" in command, command
+
+    prompt = _prompt_with_app_server_closeout_instruction("Write /root/answer.json.")
+    assert "Native Codex Goal worker closeout contract" in prompt, prompt
+    assert "immediately end the turn" in prompt, prompt
+    assert "scored output file" in prompt, prompt
+
+
 def _assert_verifier_failure_feedback_todo_prompt() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from scripts.skillsbench_automation_loop import (
@@ -389,6 +436,7 @@ def main() -> int:
     _assert_adapter_route_contract_surface()
     _assert_control_score_surface()
     _assert_host_local_acp_return_arity_compat()
+    _assert_app_server_goal_baseline_bridge_contract()
     _assert_verifier_failure_feedback_todo_prompt()
     print("skillsbench-goal-start-product-mode-route-smoke ok")
     return 0
