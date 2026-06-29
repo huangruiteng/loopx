@@ -8392,8 +8392,9 @@ def _build_controller_user(max_output_chars: int, trace: dict[str, Any]):
                 "The previous attempt did not pass the verifier. Continue in the "
                 "same workspace, read /app/instruction.md if needed, inspect the "
                 "failure, make the smallest correct fix, and rerun validation. "
-                "Do not ask the human unless protected material or credentials are "
-                "required.\n\n"
+                "Do not ask or wait for a human during benchmark execution; if "
+                "the sandbox, task workspace, or required tooling is technically "
+                "unavailable, record that blocker and otherwise keep solving.\n\n"
                 + "\n".join(feedback)
             )
 
@@ -9070,6 +9071,7 @@ def _build_product_mode_user(
                     "verifier error, or verifier output. "
                 )
                 +
+                f"{goal_start_loop_alignment_contract()}"
                 f"{done_clause}"
                 f"{self._persistent_constraint_clause} {mode_clause} Keep scope "
                 "narrow, validate locally, and if there are no remaining goals, "
@@ -9139,7 +9141,8 @@ def _build_product_mode_user(
                                 "status-only prose. Use the available sandbox "
                                 "command/file bridge now to inspect or modify the task "
                                 "workspace, then update the selected LoopX todo with "
-                                "public-safe evidence before any done/closeout claim."
+                                "public-safe evidence before any done/closeout claim. "
+                                f"{goal_start_loop_alignment_contract()}"
                             )
                         if no_tool_calls:
                             _record_product_mode_no_tool_call_lifecycle_abort(
