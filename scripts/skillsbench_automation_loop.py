@@ -154,6 +154,7 @@ DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
 DEFAULT_MAX_ROUNDS = 16
 PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS = 10
 RUNNER_PREREQUISITES_PUBLIC_FILENAME = "runner_prerequisites.public.json"
+RUNNER_CONFIG_PUBLIC_FILENAME = "runner_config.public.json"
 HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
@@ -5716,7 +5717,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "benchflow_final_verifier_timeout_enabled": (
                 int(args.final_verifier_timeout_sec or 0) > 0
             ),
+            "benchflow_final_verifier_timeout_sec": int(
+                args.final_verifier_timeout_sec or 0
+            ),
             "benchflow_final_verifier_timeout_raw_command_recorded": False,
+            "benchflow_verifier_prep_timeout_sec": int(
+                args.verifier_prep_timeout_sec or 0
+            ),
         },
         "public_boundary": {
             "leaderboard_upload": False,
@@ -5731,6 +5738,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         launch_plan["app_server_goal_worker_contract"] = (
             app_server_goal_worker_contract
         )
+    launch_plan["runner_config"] = _public_runner_config(launch_plan)
     return launch_plan
 
 
@@ -5753,6 +5761,119 @@ def _public_runner_output_capture(plan: dict[str, Any]) -> dict[str, Any] | None
         "raw_output_public": False,
         "private_log_path_public": False,
     }
+
+
+def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
+    """Return stable public runner knobs needed for posthoc attribution."""
+
+    config: dict[str, Any] = {
+        "schema_version": "skillsbench_runner_config_v0",
+        "raw_command_recorded": False,
+        "raw_env_recorded": False,
+    }
+    string_fields = (
+        "benchmark_id",
+        "task_id",
+        "route",
+        "agent",
+        "model",
+        "sandbox",
+        "run_group_id",
+        "job_name",
+        "rollout_name",
+        "treatment_prompt_style",
+    )
+    for field in string_fields:
+        value = plan.get(field)
+        if isinstance(value, str) and value:
+            config[field] = value[:180]
+    int_fields = (
+        "max_rounds",
+        "outer_timeout_sec",
+        "sandbox_setup_timeout_sec",
+        "agent_idle_timeout_sec",
+        "build_stall_timeout_sec",
+    )
+    for field in int_fields:
+        value = plan.get(field)
+        if isinstance(value, int) and not isinstance(value, bool):
+            config[field] = value
+    for field in ("include_task_skills", "host_local_acp_launch"):
+        value = plan.get(field)
+        if isinstance(value, bool):
+            config[field] = value
+    prerequisites = plan.get("runner_prerequisites")
+    if isinstance(prerequisites, dict):
+        policy = prerequisites.get("benchflow_intermediate_soft_verify_policy")
+        if isinstance(policy, str) and policy:
+            config["product_mode_soft_verify_policy"] = policy[:80]
+        for source, target in (
+            (
+                "benchflow_intermediate_soft_verify_timeout_sec",
+                "soft_verifier_timeout_sec",
+            ),
+            ("benchflow_final_verifier_timeout_sec", "final_verifier_timeout_sec"),
+            ("benchflow_verifier_prep_timeout_sec", "verifier_prep_timeout_sec"),
+            (
+                "benchflow_agent_timeout_host_local_acp_exec_timeout_sec",
+                "local_codex_exec_timeout_sec",
+            ),
+        ):
+            value = prerequisites.get(source)
+            if isinstance(value, int) and not isinstance(value, bool):
+                config[target] = value
+    return config
+
+
+def _runner_config_public_path(plan: dict[str, Any]) -> Path | None:
+    jobs_dir = str(plan.get("jobs_dir") or "")
+    job_name = str(plan.get("job_name") or "")
+    if not jobs_dir or not job_name:
+        return None
+    return Path(jobs_dir).expanduser() / job_name / RUNNER_CONFIG_PUBLIC_FILENAME
+
+
+def _rollout_config_json_path(plan: dict[str, Any]) -> Path | None:
+    result_json = str(plan.get("result_json") or "")
+    if not result_json:
+        return None
+    return Path(result_json).expanduser().parent / "config.json"
+
+
+def _write_public_runner_config(plan: dict[str, Any]) -> Path | None:
+    config = _public_runner_config(plan)
+    if not config:
+        return None
+    plan["runner_config"] = config
+    path = _runner_config_public_path(plan)
+    if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(config, indent=2, sort_keys=True, default=_json_default)
+            + "\n",
+            encoding="utf-8",
+        )
+    rollout_config_path = _rollout_config_json_path(plan)
+    if rollout_config_path is not None:
+        payload: dict[str, Any] = {}
+        if rollout_config_path.exists():
+            try:
+                loaded = json.loads(rollout_config_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                loaded = {}
+            if isinstance(loaded, dict):
+                payload = loaded
+        payload["loopx_runner_config"] = config
+        payload["loopx_runner_config_public"] = True
+        payload["loopx_runner_config_raw_command_recorded"] = False
+        payload["loopx_runner_config_raw_env_recorded"] = False
+        rollout_config_path.parent.mkdir(parents=True, exist_ok=True)
+        rollout_config_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, default=_json_default)
+            + "\n",
+            encoding="utf-8",
+        )
+    return path
 
 
 async def run_benchflow_case_with_private_output(
@@ -9995,6 +10116,9 @@ def reduce_result(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
+    runner_config = _public_runner_config(plan)
+    if runner_config:
+        compact["runner_config"] = runner_config
     goal_start_control_score = _build_goal_start_product_mode_control_score(
         compact,
         plan,
@@ -10027,6 +10151,7 @@ def reduce_official_result_after_runner_exception(
         return None
 
     compact = reduce_result(args, result_path, plan)
+    _write_public_runner_config(plan)
     _write_public_runner_prerequisites(plan)
     compact["runner_return_status"] = (
         "official_result_recovered_after_runner_exception"
@@ -10331,6 +10456,8 @@ def _recover_runner_failure_score_from_controller_trace(
         "skillsbench_runner_interrupted_before_official_result",
         "skillsbench_result_json_missing_after_runner_exit",
         "official_score_missing",
+        "skillsbench_runner_failed_before_agent_install",
+        "skillsbench_runner_setup_error",
     }
     labels = [
         label
@@ -10398,6 +10525,263 @@ def _recover_runner_failure_score_from_controller_trace(
     return True
 
 
+def _read_verifier_reward_artifact(path: Path) -> float | None:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not text:
+        return None
+    first_token = text.split()[0]
+    try:
+        value = float(first_token)
+    except ValueError:
+        return None
+    if value != value:
+        return None
+    return value
+
+
+def _read_verifier_ctrf_summary(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        return None
+    compact: dict[str, Any] = {
+        "schema_version": "skillsbench_verifier_ctrf_summary_v0",
+        "raw_output_recorded": False,
+    }
+    for field in (
+        "tests",
+        "passed",
+        "failed",
+        "pending",
+        "skipped",
+        "other",
+        "suites",
+    ):
+        value = summary.get(field)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            compact[field] = value
+    for field in ("start", "stop"):
+        value = summary.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            compact[field] = float(value)
+    return compact
+
+
+def _discover_verifier_reward_artifact(plan: dict[str, Any]) -> dict[str, Any] | None:
+    result_path = Path(str(plan.get("result_json") or "")).expanduser()
+    jobs_dir = Path(str(plan.get("jobs_dir") or "")).expanduser()
+    job_name = str(plan.get("job_name") or "")
+    job_root = jobs_dir / job_name
+    rollout_name = str(plan.get("rollout_name") or "")
+    task_id = str(plan.get("task_id") or "")
+    expected = result_path.parent / "verifier" / "reward.txt"
+    candidates: list[Path] = []
+    if expected.exists():
+        candidates.append(expected)
+    if job_root.exists():
+        for path in job_root.rglob("verifier/reward.txt"):
+            if path.is_file() and path not in candidates:
+                candidates.append(path)
+    ranked: list[tuple[int, float, Path, list[str]]] = []
+    for candidate in candidates:
+        score = 0
+        reasons: list[str] = []
+        rollout_dir = candidate.parent.parent
+        if candidate == expected:
+            score += 100
+            reasons.append("planned_rollout_verifier_reward_path")
+        if rollout_name and rollout_dir.name == rollout_name:
+            score += 80
+            reasons.append("parent_matches_requested_rollout")
+        elif task_id and rollout_dir.name.startswith(f"{task_id}__"):
+            score += 20
+            reasons.append("parent_matches_task_rollout_prefix")
+        reward = _read_verifier_reward_artifact(candidate)
+        if reward is not None:
+            score += 50
+            reasons.append("reward_txt_parseable")
+        try:
+            mtime = candidate.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        if score > 0:
+            ranked.append((score, mtime, candidate, reasons))
+    discovery: dict[str, Any] = {
+        "schema_version": "skillsbench_verifier_reward_artifact_discovery_v0",
+        "selection_policy": "planned_reward_path_then_job_root_scan",
+        "candidate_count": len(candidates),
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+    }
+    if not ranked:
+        discovery["status"] = "missing"
+        plan["verifier_reward_artifact_discovery"] = discovery
+        return None
+    ranked.sort(key=lambda item: (item[0], item[1], str(item[2])), reverse=True)
+    top_score, _mtime, selected, reasons = ranked[0]
+    reward = _read_verifier_reward_artifact(selected)
+    if reward is None:
+        discovery["status"] = "unparseable"
+        plan["verifier_reward_artifact_discovery"] = discovery
+        return None
+    tied_top_count = sum(1 for score, _mtime, _path, _reasons in ranked if score == top_score)
+    discovery.update(
+        {
+            "status": "found",
+            "matched_candidate_count": len(ranked),
+            "top_score_candidate_count": tied_top_count,
+            "selected_relative_to_job": _safe_relative_to(selected, job_root),
+            "selection_reasons": reasons,
+            "reward_present": True,
+        }
+    )
+    ctrf_summary = _read_verifier_ctrf_summary(selected.parent / "ctrf.json")
+    if ctrf_summary:
+        discovery["ctrf_summary_present"] = True
+    plan["verifier_reward_artifact_discovery"] = discovery
+    return {
+        "reward_path": selected,
+        "reward": reward,
+        "passed": reward >= 1.0,
+        "discovery": discovery,
+        "ctrf_summary": ctrf_summary,
+    }
+
+
+def _recover_runner_failure_score_from_verifier_artifact(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> bool:
+    artifact = _discover_verifier_reward_artifact(plan)
+    if artifact is None:
+        return False
+
+    from loopx.benchmark_core import (
+        BenchmarkFailureClass,
+        build_benchmark_attempt_accounting,
+        canonical_lifecycle,
+    )
+
+    reward = float(artifact["reward"])
+    passed = bool(artifact["passed"])
+    attribution = _runner_failure_trace_score_attribution(
+        reward=reward,
+        passed=passed,
+    )
+    compact["runner_return_status"] = "interrupted_after_verifier_reward_artifact"
+    compact["official_score_status"] = "completed"
+    compact["official_score"] = reward
+    compact["official_task_score"] = {
+        "kind": "skillsbench_verifier_reward_recovered_from_verifier_artifact",
+        "value": reward,
+        "passed": passed,
+    }
+    compact["official_score_source"] = (
+        "official_skillsbench_rollout_verifier_reward_txt_after_runner_interruption"
+    )
+    compact["score_failure_attribution"] = attribution
+    compact["first_blocker"] = attribution
+    compact["repeat_blocked_by"] = attribution
+    compact["verifier_reward_artifact_recovery"] = {
+        "schema_version": "skillsbench_verifier_reward_artifact_recovery_v0",
+        "status": "official_score_recovered_from_verifier_reward_artifact",
+        "official_result_json_materialized": False,
+        "reward_present": True,
+        "reward": reward,
+        "passed": passed,
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+    }
+    discovery = artifact.get("discovery")
+    if isinstance(discovery, dict):
+        compact["verifier_reward_artifact_discovery"] = discovery
+    ctrf_summary = artifact.get("ctrf_summary")
+    if isinstance(ctrf_summary, dict):
+        compact["verifier_ctrf_summary"] = ctrf_summary
+    stale_missing_score_labels = {
+        "skillsbench_runner_interrupted_before_official_result",
+        "skillsbench_result_json_missing_after_runner_exit",
+        "official_score_missing",
+        "skillsbench_runner_failed_before_agent_install",
+        "skillsbench_runner_setup_error",
+    }
+    labels = [
+        label
+        for label in compact.get("failure_attribution_labels", [])
+        if isinstance(label, str) and label and label not in stale_missing_score_labels
+    ]
+    for label in (
+        attribution,
+        "skillsbench_runner_interrupted_after_verifier_reward_artifact",
+    ):
+        if label != "none" and label not in labels:
+            labels.append(label)
+    compact["failure_attribution_labels"] = labels
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["failure_class"] = (
+            "skillsbench_runner_interrupted_after_verifier_reward_artifact"
+        )
+        runner_failure["score_recovered_from_verifier_artifact"] = True
+    compact["attempt_accounting"] = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(
+            process_started=True,
+            runner_accepted_args=True,
+            job_root_materialized=True,
+            trial_started=True,
+            worker_started=True,
+            result_written=False,
+            verifier_scored=True,
+        ),
+        failure_label=attribution,
+        failure_class=(
+            BenchmarkFailureClass.NONE
+            if passed
+            else BenchmarkFailureClass.SOLVER_FAILED
+        ),
+        official_score_attempted=True,
+    )
+    progress = compact.get("progress")
+    if isinstance(progress, dict):
+        progress.update(
+            {
+                "n_completed_trials": 1,
+                "n_errored_trials": 0,
+                "n_running_trials": 0,
+                "n_pending_trials": 0,
+            }
+        )
+    validation = compact.get("validation")
+    if not isinstance(validation, dict):
+        validation = {}
+    validation.update(
+        {
+            "official_verifier_status": "passed" if passed else "completed",
+            "official_verifier_validation_present": True,
+            "official_case_success": passed,
+            "verifier_reward_artifact_recovered": True,
+            "official_result_json_materialized": False,
+            "raw_verifier_output_read": False,
+        }
+    )
+    compact["validation"] = validation
+    return True
+
+
 def build_runner_failure_compact(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -10425,6 +10809,7 @@ def build_runner_failure_compact(
         exc,
         cleanup_if_missing=True,
     )
+    _write_public_runner_config(plan)
     _write_public_runner_prerequisites(plan)
 
     exception_type, attribution, labels = skillsbench_runner_error_attribution(
@@ -10549,7 +10934,12 @@ def build_runner_failure_compact(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
-    _recover_runner_failure_score_from_controller_trace(reduced, plan)
+    runner_config = _public_runner_config(plan)
+    if runner_config:
+        reduced["runner_config"] = runner_config
+    recovered = _recover_runner_failure_score_from_controller_trace(reduced, plan)
+    if not recovered:
+        _recover_runner_failure_score_from_verifier_artifact(reduced, plan)
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
     reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
     return reduced
@@ -10679,6 +11069,9 @@ def _build_runner_exception_closeout_payload(
         return recovered_payload, 0
 
     closeout_recorded = False
+    recovered_after_runner_exception = False
+    official_task_score = None
+    score_failure_attribution = None
     try:
         compact = build_runner_failure_compact(args, plan, exc)
         compact_path = Path(plan["compact_benchmark_run_json"])
@@ -10691,17 +11084,25 @@ def _build_runner_exception_closeout_payload(
         ledger_update = update_ledger(args, compact, compact_path=compact_path)
         history_append = append_history(args, compact_path)
         closeout_recorded = True
+        recovered_after_runner_exception = (
+            compact.get("official_score_status") == "completed"
+        )
+        official_task_score = compact.get("official_task_score")
+        score_failure_attribution = compact.get("score_failure_attribution")
     except Exception:
         compact_path = None
         ledger_update = None
         history_append = None
     payload = {
-        "ok": False,
+        "ok": recovered_after_runner_exception,
         "error_type": type(exc).__name__,
         "error_recorded": closeout_recorded,
         "compact_closeout_recorded": closeout_recorded,
+        "recovered_after_runner_exception": recovered_after_runner_exception,
         "task_id": args.task_id,
         "compact_benchmark_run_json": str(compact_path) if compact_path else None,
+        "official_task_score": official_task_score,
+        "score_failure_attribution": score_failure_attribution,
         "ledger_update": ledger_update,
         "history_append": history_append,
     }
@@ -11281,6 +11682,8 @@ async def async_main(
     ):
         _run_host_local_acp_codex_exec_preflight(args, plan)
 
+    if not args.reduce_only:
+        _write_public_runner_config(plan)
     ensure_benchflow_runtime(args)
     if args.reduce_only:
         _hydrate_reduce_only_public_runner_prerequisites(plan)
@@ -11297,6 +11700,7 @@ async def async_main(
             run_benchflow_case_with_private_output(args, plan),
             timeout=args.outer_timeout_sec,
         )
+        _write_public_runner_config(plan)
         _write_public_runner_prerequisites(plan)
     compact = reduce_result(args, result_path, plan)
     compact_path = Path(plan["compact_benchmark_run_json"])

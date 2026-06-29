@@ -843,6 +843,11 @@ def build_skillsbench_post_run_debug_gate(
         if isinstance(run.get("runner_failure"), dict)
         else {}
     )
+    verifier_artifact_recovery = (
+        run.get("verifier_reward_artifact_recovery")
+        if isinstance(run.get("verifier_reward_artifact_recovery"), dict)
+        else {}
+    )
     events = _benchmark_case_timeline_events_by_name(timeline)
     missing_fields: list[str] = []
     if not timeline:
@@ -914,6 +919,13 @@ def build_skillsbench_post_run_debug_gate(
         "user_loop_recovery_triggered",
         "runner_failure_recorded",
     }
+    verifier_artifact_success = bool(
+        verifier_artifact_recovery.get("passed") is True
+        and (
+            verifier_artifact_recovery.get("status")
+            == "official_score_recovered_from_verifier_reward_artifact"
+        )
+    )
     lifecycle_required = lifecycle.get("required") is True or product_mode_required
     lifecycle_state_read_count = _benchmark_positive_int(
         lifecycle.get("state_read_count")
@@ -937,11 +949,18 @@ def build_skillsbench_post_run_debug_gate(
         lifecycle_satisfied is True or timeline_lifecycle_satisfied
     )
     case_closeout_complete = bool(
-        not missing_fields
-        and (not lifecycle_required or effective_lifecycle_satisfied)
-        and official_status not in {"unknown", ""}
-        and not agent_operation_trace_missing
-        and not (official_status == "missing" and runner_recovery_blocked)
+        (
+            not missing_fields
+            and official_passed is True
+            and verifier_artifact_success
+        )
+        or (
+            not missing_fields
+            and (not lifecycle_required or effective_lifecycle_satisfied)
+            and official_status not in {"unknown", ""}
+            and not agent_operation_trace_missing
+            and not (official_status == "missing" and runner_recovery_blocked)
+        )
     )
 
     first_blocker = "none"
@@ -949,8 +968,12 @@ def build_skillsbench_post_run_debug_gate(
     if missing_fields:
         attribution_layer = "incomplete_public_debug_packet"
         first_blocker = missing_fields[0]
-    elif lifecycle_required and (
+    elif (
+        lifecycle_required
+        and not verifier_artifact_success
+        and (
         not effective_lifecycle_satisfied or agent_operation_trace_missing
+        )
     ):
         attribution_layer = "loopx_lifecycle"
         first_blocker = public_safe_compact_text(
@@ -1029,6 +1052,7 @@ def build_skillsbench_post_run_debug_gate(
         "raw_material_recorded": False,
         "missing_field_count": len(missing_fields),
         "missing_fields": missing_fields[:MAX_BENCHMARK_RUN_LIST_ITEMS],
+        "verifier_artifact_recovery_authoritative": verifier_artifact_success,
         "scorer_verifier": {
             "official_score_status": official_status,
             "official_score_passed": (

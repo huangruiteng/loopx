@@ -71,6 +71,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS,
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
+    RUNNER_CONFIG_PUBLIC_FILENAME,
     RUNNER_PREREQUISITES_PUBLIC_FILENAME,
     SkillsBenchProductModeNoLifecycleRequests,
     VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
@@ -9505,6 +9506,117 @@ def test_skillsbench_runner_failure_recovers_zero_score_from_controller_trace() 
         ), compact
 
 
+def test_skillsbench_runner_failure_recovers_passing_score_from_verifier_artifact() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-verifier-artifact-recovery-"
+    ) as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "paratransit-routing",
+                "--route",
+                "loopx-goal-start-product-mode",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-paratransit-verifier-artifact-fixture",
+                "--max-rounds",
+                "16",
+                "--outer-timeout-sec",
+                "3600",
+                "--product-mode-soft-verify-policy",
+                "every-round",
+                "--soft-verifier-timeout-sec",
+                "600",
+            ]
+        )
+        plan = build_plan(args)
+        run_dir = Path(plan["result_json"]).parent
+        verifier_dir = run_dir / "verifier"
+        verifier_dir.mkdir(parents=True, exist_ok=True)
+        (verifier_dir / "reward.txt").write_text("1\n", encoding="utf-8")
+        write_json(
+            verifier_dir / "ctrf.json",
+            {
+                "summary": {
+                    "tests": 7,
+                    "passed": 7,
+                    "failed": 0,
+                    "pending": 0,
+                    "skipped": 0,
+                    "start": 1.0,
+                    "stop": 2.0,
+                }
+            },
+        )
+
+        compact = build_runner_failure_compact(
+            args,
+            plan,
+            TimeoutError("PRIVATE_TIMEOUT_DETAIL_SHOULD_NOT_ESCAPE"),
+        )
+
+        assert compact["runner_return_status"] == (
+            "interrupted_after_verifier_reward_artifact"
+        ), compact
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_score"] == 1.0, compact
+        assert compact["official_task_score"] == {
+            "kind": "skillsbench_verifier_reward_recovered_from_verifier_artifact",
+            "passed": True,
+            "value": 1.0,
+        }, compact
+        assert compact["score_failure_attribution"] == "none", compact
+        assert compact["attempt_accounting"]["official_score_attempt_countable"] is True
+        assert compact["attempt_accounting"]["failure_class"] == "none"
+        assert compact["verifier_reward_artifact_recovery"]["passed"] is True
+        assert compact["verifier_reward_artifact_recovery"][
+            "official_result_json_materialized"
+        ] is False
+        assert compact["verifier_reward_artifact_discovery"]["status"] == "found"
+        assert compact["verifier_ctrf_summary"]["tests"] == 7
+        assert compact["verifier_ctrf_summary"]["passed"] == 7
+        assert compact["validation"]["verifier_reward_artifact_recovered"] is True
+        assert compact["validation"]["official_case_success"] is True
+        assert "skillsbench_runner_interrupted_after_verifier_reward_artifact" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "skillsbench_result_json_missing_after_runner_exit" not in compact[
+            "failure_attribution_labels"
+        ], compact
+
+        runner_config = compact["runner_config"]
+        assert runner_config["route"] == "loopx-goal-start-product-mode"
+        assert runner_config["max_rounds"] == 16
+        assert runner_config["outer_timeout_sec"] == 3600
+        assert runner_config["product_mode_soft_verify_policy"] == "every-round"
+        assert runner_config["soft_verifier_timeout_sec"] == 600
+        assert runner_config["raw_command_recorded"] is False
+        assert runner_config["raw_env_recorded"] is False
+
+        public_runner_config_path = (
+            Path(plan["jobs_dir"]) / plan["job_name"] / RUNNER_CONFIG_PUBLIC_FILENAME
+        )
+        assert public_runner_config_path.exists(), public_runner_config_path
+        persisted_runner_config = json.loads(
+            public_runner_config_path.read_text(encoding="utf-8")
+        )
+        assert persisted_runner_config["max_rounds"] == 16
+        rollout_config = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+        assert rollout_config["loopx_runner_config"]["outer_timeout_sec"] == 3600
+        assert rollout_config["loopx_runner_config_public"] is True
+        assert rollout_config["loopx_runner_config_raw_command_recorded"] is False
+        assert rollout_config["loopx_runner_config_raw_env_recorded"] is False
+
+        events = {event["event"]: event for event in compact["case_event_timeline"]["events"]}
+        assert events["official_score_closeout"]["status"] == "passed"
+        gate = compact["post_run_debug_gate"]
+        assert gate["packet_complete"] is True, gate
+        assert gate["case_closeout_complete"] is True, gate
+        assert gate["normal_progress_allowed"] is True, gate
+        assert "PRIVATE_TIMEOUT_DETAIL_SHOULD_NOT_ESCAPE" not in json.dumps(compact)
+
+
 def test_skillsbench_runner_failure_compact_attributes_agent_no_requests() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-no-agent-request-") as tmp:
         args = parse_args(
@@ -11805,6 +11917,7 @@ if __name__ == "__main__":
     test_skillsbench_runner_failure_compact_closeout()
     test_skillsbench_runner_failure_case_event_timeline_is_compacted()
     test_skillsbench_runner_failure_recovers_zero_score_from_controller_trace()
+    test_skillsbench_runner_failure_recovers_passing_score_from_verifier_artifact()
     test_skillsbench_runner_failure_prefers_structured_preflight_blocker()
     test_skillsbench_runner_failure_marks_pre_agent_install_stage()
     test_skillsbench_runner_failure_marks_build_stall_timeout()
