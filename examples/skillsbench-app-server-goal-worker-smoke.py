@@ -451,7 +451,7 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert "Private task instruction placeholder" not in public_json, payload
 
 
-def test_host_worker_fails_closed_when_turn_completed_is_missing() -> None:
+def test_host_worker_fails_closed_on_first_action_timeout() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-worker-no-complete-") as tmp:
         root = Path(tmp)
         fake = root / "codex"
@@ -481,7 +481,9 @@ def test_host_worker_fails_closed_when_turn_completed_is_missing() -> None:
                 "--response-timeout-sec",
                 "5",
                 "--turn-timeout-sec",
-                "0",
+                "5",
+                "--first-action-timeout-sec",
+                "1",
             ],
             cwd=REPO_ROOT,
             check=False,
@@ -489,8 +491,19 @@ def test_host_worker_fails_closed_when_turn_completed_is_missing() -> None:
             capture_output=True,
         )
         assert result.returncode == 1, result
-        assert "timed out waiting for app-server worker turn completion" in result.stderr
-        assert not output.exists(), result
+        assert result.stderr == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is False, payload
+        assert payload["error_type"] == "codex_exec_first_action_timeout", payload
+        assert payload["worker_contract"]["ready"] is False, payload
+        assert (
+            payload["worker_contract"]["first_blocker"]
+            == "codex_exec_first_action_timeout"
+        ), payload
+        assert payload["turn"]["turn_id_present"] is True, payload
+        assert payload["turn"]["turn_completed_observed"] is False, payload
+        assert payload["turn"]["first_action_observed"] is False, payload
+        assert payload["turn"]["first_action_timeout_sec"] == 1.0, payload
         assert not private_response.exists(), result
         assert not list(work.glob(".loopx_app_server_goal_worker_response_*.txt"))
 
@@ -1115,7 +1128,7 @@ if __name__ == "__main__":
     test_launcher_plan_only_marks_runner_ready_with_host_acp_launch()
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
-    test_host_worker_fails_closed_when_turn_completed_is_missing()
+    test_host_worker_fails_closed_on_first_action_timeout()
     test_acp_relay_delegates_to_app_server_goal_worker()
     test_acp_relay_materializes_lifecycle_trace_before_prompt()
     test_acp_relay_streams_public_keepalive_while_worker_runs()

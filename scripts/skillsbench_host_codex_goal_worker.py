@@ -100,17 +100,43 @@ def _prompt_with_loopx_case_lifecycle_packet(
     )
 
 
+def _first_action_observed(turn: Any) -> bool:
+    if int(getattr(turn, "agent_message_delta_count", 0) or 0) > 0:
+        return True
+    if int(getattr(turn, "agent_message_item_count", 0) or 0) > 0:
+        return True
+    if int(getattr(turn, "item_completed_count", 0) or 0) > 0:
+        return True
+    notifications = getattr(turn, "notifications", []) or []
+    for method in notifications:
+        text = str(method or "")
+        if text.startswith("item/"):
+            return True
+    return False
+
+
 def _wait_for_worker_turn_completion(
     turn: Any,
     *,
     timeout_sec: float,
+    first_action_timeout_sec: float = 0.0,
     poll_interval_sec: float = 1.0,
 ) -> bool:
-    deadline = time.monotonic() + max(0.0, timeout_sec)
+    started_at = time.monotonic()
+    deadline = started_at + max(0.0, timeout_sec)
+    first_action_deadline = 0.0
+    if first_action_timeout_sec > 0:
+        first_action_deadline = started_at + max(0.1, first_action_timeout_sec)
     while time.monotonic() < deadline:
         observe_codex_app_server_goal_turn(turn, timeout_sec=0.0, raise_on_error=False)
         if turn.turn_completed_observed:
             return True
+        if (
+            first_action_deadline
+            and not _first_action_observed(turn)
+            and time.monotonic() >= first_action_deadline
+        ):
+            raise TimeoutError("codex_exec_first_action_timeout")
         time.sleep(max(0.1, poll_interval_sec))
     observe_codex_app_server_goal_turn(turn, timeout_sec=0.0, raise_on_error=False)
     return bool(turn.turn_completed_observed)
@@ -142,21 +168,33 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         response_timeout_sec=args.response_timeout_sec,
         wait_for_completion=False,
     )
+    worker_error_type = ""
     try:
         if not args.no_wait_for_completion:
-            turn_completed = _wait_for_worker_turn_completion(
-                turn,
-                timeout_sec=args.turn_timeout_sec,
-            )
-            if not turn_completed:
-                raise TimeoutError(
-                    "timed out waiting for app-server worker turn completion"
+            try:
+                turn_completed = _wait_for_worker_turn_completion(
+                    turn,
+                    timeout_sec=args.turn_timeout_sec,
+                    first_action_timeout_sec=args.first_action_timeout_sec,
                 )
+                if not turn_completed:
+                    raise TimeoutError(
+                        "timed out waiting for app-server worker turn completion"
+                    )
+            except TimeoutError as exc:
+                if str(exc) == "codex_exec_first_action_timeout":
+                    worker_error_type = "codex_exec_first_action_timeout"
+                else:
+                    worker_error_type = "codex_app_server_turn_timeout"
         compact = compact_turn_metadata(turn)
         compact.update(
             {
                 "completion_hard_gate": False,
                 "completion_source_of_truth": "codex_turn_completion",
+                "first_action_timeout_sec": max(
+                    0.0, float(args.first_action_timeout_sec or 0.0)
+                ),
+                "first_action_observed": _first_action_observed(turn),
                 "loopx_mode": args.loopx_mode,
                 "loopx_access_packet_mode": args.loopx_access_packet_mode,
                 "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
@@ -171,13 +209,27 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             private_response_written = True
     finally:
         turn.terminate()
-    ok = bool(compact.get("turn_id_present")) and (
+    worker_contract = build_contract_payload(args)
+    if worker_error_type:
+        worker_contract = dict(worker_contract)
+        blockers = list(worker_contract.get("blockers") or [])
+        if worker_error_type not in blockers:
+            blockers.insert(0, worker_error_type)
+        worker_contract.update(
+            {
+                "ready": False,
+                "first_blocker": worker_error_type,
+                "blockers": blockers,
+            }
+        )
+    ok = not worker_error_type and bool(compact.get("turn_id_present")) and (
         args.no_wait_for_completion
         or compact.get("turn_completed_observed") is True
     )
     return {
         "schema_version": "skillsbench_host_codex_goal_worker_result_v0",
         "ok": ok,
+        "error_type": worker_error_type,
         "route": "codex-app-server-goal-baseline",
         "benchmark_id": args.dataset,
         "task_id": args.task_id,
@@ -185,7 +237,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         "loopx_access_packet_mode": args.loopx_access_packet_mode,
         "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
         "benchmark_case_lifecycle_contract": lifecycle_contract,
-        "worker_contract": build_contract_payload(args),
+        "worker_contract": worker_contract,
         "prompt": {
             "sha256": stable_text_digest(prompt),
             "chars": len(prompt),
@@ -232,6 +284,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--response-text-file")
     parser.add_argument("--response-timeout-sec", type=float, default=30.0)
     parser.add_argument("--turn-timeout-sec", type=float, default=7200.0)
+    parser.add_argument("--first-action-timeout-sec", type=float, default=0.0)
     parser.add_argument(
         "--no-wait-for-completion",
         action="store_true",

@@ -1880,6 +1880,8 @@ raise SystemExit(proc.returncode)
                 str(self._config.response_timeout_sec),
                 "--turn-timeout-sec",
                 str(self._config.timeout_sec),
+                "--first-action-timeout-sec",
+                str(self._config.first_action_timeout_sec),
                 "--reasoning-effort",
                 str(self._config.reasoning_effort or "high"),
                 "--runner-integration-ready",
@@ -2097,8 +2099,17 @@ raise SystemExit(proc.returncode)
                     "assistant_message_chars",
                     "completion_hard_gate",
                     "completion_source_of_truth",
+                    "first_action_timeout_sec",
+                    "first_action_observed",
                     "raw_transcript_recorded",
                     "raw_assistant_message_recorded",
+                ),
+            ),
+            "worker_result": compact_dict(
+                payload,
+                (
+                    "ok",
+                    "error_type",
                 ),
             ),
             "private_response_text": compact_dict(
