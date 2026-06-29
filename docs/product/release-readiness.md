@@ -27,6 +27,10 @@ loopx update --execute
 loopx doctor
 ```
 
+Re-running the curl installer remains a repair/fallback path when the wrapper
+or local release snapshot is broken. It is not the primary update path for a
+healthy archive install.
+
 For contributors, keep the clone-plus-canary path:
 
 ```bash

@@ -103,6 +103,18 @@ def build_update_plan(
     install_command = _command_for_source(source)
     dry_run = not execute
     path = doctor.get("path") if isinstance(doctor.get("path"), dict) else {}
+    requires_upgrade = install_freshness.get("requires_upgrade")
+    if execute:
+        recommended_action = "review execution result and post-update doctor output"
+    elif requires_upgrade is False:
+        recommended_action = (
+            "no update needed; use `loopx update --dry-run` or "
+            "`loopx update --execute` only to force a refresh"
+        )
+    elif check_only:
+        recommended_action = "run `loopx update --dry-run` to review the source and rollback plan"
+    else:
+        recommended_action = "run `loopx update --execute` if you accept the source and rollback plan"
     return {
         "ok": True,
         "schema_version": UPDATE_PLAN_SCHEMA_VERSION,
@@ -117,7 +129,7 @@ def build_update_plan(
             "current_version": install_freshness.get("current_version"),
             "release_id": install_freshness.get("release_id"),
             "install_freshness_status": install_freshness.get("status"),
-            "requires_upgrade": install_freshness.get("requires_upgrade"),
+            "requires_upgrade": requires_upgrade,
             "reason": install_freshness.get("reason"),
         },
         "plan": {
@@ -129,11 +141,7 @@ def build_update_plan(
             "backup": _rollback_plan(doctor),
         },
         "execution": None,
-        "recommended_action": (
-            "run `loopx update --execute` if you accept the source and rollback plan"
-            if not execute
-            else "review execution result and post-update doctor output"
-        ),
+        "recommended_action": recommended_action,
     }
 
 

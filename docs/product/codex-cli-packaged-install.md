@@ -60,16 +60,22 @@ This keeps the product hierarchy clear:
 
 ## Update Path
 
-For users installed through the archive script, update is the same command:
+For users installed through the archive script, update through the explicit
+LoopX CLI flow:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+loopx update --check
+loopx update --dry-run
+loopx update --execute
 loopx doctor
 ```
 
-Each run creates a new timestamped release snapshot and repoints
-`~/.local/bin/loopx` to it. Runtime state stays under `~/.codex/loopx`,
-while the executable and skills are refreshed together.
+The update command plans the source archive, reports the installed release
+snapshot, preserves runtime state under `~/.codex/loopx`, and refreshes the
+executable and skills together when `--execute` is accepted.
+
+Re-running the curl installer is still the repair/fallback path when the local
+wrapper or release snapshot is broken enough that `loopx update` cannot run.
 
 ## Contributor Path
 
@@ -95,7 +101,7 @@ should later add:
 - `pipx install loopx` or `uv tool install loopx` after package
   publishing is ready;
 - a Homebrew formula for macOS users;
-- a small update command that reports current release id, latest available
+- signed release manifests that report current release id, latest available
   release, and installed skill freshness.
 
 Do not make these future channels block the current Codex CLI TUI path. The

@@ -110,6 +110,7 @@ Connect the current project to LoopX.
 Do not clone the LoopX repository for ordinary use. If `loopx` is not on PATH,
 install or repair it with the official no-clone installer:
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 
 Then run `loopx doctor`. Work only from the current project root: if LoopX state
 already exists, reuse it and do not create or overwrite a goal; if the project
@@ -151,6 +152,7 @@ Connect this repo to LoopX from this visible Codex CLI TUI. Do not clone the
 LoopX repository for ordinary use. If `loopx` is not on PATH, install or repair
 it with the official no-clone installer:
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 
 Then run `loopx doctor`. Work only from this project root: if LoopX state
 already exists, reuse it and do not create or overwrite a goal; if the project

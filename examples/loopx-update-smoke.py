@@ -34,6 +34,18 @@ def fake_doctor_payload() -> dict[str, object]:
     }
 
 
+def fake_fresh_doctor_payload() -> dict[str, object]:
+    payload = fake_doctor_payload()
+    payload["install_freshness"] = {
+        "status": "fresh",
+        "requires_upgrade": False,
+        "reason": "fixture is intentionally fresh",
+        "current_version": "0.1.3",
+        "release_id": "20260622T170342Z",
+    }
+    return payload
+
+
 def test_module_plan() -> None:
     payload = build_update_plan(
         repo="example/loopx",
@@ -50,6 +62,22 @@ def test_module_plan() -> None:
     assert payload["plan"]["mutates_release_install"] is False, payload
     assert payload["plan"]["backup"]["available"] is True, payload
     assert "LOOPX_ARCHIVE_URL=https://example.invalid/loopx.tar.gz" in payload["plan"]["install_command"], payload
+
+
+def test_fresh_check_is_noop_recommendation() -> None:
+    payload = build_update_plan(
+        repo="example/loopx",
+        ref="fixture",
+        archive_url="https://example.invalid/loopx.tar.gz",
+        check_only=True,
+        doctor_payload=fake_fresh_doctor_payload(),
+    )
+    assert payload["ok"] is True, payload
+    assert payload["check_only"] is True, payload
+    assert payload["current"]["requires_upgrade"] is False, payload
+    assert "no update needed" in payload["recommended_action"], payload
+    assert "force a refresh" in payload["recommended_action"], payload
+    assert "--execute` if you accept" not in payload["recommended_action"], payload
 
 
 def test_cli_check() -> None:
@@ -86,6 +114,7 @@ def test_cli_check() -> None:
 
 def main() -> int:
     test_module_plan()
+    test_fresh_check_is_noop_recommendation()
     test_cli_check()
     print("loopx-update-smoke ok")
     return 0
