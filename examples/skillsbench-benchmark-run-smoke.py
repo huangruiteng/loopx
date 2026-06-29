@@ -56,6 +56,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD,
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
     CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD,
+    DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC,
     DEFAULT_MAX_ROUNDS,
     DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
     DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
@@ -65,6 +66,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
     DOCKER_HOST_CPU_ENV,
+    HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
     LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
     PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS,
     PRODUCT_MODE_CASE_STATE_PATH,
@@ -132,6 +134,68 @@ def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 16, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+
+
+def test_skillsbench_plan_only_batch_parallel_case_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-plan-batch-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        for task_id in ("citation-check", "3d-scan-calc"):
+            task_dir = skillsbench_root / "tasks" / task_id
+            task_dir.mkdir(parents=True)
+            (task_dir / "task.toml").write_text(
+                "version = \"1.1\"\n",
+                encoding="utf-8",
+            )
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(
+                [
+                    "--task-ids",
+                    "citation-check,3d-scan-calc",
+                    "--parallel-cases",
+                    "2",
+                    "--route",
+                    "loopx-goal-start-product-mode",
+                    "--host-local-acp-launch",
+                    "--remote-command-file-bridge-ready",
+                    "--skillsbench-root",
+                    str(skillsbench_root),
+                    "--jobs-dir",
+                    str(root / "jobs"),
+                    "--run-group-id",
+                    "skillsbench-plan-batch-fixture",
+                    "--plan-only",
+                ]
+            )
+
+        assert rc == 0, stderr.getvalue()
+        payload = json.loads(stdout.getvalue())
+        assert payload["ok"] is True, payload
+        assert payload["batch"] is True, payload
+        assert payload["task_count"] == 2, payload
+        assert payload["parallel_cases"] == 2, payload
+        assert payload["run_group_id"] == "skillsbench-plan-batch-fixture", payload
+        results = payload["results"]
+        assert [result["launch_plan"]["task_id"] for result in results] == [
+            "citation-check",
+            "3d-scan-calc",
+        ], results
+        plans = [result["launch_plan"] for result in results]
+        assert {plan["run_group_id"] for plan in plans} == {
+            "skillsbench-plan-batch-fixture"
+        }, plans
+        assert len({plan["job_name"] for plan in plans}) == 2, plans
+        assert len({plan["result_json"] for plan in plans}) == 2, plans
+    for result in results:
+        assert result["ok"] is True, result
+        assert result["plan_only"] is True, result
+        assert result["launch_plan"]["host_local_acp_launch"] is True, result
+        assert result["launch_plan"]["runner_prerequisites"][
+            "host_local_acp_launch"
+        ] is True, result
 
 
 def test_skillsbench_formal_product_mode_rejects_tiny_round_budget() -> None:
@@ -5931,7 +5995,13 @@ def test_host_local_product_mode_auto_bridge_keeps_lifecycle_checkpoint_args() -
     assert "--loopx-case-goal-id" in command
     assert "--loopx-case-cli-path" in command
     assert "--remote-command-file-bridge-command" not in command
-    assert command[command.index("--timeout-sec") + 1] == "1800"
+    assert command[command.index("--timeout-sec") + 1] == str(
+        DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+        + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
+    )
+    assert command[command.index("--bridge-idle-timeout-sec") + 1] == str(
+        DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+    )
 
 
 def test_host_local_acp_connect_contract_matches_benchflow_runtime() -> None:
@@ -11589,6 +11659,7 @@ def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> N
 
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
+    test_skillsbench_plan_only_batch_parallel_case_contract()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_reverse_channel_first_action_timeout_stops_codex_process()
