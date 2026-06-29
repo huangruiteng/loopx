@@ -9338,6 +9338,55 @@ def test_skillsbench_runner_plan_supports_controller_trace_path() -> None:
         assert plan["include_task_skills"] is False, plan
 
 
+def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
+    args = parse_args(
+        [
+            "--task-ids",
+            "3d-scan-calc,adaptive-cruise-control",
+            "--parallel-cases",
+            "2",
+            "--route",
+            "codex-app-server-goal-baseline",
+            "--run-group-id",
+            "skillsbench-goal-baseline-30case-test",
+            "--job-name",
+            "skillsbench-goal-baseline-30case-test",
+            "--rollout-name",
+            "skillsbench-goal-baseline-30case-test",
+            "--max-rounds",
+            "16",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+            "--app-server-reasoning-effort",
+            "high",
+            "--append-history",
+        ]
+    )
+    assert skillsbench_loop._parallel_batch_requires_subprocess_isolation(2) is True
+    case_args = skillsbench_loop._clone_args_for_batch_case(
+        args,
+        task_id="adaptive-cruise-control",
+        index=1,
+        total=2,
+        run_group_id="skillsbench-goal-baseline-30case-test",
+    )
+    child_argv = skillsbench_loop._batch_case_args_to_cli(case_args)
+    assert "--task-ids" not in child_argv, child_argv
+    assert child_argv[child_argv.index("--task-id") + 1] == (
+        "adaptive-cruise-control"
+    ), child_argv
+    assert child_argv[child_argv.index("--parallel-cases") + 1] == "1", child_argv
+    assert child_argv[child_argv.index("--run-group-id") + 1] == (
+        "skillsbench-goal-baseline-30case-test"
+    ), child_argv
+    assert child_argv[child_argv.index("--job-name") + 1].endswith(
+        "-02-adaptive-cruise-control"
+    ), child_argv
+    assert "--host-local-acp-launch" in child_argv, child_argv
+    assert "--remote-command-file-bridge-ready" in child_argv, child_argv
+    assert "--append-history" in child_argv, child_argv
+
+
 def test_skillsbench_compact_runs_update_ledger_pair() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-ledger-smoke-") as tmp:
         root = Path(tmp)

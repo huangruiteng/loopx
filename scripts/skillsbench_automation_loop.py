@@ -12415,6 +12415,84 @@ def _clone_args_for_batch_case(
     return case_args
 
 
+def _batch_case_args_to_cli(case_args: argparse.Namespace) -> list[str]:
+    cli: list[str] = []
+    for key, value in sorted(vars(case_args).items()):
+        if key == "task_ids":
+            continue
+        option = "--" + key.replace("_", "-")
+        if key == "parallel_cases":
+            value = 1
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            if value:
+                cli.append(option)
+            continue
+        cli.extend([option, str(value)])
+    return cli
+
+
+def _parallel_batch_requires_subprocess_isolation(parallel_cases: int) -> bool:
+    return parallel_cases > 1
+
+
+def _extract_batch_case_subprocess_payload(
+    *,
+    case_args: argparse.Namespace,
+    returncode: int,
+    stdout: bytes,
+    stderr: bytes,
+) -> dict[str, Any]:
+    text = stdout.decode("utf-8", errors="replace").strip()
+    if not text:
+        text = stderr.decode("utf-8", errors="replace").strip()
+    try:
+        payload = json.loads(text)
+        if not isinstance(payload, dict):
+            raise ValueError("child payload was not a JSON object")
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "task_id": str(case_args.task_id),
+            "run_group_id": str(case_args.run_group_id or ""),
+            "route": str(case_args.route),
+            "error_type": "SkillsBenchBatchCaseSubprocessPayloadError",
+            "error_class": type(exc).__name__,
+            "child_returncode": int(returncode),
+            "child_stdout_bytes": len(stdout),
+            "child_stderr_bytes": len(stderr),
+            "raw_stdout_recorded": False,
+            "raw_stderr_recorded": False,
+            "compact_closeout_recorded": False,
+        }
+    payload["batch_case_subprocess"] = True
+    payload["runner_returncode"] = int(returncode)
+    return payload
+
+
+async def _run_batch_case_subprocess(
+    case_args: argparse.Namespace,
+) -> dict[str, Any]:
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        *_batch_case_args_to_cli(case_args),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    return _extract_batch_case_subprocess_payload(
+        case_args=case_args,
+        returncode=int(proc.returncode or 0),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
 async def async_batch_main(
     args: argparse.Namespace,
     *,
@@ -12427,6 +12505,9 @@ async def async_batch_main(
     )
     parallel_cases = min(max(1, int(args.parallel_cases or 1)), len(selected_task_ids))
     semaphore = asyncio.Semaphore(parallel_cases)
+    isolate_case_processes = _parallel_batch_requires_subprocess_isolation(
+        parallel_cases
+    )
 
     async def run_one(index: int, task_id: str) -> dict[str, Any]:
         case_args = _clone_args_for_batch_case(
@@ -12439,6 +12520,8 @@ async def async_batch_main(
         case_plan = build_plan(case_args)
         async with semaphore:
             try:
+                if isolate_case_processes:
+                    return await _run_batch_case_subprocess(case_args)
                 payload = await async_main(case_args, plan=case_plan)
                 payload["runner_returncode"] = 0
                 return payload
@@ -12460,6 +12543,7 @@ async def async_batch_main(
         "batch": True,
         "task_count": len(selected_task_ids),
         "parallel_cases": parallel_cases,
+        "case_process_isolation": isolate_case_processes,
         "run_group_id": run_group_id,
         "results": results,
         "runner_returncode": returncode,
