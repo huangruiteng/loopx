@@ -363,6 +363,8 @@ DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_END = (
     "# END LOOPX_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
 )
+DOCKER_PIP_BOOTSTRAP_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
+DOCKER_PIP_BOOTSTRAP_END = "# END LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
 VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
 )
@@ -373,6 +375,9 @@ DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE = (
     "https://releases.astral.sh/github/uv/releases/download"
 )
 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST = "releases.astral.sh"
+DEFAULT_DOCKER_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL = "https://pypi.org/simple"
+DEFAULT_DOCKER_PIP_INDEX_HOST = "pypi.tuna.tsinghua.edu.cn"
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
 LOOPX_CLI_RE = re.compile(r"(?:^|\s|/)loopx(?:\s|$)")
@@ -4640,6 +4645,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "dockerfile_pip_bootstrap_patch_applied",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
@@ -4654,7 +4662,11 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    for field in ("verifier_uv_bootstrap_version", "verifier_uv_bootstrap_mirror_host"):
+    for field in (
+        "dockerfile_pip_index_host",
+        "verifier_uv_bootstrap_version",
+        "verifier_uv_bootstrap_mirror_host",
+    ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
             compact[field] = raw[:180]
@@ -4714,6 +4726,9 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             DOCKER_APP_SKILLS_MOUNT_BEGIN in dockerfile_text
         ),
         "apt_retry_patch_applied": DOCKER_APT_RETRY_BEGIN in dockerfile_text,
+        "dockerfile_pip_bootstrap_patch_applied": (
+            DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text
+        ),
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
         ),
@@ -4736,6 +4751,15 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
         if uv_versions:
             discovered["verifier_uv_bootstrap_version"] = uv_versions[0]
+    if DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text:
+        discovered.update(
+            {
+                "dockerfile_pip_install_risk_detected": True,
+                "dockerfile_pip_bootstrap_patch_required": True,
+                "dockerfile_pip_bootstrap_patch_applied": True,
+                "dockerfile_pip_index_host": DEFAULT_DOCKER_PIP_INDEX_HOST,
+            }
+        )
     return discovered
 
 
@@ -5177,6 +5201,22 @@ def dockerfile_needs_apt_retry_patch(dockerfile: Path) -> bool:
     return bool(re.search(r"\bapt(?:-get)?\s+update\b", text, flags=re.IGNORECASE))
 
 
+def dockerfile_needs_pip_bootstrap_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    if not re.search(r"^\s*FROM\s+", text, flags=re.IGNORECASE | re.MULTILINE):
+        return False
+    return bool(
+        re.search(
+            r"(?:^|[;&|(\s])(?:python3?|python)\s+-m\s+pip\s+install\b|"
+            r"(?:^|[;&|(\s])pip3?\s+install\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     text = str(value or "").strip()
     cleaned = []
@@ -5212,6 +5252,8 @@ def skillsbench_task_setup_preflight(
         "alternate_source_supported_by_runner": False,
         "apt_setup_risk_detected": False,
         "apt_retry_patch_required": False,
+        "dockerfile_pip_install_risk_detected": False,
+        "dockerfile_pip_bootstrap_patch_required": False,
         "verifier_present": False,
         "verifier_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_risk_detected": False,
@@ -5267,15 +5309,16 @@ def skillsbench_task_setup_preflight(
         return preflight
 
     apt_risk = dockerfile_needs_apt_retry_patch(dockerfile)
+    pip_risk = dockerfile_needs_pip_bootstrap_patch(dockerfile)
     verifier_risk = skillsbench_verifier_bootstrap_risk(expanded_task_path)
     preflight.update(verifier_risk)
     verifier_bootstrap_risk = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
     )
-    if apt_risk and verifier_bootstrap_risk:
+    if (apt_risk or pip_risk) and verifier_bootstrap_risk:
         setup_status = "setup_bootstrap_risk_detected"
-    elif apt_risk:
-        setup_status = "apt_risk_detected"
+    elif apt_risk or pip_risk:
+        setup_status = "dockerfile_package_bootstrap_risk_detected"
     elif verifier_bootstrap_risk:
         setup_status = "verifier_bootstrap_risk_detected"
     else:
@@ -5285,9 +5328,11 @@ def skillsbench_task_setup_preflight(
             "status": setup_status,
             "apt_setup_risk_detected": apt_risk,
             "apt_retry_patch_required": apt_risk,
+            "dockerfile_pip_install_risk_detected": pip_risk,
+            "dockerfile_pip_bootstrap_patch_required": pip_risk,
             "selection_recommendation": (
                 "route_to_setup_repair_or_use_fail_fast_guard"
-                if apt_risk or verifier_bootstrap_risk
+                if apt_risk or pip_risk or verifier_bootstrap_risk
                 else "eligible_for_full_pair"
             ),
         }
@@ -5473,6 +5518,45 @@ def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
     return True
 
 
+def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
+    """Add public-safe pip retry/index defaults to staged Dockerfiles."""
+
+    if not dockerfile_needs_pip_bootstrap_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8")
+    text = _strip_marker_block(
+        original,
+        DOCKER_PIP_BOOTSTRAP_BEGIN,
+        DOCKER_PIP_BOOTSTRAP_END,
+    )
+    block = (
+        f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
+        f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={DEFAULT_DOCKER_PIP_INDEX_URL}\n"
+        f"ARG LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL={DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL}\n"
+        "ENV PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL} \\\n"
+        "    PIP_EXTRA_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL} \\\n"
+        "    PIP_DEFAULT_TIMEOUT=120 \\\n"
+        "    PIP_RETRIES=10 \\\n"
+        "    PIP_DISABLE_PIP_VERSION_CHECK=1\n"
+        f"{DOCKER_PIP_BOOTSTRAP_END}"
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        patched_lines.append(line)
+        stripped = line.strip()
+        if stripped.upper().startswith("FROM ") and " scratch" not in stripped.lower():
+            patched_lines.extend(["", *block.splitlines(), ""])
+            inserted = True
+    if not inserted:
+        patched_lines = [*block.splitlines(), "", *text.splitlines()]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
 def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
     """Preinstall tiny ACP runtime tools at image-build time, not run time."""
 
@@ -5561,6 +5645,9 @@ def stage_task_for_sandbox(
         "staged": False,
         "app_skills_mount_patch_applied": False,
         "apt_retry_patch_applied": False,
+        "dockerfile_pip_install_risk_detected": False,
+        "dockerfile_pip_bootstrap_patch_required": False,
+        "dockerfile_pip_bootstrap_patch_applied": False,
         "codex_acp_runtime_tools_patch_applied": False,
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_mirror_patch_required": False,
@@ -5585,6 +5672,9 @@ def stage_task_for_sandbox(
     needs_apt_retry_patch = dockerfile_needs_apt_retry_patch(
         task_path / "environment" / "Dockerfile"
     )
+    needs_pip_bootstrap_patch = dockerfile_needs_pip_bootstrap_patch(
+        task_path / "environment" / "Dockerfile"
+    )
     verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
     needs_verifier_uv_mirror_patch = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
@@ -5594,6 +5684,10 @@ def stage_task_for_sandbox(
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
+    metadata["dockerfile_pip_install_risk_detected"] = needs_pip_bootstrap_patch
+    metadata["dockerfile_pip_bootstrap_patch_required"] = needs_pip_bootstrap_patch
+    if needs_pip_bootstrap_patch:
+        metadata["dockerfile_pip_index_host"] = DEFAULT_DOCKER_PIP_INDEX_HOST
     metadata["verifier_bootstrap_risk_detected"] = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
     )
@@ -5612,6 +5706,7 @@ def stage_task_for_sandbox(
         not has_task_skills
         and not needs_resource_cap
         and not needs_apt_retry_patch
+        and not needs_pip_bootstrap_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
     ):
@@ -5645,6 +5740,9 @@ def stage_task_for_sandbox(
     apt_retry_patched = patch_dockerfile_apt_retry(
         staged_path / "environment" / "Dockerfile"
     )
+    pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
+        staged_path / "environment" / "Dockerfile"
+    )
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
     )
@@ -5661,6 +5759,10 @@ def stage_task_for_sandbox(
             "staged_task_path": str(staged_path),
             "app_skills_mount_patch_applied": patched,
             "apt_retry_patch_applied": apt_retry_patched,
+            "dockerfile_pip_bootstrap_patch_applied": pip_bootstrap_patched,
+            "dockerfile_pip_index_host": (
+                DEFAULT_DOCKER_PIP_INDEX_HOST if pip_bootstrap_patched else ""
+            ),
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
             "app_skills_mount_target": "/app/skills",
             "original_task_mutated": False,
@@ -5876,6 +5978,18 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "apt_retry_patch_required": bool(
                 setup_preflight.get("apt_retry_patch_required")
+            ),
+            "dockerfile_pip_install_risk_detected": bool(
+                setup_preflight.get("dockerfile_pip_install_risk_detected")
+            ),
+            "dockerfile_pip_bootstrap_patch_required": bool(
+                setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
+            ),
+            "dockerfile_pip_bootstrap_patch_applied": False,
+            "dockerfile_pip_index_host": (
+                DEFAULT_DOCKER_PIP_INDEX_HOST
+                if setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
+                else ""
             ),
             "apt_risk_preflight_blocked": False,
             "verifier_bootstrap_risk_detected": bool(

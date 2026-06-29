@@ -1406,7 +1406,14 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
     if (
         "could not find the file /app" in text
         or "main:/app/skills" in text
-        or "/app/skills" in text
+        or (
+            "/app/skills" in text
+            and (
+                "bind source path" in text
+                or "mount" in text
+                or "volume" in text
+            )
+        )
     ):
         label = "skillsbench_environment_app_mount_missing"
         return label, label, [label, "skillsbench_environment_setup_error"]
@@ -1498,6 +1505,23 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
                 "skillsbench_environment_setup_error",
             ]
         if (
+            "pip install" in text
+            or "python -m pip" in text
+            or "python3 -m pip" in text
+            or "files.pythonhosted.org" in text
+            or "pypi.org" in text
+            or "pypi.tuna.tsinghua.edu.cn" in text
+            or "no matching distribution found" in text
+            or "read timed out" in text
+        ):
+            label = "skillsbench_docker_compose_pip_bootstrap_failure"
+            return label, label, [
+                label,
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_python_package_bootstrap_failure",
+                "skillsbench_environment_setup_error",
+            ]
+        if (
             "apt-get" in text
             or "apt update" in text
             or "apt " in text
@@ -1581,6 +1605,10 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, Any]:
         "image_build": r"failed to solve|failed to build|dockerfile|pull access denied|manifest unknown",
         "port_conflict": r"port is already allocated|address already in use|ports are not available|bind for",
         "apt_failure": r"apt-get|apt update|apt |gpg error|hash sum mismatch|failed to fetch",
+        "pip_bootstrap_failure": (
+            r"pip install|python3? -m pip|files\.pythonhosted\.org|pypi\.org|"
+            r"pypi\.tuna\.tsinghua\.edu\.cn|no matching distribution found"
+        ),
         "subprocess_command_timeout": r"command timed out after \d+ seconds",
         "timeout": r"timeout|timed out|deadline",
     }

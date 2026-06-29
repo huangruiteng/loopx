@@ -48,6 +48,10 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
+from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
+    skillsbench_runner_error_attribution,
+    skillsbench_runner_error_fingerprint,
+)
 from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_LOOPX_GOAL_START_SELECTED_TODO_ID,
     BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS,
@@ -65,11 +69,13 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DEFAULT_MAX_ROUNDS,
     DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
     DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
+    DEFAULT_DOCKER_PIP_INDEX_HOST,
     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST,
     DECLARED_DONE_MARKER,
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
+    DOCKER_PIP_BOOTSTRAP_BEGIN,
     DOCKER_HOST_CPU_ENV,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
     LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
@@ -4445,6 +4451,29 @@ def test_skillsbench_app_skills_failure_attribution() -> None:
         ], compact
 
 
+def test_skillsbench_docker_pip_bootstrap_failure_attribution() -> None:
+    error_text = (
+        "Docker compose command failed for environment adaptive-cruise-control. "
+        "Command: docker compose build. Return code: 1. "
+        "Dockerfile contains RUN mkdir -p /app /app/skills. "
+        "RUN pip3 install numpy==1.26.4 pandas==2.2.2. "
+        "ERROR: Read timed out from files.pythonhosted.org. "
+        "ERROR: No matching distribution found for numpy==1.26.4"
+    )
+
+    exception_type, attribution, labels = skillsbench_runner_error_attribution(
+        error_text
+    )
+    assert exception_type == "skillsbench_docker_compose_pip_bootstrap_failure"
+    assert attribution == "skillsbench_docker_compose_pip_bootstrap_failure"
+    assert "skillsbench_python_package_bootstrap_failure" in labels, labels
+    assert "skillsbench_environment_setup_error" in labels, labels
+    assert "skillsbench_environment_app_mount_missing" not in labels, labels
+    fingerprint = skillsbench_runner_error_fingerprint(error_text)
+    assert "pip_bootstrap_failure" in fingerprint["matched_patterns"], fingerprint
+    assert "volume_mount_failure" not in fingerprint["matched_patterns"], fingerprint
+
+
 def test_skillsbench_docker_port_conflict_attribution() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-docker-port-") as tmp:
         result_path = write_official_skillsbench_docker_port_conflict_failure(
@@ -5200,6 +5229,57 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
         assert DOCKER_APT_RETRY_BEGIN in staged_text, staged_text
         assert DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in staged_text, staged_text
         assert 'Acquire::Retries "5";' in staged_text, staged_text
+
+
+def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-pip-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "adaptive-cruise-control"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04 AS builder\n"
+            "RUN pip3 install numpy==1.26.4 pandas==2.2.2\n"
+            "FROM python:3.12-slim\n"
+            "RUN python3 -m pip install pyyaml==6.0.1\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="adaptive-cruise-control-goalstart",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["staged"] is True, metadata
+        assert metadata["dockerfile_pip_install_risk_detected"] is True, metadata
+        assert metadata["dockerfile_pip_bootstrap_patch_required"] is True, metadata
+        assert metadata["dockerfile_pip_bootstrap_patch_applied"] is True, metadata
+        assert metadata["dockerfile_pip_index_host"] == DEFAULT_DOCKER_PIP_INDEX_HOST, (
+            metadata
+        )
+        assert metadata["original_task_mutated"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert staged_text.count(DOCKER_PIP_BOOTSTRAP_BEGIN) == 2, staged_text
+        assert "PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL}" in staged_text, (
+            staged_text
+        )
+        assert "PIP_EXTRA_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL}" in (
+            staged_text
+        ), staged_text
+        assert f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL=https://{DEFAULT_DOCKER_PIP_INDEX_HOST}/simple" in (
+            staged_text
+        ), staged_text
+        assert "PIP_RETRIES=10" in staged_text, staged_text
+        assert staged_text.index(DOCKER_PIP_BOOTSTRAP_BEGIN) < staged_text.index(
+            "pip3 install"
+        ), staged_text
 
 
 def test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults() -> None:
