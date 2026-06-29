@@ -82,8 +82,10 @@ def assert_catalog_documents_selection_rules() -> None:
         "Keep default profiles on fixture-level or dry-run checks.",
         "When hot-path and cold-path surfaces both changed",
         "Existing-contract-first rule: canary planning should consume current public\nruntime/status surfaces",
-        "`quota should-run`, `status`, `review-packet`, `loopx check`",
-        "stop\nat a review packet first",
+        "`quota should-run`, `status`, `review-packet`, `loopx check`, current smoke\nfixtures, `loopx canary plan` output, and fixture-level `loopx canary run`\nchecks as the first evidence layer",
+        "`loopx canary run` must stay no-write by\ndefault",
+        "not write promotion evidence, create runtime contracts, poll external targets,\nor run deep/browser checks",
+        "stop at\na review packet first",
         "owner review before implementation",
     ]:
         assert snippet in catalog, snippet
