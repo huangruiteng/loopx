@@ -839,6 +839,16 @@ def test_goal_start_workflow_driver_bootstraps_bridge_before_task_packet() -> No
     assert "--- TASK INSTRUCTION ---" not in bootstrap_prompt
     assert "Compute the requested coefficient." not in bootstrap_prompt
     assert "FIRST ACTION REQUIRED" in bootstrap_prompt
+    assert "/loopx goal-start" in bootstrap_prompt
+    assert "heartbeat-prompt" in bootstrap_prompt
+    assert "Codex CLI TUI `/goal`" in bootstrap_prompt
+    assert "interaction_contract" in bootstrap_prompt
+    assert "workspace_guard" in bootstrap_prompt
+    assert "goal_boundary" in bootstrap_prompt
+    assert "execution_obligation" in bootstrap_prompt
+    assert "scheduler_hint" in bootstrap_prompt
+    assert "never authorizes quota spend" in bootstrap_prompt
+    assert "selected P0 todo" in bootstrap_prompt
     assert "benchmark task instruction will be sent after" in bootstrap_prompt
     assert trace["product_mode_task_instruction_deferred_until_agent_lifecycle"] is True
     assert trace["product_mode_task_instruction_sent_initially"] is False
@@ -867,6 +877,12 @@ def test_goal_start_workflow_driver_bootstraps_bridge_before_task_packet() -> No
     assert "--- TASK INSTRUCTION ---" in task_prompt
     assert "Compute the requested coefficient." in task_prompt
     assert "The task packet is now available" in task_prompt
+    assert "/loopx goal-start" in task_prompt
+    assert "interaction_contract" in task_prompt
+    assert "workspace_guard" in task_prompt
+    assert "goal_boundary" in task_prompt
+    assert "execution_obligation" in task_prompt
+    assert "scheduler_hint" in task_prompt
     assert trace["product_mode_task_instruction_sent_after_agent_lifecycle"] is True
     assert trace["last_decision"] == "send_product_mode_task_instruction_after_agent_lifecycle"
 
