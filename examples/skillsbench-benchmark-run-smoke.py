@@ -8533,6 +8533,36 @@ def test_goal_start_host_local_defers_codex_exec_preflight_until_bridge_command(
         )
 
 
+def test_app_server_goal_worker_skips_plain_codex_exec_preflight() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-server-preflight-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "3d-scan-calc",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--host-local-acp-launch",
+                "--host-local-acp-codex-exec-preflight",
+                "--remote-command-file-bridge-ready",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-app-server-preflight-fixture",
+            ]
+        )
+        plan = build_plan(args)
+        prereqs = plan["runner_prerequisites"]
+        assert prereqs["host_local_acp_codex_exec_preflight_requested"] is False, (
+            prereqs
+        )
+        assert prereqs["host_local_acp_codex_exec_preflight_status"] == "not_requested", (
+            prereqs
+        )
+        assert prereqs["codex_acp_runtime_launch_preflight_stage"] == (
+            "not_applicable_app_server_goal_worker"
+        ), prereqs
+
+
 def test_goal_start_host_exec_failure_overrides_zero_score_recovery() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-goal-start-host-failure-") as tmp:
         args = parse_args(
@@ -12298,6 +12328,7 @@ if __name__ == "__main__":
     test_skillsbench_host_local_idle_no_output_progress_is_distinct()
     test_product_mode_host_local_idle_no_output_progress_requires_new_trace()
     test_goal_start_host_local_defers_codex_exec_preflight_until_bridge_command()
+    test_app_server_goal_worker_skips_plain_codex_exec_preflight()
     test_goal_start_host_exec_failure_overrides_zero_score_recovery()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()
     test_skillsbench_declared_done_missing_reward_status_is_compacted()

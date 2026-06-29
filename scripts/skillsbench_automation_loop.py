@@ -1306,6 +1306,12 @@ def _host_local_acp_codex_exec_preflight_should_run(
 ) -> bool:
     """Return whether the host-local Codex exec path must be probed first."""
 
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and str(getattr(args, "route", "") or "")
+        == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+    ):
+        return False
     if bool(getattr(args, "host_local_acp_codex_exec_preflight", False)):
         return True
     return bool(
