@@ -178,9 +178,13 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
         supervisor: dict[str, object],
         visible_registry: Path,
         visible_runtime_root: str | None,
+        default_workspace: Path,
     ) -> dict[str, object]:
         captured["registry"] = visible_registry
         captured["runtime_root"] = visible_runtime_root
+        captured["workspace"] = default_workspace
+        assert default_workspace.is_dir(), default_workspace
+        assert list(default_workspace.glob(".local/auto-research-demo/**/protected_eval.py")), default_workspace
         expected_actions = {
             "codex-product-capability": "write_research_contract",
             "codex-side-bypass": "propose_hypothesis",
@@ -277,6 +281,7 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
     )
     assert captured["registry"] != registry, captured
     assert captured["runtime_root"] != str(runtime_root), captured
+    assert captured["workspace"] != REPO_ROOT, captured
     control = payload["visible_control_plane"]
     assert control["schema_version"] == "auto_research_visible_demo_control_plane_v0", payload
     assert control["mode"] == "demo_local_loopx_queue", payload
@@ -290,6 +295,7 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
         "claim_attempt",
     }, payload
     assert control["absolute_paths_recorded"] is False, payload
+    assert payload["workspace_retained"] is True, payload
     assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload
     assert_public_safe(payload)
 

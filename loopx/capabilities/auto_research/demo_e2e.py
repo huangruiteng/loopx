@@ -499,7 +499,7 @@ def run_auto_research_demo_e2e(
         return payload
 
     tmp_obj: tempfile.TemporaryDirectory[str] | None = None
-    if keep_workspace:
+    if keep_workspace or launch_visible:
         demo_root = Path(tempfile.mkdtemp(prefix="loopx-auto-research-demo-e2e."))
     else:
         tmp_obj = tempfile.TemporaryDirectory(prefix="loopx-auto-research-demo-e2e.")
@@ -617,7 +617,7 @@ def run_auto_research_demo_e2e(
                 },
                 "board": _compact_board(board),
                 "acceptance": _compact_acceptance(acceptance),
-                "workspace_retained": keep_workspace,
+                "workspace_retained": keep_workspace or launch_visible,
             }
         )
         if launch_visible and visible_launcher is not None:
@@ -636,6 +636,7 @@ def run_auto_research_demo_e2e(
                 dict(supervisor),
                 visible_registry_path,
                 visible_runtime_root_arg,
+                demo_root,
             )
             launch_result = (
                 visible_payload.get("launch_result")

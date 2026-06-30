@@ -690,7 +690,9 @@ def handle_auto_research_command(
                     supervisor: dict[str, object],
                     visible_registry_path: Path,
                     visible_runtime_root_arg: str | None,
+                    default_workspace: Path,
                 ) -> dict[str, object]:
+                    workspace = args.workspace or str(default_workspace)
                     return _execute_auto_research_demo_supervisor(
                         supervisor,
                         registry_path=visible_registry_path,
@@ -701,7 +703,7 @@ def handle_auto_research_command(
                         codex_bin=args.codex_bin,
                         attach=args.attach,
                         replace_existing=args.replace_existing,
-                        workspace=args.workspace,
+                        workspace=workspace,
                         create_workspace=args.create_workspace,
                     )
 
