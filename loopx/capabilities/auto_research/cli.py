@@ -22,6 +22,7 @@ from . import (
     load_auto_research_evidence_packet_inputs,
     load_auto_research_fixture,
     render_auto_research_markdown,
+    run_builtin_lightweight_demo,
 )
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
@@ -418,6 +419,17 @@ def register_auto_research_commands(
         help="Create --workspace when it does not already exist.",
     )
 
+    lite_e2e_parser = auto_research_sub.add_parser(
+        "lite-e2e",
+        help="Run the lightweight two-round auto-research kernel demo.",
+    )
+    add_subcommand_format(lite_e2e_parser)
+    lite_e2e_parser.add_argument(
+        "--goal-id",
+        default="loopx-auto-research-lite",
+        help="Public-safe goal id for the lightweight demo result.",
+    )
+
 
 def _append_auto_research_rollout_events(
     *,
@@ -708,11 +720,13 @@ def handle_auto_research_command(
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,
             )
+        elif args.auto_research_command == "lite-e2e":
+            payload = run_builtin_lightweight_demo(goal_id=args.goal_id)
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
                 "`board`, `acceptance`, `append-evidence`, `capture-live-evidence`, "
-                "`demo-supervisor`, or `demo-e2e` subcommand"
+                "`demo-supervisor`, `demo-e2e`, or `lite-e2e` subcommand"
             )
     except Exception as exc:
         payload = {
