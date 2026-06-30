@@ -49,6 +49,17 @@ def assert_positive_result(payload: dict[str, Any]) -> None:
     assert payload["decision"] == "validated_positive", payload
     assert payload["dev_metric"] == 4.0, payload
     assert payload["holdout_metric"] == 4.5, payload
+    assert payload["result_source"] == "knn_pack_protected_eval", payload
+    assert payload["evaluator"]["kind"] == "public_knn_pack_protected_eval", payload
+    artifacts = [ref for event in payload["evidence"] for ref in event["artifact_refs"]]
+    assert artifacts == [
+        "knn_pack:dev:full_sort",
+        "knn_pack:dev:partial_selection",
+        "knn_pack:holdout:partial_selection",
+    ], payload
+    assert {event["result_source"] for event in payload["evidence"]} == {
+        "knn_pack_protected_eval"
+    }, payload
     assert payload["public_boundary"]["raw_logs_recorded"] is False, payload
     assert payload["public_boundary"]["private_artifacts_recorded"] is False, payload
     assert_public_safe(payload)

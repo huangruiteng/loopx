@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 from collections.abc import Callable, Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
 
@@ -73,6 +75,7 @@ def _evidence_event(
         "hypothesis_id": hypothesis["hypothesis_id"],
         "todo_id": hypothesis["todo_id"],
         "claimed_by": hypothesis["claimed_by"],
+        "candidate_key": hypothesis["candidate_key"],
         "split": _token(split, default="dev"),
         "metric": metric,
         "baseline": baseline,
@@ -80,6 +83,13 @@ def _evidence_event(
         "exact": exact,
         "protected_scope_clean": clean,
         "status": status,
+        "result_source": _token(result.get("result_source"), default="metric_evaluator"),
+        "strategy": _token(result.get("strategy"), default=hypothesis["candidate_key"]),
+        "artifact_refs": [
+            _token(item, default="artifact")
+            for item in result.get("artifact_refs", [])
+            if str(item).strip()
+        ][:8],
     }
 
 
@@ -183,7 +193,31 @@ def run_lightweight_auto_research(
     }
 
 
-def run_builtin_lightweight_demo(*, goal_id: str = "loopx-auto-research-lite") -> dict[str, Any]:
+def _load_knn_pack_evaluator(pack_dir: Path) -> Any:
+    evaluator_path = pack_dir / "protected_eval.py"
+    spec = importlib.util.spec_from_file_location("loopx_auto_research_knn_eval", evaluator_path)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"cannot load protected evaluator: {evaluator_path.name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not hasattr(module, "evaluate"):
+        raise ValueError("protected evaluator must define evaluate(solution_path, split)")
+    return module
+
+
+def _default_knn_pack_dir() -> Path:
+    return Path(__file__).resolve().parents[3] / "examples" / "auto_research_knn_pack"
+
+
+def run_builtin_lightweight_demo(
+    *,
+    goal_id: str = "loopx-auto-research-lite",
+    pack_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Run the smallest real k-NN auto-research loop over the public pack."""
+
+    pack = Path(pack_dir).expanduser() if pack_dir is not None else _default_knn_pack_dir()
+    evaluator = _load_knn_pack_evaluator(pack)
     candidates = [
         lightweight_hypothesis(
             hypothesis_id="hyp_full_sort",
@@ -201,21 +235,23 @@ def run_builtin_lightweight_demo(*, goal_id: str = "loopx-auto-research-lite") -
         ),
     ]
 
-    metrics = {
-        ("full_sort", "dev"): 1.0,
-        ("partial_selection", "dev"): 4.0,
-        ("partial_selection", "holdout"): 4.5,
-    }
-
     def evaluate(hypothesis: dict[str, Any], split: str) -> Mapping[str, Any]:
-        key = (hypothesis["candidate_key"], split)
+        solution_name = (
+            "solution_baseline.py"
+            if hypothesis["candidate_key"] == "full_sort"
+            else "solution_candidate.py"
+        )
+        result = evaluator.evaluate(pack / solution_name, split)
         return {
-            "metric": metrics.get(key, 1.0),
-            "exact": True,
-            "protected_scope_clean": True,
+            "metric": result["metric"]["value"],
+            "exact": result["exact"],
+            "protected_scope_clean": result["protected_scope_clean"],
+            "strategy": result["strategy"],
+            "artifact_refs": result.get("artifact_refs", []),
+            "result_source": "knn_pack_protected_eval",
         }
 
-    return run_lightweight_auto_research(
+    payload = run_lightweight_auto_research(
         goal_id=goal_id,
         hypotheses=candidates,
         evaluate=evaluate,
@@ -223,3 +259,11 @@ def run_builtin_lightweight_demo(*, goal_id: str = "loopx-auto-research-lite") -
         direction="maximize",
         max_dev_rounds=2,
     )
+    payload["result_source"] = "knn_pack_protected_eval"
+    payload["evaluator"] = {
+        "schema_version": "auto_research_lightweight_evaluator_v0",
+        "kind": "public_knn_pack_protected_eval",
+        "pack": "examples/auto_research_knn_pack",
+        "raw_paths_recorded": False,
+    }
+    return payload
