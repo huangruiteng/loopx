@@ -292,9 +292,11 @@ loopx --format json auto-research demo-supervisor \
 ```
 
 The third segment is optional for compatibility; when omitted, LoopX infers the
-role from the lane name or from the default role order. The v0 default still
-uses the four logical roles from `auto_research_role_state_machine_v0`:
-research curator, hypothesis mapper, evidence runner, and evidence verifier.
+role from the lane name or from the default role order. The v0 default uses
+three registered lanes: research curator, hypothesis mapper, and evidence
+runner. Evidence review is folded into the curator lane until a separately
+registered verifier lane is needed. The explicit `--agent` form remains the
+escape hatch for rehearsing a four-role layout.
 
 When the dry-run packet is acceptable, the same command can launch visible
 local Codex CLI TUIs. This is intentionally opt-in:
@@ -322,6 +324,10 @@ own role profile, then runs `quota should-run`, then renders its own
 only then starts `codex` with that visible bootstrap prompt. The launcher
 itself does not write LoopX state or spend LoopX quota; any writeback must
 happen through the visible Codex lane's normal LoopX todo/evidence commands.
+All lanes share the same LoopX goal surface: registry, runtime root, frontier,
+todo projection, and evidence graph. Workspace isolation is not applied to
+every pane by default; only mutating evidence-runner attempts need a claimed
+git worktree or equivalent execution boundary.
 
 For a tighter user handoff, render the demo acceptance packet. It links the
 experimental board output, the dry-run supervisor plan, and the takeover
@@ -358,9 +364,12 @@ The user should see four concrete things in the packet:
 
 - `mode: dry_run`, plus a boundary block showing `starts_tmux`,
   `runs_codex`, `writes_loopx_state`, and `spends_loopx_quota` are all false;
-- one pane plan per digital worker lane, with that lane's own
+- one pane plan per default digital worker lane, with that lane's own
   `auto_research_role_profile_v0`, `quota should-run`, `auto-research
   frontier`, and `codex-cli-bootstrap-message` commands;
+- a shared goal-surface contract showing that all panes use the same LoopX
+  registry/runtime/frontier/evidence graph, while mutation isolation is reserved
+  for evidence-runner attempts;
 - a `start_script` array that can be copied into the user's shell only after
   the user sets `LOOPX_PROJECT`, `LOOPX_REGISTRY`, and
   `LOOPX_RUNTIME_ROOT`;

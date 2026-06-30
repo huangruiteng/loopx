@@ -54,6 +54,23 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert payload["goal_id"] == GOAL_ID, payload
     assert payload["coordination_model"]["leader_agent_required"] is False, payload
     assert payload["coordination_model"]["supervisor_role"] == "host_shell_layout_only", payload
+    assert "quota_should_run" in payload["coordination_model"]["source_of_truth"], payload
+    surface = payload["goal_surface"]
+    assert surface["schema_version"] == "auto_research_shared_goal_surface_v0", surface
+    assert surface["shared_goal_id"] == GOAL_ID, surface
+    assert surface["lane_count"] == 4, surface
+    assert surface["lane_ids"] == [
+        "research-curator",
+        "hypothesis-mapper",
+        "evidence-runner",
+        "evidence-verifier",
+    ], surface
+    assert surface["uses_default_lanes"] is False, surface
+    assert surface["default_lane_count"] == 3, surface
+    assert surface["shared_frontier"] is True, surface
+    assert surface["all_lane_workspace_isolation"] is False, surface
+    assert "mutating evidence-runner attempts" in surface["mutation_isolation_policy"], surface
+    assert surface["explicit_agent_override"] is True, surface
 
     lanes = payload["lanes"]
     assert [lane["lane_id"] for lane in lanes] == [
@@ -89,6 +106,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "auto-research frontier" in lane["frontier"], lane
         assert "codex-cli-bootstrap-message" in lane["bootstrap_message"], lane
         assert "[LoopX role profile]" in lane["visible_launch_command"], lane
+        assert "[LoopX visible acceptance]" in lane["visible_launch_command"], lane
+        assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in lane["visible_launch_command"], lane
         assert "LOOPX_ROLE_PROFILE_JSON" in lane["visible_launch_command"], lane
         assert "LOOPX_REQUIRED_SKILL" in lane["visible_launch_command"], lane
         assert "bootstrap-or-stop" in lane["visible_launch_command"], lane
@@ -154,6 +173,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert boundary["mutates_codex_session"] is False, payload
     assert boundary["writes_loopx_state"] is False, payload
     assert boundary["spends_loopx_quota"] is False, payload
+    assert boundary["shared_goal_surface"] is True, payload
+    assert boundary["all_lane_workspace_isolation"] is False, payload
+    assert "mutating evidence-runner attempts" in boundary["mutation_isolation_policy"], payload
     assert payload["future_gates"][0]["capability"] == "execute_start_script", payload
     assert_no_private_surface(payload)
 
@@ -188,6 +210,34 @@ def run_cli_json() -> dict[str, Any]:
 
 
 def main() -> int:
+    default_payload = build_auto_research_demo_supervisor_plan(
+        goal_id=GOAL_ID,
+    )
+    assert [lane["agent_id"] for lane in default_payload["lanes"]] == [
+        "codex-product-capability",
+        "codex-side-bypass",
+        "codex-main-control",
+    ], default_payload
+    assert [lane["lane_id"] for lane in default_payload["lanes"]] == [
+        "research-curator",
+        "hypothesis-mapper",
+        "evidence-runner",
+    ], default_payload
+    assert default_payload["goal_surface"]["lane_count"] == 3, default_payload
+    assert default_payload["goal_surface"]["lane_ids"] == [
+        "research-curator",
+        "hypothesis-mapper",
+        "evidence-runner",
+    ], default_payload
+    assert default_payload["goal_surface"]["uses_default_lanes"] is True, default_payload
+    assert default_payload["goal_surface"]["default_lane_count"] == 3, default_payload
+    assert default_payload["goal_surface"]["default_lane_ids"] == [
+        "research-curator",
+        "hypothesis-mapper",
+        "evidence-runner",
+    ], default_payload
+    assert "codex-value-explorer" not in json.dumps(default_payload), default_payload
+
     payload = build_auto_research_demo_supervisor_plan(
         goal_id=GOAL_ID,
         agent_specs=LANES,

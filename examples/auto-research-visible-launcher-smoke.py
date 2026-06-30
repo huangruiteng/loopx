@@ -19,7 +19,6 @@ LANES = [
     "codex-product-capability:research-curator:research_curator",
     "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
     "codex-main-control:evidence-runner:evidence_runner",
-    "codex-value-explorer:evidence-verifier:evidence_verifier",
 ]
 
 
@@ -64,7 +63,7 @@ def main() -> int:
                 [
                     "#!/usr/bin/env python3",
                     "import json, os, sys",
-                    f"LANES = {json.dumps(['frontier', 'research-curator', 'hypothesis-mapper', 'evidence-runner', 'evidence-verifier'])}",
+                    f"LANES = {json.dumps(['frontier', 'research-curator', 'hypothesis-mapper', 'evidence-runner'])}",
                     "with open(os.environ['FAKE_TMUX_LOG'], 'a', encoding='utf-8') as f:",
                     "    f.write(json.dumps(sys.argv[1:]) + '\\n')",
                     "if len(sys.argv) > 1 and sys.argv[1] == 'has-session':",
@@ -73,13 +72,18 @@ def main() -> int:
                     "    print('\\n'.join(LANES))",
                     "    raise SystemExit(0)",
                     "if len(sys.argv) > 1 and sys.argv[1] == 'capture-pane':",
+                    "    print('[LoopX visible acceptance]')",
                     "    print('[LoopX role profile]')",
+                    "    print('role_profile=printed')",
                     "    print('lane_id=' + (sys.argv[sys.argv.index('-pt') + 1].split(':')[-1] if '-pt' in sys.argv else 'unknown'))",
                     "    print('[LoopX quota guard]')",
+                    "    print('quota_guard=printed')",
                     "    print('{\"interaction_contract\":{\"user_channel\":{\"action_required\":false},\"agent_channel\":{\"delivery_allowed\":true}}}')",
                     "    print('[LoopX auto-research frontier]')",
+                    "    print('frontier_or_blocked_reason=printed')",
                     "    print('{\"schema_version\":\"decentralized_research_frontier_v0\"}')",
                     "    print('[bootstrap-or-stop]')",
+                    "    print('bootstrap_or_stop=printed')",
                     "    print('continuing_to_visible_bootstrap')",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
@@ -112,14 +116,6 @@ def main() -> int:
                 GOAL_ID,
                 "--session-name",
                 "loopx-auto-research-smoke",
-                "--agent",
-                LANES[0],
-                "--agent",
-                LANES[1],
-                "--agent",
-                LANES[2],
-                "--agent",
-                LANES[3],
                 "--execute",
                 "--launcher",
                 "tmux",
@@ -143,15 +139,17 @@ def main() -> int:
         assert payload["boundary"]["workspace_mode"] == "explicit_workspace", payload
         assert payload["boundary"]["workspace_write_scope"] == "user_selected_workspace_only", payload
         assert payload["boundary"]["shared_state_route"] == "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT", payload
+        assert payload["boundary"]["shared_goal_surface"] is True, payload
+        assert payload["boundary"]["all_lane_workspace_isolation"] is False, payload
+        assert "mutating evidence-runner attempts" in payload["boundary"]["mutation_isolation_policy"], payload
         launch = payload["launch_result"]
         assert launch["launcher"] == "tmux", launch
-        assert launch["started_lane_count"] == 4, launch
-        assert launch["surviving_lane_count"] == 4, launch
+        assert launch["started_lane_count"] == 3, launch
+        assert launch["surviving_lane_count"] == 3, launch
         assert launch["surviving_lanes"] == [
             "research-curator",
             "hypothesis-mapper",
             "evidence-runner",
-            "evidence-verifier",
         ], launch
         assert launch["attach_command"] == "tmux attach -t loopx-auto-research-smoke", launch
         assert launch["stop_command"] == "tmux kill-session -t loopx-auto-research-smoke", launch
@@ -166,6 +164,8 @@ def main() -> int:
             assert pane["quota_packet_visible"] is True, pane
             assert pane["frontier_or_blocked_reason_visible"] is True, pane
             assert pane["bootstrap_or_stop_visible"] is True, pane
+            assert pane["visible_acceptance_summary"] is True, pane
+            assert "[LoopX visible acceptance]" in pane["markers_present"], pane
         assert workspace.is_dir(), workspace
 
         for lane in payload["lanes"]:
@@ -191,14 +191,19 @@ def main() -> int:
             assert "auto-research frontier" in command, command
             assert "codex-cli-bootstrap-message" in command, command
             assert "bootstrap-or-stop" in command, command
-            assert 'exec codex "$BOOTSTRAP_PROMPT"' in command, command
+            assert "[LoopX visible acceptance]" in command, command
+            assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in command, command
+            assert 'codex "$BOOTSTRAP_PROMPT"' in command, command
+            assert "[Codex CLI exited]" in command, command
+            assert "inspect this pane; interrupt, close, or retry manually" in command, command
+            assert "exec /bin/sh -i" in command, command
 
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert log_entries[0][:1] == ["has-session"], log_entries
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
-        assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 4, log_entries
+        assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 3, log_entries
         assert any(entry[:1] == ["list-windows"] for entry in log_entries), log_entries
-        assert sum(1 for entry in log_entries if entry[:1] == ["capture-pane"]) == 4, log_entries
+        assert sum(1 for entry in log_entries if entry[:1] == ["capture-pane"]) == 3, log_entries
         assert_public_safe(payload)
 
     print("auto-research-visible-launcher-smoke ok")
