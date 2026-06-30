@@ -940,6 +940,7 @@ def _auto_research_codex_bootstrap_prompt(
         [
             "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",
             "Use loopx-project for quota/status, then follow the worker-local loopx-auto-research role playbook for this pane.",
+            "If LOOPX_WORKER_SKILL_PATH is present, read that local playbook path instead of relying on global skill discovery.",
             "This pane is a visible LoopX polling turn: before each new action, rerun the printed quota should-run and auto-research frontier commands, then follow their interaction_contract.",
             "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the printed frontier explicitly asks for it.",
             "If a future scheduled automation owns this lane, it must use a generated LoopX heartbeat/polling prompt; this visible bootstrap is the local manual polling prompt.",
@@ -962,7 +963,7 @@ def _auto_research_codex_bootstrap_prompt(
             "",
             "Live E2E proof contract:",
             "- Work only from the printed auto-research frontier and this role profile.",
-            "- Deterministic replay is not live Codex evidence; do not claim replay metrics as lane-authored results.",
+            "- The lightweight multi-round kernel is not live Codex evidence; do not claim kernel metrics as lane-authored results.",
             "- If you author evidence, use public-safe loopx auto-research evidence and append-evidence commands.",
             "- A controller may later run capture-live-evidence to create live-codex-e2e-evidence.public.json.",
             "- claim_allowed must remain false until that public-safe live evidence file exists and validates.",
@@ -1037,10 +1038,13 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         f"export LOOPX_ROLE_PHASE={_shell_arg(str(role_profile['phase']))}; "
         f"export LOOPX_ROLE_PROFILE_REF={_shell_arg(str(role_profile['schema_version']))}; "
         f"export LOOPX_REQUIRED_SKILL={_shell_arg(str(role_profile['required_skill']))}; "
+        'export LOOPX_WORKER_SKILL_ROOT="$LOOPX_PROJECT/.codex/skills"; '
+        'export LOOPX_WORKER_SKILL_PATH="$LOOPX_WORKER_SKILL_ROOT/$LOOPX_REQUIRED_SKILL/SKILL.md"; '
         f"LOOPX_ROLE_PROFILE_JSON={_shell_arg(profile_json)}; "
         "export LOOPX_ROLE_PROFILE_JSON; "
         "printf '\\n[LoopX role profile]\\n'; "
         "printf '%s\\n' \"$LOOPX_ROLE_PROFILE_JSON\"; "
+        "printf 'worker_skill_path=%s\\n' \"$LOOPX_WORKER_SKILL_PATH\"; "
     )
 
 
@@ -2853,7 +2857,7 @@ def build_auto_research_board_projection(
                 "label": "Rollout held-out context",
                 "value": _metric_display(best_holdout),
                 "baseline": _metric_display(baseline),
-                "interpretation": "Shown as rollout or replay context, not as a live Codex holdout claim.",
+                "interpretation": "Shown as rollout context, not as a live Codex holdout claim.",
                 "source": "evidence_graph.best_holdout_metric",
             },
             {
@@ -3435,7 +3439,16 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
                 lines.append(f"- {item}")
         return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION:
-        replay = payload.get("replay_result") if isinstance(payload.get("replay_result"), dict) else {}
+        protected_eval = (
+            payload.get("protected_eval_result")
+            if isinstance(payload.get("protected_eval_result"), dict)
+            else {}
+        )
+        research_loop = (
+            payload.get("research_loop")
+            if isinstance(payload.get("research_loop"), dict)
+            else {}
+        )
         append = payload.get("append") if isinstance(payload.get("append"), dict) else {}
         board = payload.get("board") if isinstance(payload.get("board"), dict) else {}
         acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), dict) else {}
@@ -3453,7 +3466,7 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             else {}
         )
         lines = [
-            "# LoopX Auto Research Demo Replay",
+            "# LoopX Auto Research Multi-Round Demo",
             "",
             f"- schema: `{payload.get('schema_version')}`",
             f"- mode: `{payload.get('mode')}`",
@@ -3465,12 +3478,20 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- tracking_goal_drives_frontier: `{route.get('tracking_goal_drives_frontier')}`",
             f"- agent_id: `{payload.get('agent_id')}`",
             f"- reasoning_effort: `{payload.get('reasoning_effort')}`",
-            f"- replay_executed: `{replay.get('executed')}`",
-            f"- replay_result_source: `{replay.get('result_source')}`",
-            f"- status: `{replay.get('status')}`",
-            f"- dev_metric: `{replay.get('dev_metric')}`",
-            f"- holdout_metric: `{replay.get('holdout_metric')}`",
-            f"- protected_scope_clean: `{replay.get('protected_scope_clean')}`",
+            f"- research_loop_executed: `{research_loop.get('executed')}`",
+            f"- research_loop_source: `{research_loop.get('result_source')}`",
+            f"- research_loop_decision: `{research_loop.get('decision')}`",
+            f"- research_loop_dev_rounds: `{research_loop.get('dev_round_count')}`",
+            f"- research_loop_evidence_events: `{research_loop.get('evidence_event_count')}`",
+            f"- research_loop_selected_hypothesis: `{research_loop.get('selected_hypothesis_id')}`",
+            f"- research_loop_dev_gain: `{research_loop.get('dev_gain_over_baseline')}`",
+            f"- research_loop_holdout_gain: `{research_loop.get('holdout_gain_over_baseline')}`",
+            f"- protected_eval_executed: `{protected_eval.get('executed')}`",
+            f"- protected_eval_source: `{protected_eval.get('result_source')}`",
+            f"- protected_eval_status: `{protected_eval.get('status')}`",
+            f"- protected_eval_dev_metric: `{protected_eval.get('dev_metric')}`",
+            f"- protected_eval_holdout_metric: `{protected_eval.get('holdout_metric')}`",
+            f"- protected_scope_clean: `{protected_eval.get('protected_scope_clean')}`",
             f"- live_codex_e2e_executed: `{live_codex.get('executed')}`",
             f"- live_codex_e2e_claim_allowed: `{live_codex.get('claim_allowed')}`",
             f"- live_codex_e2e_claim_scope: `{live_codex.get('claim_scope')}`",
@@ -3487,8 +3508,8 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             "",
             "## Commands",
             "",
-            f"- deterministic replay: `{commands.get('deterministic_replay')}`",
-            f"- replay plus visible lanes: `{commands.get('deterministic_replay_with_visible_lanes')}`",
+            f"- multi-round research: `{commands.get('multiround_kernel')}`",
+            f"- multi-round research plus visible lanes: `{commands.get('multiround_kernel_with_visible_lanes')}`",
         ]
         if board_claim_boundary:
             lines.extend(

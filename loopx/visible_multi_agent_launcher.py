@@ -232,6 +232,42 @@ def build_visible_multi_agent_payload(
     }
 
 
+def _materialize_worker_skills(
+    *,
+    payload: dict[str, object],
+    project: Path,
+    source_root: Path,
+) -> list[dict[str, object]]:
+    results: list[dict[str, object]] = []
+    lanes = [item for item in payload.get("lanes", []) if isinstance(item, dict)]
+    for lane in lanes:
+        profile = lane.get("role_profile")
+        if not isinstance(profile, dict):
+            continue
+        skill_name = str(profile.get("required_skill") or "").strip()
+        source_name = str(profile.get("worker_skill_source") or "").strip()
+        if not skill_name or not source_name:
+            continue
+        source = Path(source_name)
+        if not source.is_absolute():
+            source = source_root / source
+        destination = project / ".codex" / "skills" / skill_name / "SKILL.md"
+        item = {
+            "skill": skill_name,
+            "source": source_name,
+            "destination": f".codex/skills/{skill_name}/SKILL.md",
+            "materialized": False,
+        }
+        if source.is_file():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination)
+            item["materialized"] = True
+        else:
+            item["missing_source"] = True
+        results.append(item)
+    return results
+
+
 def execute_visible_multi_agent_launcher(
     *,
     payload: dict[str, object],
@@ -258,6 +294,11 @@ def execute_visible_multi_agent_launcher(
     require_executable(codex_bin, field="codex_bin")
     chosen = resolve_visible_launcher(requested=requested_launcher, tmux_bin=tmux_bin)
     project, workspace_mode = resolve_visible_workspace(workspace, create=create_workspace, cwd=cwd)
+    worker_skills = _materialize_worker_skills(
+        payload=payload,
+        project=project,
+        source_root=cwd,
+    )
     result = _launch_with_tmux(
         payload=payload,
         project=project,
@@ -273,6 +314,7 @@ def execute_visible_multi_agent_launcher(
         frontier_or_blocker_markers=frontier_or_blocker_markers,
         frontier_or_blocker_status_markers=frontier_or_blocker_status_markers,
     )
+    result["worker_skill_materialization"] = worker_skills
     return result, chosen, workspace_mode
 
 
