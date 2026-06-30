@@ -170,6 +170,7 @@ def main() -> int:
 
         for lane in payload["lanes"]:
             profile = lane["role_profile"]
+            assert lane["reasoning_effort"] == "high", lane
             assert profile["schema_version"] == "auto_research_role_profile_v0", profile
             assert profile["role_id"] == lane["role_id"], profile
             assert profile["required_skill"] == "loopx-auto-research", profile
@@ -192,8 +193,9 @@ def main() -> int:
             assert "codex-cli-bootstrap-message" in command, command
             assert "bootstrap-or-stop" in command, command
             assert "[LoopX visible acceptance]" in command, command
+            assert "reasoning_effort=high" in command, command
             assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in command, command
-            assert 'codex "$BOOTSTRAP_PROMPT"' in command, command
+            assert 'codex -c model_reasoning_effort=high "$BOOTSTRAP_PROMPT"' in command, command
             assert "[Codex CLI exited]" in command, command
             assert "inspect this pane; interrupt, close, or retry manually" in command, command
             assert "exec /bin/sh -i" in command, command
