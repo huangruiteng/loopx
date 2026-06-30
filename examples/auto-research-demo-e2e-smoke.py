@@ -188,7 +188,7 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
         expected_actions = {
             "codex-product-capability": "write_research_contract",
             "codex-side-bypass": "propose_hypothesis",
-            "codex-main-control": "claim_attempt",
+            "codex-main-control": "run_dev_eval",
         }
         lane_workspaces = {
             str(lane.get("agent_id")): Path(str(lane.get("workspace"))).resolve()
@@ -303,7 +303,7 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
     assert {item["action_kind"] for item in control["seeded_todos"]} == {
         "write_research_contract",
         "propose_hypothesis",
-        "claim_attempt",
+        "run_dev_eval",
     }, payload
     workspace_route = control["workspace_route"]
     assert workspace_route["shared_goal_surface"] == "demo_local_loopx_registry_and_runtime", payload

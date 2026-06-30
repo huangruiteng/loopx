@@ -165,6 +165,8 @@ def _seed_visible_demo_control_plane(
         profile = lane.get("role_profile") if isinstance(lane.get("role_profile"), dict) else {}
         allowed_actions = profile.get("allowed_actions") if isinstance(profile, dict) else []
         action_kind = str((allowed_actions or ["advance_todo"])[0])
+        if role_id == "evidence_runner":
+            action_kind = "run_dev_eval"
         title_by_action = {
             "write_research_contract": (
                 "Write the public-safe research contract for the quickstart k-NN hypothesis."
@@ -176,7 +178,7 @@ def _seed_visible_demo_control_plane(
                 "Claim one visible attempt boundary for the selected quickstart hypothesis."
             ),
             "run_dev_eval": (
-                "Run the selected quickstart hypothesis on the dev split and write public-safe evidence."
+                "Run the selected quickstart hypothesis on the dev split, write public-safe evidence, append it, and capture live evidence."
             ),
             "write_evaluation_summary": (
                 "Verify the evidence packet and open the next validation or promotion gate."
