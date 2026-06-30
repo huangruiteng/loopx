@@ -6764,6 +6764,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert connected_no_trace_compact is not None
         no_trace_validation = connected_no_trace_compact["validation"]
         assert no_trace_validation["failed_checks"] == [
+            "native_goal_worker_countable_baseline",
             "native_goal_worker_public_trace_missing"
         ], connected_no_trace_compact
         assert no_trace_validation["native_goal_worker_connected"] is True, connected_no_trace_compact
@@ -6845,6 +6846,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert lifecycle_trace_compact is not None
         lifecycle_validation = lifecycle_trace_compact["validation"]
         assert lifecycle_validation["failed_checks"] == [
+            "native_goal_worker_countable_baseline",
             "native_goal_worker_public_trace_missing"
         ], lifecycle_trace_compact
         assert lifecycle_validation["native_goal_worker_trace_observed"] is True, lifecycle_trace_compact
@@ -6857,6 +6859,112 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         lifecycle_counters = lifecycle_trace_compact["interaction_counters"]
         assert lifecycle_counters["native_goal_worker_lifecycle_trace_count"] == 1, lifecycle_trace_compact
         assert lifecycle_counters["native_goal_worker_turn_start_count"] == 0, lifecycle_trace_compact
+
+        worker_failure_trace_dir = root / "native-worker-first-action-timeout"
+        worker_failure_trace_dir.mkdir()
+        write_json(
+            worker_failure_trace_dir / "worker-failure.compact.json",
+            {
+                "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+                "ok": False,
+                "route": "codex-app-server-goal-baseline",
+                "trace_kind": "host_worker_process_failure",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "llm-prefix-cache-replay",
+                "worker_process": {
+                    "schema_version": "skillsbench_host_worker_process_failure_v0",
+                    "stage": "first_action_timeout",
+                    "failure_category": "codex_exec_first_action_timeout",
+                    "returncode": -15,
+                    "stdout_bytes": 0,
+                    "stderr_bytes": 32,
+                    "raw_stdout_recorded": False,
+                    "raw_stderr_recorded": False,
+                    "host_paths_recorded": False,
+                },
+                "worker_contract": {
+                    "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                    "route": "codex-app-server-goal-baseline",
+                    "ready": False,
+                    "runner_integration_ready": True,
+                    "first_blocker": "first_action_timeout",
+                },
+                "turn": {
+                    "thread_id_present": False,
+                    "goal_get_present": False,
+                    "turn_id_present": False,
+                    "turn_completed_observed": False,
+                    "assistant_message_present": False,
+                    "raw_transcript_recorded": False,
+                    "raw_assistant_message_recorded": False,
+                },
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                },
+            },
+        )
+        first_action_timeout_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(worker_failure_trace_dir),
+            },
+            first_action_timeout_trace,
+        )
+        first_action_timeout_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-worker-first-action-timeout-result",
+                    reward=0.0,
+                    task_id="llm-prefix-cache-replay",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=first_action_timeout_trace,
+            )
+        )
+        assert first_action_timeout_compact is not None
+        expected_native_worker_failure = (
+            "skillsbench_native_goal_worker_failed_codex_exec_first_action_timeout"
+        )
+        assert (
+            first_action_timeout_compact["score_failure_attribution"]
+            == expected_native_worker_failure
+        ), first_action_timeout_compact
+        assert first_action_timeout_compact[
+            "official_score_comparable_to_native_codex"
+        ] is False, first_action_timeout_compact
+        assert first_action_timeout_compact[
+            "official_score_comparable_to_loopx_treatment"
+        ] is False, first_action_timeout_compact
+        assert "official_verifier_solution_failure" not in first_action_timeout_compact[
+            "failure_attribution_labels"
+        ], first_action_timeout_compact
+        assert first_action_timeout_compact["runner_failure"][
+            "native_goal_worker"
+        ]["failure_category"] == "codex_exec_first_action_timeout"
+        assert first_action_timeout_compact["validation"][
+            "native_goal_worker_failure_category"
+        ] == "codex_exec_first_action_timeout"
+        assert first_action_timeout_compact["native_goal_worker_contract"][
+            "countable_baseline"
+        ] is False
+        assert first_action_timeout_compact["attempt_accounting"][
+            "failure_class"
+        ] == "job_materialization_failed", first_action_timeout_compact
 
         empty_worker_trace_dir = root / "native-worker-empty-traces"
         empty_worker_trace_dir.mkdir()
@@ -6892,6 +7000,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert empty_trace_compact is not None
         empty_trace_validation = empty_trace_compact["validation"]
         assert empty_trace_validation["failed_checks"] == [
+            "native_goal_worker_countable_baseline",
             "native_goal_worker_public_trace_missing"
         ], empty_trace_compact
         assert empty_trace_validation["native_goal_worker_connected"] is True, empty_trace_compact

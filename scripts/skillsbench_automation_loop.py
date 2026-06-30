@@ -6907,6 +6907,9 @@ def _merge_app_server_goal_worker_trace_summary(
     lifecycle_trace_count = 0
     prompt_received_count = 0
     ok_count = 0
+    failure_trace_count = 0
+    failure_categories: list[str] = []
+    first_blockers: list[str] = []
     goal_get_count = 0
     turn_start_count = 0
     turn_completed_count = 0
@@ -6932,6 +6935,28 @@ def _merge_app_server_goal_worker_trace_summary(
                 prompt_received_count += 1
         if payload.get("ok") is True:
             ok_count += 1
+        worker_contract = (
+            payload.get("worker_contract")
+            if isinstance(payload.get("worker_contract"), dict)
+            else {}
+        )
+        first_blocker = worker_contract.get("first_blocker")
+        if isinstance(first_blocker, str) and first_blocker:
+            safe_blocker = first_blocker[:120]
+            if safe_blocker not in first_blockers:
+                first_blockers.append(safe_blocker)
+        worker_process = (
+            payload.get("worker_process")
+            if isinstance(payload.get("worker_process"), dict)
+            else {}
+        )
+        if payload.get("ok") is not True and worker_process:
+            failure_trace_count += 1
+            category = worker_process.get("failure_category")
+            if isinstance(category, str) and category:
+                safe_category = category[:120]
+                if safe_category not in failure_categories:
+                    failure_categories.append(safe_category)
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
         if turn.get("goal_get_present") is True:
             goal_get_count += 1
@@ -6966,6 +6991,15 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_lifecycle_trace_count"] = lifecycle_trace_count
     trace["native_goal_worker_prompt_received_count"] = prompt_received_count
     trace["native_goal_worker_ok_count"] = ok_count
+    trace["native_goal_worker_failure_trace_count"] = failure_trace_count
+    trace["native_goal_worker_failure_categories"] = failure_categories
+    trace["native_goal_worker_failure_category"] = (
+        failure_categories[0] if failure_categories else ""
+    )
+    trace["native_goal_worker_first_blockers"] = first_blockers
+    trace["native_goal_worker_first_blocker"] = (
+        first_blockers[0] if first_blockers else ""
+    )
     trace["native_goal_worker_goal_get_count"] = goal_get_count
     trace["native_goal_worker_turn_start_count"] = turn_start_count
     trace["native_goal_worker_turn_completed_observed_count"] = turn_completed_count

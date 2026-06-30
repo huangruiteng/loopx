@@ -640,6 +640,8 @@ def _skillsbench_attempt_failure_class(
         ):
             return BenchmarkFailureClass.OFFICIAL_SCORE_FAILED
         return BenchmarkFailureClass.SOLVER_FAILED
+    if score_failure_attribution.startswith("skillsbench_native_goal_worker_"):
+        return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
     if verifier_error_text and reward_value is None:
         return BenchmarkFailureClass.VERIFIER_FAILED
     if reward_value is None and score_failure_attribution != "none":
@@ -2214,6 +2216,27 @@ def _skillsbench_controller_trace_counters(
                 counts[name[:80]] = value
         return dict(sorted(counts.items()))
 
+    def text_value(key: str, *, limit: int = 120) -> str:
+        value = controller_trace.get(key)
+        if not isinstance(value, str):
+            return ""
+        return value[:limit]
+
+    def text_list(key: str, *, limit: int = 120, max_items: int = 12) -> list[str]:
+        raw = controller_trace.get(key)
+        if not isinstance(raw, list):
+            return []
+        items: list[str] = []
+        for value in raw:
+            if not isinstance(value, str) or not value:
+                continue
+            safe = value[:limit]
+            if safe not in items:
+                items.append(safe)
+            if len(items) >= max_items:
+                break
+        return items
+
     def max_direct_or_subcommands(key: str, commands: tuple[str, ...]) -> int:
         direct = count(key)
         derived = sum(subcommand_count(command) for command in commands)
@@ -2429,6 +2452,21 @@ def _skillsbench_controller_trace_counters(
             "native_goal_worker_prompt_received_count"
         ),
         "native_goal_worker_ok_count": count("native_goal_worker_ok_count"),
+        "native_goal_worker_failure_trace_count": count(
+            "native_goal_worker_failure_trace_count"
+        ),
+        "native_goal_worker_failure_category": text_value(
+            "native_goal_worker_failure_category"
+        ),
+        "native_goal_worker_failure_categories": text_list(
+            "native_goal_worker_failure_categories"
+        ),
+        "native_goal_worker_first_blocker": text_value(
+            "native_goal_worker_first_blocker"
+        ),
+        "native_goal_worker_first_blockers": text_list(
+            "native_goal_worker_first_blockers"
+        ),
         "native_goal_worker_goal_get_count": count("native_goal_worker_goal_get_count"),
         "native_goal_worker_turn_start_count": count(
             "native_goal_worker_turn_start_count"
@@ -3073,6 +3111,41 @@ def _skillsbench_native_goal_worker_trace_status(
     return "worker_route_selected_not_connected"
 
 
+def _skillsbench_native_goal_worker_failure_label(
+    counters: dict[str, Any],
+    *,
+    trace_status: str,
+) -> str:
+    if counters.get("native_goal_worker_route") is not True:
+        return ""
+    if trace_status == "public_trace_observed":
+        return ""
+
+    reason = ""
+    for key in (
+        "native_goal_worker_failure_category",
+        "native_goal_worker_first_blocker",
+    ):
+        value = counters.get(key)
+        if isinstance(value, str) and value:
+            reason = value
+            break
+    if not reason:
+        reason = trace_status or "compact_proof_missing"
+    safe_reason = re.sub(r"[^a-zA-Z0-9]+", "_", reason).strip("_").lower()
+    if not safe_reason:
+        safe_reason = "compact_proof_missing"
+    prefix = (
+        "skillsbench_native_goal_worker_failed"
+        if (
+            counters.get("native_goal_worker_failure_trace_count", 0)
+            or counters.get("native_goal_worker_failure_category")
+        )
+        else "skillsbench_native_goal_worker_uncountable"
+    )
+    return f"{prefix}_{safe_reason}"[:160]
+
+
 def _round_reward_trace_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
     numeric_records: list[dict[str, Any]] = []
     for item in records:
@@ -3428,6 +3501,50 @@ def build_skillsbench_benchflow_result_benchmark_run(
     def _trajectory_public_count(name: str) -> int:
         value = trajectory_summary.get(name, 0)
         return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+    native_goal_worker_trace_count = controller_counters.get(
+        "native_goal_worker_trace_count", 0
+    )
+    if not isinstance(native_goal_worker_trace_count, int) or isinstance(
+        native_goal_worker_trace_count, bool
+    ):
+        native_goal_worker_trace_count = 0
+    native_goal_worker_trace_observed = native_goal_worker_trace_count > 0
+    native_goal_worker_trace_status = _skillsbench_native_goal_worker_trace_status(
+        controller_counters
+    )
+    native_goal_worker_failure_label = (
+        _skillsbench_native_goal_worker_failure_label(
+            controller_counters,
+            trace_status=native_goal_worker_trace_status,
+        )
+    )
+    native_goal_worker_countable = not bool(native_goal_worker_failure_label)
+    native_goal_worker_contract = {
+        "schema_version": "skillsbench_native_goal_worker_contract_v0",
+        "required": controller_counters.get("native_goal_worker_route") is True,
+        "countable_baseline": native_goal_worker_countable,
+        "trace_status": native_goal_worker_trace_status,
+        "trace_count": native_goal_worker_trace_count,
+        "ok_count": _controller_public_count("native_goal_worker_ok_count"),
+        "goal_get_count": _controller_public_count("native_goal_worker_goal_get_count"),
+        "turn_start_count": _controller_public_count(
+            "native_goal_worker_turn_start_count"
+        ),
+        "assistant_message_present_count": _controller_public_count(
+            "native_goal_worker_assistant_message_present_count"
+        ),
+        "failure_trace_count": _controller_public_count(
+            "native_goal_worker_failure_trace_count"
+        ),
+        "failure_category": str(
+            controller_counters.get("native_goal_worker_failure_category") or ""
+        )[:120],
+        "first_blocker": str(
+            controller_counters.get("native_goal_worker_first_blocker") or ""
+        )[:120],
+        "failure_label": native_goal_worker_failure_label,
+    }
 
     product_mode_lifecycle_required = _is_skillsbench_loopx_product_mode_treatment_route(
         route
@@ -4054,10 +4171,46 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             if item not in warning_labels:
                 warning_labels.append(item)
+    native_goal_worker_uncountable = bool(
+        native_goal_worker_failure_label and not official_passed
+    )
+    if native_goal_worker_uncountable:
+        exception_type = native_goal_worker_failure_label
+        score_failure_attribution = native_goal_worker_failure_label
+        runner_score_failure_attribution = native_goal_worker_failure_label
+        contract_official_score_comparable_to_native_codex = False
+        contract_official_score_comparable_to_loopx_treatment = False
+        failure_labels = [
+            item
+            for item in failure_labels
+            if item
+            not in {
+                "skillsbench_runner_error",
+                "skillsbench_codex_acp_jsonrpc_internal_error",
+                "skillsbench_codex_acp_transport_error",
+                "skillsbench_controller_budget_not_exercised",
+                "skillsbench_result_error_cut_off_followup_loop",
+                "skillsbench_result_timeout_after_agent_round_no_reward_artifact",
+                "skillsbench_result_error_after_agent_round",
+                "skillsbench_reward_artifact_missing",
+                "verifier_infrastructure_failure",
+                "official_score_zero_case_failure",
+                "official_verifier_solution_failure",
+            }
+        ]
+        for item in (
+            native_goal_worker_failure_label,
+            "skillsbench_native_goal_worker_uncountable_baseline",
+            "skillsbench_app_server_goal_worker_compact_proof_missing",
+            "skillsbench_runner_setup_error",
+        ):
+            if item and item not in failure_labels:
+                failure_labels.append(item)
     if trajectory_summary:
         evidence_files.append("loopx:acp_trajectory_summary")
     runner_failure: dict[str, Any] | None = None
-    if error_text:
+    runner_failure_fingerprint: dict[str, Any] | None = None
+    if error_text or native_goal_worker_uncountable:
         runner_failure = {
             "schema_version": "skillsbench_runner_failure_v0",
             "exception_type": exception_type,
@@ -4111,9 +4264,23 @@ def build_skillsbench_benchflow_result_benchmark_run(
                     )
                 ),
             }
-        runner_failure_fingerprint = skillsbench_runner_error_fingerprint(
-            error_text
-        )
+        if native_goal_worker_uncountable:
+            runner_failure["native_goal_worker"] = {
+                "schema_version": "skillsbench_native_goal_worker_failure_v0",
+                "trace_status": native_goal_worker_trace_status,
+                "failure_label": native_goal_worker_failure_label,
+                "failure_category": native_goal_worker_contract.get(
+                    "failure_category", ""
+                ),
+                "first_blocker": native_goal_worker_contract.get("first_blocker", ""),
+                "trace_count": native_goal_worker_trace_count,
+                "raw_transcript_recorded": False,
+                "raw_assistant_message_recorded": False,
+            }
+        if error_text:
+            runner_failure_fingerprint = skillsbench_runner_error_fingerprint(
+                error_text
+            )
     round_reward_records = controller_counters.get("round_rewards")
     if not isinstance(round_reward_records, list):
         round_reward_records = []
@@ -4309,17 +4476,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         failure_labels = []
         runner_failure = None
 
-    native_goal_worker_trace_count = controller_counters.get(
-        "native_goal_worker_trace_count", 0
-    )
-    if not isinstance(native_goal_worker_trace_count, int) or isinstance(
-        native_goal_worker_trace_count, bool
-    ):
-        native_goal_worker_trace_count = 0
-    native_goal_worker_trace_observed = native_goal_worker_trace_count > 0
-    native_goal_worker_trace_status = _skillsbench_native_goal_worker_trace_status(
-        controller_counters
-    )
     setup_blocked = _skillsbench_attempt_setup_blocked(failure_labels)
     attempt_accounting = build_benchmark_attempt_accounting(
         lifecycle=_skillsbench_attempt_lifecycle(
@@ -4842,6 +4998,15 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "native_goal_worker_ok_count": controller_counters.get(
                 "native_goal_worker_ok_count", 0
             ),
+            "native_goal_worker_failure_trace_count": controller_counters.get(
+                "native_goal_worker_failure_trace_count", 0
+            ),
+            "native_goal_worker_failure_category": controller_counters.get(
+                "native_goal_worker_failure_category", ""
+            ),
+            "native_goal_worker_first_blocker": controller_counters.get(
+                "native_goal_worker_first_blocker", ""
+            ),
             "native_goal_worker_goal_get_count": controller_counters.get(
                 "native_goal_worker_goal_get_count", 0
             ),
@@ -5098,6 +5263,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "does_not_upload_or_submit": True,
         },
         "product_mode_lifecycle_contract": product_mode_lifecycle_contract,
+        "native_goal_worker_contract": native_goal_worker_contract,
         "trials": [
             {
                 "task_id": task_id,
@@ -5149,6 +5315,13 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 "native_goal_worker_prompt_received_count", 0
             ),
             "native_goal_worker_trace_status": native_goal_worker_trace_status,
+            "native_goal_worker_countable_baseline": native_goal_worker_countable,
+            "native_goal_worker_failure_category": native_goal_worker_contract.get(
+                "failure_category", ""
+            ),
+            "native_goal_worker_first_blocker": native_goal_worker_contract.get(
+                "first_blocker", ""
+            ),
             "remote_command_file_bridge_consumed_by_solver": (
                 controller_counters.get(
                     "remote_command_file_bridge_consumed_by_solver", False
@@ -5206,6 +5379,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "official_score_comparable_to_native_codex": contract_official_score_comparable_to_native_codex,
             "official_score_comparable_to_loopx_treatment": contract_official_score_comparable_to_loopx_treatment,
             "product_mode_lifecycle": product_mode_lifecycle_contract,
+            "native_goal_worker": native_goal_worker_contract,
             "leaderboard_evidence": False,
         },
         "evidence_files": evidence_files,
@@ -5276,7 +5450,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
         benchmark_run["result_discovery"] = dict(result_discovery)
     if runner_failure is not None:
         benchmark_run["runner_failure"] = runner_failure
-        benchmark_run["runner_failure_fingerprint"] = runner_failure_fingerprint
+        if runner_failure_fingerprint is not None:
+            benchmark_run["runner_failure_fingerprint"] = runner_failure_fingerprint
     if partial_trajectory and not host_local_acp_codex_exec_failure_present:
         benchmark_run["failure_attribution_labels"].append("partial_trajectory")
     return benchmark_run

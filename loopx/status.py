@@ -1799,6 +1799,40 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
     return compact
 
 
+def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
+    if schema:
+        compact["schema_version"] = schema
+    for field in ("required", "countable_baseline"):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "trace_count",
+        "ok_count",
+        "goal_get_count",
+        "turn_start_count",
+        "assistant_message_present_count",
+        "failure_trace_count",
+    ):
+        field_value = value.get(field)
+        if isinstance(field_value, int) and not isinstance(field_value, bool):
+            compact[field] = field_value
+    for field in (
+        "trace_status",
+        "failure_category",
+        "first_blocker",
+        "failure_label",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    return compact
+
+
 def _normalize_product_mode_lifecycle_contract(contract: dict[str, Any]) -> None:
     """Repair old compact records whose bridge closeout evidence was copied late."""
 
@@ -3892,6 +3926,36 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
                     compact_recovery[field] = user_loop_recovery[field]
             if compact_recovery:
                 compact_runner_failure["user_loop_recovery"] = compact_recovery
+        native_goal_worker = runner_failure.get("native_goal_worker")
+        if isinstance(native_goal_worker, dict):
+            compact_native_worker: dict[str, Any] = {}
+            for field in (
+                "schema_version",
+                "trace_status",
+                "failure_label",
+                "failure_category",
+                "first_blocker",
+            ):
+                value = public_safe_compact_text(
+                    native_goal_worker.get(field),
+                    limit=140,
+                )
+                if value:
+                    compact_native_worker[field] = value
+            for field in (
+                "trace_count",
+            ):
+                value = native_goal_worker.get(field)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    compact_native_worker[field] = value
+            for field in (
+                "raw_transcript_recorded",
+                "raw_assistant_message_recorded",
+            ):
+                if isinstance(native_goal_worker.get(field), bool):
+                    compact_native_worker[field] = native_goal_worker[field]
+            if compact_native_worker:
+                compact_runner_failure["native_goal_worker"] = compact_native_worker
         if compact_runner_failure:
             compact["runner_failure"] = compact_runner_failure
 
@@ -3993,6 +4057,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if product_mode_lifecycle_contract:
         compact["product_mode_lifecycle_contract"] = product_mode_lifecycle_contract
         _repair_product_mode_lifecycle_missing_attribution(compact)
+
+    native_goal_worker_contract = _compact_native_goal_worker_contract(
+        source.get("native_goal_worker_contract")
+    )
+    if native_goal_worker_contract:
+        compact["native_goal_worker_contract"] = native_goal_worker_contract
 
     case_event_timeline = _compact_benchmark_case_event_timeline(
         source.get("case_event_timeline")
@@ -4100,6 +4170,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "case_success_claim_kind",
             "official_verifier_status",
             "native_goal_worker_trace_status",
+            "native_goal_worker_failure_category",
+            "native_goal_worker_first_blocker",
         ):
             text = public_safe_compact_text(validation.get(field), limit=140)
             if text:
@@ -4190,6 +4262,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "native_goal_worker_trace_dir_present",
             "native_goal_worker_public_trace_read",
             "native_goal_worker_trace_observed",
+            "native_goal_worker_countable_baseline",
             "runner_failure_compact_recorded",
             "no_raw_logs_read",
             "no_raw_task_text_read",
