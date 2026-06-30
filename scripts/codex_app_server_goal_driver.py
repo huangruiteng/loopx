@@ -93,12 +93,6 @@ def _wait_for_response(
             raise CodexAppServerGoalDriverError("codex app-server exited before response")
         if isinstance(msg, Exception):
             raise CodexAppServerGoalDriverError(str(msg))
-        method = msg.get("method")
-        if method:
-            notifications.append(str(method))
-            if side_events is not None:
-                side_events.append(msg)
-            continue
         if msg.get("id") == request_id:
             if msg.get("error"):
                 raise CodexAppServerGoalDriverError(
@@ -106,6 +100,12 @@ def _wait_for_response(
                 )
             result = msg.get("result")
             return result if isinstance(result, dict) else {}
+        event_name = _message_event_name(msg)
+        if event_name:
+            notifications.append(event_name)
+            if side_events is not None:
+                side_events.append(msg)
+            continue
     raise CodexAppServerGoalDriverError(
         f"timed out waiting for app-server response id={request_id}"
     )
@@ -150,17 +150,39 @@ def _notification_thread_id(params: dict[str, Any]) -> str:
     return str(params.get("threadId") or "")
 
 
+def _message_event_name(msg: dict[str, Any]) -> str:
+    method = str(msg.get("method") or "")
+    if method:
+        return method
+    msg_type = str(msg.get("type") or "")
+    payload = msg.get("payload") if isinstance(msg.get("payload"), dict) else {}
+    payload_type = str(
+        payload.get("type") or payload.get("event") or payload.get("kind") or ""
+    )
+    if msg_type and payload_type:
+        return f"{msg_type}:{payload_type}"
+    return msg_type
+
+
+def _message_event_payload(msg: dict[str, Any]) -> dict[str, Any]:
+    params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+    if params:
+        return params
+    payload = msg.get("payload") if isinstance(msg.get("payload"), dict) else {}
+    return payload
+
+
 def _event_stream_turn_id(messages: list[dict[str, Any]]) -> str:
     for preferred_method in ("turn/started", "item/started", "item/agentMessage/delta"):
         for msg in messages:
-            if msg.get("method") != preferred_method:
+            if _message_event_name(msg) != preferred_method:
                 continue
-            params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+            params = _message_event_payload(msg)
             turn_id = _notification_turn_id(params)
             if turn_id:
                 return turn_id
     for msg in messages:
-        params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+        params = _message_event_payload(msg)
         turn_id = _notification_turn_id(params)
         if turn_id:
             return turn_id
@@ -190,6 +212,17 @@ def _item_text(item: Any) -> str:
     return ""
 
 
+def _event_payload_text(payload: dict[str, Any]) -> str:
+    text = _item_text(payload)
+    if text:
+        return text
+    for key in ("text", "message", "content"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
 def _record_turn_event(
     turn: CodexAppServerGoalTurn,
     msg: dict[str, Any] | Exception,
@@ -209,10 +242,11 @@ def _record_turn_event(
         turn.notifications.append("stream/error")
         return False
     method = str(msg.get("method") or "")
-    if method:
-        turn.notifications.append(method)
-    params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
-    if not method:
+    event_name = _message_event_name(msg)
+    if event_name:
+        turn.notifications.append(event_name)
+    params = _message_event_payload(msg)
+    if not event_name:
         return False
     msg_turn_id = _notification_turn_id(params)
     msg_thread_id = _notification_thread_id(params)
@@ -225,6 +259,32 @@ def _record_turn_event(
         if isinstance(delta, str) and delta:
             turn._assistant_message_parts.append(delta)
             turn.agent_message_delta_count += 1
+        return False
+    if event_name == "event_msg:agent_message":
+        item_text = _event_payload_text(params)
+        if item_text:
+            turn._assistant_message_parts.append(item_text)
+        turn.agent_message_item_count += 1
+        turn.non_user_item_completed_count += 1
+        return False
+    if event_name == "response_item:message":
+        role = str(params.get("role") or "")
+        item_text = _event_payload_text(params)
+        if role == "user":
+            turn.user_message_item_count += 1
+            return False
+        if item_text:
+            turn._assistant_message_parts.append(item_text)
+        turn.agent_message_item_count += 1
+        turn.non_user_item_completed_count += 1
+        return False
+    if event_name in {"response_item:function_call", "response_item:function_call_output"}:
+        turn.non_user_item_completed_count += 1
+        return False
+    if event_name == "response_item:reasoning":
+        return False
+    if event_name == "event_msg:task_started":
+        turn.turn_status = "inProgress"
         return False
     if method == "turn/started":
         turn.turn_status = _extract_turn_status(params) or turn.turn_status
@@ -246,6 +306,15 @@ def _record_turn_event(
     if method == "turn/completed":
         turn.turn_completed_observed = True
         turn.turn_status = _extract_turn_status(params) or turn.turn_status
+        turn.assistant_message = "".join(turn._assistant_message_parts)
+        return True
+    if event_name in {
+        "event_msg:task_complete",
+        "event_msg:task_completed",
+        "event_msg:turn_completed",
+    }:
+        turn.turn_completed_observed = True
+        turn.turn_status = _extract_turn_status(params) or "completed"
         turn.assistant_message = "".join(turn._assistant_message_parts)
         return True
     if method == "error":

@@ -40,6 +40,39 @@ for line in sys.stdin:
             }), flush=True)
             continue
         prompt_text = msg.get("params", {}).get("input", [{}])[0].get("text", "")
+        if "event-style completion" in prompt_text:
+            result = {"turn": {"id": "turn-event-msg-smoke", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "call_id": "call-event-style-smoke",
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call_output",
+                    "call_id": "call-event-style-smoke",
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Event style final answer."}
+                    ],
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            }), flush=True)
+            continue
         print(json.dumps({
             "method": "turn/started",
             "params": {
@@ -176,6 +209,33 @@ def main() -> int:
             assert "Synthetic final answer." not in json.dumps(compact), compact
         finally:
             completed_turn.terminate()
+
+        event_completed_turn = module.start_codex_app_server_goal_turn(
+            codex_bin=str(fake),
+            work_dir=root / "work-event-completed",
+            objective="Synthetic objective.",
+            prompt="Synthetic event-style completion prompt.",
+            model_name="gpt-5.5",
+            reasoning_effort="high",
+            response_timeout_sec=5,
+            wait_for_completion=True,
+            turn_timeout_sec=5,
+        )
+        try:
+            compact = module.compact_turn_metadata(event_completed_turn)
+            assert compact["turn_id_present"] is True, compact
+            assert compact["turn_completed_observed"] is True, compact
+            assert compact["turn_status"] == "completed", compact
+            assert compact["assistant_message_present"] is True, compact
+            assert compact["assistant_message_chars"] == len(
+                "Event style final answer."
+            )
+            assert compact["non_user_item_completed_count"] >= 3, compact
+            assert "event_msg:task_complete" in compact["notifications"], compact
+            assert "response_item:function_call" in compact["notifications"], compact
+            assert "Event style final answer." not in json.dumps(compact), compact
+        finally:
+            event_completed_turn.terminate()
 
     print("codex app-server goal driver smoke passed")
     return 0
