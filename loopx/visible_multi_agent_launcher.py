@@ -165,7 +165,7 @@ def build_visible_lane_command(
         'sleep "${LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS:-1}"; '
         "printf '\\n[Starting visible Codex exec]\\n'; "
         f"{_q(codex_bin)} exec -c model_reasoning_effort={_q(reasoning_effort)} "
-        '--cd "$LOOPX_PROJECT" --sandbox danger-full-access "$BOOTSTRAP_PROMPT"; '
+        '--cd "$LOOPX_PROJECT" --skip-git-repo-check --sandbox danger-full-access "$BOOTSTRAP_PROMPT"; '
         "CODEX_STATUS=$?; "
         "printf '\\n[Codex CLI exited]\\nexit=%s\\n' \"$CODEX_STATUS\"; "
         f"{keep_visible}"
