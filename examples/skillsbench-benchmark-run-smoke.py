@@ -10038,6 +10038,11 @@ def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
     )
     child_argv = skillsbench_loop._batch_case_args_to_cli(case_args)
     assert "--task-ids" not in child_argv, child_argv
+    assert "--apt-risk-fail-fast-defaulted" not in child_argv, child_argv
+    assert "--bootstrap-light-fail-fast-defaulted" not in child_argv, child_argv
+    assert "--verifier-bootstrap-fail-fast-defaulted" not in child_argv, child_argv
+    assert "--fail-fast-on-apt-risk" not in child_argv, child_argv
+    assert "--fail-fast-on-verifier-bootstrap-risk" not in child_argv, child_argv
     assert child_argv[child_argv.index("--task-id") + 1] == (
         "adaptive-cruise-control"
     ), child_argv
@@ -10051,6 +10056,51 @@ def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
     assert "--host-local-acp-launch" in child_argv, child_argv
     assert "--remote-command-file-bridge-ready" in child_argv, child_argv
     assert "--append-history" in child_argv, child_argv
+    reparsed_child = parse_args(child_argv)
+    assert reparsed_child.task_id == "adaptive-cruise-control", reparsed_child
+    assert reparsed_child.task_ids is None, reparsed_child
+    assert reparsed_child.parallel_cases == 1, reparsed_child
+    assert reparsed_child.bootstrap_light_fail_fast_defaulted is True, reparsed_child
+
+
+def test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr() -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "suricata-custom-exfil",
+            "--route",
+            "codex-app-server-goal-baseline",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+        ]
+    )
+    payload = {
+        "ok": False,
+        "task_id": "suricata-custom-exfil",
+        "route": "codex-app-server-goal-baseline",
+        "score_failure_attribution": "skillsbench_verifier_bootstrap_risk_preflight_blocked",
+        "compact_closeout_recorded": True,
+    }
+    recovered = skillsbench_loop._extract_batch_case_subprocess_payload(
+        case_args=args,
+        returncode=2,
+        stdout=b"",
+        stderr=(
+            "usage warning that must not become the payload\n"
+            + json.dumps(payload, sort_keys=True)
+            + "\n"
+        ).encode("utf-8"),
+    )
+    assert recovered["task_id"] == "suricata-custom-exfil", recovered
+    assert recovered["score_failure_attribution"] == (
+        "skillsbench_verifier_bootstrap_risk_preflight_blocked"
+    ), recovered
+    assert recovered["compact_closeout_recorded"] is True, recovered
+    assert recovered["batch_case_subprocess_payload_source"] == "stderr", recovered
+    assert recovered["batch_case_subprocess_payload_mixed_output"] is True, recovered
+    assert recovered["runner_returncode"] == 2, recovered
+    assert recovered.get("raw_stdout_recorded") is not True, recovered
+    assert recovered.get("raw_stderr_recorded") is not True, recovered
 
 
 def test_skillsbench_compact_runs_update_ledger_pair() -> None:
@@ -12943,6 +12993,8 @@ if __name__ == "__main__":
     test_cli_dry_run_skillsbench_official_result()
     test_cli_skillsbench_result_root_discovers_nested_case_result_for_ledger()
     test_skillsbench_runner_plan_supports_controller_trace_path()
+    test_skillsbench_parallel_batch_isolates_case_process_argv()
+    test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr()
     test_skillsbench_compact_runs_update_ledger_pair()
     test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()
     test_skillsbench_runner_failure_compact_closeout()

@@ -13050,6 +13050,18 @@ def _batch_case_args_to_cli(case_args: argparse.Namespace) -> list[str]:
     for key, value in sorted(vars(case_args).items()):
         if key == "task_ids":
             continue
+        if key in BATCH_CASE_INTERNAL_ARG_KEYS:
+            continue
+        if (
+            key == "fail_fast_on_apt_risk"
+            and getattr(case_args, "apt_risk_fail_fast_defaulted", False)
+        ):
+            continue
+        if (
+            key == "fail_fast_on_verifier_bootstrap_risk"
+            and getattr(case_args, "verifier_bootstrap_fail_fast_defaulted", False)
+        ):
+            continue
         option = "--" + key.replace("_", "-")
         if key == "parallel_cases":
             value = 1
@@ -13067,6 +13079,39 @@ def _parallel_batch_requires_subprocess_isolation(parallel_cases: int) -> bool:
     return parallel_cases > 1
 
 
+BATCH_CASE_INTERNAL_ARG_KEYS = frozenset(
+    {
+        "apt_risk_fail_fast_defaulted",
+        "bootstrap_light_fail_fast_defaulted",
+        "verifier_bootstrap_fail_fast_defaulted",
+    }
+)
+
+
+def _load_json_object_from_mixed_text(text: str) -> tuple[dict[str, Any], bool]:
+    stripped = text.strip()
+    if not stripped:
+        raise ValueError("empty child payload")
+    try:
+        payload = json.loads(stripped)
+        if isinstance(payload, dict):
+            return payload, False
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(stripped):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(stripped[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload, True
+    raise ValueError("child payload did not contain a JSON object")
+
+
 def _extract_batch_case_subprocess_payload(
     *,
     case_args: argparse.Namespace,
@@ -13074,13 +13119,36 @@ def _extract_batch_case_subprocess_payload(
     stdout: bytes,
     stderr: bytes,
 ) -> dict[str, Any]:
-    text = stdout.decode("utf-8", errors="replace").strip()
-    if not text:
-        text = stderr.decode("utf-8", errors="replace").strip()
+    streams = [
+        ("stdout", stdout.decode("utf-8", errors="replace")),
+        ("stderr", stderr.decode("utf-8", errors="replace")),
+    ]
+    if stdout and stderr:
+        streams.append(
+            (
+                "combined",
+                (
+                    stdout.decode("utf-8", errors="replace")
+                    + "\n"
+                    + stderr.decode("utf-8", errors="replace")
+                ),
+            )
+        )
+    last_exc: Exception | None = None
     try:
-        payload = json.loads(text)
-        if not isinstance(payload, dict):
-            raise ValueError("child payload was not a JSON object")
+        payload: dict[str, Any] | None = None
+        mixed_output = False
+        payload_source = ""
+        for payload_source, text in streams:
+            try:
+                payload, mixed_output = _load_json_object_from_mixed_text(text)
+                break
+            except Exception as exc:
+                last_exc = exc
+        if payload is None:
+            raise last_exc or ValueError("child payload missing")
+        payload["batch_case_subprocess_payload_source"] = payload_source
+        payload["batch_case_subprocess_payload_mixed_output"] = mixed_output
     except Exception as exc:
         payload = {
             "ok": False,
@@ -13089,6 +13157,9 @@ def _extract_batch_case_subprocess_payload(
             "route": str(case_args.route),
             "error_type": "SkillsBenchBatchCaseSubprocessPayloadError",
             "error_class": type(exc).__name__,
+            "payload_error_class": (
+                type(last_exc).__name__ if last_exc is not None else type(exc).__name__
+            ),
             "child_returncode": int(returncode),
             "child_stdout_bytes": len(stdout),
             "child_stderr_bytes": len(stderr),
