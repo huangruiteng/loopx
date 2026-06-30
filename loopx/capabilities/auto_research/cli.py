@@ -684,13 +684,17 @@ def handle_auto_research_command(
                     dry_run=False,
                 )
 
-            visible_launcher: Callable[[dict[str, object]], dict[str, object]] | None = None
+            visible_launcher: Callable[[dict[str, object], Path, str | None], dict[str, object]] | None = None
             if args.launch_visible:
-                def visible_launcher(supervisor: dict[str, object]) -> dict[str, object]:
+                def visible_launcher(
+                    supervisor: dict[str, object],
+                    visible_registry_path: Path,
+                    visible_runtime_root_arg: str | None,
+                ) -> dict[str, object]:
                     return _execute_auto_research_demo_supervisor(
                         supervisor,
-                        registry_path=registry_path,
-                        runtime_root_arg=runtime_root_arg,
+                        registry_path=visible_registry_path,
+                        runtime_root_arg=visible_runtime_root_arg,
                         launcher=args.launcher,
                         tmux_bin=args.tmux_bin,
                         cli_bin=args.cli_bin,
