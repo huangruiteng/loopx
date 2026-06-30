@@ -111,6 +111,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "codex-cli-bootstrap-message" not in lane["bootstrap_message"], lane
         assert "[LoopX role profile]" in lane["visible_launch_command"], lane
         assert "[LoopX visible acceptance]" in lane["visible_launch_command"], lane
+        assert "LOOPX_GOAL_ID" in lane["visible_launch_command"], lane
         assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in lane["visible_launch_command"], lane
         assert "LOOPX_ROLE_PROFILE_JSON" in lane["visible_launch_command"], lane
         assert "LOOPX_REQUIRED_SKILL" in lane["visible_launch_command"], lane

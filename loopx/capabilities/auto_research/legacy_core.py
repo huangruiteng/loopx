@@ -1033,6 +1033,7 @@ def _role_profile_for_lane(*, goal_id: str, lane: dict[str, str]) -> dict[str, A
 def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
     profile_json = json.dumps(role_profile, sort_keys=True, separators=(",", ":"))
     return (
+        f"export LOOPX_GOAL_ID={_shell_arg(str(role_profile['goal_id']))}; "
         f"export LOOPX_AGENT_ID={_shell_arg(str(role_profile['agent_id']))}; "
         f"export LOOPX_ROLE_ID={_shell_arg(str(role_profile['role_id']))}; "
         f"export LOOPX_ROLE_PHASE={_shell_arg(str(role_profile['phase']))}; "
