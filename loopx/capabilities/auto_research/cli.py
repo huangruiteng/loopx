@@ -28,6 +28,7 @@ from . import (
     load_auto_research_fixture,
     render_auto_research_markdown,
 )
+from .demo_e2e import run_auto_research_demo_e2e
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
@@ -169,6 +170,11 @@ def register_auto_research_commands(
     acceptance_parser.add_argument("--cli-bin", default="loopx", help="LoopX CLI executable name.")
     acceptance_parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable name.")
     acceptance_parser.add_argument("--tmux-bin", default="tmux", help="tmux executable name.")
+    acceptance_parser.add_argument(
+        "--reasoning-effort",
+        default="high",
+        help="Reasoning effort passed to visible Codex lanes in the demo supervisor packet.",
+    )
 
     evidence_parser = auto_research_sub.add_parser(
         "evidence",
@@ -234,6 +240,11 @@ def register_auto_research_commands(
     demo_supervisor_parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable name.")
     demo_supervisor_parser.add_argument("--tmux-bin", default="tmux", help="tmux executable name.")
     demo_supervisor_parser.add_argument(
+        "--reasoning-effort",
+        default="high",
+        help="Reasoning effort passed to visible Codex lanes through model_reasoning_effort.",
+    )
+    demo_supervisor_parser.add_argument(
         "--execute",
         action="store_true",
         help=(
@@ -266,6 +277,81 @@ def register_auto_research_commands(
         ),
     )
     demo_supervisor_parser.add_argument(
+        "--create-workspace",
+        action="store_true",
+        help="Create --workspace when it does not already exist.",
+    )
+
+    demo_e2e_parser = auto_research_sub.add_parser(
+        "demo-e2e",
+        help="Run or preview the one-command k-NN positive demo path and report board/acceptance.",
+    )
+    add_subcommand_format(demo_e2e_parser)
+    demo_e2e_parser.add_argument("--agent-id", required=True)
+    demo_e2e_parser.add_argument(
+        "--goal-id",
+        default=AUTO_RESEARCH_DEFAULT_GOAL_ID,
+        help="Research goal id for the positive demo evidence.",
+    )
+    demo_e2e_parser.add_argument(
+        "--objective",
+        default=AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+        help="Compact public-safe research objective for the generated contract.",
+    )
+    demo_e2e_parser.add_argument(
+        "--output-dir",
+        default="auto_research_knn_pack",
+        help="Relative output directory inside the temporary demo workspace.",
+    )
+    demo_e2e_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Run protected evals and append public rollout evidence. Omit for a read-only one-command preview.",
+    )
+    demo_e2e_parser.add_argument(
+        "--launch-visible",
+        action="store_true",
+        help="With --execute, also launch the visible multi-lane supervisor.",
+    )
+    demo_e2e_parser.add_argument(
+        "--keep-workspace",
+        action="store_true",
+        help="Keep the temporary demo workspace after execution. The output payload still redacts its absolute path.",
+    )
+    demo_e2e_parser.add_argument(
+        "--session-name",
+        default="loopx-auto-research",
+        help="Public-safe tmux session name when --launch-visible is set.",
+    )
+    demo_e2e_parser.add_argument("--cli-bin", default="loopx", help="LoopX CLI executable name.")
+    demo_e2e_parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable name.")
+    demo_e2e_parser.add_argument("--tmux-bin", default="tmux", help="tmux executable name.")
+    demo_e2e_parser.add_argument(
+        "--reasoning-effort",
+        default="high",
+        help="Reasoning effort passed to visible Codex lanes through model_reasoning_effort.",
+    )
+    demo_e2e_parser.add_argument(
+        "--launcher",
+        choices=["auto", "tmux", "terminal"],
+        default="auto",
+        help="Visible process launcher for --launch-visible.",
+    )
+    demo_e2e_parser.add_argument(
+        "--attach",
+        action="store_true",
+        help="After --launch-visible with tmux, attach to the session.",
+    )
+    demo_e2e_parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help="With tmux launcher, kill an existing session with the same name before launching.",
+    )
+    demo_e2e_parser.add_argument(
+        "--workspace",
+        help="Directory where visible Codex lanes should start when --launch-visible is set.",
+    )
+    demo_e2e_parser.add_argument(
         "--create-workspace",
         action="store_true",
         help="Create --workspace when it does not already exist.",
@@ -824,6 +910,7 @@ def handle_auto_research_command(
                     cli_bin=args.cli_bin,
                     codex_bin=args.codex_bin,
                     tmux_bin=args.tmux_bin,
+                    reasoning_effort=args.reasoning_effort,
                 )
                 payload = build_auto_research_demo_acceptance_packet(payload, supervisor)
         elif args.auto_research_command == "evidence":
@@ -857,6 +944,7 @@ def handle_auto_research_command(
                 cli_bin=args.cli_bin,
                 codex_bin=args.codex_bin,
                 tmux_bin=args.tmux_bin,
+                reasoning_effort=args.reasoning_effort,
             )
             if args.execute:
                 payload = _execute_auto_research_demo_supervisor(
@@ -872,10 +960,54 @@ def handle_auto_research_command(
                     workspace=args.workspace,
                     create_workspace=args.create_workspace,
                 )
+        elif args.auto_research_command == "demo-e2e":
+            def append_demo_e2e_evidence(packet_path: str) -> dict[str, object]:
+                return _append_auto_research_rollout_events(
+                    packet_path=packet_path,
+                    registry_path=registry_path,
+                    runtime_root_arg=runtime_root_arg,
+                    dry_run=False,
+                )
+
+            visible_launcher: Callable[[dict[str, object]], dict[str, object]] | None = None
+            if args.launch_visible:
+                def visible_launcher(supervisor: dict[str, object]) -> dict[str, object]:
+                    return _execute_auto_research_demo_supervisor(
+                        supervisor,
+                        registry_path=registry_path,
+                        runtime_root_arg=runtime_root_arg,
+                        launcher=args.launcher,
+                        tmux_bin=args.tmux_bin,
+                        cli_bin=args.cli_bin,
+                        codex_bin=args.codex_bin,
+                        attach=args.attach,
+                        replace_existing=args.replace_existing,
+                        workspace=args.workspace,
+                        create_workspace=args.create_workspace,
+                    )
+
+            payload = run_auto_research_demo_e2e(
+                agent_id=args.agent_id,
+                goal_id=args.goal_id,
+                objective=args.objective,
+                output_dir=args.output_dir,
+                execute=args.execute,
+                launch_visible=args.launch_visible,
+                keep_workspace=args.keep_workspace,
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root_arg,
+                session_name=args.session_name,
+                cli_bin=args.cli_bin,
+                codex_bin=args.codex_bin,
+                tmux_bin=args.tmux_bin,
+                reasoning_effort=args.reasoning_effort,
+                append_evidence=append_demo_e2e_evidence,
+                visible_launcher=visible_launcher,
+            )
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
-                "`board`, `acceptance`, `append-evidence`, or `demo-supervisor` subcommand"
+                "`board`, `acceptance`, `append-evidence`, `demo-supervisor`, or `demo-e2e` subcommand"
             )
     except Exception as exc:
         payload = {

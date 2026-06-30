@@ -25,6 +25,7 @@ AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = "auto_research_rollout_append_v0"
 AUTO_RESEARCH_QUICKSTART_SCHEMA_VERSION = "auto_research_quickstart_v0"
 AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_plan_v0"
 AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION = "auto_research_demo_acceptance_packet_v0"
+AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION = "auto_research_demo_e2e_result_v0"
 AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION = "auto_research_role_profile_v0"
 AUTO_RESEARCH_DEFAULT_GOAL_ID = "loopx-auto-research-knn"
 AUTO_RESEARCH_DEFAULT_OBJECTIVE = "Improve exact k-nearest-neighbor inference under a protected evaluator."
@@ -983,6 +984,7 @@ def _env_lane_launch_command(
     frontier_command: str,
     bootstrap_command: str,
     codex_bin: str,
+    reasoning_effort: str,
     role_profile: dict[str, Any],
 ) -> str:
     role_profile_prefix = _role_profile_shell_prefix(role_profile)
@@ -992,7 +994,8 @@ def _env_lane_launch_command(
         'printf "quota_guard=printed\\n"; '
         'printf "frontier_or_blocked_reason=printed\\n"; '
         'printf "bootstrap_or_stop=printed\\n"; '
-        'printf "takeover_controls=visible\\n"'
+        'printf "takeover_controls=visible\\n"; '
+        f"printf 'reasoning_effort=%s\\n' {_shell_arg(reasoning_effort)}"
     )
     keep_visible = (
         f"{visible_summary}; "
@@ -1046,7 +1049,7 @@ def _env_lane_launch_command(
         f"{visible_summary}; "
         'sleep "${LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS:-1}"; '
         "printf '\\n[Starting visible Codex CLI]\\n'; "
-        f"{_shell_arg(codex_bin)} \"$BOOTSTRAP_PROMPT\"; "
+        f"{_shell_arg(codex_bin)} -c model_reasoning_effort={_shell_arg(reasoning_effort)} \"$BOOTSTRAP_PROMPT\"; "
         "CODEX_STATUS=$?; "
         "printf '\\n[Codex CLI exited]\\nexit=%s\\n' \"$CODEX_STATUS\"; "
         f"{keep_visible}"
@@ -1083,6 +1086,7 @@ def build_auto_research_demo_supervisor_plan(
     cli_bin: str = "loopx",
     codex_bin: str = "codex",
     tmux_bin: str = "tmux",
+    reasoning_effort: str = "high",
 ) -> dict[str, Any]:
     """Build a dry-run tmux/Codex-CLI supervisor plan for auto research.
 
@@ -1097,6 +1101,7 @@ def build_auto_research_demo_supervisor_plan(
     cli = _compact_public_token(cli_bin, field="cli_bin")
     codex = _compact_public_token(codex_bin, field="codex_bin")
     tmux = _compact_public_token(tmux_bin, field="tmux_bin")
+    effort = _compact_public_token(reasoning_effort, field="reasoning_effort")
     uses_default_lanes = agent_specs is None
     lanes = _demo_lane_specs(agent_specs)
     default_lane_ids = [
@@ -1125,12 +1130,14 @@ def build_auto_research_demo_supervisor_plan(
                 "frontier": frontier_command,
                 "bootstrap_message": bootstrap_command,
                 "visible_codex_tui": codex,
+                "reasoning_effort": effort,
                 "visible_launch_command": _env_lane_launch_command(
                     role_id=role_id,
                     quota_command=quota_command,
                     frontier_command=frontier_command,
                     bootstrap_command=bootstrap_command,
                     codex_bin=codex,
+                    reasoning_effort=effort,
                     role_profile=role_profile,
                 ),
                 "start_sequence": [
@@ -1229,6 +1236,12 @@ def build_auto_research_demo_supervisor_plan(
         "mode": "dry_run",
         "goal_id": goal,
         "session_name": session,
+        "reasoning_contract": {
+            "schema_version": "auto_research_reasoning_contract_v0",
+            "default_reasoning_effort": effort,
+            "codex_cli_config_key": "model_reasoning_effort",
+            "applies_to": "visible_codex_lanes",
+        },
         "coordination_model": {
             "leader_agent_required": False,
             "supervisor_role": "host_shell_layout_only",
@@ -1300,6 +1313,7 @@ def build_auto_research_demo_supervisor_plan(
                 "lanes[].quota_guard",
                 "lanes[].frontier",
                 "lanes[].bootstrap_message",
+                "lanes[].reasoning_effort",
                 "lanes[].lane_timeline",
                 "user_takeover.operator_controls",
                 "boundary",
@@ -1335,6 +1349,7 @@ def build_auto_research_demo_supervisor_plan(
                 "each lane window prints its role_profile_v0 before quota/frontier/bootstrap",
                 "each lane window prints its own quota guard before Codex starts",
                 "each lane window prints its own auto-research frontier before Codex starts",
+                f"each lane window prints reasoning_effort={effort} before Codex starts",
                 "bootstrap message is visible in the same pane that would run Codex",
             ],
             "handoff_boundary": "the shell supervisor owns layout only; LoopX quota, todo claims, frontier, and evidence graph remain source of truth",
@@ -3368,6 +3383,39 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             lines.extend(["", "## User Takeover", ""])
             for item in control_items:
                 lines.append(f"- {item}")
+        return "\n".join(lines) + "\n"
+    if payload.get("schema_version") == AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION:
+        replay = payload.get("replay_result") if isinstance(payload.get("replay_result"), dict) else {}
+        append = payload.get("append") if isinstance(payload.get("append"), dict) else {}
+        board = payload.get("board") if isinstance(payload.get("board"), dict) else {}
+        acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), dict) else {}
+        supervisor = payload.get("supervisor") if isinstance(payload.get("supervisor"), dict) else {}
+        commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+        lines = [
+            "# LoopX Auto Research Demo E2E",
+            "",
+            f"- schema: `{payload.get('schema_version')}`",
+            f"- mode: `{payload.get('mode')}`",
+            f"- goal_id: `{payload.get('goal_id')}`",
+            f"- agent_id: `{payload.get('agent_id')}`",
+            f"- reasoning_effort: `{payload.get('reasoning_effort')}`",
+            f"- replay_executed: `{replay.get('executed')}`",
+            f"- status: `{replay.get('status')}`",
+            f"- dev_metric: `{replay.get('dev_metric')}`",
+            f"- holdout_metric: `{replay.get('holdout_metric')}`",
+            f"- protected_scope_clean: `{replay.get('protected_scope_clean')}`",
+            f"- appended_events: `{append.get('appended_count')}`",
+            f"- skipped_existing_events: `{append.get('skipped_existing_count')}`",
+            f"- board_rollout_backed: `{board.get('rollout_backed')}`",
+            f"- promotion_candidates: `{board.get('promotion_candidate_count')}`",
+            f"- ready_for_real_launch: `{acceptance.get('ready_for_real_launch')}`",
+            f"- supervisor_lanes: `{supervisor.get('lane_count')}`",
+            "",
+            "## Commands",
+            "",
+            f"- positive replay: `{commands.get('positive_replay')}`",
+            f"- with visible lanes: `{commands.get('positive_replay_with_visible_lanes')}`",
+        ]
         return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_BOARD_SCHEMA_VERSION:
         surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
