@@ -159,13 +159,7 @@ def main() -> int:
         assert acceptance["accepted"] is True, acceptance
         assert acceptance["missing_lanes"] == [], acceptance
         for pane in acceptance["pane_checks"]:
-            assert pane["window_survived"] is True, pane
-            assert pane["role_profile_visible"] is True, pane
-            assert pane["quota_packet_visible"] is True, pane
-            assert pane["frontier_or_blocked_reason_visible"] is True, pane
-            assert pane["bootstrap_or_stop_visible"] is True, pane
-            assert pane["visible_acceptance_summary"] is True, pane
-            assert "[LoopX visible acceptance]" in pane["markers_present"], pane
+            assert pane["accepted"] is True, pane
         assert workspace.is_dir(), workspace
 
         for lane in payload["lanes"]:

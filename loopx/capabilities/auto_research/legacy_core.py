@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ...rollout_event_log import build_rollout_event
+from ...visible_multi_agent_launcher import (
+    build_visible_lane_command,
+    build_visible_multi_agent_payload,
+)
 
 
 AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION = "decentralized_auto_research_fixture_v0"
@@ -1036,29 +1040,6 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
     )
 
 
-_QUOTA_GATE_PY = (
-    "import json,sys; "
-    "p=json.load(sys.stdin); "
-    "u=p.get('interaction_contract',{}).get('user_channel',{}); "
-    "a=p.get('interaction_contract',{}).get('agent_channel',{}); "
-    "delivery=a.get('delivery_allowed', p.get('should_run', True)); "
-    "ok=(not bool(u.get('action_required'))) and delivery is not False; "
-    "sys.exit(0 if ok else 42)"
-)
-
-_QUOTA_BLOCKER_SUMMARY_PY = (
-    "import json,sys; "
-    "p=json.load(sys.stdin); "
-    "ic=p.get('interaction_contract',{}); "
-    "u=ic.get('user_channel',{}); "
-    "a=ic.get('agent_channel',{}); "
-    "reason=u.get('reason') or p.get('reason') or p.get('recommended_action') or 'blocked'; "
-    "primary=a.get('primary_action') or p.get('recommended_action') or ''; "
-    "print('reason=' + str(reason)); "
-    "print('primary_action=' + str(primary))"
-)
-
-
 def _env_lane_launch_command(
     *,
     role_id: str,
@@ -1069,72 +1050,16 @@ def _env_lane_launch_command(
     reasoning_effort: str,
     role_profile: dict[str, Any],
 ) -> str:
-    role_profile_prefix = _role_profile_shell_prefix(role_profile)
-    visible_summary = (
-        'printf "\\n[LoopX visible acceptance]\\n"; '
-        'printf "role_profile=printed\\n"; '
-        'printf "quota_guard=printed\\n"; '
-        'printf "frontier_or_blocked_reason=printed\\n"; '
-        'printf "bootstrap_or_stop=printed\\n"; '
-        'printf "takeover_controls=visible\\n"; '
-        f"printf 'reasoning_effort=%s\\n' {_shell_arg(reasoning_effort)}"
-    )
-    keep_visible = (
-        f"{visible_summary}; "
-        'printf "\\n[user takeover]\\ninspect this pane; interrupt, close, or retry manually\\n"; '
-        "exec /bin/sh -i"
-    )
-    return (
-        "set -uo pipefail; "
-        f"export LOOPX_ROLE_ID={_shell_arg(role_id)}; "
-        f"export LOOPX_ROLE_PROFILE_REF={_shell_arg(AUTO_RESEARCH_ROLE_PROFILE_REF)}; "
-        'cd "$LOOPX_PROJECT"; '
-        f"{role_profile_prefix}"
-        "printf '\\n[LoopX quota guard]\\n'; "
-        f"QUOTA_PACKET=\"$({quota_command} 2>&1)\"; "
-        "QUOTA_STATUS=$?; "
-        "printf '%s\\n' \"$QUOTA_PACKET\"; "
-        "if [ \"$QUOTA_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'quota_command_failed exit=%s\\n' \"$QUOTA_STATUS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_frontier\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_shell_arg(_QUOTA_GATE_PY)}; "
-        "QUOTA_GATE_STATUS=$?; "
-        "if [ \"$QUOTA_GATE_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_shell_arg(_QUOTA_BLOCKER_SUMMARY_PY)} || true; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_frontier\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        "printf '\\n[LoopX auto-research frontier]\\n'; "
-        f"{frontier_command}; "
-        "FRONTIER_STATUS=$?; "
-        "if [ \"$FRONTIER_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'frontier_command_failed exit=%s\\n' \"$FRONTIER_STATUS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_bootstrap\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        "printf '\\n[bootstrap-or-stop]\\ncontinuing_to_visible_bootstrap\\n'; "
-        "printf '\\n[Codex bootstrap prompt]\\n'; "
-        f"BOOTSTRAP_PROMPT=\"$({bootstrap_command} 2>&1)\"; "
-        "BOOTSTRAP_STATUS=$?; "
-        "printf '%s\\n' \"$BOOTSTRAP_PROMPT\"; "
-        "if [ \"$BOOTSTRAP_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'bootstrap_command_failed exit=%s\\n' \"$BOOTSTRAP_STATUS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_codex\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        f"{visible_summary}; "
-        'sleep "${LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS:-1}"; '
-        "printf '\\n[Starting visible Codex CLI]\\n'; "
-        f"{_shell_arg(codex_bin)} -c model_reasoning_effort={_shell_arg(reasoning_effort)} \"$BOOTSTRAP_PROMPT\"; "
-        "CODEX_STATUS=$?; "
-        "printf '\\n[Codex CLI exited]\\nexit=%s\\n' \"$CODEX_STATUS\"; "
-        f"{keep_visible}"
+    return build_visible_lane_command(
+        role_id=role_id,
+        role_profile_ref=AUTO_RESEARCH_ROLE_PROFILE_REF,
+        role_profile_command=_role_profile_shell_prefix(role_profile),
+        quota_command=quota_command,
+        frontier_command=frontier_command,
+        bootstrap_command=bootstrap_command,
+        codex_bin=codex_bin,
+        reasoning_effort=reasoning_effort,
+        frontier_label="[LoopX auto-research frontier]",
     )
 
 
@@ -1274,42 +1199,17 @@ def build_auto_research_demo_supervisor_plan(
             }
         )
 
-    env_lines = [
-        "set -uo pipefail",
-        ": ${LOOPX_PROJECT:?set LOOPX_PROJECT to the repo root before running}",
-        ": ${LOOPX_REGISTRY:?set LOOPX_REGISTRY to the LoopX registry path before running}",
-        ": ${LOOPX_RUNTIME_ROOT:?set LOOPX_RUNTIME_ROOT to the LoopX runtime root before running}",
-    ]
-    frontier_launch_command = (
-        'cd "$LOOPX_PROJECT"; '
-        + _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=lanes[0]["agent_id"])
-        + '; FRONTIER_STATUS=$?; '
-        + 'printf "\\n[frontier window ready]\\nexit=%s\\n" "$FRONTIER_STATUS"; '
-        + 'exec /bin/sh -i'
+    launcher_payload = build_visible_multi_agent_payload(
+        goal_id=goal,
+        session_name=session,
+        lanes=pane_plans,
+        tmux_bin=tmux,
+        frontier_command=_env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=lanes[0]["agent_id"]),
     )
-    start_script = [
-        *env_lines,
-        (
-            f"{_shell_arg(tmux)} new-session -d -s {_shell_arg(session)} -n frontier "
-            f"bash -lc {_shell_arg(frontier_launch_command)}"
-        ),
-        (
-            f"{_shell_arg(tmux)} display-message -t {_shell_arg(session)} "
-            f"{_shell_arg('LoopX auto-research supervisor started; attach before accepting prompts')}"
-        ),
-    ]
-    for pane in pane_plans:
-        lane_id = str(pane["lane_id"])
-        start_script.extend(
-            [
-                (
-                    f"{_shell_arg(tmux)} new-window -d -t {_shell_arg(session)} "
-                    f"-n {_shell_arg(lane_id)} bash -lc {_shell_arg(str(pane['visible_launch_command']))}"
-                ),
-            ]
-        )
-    attach_command = f"{_shell_arg(tmux)} attach -t {_shell_arg(session)}"
-    stop_command = f"{_shell_arg(tmux)} kill-session -t {_shell_arg(session)}"
+    commands = launcher_payload["commands"]
+    start_script = list(commands["start_script"])
+    attach_command = str(commands["attach"])
+    stop_command = str(commands["stop"])
     rehearsal_script = _demo_rehearsal_script(
         session=session,
         start_script=start_script,

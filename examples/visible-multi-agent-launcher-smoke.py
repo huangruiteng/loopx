@@ -110,7 +110,7 @@ def main() -> int:
         assert acceptance["schema_version"] == "multi_agent_visible_launch_acceptance_v0", acceptance
         assert acceptance["accepted"] is True, acceptance
         assert acceptance["missing_lanes"] == [], acceptance
-        assert all(item["frontier_or_blocked_reason_visible"] for item in acceptance["pane_checks"]), acceptance
+        assert all(item["accepted"] for item in acceptance["pane_checks"]), acceptance
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 2, log_entries
