@@ -88,13 +88,14 @@ def _goal_ids_for_packet(status_payload: dict[str, Any], *, goal_id: str | None,
     return ids
 
 
-def _quota_for_goal(status_payload: dict[str, Any], goal_id: str) -> dict[str, Any]:
+def _quota_for_goal(status_payload: dict[str, Any], goal_id: str, *, agent_id: str | None) -> dict[str, Any]:
     try:
-        return build_quota_should_run(status_payload, goal_id=goal_id)
+        return build_quota_should_run(status_payload, goal_id=goal_id, agent_id=agent_id)
     except Exception as exc:  # noqa: BLE001 - diagnosis packets should preserve compact failure context.
         return {
             "ok": False,
             "goal_id": goal_id,
+            "agent_id": agent_id,
             "error": str(exc),
             "should_run": False,
             "state": "diagnosis_quota_failed",
@@ -148,21 +149,32 @@ def _first_user_question(quota: dict[str, Any], item: dict[str, Any]) -> str | N
     return _first_text(_todo_summary(quota, item, role="user"))
 
 
-def _agent_commands(*, goal_id: str | None, registry_path: Path, scan_roots: list[Path], limit: int) -> list[str]:
+def _agent_commands(
+    *,
+    goal_id: str | None,
+    registry_path: Path,
+    scan_roots: list[Path],
+    limit: int,
+    agent_id: str | None,
+) -> list[str]:
     registry_arg = shlex.quote(str(registry_path))
     scan_args = " ".join(f"--scan-path {shlex.quote(str(path))}" for path in scan_roots)
     diagnose = f"loopx --registry {registry_arg} diagnose"
     status = f"loopx --registry {registry_arg} status"
+    agent_arg = f" --agent-id {shlex.quote(agent_id)}" if agent_id else ""
     if scan_args:
         diagnose = f"{diagnose} {scan_args}"
         status = f"{status} {scan_args}"
     commands = [
-        f"{diagnose} --limit {max(1, limit)}",
-        f"{status} --limit {max(1, limit)}",
+        f"{diagnose}{agent_arg} --limit {max(1, limit)}",
+        f"{status}{agent_arg} --limit {max(1, limit)}",
     ]
     if goal_id:
         quoted_goal = shlex.quote(goal_id)
-        commands.append(f"loopx --registry {registry_arg} --format json quota should-run --goal-id {quoted_goal}")
+        commands.append(
+            f"loopx --registry {registry_arg} --format json quota should-run "
+            f"--goal-id {quoted_goal}{agent_arg}"
+        )
         commands.append(f"loopx --registry {registry_arg} history --goal-id {quoted_goal} --limit {max(1, limit)}")
     return commands
 
@@ -183,6 +195,10 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
         "requires_user_action",
         "recommended_action",
         "reason",
+        "agent_identity",
+        "agent_lane_next_action",
+        "agent_scoped_user_gate_override",
+        "agent_scope_frontier",
     )
     return {key: quota.get(key) for key in keys if key in quota}
 
@@ -195,6 +211,7 @@ def _build_goal_packet(
     registry_path: Path,
     scan_roots: list[Path],
     limit: int,
+    agent_id: str | None,
 ) -> dict[str, Any]:
     goal_id = str((item or {}).get("goal_id") or quota.get("goal_id") or "")
     item = item or {}
@@ -218,6 +235,7 @@ def _build_goal_packet(
             "first_agent_todo": _first_text(agent_summary),
         },
         "quota_signals": _compact_quota_signals(quota),
+        "agent_id": agent_id,
         "interaction_contract": _as_dict(quota.get("interaction_contract")),
         "work_lane_contract": _as_dict(quota.get("work_lane_contract")),
         "goal_boundary": _as_dict(quota.get("goal_boundary")),
@@ -233,6 +251,7 @@ def _build_goal_packet(
             registry_path=registry_path,
             scan_roots=scan_roots,
             limit=limit,
+            agent_id=agent_id,
         ),
     }
 
@@ -244,6 +263,7 @@ def collect_diagnosis(
     scan_roots: list[Path],
     limit: int,
     goal_id: str | None = None,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     limit = max(1, limit)
     registry_path = registry_path.expanduser()
@@ -262,7 +282,7 @@ def collect_diagnosis(
     goal_packets = []
     for current_goal_id in goal_ids:
         item = item_by_goal.get(current_goal_id)
-        quota = _quota_for_goal(status_payload, current_goal_id)
+        quota = _quota_for_goal(status_payload, current_goal_id, agent_id=agent_id)
         goal_packets.append(
             _build_goal_packet(
                 status_payload=status_payload,
@@ -271,6 +291,7 @@ def collect_diagnosis(
                 registry_path=registry_path,
                 scan_roots=scan_roots,
                 limit=limit,
+                agent_id=agent_id,
             )
         )
     selected_item = _select_attention_item(status_payload, goal_id=goal_id)
@@ -280,10 +301,11 @@ def collect_diagnosis(
         selected = _build_goal_packet(
             status_payload=status_payload,
             item=selected_item,
-            quota={"ok": True, "goal_id": selected_goal_id, "should_run": False},
+            quota={"ok": True, "goal_id": selected_goal_id, "agent_id": agent_id, "should_run": False},
             registry_path=registry_path,
             scan_roots=scan_roots,
             limit=limit,
+            agent_id=agent_id,
         )
     return {
         "ok": bool(status_payload.get("ok")),
@@ -293,6 +315,7 @@ def collect_diagnosis(
         "registry": str(registry_path),
         "runtime_root": status_payload.get("runtime_root"),
         "goal_id": goal_id,
+        "agent_id": agent_id,
         "selected_goal_id": selected.get("goal_id"),
         "status_ok": status_payload.get("ok"),
         "goal_count": status_payload.get("goal_count"),
