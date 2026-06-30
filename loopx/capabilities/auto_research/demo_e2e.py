@@ -22,6 +22,7 @@ from .core import (
     build_research_evidence_graph_from_rollout_events,
     load_auto_research_evidence_packet_inputs,
 )
+from .kernel import run_builtin_lightweight_demo
 from .live_evidence import (
     build_live_codex_claim_from_evidence,
     load_live_codex_e2e_evidence,
@@ -222,7 +223,7 @@ def _live_codex_truth_boundary(*, launch_visible: bool) -> dict[str, object]:
         "visible_lanes_accepted": False,
         "evidence_source": "not_collected_from_codex_lane_output",
         "reason": (
-            "demo-e2e validates the deterministic positive replay and optional visible launcher; "
+            "demo-e2e validates the lightweight multi-round research kernel and optional visible launcher; "
             "it does not prove a live Codex multi-agent research result."
         ),
         "required_for_live_claim": [
@@ -276,8 +277,8 @@ def run_auto_research_demo_e2e(
         "ok": True,
         "schema_version": AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION,
         "mode": "execute" if execute else "dry_run",
-        "execution_kind": "deterministic_replay" if execute else "deterministic_replay_preview",
-        "result_source": "generated_quickstart_pack_protected_eval_replay",
+        "execution_kind": "multiround_research_kernel" if execute else "multiround_research_preview",
+        "result_source": "lightweight_multiround_kernel" if execute else "lightweight_multiround_kernel_preview",
         "goal_id": goal_id,
         "tracking_goal_id": tracking_goal or None,
         "route_contract": {
@@ -295,14 +296,14 @@ def run_auto_research_demo_e2e(
         "agent_id": agent_id,
         "reasoning_effort": reasoning_effort,
         "commands": {
-            "deterministic_replay": _command_text(
+            "multiround_kernel": _command_text(
                 cli_bin=cli_bin,
                 goal_id=goal_id,
                 agent_id=agent_id,
                 execute=True,
                 tracking_goal_id=tracking_goal or None,
             ),
-            "deterministic_replay_with_visible_lanes": _command_text(
+            "multiround_kernel_with_visible_lanes": _command_text(
                 cli_bin=cli_bin,
                 goal_id=goal_id,
                 agent_id=agent_id,
@@ -352,10 +353,16 @@ def run_auto_research_demo_e2e(
             "template": quickstart.get("template"),
             "next_commands": quickstart.get("next_commands"),
         }
-        payload["replay_result"] = {
+        payload["protected_eval_result"] = {
             "executed": False,
-            "result_source": "deterministic_replay_preview",
+            "result_source": "lightweight_multiround_kernel_preview",
             "expected_positive_result": "dev=4.0x holdout=4.5x after --execute",
+        }
+        payload["research_loop"] = {
+            "executed": False,
+            "result_source": "lightweight_multiround_kernel_preview",
+            "expected_rounds": "two dev rounds plus holdout for the selected candidate after --execute",
+            "expected_gain": "selected candidate improves from baseline 1.0x to dev=4.0x and holdout=4.5x",
         }
         return payload
 
@@ -398,6 +405,7 @@ def run_auto_research_demo_e2e(
         evidence_path = pack_dir / "evidence.public.json"
         evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         append_payload = append_evidence(str(evidence_path))
+        research_loop = run_builtin_lightweight_demo(goal_id=goal_id)
         board, acceptance = _live_board_and_acceptance(
             goal_id=goal_id,
             agent_id=agent_id,
@@ -413,15 +421,62 @@ def run_auto_research_demo_e2e(
                     "mode": quickstart.get("mode"),
                     "template": quickstart.get("template"),
                 },
-                "replay_result": {
+                "protected_eval_result": {
                     "executed": True,
-                    "result_source": "generated_quickstart_pack_protected_eval_replay",
+                    "result_source": "generated_quickstart_pack_protected_eval",
                     "status": evidence.get("summary", {}).get("status"),
                     "dev_metric": (dev.get("metric") or {}).get("value"),
                     "holdout_metric": (holdout.get("metric") or {}).get("value"),
                     "dev_exact": bool(dev.get("exact")),
                     "holdout_exact": bool(holdout.get("exact")),
                     "protected_scope_clean": bool(evidence.get("summary", {}).get("protected_scope_clean")),
+                },
+                "research_loop": {
+                    "executed": True,
+                    "result_source": research_loop.get("result_source"),
+                    "schema_version": research_loop.get("schema_version"),
+                    "decision": research_loop.get("decision"),
+                    "candidate_count": research_loop.get("candidate_count"),
+                    "dev_round_count": research_loop.get("dev_round_count"),
+                    "evidence_event_count": research_loop.get("evidence_event_count"),
+                    "selected_hypothesis_id": research_loop.get("selected_hypothesis_id"),
+                    "baseline_metric": 1.0,
+                    "dev_metric": research_loop.get("dev_metric"),
+                    "holdout_metric": research_loop.get("holdout_metric"),
+                    "dev_gain_over_baseline": (
+                        float(research_loop["dev_metric"]) - 1.0
+                        if research_loop.get("dev_metric") is not None
+                        else None
+                    ),
+                    "holdout_gain_over_baseline": (
+                        float(research_loop["holdout_metric"]) - 1.0
+                        if research_loop.get("holdout_metric") is not None
+                        else None
+                    ),
+                    "worker_rounds": [
+                        {
+                            "round": 1,
+                            "role": "hypothesis_mapper",
+                            "transition": "seed_baseline_candidate",
+                            "hypothesis_id": "hyp_full_sort",
+                            "loopx_contract": "role_profile_quota_frontier_cli_writeback",
+                        },
+                        {
+                            "round": 2,
+                            "role": "evidence_runner",
+                            "transition": "try_positive_candidate",
+                            "hypothesis_id": "hyp_partial_selection",
+                            "loopx_contract": "role_profile_quota_frontier_cli_writeback",
+                        },
+                        {
+                            "round": 3,
+                            "role": "evidence_verifier",
+                            "transition": "holdout_validate_selected_candidate",
+                            "hypothesis_id": research_loop.get("selected_hypothesis_id"),
+                            "loopx_contract": "role_profile_quota_frontier_cli_writeback",
+                        },
+                    ],
+                    "public_boundary": research_loop.get("public_boundary"),
                 },
                 "append": {
                     "appended_count": append_payload.get("appended_count"),

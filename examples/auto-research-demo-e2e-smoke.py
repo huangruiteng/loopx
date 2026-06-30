@@ -79,10 +79,13 @@ def assert_e2e_payload(
     assert payload["agent_id"] == AGENT_ID, payload
     assert payload["reasoning_effort"] == "high", payload
     assert payload["execution_kind"] in {
-        "deterministic_replay",
-        "deterministic_replay_preview",
+        "multiround_research_kernel",
+        "multiround_research_preview",
     }, payload
-    assert payload["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
+    assert payload["result_source"] in {
+        "lightweight_multiround_kernel",
+        "lightweight_multiround_kernel_preview",
+    }, payload
     live = payload["live_codex_e2e"]
     assert live["executed"] is False, payload
     assert live["claim_allowed"] is False, payload
@@ -95,16 +98,37 @@ def assert_e2e_payload(
     assert payload["public_boundary"]["credentials_recorded"] is False, payload
     assert payload["public_boundary"]["local_workspace_path_redacted"] is True, payload
     assert payload["public_boundary"]["live_codex_sessions_recorded"] is False, payload
-    replay = payload["replay_result"]
-    assert replay["executed"] is executed, payload
+    protected_eval = payload["protected_eval_result"]
+    loop = payload["research_loop"]
+    assert protected_eval["executed"] is executed, payload
+    assert loop["executed"] is executed, payload
     if executed:
-        assert replay["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
-        assert replay["status"] == "supported", payload
-        assert replay["dev_metric"] == 4.0, payload
-        assert replay["holdout_metric"] == 4.5, payload
-        assert replay["dev_exact"] is True, payload
-        assert replay["holdout_exact"] is True, payload
-        assert replay["protected_scope_clean"] is True, payload
+        assert loop["result_source"] == "knn_pack_protected_eval", payload
+        assert loop["candidate_count"] == 2, payload
+        assert loop["dev_round_count"] == 2, payload
+        assert loop["evidence_event_count"] == 3, payload
+        assert loop["selected_hypothesis_id"] == "hyp_partial_selection", payload
+        assert loop["decision"] == "validated_positive", payload
+        assert loop["baseline_metric"] == 1.0, payload
+        assert loop["dev_metric"] == 4.0, payload
+        assert loop["holdout_metric"] == 4.5, payload
+        assert loop["dev_gain_over_baseline"] == 3.0, payload
+        assert loop["holdout_gain_over_baseline"] == 3.5, payload
+        assert [item["role"] for item in loop["worker_rounds"]] == [
+            "hypothesis_mapper",
+            "evidence_runner",
+            "evidence_verifier",
+        ], payload
+        assert {item["loopx_contract"] for item in loop["worker_rounds"]} == {
+            "role_profile_quota_frontier_cli_writeback"
+        }, payload
+        assert protected_eval["result_source"] == "generated_quickstart_pack_protected_eval", payload
+        assert protected_eval["status"] == "supported", payload
+        assert protected_eval["dev_metric"] == 4.0, payload
+        assert protected_eval["holdout_metric"] == 4.5, payload
+        assert protected_eval["dev_exact"] is True, payload
+        assert protected_eval["holdout_exact"] is True, payload
+        assert protected_eval["protected_scope_clean"] is True, payload
         assert payload["append"]["appended_count"] == 3, payload
         assert payload["append"]["counts_by_kind"] == {
             "research_evidence": 2,
@@ -128,8 +152,10 @@ def assert_e2e_payload(
         assert payload["acceptance"]["claim_boundary"]["live_claim_scope"] == "dev_only", payload
         assert payload["acceptance"]["claim_boundary"]["promotion_claim_allowed"] is False, payload
     else:
-        assert replay["result_source"] == "deterministic_replay_preview", payload
-        assert replay["expected_positive_result"] == "dev=4.0x holdout=4.5x after --execute", payload
+        assert loop["result_source"] == "lightweight_multiround_kernel_preview", payload
+        assert "two dev rounds plus holdout" in loop["expected_rounds"], payload
+        assert protected_eval["result_source"] == "lightweight_multiround_kernel_preview", payload
+        assert protected_eval["expected_positive_result"] == "dev=4.0x holdout=4.5x after --execute", payload
     assert_public_safe(payload)
 
 
@@ -178,11 +204,11 @@ def main() -> int:
         )
         executed_payload = json.loads(executed.stdout)
         assert_e2e_payload(executed_payload, executed=True, tracking_goal_id=TRACKING_GOAL_ID)
-        replay_command = executed_payload["commands"]["deterministic_replay"]
-        visible_command = executed_payload["commands"]["deterministic_replay_with_visible_lanes"]
-        assert f"--goal-id {GOAL_ID}" in replay_command, replay_command
+        kernel_command = executed_payload["commands"]["multiround_kernel"]
+        visible_command = executed_payload["commands"]["multiround_kernel_with_visible_lanes"]
+        assert f"--goal-id {GOAL_ID}" in kernel_command, kernel_command
         assert f"--goal-id {GOAL_ID}" in visible_command, visible_command
-        assert f"--tracking-goal-id {TRACKING_GOAL_ID}" in replay_command, replay_command
+        assert f"--tracking-goal-id {TRACKING_GOAL_ID}" in kernel_command, kernel_command
         assert f"--tracking-goal-id {TRACKING_GOAL_ID}" in visible_command, visible_command
 
         markdown = run_cli(
@@ -197,21 +223,26 @@ def main() -> int:
             registry=registry,
             runtime_root=runtime_root,
         ).stdout
-        assert "# LoopX Auto Research Demo Replay" in markdown, markdown
-        assert "execution_kind: `deterministic_replay_preview`" in markdown, markdown
+        assert "# LoopX Auto Research Multi-Round Demo" in markdown, markdown
+        assert "execution_kind: `multiround_research_preview`" in markdown, markdown
+        assert "research_loop_executed: `False`" in markdown, markdown
+        assert "research_loop_source: `lightweight_multiround_kernel_preview`" in markdown, markdown
+        assert "research_loop_dev_rounds:" in markdown, markdown
+        assert "research_loop_evidence_events:" in markdown, markdown
         assert "frontier_goal_id: `loopx-auto-research-knn`" in markdown, markdown
         assert "tracking_goal_drives_frontier: `False`" in markdown, markdown
         assert "live_codex_e2e_claim_allowed: `False`" in markdown, markdown
         assert "live_codex_e2e_evidence_source: `not_collected_from_codex_lane_output`" in markdown, markdown
         assert "board_live_claim_scope" not in markdown, markdown
         assert "reasoning_effort: `high`" in markdown, markdown
-        assert "deterministic replay:" in markdown, markdown
+        assert "multi-round research:" in markdown, markdown
         assert_public_safe(markdown)
 
         guide = GUIDE.read_text(encoding="utf-8")
-        assert "## 0. Prove The Deterministic Positive Replay" in guide, guide
+        normalized_guide = " ".join(guide.split())
+        assert "## 0. Prove The Multi-Round Positive Path" in guide, guide
         assert "auto-research demo-e2e" in guide, guide
-        assert "does not claim that live Codex lanes authored the research result" in guide, guide
+        assert "does not claim that visible Codex lanes authored the research result" in normalized_guide, guide
         assert "--reasoning-effort high" in guide, guide
         assert "--execute" in guide, guide
         assert "--launch-visible" in guide, guide
@@ -220,9 +251,13 @@ def main() -> int:
         assert "--attach" in guide, guide
         assert "--replace-existing" in guide, guide
         assert "tmux kill-session -t loopx-auto-research" in guide, guide
-        assert "replay_result.dev_metric" in guide, guide
+        assert "research_loop.dev_round_count" in guide, guide
+        assert "research_loop.evidence_event_count" in guide, guide
+        assert "research_loop.dev_gain_over_baseline" in guide, guide
+        assert "research_loop.holdout_gain_over_baseline" in guide, guide
+        assert "protected_eval_result.dev_metric" in guide, guide
         assert "`4.0`" in guide, guide
-        assert "replay_result.holdout_metric" in guide, guide
+        assert "protected_eval_result.holdout_metric" in guide, guide
         assert "`4.5`" in guide, guide
         assert "acceptance.ready_for_real_launch" in guide, guide
         assert "live_codex_e2e.executed" in guide, guide
@@ -234,7 +269,7 @@ def main() -> int:
         assert "private artifacts" in guide, guide
         assert "credentials" in guide, guide
         assert "local absolute workspace paths" in guide, guide
-        e2e_section = guide.split("## 0. Prove The Deterministic Positive Replay", 1)[1].split(
+        e2e_section = guide.split("## 0. Prove The Multi-Round Positive Path", 1)[1].split(
             "## 1. Preview The Research Pack",
             1,
         )[0]

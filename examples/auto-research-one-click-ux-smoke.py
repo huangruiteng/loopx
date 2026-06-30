@@ -82,6 +82,8 @@ def main() -> int:
                     "    print('frontier_or_blocked_reason=printed')",
                     "    print('[bootstrap-or-stop]')",
                     "    print('bootstrap_or_stop=printed')",
+                    "    print('worker_skill_path=.codex/skills/loopx-auto-research/SKILL.md')",
+                    "    print('loopx_agent_handshake=role_profile_quota_frontier_bootstrap')",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
                     "",
@@ -128,7 +130,7 @@ def main() -> int:
             assert "generic LoopX heartbeat worker" in bootstrap, lane
             assert "loopx-auto-research" in bootstrap, lane
             assert "live-codex-e2e-evidence.public.json" in bootstrap, lane
-            assert "Deterministic replay is not live Codex evidence" in bootstrap, lane
+            assert "lightweight multi-round kernel is not live Codex evidence" in bootstrap, lane
             assert "claim_allowed must remain false" in bootstrap, lane
             assert "model_reasoning_effort=high" in bootstrap, lane
             assert "model_reasoning_effort=high" in launch_command, lane
@@ -183,13 +185,20 @@ def main() -> int:
         assert route["tracking_goal_id"] == TRACKING_GOAL_ID, payload
         assert route["tracking_goal_drives_frontier"] is False, payload
         assert route["dedicated_positive_demo_frontier"] is True, payload
-        assert payload["execution_kind"] == "deterministic_replay", payload
-        assert payload["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
+        assert payload["execution_kind"] == "multiround_research_kernel", payload
+        assert payload["result_source"] == "lightweight_multiround_kernel", payload
         assert payload["reasoning_effort"] == "high", payload
-        assert payload["replay_result"]["dev_metric"] == 4.0, payload
-        assert payload["replay_result"]["holdout_metric"] == 4.5, payload
-        assert payload["replay_result"]["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
-        assert payload["replay_result"]["protected_scope_clean"] is True, payload
+        assert payload["research_loop"]["dev_round_count"] == 2, payload
+        assert payload["research_loop"]["evidence_event_count"] == 3, payload
+        assert payload["research_loop"]["dev_gain_over_baseline"] == 3.0, payload
+        assert payload["research_loop"]["holdout_gain_over_baseline"] == 3.5, payload
+        assert payload["protected_eval_result"]["dev_metric"] == 4.0, payload
+        assert payload["protected_eval_result"]["holdout_metric"] == 4.5, payload
+        assert (
+            payload["protected_eval_result"]["result_source"]
+            == "generated_quickstart_pack_protected_eval"
+        ), payload
+        assert payload["protected_eval_result"]["protected_scope_clean"] is True, payload
         assert payload["acceptance"]["ready_for_real_launch"] is True, payload
         assert payload["public_boundary"]["launches_visible_lanes"] is True, payload
         assert payload["public_boundary"]["local_workspace_path_redacted"] is True, payload
@@ -208,12 +217,15 @@ def main() -> int:
         assert launch["session_name"] == SESSION, launch
         assert launch["workspace_mode"] == "explicit_workspace", launch
         assert launch["started_lane_count"] == 3, launch
+        assert len(launch["worker_skill_materialization"]) == 3, launch
+        assert all(item["materialized"] for item in launch["worker_skill_materialization"]), launch
         assert launch["visible_acceptance"]["accepted"] is True, launch
         assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload
         assert workspace.is_dir(), workspace
 
         guide = GUIDE.read_text(encoding="utf-8")
-        one_command_section = guide.split("To run the replay and open visible panes", 1)[1].split(
+        normalized_guide = " ".join(guide.split())
+        one_command_section = guide.split("To run the multi-round path and open visible panes", 1)[1].split(
             "If you want to inspect before opening visible Codex lanes",
             1,
         )[0]
@@ -226,10 +238,10 @@ def main() -> int:
             "--create-workspace",
             "--attach",
             "Generic\nlauncher internals stay inside LoopX",
-            "replay-backed visible demo",
+            "multi-round visible demo",
         ]:
             assert snippet in one_command_section, snippet
-        assert "does not claim that live Codex lanes authored the research result" in guide, guide
+        assert "does not claim that visible Codex lanes authored the research result" in normalized_guide, guide
         assert "live_codex_e2e.claim_allowed" in guide, guide
         assert "visible_multi_agent_launcher" not in guide, guide
         assert "loopx/visible_multi_agent_launcher.py" not in guide, guide

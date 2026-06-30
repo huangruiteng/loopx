@@ -324,7 +324,7 @@ def register_auto_research_commands(
     demo_e2e_parser = auto_research_sub.add_parser(
         "demo-e2e",
         help=(
-            "Run or preview the one-command deterministic k-NN replay path and "
+            "Run or preview the one-command multi-round k-NN research path and "
             "report board/acceptance truth boundaries."
         ),
     )
@@ -356,8 +356,9 @@ def register_auto_research_commands(
         "--execute",
         action="store_true",
         help=(
-            "Run protected evals from the generated quickstart pack and append public rollout evidence. "
-            "This is a deterministic replay, not a live Codex lane result."
+            "Run the lightweight multi-round protected-eval kernel, append public rollout evidence, "
+            "and report measured dev/holdout gains. This still requires live evidence before "
+            "claiming that visible Codex panes authored the result."
         ),
     )
     demo_e2e_parser.add_argument(

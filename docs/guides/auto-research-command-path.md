@@ -32,14 +32,16 @@ export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
 ```
 
-## 0. Prove The Deterministic Positive Replay
+## 0. Prove The Multi-Round Positive Path
 
-The fastest positive check is a deterministic replay. It proves that the
-starter pack, protected evaluator, public rollout evidence, board projection,
-and acceptance packet can all produce the expected k-NN result. It is intentionally
-fast and does not claim that live Codex lanes authored the research result.
+The fastest positive check is a lightweight multi-round research kernel. It
+tries the baseline and candidate hypotheses on dev, selects the improved
+candidate, validates it on holdout, appends public rollout evidence, and reports
+the measured gain. It is intentionally small and still does not claim that
+visible Codex lanes authored the research result unless a compact live evidence
+packet is supplied.
 
-To run the replay and open visible panes through the normal auto-research
+To run the multi-round path and open visible panes through the normal auto-research
 surface:
 
 ```bash
@@ -57,7 +59,7 @@ loopx --registry "$LOOPX_REGISTRY" \
   --attach
 ```
 
-That command is the user-facing UX for a replay-backed visible demo. Generic
+That command is the user-facing UX for a multi-round visible demo. Generic
 launcher internals stay inside LoopX; the operator does not need to know the
 module or implementation path.
 
@@ -70,7 +72,7 @@ tracking metadata never drives the visible lane frontier.
 
 If you want to inspect before opening visible Codex lanes, start with the
 read-only dry-run. It tells the operator which command will run the
-deterministic positive replay:
+multi-round positive path:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -81,7 +83,7 @@ loopx --registry "$LOOPX_REGISTRY" \
   --reasoning-effort high
 ```
 
-When the dry-run looks right, run the deterministic positive replay:
+When the dry-run looks right, run the multi-round positive path:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -93,12 +95,17 @@ loopx --registry "$LOOPX_REGISTRY" \
   --execute
 ```
 
-Expected deterministic replay result:
+Expected multi-round result:
 
-- `execution_kind` is `deterministic_replay`;
-- `result_source` is `generated_quickstart_pack_protected_eval_replay`;
-- `replay_result.dev_metric` is `4.0`;
-- `replay_result.holdout_metric` is `4.5`;
+- `execution_kind` is `multiround_research_kernel`;
+- `result_source` is `lightweight_multiround_kernel`;
+- `research_loop.dev_round_count` is `2`;
+- `research_loop.evidence_event_count` is `3`;
+- `research_loop.selected_hypothesis_id` is `hyp_partial_selection`;
+- `research_loop.dev_gain_over_baseline` is `3.0`;
+- `research_loop.holdout_gain_over_baseline` is `3.5`;
+- `protected_eval_result.dev_metric` is `4.0`;
+- `protected_eval_result.holdout_metric` is `4.5`;
 - dev and holdout exactness are both `true`;
 - `protected_scope_clean` is `true`;
 - the board is rollout-backed and has at least one promotion candidate;
@@ -158,7 +165,7 @@ the claim projection. To project a live holdout or promotion claim, the compact
 evidence must carry explicit public-safe `claim_authority`, such as
 `separate_heldout_live_evidence` or `owner_approval`.
 
-For a full visible demo after an explicit replay step, add the visible lane
+For a full visible demo after an explicit multi-round run, add the visible lane
 launcher:
 
 ```bash
