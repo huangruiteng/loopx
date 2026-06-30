@@ -15,6 +15,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "loopx-auto-research-knn"
 AGENT_ID = "codex-side-bypass"
+GUIDE = REPO_ROOT / "docs" / "guides" / "auto-research-command-path.md"
 
 
 def assert_public_safe(payload: Any) -> None:
@@ -151,6 +152,30 @@ def main() -> int:
         assert "reasoning_effort: `high`" in markdown, markdown
         assert "positive replay:" in markdown, markdown
         assert_public_safe(markdown)
+
+        guide = GUIDE.read_text(encoding="utf-8")
+        assert "## 0. Prove The Positive E2E Path" in guide, guide
+        assert "auto-research demo-e2e" in guide, guide
+        assert "--reasoning-effort high" in guide, guide
+        assert "--execute" in guide, guide
+        assert "--launch-visible" in guide, guide
+        assert "--attach" in guide, guide
+        assert "--replace-existing" in guide, guide
+        assert "tmux kill-session -t loopx-auto-research" in guide, guide
+        assert "replay_result.dev_metric" in guide, guide
+        assert "`4.0`" in guide, guide
+        assert "replay_result.holdout_metric" in guide, guide
+        assert "`4.5`" in guide, guide
+        assert "acceptance.ready_for_real_launch" in guide, guide
+        assert "raw logs" in guide, guide
+        assert "private artifacts" in guide, guide
+        assert "credentials" in guide, guide
+        assert "local absolute workspace paths" in guide, guide
+        e2e_section = guide.split("## 0. Prove The Positive E2E Path", 1)[1].split(
+            "## 1. Preview The Research Pack",
+            1,
+        )[0]
+        assert_public_safe(e2e_section)
 
     print("auto-research-demo-e2e-smoke ok")
     return 0

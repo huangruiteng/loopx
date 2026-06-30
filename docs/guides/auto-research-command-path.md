@@ -32,6 +32,68 @@ export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
 ```
 
+## 0. Prove The Positive E2E Path
+
+Start with the one-command replay before opening visible Codex lanes. The
+dry-run is read-only and tells the operator which command will run the positive
+replay:
+
+```bash
+loopx --registry "$LOOPX_REGISTRY" \
+  --runtime-root "$LOOPX_RUNTIME_ROOT" \
+  --format json auto-research demo-e2e \
+  --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass \
+  --reasoning-effort high
+```
+
+When the dry-run looks right, run the deterministic positive replay:
+
+```bash
+loopx --registry "$LOOPX_REGISTRY" \
+  --runtime-root "$LOOPX_RUNTIME_ROOT" \
+  --format json auto-research demo-e2e \
+  --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass \
+  --reasoning-effort high \
+  --execute
+```
+
+Expected positive result:
+
+- `replay_result.dev_metric` is `4.0`;
+- `replay_result.holdout_metric` is `4.5`;
+- dev and holdout exactness are both `true`;
+- `protected_scope_clean` is `true`;
+- the board is rollout-backed and has at least one promotion candidate;
+- `acceptance.ready_for_real_launch` is `true`.
+
+For a full visible demo, add the visible lane launcher:
+
+```bash
+loopx --registry "$LOOPX_REGISTRY" \
+  --runtime-root "$LOOPX_RUNTIME_ROOT" \
+  --format json auto-research demo-e2e \
+  --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass \
+  --reasoning-effort high \
+  --execute \
+  --launch-visible \
+  --launcher tmux \
+  --attach
+```
+
+If a previous visible rehearsal is still alive, retry with
+`--replace-existing` or stop it first:
+
+```bash
+tmux kill-session -t loopx-auto-research
+```
+
+The one-command E2E path must not record raw logs, private artifacts,
+credentials, or local absolute workspace paths. It writes only public rollout
+evidence through the normal LoopX runtime root when `--execute` is present.
+
 ## 1. Preview The Research Pack
 
 The quickstart starts read-only. It returns the research contract, protected
