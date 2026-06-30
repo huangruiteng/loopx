@@ -35,7 +35,139 @@ from ...status import collect_status
 
 
 AppendEvidence = Callable[[str], dict[str, object]]
-VisibleLauncher = Callable[[dict[str, object]], dict[str, object]]
+VisibleLauncher = Callable[..., dict[str, object]]
+
+
+def _seed_visible_demo_control_plane(
+    *,
+    demo_root: Path,
+    goal_id: str,
+    objective: str,
+    supervisor: dict[str, object],
+) -> tuple[dict[str, object], Path, str]:
+    """Create a tiny demo-local LoopX queue for visible workers."""
+
+    from ...bootstrap import bootstrap_project
+    from ...configure_goal import configure_goal
+    from ...todos import add_goal_todo
+
+    control_project = demo_root / "visible-control-plane"
+    control_registry = demo_root / "visible-control-plane.registry.json"
+    control_runtime = demo_root / "visible-control-plane.runtime"
+    bootstrap_project(
+        project=control_project,
+        registry_path=control_registry,
+        runtime_root=control_runtime,
+        goal_id=goal_id,
+        objective=objective,
+        domain="auto-research-demo",
+        role="agent",
+        parent_goal_id=None,
+        state_file=None,
+        goal_doc=None,
+        adapter_kind="auto_research_demo_local_queue",
+        adapter_status="connected",
+        next_probe=None,
+        spawn_allowed=True,
+        max_children=3,
+        allowed_domains=["auto-research-demo"],
+        write_scope=["examples/**", "experiments/**", ".local/**"],
+        claim_ttl_minutes=60,
+        onboarding_scan_enabled=False,
+        accept_onboarding_agent_todos=False,
+        begin_autonomous_advance=True,
+        codex_app_heartbeat="no",
+        force=False,
+        dry_run=False,
+        sync_global=False,
+    )
+
+    lanes = [lane for lane in supervisor.get("lanes") or [] if isinstance(lane, dict)]
+    agents = sorted(
+        {
+            str(lane.get("agent_id") or "").strip()
+            for lane in lanes
+            if str(lane.get("agent_id") or "").strip()
+        }
+    )
+    primary_agent = (
+        "codex-main-control"
+        if "codex-main-control" in agents
+        else (agents[0] if agents else None)
+    )
+    configure_goal(
+        registry_path=control_registry,
+        goal_id=goal_id,
+        registered_agents=agents,
+        primary_agent=primary_agent,
+        waiting_on="codex",
+        orchestration_mode="multi_subagent",
+        spawn_allowed=True,
+        execute=True,
+    )
+
+    seeded_todos: list[dict[str, object]] = []
+    for lane in lanes:
+        agent_id = str(lane.get("agent_id") or "").strip()
+        role_id = str(lane.get("role_id") or "").strip()
+        lane_id = str(lane.get("lane_id") or "").strip()
+        profile = lane.get("role_profile") if isinstance(lane.get("role_profile"), dict) else {}
+        allowed_actions = profile.get("allowed_actions") if isinstance(profile, dict) else []
+        action_kind = str((allowed_actions or ["advance_todo"])[0])
+        title_by_action = {
+            "write_research_contract": (
+                "Write the public-safe research contract for the quickstart k-NN hypothesis."
+            ),
+            "propose_hypothesis": (
+                "Map the quickstart partial-selection idea into a todo-backed research hypothesis."
+            ),
+            "claim_attempt": (
+                "Claim one visible attempt boundary for the selected quickstart hypothesis."
+            ),
+            "run_dev_eval": (
+                "Run the selected quickstart hypothesis on the dev split and write public-safe evidence."
+            ),
+            "write_evaluation_summary": (
+                "Verify the evidence packet and open the next validation or promotion gate."
+            ),
+        }
+        title = title_by_action.get(
+            action_kind,
+            f"Run one role-compatible auto-research action for {role_id or lane_id}.",
+        )
+        result = add_goal_todo(
+            registry_path=control_registry,
+            goal_id=goal_id,
+            role="agent",
+            text=f"[P0-auto-research-live] {title}",
+            task_class="advancement_task",
+            action_kind=action_kind,
+            claimed_by=agent_id or None,
+            project=control_project,
+        )
+        seeded_todos.append(
+            {
+                "todo_id": result.get("todo_id"),
+                "agent_id": agent_id,
+                "lane_id": lane_id,
+                "role_id": role_id,
+                "action_kind": action_kind,
+            }
+        )
+
+    summary = {
+        "schema_version": "auto_research_visible_demo_control_plane_v0",
+        "mode": "demo_local_loopx_queue",
+        "goal_id": goal_id,
+        "registry_scope": "demo_local_runtime",
+        "registered_agent_count": len(agents),
+        "seeded_todo_count": len(seeded_todos),
+        "seeded_todos": seeded_todos,
+        "state_route": "visible_lanes_use_LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
+        "absolute_paths_recorded": False,
+        "private_artifacts_recorded": False,
+    }
+    return summary, control_registry, str(control_runtime)
 
 
 def _live_board_and_acceptance(
@@ -489,7 +621,22 @@ def run_auto_research_demo_e2e(
             }
         )
         if launch_visible and visible_launcher is not None:
-            visible_payload = visible_launcher(dict(supervisor))
+            (
+                visible_control,
+                visible_registry_path,
+                visible_runtime_root_arg,
+            ) = _seed_visible_demo_control_plane(
+                demo_root=demo_root,
+                goal_id=goal_id,
+                objective=objective,
+                supervisor=supervisor,
+            )
+            payload["visible_control_plane"] = visible_control
+            visible_payload = visible_launcher(
+                dict(supervisor),
+                visible_registry_path,
+                visible_runtime_root_arg,
+            )
             launch_result = (
                 visible_payload.get("launch_result")
                 if isinstance(visible_payload.get("launch_result"), dict)

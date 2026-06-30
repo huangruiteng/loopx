@@ -13,6 +13,11 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e  # noqa: E402
+
 GOAL_ID = "loopx-auto-research-knn"
 TRACKING_GOAL_ID = "loopx-meta"
 AGENT_ID = "codex-side-bypass"
@@ -159,6 +164,136 @@ def assert_e2e_payload(
     assert_public_safe(payload)
 
 
+def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_append_evidence(_packet_path: str) -> dict[str, object]:
+        return {
+            "appended_count": 3,
+            "skipped_existing_count": 0,
+            "counts_by_kind": {"research_evidence": 2, "research_hypothesis": 1},
+        }
+
+    def fake_visible_launcher(
+        supervisor: dict[str, object],
+        visible_registry: Path,
+        visible_runtime_root: str | None,
+    ) -> dict[str, object]:
+        captured["registry"] = visible_registry
+        captured["runtime_root"] = visible_runtime_root
+        expected_actions = {
+            "codex-product-capability": "write_research_contract",
+            "codex-side-bypass": "propose_hypothesis",
+            "codex-main-control": "claim_attempt",
+        }
+        for agent_id, action in expected_actions.items():
+            quota = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "loopx.cli",
+                    "--registry",
+                    str(visible_registry),
+                    "--runtime-root",
+                    str(visible_runtime_root),
+                    "--format",
+                    "json",
+                    "quota",
+                    "should-run",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--agent-id",
+                    agent_id,
+                ],
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            quota_payload = json.loads(quota.stdout)
+            next_action = quota_payload["agent_lane_next_action"]
+            assert next_action["action_kind"] == action, quota_payload
+            assert next_action["claimed_by"] == agent_id, quota_payload
+            frontier = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "loopx.cli",
+                    "--registry",
+                    str(visible_registry),
+                    "--runtime-root",
+                    str(visible_runtime_root),
+                    "--format",
+                    "json",
+                    "auto-research",
+                    "frontier",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--agent-id",
+                    agent_id,
+                ],
+                cwd=REPO_ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            frontier_payload = json.loads(frontier.stdout)
+            selected = frontier_payload["frontier"]["selected"]
+            assert selected["allowed_action"] == action, frontier_payload
+            assert selected["claimed_by"] == agent_id, frontier_payload
+        return {
+            "mode": "executed_visible_launch",
+            "launch_result": {
+                "started_lane_count": len(supervisor.get("lanes") or []),
+                "surviving_lane_count": len(supervisor.get("lanes") or []),
+                "visible_acceptance": {"accepted": True, "missing_lanes": []},
+            },
+            "boundary": {
+                "shared_state_route": "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
+                "starts_tmux": False,
+                "runs_codex": False,
+            },
+        }
+
+    payload = run_auto_research_demo_e2e(
+        agent_id=AGENT_ID,
+        goal_id=GOAL_ID,
+        tracking_goal_id=TRACKING_GOAL_ID,
+        objective="Improve exact k-nearest-neighbor inference under a protected evaluator.",
+        output_dir=".local/auto-research-demo",
+        execute=True,
+        launch_visible=True,
+        keep_workspace=False,
+        registry_path=registry,
+        runtime_root_arg=str(runtime_root),
+        session_name="loopx-auto-research-smoke",
+        cli_bin="loopx",
+        codex_bin="codex",
+        tmux_bin="tmux",
+        reasoning_effort="high",
+        live_evidence_path=None,
+        append_evidence=fake_append_evidence,
+        visible_launcher=fake_visible_launcher,
+    )
+    assert captured["registry"] != registry, captured
+    assert captured["runtime_root"] != str(runtime_root), captured
+    control = payload["visible_control_plane"]
+    assert control["schema_version"] == "auto_research_visible_demo_control_plane_v0", payload
+    assert control["mode"] == "demo_local_loopx_queue", payload
+    assert control["goal_id"] == GOAL_ID, payload
+    assert control["registry_scope"] == "demo_local_runtime", payload
+    assert control["registered_agent_count"] == 3, payload
+    assert control["seeded_todo_count"] == 3, payload
+    assert {item["action_kind"] for item in control["seeded_todos"]} == {
+        "write_research_contract",
+        "propose_hypothesis",
+        "claim_attempt",
+    }, payload
+    assert control["absolute_paths_recorded"] is False, payload
+    assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload
+    assert_public_safe(payload)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -210,6 +345,7 @@ def main() -> int:
         assert f"--goal-id {GOAL_ID}" in visible_command, visible_command
         assert f"--tracking-goal-id {TRACKING_GOAL_ID}" in kernel_command, kernel_command
         assert f"--tracking-goal-id {TRACKING_GOAL_ID}" in visible_command, visible_command
+        assert_visible_demo_local_control_plane(registry=registry, runtime_root=runtime_root)
 
         markdown = run_cli(
             [
