@@ -84,6 +84,8 @@ def main() -> int:
                     "    print('{\"schema_version\":\"decentralized_research_frontier_v0\"}')",
                     "    print('[bootstrap-or-stop]')",
                     "    print('bootstrap_or_stop=printed')",
+                    "    print('loopx_agent_handshake=role_profile_quota_frontier_bootstrap')",
+                    "    print('loopx_polling_prompt=visible_bootstrap_prompt')",
                     "    print('continuing_to_visible_bootstrap')",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
@@ -186,9 +188,14 @@ def main() -> int:
             assert "auto-research frontier" in command, command
             assert "[Codex bootstrap prompt]" in command, command
             assert "You are a visible LoopX auto-research lane" in command, command
+            assert "visible LoopX polling turn" in command, command
+            assert "follow their interaction_contract" in command, command
+            assert "generated LoopX heartbeat/polling prompt" in command, command
             assert "codex-cli-bootstrap-message" not in command, command
             assert "bootstrap-or-stop" in command, command
             assert "[LoopX visible acceptance]" in command, command
+            assert "loopx_agent_handshake=role_profile_quota_frontier_bootstrap" in command, command
+            assert "loopx_polling_prompt=visible_bootstrap_prompt" in command, command
             assert "reasoning_effort=high" in command, command
             assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in command, command
             assert 'codex -c model_reasoning_effort=high "$BOOTSTRAP_PROMPT"' in command, command

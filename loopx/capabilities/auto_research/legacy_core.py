@@ -940,7 +940,9 @@ def _auto_research_codex_bootstrap_prompt(
         [
             "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",
             "Use skills in this order: loopx-project for quota/status, then loopx-auto-research for this role.",
+            "This pane is a visible LoopX polling turn: before each new action, rerun the printed quota should-run and auto-research frontier commands, then follow their interaction_contract.",
             "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the printed frontier explicitly asks for it.",
+            "If a future scheduled automation owns this lane, it must use a generated LoopX heartbeat/polling prompt; this visible bootstrap is the local manual polling prompt.",
             "",
             f"Goal: {goal}",
             f"Agent: {agent_id}",
@@ -951,7 +953,7 @@ def _auto_research_codex_bootstrap_prompt(
             f"Reasoning: model_reasoning_effort={effort}",
             "",
             "Before any write, resolve identity from LOOPX_ROLE_PROFILE_JSON, the printed quota packet, and the printed auto-research frontier.",
-            "If any of those disagree, stop and report the blocker in this pane.",
+            "If any of those disagree, or quota/frontier no longer selects this role, stop and report the blocker in this pane.",
             f"Allowed actions: {allowed_actions}",
             f"Allowed write scope: {write_scope}",
             f"Protected scope: {protected_scope}",

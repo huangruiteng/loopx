@@ -65,6 +65,7 @@ def main() -> int:
                     "    print('[LoopX quota guard]')",
                     "    print('[LoopX frontier]')",
                     "    print('[bootstrap-or-stop]')",
+                    "    print('loopx_agent_handshake=role_profile_quota_frontier_bootstrap')",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
                     "",

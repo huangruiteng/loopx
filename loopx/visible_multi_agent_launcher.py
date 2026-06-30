@@ -107,6 +107,8 @@ def build_visible_lane_command(
         'printf "quota_guard=printed\\n"; '
         'printf "frontier_or_blocked_reason=printed\\n"; '
         'printf "bootstrap_or_stop=printed\\n"; '
+        'printf "loopx_agent_handshake=role_profile_quota_frontier_bootstrap\\n"; '
+        'printf "loopx_polling_prompt=visible_bootstrap_prompt\\n"; '
         'printf "takeover_controls=visible\\n"; '
         f"printf 'reasoning_effort=%s\\n' {_q(reasoning_effort)}"
     )
@@ -429,6 +431,7 @@ def _tmux_acceptance(
                 and ("[LoopX quota guard]" in capture or "quota_guard=printed" in capture)
                 and any(marker in capture for marker in frontier_markers)
                 and ("[bootstrap-or-stop]" in capture or "bootstrap_or_stop=printed" in capture)
+                and "loopx_agent_handshake=role_profile_quota_frontier_bootstrap" in capture
             )
             pane_checks.append(
                 {
