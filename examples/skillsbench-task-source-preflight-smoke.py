@@ -17,6 +17,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.benchmark_ledger import load_benchmark_run_ledger  # noqa: E402
 from scripts.skillsbench_automation_loop import (  # noqa: E402
+    _bootstrap_light_blocker_kind,
+    _bootstrap_light_preflight_block_required,
     build_plan,
     main as skillsbench_automation_loop_main,
     parse_args,
@@ -355,9 +357,83 @@ def test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk() -> None:
         ] is True
 
 
+def test_reverse_tunnel_app_goal_allows_explicit_staged_bootstrap_repair() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-staged-bootstrap-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        _write_task(skillsbench_root, "tasks/pip-bootstrap")
+        dockerfile = (
+            skillsbench_root
+            / "tasks"
+            / "pip-bootstrap"
+            / "environment"
+            / "Dockerfile"
+        )
+        dockerfile.write_text(
+            "FROM python:3.12-slim\nRUN python -m pip install pandas\n",
+            encoding="utf-8",
+        )
+
+        jobs = root / "jobs"
+        ledger = root / "ledger.json"
+        args = _app_goal_args(
+            task_id="pip-bootstrap",
+            skillsbench_root=skillsbench_root,
+            jobs=jobs,
+            ledger=ledger,
+            job_name="skillsbench-staged-bootstrap-allowed",
+        )
+        parsed = parse_args(args + ["--allow-staged-bootstrap-repair-run"])
+        assert parsed.allow_staged_bootstrap_repair_run is True
+        assert parsed.fail_fast_on_apt_risk is False
+        assert parsed.apt_risk_fail_fast_defaulted is False
+        assert parsed.fail_fast_on_verifier_bootstrap_risk is False
+        assert parsed.verifier_bootstrap_fail_fast_defaulted is False
+        assert parsed.bootstrap_light_fail_fast_defaulted is False
+
+        plan = build_plan(parsed)
+        preflight = plan["task_setup_preflight"]
+        assert plan["bootstrap_light_candidate_required"] is True, plan
+        assert plan["bootstrap_light_fail_fast_required"] is False, plan
+        assert plan["allow_staged_bootstrap_repair_run"] is True, plan
+        assert preflight["bootstrap_light_candidate_eligible"] is False, preflight
+        assert "dockerfile_pip_bootstrap_patch_required" in preflight[
+            "bootstrap_light_blocking_fields"
+        ], preflight
+        blocker_kind = _bootstrap_light_blocker_kind(
+            preflight["bootstrap_light_blocking_fields"]
+        )
+        assert blocker_kind == "dockerfile_package"
+        assert (
+            _bootstrap_light_preflight_block_required(
+                parsed,
+                blocker_kind=blocker_kind,
+            )
+            is False
+        )
+
+        explicitly_blocked = parse_args(
+            args
+            + [
+                "--allow-staged-bootstrap-repair-run",
+                "--fail-fast-on-apt-risk",
+            ]
+        )
+        assert explicitly_blocked.allow_staged_bootstrap_repair_run is True
+        assert explicitly_blocked.fail_fast_on_apt_risk is True
+        assert (
+            _bootstrap_light_preflight_block_required(
+                explicitly_blocked,
+                blocker_kind=blocker_kind,
+            )
+            is True
+        )
+
+
 if __name__ == "__main__":
     test_sanity_task_source_fails_before_runner_spend()
     test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast()
     test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk()
+    test_reverse_tunnel_app_goal_allows_explicit_staged_bootstrap_repair()
     print("skillsbench-task-source-preflight-smoke ok")
