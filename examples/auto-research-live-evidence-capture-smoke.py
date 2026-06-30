@@ -160,6 +160,8 @@ def main() -> int:
                 "append-evidence",
                 "--packet",
                 str(evidence_path),
+                "--output",
+                "append-result.public.json",
             ],
             registry=registry,
             runtime_root=runtime_root,
@@ -167,7 +169,8 @@ def main() -> int:
         )
         append_payload = json.loads(append.stdout)
         append_path = workspace / "append-result.public.json"
-        append_path.write_text(json.dumps(append_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        assert append_path.is_file(), append_payload
+        assert json.loads(append_path.read_text(encoding="utf-8")) == append_payload, append_payload
         assert append_payload["appended_count"] == 3, append_payload
 
         live_path = workspace / "live-codex-e2e-evidence.public.json"

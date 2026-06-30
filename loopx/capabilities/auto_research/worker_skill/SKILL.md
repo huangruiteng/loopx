@@ -179,6 +179,26 @@ Append only after review of the packet and boundary:
 loopx --format json auto-research append-evidence \
   --packet "$AUTO_RESEARCH_EVIDENCE_PACKET_JSON" \
   --dry-run
+
+append_result="${APPEND_RESULT_JSON:-.local/evidence-runner/append-result.public.json}"
+loopx --format json auto-research append-evidence \
+  --packet "$AUTO_RESEARCH_EVIDENCE_PACKET_JSON" \
+  --output "$append_result"
+```
+
+After a real append succeeds in a visible lane, capture compact live evidence
+from the lane-authored packet and append result:
+
+```bash
+live_evidence="${LIVE_CODEX_E2E_EVIDENCE_JSON:-.local/evidence-runner/live-codex-e2e-evidence.public.json}"
+loopx --format json auto-research capture-live-evidence \
+  --packet "$AUTO_RESEARCH_EVIDENCE_PACKET_JSON" \
+  --append-result "$append_result" \
+  --agent-id "$LOOPX_AGENT_ID" \
+  --lane-count "${LOOPX_VISIBLE_LANE_COUNT:-1}" \
+  --visible-lanes-accepted \
+  --output "$live_evidence" \
+  --execute
 ```
 
 Must not:

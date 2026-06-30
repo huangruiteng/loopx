@@ -966,8 +966,8 @@ def _auto_research_codex_bootstrap_prompt(
             "Live E2E proof contract:",
             "- Work only from the printed auto-research frontier and this role profile.",
             "- The lightweight multi-round kernel is not live Codex evidence; do not claim kernel metrics as lane-authored results.",
-            "- If you author evidence, use public-safe loopx auto-research evidence and append-evidence commands.",
-            "- A controller may later run capture-live-evidence to create live-codex-e2e-evidence.public.json.",
+            "- If you author evidence, write a public packet, run append-evidence with --output .local/evidence-runner/append-result.public.json, then run capture-live-evidence.",
+            "- capture-live-evidence should create .local/evidence-runner/live-codex-e2e-evidence.public.json only after the real append succeeds.",
             "- claim_allowed must remain false until that public-safe live evidence file exists and validates.",
             "",
             "Never include credentials, raw private logs, raw session transcripts, local absolute paths, or private artifacts.",
@@ -1034,6 +1034,7 @@ def _role_profile_for_lane(*, goal_id: str, lane: dict[str, str]) -> dict[str, A
 
 def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
     profile_json = json.dumps(role_profile, sort_keys=True, separators=(",", ":"))
+    lane_count = str(role_profile.get("visible_lane_count") or "")
     return (
         f"export LOOPX_GOAL_ID={_shell_arg(str(role_profile['goal_id']))}; "
         f"export LOOPX_AGENT_ID={_shell_arg(str(role_profile['agent_id']))}; "
@@ -1041,6 +1042,7 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         f"export LOOPX_ROLE_PHASE={_shell_arg(str(role_profile['phase']))}; "
         f"export LOOPX_ROLE_PROFILE_REF={_shell_arg(str(role_profile['schema_version']))}; "
         f"export LOOPX_REQUIRED_SKILL={_shell_arg(str(role_profile['required_skill']))}; "
+        f"export LOOPX_VISIBLE_LANE_COUNT={_shell_arg(lane_count)}; "
         'export LOOPX_WORKER_SKILL_ROOT="$LOOPX_PROJECT/.codex/skills"; '
         'export LOOPX_WORKER_SKILL_PATH="$LOOPX_WORKER_SKILL_ROOT/$LOOPX_REQUIRED_SKILL/SKILL.md"; '
         f"LOOPX_ROLE_PROFILE_JSON={_shell_arg(profile_json)}; "
@@ -1133,6 +1135,7 @@ def build_auto_research_demo_supervisor_plan(
         lane_id = lane["lane_id"]
         role_id = lane["role_id"]
         role_profile = _role_profile_for_lane(goal_id=goal, lane=lane)
+        role_profile["visible_lane_count"] = len(lanes)
         quota_command = _env_quota_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
         frontier_command = _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
         bootstrap_command = _env_auto_research_bootstrap_command(

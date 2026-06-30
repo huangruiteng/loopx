@@ -185,12 +185,14 @@ def main() -> int:
             assert profile["skill_distribution"] == "worker_local", profile
             assert profile["agent_id"] == lane["agent_id"], profile
             assert profile["lane_id"] == lane["lane_id"], profile
+            assert profile["visible_lane_count"] == 3, profile
             assert profile["stop_conditions"], profile
             assert "[LoopX role profile]" in command, command
             assert "LOOPX_ROLE_PROFILE_JSON" in command, command
             assert "LOOPX_ROLE_ID" in command, command
             assert "LOOPX_ROLE_PROFILE_REF" in command, command
             assert "LOOPX_REQUIRED_SKILL" in command, command
+            assert "LOOPX_VISIBLE_LANE_COUNT=3" in command, command
             assert "quota should-run" in command, command
             assert "auto-research frontier" in command, command
             assert "LOOPX_VISIBLE_POLL_ATTEMPTS" in command, command

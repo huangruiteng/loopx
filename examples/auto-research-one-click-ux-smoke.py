@@ -129,6 +129,8 @@ def main() -> int:
             assert "codex-cli-bootstrap-message" not in bootstrap, lane
             assert "generic LoopX heartbeat worker" in bootstrap, lane
             assert "loopx-auto-research" in bootstrap, lane
+            assert "append-result.public.json" in bootstrap, lane
+            assert "capture-live-evidence" in bootstrap, lane
             assert "live-codex-e2e-evidence.public.json" in bootstrap, lane
             assert "lightweight multi-round kernel is not live Codex evidence" in bootstrap, lane
             assert "claim_allowed must remain false" in bootstrap, lane
@@ -251,9 +253,18 @@ def main() -> int:
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 3, log_entries
-        command_text = "\n".join(" ".join(entry) for entry in log_entries)
-        assert f"--goal-id {GOAL_ID}" in command_text, command_text
-        assert f"--goal-id {TRACKING_GOAL_ID}" not in command_text, command_text
+        script_paths = [
+            Path(entry[-1])
+            for entry in log_entries
+            if entry[:1] in (["new-session"], ["new-window"])
+        ]
+        assert len(script_paths) == 4, log_entries
+        script_text = "\n".join(path.read_text(encoding="utf-8") for path in script_paths)
+        assert f"--goal-id {GOAL_ID}" in script_text, script_text
+        assert f"--goal-id {TRACKING_GOAL_ID}" not in script_text, script_text
+        assert "LOOPX_VISIBLE_LANE_COUNT=3" in script_text, script_text
+        assert "append-result.public.json" in script_text, script_text
+        assert "capture-live-evidence" in script_text, script_text
         assert any(entry[:1] == ["list-windows"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["capture-pane"]) == 3, log_entries
 

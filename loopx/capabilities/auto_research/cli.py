@@ -212,6 +212,10 @@ def register_auto_research_commands(
         action="store_true",
         help="Preview rollout events without appending them.",
     )
+    append_parser.add_argument(
+        "--output",
+        help="Write the append result JSON to this path without recording the path in LoopX state.",
+    )
 
     live_evidence_parser = auto_research_sub.add_parser(
         "capture-live-evidence",
@@ -638,6 +642,13 @@ def handle_auto_research_command(
                 runtime_root_arg=runtime_root_arg,
                 dry_run=args.dry_run,
             )
+            if args.output:
+                output_path = Path(args.output).expanduser()
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(
+                    json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
         elif args.auto_research_command == "capture-live-evidence":
             payload = capture_live_codex_e2e_evidence(
                 packet_path=args.packet,
@@ -647,7 +658,9 @@ def handle_auto_research_command(
                 visible_lanes_accepted=args.visible_lanes_accepted,
             )
             if args.execute:
-                Path(args.output).expanduser().write_text(
+                output_path = Path(args.output).expanduser()
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(
                     json.dumps(payload, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
