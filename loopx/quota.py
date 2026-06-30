@@ -2447,19 +2447,27 @@ def _scoped_user_gate_fallback(
     user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
     *,
+    capability_gate: dict[str, Any] | None = None,
     allow_unrelated_gate: bool = False,
 ) -> dict[str, Any] | None:
     gates = _open_user_gate_todo_items(user_todo_summary)
     if not gates or not isinstance(agent_todo_summary, dict):
         return None
 
-    executable_items = (
-        agent_todo_summary.get("executable_backlog_items")
-        if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
-        else agent_todo_summary.get("first_executable_items")
-        if isinstance(agent_todo_summary.get("first_executable_items"), list)
-        else []
-    )
+    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
+        executable_items = (
+            capability_gate.get("runnable_candidates")
+            if isinstance(capability_gate.get("runnable_candidates"), list)
+            else []
+        )
+    else:
+        executable_items = (
+            agent_todo_summary.get("executable_backlog_items")
+            if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
+            else agent_todo_summary.get("first_executable_items")
+            if isinstance(agent_todo_summary.get("first_executable_items"), list)
+            else []
+        )
     executable_items = [item for item in executable_items if isinstance(item, dict)]
     claim_scope = (
         agent_todo_summary.get("claim_scope")
@@ -2619,12 +2627,43 @@ def _agent_lane_next_action(
     agent_todo_summary: dict[str, Any] | None,
     capability_gate: dict[str, Any] | None,
     active_next_action: Any = None,
+    scoped_user_gate_fallback: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(agent_identity, dict):
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
+
+    if isinstance(scoped_user_gate_fallback, dict):
+        selected = scoped_user_gate_fallback.get("selected_executable")
+        if isinstance(selected, dict):
+            text = _protocol_action_text(selected.get("text"), limit=500)
+            claimed_by = normalize_todo_claimed_by(selected.get("claimed_by"))
+            if (
+                text
+                and _todo_item_is_actionable_open(selected)
+                and _todo_task_class(selected) == TODO_TASK_CLASS_ADVANCEMENT
+                and (not claimed_by or claimed_by == agent_id)
+            ):
+                payload = dict(selected)
+                payload.update(
+                    {
+                        "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
+                        "agent_id": agent_id,
+                        "primary_agent": normalize_todo_claimed_by(
+                            agent_identity.get("primary_agent")
+                        ),
+                        "source": "scoped_user_gate_fallback.selected_executable",
+                        "selected_by": "scoped_user_gate_fallback",
+                        "confidence": "selected",
+                        "preserves_goal_next_action": False,
+                        "replaces_gated_goal_next_action": True,
+                    }
+                )
+                if not claimed_by:
+                    payload["claim_required_before_work"] = True
+                return payload
 
     candidate_sources: list[tuple[str, list[Any]]] = []
     candidate_sources.append(
@@ -6770,12 +6809,19 @@ def build_quota_should_run(
                 or automation_prompt_upgrade.get("reason")
                 or selected_recommended_action
             )
+        scoped_user_gate_fallback = _scoped_user_gate_fallback(
+            user_todo_summary,
+            agent_todo_summary,
+            capability_gate=capability_gate,
+            allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
+        )
         agent_lane_next_action = None
         if not due_monitor_attempt:
             agent_lane_next_action = _agent_lane_next_action(
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,
                 capability_gate=capability_gate,
+                scoped_user_gate_fallback=scoped_user_gate_fallback,
                 active_next_action=(
                     item.get("active_state_next_action")
                     or (
@@ -7006,11 +7052,6 @@ def build_quota_should_run(
                         or "no-work polling should ask the current open user todo"
                     )
                     payload["open_todo_notification_policy"] = "repeat_until_resolved"
-        scoped_user_gate_fallback = _scoped_user_gate_fallback(
-            user_todo_summary,
-            agent_todo_summary,
-            allow_unrelated_gate=bool(payload.get("safe_bypass_allowed")),
-        )
         if scoped_user_gate_fallback:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
             payload["should_run"] = True
