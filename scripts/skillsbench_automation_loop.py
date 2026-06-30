@@ -6945,14 +6945,15 @@ def _merge_app_server_goal_worker_trace_summary(
             safe_blocker = first_blocker[:120]
             if safe_blocker not in first_blockers:
                 first_blockers.append(safe_blocker)
+        trace_kind = str(payload.get("trace_kind") or "")
         worker_process = (
             payload.get("worker_process")
             if isinstance(payload.get("worker_process"), dict)
             else {}
         )
-        if payload.get("ok") is not True and worker_process:
+        if payload.get("ok") is not True and trace_kind != "relay_lifecycle":
             failure_trace_count += 1
-            category = worker_process.get("failure_category")
+            category = worker_process.get("failure_category") or first_blocker
             if isinstance(category, str) and category:
                 safe_category = category[:120]
                 if safe_category not in failure_categories:

@@ -6966,6 +6966,97 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             "failure_class"
         ] == "job_materialization_failed", first_action_timeout_compact
 
+        no_assistant_trace_dir = root / "native-worker-no-assistant-message"
+        no_assistant_trace_dir.mkdir()
+        write_json(
+            no_assistant_trace_dir / "worker-no-assistant.compact.json",
+            {
+                "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+                "ok": False,
+                "route": "codex-app-server-goal-baseline",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "llm-prefix-cache-replay",
+                "worker_contract": {
+                    "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                    "route": "codex-app-server-goal-baseline",
+                    "ready": False,
+                    "runner_integration_ready": True,
+                    "first_blocker": "codex_app_server_no_assistant_message",
+                },
+                "turn": {
+                    "thread_id_present": True,
+                    "goal_get_present": True,
+                    "turn_id_present": True,
+                    "turn_completed_observed": True,
+                    "assistant_message_present": False,
+                    "raw_transcript_recorded": False,
+                    "raw_assistant_message_recorded": False,
+                },
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                },
+            },
+        )
+        no_assistant_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(no_assistant_trace_dir),
+            },
+            no_assistant_trace,
+        )
+        no_assistant_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-worker-no-assistant-result",
+                    reward=0.0,
+                    task_id="llm-prefix-cache-replay",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=no_assistant_trace,
+            )
+        )
+        assert no_assistant_compact is not None
+        expected_no_assistant_failure = (
+            "skillsbench_native_goal_worker_failed_codex_app_server_no_assistant_message"
+        )
+        assert (
+            no_assistant_compact["score_failure_attribution"]
+            == expected_no_assistant_failure
+        ), no_assistant_compact
+        assert no_assistant_compact["native_goal_worker_contract"][
+            "countable_baseline"
+        ] is False, no_assistant_compact
+        assert no_assistant_compact["native_goal_worker_contract"][
+            "failure_category"
+        ] == "codex_app_server_no_assistant_message", no_assistant_compact
+        assert no_assistant_compact["native_goal_worker_contract"][
+            "assistant_message_present_count"
+        ] == 0, no_assistant_compact
+        assert no_assistant_compact[
+            "official_score_comparable_to_native_codex"
+        ] is False, no_assistant_compact
+        assert "official_verifier_solution_failure" not in no_assistant_compact[
+            "failure_attribution_labels"
+        ], no_assistant_compact
+        assert no_assistant_compact["attempt_accounting"][
+            "failure_class"
+        ] == "job_materialization_failed", no_assistant_compact
+
         empty_worker_trace_dir = root / "native-worker-empty-traces"
         empty_worker_trace_dir.mkdir()
         connected_empty_trace_dir = {
