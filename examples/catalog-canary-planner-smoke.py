@@ -42,6 +42,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
     assert {
         "pr-review-and-merge",
         "release-promotion",
+        "install-update",
         "control-plane-refactor",
         "status-read-path",
         "cli-command-contract",
@@ -110,6 +111,20 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     )
     release_profile_ids = {profile["id"] for profile in release_payload["domain_profiles"]}
     assert "release-promotion" in release_profile_ids, release_payload
+    assert "install-update" in release_profile_ids, release_payload
+
+    install_payload = build_catalog_canary_plan(
+        changed_files=["scripts/install-local.sh", "loopx/self_update.py"],
+        surfaces=["install update rollback"],
+    )
+    install_profiles = {profile["id"]: profile for profile in install_payload["domain_profiles"]}
+    assert "install-update" in install_profiles, install_payload
+    install_profile = install_profiles["install-update"]
+    install_commands = [check["command"] for check in install_profile["checks"]]
+    assert "python3 examples/install-local-smoke.py" in install_commands, install_profile
+    assert "python3 examples/loopx-update-smoke.py" in install_commands, install_profile
+    assert all(check["tier"] == "default" for check in install_profile["checks"]), install_profile
+    assert install_profile["deep_checks_available"] is True, install_profile
 
     refactor_payload = build_catalog_canary_plan(
         changed_files=["loopx/quota.py", "loopx/status.py"],
