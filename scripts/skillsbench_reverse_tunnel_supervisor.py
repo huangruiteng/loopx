@@ -18,6 +18,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,9 @@ SCHEMA_VERSION = "skillsbench_reverse_tunnel_supervisor_v0"
 DEFAULT_REMOTE_FORWARD = "127.0.0.1:18180:127.0.0.1:18180"
 DEFAULT_TEST_HOST = "chatgpt.com"
 DEFAULT_TEST_PORT = 443
+BRIDGE_HELPER = Path(__file__).resolve().with_name(
+    "skillsbench_reverse_channel_bridge.py"
+)
 
 
 def _host_kind(value: str) -> str:
@@ -95,21 +99,272 @@ def _ssh_base_command(args: argparse.Namespace) -> list[str]:
     return command
 
 
-def _tunnel_command(args: argparse.Namespace) -> list[str]:
+def _json_bridge_requested(args: argparse.Namespace) -> bool:
+    return bool(
+        args.json_bridge
+        or args.json_bridge_command
+        or args.json_remote_socket
+        or args.json_remote_client_path
+    )
+
+
+def _json_bridge_public_contract(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "enabled": _json_bridge_requested(args),
+        "server_started": False,
+        "local_socket_ready": False,
+        "reverse_socket_forward_requested": bool(args.json_remote_socket),
+        "remote_socket_ready": False,
+        "remote_client_materialized": False,
+        "probe_policy": args.json_bridge_probe_policy,
+        "sandbox_env_probe_deferred": (
+            args.json_bridge_probe_policy == "sandbox-env-deferred"
+        ),
+        "sandbox_env_probe_defer_reason": (
+            "benchflow_ai_addr_ai_port_available_only_inside_task_sandbox"
+            if args.json_bridge_probe_policy == "sandbox-env-deferred"
+            else ""
+        ),
+        "raw_bridge_command_recorded": False,
+        "raw_socket_paths_recorded": False,
+        "raw_client_path_recorded": False,
+        "raw_probe_output_recorded": False,
+    }
+
+
+def _resolved_json_local_socket(
+    args: argparse.Namespace,
+    runtime_dir: Path,
+) -> Path:
+    if args.json_local_socket:
+        return Path(args.json_local_socket).expanduser()
+    return runtime_dir / "json-bridge.sock"
+
+
+def _cleanup_stale_local_forward(args: argparse.Namespace) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "requested": bool(args.cleanup_stale_local_forward),
+        "matched_count": 0,
+        "terminated_count": 0,
+        "raw_process_args_recorded": False,
+    }
+    if not args.cleanup_stale_local_forward:
+        return payload
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        payload["first_blocker"] = "stale_forward_scan_failed"
+        return payload
+
+    current_pid = os.getpid()
+    candidates: list[int] = []
+    for line in (proc.stdout or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        pid_text, _, command = stripped.partition(" ")
+        try:
+            pid = int(pid_text)
+        except ValueError:
+            continue
+        if pid == current_pid:
+            continue
+        if (
+            args.ssh_destination in command
+            and args.remote_forward in command
+            and " -R " in f" {command} "
+        ):
+            candidates.append(pid)
+    payload["matched_count"] = len(candidates)
+    for pid in candidates:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            payload["terminated_count"] = int(payload["terminated_count"]) + 1
+        except (OSError, ProcessLookupError):
+            continue
+    if candidates:
+        time.sleep(0.2)
+    return payload
+
+
+def _start_json_bridge_server(
+    args: argparse.Namespace,
+    *,
+    socket_path: Path,
+) -> subprocess.Popen[Any]:
+    return subprocess.Popen(
+        [
+            sys.executable,
+            str(BRIDGE_HELPER),
+            "serve-json",
+            "--socket",
+            str(socket_path),
+            "--bridge-command",
+            args.json_bridge_command,
+            "--timeout-sec",
+            str(max(1.0, float(args.json_server_timeout_sec))),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,
+    )
+
+
+def _probe_local_json_socket(args: argparse.Namespace, socket_path: Path) -> bool:
+    deadline = time.monotonic() + max(1.0, float(args.json_socket_ready_timeout_sec))
+    while time.monotonic() < deadline:
+        if socket_path.exists():
+            return True
+        time.sleep(max(0.05, float(args.probe_interval_sec)))
+    return False
+
+
+def _run_remote_shell_command(
+    args: argparse.Namespace,
+    command: str,
+    *,
+    timeout_sec: float,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [*_ssh_base_command(args), args.ssh_destination, command],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=max(1.0, float(timeout_sec)),
+        check=False,
+    )
+
+
+def _probe_remote_json_socket(args: argparse.Namespace) -> bool:
+    command = "test -S " + shlex.quote(args.json_remote_socket)
+    try:
+        proc = _run_remote_shell_command(
+            args,
+            command,
+            timeout_sec=args.json_socket_ready_timeout_sec,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def _materialize_remote_json_client(args: argparse.Namespace, runtime_dir: Path) -> bool:
+    local_client = runtime_dir / "json-bridge-client"
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                str(BRIDGE_HELPER),
+                "write-client",
+                "--kind",
+                "json",
+                "--socket",
+                args.json_remote_socket,
+                "--output",
+                str(local_client),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=max(1.0, float(args.remote_setup_timeout_sec)),
+            check=True,
+        )
+        client_text = local_client.read_text(encoding="utf-8")
+        remote_path = args.json_remote_client_path
+        remote_parent = os.path.dirname(remote_path) or "."
+        remote_command = (
+            "umask 077; mkdir -p "
+            + shlex.quote(remote_parent)
+            + "; cat > "
+            + shlex.quote(remote_path)
+            + "; chmod 700 "
+            + shlex.quote(remote_path)
+        )
+        proc = subprocess.run(
+            [*_ssh_base_command(args), args.ssh_destination, remote_command],
+            input=client_text,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=max(1.0, float(args.remote_setup_timeout_sec)),
+            check=False,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def _render_remote_command(args: argparse.Namespace) -> str:
+    command = args.remote_command
+    if _json_bridge_requested(args):
+        command = command.replace(
+            "{json_bridge_client}",
+            shlex.quote(args.json_remote_client_path),
+        )
+    return command
+
+
+def _remote_json_bridge_env_prefix(args: argparse.Namespace) -> str:
+    if not _json_bridge_requested(args):
+        return ""
+    assignments = {
+        "LOOPX_SKILLSBENCH_JSON_BRIDGE_CLIENT": args.json_remote_client_path,
+        "LOOPX_REVERSE_JSON_TIMEOUT_SEC": str(int(args.json_server_timeout_sec)),
+    }
+    return " ".join(
+        f"{name}={shlex.quote(value)}" for name, value in assignments.items()
+    )
+
+
+def _remote_command_with_bridge_env(args: argparse.Namespace) -> str:
+    rendered = _render_remote_command(args)
+    prefix = _remote_json_bridge_env_prefix(args)
+    if not prefix:
+        return rendered
+    return prefix + " " + rendered
+
+
+def _tunnel_command(
+    args: argparse.Namespace,
+    *,
+    json_local_socket: Path | None = None,
+) -> list[str]:
     keepalive = max(1, int(args.keepalive_interval_sec))
     remote_keepalive = (
         f"while true; do sleep {keepalive}; "
         "echo loopx_reverse_tunnel_keepalive >&2; done"
     )
-    return [
+    command = [
         *_ssh_base_command(args),
         "-o",
         "ExitOnForwardFailure=yes",
-        "-R",
-        args.remote_forward,
-        args.ssh_destination,
-        remote_keepalive,
     ]
+    if _json_bridge_requested(args) and json_local_socket is not None:
+        command.extend(
+            [
+                "-o",
+                "StreamLocalBindUnlink=yes",
+                "-R",
+                f"{args.json_remote_socket}:{json_local_socket}",
+            ]
+        )
+    command.extend(
+        [
+            "-R",
+            args.remote_forward,
+            args.ssh_destination,
+            remote_keepalive,
+        ]
+    )
+    return command
 
 
 def _probe_command(args: argparse.Namespace) -> str:
@@ -241,12 +496,68 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "raw_remote_output_recorded": False,
         "private_log_written": False,
         "remote_forward": _forward_public_contract(args.remote_forward),
+        "json_bridge": _json_bridge_public_contract(args),
     }
 
     tunnel_proc: subprocess.Popen[Any] | None = None
+    json_bridge_proc: subprocess.Popen[Any] | None = None
+    runtime_dir_obj: tempfile.TemporaryDirectory[str] | None = None
+    json_local_socket: Path | None = None
+
+    def finish(returncode: int) -> tuple[int, dict[str, Any]]:
+        payload["duration_sec"] = round(max(0.0, time.time() - started_at), 3)
+        if tunnel_proc is not None:
+            payload["tunnel_cleanup_status"] = _stop_process_group(
+                tunnel_proc,
+                grace_sec=1.0,
+            )
+            if tunnel_proc.returncode is not None:
+                payload["tunnel_exit_code"] = tunnel_proc.returncode
+        if json_bridge_proc is not None:
+            payload["json_bridge"]["server_cleanup_status"] = _stop_process_group(
+                json_bridge_proc,
+                grace_sec=1.0,
+            )
+            if json_bridge_proc.returncode is not None:
+                payload["json_bridge"]["server_exit_code"] = (
+                    json_bridge_proc.returncode
+                )
+        if runtime_dir_obj is not None:
+            runtime_dir_obj.cleanup()
+        return returncode, payload
+
     try:
+        payload["stale_forward_cleanup"] = _cleanup_stale_local_forward(args)
+        runtime_dir_obj = tempfile.TemporaryDirectory(
+            prefix="loopx-rt-",
+            dir="/tmp",
+        )
+        runtime_dir = Path(runtime_dir_obj.name)
+        if _json_bridge_requested(args):
+            json_bridge_payload = payload["json_bridge"]
+            json_local_socket = _resolved_json_local_socket(args, runtime_dir)
+            try:
+                json_bridge_proc = _start_json_bridge_server(
+                    args,
+                    socket_path=json_local_socket,
+                )
+                json_bridge_payload["server_started"] = True
+            except OSError as exc:
+                payload["first_blocker"] = "json_bridge_server_launch_failed"
+                json_bridge_payload["server_error_type"] = type(exc).__name__[:80]
+                return finish(2)
+
+            if not _probe_local_json_socket(args, json_local_socket):
+                payload["first_blocker"] = "json_bridge_local_socket_not_ready"
+                return finish(2)
+            if json_bridge_proc.poll() is not None:
+                payload["first_blocker"] = "json_bridge_server_exited_before_ready"
+                json_bridge_payload["server_exit_code"] = json_bridge_proc.returncode
+                return finish(2)
+            json_bridge_payload["local_socket_ready"] = True
+
         tunnel_proc = subprocess.Popen(
-            _tunnel_command(args),
+            _tunnel_command(args, json_local_socket=json_local_socket),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             text=True,
@@ -256,14 +567,14 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     except OSError as exc:
         payload["first_blocker"] = "reverse_tunnel_launch_failed"
         payload["tunnel_error_type"] = type(exc).__name__[:80]
-        return 2, payload
+        return finish(2)
 
     deadline = time.monotonic() + max(1.0, float(args.tunnel_ready_timeout_sec))
     while time.monotonic() < deadline:
         if tunnel_proc.poll() is not None:
             payload["first_blocker"] = "reverse_tunnel_process_exited_before_ready"
             payload["tunnel_exit_code"] = tunnel_proc.returncode
-            return 2, payload
+            return finish(2)
         ready, status = _run_remote_probe(args)
         payload["probe_attempt_count"] = int(payload["probe_attempt_count"]) + 1
         payload["probe_status"] = status
@@ -274,13 +585,32 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
 
     if payload["tunnel_ready"] is not True:
         payload["first_blocker"] = "reverse_tunnel_probe_not_ready"
-        return 2, payload
+        return finish(2)
+
+    if _json_bridge_requested(args):
+        json_bridge_payload = payload["json_bridge"]
+        if not _probe_remote_json_socket(args):
+            payload["first_blocker"] = "json_bridge_remote_socket_not_ready"
+            return finish(2)
+        json_bridge_payload["remote_socket_ready"] = True
+        assert runtime_dir_obj is not None
+        if not _materialize_remote_json_client(args, Path(runtime_dir_obj.name)):
+            payload["first_blocker"] = "json_bridge_remote_client_materialize_failed"
+            return finish(2)
+        json_bridge_payload["remote_client_materialized"] = True
+        json_bridge_payload["remote_command_placeholder_supported"] = (
+            "{json_bridge_client}" in args.remote_command
+        )
 
     if args.preflight_only or not args.remote_command:
         payload["ok"] = True
-        return 0, payload
+        return finish(0)
 
-    command = [*_ssh_base_command(args), args.ssh_destination, args.remote_command]
+    command = [
+        *_ssh_base_command(args),
+        args.ssh_destination,
+        _remote_command_with_bridge_env(args),
+    ]
     try:
         proc = subprocess.run(
             command,
@@ -303,7 +633,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         payload["ok"] = proc.returncode == 0
         if proc.returncode != 0:
             payload["first_blocker"] = "remote_command_exit_nonzero"
-        return (0 if proc.returncode == 0 else proc.returncode or 1), payload
+        return finish(0 if proc.returncode == 0 else proc.returncode or 1)
     except subprocess.TimeoutExpired as exc:
         stdout_text = exc.stdout if isinstance(exc.stdout, str) else ""
         stderr_text = exc.stderr if isinstance(exc.stderr, str) else ""
@@ -316,13 +646,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             stderr_text=stderr_text,
         )
         payload["first_blocker"] = "remote_command_timeout"
-        return 124, payload
-    finally:
-        payload["duration_sec"] = round(max(0.0, time.time() - started_at), 3)
-        if tunnel_proc is not None:
-            payload["tunnel_cleanup_status"] = _stop_process_group(tunnel_proc)
-            if tunnel_proc.returncode is not None:
-                payload["tunnel_exit_code"] = tunnel_proc.returncode
+        return finish(124)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -345,6 +669,68 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tunnel-ready-timeout-sec", type=float, default=30.0)
     parser.add_argument("--keepalive-interval-sec", type=int, default=20)
     parser.add_argument("--run-timeout-sec", type=float, default=7200.0)
+    parser.add_argument(
+        "--cleanup-stale-local-forward",
+        action="store_true",
+        help=(
+            "Before launching, terminate matching local ssh -R processes for "
+            "the same destination and remote-forward. Public output records "
+            "counts only."
+        ),
+    )
+    parser.add_argument(
+        "--json-bridge",
+        action="store_true",
+        help=(
+            "Hold a per-run JSON reverse-channel bridge alongside the TCP "
+            "reverse tunnel."
+        ),
+    )
+    parser.add_argument(
+        "--json-bridge-command",
+        default="",
+        help=(
+            "Private local command executed by the JSON bridge server for "
+            "sandbox command/file requests. Not written to public output."
+        ),
+    )
+    parser.add_argument(
+        "--json-local-socket",
+        default="",
+        help=(
+            "Optional local Unix socket path for the JSON bridge server. "
+            "Omit to use a per-run temporary socket."
+        ),
+    )
+    parser.add_argument(
+        "--json-remote-socket",
+        default="",
+        help=(
+            "Remote Unix socket path exposed through ssh -R for the JSON "
+            "bridge. The raw path is not written to public output."
+        ),
+    )
+    parser.add_argument(
+        "--json-remote-client-path",
+        default="",
+        help=(
+            "Remote path where the JSON bridge client script is materialized. "
+            "Use {json_bridge_client} inside --remote-command to inject it."
+        ),
+    )
+    parser.add_argument("--json-server-timeout-sec", type=float, default=7200.0)
+    parser.add_argument("--json-socket-ready-timeout-sec", type=float, default=15.0)
+    parser.add_argument("--remote-setup-timeout-sec", type=float, default=30.0)
+    parser.add_argument(
+        "--json-bridge-probe-policy",
+        choices=("sandbox-env-deferred", "socket-only"),
+        default="sandbox-env-deferred",
+        help=(
+            "Pre-case readiness policy. sandbox-env-deferred avoids probing "
+            "AI_ADDR/AI_PORT before the BenchFlow task sandbox exists; socket-only "
+            "checks only the local/remote bridge socket and client lifecycle."
+        ),
+    )
     parser.add_argument("--remote-command", default="")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument(
@@ -357,7 +743,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Optional path for compact public-safe supervisor JSON.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if _json_bridge_requested(args):
+        args.json_bridge = True
+        missing = [
+            name
+            for name in (
+                "json_bridge_command",
+                "json_remote_socket",
+                "json_remote_client_path",
+            )
+            if not getattr(args, name)
+        ]
+        if missing:
+            parser.error(
+                "--json-bridge requires "
+                + ", ".join("--" + item.replace("_", "-") for item in missing)
+            )
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:

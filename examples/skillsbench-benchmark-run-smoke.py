@@ -10063,6 +10063,20 @@ def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
     assert reparsed_child.bootstrap_light_fail_fast_defaulted is True, reparsed_child
 
 
+def test_skillsbench_single_task_ids_replaces_default_task_id() -> None:
+    args = parse_args(
+        [
+            "--task-ids",
+            "bike-rebalance",
+            "--route",
+            "codex-app-server-goal-baseline",
+            "--plan-only",
+        ]
+    )
+    assert args.task_id == "bike-rebalance", args
+    assert skillsbench_loop._batch_task_ids(args) == ["bike-rebalance"], args
+
+
 def test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr() -> None:
     args = parse_args(
         [
@@ -12994,6 +13008,7 @@ if __name__ == "__main__":
     test_cli_skillsbench_result_root_discovers_nested_case_result_for_ledger()
     test_skillsbench_runner_plan_supports_controller_trace_path()
     test_skillsbench_parallel_batch_isolates_case_process_argv()
+    test_skillsbench_single_task_ids_replaces_default_task_id()
     test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr()
     test_skillsbench_compact_runs_update_ledger_pair()
     test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()
