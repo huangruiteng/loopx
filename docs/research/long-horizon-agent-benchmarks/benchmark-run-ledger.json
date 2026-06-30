@@ -1102,7 +1102,7 @@
           "case_id": "ada-bathroom-plan-repair",
           "latest_decision": {
             "baseline_failure_scope": "case_or_solution",
-            "baseline_run_id": "a054b365d9fc",
+            "baseline_run_id": "a596dee8e879",
             "decision": "paired_treatment_improved",
             "official_score_delta": 1.0,
             "treatment_failure_scope": "passed",
@@ -1351,15 +1351,98 @@
               "status": "completed",
               "submit_eligible": false,
               "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/ada-bathroom-plan-repair/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "solver_failed",
+              "attempt_failure_label": "official_verifier_solution_failure",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "ada-bathroom-plan-repair",
+              "case_ids": [
+                "ada-bathroom-plan-repair"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "official_verifier_solution_failure",
+              "failure_labels": [
+                "official_verifier_solution_failure"
+              ],
+              "failure_scope": "case_or_solution",
+              "job_name": "skillsbench_1_1_ada_bathroom_plan_repair_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "Reverse-tunnel app-server Goal batch3: terminal official verifier solution failure; compact trace shows real task-facing bridge operations before closeout.",
+              "official_feedback_blinded": true,
+              "official_passed": false,
+              "official_score": 0.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T18:30:06+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-revtunnel-appgoal-batch3-20260630T1005Z",
+              "run_id": "a596dee8e879",
+              "score_status": "failed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": true
             }
           ]
         },
         "adaptive-cruise-control": {
           "case_id": "adaptive-cruise-control",
           "latest_decision": {
-            "baseline_run_id": "f7cfe8be0f89",
-            "decision": "baseline_failed_treatment_candidate",
-            "failure_scope": "case_or_solution"
+            "baseline_run_id": "86569e24579e",
+            "decision": "baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_native_goal_worker_failed_codex_app_server_turn_timeout",
+            "failure_scope": "score_missing"
           },
           "runs": [
             {
@@ -1472,6 +1555,90 @@
               "status": "completed",
               "submit_eligible": false,
               "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/adaptive-cruise-control/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "job_materialization_failed",
+              "attempt_failure_label": "skillsbench_native_goal_worker_failed_codex_app_server_turn_timeout",
+              "attempt_lifecycle_phase": "runner_accepted_args",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "adaptive-cruise-control",
+              "case_ids": [
+                "adaptive-cruise-control"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "skillsbench_native_goal_worker_failed_codex_app_server_turn_timeout",
+              "failure_labels": [
+                "skillsbench_native_goal_worker_failed_codex_app_server_turn_timeout",
+                "skillsbench_native_goal_worker_uncountable_baseline",
+                "skillsbench_app_server_goal_worker_compact_proof_missing",
+                "skillsbench_runner_setup_error",
+                "partial_trajectory"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench_1_1_adaptive_cruise_control_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "Reverse-tunnel app-server Goal batch3: terminal app-server turn timeout after real task-facing bridge operations; compact only, no verifier feedback forwarded.",
+              "official_feedback_blinded": true,
+              "official_score_attempt_countable": false,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T18:32:43+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-revtunnel-appgoal-batch3-20260630T1005Z",
+              "run_id": "86569e24579e",
+              "score_status": "missing",
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "recorded",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true,
+                "verifier_bootstrap_risk_detected": true,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -2485,10 +2652,10 @@
         "citation-check": {
           "case_id": "citation-check",
           "latest_decision": {
-            "baseline_failure_scope": "case_or_solution",
-            "baseline_run_id": "1fac74f1baa0",
-            "decision": "paired_treatment_improved",
-            "official_score_delta": 1.0,
+            "baseline_failure_scope": "passed",
+            "baseline_run_id": "124111e07812",
+            "decision": "paired_baseline_solved_treatment_preserved",
+            "official_score_delta": 0.0,
             "treatment_failure_scope": "passed",
             "treatment_run_id": "15ba747b3be5"
           },
@@ -3825,6 +3992,87 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false,
+              "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/citation-check/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "none",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "citation-check",
+              "case_ids": [
+                "citation-check"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "job_name": "skillsbench_1_1_citation_check_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "Reverse-tunnel app-server Goal batch3: official SkillsBench verifier passed; no verifier-feedback-to-agent route.",
+              "official_feedback_blinded": true,
+              "official_passed": true,
+              "official_score": 1.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T18:30:06+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-revtunnel-appgoal-batch3-20260630T1005Z",
+              "run_id": "124111e07812",
+              "score_status": "passed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true,
+                "verifier_bootstrap_risk_detected": true,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_host": "releases.astral.sh",
+                "verifier_uv_bootstrap_mirror_patch_applied": true,
+                "verifier_uv_bootstrap_mirror_patch_required": true,
+                "verifier_uv_bootstrap_risk_detected": true,
+                "verifier_uv_bootstrap_version": "0.9.7"
+              },
               "verifier_attempt_countable": true
             }
           ]
@@ -12248,7 +12496,7 @@
           ]
         }
       },
-      "run_count": 194
+      "run_count": 197
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -16300,5 +16548,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-30T17:53:32+08:00"
+  "updated_at": "2026-06-30T18:32:43+08:00"
 }
