@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
 import selectors
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -78,6 +80,15 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
+
+
+@contextlib.contextmanager
+def _temporary_directory_ignore_cleanup_errors(*, prefix: str):
+    path = tempfile.mkdtemp(prefix=prefix)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def _prompt_requires_bridge_first_action(prompt: str) -> bool:
@@ -246,6 +257,22 @@ def _bridge_summary_has_meaningful_agent_progress(
 def _bridge_summary_has_successful_task_file_write(path: Path | None) -> bool:
     """Return true after the worker successfully writes task-facing files."""
 
+    return _bridge_summary_has_successful_task_operation(path, operation="write_file")
+
+
+def _bridge_summary_has_successful_task_operation(
+    path: Path | None,
+    *,
+    operation: str | None = None,
+) -> bool:
+    """Return true after a successful task-facing bridge operation.
+
+    Some agents create scored outputs via an ``exec`` command rather than the
+    bridge ``write_file`` operation. Treat that as sufficient task-output
+    progress for the quiet closeout watchdog; the verifier remains the source
+    of truth for whether the side effect is correct.
+    """
+
     if path is None or not path.exists():
         return False
     try:
@@ -262,7 +289,7 @@ def _bridge_summary_has_successful_task_file_write(path: Path | None) -> bool:
         phase = str(record.get("record_phase") or "").strip().lower()
         if phase != "complete" or _bridge_operation_record_interrupted(record):
             continue
-        if record.get("operation") != "write_file":
+        if operation is not None and record.get("operation") != operation:
             continue
         if record.get("task_facing_operation") is not True:
             continue
@@ -1947,7 +1974,9 @@ raise SystemExit(proc.returncode)
     ) -> str:
         cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
         self._publish_worker_lifecycle_trace("prompt_received")
-        with tempfile.TemporaryDirectory(prefix="gh-skillsbench-goal-worker-") as tmp:
+        with _temporary_directory_ignore_cleanup_errors(
+            prefix="gh-skillsbench-goal-worker-"
+        ) as tmp:
             tmp_path = Path(tmp)
             prompt_path = tmp_path / "prompt.txt"
             output_json = tmp_path / "worker.compact.json"
@@ -2091,7 +2120,7 @@ raise SystemExit(proc.returncode)
                         time.monotonic()
                         + max(1.0, self._config.first_action_timeout_sec)
                     )
-                task_output_write_seen = False
+                task_output_progress_seen = False
                 while proc.poll() is None:
                     now = time.monotonic()
                     if bridge_summary_path is not None:
@@ -2113,11 +2142,11 @@ raise SystemExit(proc.returncode)
                                 )
                             )
                         if (
-                            not task_output_write_seen
+                            not task_output_progress_seen
                             and task_output_quiet_timeout_sec > 0
                         ):
-                            task_output_write_seen = (
-                                _bridge_summary_has_successful_task_file_write(
+                            task_output_progress_seen = (
+                                _bridge_summary_has_successful_task_operation(
                                     bridge_summary_path
                                 )
                             )
@@ -2167,7 +2196,7 @@ raise SystemExit(proc.returncode)
                             "codex_exec_first_action_timeout"
                         )
                     if (
-                        task_output_write_seen
+                        task_output_progress_seen
                         and bridge_summary_path is not None
                         and task_output_quiet_timeout_sec > 0
                         and not _bridge_summary_has_inflight_operation(

@@ -3527,11 +3527,33 @@ def build_skillsbench_benchflow_result_benchmark_run(
             trace_status=native_goal_worker_trace_status,
         )
     )
-    native_goal_worker_countable = not bool(native_goal_worker_failure_label)
+    native_goal_worker_bridge_task_success_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_success_count"
+    )
+    native_goal_worker_bridge_task_operation_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_operation_count"
+    )
+    native_goal_worker_countable_via_bridge_activity = bool(
+        route == "codex-app-server-goal-baseline"
+        and native_goal_worker_failure_label
+        and reward_value is not None
+        and native_goal_worker_bridge_task_success_count > 0
+    )
+    native_goal_worker_countable = bool(
+        not native_goal_worker_failure_label
+        or native_goal_worker_countable_via_bridge_activity
+    )
     native_goal_worker_contract = {
         "schema_version": "skillsbench_native_goal_worker_contract_v0",
         "required": controller_counters.get("native_goal_worker_route") is True,
         "countable_baseline": native_goal_worker_countable,
+        "countability_source": (
+            "remote_command_file_bridge_task_facing_success"
+            if native_goal_worker_countable_via_bridge_activity
+            else "app_server_turn_trace"
+            if not native_goal_worker_failure_label
+            else "none"
+        ),
         "trace_status": native_goal_worker_trace_status,
         "trace_count": native_goal_worker_trace_count,
         "ok_count": _controller_public_count("native_goal_worker_ok_count"),
@@ -3548,6 +3570,8 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "failure_category": str(
             controller_counters.get("native_goal_worker_failure_category") or ""
         )[:120],
+        "bridge_task_facing_operation_count": native_goal_worker_bridge_task_operation_count,
+        "bridge_task_facing_success_count": native_goal_worker_bridge_task_success_count,
         "first_blocker": str(
             controller_counters.get("native_goal_worker_first_blocker") or ""
         )[:120],
@@ -4096,10 +4120,18 @@ def build_skillsbench_benchflow_result_benchmark_run(
         )
         is True
     )
+    host_local_acp_task_output_quiet_after_bridge_attempt = bool(
+        host_local_acp_codex_exec_failure_present
+        and host_local_acp_codex_exec_failure_category
+        == "codex_exec_task_output_quiet_timeout"
+        and reward_value is not None
+        and agent_bridge_task_facing_success_count > 0
+    )
     if (
         host_local_acp_codex_exec_failure_present
         and not official_passed
         and not host_local_acp_idle_timeout_after_countable_closeout
+        and not host_local_acp_task_output_quiet_after_bridge_attempt
     ):
         if host_local_acp_idle_no_task_output_progress_stop:
             host_failure_label = (
@@ -4155,6 +4187,34 @@ def build_skillsbench_benchflow_result_benchmark_run(
         for item in host_failure_extra_labels:
             if item and item not in failure_labels:
                 failure_labels.append(item)
+    elif host_local_acp_task_output_quiet_after_bridge_attempt:
+        warning_label = (
+            "skillsbench_host_local_acp_task_output_quiet_after_bridge_attempt"
+        )
+        failure_labels = [
+            item
+            for item in failure_labels
+            if item
+            not in {
+                "skillsbench_runner_error",
+                "skillsbench_host_local_acp_task_output_quiet_timeout",
+                "verifier_infrastructure_failure",
+                "official_verifier_solution_failure",
+            }
+        ]
+        if reward_value == 0 and score_failure_attribution in {
+            "",
+            "none",
+            "skillsbench_runner_error",
+            "skillsbench_host_local_acp_task_output_quiet_timeout",
+        }:
+            exception_type = "none"
+            score_failure_attribution = "official_score_zero_case_failure"
+            runner_score_failure_attribution = "none"
+            if "official_score_zero_case_failure" not in failure_labels:
+                failure_labels.append("official_score_zero_case_failure")
+        if warning_label not in warning_labels:
+            warning_labels.append(warning_label)
     elif host_local_acp_idle_timeout_after_countable_closeout:
         warning_label = (
             "skillsbench_host_local_acp_idle_timeout_after_countable_closeout"
@@ -4180,7 +4240,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             if item not in warning_labels:
                 warning_labels.append(item)
     native_goal_worker_uncountable = bool(
-        native_goal_worker_failure_label and not official_passed
+        native_goal_worker_failure_label
+        and not official_passed
+        and not native_goal_worker_countable_via_bridge_activity
     )
     if native_goal_worker_uncountable:
         exception_type = native_goal_worker_failure_label
@@ -4218,7 +4280,10 @@ def build_skillsbench_benchflow_result_benchmark_run(
         evidence_files.append("loopx:acp_trajectory_summary")
     runner_failure: dict[str, Any] | None = None
     runner_failure_fingerprint: dict[str, Any] | None = None
-    if error_text or native_goal_worker_uncountable:
+    if (
+        error_text
+        and not host_local_acp_task_output_quiet_after_bridge_attempt
+    ) or native_goal_worker_uncountable:
         runner_failure = {
             "schema_version": "skillsbench_runner_failure_v0",
             "exception_type": exception_type,

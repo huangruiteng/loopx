@@ -7223,6 +7223,102 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             "failure_class"
         ] == "job_materialization_failed", no_assistant_compact
 
+        bridge_quiet_result_path = write_official_skillsbench_result(
+            root / "native-worker-bridge-quiet-result",
+            reward=0.0,
+            task_id="adaptive-cruise-control",
+        )
+        bridge_quiet_result = json.loads(
+            bridge_quiet_result_path.read_text(encoding="utf-8")
+        )
+        bridge_quiet_result["error"] = "codex_exec_task_output_quiet_timeout"
+        write_json(bridge_quiet_result_path, bridge_quiet_result)
+        bridge_quiet_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "native_goal_worker_trace_dir_present": True,
+            "native_goal_worker_public_trace_read": True,
+            "native_goal_worker_trace_count": 4,
+            "native_goal_worker_lifecycle_trace_count": 3,
+            "native_goal_worker_prompt_received_count": 1,
+            "native_goal_worker_failure_trace_count": 1,
+            "native_goal_worker_failure_category": "codex_exec_task_output_quiet_timeout",
+            "native_goal_worker_first_blocker": "task_output_quiet_timeout",
+            "remote_command_file_bridge_agent_operation_trace_status": (
+                "agent_operation_trace_recorded"
+            ),
+            "remote_command_file_bridge_agent_operation_trace_satisfied": True,
+            "remote_command_file_bridge_agent_request_count": 20,
+            "remote_command_file_bridge_agent_task_facing_operation_count": 20,
+            "remote_command_file_bridge_agent_task_facing_success_count": 20,
+            "remote_command_file_bridge_agent_failure_count": 0,
+            "host_local_acp_bridge_progress_status": (
+                "bridge_task_facing_success_observed"
+            ),
+            "host_local_acp_bridge_progress_signal_source": (
+                "remote_command_file_bridge_agent_operations"
+            ),
+            "host_local_acp_codex_exec_failure_trace_present": True,
+            "host_local_acp_codex_exec_failure_trace_count": 1,
+            "host_local_acp_codex_exec_failure_category": (
+                "codex_exec_task_output_quiet_timeout"
+            ),
+            "host_local_acp_codex_exec_failure_categories": [
+                "codex_exec_task_output_quiet_timeout"
+            ],
+            "host_local_acp_codex_exec_failure_raw_material_recorded": False,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        bridge_quiet_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                bridge_quiet_result_path,
+                route="codex-app-server-goal-baseline",
+                controller_trace=bridge_quiet_trace,
+            )
+        )
+        assert bridge_quiet_compact is not None
+        assert bridge_quiet_compact["score_failure_attribution"] == (
+            "official_score_zero_case_failure"
+        ), bridge_quiet_compact
+        assert "runner_failure" not in bridge_quiet_compact, bridge_quiet_compact
+        assert "skillsbench_runner_setup_error" not in bridge_quiet_compact[
+            "failure_attribution_labels"
+        ], bridge_quiet_compact
+        assert (
+            "skillsbench_host_local_acp_task_output_quiet_after_bridge_attempt"
+            in bridge_quiet_compact["runner_warning_labels"]
+        ), bridge_quiet_compact
+        bridge_quiet_worker = bridge_quiet_compact["native_goal_worker_contract"]
+        assert bridge_quiet_worker["countable_baseline"] is True, bridge_quiet_compact
+        assert bridge_quiet_worker["countability_source"] == (
+            "remote_command_file_bridge_task_facing_success"
+        ), bridge_quiet_compact
+        assert bridge_quiet_worker["bridge_task_facing_success_count"] == 20, (
+            bridge_quiet_compact
+        )
+        bridge_quiet_accounting = bridge_quiet_compact["attempt_accounting"]
+        assert bridge_quiet_accounting["failure_class"] == "solver_failed", (
+            bridge_quiet_accounting
+        )
+        assert bridge_quiet_accounting["case_attempt_countable"] is True, (
+            bridge_quiet_accounting
+        )
+        assert bridge_quiet_accounting["solver_attempt_countable"] is True, (
+            bridge_quiet_accounting
+        )
+        assert bridge_quiet_accounting["verifier_attempt_countable"] is True, (
+            bridge_quiet_accounting
+        )
+        assert bridge_quiet_accounting["official_score_attempt_countable"] is True, (
+            bridge_quiet_accounting
+        )
+
         empty_worker_trace_dir = root / "native-worker-empty-traces"
         empty_worker_trace_dir.mkdir()
         connected_empty_trace_dir = {

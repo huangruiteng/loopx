@@ -1817,11 +1817,14 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
         "turn_start_count",
         "assistant_message_present_count",
         "failure_trace_count",
+        "bridge_task_facing_operation_count",
+        "bridge_task_facing_success_count",
     ):
         field_value = value.get(field)
         if isinstance(field_value, int) and not isinstance(field_value, bool):
             compact[field] = field_value
     for field in (
+        "countability_source",
         "trace_status",
         "failure_category",
         "first_blocker",
