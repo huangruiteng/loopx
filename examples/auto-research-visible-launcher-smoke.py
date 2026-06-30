@@ -190,7 +190,9 @@ def main() -> int:
             assert "LOOPX_REQUIRED_SKILL" in command, command
             assert "quota should-run" in command, command
             assert "auto-research frontier" in command, command
-            assert "codex-cli-bootstrap-message" in command, command
+            assert "[Codex bootstrap prompt]" in command, command
+            assert "You are a visible LoopX auto-research lane" in command, command
+            assert "codex-cli-bootstrap-message" not in command, command
             assert "bootstrap-or-stop" in command, command
             assert "[LoopX visible acceptance]" in command, command
             assert "reasoning_effort=high" in command, command

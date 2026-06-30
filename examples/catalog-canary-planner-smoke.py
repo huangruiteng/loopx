@@ -50,6 +50,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "monitor-scheduler",
         "state-write-correctness",
         "frontstage-rollout",
+        "auto-research-demo",
         "benchmark-adapter-readiness",
     } <= domain_profile_ids, payload
 
@@ -164,6 +165,23 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "python3 examples/todo-lifecycle-cli-smoke.py" in todo_commands, todo_profile
     assert all(check["tier"] == "default" for check in todo_profile["checks"]), todo_profile
     assert todo_profile["deep_checks_available"] is True, todo_profile
+
+    auto_research_payload = build_catalog_canary_plan(
+        changed_files=["loopx/capabilities/auto_research/core.py"],
+        surfaces=["auto-research demo frontier visible launcher"],
+    )
+    auto_research_profiles = {
+        profile["id"]: profile for profile in auto_research_payload["domain_profiles"]
+    }
+    assert "auto-research-demo" in auto_research_profiles, auto_research_payload
+    auto_research_profile = auto_research_profiles["auto-research-demo"]
+    auto_research_commands = [check["command"] for check in auto_research_profile["checks"]]
+    assert "python3 examples/auto-research-demo-e2e-smoke.py" in auto_research_commands, auto_research_profile
+    assert (
+        "python3 examples/decentralized-auto-research-frontier-smoke.py" in auto_research_commands
+    ), auto_research_profile
+    assert all(check["tier"] == "default" for check in auto_research_profile["checks"]), auto_research_profile
+    assert auto_research_profile["deep_checks_available"] is True, auto_research_profile
 
 
 def assert_explicit_profile_can_include_deep_checks() -> None:

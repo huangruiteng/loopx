@@ -489,6 +489,68 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "auto-research-demo",
+        "title": "Auto-research demo and frontier route",
+        "purpose": (
+            "Check visible auto-research demo routing, deterministic E2E replay, "
+            "and shared frontier projection without launching real Codex lanes by default."
+        ),
+        "catalog_families": ["Work Routing", "Evidence Lifecycle", "State And Boundary", "Human Decision"],
+        "trigger_hints": (
+            "auto-research",
+            "auto research",
+            "demo-supervisor",
+            "demo e2e",
+            "frontier",
+            "visible launcher",
+            "one-click",
+            "loopx/capabilities/auto_research",
+            "loopx/cli_commands/auto_research",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/auto-research-demo-e2e-smoke.py",
+                "tier": "default",
+                "reason": "checks the deterministic positive demo route, route contract, and no-live-claim boundary",
+            },
+            {
+                "command": "python3 examples/auto-research-one-click-ux-smoke.py",
+                "tier": "default",
+                "reason": "checks the one-command visible UX packet with fake tmux/Codex binaries",
+            },
+            {
+                "command": "python3 examples/decentralized-auto-research-frontier-smoke.py",
+                "tier": "default",
+                "reason": "checks shared frontier, evidence graph, board projection, and public boundary fixtures",
+            },
+            {
+                "command": "python3 examples/auto-research-demo-supervisor-smoke.py",
+                "tier": "deep",
+                "reason": "samples the full dry-run supervisor packet and lane bootstrap contract",
+            },
+            {
+                "command": "python3 examples/auto-research-visible-launcher-smoke.py",
+                "tier": "deep",
+                "reason": "runs the fake visible launcher acceptance path without starting real Codex work",
+            },
+            {
+                "command": "python3 examples/auto-research-rollout-readpath-smoke.py",
+                "tier": "deep",
+                "reason": "checks rollout event read-path projection into live evidence graphs",
+            },
+            {
+                "command": "python3 examples/auto-research-live-codex-claim-boundary-smoke.py",
+                "tier": "deep",
+                "reason": "guards that live E2E claims require lane-authored public evidence",
+            },
+            {
+                "command": "python3 examples/auto-research-live-evidence-capture-smoke.py",
+                "tier": "deep",
+                "reason": "checks compact live evidence capture fixtures for visible lanes",
+            },
+        ],
+    },
+    {
         "id": "benchmark-adapter-readiness",
         "title": "Benchmark adapter readiness",
         "purpose": "Check public adapter contracts and evidence boundaries without launching benchmark jobs by default.",

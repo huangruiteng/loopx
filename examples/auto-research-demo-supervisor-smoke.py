@@ -104,7 +104,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "quota should-run" in lane["quota_guard"], lane
         assert f"--agent-id {lane['agent_id']}" in lane["quota_guard"], lane
         assert "auto-research frontier" in lane["frontier"], lane
-        assert "codex-cli-bootstrap-message" in lane["bootstrap_message"], lane
+        assert "You are a visible LoopX auto-research lane" in lane["bootstrap_message"], lane
+        assert "Do not run loopx bootstrap-command-pack" in lane["bootstrap_message"], lane
+        assert "codex-cli-bootstrap-message" not in lane["bootstrap_message"], lane
         assert "[LoopX role profile]" in lane["visible_launch_command"], lane
         assert "[LoopX visible acceptance]" in lane["visible_launch_command"], lane
         assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in lane["visible_launch_command"], lane
@@ -128,7 +130,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "tmux new-session" in start_script, start_script
     assert "tmux new-window" in start_script, start_script
     assert "LOOPX_PROJECT" in start_script, start_script
-    assert "codex-cli-bootstrap-message" in start_script, start_script
+    assert "[Codex bootstrap prompt]" in start_script, start_script
+    assert "You are a visible LoopX auto-research lane" in start_script, start_script
+    assert "codex-cli-bootstrap-message" not in start_script, start_script
     assert "auto-research frontier" in start_script, start_script
     assert payload["commands"]["attach"] == "tmux attach -t loopx-auto-research", payload
 
