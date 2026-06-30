@@ -5,6 +5,11 @@ import json
 from collections.abc import Collection
 from typing import Any
 
+from ..scheduler_state import (
+    CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    rrule_for_minutes,
+)
+
 
 SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
@@ -18,6 +23,7 @@ def build_scheduler_hint(
     user_action_required: bool = False,
     agent_scope_frontier_actions: Collection[str] = (),
     include_detail: bool = False,
+    codex_app_scheduler_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project host-runtime cadence/backoff policy from a quota decision.
 
@@ -105,7 +111,7 @@ def build_scheduler_hint(
             "spend_policy": "no quota spend for final replan check or loop stop",
         }
         identity_snapshot = {key: identity_value(key) for key in identity_keys}
-        codex_rrule = f"FREQ=MINUTELY;INTERVAL={codex_interval}"
+        codex_rrule = rrule_for_minutes(codex_interval)
         profile_snapshot = {
             "cadence_class": cadence_class,
             "codex_app_initial_interval_minutes": codex_interval,
@@ -186,6 +192,78 @@ def build_scheduler_hint(
             "final_quota_replan_check": final_replan_check,
             "no_spend_for_stop": True,
         }
+        current_index = 0
+        state_status = "missing"
+        scheduler_state = (
+            codex_app_scheduler_state
+            if isinstance(codex_app_scheduler_state, dict)
+            else {}
+        )
+        if scheduler_state:
+            same_identity = (
+                scheduler_state.get("reset_token") == reset_token
+                and scheduler_state.get("identity_signature") == identity_signature
+            )
+            if same_identity:
+                state_status = "same_identity"
+                try:
+                    applied_index = int(scheduler_state.get("progression_index"))
+                except (TypeError, ValueError):
+                    applied_index = -1
+                current_index = min(max(applied_index + 1, 0), len(cadence_progression) - 1)
+            else:
+                state_status = "reset_required"
+        current_interval = cadence_progression[current_index]
+        current_rrule = rrule_for_minutes(current_interval)
+        last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
+        apply_needed = state_status != "same_identity" or last_applied_rrule != current_rrule
+        codex_app = {
+            "recommended_interval_minutes": current_interval,
+            "max_interval_minutes": codex_max,
+            "unchanged_poll_backoff_multiplier": multiplier,
+            "example_progression_minutes": cadence_progression,
+            "apply": (
+                "update_automation_cadence_if_possible"
+                if apply_needed
+                else "none_already_applied"
+            ),
+            "host_tool": "automation_update",
+            "host_action": (
+                "update_current_heartbeat_rrule"
+                if apply_needed
+                else "none"
+            ),
+            "host_action_contract": (
+                "automation_update_rrule_then_quota_scheduler_ack"
+                if apply_needed
+                else "skip_automation_update_when_apply_needed_false"
+            ),
+            "rrule_source": (
+                "scheduler_hint.codex_app.recommended_rrule"
+                if apply_needed
+                else None
+            ),
+            "stateful_backoff": {
+                "schema_version": CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION,
+                "state_key": CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+                "identity_signature": identity_signature,
+                "reset_token": reset_token,
+                "progression_minutes": cadence_progression,
+                "progression_index": current_index,
+                "current_interval_minutes": current_interval,
+                "current_rrule": current_rrule,
+                "apply_needed": apply_needed,
+                "ack_required_after_apply": apply_needed,
+                "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
+                "same_identity_action": "advance_index_after_scheduler_ack",
+                "reset_action": "clear_progression_index_apply_initial_rrule",
+                "automation_update_scope": "rrule_only_preserve_body_name_status",
+                "state_status": state_status,
+            },
+            "no_spend_for_cadence_change": True,
+        }
+        if apply_needed:
+            codex_app["recommended_rrule"] = current_rrule
         scheduler_hint = {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
             "source": "quota.should-run",
@@ -193,30 +271,7 @@ def build_scheduler_hint(
             "cadence_class": cadence_class,
             "reason": reason,
             "spend_policy": spend_policy,
-            "codex_app": {
-                "recommended_interval_minutes": codex_interval,
-                "recommended_rrule": codex_rrule,
-                "max_interval_minutes": codex_max,
-                "unchanged_poll_backoff_multiplier": multiplier,
-                "example_progression_minutes": cadence_progression,
-                "apply": "update_automation_cadence_if_possible",
-                "host_tool": "automation_update",
-                "host_action": "update_current_heartbeat_rrule",
-                "host_action_contract": "call_automation_update_update_with_recommended_rrule_when_available",
-                "rrule_source": "scheduler_hint.codex_app.recommended_rrule",
-                "stateful_backoff": {
-                    "schema_version": CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION,
-                    "state_key": "scheduler_hint.codex_app.stateful_backoff",
-                    "identity_signature": identity_signature,
-                    "reset_token": reset_token,
-                    "progression_minutes": cadence_progression,
-                    "persist": "reset_token|identity_signature|progression_index",
-                    "same_identity_action": "advance_progression_index_until_max",
-                    "reset_action": "clear_progression_index_apply_initial_rrule",
-                    "automation_update_scope": "rrule_only_preserve_body_name_status",
-                },
-                "no_spend_for_cadence_change": True,
-            },
+            "codex_app": codex_app,
             "unchanged_poll": {
                 "limits": {
                     "local_scheduler": cli_limit,

@@ -707,10 +707,14 @@ agent-to-agent handoff cadence too quickly;
 `backoff_until_material_transition` handles monitor-only quiet polls; and
 `backoff_until_fresh_evidence` handles mapped or post-handoff no-op waits.
 For Codex App and local schedulers, `recommended_interval_minutes` is the next
-target interval; if the same `unchanged_identity_keys` remain unchanged, the
-host multiplies the applied interval by
-`unchanged_poll_backoff_multiplier` until `max_interval_minutes`. Human gates
-can move to `[30, 60, 120]` after the concrete user todo has been surfaced.
+target interval. For Codex App heartbeats, `recommended_rrule` is emitted only
+when `codex_app.stateful_backoff.apply_needed=true`; if the desired RRULE is
+already applied, it is omitted so the agent does not call a host tool again.
+After a successful host RRULE update, the agent records that fact with
+`loopx quota scheduler-ack --goal-id ... --agent-id ... --applied-rrule ... --execute`,
+which lets LoopX advance the per goal/agent scheduler state without spending
+quota. Human gates can move to `[30, 60, 120]` after the concrete user todo has
+been surfaced.
 Agent-scope waits use a more conservative adjustment curve such as
 `[10, 20, 30, 60]`, so a 600-second local tick stays close to the existing
 agent-to-agent interaction cadence before cooling further.
@@ -725,20 +729,20 @@ new or reassigned todo, a resolved gate, or material evidence transition. A
 reset applies
 `codex_app_initial_interval_minutes` (and the matching local scheduler initial
 interval) before starting unchanged backoff again; it never spends quota.
-For Codex App heartbeats, hosts and agents should use `automation_update` with
-`codex_app.stateful_backoff`, not only the static
-`codex_app.recommended_rrule`. The stateful packet tells hosts to persist the
-current `reset_token`, `identity_signature`, and `progression_index`; repeated
-unchanged identity advances the index through `progression_minutes`, while a
-changed `reset_policy.reset_token` restores
-`reset_policy.codex_app_initial_rrule` and clears the index. This gives host
-runtimes a compact state key instead of requiring them to diff the whole quota
-payload. The token is derived from scheduler action plus identity/profile
-inputs, so a changed initial RRULE or scheduler profile also produces a new
-generation without projecting full snapshots in `quota should-run` JSON. User
-feedback, newly runnable work, reassignment, or material evidence should
-therefore restore the automation to the current profile's initial interval
-before backoff resumes.
+For Codex App heartbeats, hosts and agents should use `automation_update` only
+when `codex_app.stateful_backoff.apply_needed=true` and
+`codex_app.recommended_rrule` is present. After `automation_update` succeeds,
+the agent must call `quota scheduler-ack` with that applied RRULE. LoopX then
+persists `reset_token`, `identity_signature`, `progression_index`, and
+`last_applied_rrule` under the runtime root. Repeated unchanged identity
+advances through `progression_minutes`; a changed `reset_policy.reset_token`
+returns to the current profile's initial interval. This gives hosts a compact
+post-update ack protocol instead of requiring them to own or diff the whole
+quota state. `scheduler-ack` is not a second `should-run`: it confirms the
+host update and does not emit a successor RRULE to apply in the same turn. User
+feedback, newly runnable work, reassignment, or material evidence therefore
+restores the automation to the current profile's initial
+interval before backoff resumes.
 For Codex CLI TUI and Claude Code loops, the default hot path reads
 `scheduler_hint.unchanged_poll.limits.<runtime>`. A value of `3` means the third
 unchanged poll triggers the compact final quota/replan check named by

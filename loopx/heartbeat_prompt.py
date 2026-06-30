@@ -24,19 +24,17 @@ USER_TODO_FINAL_MESSAGE_RULE = (
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
     "Apply `scheduler_hint` for wait backoff and CLI/Claude final-check/self-stop; no spend. "
-    "Codex App: use `automation_update` + `codex_app.stateful_backoff`; "
-    "persist reset_token/identity_signature/progression_index, advance index "
-    "on same identity, and update RRULE only. If reset_token changes, restore "
-    "`scheduler_hint.reset_policy.codex_app_initial_rrule`."
+    "Codex App: if `codex_app.stateful_backoff.apply_needed=true` and "
+    "`recommended_rrule` exists, `automation_update` RRULE then "
+    "`quota scheduler-ack --applied-rrule ... --execute`; LoopX owns progression."
 )
 SCHEDULER_HINT_COMPACT_RULE = (
-    "Apply `scheduler_hint`; no spend. Codex App: "
-    "`stateful_backoff` + `automation_update`; same id advances index, "
-    "reset restores init RRULE."
+    "Apply `scheduler_hint`; no spend. App: if `stateful_backoff.apply_needed`, "
+    "`automation_update` RRULE then `quota scheduler-ack`; else skip."
 )
 SCHEDULER_HINT_THIN_RULE = (
-    "Apply `scheduler_hint`: Codex App `stateful_backoff` + `automation_update` "
-    "RRULE/reset; CLI/Claude final-check/self-stop; no spend."
+    "Apply `scheduler_hint`: if App `stateful_backoff.apply_needed`, "
+    "RRULE then `quota scheduler-ack`; CLI/Claude final-check; no spend."
 )
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,
@@ -693,12 +691,13 @@ If the result says `should_run=true`:
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and no
    `notify_user_on_open_todo=true` blocker-push notification. Use
    `scheduler_hint` for next-wakeup cadence and external-loop unchanged limits;
-   for Codex App heartbeats, use `automation_update` plus
-   `scheduler_hint.codex_app.stateful_backoff`: persist reset_token,
-   identity_signature, and progression_index; same identity advances the
-   index and updates RRULE only; reset changes restore
-   `scheduler_hint.reset_policy.codex_app_initial_rrule`. It is scheduling
-   only, not delivery permission. Then use
+   for Codex App heartbeats, read
+   `scheduler_hint.codex_app.stateful_backoff`: if `apply_needed=true` and
+   `codex_app.recommended_rrule` exists, use `automation_update` for the RRULE,
+   then call `loopx quota scheduler-ack --goal-id ... --agent-id ...
+   --applied-rrule <recommended_rrule> --execute`; if false, skip host update.
+   LoopX owns reset/progression state. It is scheduling only, not delivery
+   permission. Then use
    `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means
    run its `command` as a real read-only map, then
    validate/save the `read_only_project_map` result, append exactly one

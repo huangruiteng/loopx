@@ -419,15 +419,14 @@ scheduling policy, not delivery permission. Codex CLI TUI and Claude Code loops
 should run the final quota/replan check from `scheduler_hint` before applying
 their `after_limit`; if the guard changes or returns `run_now`, follow the new
 quota contract instead of stopping. Codex App heartbeat workers should
-search/use `automation_update` when available and apply
-`scheduler_hint.codex_app.stateful_backoff` when present: persist its
-`reset_token`, `identity_signature`, and `progression_index`; on unchanged
-identity, advance the progression index and update only the heartbeat RRULE; and
-when `scheduler_hint.reset_policy.reset_token` changes because of user feedback,
-new/reassigned work, a resolved gate, material evidence, or active work, restore
-the heartbeat RRULE to `scheduler_hint.reset_policy.codex_app_initial_rrule`
-before starting a new backoff progression. Cadence changes, reset-to-initial
-updates, final checks, and self-stop changes do not spend quota. Read
+search/use `automation_update` when available, but only when
+`scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
+`scheduler_hint.codex_app.recommended_rrule` is present. After a successful
+RRULE update, call `loopx quota scheduler-ack --goal-id <STABLE_GOAL_ID>
+--agent-id <REGISTERED_AGENT_ID> --applied-rrule <recommended_rrule> --execute`;
+LoopX owns reset/progression state and omits `recommended_rrule` when the
+desired RRULE is already applied. Cadence changes, reset-to-initial updates,
+final checks, and self-stop changes do not spend quota. Read
 `execution_obligation` before
 deciding on a quiet no-op:
 `heartbeat_recommendation.notify` is only the user-notification policy, not an

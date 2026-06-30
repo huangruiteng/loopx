@@ -1263,17 +1263,18 @@ scheduler action plus identity/profile inputs, while the hot path carries only
 short identity/profile signatures instead of full snapshots. The reset moves
 Codex App/local cadence back to the current profile's initial interval before
 unchanged backoff resumes, and does not spend quota.
-Codex App heartbeats should use `automation_update` to apply the compact
-`codex_app.stateful_backoff` contract for cadence updates. Hosts should persist
-its `reset_token`, `identity_signature`, and `progression_index`; when the same
-identity repeats, advance the progression index until the max interval and
-update only the heartbeat RRULE. When the reset token changes, or when user
-feedback/new work/reassignment/material evidence makes the goal active again,
-update the heartbeat RRULE through `automation_update` to
-`reset_policy.codex_app_initial_rrule` and clear unchanged-poll state before
-starting a new backoff progression. The token is generated from scheduler
-action plus identity/profile inputs, so hosts do not need to diff the whole
-payload to notice an initial-RRULE/profile generation change.
+Codex App heartbeats should use `automation_update` only when
+`codex_app.stateful_backoff.apply_needed=true` and
+`codex_app.recommended_rrule` is present. If that update succeeds, the agent
+must call `quota scheduler-ack --applied-rrule <recommended_rrule> --execute`;
+LoopX then persists `reset_token`, `identity_signature`, `progression_index`,
+and `last_applied_rrule` under the runtime root. When the same identity repeats,
+LoopX advances the progression until the max interval; when the reset token
+changes, the next projected RRULE returns to
+`reset_policy.codex_app_initial_rrule`. If the current desired RRULE is already
+applied, `recommended_rrule` is omitted and the host update should be skipped.
+`scheduler-ack` only records the applied host cadence; the next RRULE, if any,
+is projected by a future `quota should-run`, not by the ack response.
 The payload also includes `execution_obligation`, which is the compatibility
 entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It

@@ -450,19 +450,18 @@ put the lifecycle in the automation task body. The default onboarding cadence
 starts at 3 minutes; after the first guard, follow
 `quota should-run.scheduler_hint` to back off long waits and stop external loops
 after a final quota/replan check confirms repeated unchanged polls. Codex App
-heartbeats should search/use `automation_update` when available and apply
-`scheduler_hint.codex_app.stateful_backoff`: persist reset token, identity
-signature, and progression index; advance that index on unchanged identity; and
-update only the heartbeat RRULE. When
-`scheduler_hint.reset_policy.reset_token` changes because of user feedback,
-new/reassigned work, a resolved gate, material evidence, or active work, restore
-the automation RRULE to `scheduler_hint.reset_policy.codex_app_initial_rrule`
-before starting a new backoff progression:
+heartbeats should search/use `automation_update` when available, but only when
+`scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
+`scheduler_hint.codex_app.recommended_rrule` is present. After a successful
+RRULE update, call `loopx quota scheduler-ack --goal-id ... --agent-id ...
+--applied-rrule <recommended_rrule> --execute`; LoopX owns the progression and
+reset state. When the desired RRULE is already applied, skip
+`automation_update`:
 
 ```text
 Create a heartbeat automation starting at 3 minutes for the current thread;
-then apply `quota should-run.scheduler_hint` for backoff and reset-to-initial
-cadence when its reset token changes.
+then apply `quota should-run.scheduler_hint`: update RRULE only when
+`apply_needed=true`, then ack the applied RRULE with `quota scheduler-ack`.
 
 Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,
@@ -590,8 +589,7 @@ This prompt is intentionally a lifecycle template. Scheduling policy lives in
 `quota should-run.scheduler_hint`, so per-project heartbeats, a shared
 controller loop, Codex CLI TUI, Claude Code loop, or future Codex goal-mode
 automations can all share the same LoopX quota guard without hard-coding
-different wait loops. Host implementations should keep only compact
-`codex_app.stateful_backoff` state per automation when possible; if its
-`reset_token` changes, use `automation_update` to update the Codex App
-heartbeat RRULE to `reset_policy.codex_app_initial_rrule` and clear the
-progression index without spending quota.
+different wait loops. Host implementations should read the compact
+`codex_app.stateful_backoff` packet, call `automation_update` only when
+`apply_needed=true`, and then let `quota scheduler-ack` persist the applied
+RRULE state without spending quota.

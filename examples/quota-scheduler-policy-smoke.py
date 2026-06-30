@@ -104,7 +104,11 @@ def assert_policy_case(
         assert stateful_backoff["progression_minutes"] == expected_progression, (name, extracted)
     assert stateful_backoff["schema_version"] == "codex_app_stateful_backoff_v0", (name, extracted)
     assert stateful_backoff["state_key"] == "scheduler_hint.codex_app.stateful_backoff", (name, extracted)
-    assert stateful_backoff["same_identity_action"] == "advance_progression_index_until_max", (
+    assert stateful_backoff["apply_needed"] is True, (name, extracted)
+    assert stateful_backoff["ack_required_after_apply"] is True, (name, extracted)
+    assert stateful_backoff["current_rrule"] == expected_rrule, (name, extracted)
+    assert stateful_backoff["state_status"] == "missing", (name, extracted)
+    assert stateful_backoff["same_identity_action"] == "advance_index_after_scheduler_ack", (
         name,
         extracted,
     )
