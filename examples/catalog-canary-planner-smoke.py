@@ -51,6 +51,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "todo-lifecycle",
         "monitor-scheduler",
         "state-write-correctness",
+        "product-entry-workflows",
         "frontstage-rollout",
         "auto-research-demo",
         "benchmark-adapter-readiness",
@@ -200,6 +201,32 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "python3 examples/todo-lifecycle-cli-smoke.py" in todo_commands, todo_profile
     assert all(check["tier"] == "default" for check in todo_profile["checks"]), todo_profile
     assert todo_profile["deep_checks_available"] is True, todo_profile
+
+    product_entry_payload = build_catalog_canary_plan(
+        changed_files=[
+            "README.md",
+            "docs/capabilities/issue-fix/README.md",
+            "docs/update-notes/README.md",
+            "loopx/capabilities/content_ops/surface.py",
+            "scripts/update_notes_release_job.py",
+        ],
+        surfaces=["product-entry issue-fix content-ops update-note cross-runtime demo"],
+        max_checks_per_profile=4,
+    )
+    product_entry_profiles = {
+        profile["id"]: profile for profile in product_entry_payload["domain_profiles"]
+    }
+    assert "product-entry-workflows" in product_entry_profiles, product_entry_payload
+    assert "install-update" not in product_entry_profiles, product_entry_payload
+    product_entry_profile = product_entry_profiles["product-entry-workflows"]
+    product_entry_commands = [check["command"] for check in product_entry_profile["checks"]]
+    assert "python3 examples/issue-fix-workflow-contract-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/content-ops-issue-fix-intake-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/readme-demo-surface-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/update-notes-archive-smoke.py" in product_entry_commands, product_entry_profile
+    assert all(check["tier"] == "default" for check in product_entry_profile["checks"]), product_entry_profile
+    assert product_entry_profile["deep_checks_available"] is True, product_entry_profile
+    assert product_entry_profile["deep_checks_included"] is False, product_entry_profile
 
     auto_research_payload = build_catalog_canary_plan(
         changed_files=["loopx/capabilities/auto_research/core.py"],
