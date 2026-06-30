@@ -193,6 +193,7 @@ def main() -> int:
             assert "auto-research frontier" in command, command
             assert "[Codex bootstrap prompt]" in command, command
             assert "You are a visible LoopX auto-research lane" in command, command
+            assert "pane-local `loopx` command on PATH" in command, command
             assert "visible LoopX polling turn" in command, command
             assert "follow their interaction_contract" in command, command
             assert "generated LoopX heartbeat/polling prompt" in command, command
@@ -201,6 +202,8 @@ def main() -> int:
             assert "[LoopX visible acceptance]" in command, command
             assert "loopx_agent_handshake=role_profile_quota_frontier_bootstrap" in command, command
             assert "loopx_polling_prompt=visible_bootstrap_prompt" in command, command
+            assert "loopx_cli_scope=demo_local_wrapper" in command, command
+            assert 'exec "$LOOPX_REAL_CLI" --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" "$@"' in command, command
             assert "reasoning_effort=high" in command, command
             assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in command, command
             assert 'codex exec -c model_reasoning_effort=high --cd "$LOOPX_PROJECT" --skip-git-repo-check --sandbox danger-full-access "$BOOTSTRAP_PROMPT"' in command, command

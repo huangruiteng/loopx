@@ -101,6 +101,17 @@ def build_visible_lane_command(
     reasoning_effort: str,
     frontier_label: str = "[LoopX frontier]",
 ) -> str:
+    scoped_loopx_wrapper = (
+        'LOOPX_REAL_CLI="$(command -v loopx)"; '
+        "export LOOPX_REAL_CLI; "
+        'mkdir -p "$LOOPX_PROJECT/.local/bin"; '
+        "printf '%s\\n' "
+        "'#!/usr/bin/env sh' "
+        "'exec \"$LOOPX_REAL_CLI\" --registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" \"$@\"' "
+        '> "$LOOPX_PROJECT/.local/bin/loopx"; '
+        'chmod +x "$LOOPX_PROJECT/.local/bin/loopx"; '
+        'export PATH="$LOOPX_PROJECT/.local/bin:$PATH"; '
+    )
     visible_summary = (
         'printf "\\n[LoopX visible acceptance]\\n"; '
         'printf "role_profile=printed\\n"; '
@@ -109,6 +120,7 @@ def build_visible_lane_command(
         'printf "bootstrap_or_stop=printed\\n"; '
         'printf "loopx_agent_handshake=role_profile_quota_frontier_bootstrap\\n"; '
         'printf "loopx_polling_prompt=visible_bootstrap_prompt\\n"; '
+        'printf "loopx_cli_scope=demo_local_wrapper\\n"; '
         'printf "takeover_controls=visible\\n"; '
         f"printf 'reasoning_effort=%s\\n' {_q(reasoning_effort)}"
     )
@@ -122,6 +134,7 @@ def build_visible_lane_command(
         f"export LOOPX_ROLE_ID={_q(role_id)}; "
         f"export LOOPX_ROLE_PROFILE_REF={_q(role_profile_ref)}; "
         'cd "$LOOPX_PROJECT"; '
+        f"{scoped_loopx_wrapper}"
         f"{role_profile_command}"
         "printf '\\n[LoopX quota guard]\\n'; "
         f"QUOTA_PACKET=\"$({quota_command} 2>&1)\"; "
