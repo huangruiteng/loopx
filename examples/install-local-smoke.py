@@ -122,7 +122,6 @@ def main() -> int:
             f"- legacy command disabled: {bin_dir / 'goal-harness-canary.legacy-disabled'}"
             in install.stdout
         ), install.stdout
-        assert f"- skill: {codex_home / 'skills' / 'loopx-auto-research'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-doc-registry'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-pr-review'}" in install.stdout, install.stdout
         assert f"- skill: {codex_home / 'skills' / 'loopx-project'}" in install.stdout, install.stdout
@@ -203,17 +202,7 @@ def main() -> int:
         ):
             assert phrase in pr_review_text, phrase
         auto_research_skill = codex_home / "skills" / "loopx-auto-research" / "SKILL.md"
-        auto_research_text = " ".join(auto_research_skill.read_text(encoding="utf-8").split())
-        for phrase in (
-            "Identity comes from LoopX control-plane metadata",
-            'loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"',
-            "No role owns the full graph",
-            "Do not infer role from pane title",
-            "auto_research_role_profile_v0",
-            "Projection Narrator",
-            "Control-Plane Guard",
-        ):
-            assert phrase in auto_research_text, phrase
+        assert not auto_research_skill.exists(), auto_research_skill
         doc_registry_skill = codex_home / "skills" / "loopx-doc-registry" / "SKILL.md"
         doc_registry_text = " ".join(doc_registry_skill.read_text(encoding="utf-8").split())
         for phrase in (
@@ -297,8 +286,7 @@ def main() -> int:
         assert doctor_payload["skill"]["path"] == str(skill), doctor_payload
         assert doctor_payload["skill"]["exists"] is True, doctor_payload
         assert doctor_payload["skill"]["delivery_hints"] is True, doctor_payload
-        assert doctor_payload["skills"]["loopx-auto-research"]["exists"] is True, doctor_payload
-        assert doctor_payload["skills"]["loopx-auto-research"]["required_phrases"] is True, doctor_payload
+        assert "loopx-auto-research" not in doctor_payload["skills"], doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["exists"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["required_phrases"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-pr-review"]["exists"] is True, doctor_payload
@@ -349,7 +337,7 @@ def main() -> int:
         assert "installed_skill_delivery_hints: `True`" in doctor_markdown, doctor_markdown
         assert (
             "installed_required_skills: "
-            "`loopx-auto-research,loopx-doc-registry,loopx-pr-review,loopx-project,loopx-self-repair`"
+            "`loopx-doc-registry,loopx-pr-review,loopx-project,loopx-self-repair`"
             in doctor_markdown
         ), doctor_markdown
         assert "loopx_canary_realpath:" in doctor_markdown, doctor_markdown
@@ -385,7 +373,6 @@ def main() -> int:
             release_root=root / "releases" / "20260101T000000Z",
             repo_root=REPO_ROOT,
             skills={
-                "loopx-auto-research": {"exists": True, "required_phrases": True},
                 "loopx-project": {"exists": True, "required_phrases": True},
                 "loopx-pr-review": {"exists": True, "required_phrases": True},
                 "loopx-doc-registry": {"exists": True, "required_phrases": True},
@@ -403,7 +390,6 @@ def main() -> int:
             release_root=root / "releases" / "20260108T000000Z",
             repo_root=REPO_ROOT,
             skills={
-                "loopx-auto-research": {"exists": True, "required_phrases": True},
                 "loopx-project": {"exists": True, "required_phrases": True},
                 "loopx-pr-review": {"exists": True, "required_phrases": True},
                 "loopx-doc-registry": {"exists": True, "required_phrases": True},
@@ -419,7 +405,6 @@ def main() -> int:
             release_root=root / "releases" / "20260108T000000Z",
             repo_root=REPO_ROOT,
             skills={
-                "loopx-auto-research": {"exists": True, "required_phrases": True},
                 "loopx-project": {"exists": True, "required_phrases": True},
                 "loopx-pr-review": {"exists": True, "required_phrases": True},
                 "loopx-doc-registry": {"exists": True, "required_phrases": True},

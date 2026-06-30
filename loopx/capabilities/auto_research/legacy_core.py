@@ -939,7 +939,7 @@ def _auto_research_codex_bootstrap_prompt(
     return "\n".join(
         [
             "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",
-            "Use skills in this order: loopx-project for quota/status, then loopx-auto-research for this role.",
+            "Use loopx-project for quota/status, then follow the worker-local loopx-auto-research role playbook for this pane.",
             "This pane is a visible LoopX polling turn: before each new action, rerun the printed quota should-run and auto-research frontier commands, then follow their interaction_contract.",
             "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the printed frontier explicitly asks for it.",
             "If a future scheduled automation owns this lane, it must use a generated LoopX heartbeat/polling prompt; this visible bootstrap is the local manual polling prompt.",
@@ -1007,7 +1007,9 @@ def _role_profile_for_lane(*, goal_id: str, lane: dict[str, str]) -> dict[str, A
         "write_scope": list(template["write_scope"]),
         "protected_scope": list(template["protected_scope"]),
         "required_skill": AUTO_RESEARCH_REQUIRED_SKILL,
+        "skill_distribution": "worker_local",
         "skill_section": template["skill_section"],
+        "worker_skill_source": "loopx/capabilities/auto_research/worker_skill/SKILL.md",
         "agents_overlay": ["workspace/AGENTS.md"],
         "stop_conditions": list(template["stop_conditions"]),
         "takeover_controls": [
@@ -1022,7 +1024,7 @@ def _role_profile_for_lane(*, goal_id: str, lane: dict[str, str]) -> dict[str, A
             "quota_should_run",
             "auto_research_frontier",
             "AGENTS.md",
-            "loopx-auto-research skill section",
+            "worker-local loopx-auto-research playbook section",
         ],
         "pane_title_is_authority": False,
     }
@@ -1486,6 +1488,11 @@ def build_auto_research_demo_acceptance_packet(
                 (lane.get("role_profile") or {}).get("required_skill") if isinstance(lane.get("role_profile"), dict) else None,
                 field="acceptance.required_skill",
                 default="missing_skill",
+            ),
+            "skill_distribution": _compact_optional_token(
+                (lane.get("role_profile") or {}).get("skill_distribution") if isinstance(lane.get("role_profile"), dict) else None,
+                field="acceptance.skill_distribution",
+                default="missing_distribution",
             ),
             "quota_guard_visible": _command_available(lane.get("quota_guard")),
             "frontier_visible": _command_available(lane.get("frontier")),
@@ -3601,7 +3608,7 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
                 continue
             profile = item.get("role_profile") if isinstance(item.get("role_profile"), dict) else {}
             lines.append(
-                f"- `{profile.get('role_id')}`: skill `{profile.get('required_skill')}` / "
+                f"- `{profile.get('role_id')}`: worker playbook `{profile.get('required_skill')}` / "
                 f"section `{profile.get('skill_section')}` / phase `{profile.get('phase')}`"
             )
         lines.extend(["", "## Role Profiles", ""])
@@ -3614,7 +3621,9 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             lines.append(f"### {item.get('lane_id')}")
             lines.append(f"- role_id: `{profile.get('role_id')}`")
             lines.append(f"- phase: `{profile.get('phase')}`")
-            lines.append(f"- required_skill: `{profile.get('required_skill')}`")
+            lines.append(f"- required_worker_playbook: `{profile.get('required_skill')}`")
+            lines.append(f"- skill_distribution: `{profile.get('skill_distribution')}`")
+            lines.append(f"- worker_skill_source: `{profile.get('worker_skill_source')}`")
             lines.append(f"- skill_section: `{profile.get('skill_section')}`")
             lines.append(
                 "- allowed_actions: `"

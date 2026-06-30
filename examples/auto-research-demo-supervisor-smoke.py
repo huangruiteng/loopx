@@ -93,6 +93,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert profile["lane_id"] == lane["lane_id"], profile
         assert profile["role_id"] == lane["role_id"], profile
         assert profile["required_skill"] == "loopx-auto-research", profile
+        assert profile["skill_distribution"] == "worker_local", profile
+        assert profile["worker_skill_source"].endswith("auto_research/worker_skill/SKILL.md"), profile
         assert profile["phase"], profile
         assert profile["allowed_actions"], profile
         assert profile["skill_section"], profile
@@ -283,7 +285,9 @@ def main() -> int:
     assert "## Role Profiles" in markdown, markdown
     assert "loopx-auto-research" in markdown, markdown
     assert "## Lane Timeline" in markdown, markdown
-    assert "required_skill: `loopx-auto-research`" in markdown, markdown
+    assert "required_worker_playbook: `loopx-auto-research`" in markdown, markdown
+    assert "skill_distribution: `worker_local`" in markdown, markdown
+    assert "worker_skill_source: `loopx/capabilities/auto_research/worker_skill/SKILL.md`" in markdown, markdown
     assert "`role_profile` via `role_profile`" in markdown, markdown
     assert "`quota_guard` via `quota_guard`" in markdown, markdown
     assert "## One-Click Dry Run" in markdown, markdown

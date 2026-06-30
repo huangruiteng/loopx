@@ -5,6 +5,10 @@ description: Use when a LoopX worker is operating an auto-research lane, demo pa
 
 # LoopX Auto Research
 
+This is a worker-local role playbook for auto-research panes. It is packaged
+with the auto-research capability and should be injected or referenced by the
+worker launcher; it is not a global LoopX skill for ordinary project agents.
+
 ## Routing Boundary
 
 Use this skill after a LoopX auto-research worker has a role profile,

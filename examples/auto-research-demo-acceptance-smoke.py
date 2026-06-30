@@ -83,6 +83,7 @@ def assert_acceptance_packet(payload: dict[str, Any]) -> None:
         assert lane["role_id"] != "missing_role", lane
         assert lane["phase"] != "missing_phase", lane
         assert lane["required_skill"] == "loopx-auto-research", lane
+        assert lane["skill_distribution"] == "worker_local", lane
         assert lane["quota_guard_visible"] is True, lane
         assert lane["frontier_visible"] is True, lane
         assert lane["bootstrap_visible"] is True, lane

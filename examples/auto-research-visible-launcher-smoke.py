@@ -170,12 +170,17 @@ def main() -> int:
             assert profile["schema_version"] == "auto_research_role_profile_v0", profile
             assert profile["role_id"] == lane["role_id"], profile
             assert profile["required_skill"] == "loopx-auto-research", profile
+            assert profile["skill_distribution"] == "worker_local", profile
+            assert profile["worker_skill_source"].endswith(
+                "auto_research/worker_skill/SKILL.md"
+            ), profile
             assert profile["write_scope"], profile
             assert profile["protected_scope"], profile
             assert profile["stop_conditions"], profile
             command = lane["visible_launch_command"]
             assert profile["schema_version"] == "auto_research_role_profile_v0", profile
             assert profile["required_skill"] == "loopx-auto-research", profile
+            assert profile["skill_distribution"] == "worker_local", profile
             assert profile["agent_id"] == lane["agent_id"], profile
             assert profile["lane_id"] == lane["lane_id"], profile
             assert profile["stop_conditions"], profile

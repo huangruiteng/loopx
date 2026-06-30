@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the installed loopx-auto-research skill contract."""
+"""Smoke-test the worker-local loopx-auto-research playbook contract."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 from loopx.doctor import REQUIRED_INSTALLED_SKILL_PHRASES  # noqa: E402
 
 
-SKILL = ROOT / "skills" / "loopx-auto-research" / "SKILL.md"
+SKILL = ROOT / "loopx" / "capabilities" / "auto_research" / "worker_skill" / "SKILL.md"
 ROLE_PROFILE = ROOT / "docs" / "reference" / "protocols" / "auto-research-role-profile-v0.md"
 ROLE_STATE_MACHINE = ROOT / "docs" / "reference" / "protocols" / "auto-research-role-state-machine-v0.md"
 LANE_CONTRACT = ROOT / "docs" / "reference" / "protocols" / "auto-research-lane-contract-v1.md"
@@ -56,11 +56,12 @@ def main() -> int:
         "auto-research skill contract",
     )
 
-    for phrase in REQUIRED_INSTALLED_SKILL_PHRASES["loopx-auto-research"]:
-        assert phrase in compact_skill, f"doctor phrase missing from skill: {phrase!r}"
+    assert "loopx-auto-research" not in REQUIRED_INSTALLED_SKILL_PHRASES
 
     required_skill_terms = [
         "name: loopx-auto-research",
+        "worker-local role playbook",
+        "not a global LoopX skill",
         "Identity comes from LoopX control-plane metadata",
         "auto_research_role_profile_v0",
         'loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"',
@@ -96,11 +97,15 @@ def main() -> int:
         assert term.lower() not in lowered, f"skill drifted into forbidden term {term!r}"
 
     assert "required_skill\": \"loopx-auto-research\"" in role_profile, role_profile
-    assert "Start with one installed `loopx-auto-research` skill" in role_profile, role_profile
+    assert "worker-local" in role_profile, role_profile
     assert "auto_research_role_profile_v0" in role_state_machine, role_state_machine
     assert "product_narrator" in lane_contract, lane_contract
-    assert "`loopx-auto-research` | Running role-scoped auto-research lanes" in getting_started, getting_started
-    assert "~/.codex/skills/loopx-auto-research" in getting_started, getting_started
+    assert (
+        "`loopx-auto-research` | Running role-scoped auto-research lanes"
+        not in getting_started
+    ), getting_started
+    assert "worker-local" in getting_started, getting_started
+    assert "~/.codex/skills/loopx-auto-research" not in getting_started, getting_started
 
     print("auto-research-skill-contract-smoke ok")
     return 0

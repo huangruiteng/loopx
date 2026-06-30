@@ -29,13 +29,6 @@ NO_CLONE_UPGRADE_COMMAND = (
 )
 RELEASE_ID_TIMESTAMP_RE = re.compile(r"^\d{8}T\d{6}Z$")
 REQUIRED_INSTALLED_SKILL_PHRASES = {
-    "loopx-auto-research": (
-        "Identity comes from LoopX control-plane metadata",
-        'loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"',
-        "No role owns the full graph",
-        "Do not infer role from pane title",
-        "auto_research_role_profile_v0",
-    ),
     "loopx-project": (
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
         "--delivery-batch-scale multi_surface",
