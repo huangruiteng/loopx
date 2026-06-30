@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .agent_registry import side_agent_handoff_agent_id_for_goal
 from .benchmark_core import compact_run_permission_policy_for_quota
 from .boundary_authority import checkpointed_boundary_authority_summary
 from .control_plane import (
@@ -4732,11 +4733,19 @@ def _quota_agent_identity(goal: dict[str, Any], *, agent_id: str | None) -> dict
             f"registered_agents={', '.join(registered_agents)}"
         )
     primary_agent = _quota_primary_agent(goal)
+    handoff_agent = side_agent_handoff_agent_id_for_goal(goal, agent_id=normalized_agent_id)
+    if handoff_agent:
+        if handoff_agent not in registered_agents:
+            raise ValueError(
+                f"side_agent_handoff_agent={handoff_agent!r} is not registered; "
+                f"registered_agents={', '.join(registered_agents)}"
+            )
     return {
         "agent_id": normalized_agent_id,
         "registered": True,
         "role": "primary-agent" if primary_agent and normalized_agent_id == primary_agent else "side-agent",
         "primary_agent": primary_agent,
+        "handoff_agent": handoff_agent,
         "registered_agents": registered_agents,
     }
 
@@ -8611,7 +8620,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             "- agent_identity: "
             f"agent_id={agent_identity.get('agent_id')} "
             f"role={agent_identity.get('role')} "
-            f"primary_agent={agent_identity.get('primary_agent')}"
+            f"primary_agent={agent_identity.get('primary_agent')} "
+            f"handoff_agent={agent_identity.get('handoff_agent')}"
         )
     if payload.get("active_state_next_action"):
         lines.append(f"- active_state_next_action: {payload.get('active_state_next_action')}")
