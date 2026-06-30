@@ -12878,6 +12878,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--task-ids must contain at least one task id")
     if len(set(batch_task_ids)) != len(batch_task_ids):
         parser.error("--task-ids must not contain duplicate task ids")
+    if args.task_ids is not None and len(batch_task_ids) == 1:
+        args.task_id = batch_task_ids[0]
     if (
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and not args.plan_only
