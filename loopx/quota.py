@@ -4253,8 +4253,8 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
         ]
     if mode == "monitor_quiet_skip":
         return [
-            f"loopx quota monitor-poll --goal-id {goal_id} --source heartbeat --execute",
-            f"loopx --format json quota should-run --goal-id {goal_id}",
+            f"loopx quota monitor-poll --goal-id {goal_id}{agent_arg} --execute",
+            f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}",
         ]
     if mode == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value:
         agent_scope_frontier = (

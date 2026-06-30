@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import (  # noqa: E402
+    _interaction_next_cli_actions,
     build_quota_plan,
     build_quota_monitor_poll_event,
     build_quota_should_run,
@@ -2044,6 +2045,29 @@ def assert_monitor_poll_event_carries_agent_id() -> None:
     assert target["effective_action"] == "monitor_quiet_skip", target
 
 
+def assert_monitor_poll_next_cli_action_preserves_agent_id() -> None:
+    actions = _interaction_next_cli_actions(
+        {
+            "goal_id": "scoped-monitor-goal",
+            "agent_identity": {
+                "agent_id": SCOPED_AGENT_ID,
+            },
+        },
+        mode="monitor_quiet_skip",
+    )
+
+    assert actions == [
+        (
+            "loopx quota monitor-poll --goal-id scoped-monitor-goal "
+            f"--agent-id {SCOPED_AGENT_ID} --execute"
+        ),
+        (
+            "loopx --format json quota should-run --goal-id scoped-monitor-goal "
+            f"--agent-id {SCOPED_AGENT_ID}"
+        ),
+    ], actions
+
+
 def main() -> int:
     assert_default_quota_is_duty_cycle()
     assert_rolling_window_ledger_expires_old_spends()
@@ -2071,6 +2095,7 @@ def main() -> int:
     assert_safe_bypass_slot_preview(status_payload)
     assert_quota_void_event_net_ledger()
     assert_monitor_poll_event_carries_agent_id()
+    assert_monitor_poll_next_cli_action_preserves_agent_id()
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="loopx-quota-plan-smoke-") as tmp:
         cli_plan, cli_markdown = run_cli_quota_plan(Path(tmp))
