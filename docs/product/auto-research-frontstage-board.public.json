@@ -1,25 +1,44 @@
 {
   "schema_version": "auto_research_frontstage_board_v0",
-  "generated_at": "2026-06-28T00:00:00Z",
+  "generated_at": "2026-06-30T17:45:00Z",
   "surface": {
     "id": "loopx_auto_research_knn_board",
-    "title": "Auto Research Product Board",
-    "subtitle": "A public-safe Frontstage board for decentralized k-NN research.",
+    "title": "Auto Research Claim-Boundary Board",
+    "subtitle": "A public-safe Frontstage board for decentralized k-NN research with dev, holdout, and promotion claims separated.",
     "stage": "experimental",
-    "positioning": "LoopX keeps autonomous research decentralized: every agent sees a claim-compatible frontier, while hypotheses, evidence, retries, and promotion decisions stay in the shared control plane.",
-    "public_boundary": "Public fixture and protected-evaluator outputs only; no raw logs, non-public source docs, credentials, local paths, or hidden leader transcript."
+    "positioning": "LoopX keeps autonomous research decentralized: every agent sees a claim-compatible frontier, while dev evidence, holdout context, retries, and promotion decisions stay separate in the shared control plane.",
+    "public_boundary": "Public fixture and protected-evaluator outputs only; dev evidence may be shown, rollout holdout context is not a public claim, and promotion or first-screen claims require explicit authority."
   },
   "projection_binding": {
     "read_only": true,
     "source_schema_version": "decentralized_auto_research_projection_v0",
-    "source_kind": "public_fixture",
+    "source_kind": "public_claim_boundary_fixture",
     "rollout_backed": false,
     "first_screen_policy": "experimental_only_not_first_screen_without_owner_review",
+    "public_claim_boundary_schema": "auto_research_public_claim_boundary_v0",
     "frontier_agent_id": "codex-side-bypass"
+  },
+  "claim_boundary": {
+    "schema_version": "auto_research_public_claim_boundary_v0",
+    "metric_source_kind": "public_claim_boundary_fixture",
+    "claim_source": "public_demo_dev_evidence",
+    "live_claim_scope": "dev_only",
+    "dev_metric_present": true,
+    "holdout_metric_present": true,
+    "holdout_result_scope": "rollout_context_only",
+    "holdout_claim_allowed": false,
+    "promotion_result_scope": "candidate_only_not_auto_promoted",
+    "promotion_claim_allowed": false,
+    "first_screen_claim_allowed": false,
+    "blocked_claims": [
+      "held_out_result_without_authority",
+      "automatic_promotion",
+      "first_screen_product_claim_without_owner_review"
+    ]
   },
   "research_contract": {
     "goal_id": "loopx-auto-research-knn",
-    "objective": "Improve exact k-nearest-neighbor inference speed while preserving exact neighbor identity.",
+    "objective": "Show a claim-compatible exact k-nearest-neighbor research lane: dev evidence is visible, while held-out context and promotion stay gated.",
     "editable_scope": ["solution_candidate.py"],
     "protected_scope": ["protected_eval.py", "solution_baseline.py", "generated dev/holdout data"],
     "metric": {
@@ -27,46 +46,46 @@
       "direction": "maximize",
       "baseline": "1.0x"
     },
-    "promotion_policy": "Promote only after dev and holdout improvement, exact output, clean protected boundary, and no-upload evidence.",
+    "promotion_policy": "Default public projection may show dev-only evidence; held-out rollout context and promotion require separate authority.",
     "commands": [
       {
         "label": "dev evidence",
         "command": "python3 examples/auto_research_knn_pack/protected_eval.py --solution examples/auto_research_knn_pack/solution_candidate.py --split dev"
       },
       {
-        "label": "holdout evidence",
+        "label": "holdout context check",
         "command": "python3 examples/auto_research_knn_pack/protected_eval.py --solution examples/auto_research_knn_pack/solution_candidate.py --split holdout"
       }
     ]
   },
   "value_metrics": [
     {
-      "label": "Held-out speedup",
-      "value": "4.5x",
+      "label": "Lane-authored dev evidence",
+      "value": "4.0x",
       "baseline": "1.0x baseline",
-      "interpretation": "The candidate still improves on the protected holdout split, so the result is not only a dev-set artifact.",
-      "source": "auto_research_knn_eval_result_v0:holdout"
+      "interpretation": "The board may show this as dev-only progress for the public demo lane, not as held-out or production-ready evidence.",
+      "source": "auto_research_knn_eval_result_v0:dev"
     },
     {
-      "label": "Dev to holdout transfer",
-      "value": "4.0x -> 4.5x",
-      "baseline": "dev result before promotion",
-      "interpretation": "The promotion candidate improves across both splits under the same protected metric.",
-      "source": "auto_research_knn_eval_result_v0:dev+holdout"
+      "label": "Held-out claim",
+      "value": "not authorized",
+      "baseline": "separate rollout context",
+      "interpretation": "A deterministic holdout run may exist as context, but this public board does not present it as a live held-out result.",
+      "source": "claim_boundary.holdout_claim_allowed=false"
     },
     {
-      "label": "Correctness preserved",
-      "value": "exact neighbors",
-      "baseline": "oracle identity check",
-      "interpretation": "The speedup is only accepted because every query keeps exact nearest-neighbor identity.",
-      "source": "protected_eval.py exactness gate"
+      "label": "Promotion candidates",
+      "value": "0 promoted",
+      "baseline": "operator decision required",
+      "interpretation": "Promotion remains a decision-packet item; dev-only evidence cannot auto-promote a result.",
+      "source": "claim_boundary.promotion_claim_allowed=false"
     },
     {
-      "label": "Protected boundary",
-      "value": "clean",
-      "baseline": "no protected edits, no upload",
-      "interpretation": "The executor can optimize the candidate while the evaluator, data, oracle, and promotion gate stay protected.",
-      "source": "promotion_gate.requires"
+      "label": "First-screen claim",
+      "value": "blocked",
+      "baseline": "owner review required",
+      "interpretation": "This experimental board cannot become a first-screen product claim without explicit first-screen review.",
+      "source": "claim_boundary.first_screen_claim_allowed=false"
     }
   ],
   "lane_contract": {
@@ -130,7 +149,7 @@
         "hypothesis_id": "hyp_002",
         "todo_id": "todo_auto_research_002",
         "mechanism_family": "partial_selection",
-        "next_action": "Run dev evidence, then require holdout before promotion."
+        "next_action": "Run dev evidence; keep held-out context and promotion behind explicit authority."
       }
     ],
     "blocked": [
@@ -159,25 +178,25 @@
       "baseline": 1.0
     },
     "best_dev_metric": 4.0,
-    "best_holdout_metric": 4.5,
-    "holdout_improved": true,
-    "source_kind": "public_pack_plus_public_fixture",
+    "best_holdout_metric": null,
+    "holdout_improved": false,
+    "source_kind": "public_pack_claim_boundary_fixture",
     "nodes": [
       {
         "hypothesis_id": "hyp_001",
-        "status": "supported",
+        "status": "supported_dev",
         "summary": "Vectorize exact distance work as the broad mechanism family.",
         "best_dev_metric": 4.8,
-        "best_holdout_metric": 4.3,
-        "evidence_boundary": "Fixture evidence only; retained as a shape example."
+        "best_holdout_metric": null,
+        "evidence_boundary": "Fixture dev evidence only; retained as a shape example without a held-out claim."
       },
       {
         "hypothesis_id": "hyp_002",
         "status": "active",
         "summary": "Use exact partial selection to avoid full distance sorting.",
         "best_dev_metric": 4.0,
-        "best_holdout_metric": 4.5,
-        "evidence_boundary": "Runnable public pack evidence from protected_eval.py."
+        "best_holdout_metric": null,
+        "evidence_boundary": "Runnable public pack dev evidence from protected_eval.py; held-out context is intentionally not claimed here."
       },
       {
         "hypothesis_id": "hyp_003",
@@ -220,23 +239,14 @@
     ]
   },
   "decision_candidates": {
-    "promotion_candidates": [
-      {
-        "hypothesis_id": "hyp_002",
-        "todo_id": "todo_auto_research_002",
-        "decision": "promote_after_boundary_scan",
-        "dev_metric": "4.0x",
-        "holdout_metric": "4.5x",
-        "requires": ["boundary_scan", "exact_neighbor_identity", "protected_scope_clean", "no_upload"],
-        "user_value": "A reproducible speedup that survived the protected holdout gate."
-      }
-    ],
+    "promotion_candidates": [],
     "retry_candidates": [
       {
         "hypothesis_id": "hyp_003",
         "todo_id": "todo_auto_research_003",
         "decision": "retry_with_executor_lane",
-        "reason": "Potential product value, but no dev or holdout score yet."
+        "dev_metric": "4.0x",
+        "reason": "Dev evidence is visible; held-out and promotion claims need separate authority before this can move out of retry/review."
       }
     ],
     "retirement_candidates": [
@@ -285,13 +295,13 @@
   "showcase_projection": {
     "schema_version": "research_showcase_projection_v0",
     "title": "Decentralized Auto Research: k-NN Speedup",
-    "primary_claim": "LoopX can present an Arbor-style research tree while keeping execution decentralized through todo claims, evidence events, and promotion gates.",
-    "audience_takeaway": "A user can inspect what is runnable now, what is blocked by another lane, what is promotable, and what has been retired without trusting a hidden leader chat.",
-    "public_demo_path": "Run the k-NN pack, emit evidence, append rollout events, then render this board from the evidence graph.",
+    "primary_claim": "LoopX can present an Arbor-style research tree while keeping execution decentralized through todo claims, evidence events, and explicit claim boundaries.",
+    "audience_takeaway": "A user can inspect what is runnable now, what is blocked by another lane, what needs retry or review, and which claims are intentionally not authorized.",
+    "public_demo_path": "Run the k-NN pack, emit dev evidence, append rollout events, then render this board from the evidence graph without auto-promoting held-out context.",
     "next_product_step": "Replace fixture-only nodes with live rollout-event projections for every auto-research run."
   },
   "quality_gates": [
-    "All promoted work needs dev and holdout evidence.",
+    "Public boards may show dev-only progress, but held-out and promotion claims need separate authority.",
     "Protected scope edits fail the promotion gate.",
     "Every hypothesis stays todo-linked and agent-scoped.",
     "Negative evidence remains visible as reusable research memory.",

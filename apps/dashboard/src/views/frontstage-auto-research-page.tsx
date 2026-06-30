@@ -85,6 +85,21 @@ type BoardUserGate = {
   public_evidence: string;
 };
 
+type BoardClaimBoundary = {
+  schema_version: string;
+  metric_source_kind: string;
+  claim_source: string;
+  live_claim_scope: string;
+  dev_metric_present: boolean;
+  holdout_metric_present: boolean;
+  holdout_result_scope: string;
+  holdout_claim_allowed: boolean;
+  promotion_result_scope: string;
+  promotion_claim_allowed: boolean;
+  first_screen_claim_allowed: boolean;
+  blocked_claims: string[];
+};
+
 type AutoResearchBoard = {
   schema_version: "auto_research_frontstage_board_v0";
   generated_at: string;
@@ -96,6 +111,7 @@ type AutoResearchBoard = {
     positioning: string;
     public_boundary: string;
   };
+  claim_boundary: BoardClaimBoundary;
   research_contract: {
     goal_id: string;
     objective: string;
@@ -129,8 +145,8 @@ type AutoResearchBoard = {
       direction: string;
       baseline: number;
     };
-    best_dev_metric: number;
-    best_holdout_metric: number;
+    best_dev_metric: number | null;
+    best_holdout_metric: number | null;
     holdout_improved: boolean;
     source_kind: string;
     nodes: BoardEvidenceNode[];
