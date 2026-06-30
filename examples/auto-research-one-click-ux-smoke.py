@@ -131,13 +131,22 @@ def main() -> int:
         payload = json.loads(result.stdout)
         assert payload["ok"] is True, payload
         assert payload["mode"] == "execute", payload
+        assert payload["execution_kind"] == "deterministic_replay", payload
+        assert payload["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
         assert payload["reasoning_effort"] == "high", payload
         assert payload["replay_result"]["dev_metric"] == 4.0, payload
         assert payload["replay_result"]["holdout_metric"] == 4.5, payload
+        assert payload["replay_result"]["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
         assert payload["replay_result"]["protected_scope_clean"] is True, payload
         assert payload["acceptance"]["ready_for_real_launch"] is True, payload
         assert payload["public_boundary"]["launches_visible_lanes"] is True, payload
         assert payload["public_boundary"]["local_workspace_path_redacted"] is True, payload
+        assert payload["public_boundary"]["live_codex_sessions_recorded"] is False, payload
+        live = payload["live_codex_e2e"]
+        assert live["executed"] is False, payload
+        assert live["claim_allowed"] is False, payload
+        assert live["visible_lanes_launched"] is True, payload
+        assert live["evidence_source"] == "not_collected_from_codex_lane_output", payload
         visible = payload["visible_launch"]
         assert visible["mode"] == "executed_visible_launch", visible
         assert visible["boundary"]["shared_goal_surface"] is True, visible
@@ -148,10 +157,11 @@ def main() -> int:
         assert launch["workspace_mode"] == "explicit_workspace", launch
         assert launch["started_lane_count"] == 3, launch
         assert launch["visible_acceptance"]["accepted"] is True, launch
+        assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload
         assert workspace.is_dir(), workspace
 
         guide = GUIDE.read_text(encoding="utf-8")
-        one_command_section = guide.split("The smallest visible demo is one command.", 1)[1].split(
+        one_command_section = guide.split("To run the replay and open visible panes", 1)[1].split(
             "If you want to inspect before opening visible Codex lanes",
             1,
         )[0]
@@ -163,9 +173,12 @@ def main() -> int:
             "--workspace ./loopx-auto-research-demo",
             "--create-workspace",
             "--attach",
-            "Generic launcher internals stay inside\nLoopX",
+            "Generic\nlauncher internals stay inside LoopX",
+            "replay-backed visible demo",
         ]:
             assert snippet in one_command_section, snippet
+        assert "does not claim that live Codex lanes authored the research result" in guide, guide
+        assert "live_codex_e2e.claim_allowed" in guide, guide
         assert "visible_multi_agent_launcher" not in guide, guide
         assert "loopx/visible_multi_agent_launcher.py" not in guide, guide
         assert_public_safe(one_command_section)

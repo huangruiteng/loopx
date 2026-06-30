@@ -3391,19 +3391,31 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
         acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), dict) else {}
         supervisor = payload.get("supervisor") if isinstance(payload.get("supervisor"), dict) else {}
         commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+        live_codex = (
+            payload.get("live_codex_e2e")
+            if isinstance(payload.get("live_codex_e2e"), dict)
+            else {}
+        )
         lines = [
-            "# LoopX Auto Research Demo E2E",
+            "# LoopX Auto Research Demo Replay",
             "",
             f"- schema: `{payload.get('schema_version')}`",
             f"- mode: `{payload.get('mode')}`",
+            f"- execution_kind: `{payload.get('execution_kind')}`",
+            f"- result_source: `{payload.get('result_source')}`",
             f"- goal_id: `{payload.get('goal_id')}`",
             f"- agent_id: `{payload.get('agent_id')}`",
             f"- reasoning_effort: `{payload.get('reasoning_effort')}`",
             f"- replay_executed: `{replay.get('executed')}`",
+            f"- replay_result_source: `{replay.get('result_source')}`",
             f"- status: `{replay.get('status')}`",
             f"- dev_metric: `{replay.get('dev_metric')}`",
             f"- holdout_metric: `{replay.get('holdout_metric')}`",
             f"- protected_scope_clean: `{replay.get('protected_scope_clean')}`",
+            f"- live_codex_e2e_executed: `{live_codex.get('executed')}`",
+            f"- live_codex_e2e_claim_allowed: `{live_codex.get('claim_allowed')}`",
+            f"- live_codex_e2e_evidence_source: `{live_codex.get('evidence_source')}`",
+            f"- visible_lanes_launched: `{live_codex.get('visible_lanes_launched')}`",
             f"- appended_events: `{append.get('appended_count')}`",
             f"- skipped_existing_events: `{append.get('skipped_existing_count')}`",
             f"- board_rollout_backed: `{board.get('rollout_backed')}`",
@@ -3413,8 +3425,8 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             "",
             "## Commands",
             "",
-            f"- positive replay: `{commands.get('positive_replay')}`",
-            f"- with visible lanes: `{commands.get('positive_replay_with_visible_lanes')}`",
+            f"- deterministic replay: `{commands.get('deterministic_replay')}`",
+            f"- replay plus visible lanes: `{commands.get('deterministic_replay_with_visible_lanes')}`",
         ]
         return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_BOARD_SCHEMA_VERSION:

@@ -279,7 +279,10 @@ def register_auto_research_commands(
 
     demo_e2e_parser = auto_research_sub.add_parser(
         "demo-e2e",
-        help="Run or preview the one-command k-NN positive demo path and report board/acceptance.",
+        help=(
+            "Run or preview the one-command deterministic k-NN replay path and "
+            "report board/acceptance truth boundaries."
+        ),
     )
     add_subcommand_format(demo_e2e_parser)
     demo_e2e_parser.add_argument("--agent-id", required=True)
@@ -301,12 +304,18 @@ def register_auto_research_commands(
     demo_e2e_parser.add_argument(
         "--execute",
         action="store_true",
-        help="Run protected evals and append public rollout evidence. Omit for a read-only one-command preview.",
+        help=(
+            "Run protected evals from the generated quickstart pack and append public rollout evidence. "
+            "This is a deterministic replay, not a live Codex lane result."
+        ),
     )
     demo_e2e_parser.add_argument(
         "--launch-visible",
         action="store_true",
-        help="With --execute, also launch the visible multi-lane supervisor.",
+        help=(
+            "With --execute, also launch the visible multi-lane supervisor. "
+            "Visible panes alone do not make the replay a live Codex E2E result."
+        ),
     )
     demo_e2e_parser.add_argument(
         "--keep-workspace",

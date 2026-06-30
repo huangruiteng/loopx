@@ -32,11 +32,15 @@ export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
 ```
 
-## 0. Prove The Positive E2E Path
+## 0. Prove The Deterministic Positive Replay
 
-The smallest visible demo is one command. It runs the deterministic positive
-replay, then opens the visible multi-agent panes through the normal
-auto-research surface:
+The fastest positive check is a deterministic replay. It proves that the
+starter pack, protected evaluator, public rollout evidence, board projection,
+and acceptance packet can all produce the expected k-NN result. It is intentionally
+fast and does not claim that live Codex lanes authored the research result.
+
+To run the replay and open visible panes through the normal auto-research
+surface:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -53,12 +57,13 @@ loopx --registry "$LOOPX_REGISTRY" \
   --attach
 ```
 
-That command is the user-facing UX. Generic launcher internals stay inside
-LoopX; the operator does not need to know the module or implementation path.
+That command is the user-facing UX for a replay-backed visible demo. Generic
+launcher internals stay inside LoopX; the operator does not need to know the
+module or implementation path.
 
 If you want to inspect before opening visible Codex lanes, start with the
-read-only dry-run. It tells the operator which command will run the positive
-replay:
+read-only dry-run. It tells the operator which command will run the
+deterministic positive replay:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -81,14 +86,27 @@ loopx --registry "$LOOPX_REGISTRY" \
   --execute
 ```
 
-Expected positive result:
+Expected deterministic replay result:
 
+- `execution_kind` is `deterministic_replay`;
+- `result_source` is `generated_quickstart_pack_protected_eval_replay`;
 - `replay_result.dev_metric` is `4.0`;
 - `replay_result.holdout_metric` is `4.5`;
 - dev and holdout exactness are both `true`;
 - `protected_scope_clean` is `true`;
 - the board is rollout-backed and has at least one promotion candidate;
-- `acceptance.ready_for_real_launch` is `true`.
+- `acceptance.ready_for_real_launch` is `true`, meaning the visible launch
+  controls and public-safe board are ready for operator rehearsal.
+
+Truth boundary:
+
+- `live_codex_e2e.executed` is `false`;
+- `live_codex_e2e.claim_allowed` is `false`;
+- `live_codex_e2e.evidence_source` is `not_collected_from_codex_lane_output`;
+- `acceptance.ready_for_real_launch` does not mean live Codex lanes already
+  produced the positive k-NN evidence;
+- `--launch-visible` proves visible panes can start, but pane startup alone is
+  not a live Codex research result.
 
 For a full visible demo after an explicit replay step, add the visible lane
 launcher:

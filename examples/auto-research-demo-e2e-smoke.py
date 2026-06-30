@@ -64,6 +64,15 @@ def assert_e2e_payload(payload: dict[str, Any], *, executed: bool) -> None:
     assert payload["goal_id"] == GOAL_ID, payload
     assert payload["agent_id"] == AGENT_ID, payload
     assert payload["reasoning_effort"] == "high", payload
+    assert payload["execution_kind"] in {
+        "deterministic_replay",
+        "deterministic_replay_preview",
+    }, payload
+    assert payload["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
+    live = payload["live_codex_e2e"]
+    assert live["executed"] is False, payload
+    assert live["claim_allowed"] is False, payload
+    assert live["evidence_source"] == "not_collected_from_codex_lane_output", payload
     assert payload["supervisor"]["lane_count"] == 3, payload
     assert payload["supervisor"]["reasoning_contract"]["default_reasoning_effort"] == "high", payload
     assert payload["public_boundary"]["raw_logs_recorded"] is False, payload
@@ -71,9 +80,11 @@ def assert_e2e_payload(payload: dict[str, Any], *, executed: bool) -> None:
     assert payload["public_boundary"]["absolute_paths_recorded"] is False, payload
     assert payload["public_boundary"]["credentials_recorded"] is False, payload
     assert payload["public_boundary"]["local_workspace_path_redacted"] is True, payload
+    assert payload["public_boundary"]["live_codex_sessions_recorded"] is False, payload
     replay = payload["replay_result"]
     assert replay["executed"] is executed, payload
     if executed:
+        assert replay["result_source"] == "generated_quickstart_pack_protected_eval_replay", payload
         assert replay["status"] == "supported", payload
         assert replay["dev_metric"] == 4.0, payload
         assert replay["holdout_metric"] == 4.5, payload
@@ -89,6 +100,7 @@ def assert_e2e_payload(payload: dict[str, Any], *, executed: bool) -> None:
         assert payload["board"]["promotion_candidate_count"] >= 1, payload
         assert payload["acceptance"]["ready_for_real_launch"] is True, payload
     else:
+        assert replay["result_source"] == "deterministic_replay_preview", payload
         assert replay["expected_positive_result"] == "dev=4.0x holdout=4.5x after --execute", payload
     assert_public_safe(payload)
 
@@ -148,14 +160,18 @@ def main() -> int:
             registry=registry,
             runtime_root=runtime_root,
         ).stdout
-        assert "# LoopX Auto Research Demo E2E" in markdown, markdown
+        assert "# LoopX Auto Research Demo Replay" in markdown, markdown
+        assert "execution_kind: `deterministic_replay_preview`" in markdown, markdown
+        assert "live_codex_e2e_claim_allowed: `False`" in markdown, markdown
+        assert "live_codex_e2e_evidence_source: `not_collected_from_codex_lane_output`" in markdown, markdown
         assert "reasoning_effort: `high`" in markdown, markdown
-        assert "positive replay:" in markdown, markdown
+        assert "deterministic replay:" in markdown, markdown
         assert_public_safe(markdown)
 
         guide = GUIDE.read_text(encoding="utf-8")
-        assert "## 0. Prove The Positive E2E Path" in guide, guide
+        assert "## 0. Prove The Deterministic Positive Replay" in guide, guide
         assert "auto-research demo-e2e" in guide, guide
+        assert "does not claim that live Codex lanes authored the research result" in guide, guide
         assert "--reasoning-effort high" in guide, guide
         assert "--execute" in guide, guide
         assert "--launch-visible" in guide, guide
@@ -167,11 +183,14 @@ def main() -> int:
         assert "replay_result.holdout_metric" in guide, guide
         assert "`4.5`" in guide, guide
         assert "acceptance.ready_for_real_launch" in guide, guide
+        assert "live_codex_e2e.executed" in guide, guide
+        assert "live_codex_e2e.claim_allowed" in guide, guide
+        assert "not_collected_from_codex_lane_output" in guide, guide
         assert "raw logs" in guide, guide
         assert "private artifacts" in guide, guide
         assert "credentials" in guide, guide
         assert "local absolute workspace paths" in guide, guide
-        e2e_section = guide.split("## 0. Prove The Positive E2E Path", 1)[1].split(
+        e2e_section = guide.split("## 0. Prove The Deterministic Positive Replay", 1)[1].split(
             "## 1. Preview The Research Pack",
             1,
         )[0]

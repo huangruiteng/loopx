@@ -196,6 +196,25 @@ def _command_text(
     return " ".join(parts)
 
 
+def _live_codex_truth_boundary(*, launch_visible: bool) -> dict[str, object]:
+    return {
+        "executed": False,
+        "claim_allowed": False,
+        "visible_lanes_launched": bool(launch_visible),
+        "visible_lanes_accepted": False,
+        "evidence_source": "not_collected_from_codex_lane_output",
+        "reason": (
+            "demo-e2e validates the deterministic positive replay and optional visible launcher; "
+            "it does not prove a live Codex multi-agent research result."
+        ),
+        "required_for_live_claim": [
+            "visible Codex lanes started from the launcher",
+            "lane-authored evidence appended to LoopX state",
+            "acceptance packet cites evidence_source=live_codex_lane_output",
+        ],
+    }
+
+
 def run_auto_research_demo_e2e(
     *,
     agent_id: str,
@@ -232,17 +251,19 @@ def run_auto_research_demo_e2e(
         "ok": True,
         "schema_version": AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION,
         "mode": "execute" if execute else "dry_run",
+        "execution_kind": "deterministic_replay" if execute else "deterministic_replay_preview",
+        "result_source": "generated_quickstart_pack_protected_eval_replay",
         "goal_id": goal_id,
         "agent_id": agent_id,
         "reasoning_effort": reasoning_effort,
         "commands": {
-            "positive_replay": _command_text(
+            "deterministic_replay": _command_text(
                 cli_bin=cli_bin,
                 goal_id=goal_id,
                 agent_id=agent_id,
                 execute=True,
             ),
-            "positive_replay_with_visible_lanes": _command_text(
+            "deterministic_replay_with_visible_lanes": _command_text(
                 cli_bin=cli_bin,
                 goal_id=goal_id,
                 agent_id=agent_id,
@@ -264,7 +285,9 @@ def run_auto_research_demo_e2e(
             "local_workspace_path_redacted": True,
             "writes_loopx_state": bool(execute),
             "launches_visible_lanes": bool(launch_visible),
+            "live_codex_sessions_recorded": False,
         },
+        "live_codex_e2e": _live_codex_truth_boundary(launch_visible=launch_visible),
     }
     if not execute:
         quickstart = build_auto_research_quickstart(
@@ -283,6 +306,7 @@ def run_auto_research_demo_e2e(
         }
         payload["replay_result"] = {
             "executed": False,
+            "result_source": "deterministic_replay_preview",
             "expected_positive_result": "dev=4.0x holdout=4.5x after --execute",
         }
         return payload
@@ -343,6 +367,7 @@ def run_auto_research_demo_e2e(
                 },
                 "replay_result": {
                     "executed": True,
+                    "result_source": "generated_quickstart_pack_protected_eval_replay",
                     "status": evidence.get("summary", {}).get("status"),
                     "dev_metric": (dev.get("metric") or {}).get("value"),
                     "holdout_metric": (holdout.get("metric") or {}).get("value"),
@@ -362,11 +387,25 @@ def run_auto_research_demo_e2e(
         )
         if launch_visible and visible_launcher is not None:
             visible_payload = visible_launcher(dict(supervisor))
+            launch_result = (
+                visible_payload.get("launch_result")
+                if isinstance(visible_payload.get("launch_result"), dict)
+                else {}
+            )
+            visible_acceptance = (
+                launch_result.get("visible_acceptance")
+                if isinstance(launch_result.get("visible_acceptance"), dict)
+                else {}
+            )
             payload["visible_launch"] = {
                 "mode": visible_payload.get("mode"),
-                "launch_result": visible_payload.get("launch_result"),
+                "launch_result": launch_result,
                 "boundary": visible_payload.get("boundary"),
             }
+            live_boundary = payload["live_codex_e2e"]
+            if isinstance(live_boundary, dict):
+                live_boundary["visible_lanes_launched"] = True
+                live_boundary["visible_lanes_accepted"] = bool(visible_acceptance.get("accepted"))
         return payload
     finally:
         if tmp_obj is not None:
