@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="720">
+<img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="480">
 
 **Loop engineering for long-running AI agents.**
 
@@ -31,14 +31,19 @@ next actions, evidence, cost, and handoff state. The agent still needs a CLI,
 goal mode, automation hook, or loop scheduler; LoopX supplies the control
 plane, not hidden autonomy.
 
-[How It Works](#how-it-works) · [Quick Start](#quick-start) · [See It In Action](#see-it-in-action) ·
-[Capability Surface](#capability-surface) ·
-[Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
-[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
-[Release Readiness](docs/product/release-readiness.md) ·
-[Update Notes](docs/update-notes/README.md) ·
-[Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
-[Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
+[Quick Start](#quick-start) · [How It Works](#how-it-works) · [See It In Action](#see-it-in-action) ·
+[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) · [Architecture](docs/architecture.md) ·
+[简体中文](README.zh-CN.md)
+
+<details>
+<summary>More docs and project links</summary>
+
+[Capability Surface](#capability-surface) · [Getting Started](docs/guides/getting-started.md) ·
+[Showcases](docs/showcases/README.md) · [Release Readiness](docs/product/release-readiness.md) ·
+[Update Notes](docs/update-notes/README.md) · [Community](#community--feedback) ·
+[Product Vision](docs/product/vision.md) · [Dashboard](apps/dashboard/README.md)
+
+</details>
 
 > Keep the loop moving. Keep the judgment human.
 
@@ -126,27 +131,17 @@ then start real work with `/loopx <complex task>`.
 
 Choose your surface:
 
-- **Codex App**
-  - Best when: you want a long-running agent that can wake up, re-check gates,
-    and keep moving.
-  - Start with: paste the setup message below, then ask
-    `/loopx <complex task>`.
-
-- **Codex CLI**
-  - Best when: you want the visible TUI to stay primary while LoopX keeps the
-    state.
-  - Start with: run `codex`, paste the setup message, then ask
-    `/loopx <complex task>`.
-
-- **Claude Code**
-  - Best when: you want Claude Code's native `/loop` to drive each tick.
-  - Start with: install the opt-in adapter, run `/loopx <task>`, then `/loop`.
-
-- **Manual shell / other agents**
-  - Best when: you want LoopX state without a supported runtime bridge.
-  - Start with:
-    `curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash`,
-    then `loopx doctor` and `loopx bootstrap`.
+- **Codex App**: best for a long-running agent that can wake up, re-check gates,
+  and keep moving. Paste the setup message below, then ask
+  `/loopx <complex task>`.
+- **Codex CLI**: best when the visible TUI should stay primary while LoopX keeps
+  the state. Run `codex`, paste the setup message, then ask
+  `/loopx <complex task>`.
+- **Claude Code**: best when Claude Code's native `/loop` should drive each tick.
+  Install the opt-in adapter, run `/loopx <task>`, then `/loop`.
+- **Manual shell / other agents**: best when you want LoopX state without a
+  supported runtime bridge. Install from the no-clone installer, then run
+  `loopx doctor` and `loopx bootstrap`.
 
 ### Codex App
 
