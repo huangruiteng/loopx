@@ -96,6 +96,7 @@ incident report, or launch draft.
 - [Host integration plugin plan v0](reference/protocols/host-integration-plugin-plan-v0.md)
 - [Codex App host command registry v0](reference/protocols/codex-app-host-command-registry-v0.md)
 - [Local agent launch plan v0](reference/protocols/local-agent-launch-plan-v0.md)
+- [Multi-agent visible launcher v0](reference/protocols/multi-agent-visible-launcher-v0.md)
 - [Runtime connector catalog](runtime-connector-catalog.md)
 - [Reward gate direct-write contract](reward-gate-direct-write-contract.md)
 - [Worker bridge install contract](worker-bridge-install-contract.md)
