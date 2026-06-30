@@ -209,7 +209,13 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "Release promotion readiness",
         "purpose": "Check whether the release/canary promotion path is ready without mutating the install.",
         "catalog_families": ["Work Routing", "Planning Governance", "State And Boundary"],
-        "trigger_hints": ("release", "promotion", "canary-promotion", "install", "upgrade"),
+        "trigger_hints": (
+            "release",
+            "release promotion",
+            "promotion",
+            "canary-promotion",
+            "promotion-readiness",
+        ),
         "checks": [
             {
                 "command": "python3 examples/canary-promotion-readiness-smoke.py",

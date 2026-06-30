@@ -61,6 +61,24 @@ def assert_profile_fixture_executes() -> None:
     assert result["profile_id"] == "control-plane-refactor", result
 
 
+def assert_install_update_preview_stays_dashboard_free() -> None:
+    payload = build_catalog_canary_run(
+        changed_files=["loopx/doctor.py", "examples/install-local-smoke.py"],
+        max_checks_per_profile=3,
+        check_limit=4,
+        execute=False,
+    )
+    assert payload["ok"] is True, payload
+    profile_ids = {profile["id"] for profile in payload["domain_profiles"]}
+    assert "install-update" in profile_ids, payload
+    assert "release-promotion" not in profile_ids, payload
+    commands = [check["command"] for check in payload["selected_checks"]]
+    assert "python3 examples/install-local-smoke.py" in commands, payload
+    assert "python3 examples/loopx-update-smoke.py" in commands, payload
+    assert all("canary-promotion-readiness-smoke.py" not in command for command in commands), payload
+    assert all("dashboard-demo-readiness-smoke.py" not in command for command in commands), payload
+
+
 def assert_domain_checks_precede_family_checks() -> None:
     payload = build_catalog_canary_run(
         changed_files=["loopx/policies/monitor_todo.py"],
@@ -120,6 +138,7 @@ def main() -> int:
     assert_release_readiness_gets_no_write_argument()
     assert_preview_does_not_execute_or_write()
     assert_profile_fixture_executes()
+    assert_install_update_preview_stays_dashboard_free()
     assert_domain_checks_precede_family_checks()
     assert_cli_run_executes_catalog_selected_check()
     print("catalog-canary-run-e2e-smoke ok")

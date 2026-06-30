@@ -354,6 +354,20 @@ def assert_catalog_canary_selects_own_profile_not_benchmark() -> None:
     assert "python3 examples/catalog-canary-run-e2e-smoke.py" in commands, payload
 
 
+def assert_install_update_does_not_select_release_promotion() -> None:
+    payload = build_catalog_canary_plan(
+        changed_files=["loopx/doctor.py", "examples/install-local-smoke.py"],
+        max_checks_per_profile=3,
+    )
+    domain_profiles = {profile["id"]: profile for profile in payload["domain_profiles"]}
+    assert "install-update" in domain_profiles, payload
+    assert "release-promotion" not in domain_profiles, payload
+    commands = payload["commands"]
+    assert "python3 examples/install-local-smoke.py" in commands, payload
+    assert "python3 examples/loopx-update-smoke.py" in commands, payload
+    assert all("canary-promotion-readiness-smoke.py" not in command for command in commands), payload
+
+
 def _run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(repo), *args],
@@ -559,6 +573,7 @@ def main() -> int:
     assert_pr_release_and_refactor_profiles_select()
     assert_explicit_profile_can_include_deep_checks()
     assert_catalog_canary_selects_own_profile_not_benchmark()
+    assert_install_update_does_not_select_release_promotion()
     assert_coverage_audit_tracks_p0_p1_patterns()
     tmp = tempfile.mkdtemp(prefix="loopx-catalog-canary-smoke-")
     try:
