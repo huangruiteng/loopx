@@ -110,6 +110,18 @@ def live_evidence_payload(*, claim_authority: dict[str, str] | None = None) -> d
     return payload
 
 
+def assert_public_board_claim_boundary(payload: dict[str, Any]) -> None:
+    boundary = payload["board"]["claim_boundary"]
+    assert boundary["schema_version"] == "auto_research_public_claim_boundary_v0", payload
+    assert boundary["live_claim_scope"] == "dev_only", payload
+    assert boundary["holdout_result_scope"] == "rollout_context_only", payload
+    assert boundary["holdout_claim_allowed"] is False, payload
+    assert boundary["promotion_result_scope"] == "candidate_only_not_auto_promoted", payload
+    assert boundary["promotion_claim_allowed"] is False, payload
+    assert boundary["first_screen_claim_allowed"] is False, payload
+    assert "automatic_promotion" in boundary["must_not_claim"], payload
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -132,6 +144,7 @@ def main() -> int:
         assert no_live_payload["live_codex_e2e"]["evidence_source"] == (
             "not_collected_from_codex_lane_output"
         ), no_live_payload
+        assert_public_board_claim_boundary(no_live_payload)
 
         evidence = temp / "live-evidence.public.json"
         evidence.write_text(json.dumps(live_evidence_payload(), sort_keys=True), encoding="utf-8")
@@ -200,6 +213,7 @@ def main() -> int:
         assert live["public_boundary"]["absolute_paths_recorded"] is False, claimed_payload
         assert live["public_boundary"]["credentials_recorded"] is False, claimed_payload
         assert live["public_boundary"]["local_workspace_path_redacted"] is True, claimed_payload
+        assert_public_board_claim_boundary(claimed_payload)
         assert_public_safe(claimed_payload)
 
         authorized_evidence = temp / "authorized-live-evidence.public.json"

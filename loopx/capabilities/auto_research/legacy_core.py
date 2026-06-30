@@ -27,6 +27,7 @@ AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_pl
 AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION = "auto_research_demo_acceptance_packet_v0"
 AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION = "auto_research_demo_e2e_result_v0"
 AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION = "auto_research_role_profile_v0"
+AUTO_RESEARCH_PUBLIC_CLAIM_BOUNDARY_SCHEMA_VERSION = "auto_research_public_claim_boundary_v0"
 AUTO_RESEARCH_DEFAULT_GOAL_ID = "loopx-auto-research-knn"
 AUTO_RESEARCH_DEFAULT_OBJECTIVE = "Improve exact k-nearest-neighbor inference under a protected evaluator."
 AUTO_RESEARCH_QUICKSTART_TEMPLATE = "knn-exact"
@@ -1519,6 +1520,7 @@ def build_auto_research_demo_acceptance_packet(
         raise ValueError("supervisor must be ok")
 
     binding = _json_obj(board.get("projection_binding"), field="board.projection_binding")
+    claim_boundary = _json_obj(board.get("claim_boundary"), field="board.claim_boundary")
     surface = _json_obj(board.get("surface"), field="board.surface")
     research_contract = _json_obj(board.get("research_contract"), field="board.research_contract")
     decisions = _json_obj(board.get("decision_candidates"), field="board.decision_candidates")
@@ -1651,6 +1653,13 @@ def build_auto_research_demo_acceptance_packet(
             "promotion_candidate_count": len(promotion_candidates),
             "retirement_candidate_count": len(retirement_candidates),
             "user_gate_count": len(gates),
+            "claim_boundary": {
+                "live_claim_scope": claim_boundary.get("live_claim_scope"),
+                "holdout_result_scope": claim_boundary.get("holdout_result_scope"),
+                "holdout_claim_allowed": bool(claim_boundary.get("holdout_claim_allowed")),
+                "promotion_claim_allowed": bool(claim_boundary.get("promotion_claim_allowed")),
+                "first_screen_claim_allowed": bool(claim_boundary.get("first_screen_claim_allowed")),
+            },
         },
         "supervisor_rehearsal": {
             "schema_version": supervisor.get("schema_version"),
@@ -2619,6 +2628,12 @@ def build_live_auto_research_projection(
         if isinstance(node, dict) and node.get("status") == "promoted" and node.get("hypothesis_id")
     ]
     retired = [item["hypothesis_id"] for item in decision_candidates["retirement_candidates"]]
+    claim_boundary = _board_public_claim_boundary(
+        source_kind=source_kind,
+        best_dev=evidence_graph.get("best_dev_metric"),
+        best_holdout=evidence_graph.get("best_holdout_metric"),
+        promotion_candidate_count=len(decision_candidates["promotion_candidates"]),
+    )
     showcase_projection = {
         "schema_version": RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
         "title": "LoopX Live Auto Research Frontier",
@@ -2638,6 +2653,7 @@ def build_live_auto_research_projection(
         "promoted_hypotheses": promoted,
         "retired_or_contradicted_hypotheses": retired,
         "negative_evidence_count": evidence_graph.get("negative_evidence_count"),
+        "claim_boundary": claim_boundary,
         "decentralized_pattern": (
             "todo_backed_live_frontier_rollout_evidence_graph"
             if source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
@@ -2657,6 +2673,7 @@ def build_live_auto_research_projection(
         "evidence_graph": evidence_graph,
         "showcase_projection": showcase_projection,
         "artifact_packet": artifact_packet,
+        "public_claim_boundary": claim_boundary,
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
@@ -2676,6 +2693,40 @@ def _metric_display(value: Any, *, suffix: str = "x") -> str:
     if number == int(number):
         return f"{int(number)}{suffix}"
     return f"{number:.1f}{suffix}"
+
+
+def _board_public_claim_boundary(
+    *,
+    source_kind: str,
+    best_dev: Any,
+    best_holdout: Any,
+    promotion_candidate_count: int,
+) -> dict[str, Any]:
+    dev_present = _finite_float(best_dev, field="board.claim_boundary.best_dev") is not None
+    holdout_present = _finite_float(best_holdout, field="board.claim_boundary.best_holdout") is not None
+    rollout_backed = source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
+    return {
+        "schema_version": AUTO_RESEARCH_PUBLIC_CLAIM_BOUNDARY_SCHEMA_VERSION,
+        "live_claim_scope": "dev_only",
+        "dev_evidence_present": dev_present,
+        "dev_claim_rule": "claim only when live_codex_e2e.claim_allowed is true",
+        "holdout_metric_present": holdout_present,
+        "holdout_result_scope": "rollout_context_only" if rollout_backed else "projection_context_only",
+        "holdout_claim_allowed": False,
+        "promotion_candidate_count": int(promotion_candidate_count),
+        "promotion_result_scope": "candidate_only_not_auto_promoted",
+        "promotion_claim_allowed": False,
+        "first_screen_claim_allowed": False,
+        "public_claim": (
+            "Live lane-authored dev evidence may be shown only from live_codex_e2e; "
+            "held-out rollout context and promotion remain separate claims."
+        ),
+        "must_not_claim": [
+            "live_holdout_result_without_authority",
+            "automatic_promotion",
+            "first_screen_product_claim_without_owner_review",
+        ],
+    }
 
 
 def _board_user_gates() -> list[dict[str, str]]:
@@ -2834,6 +2885,12 @@ def build_auto_research_board_projection(
         for item in frontier.get("runnable") or []
         if isinstance(item, dict)
     ][:3]
+    claim_boundary = _board_public_claim_boundary(
+        source_kind=source_kind,
+        best_dev=best_dev,
+        best_holdout=best_holdout,
+        promotion_candidate_count=len(promotion_candidates),
+    )
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_BOARD_SCHEMA_VERSION,
@@ -2852,6 +2909,7 @@ def build_auto_research_board_projection(
             "source_kind": source_kind,
             "rollout_backed": bool(artifact.get("rollout_backed")),
             "first_screen_policy": "experimental_only_not_first_screen_without_owner_review",
+            "public_claim_boundary_schema": claim_boundary["schema_version"],
             "frontier_agent_id": agent,
         },
         "research_contract": {
@@ -2872,7 +2930,10 @@ def build_auto_research_board_projection(
                 ),
                 "baseline": _metric_display(baseline),
             },
-            "promotion_policy": "Promote only after split-aware evidence, clean protected boundary, and explicit operator gate.",
+            "promotion_policy": (
+                "Default public projection may show dev-only live evidence; held-out rollout context "
+                "and promotion require separate authority."
+            ),
             "commands": [
                 {
                     "label": "frontier",
@@ -2884,26 +2945,34 @@ def build_auto_research_board_projection(
                 },
             ],
         },
+        "claim_boundary": claim_boundary,
         "value_metrics": [
             {
-                "label": "Held-out result",
+                "label": "Live claim scope",
+                "value": claim_boundary["live_claim_scope"],
+                "baseline": "unbounded_live_claim",
+                "interpretation": "Only lane-authorized dev evidence can be stated as live by default.",
+                "source": "public_claim_boundary.live_claim_scope",
+            },
+            {
+                "label": "Rollout held-out context",
                 "value": _metric_display(best_holdout),
                 "baseline": _metric_display(baseline),
-                "interpretation": "Promotion value is only legible when held-out evidence is present or explicitly missing.",
+                "interpretation": "Shown as rollout or replay context, not as a live Codex holdout claim.",
                 "source": "evidence_graph.best_holdout_metric",
             },
             {
                 "label": "Dev to holdout transfer",
                 "value": f"{_metric_display(best_dev)} -> {_metric_display(best_holdout)}",
                 "baseline": "dev evidence before promotion",
-                "interpretation": "The board keeps dev iteration separate from promotion evidence.",
+                "interpretation": "The board keeps dev iteration, held-out context, and public claim authority separate.",
                 "source": "research_evidence_graph_v0",
             },
             {
                 "label": "Promotion candidates",
                 "value": str(len(promotion_candidates)),
                 "baseline": "0 without evidence",
-                "interpretation": "Candidates remain review items; the board does not auto-promote them.",
+                "interpretation": "Candidates remain review items; the board does not auto-promote or make first-screen claims.",
                 "source": "artifact_packet.decision_packet",
             },
             {
@@ -3483,6 +3552,11 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             if isinstance(payload.get("live_codex_e2e"), dict)
             else {}
         )
+        board_claim_boundary = (
+            board.get("claim_boundary")
+            if isinstance(board.get("claim_boundary"), dict)
+            else {}
+        )
         lines = [
             "# LoopX Auto Research Demo Replay",
             "",
@@ -3521,6 +3595,17 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- deterministic replay: `{commands.get('deterministic_replay')}`",
             f"- replay plus visible lanes: `{commands.get('deterministic_replay_with_visible_lanes')}`",
         ]
+        if board_claim_boundary:
+            lines.extend(
+                [
+                    "",
+                    "## Board Claim Boundary",
+                    "",
+                    f"- board_live_claim_scope: `{board_claim_boundary.get('live_claim_scope')}`",
+                    f"- board_holdout_result_scope: `{board_claim_boundary.get('holdout_result_scope')}`",
+                    f"- board_promotion_claim_allowed: `{board_claim_boundary.get('promotion_claim_allowed')}`",
+                ]
+            )
         return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_BOARD_SCHEMA_VERSION:
         surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
@@ -3532,6 +3617,11 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
         decisions = (
             payload.get("decision_candidates")
             if isinstance(payload.get("decision_candidates"), dict)
+            else {}
+        )
+        claim_boundary = (
+            payload.get("claim_boundary")
+            if isinstance(payload.get("claim_boundary"), dict)
             else {}
         )
         gates = payload.get("user_gates") if isinstance(payload.get("user_gates"), list) else []
@@ -3546,6 +3636,10 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- source_kind: `{binding.get('source_kind')}`",
             f"- rollout_backed: `{binding.get('rollout_backed')}`",
             f"- first_screen_policy: `{binding.get('first_screen_policy')}`",
+            f"- live_claim_scope: `{claim_boundary.get('live_claim_scope')}`",
+            f"- holdout_result_scope: `{claim_boundary.get('holdout_result_scope')}`",
+            f"- promotion_claim_allowed: `{claim_boundary.get('promotion_claim_allowed')}`",
+            f"- first_screen_claim_allowed: `{claim_boundary.get('first_screen_claim_allowed')}`",
             f"- value metrics: `{len(metrics)}`",
             f"- promotion candidates: `{len(decisions.get('promotion_candidates') or [])}`",
             f"- retirement candidates: `{len(decisions.get('retirement_candidates') or [])}`",

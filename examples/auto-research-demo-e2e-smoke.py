@@ -111,8 +111,21 @@ def assert_e2e_payload(
             "research_hypothesis": 1,
         }, payload
         assert payload["board"]["rollout_backed"] is True, payload
+        claim_boundary = payload["board"]["claim_boundary"]
+        assert claim_boundary["schema_version"] == "auto_research_public_claim_boundary_v0", payload
+        assert claim_boundary["live_claim_scope"] == "dev_only", payload
+        assert claim_boundary["holdout_result_scope"] == "rollout_context_only", payload
+        assert claim_boundary["holdout_claim_allowed"] is False, payload
+        assert claim_boundary["promotion_claim_allowed"] is False, payload
+        assert claim_boundary["first_screen_claim_allowed"] is False, payload
+        labels = [item["label"] for item in payload["board"]["value_metrics"]]
+        assert "Live claim scope" in labels, labels
+        assert "Rollout held-out context" in labels, labels
+        assert "Held-out result" not in labels, labels
         assert payload["board"]["promotion_candidate_count"] >= 1, payload
         assert payload["acceptance"]["ready_for_real_launch"] is True, payload
+        assert payload["acceptance"]["claim_boundary"]["live_claim_scope"] == "dev_only", payload
+        assert payload["acceptance"]["claim_boundary"]["promotion_claim_allowed"] is False, payload
     else:
         assert replay["result_source"] == "deterministic_replay_preview", payload
         assert replay["expected_positive_result"] == "dev=4.0x holdout=4.5x after --execute", payload
@@ -189,6 +202,7 @@ def main() -> int:
         assert "tracking_goal_drives_frontier: `False`" in markdown, markdown
         assert "live_codex_e2e_claim_allowed: `False`" in markdown, markdown
         assert "live_codex_e2e_evidence_source: `not_collected_from_codex_lane_output`" in markdown, markdown
+        assert "board_live_claim_scope" not in markdown, markdown
         assert "reasoning_effort: `high`" in markdown, markdown
         assert "deterministic replay:" in markdown, markdown
         assert_public_safe(markdown)

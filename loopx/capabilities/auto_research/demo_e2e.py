@@ -147,11 +147,17 @@ def _run_protected_eval(
 def _compact_board(board: dict[str, object]) -> dict[str, object]:
     decisions = board.get("decision_candidates") if isinstance(board.get("decision_candidates"), dict) else {}
     binding = board.get("projection_binding") if isinstance(board.get("projection_binding"), dict) else {}
+    claim_boundary = (
+        board.get("claim_boundary")
+        if isinstance(board.get("claim_boundary"), dict)
+        else {}
+    )
     return {
         "ok": bool(board.get("ok")),
         "rollout_backed": bool(binding.get("rollout_backed")),
         "promotion_candidate_count": len(decisions.get("promotion_candidates") or []),
         "retirement_candidate_count": len(decisions.get("retirement_candidates") or []),
+        "claim_boundary": claim_boundary,
         "value_metrics": board.get("value_metrics") or [],
     }
 
@@ -172,6 +178,7 @@ def _compact_acceptance(acceptance: dict[str, object]) -> dict[str, object]:
         "ready_for_real_launch": bool(summary.get("ready_for_real_launch")),
         "promotion_candidate_count": int(board.get("promotion_candidate_count") or 0),
         "rollout_backed": bool(board.get("rollout_backed")),
+        "claim_boundary": board.get("claim_boundary") if isinstance(board.get("claim_boundary"), dict) else {},
     }
 
 
