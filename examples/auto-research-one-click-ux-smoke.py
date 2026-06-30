@@ -93,6 +93,47 @@ def main() -> int:
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["FAKE_TMUX_LOG"] = str(tmux_log)
 
+        supervisor = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "auto-research",
+                "demo-supervisor",
+                "--goal-id",
+                GOAL_ID,
+                "--reasoning-effort",
+                "high",
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        supervisor_payload = json.loads(supervisor.stdout)
+        assert supervisor_payload["ok"] is True, supervisor_payload
+        assert supervisor_payload["reasoning_contract"]["default_reasoning_effort"] == "high", supervisor_payload
+        for lane in supervisor_payload["lanes"]:
+            bootstrap = lane["bootstrap_message"]
+            launch_command = lane["visible_launch_command"]
+            assert "codex-cli-bootstrap-message" not in bootstrap, lane
+            assert "generic LoopX heartbeat worker" in bootstrap, lane
+            assert "loopx-auto-research" in bootstrap, lane
+            assert "live-codex-e2e-evidence.public.json" in bootstrap, lane
+            assert "Deterministic replay is not live Codex evidence" in bootstrap, lane
+            assert "claim_allowed must remain false" in bootstrap, lane
+            assert "model_reasoning_effort=high" in bootstrap, lane
+            assert "model_reasoning_effort=high" in launch_command, lane
+            assert "codex-cli-bootstrap-message" not in launch_command, lane
+        assert_public_safe(supervisor_payload)
+
         result = subprocess.run(
             [
                 sys.executable,

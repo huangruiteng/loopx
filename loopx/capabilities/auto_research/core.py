@@ -893,12 +893,93 @@ def _env_frontier_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
     )
 
 
-def _env_bootstrap_command(*, cli_bin: str, goal_id: str, agent_id: str) -> str:
-    return (
-        f"{_shell_arg(cli_bin)} codex-cli-bootstrap-message "
-        "--project \"$LOOPX_PROJECT\" "
-        f"--goal-id {_shell_arg(goal_id)} --agent-id {_shell_arg(agent_id)}"
+def _compact_prompt_list(items: Any) -> str:
+    if not isinstance(items, list):
+        return "none"
+    values = [
+        _compact_public_text(str(item), field="bootstrap_prompt.list_item", max_len=100)
+        for item in items
+        if str(item).strip()
+    ]
+    return ", ".join(values) if values else "none"
+
+
+def _auto_research_codex_bootstrap_prompt(
+    *,
+    goal_id: str,
+    lane: dict[str, str],
+    role_profile: dict[str, Any],
+    reasoning_effort: str,
+) -> str:
+    agent_id = _compact_public_token(role_profile.get("agent_id"), field="bootstrap.agent_id")
+    lane_id = _compact_public_token(role_profile.get("lane_id"), field="bootstrap.lane_id")
+    role_id = _compact_public_token(role_profile.get("role_id"), field="bootstrap.role_id")
+    skill_section = _compact_public_text(
+        str(role_profile.get("skill_section") or role_id),
+        field="bootstrap.skill_section",
+        max_len=80,
     )
+    responsibility = _compact_public_text(
+        str(lane.get("responsibility") or ""),
+        field="bootstrap.responsibility",
+        max_len=180,
+    )
+    allowed_actions = _compact_prompt_list(role_profile.get("allowed_actions"))
+    handoff_outputs = _compact_prompt_list(role_profile.get("handoff_outputs"))
+    write_scope = _compact_prompt_list(role_profile.get("write_scope"))
+    protected_scope = _compact_prompt_list(role_profile.get("protected_scope"))
+    stop_conditions = _compact_prompt_list(role_profile.get("stop_conditions"))
+    effort = _compact_public_token(reasoning_effort, field="bootstrap.reasoning_effort")
+    goal = _compact_public_token(goal_id, field="bootstrap.goal_id")
+    return "\n".join(
+        [
+            "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",
+            "Use skills in this order: loopx-project for quota/status, then loopx-auto-research for this role.",
+            "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the printed frontier explicitly asks for it.",
+            "",
+            f"Goal: {goal}",
+            f"Agent: {agent_id}",
+            f"Lane: {lane_id}",
+            f"Role: {role_id}",
+            f"Skill section: {skill_section}",
+            f"Responsibility: {responsibility}",
+            f"Reasoning: model_reasoning_effort={effort}",
+            "",
+            "Before any write, resolve identity from LOOPX_ROLE_PROFILE_JSON, the printed quota packet, and the printed auto-research frontier.",
+            "If any of those disagree, stop and report the blocker in this pane.",
+            f"Allowed actions: {allowed_actions}",
+            f"Allowed write scope: {write_scope}",
+            f"Protected scope: {protected_scope}",
+            f"Expected handoff outputs: {handoff_outputs}",
+            f"Stop conditions: {stop_conditions}",
+            "",
+            "Live E2E proof contract:",
+            "- Work only from the printed auto-research frontier and this role profile.",
+            "- Deterministic replay is not live Codex evidence; do not claim replay metrics as lane-authored results.",
+            "- If you author evidence, use public-safe loopx auto-research evidence and append-evidence commands.",
+            "- A controller may later run capture-live-evidence to create live-codex-e2e-evidence.public.json.",
+            "- claim_allowed must remain false until that public-safe live evidence file exists and validates.",
+            "",
+            "Never include credentials, raw private logs, raw session transcripts, local absolute paths, or private artifacts.",
+            "End with a compact public-safe summary of commands run, evidence written, blocker, or next role-local todo.",
+        ]
+    )
+
+
+def _env_auto_research_bootstrap_command(
+    *,
+    goal_id: str,
+    lane: dict[str, str],
+    role_profile: dict[str, Any],
+    reasoning_effort: str,
+) -> str:
+    prompt = _auto_research_codex_bootstrap_prompt(
+        goal_id=goal_id,
+        lane=lane,
+        role_profile=role_profile,
+        reasoning_effort=reasoning_effort,
+    )
+    return f"printf '%s\\n' {_shell_arg(prompt)}"
 
 
 def _role_profile_for_lane(*, goal_id: str, lane: dict[str, str]) -> dict[str, Any]:
@@ -1117,7 +1198,12 @@ def build_auto_research_demo_supervisor_plan(
         role_profile = _role_profile_for_lane(goal_id=goal, lane=lane)
         quota_command = _env_quota_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
         frontier_command = _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
-        bootstrap_command = _env_bootstrap_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
+        bootstrap_command = _env_auto_research_bootstrap_command(
+            goal_id=goal,
+            lane=lane,
+            role_profile=role_profile,
+            reasoning_effort=effort,
+        )
         pane_plans.append(
             {
                 "lane_id": lane_id,
@@ -1144,7 +1230,7 @@ def build_auto_research_demo_supervisor_plan(
                     "print role_profile_v0 identity before any quota/frontier/bootstrap command",
                     "run quota_guard and stop when user_channel.action_required=true",
                     "render the lane frontier from LoopX state",
-                    "print the public-safe bootstrap message for this visible TUI",
+                    "print the role-scoped auto-research bootstrap message for this visible TUI",
                     "start Codex CLI visibly; do not inject hidden prompts into an existing session",
                 ],
                 "lane_timeline": [
@@ -1172,7 +1258,7 @@ def build_auto_research_demo_supervisor_plan(
                     {
                         "phase": "bootstrap_prompt",
                         "command_ref": "bootstrap_message",
-                        "operator_visible_signal": "public-safe Codex bootstrap message printed in the lane pane",
+                        "operator_visible_signal": "role-scoped auto-research Codex bootstrap message printed in the lane pane",
                         "continue_when": "bootstrap scope matches the lane frontier",
                         "stop_when": "bootstrap would bypass LoopX quota, todo claims, or evidence writeback",
                     },
