@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
@@ -1406,12 +1407,60 @@ time.sleep(30)
         assert trace["worker_process"]["stage"] == "first_action_timeout", trace
         assert trace["worker_contract"]["first_blocker"] == "first_action_timeout", trace
         assert trace["worker_process"]["stderr_bytes"] > 0, trace
-        assert timeout_arg.read_text(encoding="utf-8") == "0.0"
+        assert timeout_arg.read_text(encoding="utf-8") == "1.0"
         trace_text = json.dumps(trace, sort_keys=True)
         assert "private task placeholder" not in trace_text, trace
         assert str(work) not in trace_text, trace
         proc.terminate()
         proc.wait(timeout=2)
+
+
+def test_app_server_goal_launcher_defaults_first_action_watchdog() -> None:
+    from scripts.skillsbench_automation_loop import _host_local_acp_launch_command
+
+    command = _host_local_acp_launch_command(
+        _app_server_goal_command_args(first_action_timeout=None),
+        {"app_server_goal_worker_trace_dir": "/tmp/worker-traces"},
+    )
+    index = command.index("--first-action-timeout-sec")
+    assert command[index + 1] == "3600", command
+
+
+def test_app_server_goal_launcher_allows_explicit_first_action_disable() -> None:
+    from scripts.skillsbench_automation_loop import _host_local_acp_launch_command
+
+    command = _host_local_acp_launch_command(
+        _app_server_goal_command_args(first_action_timeout=0),
+        {"app_server_goal_worker_trace_dir": "/tmp/worker-traces"},
+    )
+    index = command.index("--first-action-timeout-sec")
+    assert command[index + 1] == "0", command
+
+
+def _app_server_goal_command_args(first_action_timeout: int | None) -> Namespace:
+    return Namespace(
+        local_acp_relay_command="",
+        route=ROUTE,
+        app_server_reasoning_effort="high",
+        app_server_acp_heartbeat_interval_sec=120.0,
+        dataset="skillsbench@1.1",
+        task_id="llm-prefix-cache-replay",
+        local_codex_bin="codex",
+        local_codex_sandbox="workspace-write",
+        local_codex_exec_timeout_sec=None,
+        local_codex_first_action_timeout_sec=first_action_timeout,
+        local_codex_bridge_idle_timeout_sec=None,
+        local_codex_task_output_quiet_timeout_sec=None,
+        outer_timeout_sec=7200,
+        agent_idle_timeout=900,
+        model="gpt-5.5",
+        host_local_acp_launch=True,
+        remote_command_file_bridge_solver_command="python bridge.py",
+        remote_command_file_bridge_ready=True,
+        remote_command_file_bridge_probe=False,
+        remote_command_file_bridge_probe_timeout_sec=10,
+        remote_command_file_bridge_agent_command="",
+    )
 
 
 def test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge() -> None:
@@ -1908,6 +1957,8 @@ if __name__ == "__main__":
     test_acp_relay_materializes_public_failure_trace_without_worker_output()
     test_acp_relay_fails_closed_when_zero_exit_worker_writes_no_public_output()
     test_acp_relay_fails_fast_when_app_server_worker_never_uses_bridge()
+    test_app_server_goal_launcher_defaults_first_action_watchdog()
+    test_app_server_goal_launcher_allows_explicit_first_action_disable()
     test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge()
     test_acp_relay_yields_after_task_output_quiet_timeout()
     test_full_run_fails_closed_until_bridge_is_materialized()

@@ -157,6 +157,7 @@ DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC = 3600
 DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC = 600
+DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC = 3600
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
@@ -989,12 +990,7 @@ def _host_local_acp_launch_command(
             "--timeout-sec",
             str(_effective_local_codex_exec_timeout_sec(args)),
             "--first-action-timeout-sec",
-            str(
-                max(
-                    0,
-                    int(getattr(args, "local_codex_first_action_timeout_sec", 0) or 0),
-                )
-            ),
+            str(_effective_local_codex_first_action_timeout_sec(args)),
             "--bridge-idle-timeout-sec",
             str(_effective_local_codex_bridge_idle_timeout_sec(args)),
             "--task-output-quiet-timeout-sec",
@@ -1156,6 +1152,18 @@ def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> 
     if requested <= 0:
         return DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
     return min(requested, DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC)
+
+
+def _effective_local_codex_first_action_timeout_sec(args: argparse.Namespace) -> int:
+    configured = getattr(args, "local_codex_first_action_timeout_sec", None)
+    if configured is not None:
+        return max(0, int(configured or 0))
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and getattr(args, "route", "") == "codex-app-server-goal-baseline"
+    ):
+        return DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC
+    return 0
 
 
 def _effective_local_codex_task_output_quiet_timeout_sec(
@@ -12349,10 +12357,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--local-codex-first-action-timeout-sec",
         type=int,
-        default=0,
+        default=None,
         help=(
             "Optional watchdog for the first sandbox bridge operation from a "
-            "host-local Codex turn. 0 disables the watchdog."
+            "host-local Codex turn. Omit to use the app-server Goal default "
+            f"({DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC}s) for "
+            "codex-app-server-goal-baseline; 0 disables the watchdog."
         ),
     )
     parser.add_argument(
