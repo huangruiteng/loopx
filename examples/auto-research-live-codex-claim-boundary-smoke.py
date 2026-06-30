@@ -76,8 +76,8 @@ def base_demo_args() -> list[str]:
     ]
 
 
-def live_evidence_payload() -> dict[str, Any]:
-    return {
+def live_evidence_payload(*, claim_authority: dict[str, str] | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "schema_version": "auto_research_live_codex_lane_e2e_evidence_v0",
         "source": "live_codex_lane_output",
         "goal_id": GOAL_ID,
@@ -105,6 +105,9 @@ def live_evidence_payload() -> dict[str, Any]:
             "local_workspace_path_redacted": True,
         },
     }
+    if claim_authority:
+        payload["claim_authority"] = claim_authority
+    return payload
 
 
 def main() -> int:
@@ -173,17 +176,63 @@ def main() -> int:
         assert claimed_payload["replay_result"]["holdout_metric"] == 4.5, claimed_payload
         assert live["executed"] is True, claimed_payload
         assert live["claim_allowed"] is True, claimed_payload
+        assert live["claim_scope"] == "dev_only", claimed_payload
+        assert live["dev_claim_allowed"] is True, claimed_payload
+        assert live["holdout_claim_allowed"] is False, claimed_payload
+        assert live["promotion_claim_allowed"] is False, claimed_payload
+        assert live["holdout_claim_authority"] is None, claimed_payload
+        assert live["promotion_claim_authority"] is None, claimed_payload
         assert live["evidence_source"] == "live_codex_lane_output", claimed_payload
         assert live["evidence_event_count"] == 3, claimed_payload
         assert live["result_status"] == "supported", claimed_payload
         assert live["dev_metric"] == 4.0, claimed_payload
-        assert live["holdout_metric"] == 4.5, claimed_payload
+        assert live["holdout_metric"] is None, claimed_payload
+        assert live["holdout_metric_present"] is True, claimed_payload
+        assert live["holdout_metric_redacted"] is True, claimed_payload
+        assert live["holdout_claim_blocked_reason"] == (
+            "requires_separate_heldout_live_evidence_or_owner_approval"
+        ), claimed_payload
+        assert live["promotion_claim_blocked_reason"] == (
+            "requires_separate_heldout_live_evidence_or_owner_approval"
+        ), claimed_payload
         assert live["public_boundary"]["raw_logs_recorded"] is False, claimed_payload
         assert live["public_boundary"]["private_artifacts_recorded"] is False, claimed_payload
         assert live["public_boundary"]["absolute_paths_recorded"] is False, claimed_payload
         assert live["public_boundary"]["credentials_recorded"] is False, claimed_payload
         assert live["public_boundary"]["local_workspace_path_redacted"] is True, claimed_payload
         assert_public_safe(claimed_payload)
+
+        authorized_evidence = temp / "authorized-live-evidence.public.json"
+        authorized_evidence.write_text(
+            json.dumps(
+                live_evidence_payload(
+                    claim_authority={
+                        "holdout_claim": "separate_heldout_live_evidence",
+                        "promotion_claim": "owner_approval",
+                        "source_ref": "owner-approved-live-claim-fixture",
+                    }
+                ),
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        authorized = run_cli(
+            [*base_demo_args(), "--execute", "--live-evidence", str(authorized_evidence)],
+            registry=registry,
+            runtime_root=runtime_root,
+        )
+        authorized_payload = json.loads(authorized.stdout)
+        authorized_live = authorized_payload["live_codex_e2e"]
+        assert authorized_live["claim_scope"] == "promotion_claim_authorized", authorized_payload
+        assert authorized_live["holdout_claim_allowed"] is True, authorized_payload
+        assert authorized_live["promotion_claim_allowed"] is True, authorized_payload
+        assert authorized_live["holdout_claim_authority"] == "separate_heldout_live_evidence", authorized_payload
+        assert authorized_live["promotion_claim_authority"] == "owner_approval", authorized_payload
+        assert authorized_live["holdout_metric"] == 4.5, authorized_payload
+        assert authorized_live["holdout_metric_redacted"] is False, authorized_payload
+        assert authorized_live["holdout_claim_blocked_reason"] is None, authorized_payload
+        assert authorized_live["promotion_claim_blocked_reason"] is None, authorized_payload
+        assert_public_safe(authorized_payload)
 
     print("auto-research-live-codex-claim-boundary-smoke ok")
     return 0

@@ -12,6 +12,7 @@ from .core import (
 
 LIVE_CODEX_E2E_EVIDENCE_SCHEMA_VERSION = "auto_research_live_codex_lane_e2e_evidence_v0"
 LIVE_CODEX_E2E_DEFAULT_OUTPUT = "live-codex-e2e-evidence.public.json"
+LIVE_CODEX_PUBLIC_CLAIM_AUTHORITIES = {"separate_heldout_live_evidence", "owner_approval"}
 
 
 def _require_dict(payload: dict[str, object], key: str) -> dict[str, object]:
@@ -57,6 +58,31 @@ def _load_json_object(path: str | Path, *, field: str) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError(f"{field} root must be an object")
     return payload
+
+
+def _claim_authority(payload: dict[str, object]) -> dict[str, object]:
+    authority = payload.get("claim_authority")
+    if authority is None:
+        return {}
+    if not isinstance(authority, dict):
+        raise ValueError("live evidence claim_authority must be an object")
+    allowed_keys = {"holdout_claim", "promotion_claim", "source_ref"}
+    unknown = sorted(set(authority) - allowed_keys)
+    if unknown:
+        raise ValueError(f"live evidence claim_authority has unknown keys: {', '.join(unknown)}")
+    for key in ("holdout_claim", "promotion_claim"):
+        value = authority.get(key)
+        if value is None:
+            continue
+        if value not in LIVE_CODEX_PUBLIC_CLAIM_AUTHORITIES:
+            raise ValueError(
+                f"live evidence claim_authority.{key} must be one of "
+                "separate_heldout_live_evidence or owner_approval"
+            )
+    source_ref = authority.get("source_ref")
+    if source_ref is not None and (not isinstance(source_ref, str) or not source_ref.strip()):
+        raise ValueError("live evidence claim_authority.source_ref must be a non-empty string")
+    return dict(authority)
 
 
 def _metric_by_split(packet: dict[str, object], split: str) -> object:
@@ -215,6 +241,7 @@ def load_live_codex_e2e_evidence(
         field="public_boundary.local_workspace_path_redacted",
     )
     _assert_live_evidence_public_safe(payload)
+    _claim_authority(payload)
     return {
         "schema_version": payload["schema_version"],
         "source": payload["source"],
@@ -226,6 +253,7 @@ def load_live_codex_e2e_evidence(
         "protected_scope_clean": True,
         "dev_metric": lane_evidence.get("dev_metric"),
         "holdout_metric": lane_evidence.get("holdout_metric"),
+        "claim_authority": _claim_authority(payload),
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
@@ -237,15 +265,44 @@ def load_live_codex_e2e_evidence(
 
 
 def build_live_codex_claim_from_evidence(evidence: dict[str, object]) -> dict[str, object]:
+    authority = _claim_authority(evidence)
+    holdout_authority = authority.get("holdout_claim")
+    promotion_authority = authority.get("promotion_claim")
+    holdout_claim_allowed = holdout_authority in LIVE_CODEX_PUBLIC_CLAIM_AUTHORITIES
+    promotion_claim_allowed = promotion_authority in LIVE_CODEX_PUBLIC_CLAIM_AUTHORITIES
+    holdout_metric_present = evidence.get("holdout_metric") is not None
+    if promotion_claim_allowed:
+        claim_scope = "promotion_claim_authorized"
+    elif holdout_claim_allowed:
+        claim_scope = "dev_and_holdout_authorized"
+    else:
+        claim_scope = "dev_only"
     return {
         "executed": True,
         "claim_allowed": True,
+        "claim_scope": claim_scope,
+        "dev_claim_allowed": True,
+        "holdout_claim_allowed": holdout_claim_allowed,
+        "promotion_claim_allowed": promotion_claim_allowed,
+        "holdout_claim_authority": holdout_authority,
+        "promotion_claim_authority": promotion_authority,
+        "holdout_claim_blocked_reason": (
+            None
+            if holdout_claim_allowed
+            else "requires_separate_heldout_live_evidence_or_owner_approval"
+        ),
+        "promotion_claim_blocked_reason": (
+            None
+            if promotion_claim_allowed
+            else "requires_separate_heldout_live_evidence_or_owner_approval"
+        ),
         "visible_lanes_launched": True,
         "visible_lanes_accepted": True,
         "evidence_source": "live_codex_lane_output",
         "reason": (
-            "compact live Codex lane-authored evidence was validated; raw transcripts, "
-            "private artifacts, credentials, and local paths were not recorded."
+            "compact live Codex lane-authored dev evidence was validated; raw transcripts, "
+            "private artifacts, credentials, and local paths were not recorded. Holdout "
+            "and promotion claims require separate held-out live evidence or owner approval."
         ),
         "evidence_schema_version": evidence.get("schema_version"),
         "lane_count": evidence.get("lane_count"),
@@ -253,6 +310,8 @@ def build_live_codex_claim_from_evidence(evidence: dict[str, object]) -> dict[st
         "result_status": evidence.get("result_status"),
         "protected_scope_clean": evidence.get("protected_scope_clean"),
         "dev_metric": evidence.get("dev_metric"),
-        "holdout_metric": evidence.get("holdout_metric"),
+        "holdout_metric": evidence.get("holdout_metric") if holdout_claim_allowed else None,
+        "holdout_metric_present": holdout_metric_present,
+        "holdout_metric_redacted": bool(holdout_metric_present and not holdout_claim_allowed),
         "public_boundary": evidence.get("public_boundary"),
     }

@@ -150,6 +150,14 @@ and zero raw logs, private artifacts, credentials, or local absolute paths in
 the payload. Without this packet,
 `live_codex_e2e.claim_allowed` stays `false`.
 
+With a valid compact live evidence packet, `live_codex_e2e.claim_allowed`
+means only that a live lane-authored dev claim may be projected. Holdout and
+promotion claims stay blocked by default: `holdout_claim_allowed=false`,
+`promotion_claim_allowed=false`, and the live `holdout_metric` is redacted from
+the claim projection. To project a live holdout or promotion claim, the compact
+evidence must carry explicit public-safe `claim_authority`, such as
+`separate_heldout_live_evidence` or `owner_approval`.
+
 For a full visible demo after an explicit replay step, add the visible lane
 launcher:
 

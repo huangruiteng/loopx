@@ -253,7 +253,13 @@ def main() -> int:
         assert live["evidence_source"] == "live_codex_lane_output", claimed_payload
         assert live["evidence_event_count"] == 2, claimed_payload
         assert live["dev_metric"] == 4.0, claimed_payload
-        assert live["holdout_metric"] == 4.5, claimed_payload
+        assert live["claim_scope"] == "dev_only", claimed_payload
+        assert live["dev_claim_allowed"] is True, claimed_payload
+        assert live["holdout_claim_allowed"] is False, claimed_payload
+        assert live["promotion_claim_allowed"] is False, claimed_payload
+        assert live["holdout_metric"] is None, claimed_payload
+        assert live["holdout_metric_present"] is True, claimed_payload
+        assert live["holdout_metric_redacted"] is True, claimed_payload
         assert_public_safe(claimed_payload)
 
     print("auto-research-live-evidence-capture-smoke ok")
