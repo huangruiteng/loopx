@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -26,6 +27,113 @@ FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
 
 
+def _dedupe_preserving_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _run_git_name_only(repo_root: Path, args: list[str]) -> dict[str, object]:
+    command = ["git", "-C", str(repo_root), *args]
+    completed = subprocess.run(
+        command,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    files = [
+        line.strip()
+        for line in completed.stdout.splitlines()
+        if line.strip()
+    ]
+    return {
+        "ok": completed.returncode == 0,
+        "returncode": completed.returncode,
+        "command": command,
+        "changed_files": files,
+        "stderr_tail": completed.stderr[-800:],
+    }
+
+
+def collect_git_diff_changed_files(
+    *,
+    repo_root: Path,
+    base_ref: str = "origin/main",
+) -> dict[str, object]:
+    """Collect committed, staged, unstaged, and untracked paths for canary selection."""
+
+    base_ref = (base_ref or "origin/main").strip() or "origin/main"
+    sources = {
+        "base": _run_git_name_only(repo_root, ["diff", "--name-only", f"{base_ref}...HEAD"]),
+        "staged": _run_git_name_only(repo_root, ["diff", "--name-only", "--cached"]),
+        "unstaged": _run_git_name_only(repo_root, ["diff", "--name-only"]),
+        "untracked": _run_git_name_only(repo_root, ["ls-files", "--others", "--exclude-standard"]),
+    }
+    changed_files = _dedupe_preserving_order(
+        [
+            file
+            for source in sources.values()
+            for file in (source.get("changed_files") or [])
+            if isinstance(file, str)
+        ]
+    )
+    successful_sources = [
+        name for name, source in sources.items()
+        if source.get("ok")
+    ]
+    warnings = [
+        {
+            "source": name,
+            "returncode": source.get("returncode"),
+            "stderr_tail": source.get("stderr_tail"),
+        }
+        for name, source in sources.items()
+        if not source.get("ok")
+    ]
+    return {
+        "ok": bool(successful_sources),
+        "base_ref": base_ref,
+        "repo_root": str(repo_root),
+        "changed_files": changed_files,
+        "changed_file_count": len(changed_files),
+        "successful_sources": successful_sources,
+        "warnings": warnings,
+    }
+
+
+def _resolve_canary_changed_files(args: argparse.Namespace) -> tuple[list[str], dict[str, object] | None]:
+    changed_files = list(args.changed_file or [])
+    git_diff_selector = None
+    if bool(getattr(args, "from_git_diff", False)):
+        git_diff_selector = collect_git_diff_changed_files(
+            repo_root=Path.cwd(),
+            base_ref=str(getattr(args, "git_diff_base", "origin/main") or "origin/main"),
+        )
+        changed_files.extend(
+            file
+            for file in (git_diff_selector.get("changed_files") or [])
+            if isinstance(file, str)
+        )
+    return _dedupe_preserving_order(changed_files), git_diff_selector
+
+
+def _attach_selector_sources(
+    payload: dict[str, object],
+    *,
+    git_diff_selector: dict[str, object] | None,
+) -> None:
+    if git_diff_selector is None:
+        return
+    payload["selector_sources"] = {"git_diff": git_diff_selector}
+
+
 def _add_canary_selector_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--catalog",
@@ -37,6 +145,19 @@ def _add_canary_selector_args(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=[],
         help="Changed path or glob-like surface. Repeat for multiple paths.",
+    )
+    parser.add_argument(
+        "--from-git-diff",
+        action="store_true",
+        help=(
+            "Append changed paths from git diff against --git-diff-base plus "
+            "staged, unstaged, and untracked working-tree changes."
+        ),
+    )
+    parser.add_argument(
+        "--git-diff-base",
+        default="origin/main",
+        help="Base ref for --from-git-diff committed changes. Defaults to origin/main.",
     )
     parser.add_argument(
         "--surface",
@@ -158,9 +279,10 @@ def handle_canary_command(
         payload = build_catalog_canary_profiles(catalog_path=args.catalog)
         renderer = render_catalog_canary_profiles_markdown
     elif args.canary_command == "plan":
+        changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_catalog_canary_plan(
             catalog_path=args.catalog,
-            changed_files=list(args.changed_file or []),
+            changed_files=changed_files,
             surfaces=list(args.surface or []),
             families=list(args.family or []),
             profiles=list(args.profile or []),
@@ -168,11 +290,13 @@ def handle_canary_command(
             max_checks_per_family=int(args.max_checks_per_family or 3),
             max_checks_per_profile=int(args.max_checks_per_profile or 3),
         )
+        _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
         renderer = render_catalog_canary_plan_markdown
     elif args.canary_command == "run":
+        changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_catalog_canary_run(
             catalog_path=args.catalog,
-            changed_files=list(args.changed_file or []),
+            changed_files=changed_files,
             surfaces=list(args.surface or []),
             families=list(args.family or []),
             profiles=list(args.profile or []),
@@ -183,6 +307,7 @@ def handle_canary_command(
             execute=not bool(args.no_execute),
             timeout_seconds=float(args.timeout_seconds or 120.0),
         )
+        _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
         renderer = render_catalog_canary_run_markdown
     elif args.canary_command == "coverage-audit":
         payload = build_catalog_canary_coverage_audit(

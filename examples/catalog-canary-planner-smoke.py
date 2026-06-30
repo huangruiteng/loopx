@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +21,7 @@ from loopx.canary.planner import (  # noqa: E402
     build_catalog_canary_plan,
     build_catalog_canary_profiles,
 )
+from loopx.cli_commands.canary import collect_git_diff_changed_files  # noqa: E402
 
 
 def assert_profiles_come_from_catalog_matrix() -> None:
@@ -351,6 +354,104 @@ def assert_catalog_canary_selects_own_profile_not_benchmark() -> None:
     assert "python3 examples/catalog-canary-run-e2e-smoke.py" in commands, payload
 
 
+def _run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _make_git_diff_selector_repo(tmp_dir: Path) -> tuple[Path, str]:
+    repo = tmp_dir / "selector-repo"
+    repo.mkdir()
+    _run_git(repo, "init")
+    _run_git(repo, "config", "user.email", "loopx-smoke@example.invalid")
+    _run_git(repo, "config", "user.name", "LoopX Smoke")
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _run_git(repo, "add", "README.md")
+    _run_git(repo, "commit", "-m", "base")
+    base_ref = _run_git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    committed_path = repo / "loopx" / "canary" / "planner.py"
+    committed_path.parent.mkdir(parents=True)
+    committed_path.write_text("# committed canary planner change\n", encoding="utf-8")
+    _run_git(repo, "add", "loopx/canary/planner.py")
+    _run_git(repo, "commit", "-m", "committed canary planner")
+
+    unstaged_path = repo / "examples" / "catalog-canary-planner-smoke.py"
+    unstaged_path.parent.mkdir(parents=True)
+    unstaged_path.write_text("# tracked catalog canary smoke change\n", encoding="utf-8")
+    _run_git(repo, "add", "examples/catalog-canary-planner-smoke.py")
+    _run_git(repo, "commit", "-m", "tracked catalog canary smoke")
+
+    staged_path = repo / "loopx" / "cli_commands" / "canary.py"
+    staged_path.parent.mkdir(parents=True)
+    staged_path.write_text("# staged cli canary change\n", encoding="utf-8")
+    _run_git(repo, "add", "loopx/cli_commands/canary.py")
+
+    unstaged_path.write_text("# unstaged catalog canary smoke change\n", encoding="utf-8")
+
+    untracked_path = repo / "docs" / "new-catalog-canary-note.md"
+    untracked_path.parent.mkdir(parents=True)
+    untracked_path.write_text("# untracked catalog canary note\n", encoding="utf-8")
+    return repo, base_ref
+
+
+def assert_git_diff_selector_covers_pr_and_worktree_changes(tmp_dir: Path) -> None:
+    repo, base_ref = _make_git_diff_selector_repo(tmp_dir)
+    assert _run_git(repo, "diff", "--name-only", "--cached").stdout.splitlines() == [
+        "loopx/cli_commands/canary.py",
+    ]
+    assert _run_git(repo, "diff", "--name-only").stdout.splitlines() == [
+        "examples/catalog-canary-planner-smoke.py",
+    ]
+    assert _run_git(repo, "ls-files", "--others", "--exclude-standard").stdout.splitlines() == [
+        "docs/new-catalog-canary-note.md",
+    ]
+    selector = collect_git_diff_changed_files(repo_root=repo, base_ref=base_ref)
+    assert selector["ok"] is True, selector
+    assert selector["successful_sources"] == ["base", "staged", "unstaged", "untracked"], selector
+    assert selector["changed_files"] == [
+        "examples/catalog-canary-planner-smoke.py",
+        "loopx/canary/planner.py",
+        "loopx/cli_commands/canary.py",
+        "docs/new-catalog-canary-note.md",
+    ], selector
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(REPO_ROOT)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "canary",
+            "plan",
+            "--from-git-diff",
+            "--git-diff-base",
+            base_ref,
+        ],
+        cwd=repo,
+        env=env,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["selector_sources"]["git_diff"]["changed_file_count"] == 4, payload
+    assert payload["selection_inputs"]["changed_files"] == selector["changed_files"], payload
+    domain_profile_ids = {profile["id"] for profile in payload["domain_profiles"]}
+    assert "catalog-canary-contract" in domain_profile_ids, payload
+    assert "benchmark-adapter-readiness" not in domain_profile_ids, payload
+    assert "python3 examples/catalog-canary-planner-smoke.py" in payload["commands"], payload
+
+
 def assert_coverage_audit_tracks_p0_p1_patterns() -> None:
     payload = build_catalog_canary_coverage_audit()
     assert payload["ok"] is True, payload
@@ -459,9 +560,13 @@ def main() -> int:
     assert_explicit_profile_can_include_deep_checks()
     assert_catalog_canary_selects_own_profile_not_benchmark()
     assert_coverage_audit_tracks_p0_p1_patterns()
-    with tempfile.TemporaryDirectory(prefix="loopx-catalog-canary-smoke-") as tmp:
+    tmp = tempfile.mkdtemp(prefix="loopx-catalog-canary-smoke-")
+    try:
         tmp_dir = Path(tmp)
         assert_coverage_audit_reports_matrix_drift(tmp_dir)
+        assert_git_diff_selector_covers_pr_and_worktree_changes(tmp_dir)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     assert_cli_json_plan_is_dry_run()
     assert_cli_json_coverage_audit_is_dry_run()
     print("catalog-canary-planner-smoke ok")
