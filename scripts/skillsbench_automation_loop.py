@@ -4985,9 +4985,12 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_pip_install_risk_detected",
         "dockerfile_pip_bootstrap_patch_required",
         "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
@@ -5002,12 +5005,16 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
             compact[field] = value[field]
     for field in (
         "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
             compact[field] = raw[:180]
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -5138,6 +5145,8 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
         "verifier_present",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
@@ -5595,6 +5604,90 @@ def skillsbench_bootstrap_light_blocking_fields(
         for field in SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS
         if preflight.get(field) is True
     ]
+
+
+def _setup_preflight_public_blocking_fields(preflight: dict[str, Any]) -> list[str]:
+    raw_fields = preflight.get("bootstrap_light_blocking_fields")
+    if isinstance(raw_fields, list):
+        return [
+            field
+            for field in raw_fields
+            if isinstance(field, str)
+            and field
+            in (
+                *SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS,
+                "canonical_task_present",
+            )
+        ]
+    return skillsbench_bootstrap_light_blocking_fields(preflight)
+
+
+def _bootstrap_light_blocker_kind(blocking_fields: list[str]) -> str:
+    fields = set(blocking_fields)
+    if "canonical_task_present" in fields:
+        return "task_source"
+    if fields & {
+        "apt_setup_risk_detected",
+        "apt_retry_patch_required",
+    }:
+        return "apt"
+    if fields & {
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+    }:
+        return "dockerfile_package"
+    if fields & {
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
+    }:
+        return "verifier"
+    return "setup"
+
+
+def _mark_bootstrap_light_preflight_blocked(
+    *,
+    staging: dict[str, Any],
+    setup_preflight: dict[str, Any],
+    blocking_fields: list[str],
+    args: argparse.Namespace,
+) -> str:
+    blocker_kind = _bootstrap_light_blocker_kind(blocking_fields)
+    staging["bootstrap_light_preflight_blocked"] = True
+    staging["bootstrap_light_blocker_kind"] = blocker_kind
+    staging["bootstrap_light_fail_fast_defaulted"] = bool(
+        getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+    )
+    staging["bootstrap_light_blocking_field_count"] = len(blocking_fields)
+    if blocker_kind == "task_source":
+        staging["task_source_preflight_blocked"] = True
+    if blocker_kind in {"apt", "dockerfile_package"}:
+        staging["apt_setup_risk_detected"] = bool(
+            setup_preflight.get("apt_setup_risk_detected")
+        )
+        staging["apt_retry_patch_required"] = bool(
+            setup_preflight.get("apt_retry_patch_required")
+        )
+        staging["dockerfile_pip_install_risk_detected"] = bool(
+            setup_preflight.get("dockerfile_pip_install_risk_detected")
+        )
+        staging["dockerfile_pip_bootstrap_patch_required"] = bool(
+            setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
+        )
+        if blocker_kind == "apt":
+            staging["apt_risk_preflight_blocked"] = True
+        else:
+            staging["dockerfile_package_bootstrap_risk_preflight_blocked"] = True
+    if blocker_kind == "verifier":
+        staging["verifier_bootstrap_risk_detected"] = bool(
+            setup_preflight.get("verifier_bootstrap_risk_detected")
+        )
+        staging["verifier_bootstrap_risk_preflight_blocked"] = True
+        staging["verifier_bootstrap_fail_fast_defaulted"] = bool(
+            getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+        )
+    return blocker_kind
 
 
 def skillsbench_task_setup_preflight(
@@ -6339,11 +6432,18 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "bootstrap_light_candidate_required": bool(
             _formal_app_server_goal_bootstrap_light_guard_required(args)
         ),
+        "fail_fast_on_apt_risk": bool(args.fail_fast_on_apt_risk),
+        "apt_risk_fail_fast_defaulted": bool(
+            getattr(args, "apt_risk_fail_fast_defaulted", False)
+        ),
         "fail_fast_on_verifier_bootstrap_risk": bool(
             args.fail_fast_on_verifier_bootstrap_risk
         ),
         "verifier_bootstrap_fail_fast_defaulted": bool(
             getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+        ),
+        "bootstrap_light_fail_fast_defaulted": bool(
+            getattr(args, "bootstrap_light_fail_fast_defaulted", False)
         ),
         "remote_command_file_bridge_ready": bool(
             remote_command_file_bridge_materialized
@@ -6394,7 +6494,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 if setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
                 else ""
             ),
+            "dockerfile_package_bootstrap_risk_preflight_blocked": False,
             "apt_risk_preflight_blocked": False,
+            "bootstrap_light_preflight_blocked": False,
+            "bootstrap_light_fail_fast_defaulted": bool(
+                getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+            ),
             "verifier_bootstrap_risk_detected": bool(
                 setup_preflight.get("verifier_bootstrap_risk_detected")
             ),
@@ -6754,8 +6859,11 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "include_task_skills",
         "host_local_acp_launch",
         "bootstrap_light_candidate_required",
+        "fail_fast_on_apt_risk",
+        "apt_risk_fail_fast_defaulted",
         "fail_fast_on_verifier_bootstrap_risk",
         "verifier_bootstrap_fail_fast_defaulted",
+        "bootstrap_light_fail_fast_defaulted",
     ):
         value = plan.get(field)
         if isinstance(value, bool):
@@ -12693,15 +12801,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "setup-preflight failure instead of spending a full case attempt."
         ),
     )
+    apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
     verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
     args = parser.parse_args(raw_argv)
+    args.apt_risk_fail_fast_defaulted = False
     args.verifier_bootstrap_fail_fast_defaulted = False
+    args.bootstrap_light_fail_fast_defaulted = False
+    if (
+        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        and not args.fail_fast_on_apt_risk
+    ):
+        args.fail_fast_on_apt_risk = True
+        args.apt_risk_fail_fast_defaulted = not apt_fail_fast_explicit
     if (
         _formal_app_server_goal_bootstrap_light_guard_required(args)
         and not args.fail_fast_on_verifier_bootstrap_risk
     ):
         args.fail_fast_on_verifier_bootstrap_risk = True
         args.verifier_bootstrap_fail_fast_defaulted = not verifier_fail_fast_explicit
+    args.bootstrap_light_fail_fast_defaulted = bool(
+        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        and (
+            args.apt_risk_fail_fast_defaulted
+            or args.verifier_bootstrap_fail_fast_defaulted
+        )
+    )
     if args.parallel_cases < 1:
         parser.error("--parallel-cases must be >= 1")
     batch_task_ids = _split_task_ids_arg(args.task_ids)
@@ -12767,31 +12891,49 @@ async def async_main(
         if isinstance(plan.get("task_setup_preflight"), dict)
         else {}
     )
+    bootstrap_light_blocking_fields = _setup_preflight_public_blocking_fields(
+        setup_preflight
+    )
+    bootstrap_light_blocker_kind = _bootstrap_light_blocker_kind(
+        bootstrap_light_blocking_fields
+    )
     if (
-        args.fail_fast_on_apt_risk
+        (args.fail_fast_on_apt_risk or _formal_app_server_goal_bootstrap_light_guard_required(args))
         and not args.reduce_only
-        and setup_preflight.get("apt_setup_risk_detected") is True
+        and bootstrap_light_blocker_kind in {"apt", "dockerfile_package"}
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
-            staging["apt_setup_risk_detected"] = True
-            staging["apt_retry_patch_required"] = True
-            staging["apt_risk_preflight_blocked"] = True
+            bootstrap_light_blocker_kind = _mark_bootstrap_light_preflight_blocked(
+                staging=staging,
+                setup_preflight=setup_preflight,
+                blocking_fields=bootstrap_light_blocking_fields,
+                args=args,
+            )
+        if bootstrap_light_blocker_kind == "apt":
+            raise SkillsBenchSetupPreflightBlocked(
+                "skillsbench apt setup risk preflight blocked: "
+                "apt-based Docker setup risk detected before full case run"
+            )
         raise SkillsBenchSetupPreflightBlocked(
-            "skillsbench apt setup risk preflight blocked: "
-            "apt-based Docker setup risk detected before full case run"
+            "skillsbench dockerfile package bootstrap risk preflight blocked: "
+            "Dockerfile package bootstrap risk detected before full case run"
         )
     if (
-        args.fail_fast_on_verifier_bootstrap_risk
+        (
+            args.fail_fast_on_verifier_bootstrap_risk
+            or _formal_app_server_goal_bootstrap_light_guard_required(args)
+        )
         and not args.reduce_only
-        and setup_preflight.get("verifier_bootstrap_risk_detected") is True
+        and bootstrap_light_blocker_kind == "verifier"
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
-            staging["verifier_bootstrap_risk_detected"] = True
-            staging["verifier_bootstrap_risk_preflight_blocked"] = True
-            staging["verifier_bootstrap_fail_fast_defaulted"] = bool(
-                getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+            _mark_bootstrap_light_preflight_blocked(
+                staging=staging,
+                setup_preflight=setup_preflight,
+                blocking_fields=bootstrap_light_blocking_fields,
+                args=args,
             )
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench verifier bootstrap risk preflight blocked: "
@@ -12803,6 +12945,13 @@ async def async_main(
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
+            if _formal_app_server_goal_bootstrap_light_guard_required(args):
+                _mark_bootstrap_light_preflight_blocked(
+                    staging=staging,
+                    setup_preflight=setup_preflight,
+                    blocking_fields=bootstrap_light_blocking_fields,
+                    args=args,
+                )
             staging["task_source_preflight_blocked"] = True
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench task source preflight blocked: "

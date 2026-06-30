@@ -2445,8 +2445,14 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
@@ -2460,10 +2466,18 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    for field in ("verifier_uv_bootstrap_version", "verifier_uv_bootstrap_mirror_host"):
+    for field in (
+        "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
+        "verifier_uv_bootstrap_version",
+        "verifier_uv_bootstrap_mirror_host",
+    ):
         text = public_safe_compact_text(value.get(field), limit=180)
         if text:
             compact[field] = text
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
 
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
@@ -2507,6 +2521,8 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
         "verifier_present",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",

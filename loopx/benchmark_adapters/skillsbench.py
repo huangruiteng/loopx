@@ -1544,6 +1544,16 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             "skillsbench_environment_setup_error",
         ]
     if (
+        "dockerfile package bootstrap risk preflight blocked" in text
+        or "dockerfile package bootstrap risk detected before full case run" in text
+    ):
+        label = "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked"
+        return label, label, [
+            label,
+            "skillsbench_docker_setup_preflight_blocked",
+            "skillsbench_environment_setup_error",
+        ]
+    if (
         "verifier bootstrap risk preflight blocked" in text
         or "verifier dependency bootstrap risk detected before full case run" in text
     ):

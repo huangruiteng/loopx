@@ -35,6 +35,35 @@ def _write_task(root: Path, relative: str, *, verifier_text: str = "") -> None:
         verifier.write_text(verifier_text, encoding="utf-8")
 
 
+def _app_goal_args(
+    *,
+    task_id: str,
+    skillsbench_root: Path,
+    jobs: Path,
+    ledger: Path,
+    job_name: str,
+) -> list[str]:
+    return [
+        "--task-id",
+        task_id,
+        "--route",
+        "codex-app-server-goal-baseline",
+        "--skillsbench-root",
+        str(skillsbench_root),
+        "--jobs-dir",
+        str(jobs),
+        "--job-name",
+        job_name,
+        "--run-group-id",
+        job_name,
+        "--ledger-path",
+        str(ledger),
+        "--update-ledger",
+        "--host-local-acp-launch",
+        "--remote-command-file-bridge-ready",
+    ]
+
+
 def test_sanity_task_source_fails_before_runner_spend() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-task-source-") as tmp:
         root = Path(tmp)
@@ -145,8 +174,11 @@ def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None
             "--remote-command-file-bridge-ready",
         ]
         parsed = parse_args(args)
+        assert parsed.fail_fast_on_apt_risk is True
+        assert parsed.apt_risk_fail_fast_defaulted is True
         assert parsed.fail_fast_on_verifier_bootstrap_risk is True
         assert parsed.verifier_bootstrap_fail_fast_defaulted is True
+        assert parsed.bootstrap_light_fail_fast_defaulted is True
         plan = build_plan(parsed)
         preflight = plan["task_setup_preflight"]
         assert preflight["status"] == "verifier_bootstrap_risk_detected", preflight
@@ -155,8 +187,11 @@ def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None
             "bootstrap_light_blocking_fields"
         ], preflight
         assert plan["bootstrap_light_candidate_required"] is True, plan
+        assert plan["fail_fast_on_apt_risk"] is True, plan
+        assert plan["apt_risk_fail_fast_defaulted"] is True, plan
         assert plan["fail_fast_on_verifier_bootstrap_risk"] is True, plan
         assert plan["verifier_bootstrap_fail_fast_defaulted"] is True, plan
+        assert plan["bootstrap_light_fail_fast_defaulted"] is True, plan
 
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
@@ -183,11 +218,146 @@ def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None
             "task_setup_preflight"
         ]["bootstrap_light_blocking_fields"]
         assert compact["task_staging"]["verifier_bootstrap_risk_preflight_blocked"] is True
+        assert compact["task_staging"]["bootstrap_light_preflight_blocked"] is True
+        assert compact["task_staging"]["bootstrap_light_blocker_kind"] == "verifier"
+        assert compact["runner_config"]["fail_fast_on_apt_risk"] is True
+        assert compact["runner_config"]["apt_risk_fail_fast_defaulted"] is True
         assert compact["runner_config"]["fail_fast_on_verifier_bootstrap_risk"] is True
         assert compact["runner_config"]["verifier_bootstrap_fail_fast_defaulted"] is True
+        assert compact["runner_config"]["bootstrap_light_fail_fast_defaulted"] is True
+
+
+def test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-bootstrap-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        _write_task(skillsbench_root, "tasks/apt-bootstrap")
+        dockerfile = (
+            skillsbench_root
+            / "tasks"
+            / "apt-bootstrap"
+            / "environment"
+            / "Dockerfile"
+        )
+        dockerfile.write_text(
+            "FROM ubuntu:22.04\nRUN apt-get update && apt-get install -y curl\n",
+            encoding="utf-8",
+        )
+
+        jobs = root / "jobs"
+        ledger = root / "ledger.json"
+        args = _app_goal_args(
+            task_id="apt-bootstrap",
+            skillsbench_root=skillsbench_root,
+            jobs=jobs,
+            ledger=ledger,
+            job_name="skillsbench-apt-bootstrap-preflight",
+        )
+        parsed = parse_args(args)
+        assert parsed.fail_fast_on_apt_risk is True
+        assert parsed.apt_risk_fail_fast_defaulted is True
+        assert parsed.fail_fast_on_verifier_bootstrap_risk is True
+        assert parsed.bootstrap_light_fail_fast_defaulted is True
+        plan = build_plan(parsed)
+        preflight = plan["task_setup_preflight"]
+        assert preflight["status"] == "dockerfile_package_bootstrap_risk_detected", (
+            preflight
+        )
+        assert preflight["bootstrap_light_candidate_eligible"] is False, preflight
+        assert "apt_setup_risk_detected" in preflight[
+            "bootstrap_light_blocking_fields"
+        ], preflight
+        assert plan["bootstrap_light_candidate_required"] is True, plan
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(args)
+
+        assert rc == 0, stderr.getvalue()
+        compact_path = (
+            jobs
+            / "skillsbench-apt-bootstrap-preflight"
+            / "apt-bootstrap__codex_app_server_goal"
+            / "benchmark_run.compact.json"
+        )
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["first_blocker"] == (
+            "skillsbench_docker_apt_setup_risk_preflight_blocked"
+        )
+        assert compact["task_staging"]["bootstrap_light_preflight_blocked"] is True
+        assert compact["task_staging"]["bootstrap_light_blocker_kind"] == "apt"
+        assert compact["task_staging"]["apt_risk_preflight_blocked"] is True
+        assert compact["runner_config"]["fail_fast_on_apt_risk"] is True
+        assert compact["runner_config"]["apt_risk_fail_fast_defaulted"] is True
+        assert compact["runner_config"]["bootstrap_light_fail_fast_defaulted"] is True
+
+        update = load_benchmark_run_ledger(ledger)
+        case = update["benchmarks"]["skillsbench@1.1"]["cases"]["apt-bootstrap"]
+        assert case["latest_decision"]["decision"] == (
+            "baseline_setup_preflight_selection_required"
+        ), case
+        assert case["runs"][0]["repair_class"] == (
+            "skillsbench_setup_preflight_selection"
+        )
+
+
+def test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-pip-bootstrap-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        _write_task(skillsbench_root, "tasks/pip-bootstrap")
+        dockerfile = (
+            skillsbench_root
+            / "tasks"
+            / "pip-bootstrap"
+            / "environment"
+            / "Dockerfile"
+        )
+        dockerfile.write_text(
+            "FROM python:3.12-slim\nRUN python -m pip install pandas\n",
+            encoding="utf-8",
+        )
+
+        jobs = root / "jobs"
+        ledger = root / "ledger.json"
+        args = _app_goal_args(
+            task_id="pip-bootstrap",
+            skillsbench_root=skillsbench_root,
+            jobs=jobs,
+            ledger=ledger,
+            job_name="skillsbench-pip-bootstrap-preflight",
+        )
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(args)
+
+        assert rc == 0, stderr.getvalue()
+        compact_path = (
+            jobs
+            / "skillsbench-pip-bootstrap-preflight"
+            / "pip-bootstrap__codex_app_server_goal"
+            / "benchmark_run.compact.json"
+        )
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["first_blocker"] == (
+            "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked"
+        )
+        assert compact["task_staging"]["bootstrap_light_preflight_blocked"] is True
+        assert compact["task_staging"]["bootstrap_light_blocker_kind"] == (
+            "dockerfile_package"
+        )
+        assert compact["task_staging"][
+            "dockerfile_package_bootstrap_risk_preflight_blocked"
+        ] is True
+        assert compact["task_setup_preflight"][
+            "dockerfile_pip_bootstrap_patch_required"
+        ] is True
 
 
 if __name__ == "__main__":
     test_sanity_task_source_fails_before_runner_spend()
     test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast()
+    test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast()
+    test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk()
     print("skillsbench-task-source-preflight-smoke ok")

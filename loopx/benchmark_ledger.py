@@ -125,9 +125,15 @@ def _compact_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
@@ -139,10 +145,18 @@ def _compact_task_staging(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    for field in ("verifier_uv_bootstrap_version", "verifier_uv_bootstrap_mirror_host"):
+    for field in (
+        "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
+        "verifier_uv_bootstrap_version",
+        "verifier_uv_bootstrap_mirror_host",
+    ):
         text = _compact_text(value.get(field), limit=140)
         if text:
             compact[field] = text
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
     cap = value.get("resource_cap_patch")
     if isinstance(cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -183,6 +197,8 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
         "verifier_present",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
@@ -193,6 +209,7 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -986,14 +1003,17 @@ def _repair_route(
                 "raw_task_text_required": False,
             },
         }
-    if failure_class == "skillsbench_docker_apt_setup_risk_preflight_blocked":
+    if failure_class in {
+        "skillsbench_docker_apt_setup_risk_preflight_blocked",
+        "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked",
+    }:
         return {
             "repair_priority": "P1",
             "repair_class": "skillsbench_setup_preflight_selection",
             "next_action": (
-                "select a non-apt-risk SkillsBench task for the next full "
-                "baseline/treatment pair or repair the Docker apt setup route "
-                "before rerunning this task"
+                "select a SkillsBench task without Docker package-bootstrap "
+                "setup risk for the next full baseline/treatment pair, or "
+                "repair the Docker setup route before rerunning this task"
             ),
             "repair_profile": {
                 "schema_version": "benchmark_repair_profile_v0",
@@ -1001,8 +1021,7 @@ def _repair_route(
                 "rerun_allowed_after_profile_applied": True,
                 "required_preflight": [
                     "skillsbench_task_setup_preflight",
-                    "task_staging.apt_setup_risk_detected",
-                    "task_staging.apt_risk_preflight_blocked",
+                    "task_staging.bootstrap_light_preflight_blocked",
                 ],
                 "raw_logs_required": False,
                 "raw_task_text_required": False,
