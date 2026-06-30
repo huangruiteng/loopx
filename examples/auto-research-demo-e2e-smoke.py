@@ -113,13 +113,14 @@ def assert_e2e_payload(
         assert payload["board"]["rollout_backed"] is True, payload
         claim_boundary = payload["board"]["claim_boundary"]
         assert claim_boundary["schema_version"] == "auto_research_public_claim_boundary_v0", payload
+        assert claim_boundary["metric_source_kind"] == "loopx_rollout_event_log", payload
+        assert claim_boundary["claim_source"] == "live_codex_e2e", payload
         assert claim_boundary["live_claim_scope"] == "dev_only", payload
         assert claim_boundary["holdout_result_scope"] == "rollout_context_only", payload
         assert claim_boundary["holdout_claim_allowed"] is False, payload
         assert claim_boundary["promotion_claim_allowed"] is False, payload
         assert claim_boundary["first_screen_claim_allowed"] is False, payload
         labels = [item["label"] for item in payload["board"]["value_metrics"]]
-        assert "Live claim scope" in labels, labels
         assert "Rollout held-out context" in labels, labels
         assert "Held-out result" not in labels, labels
         assert payload["board"]["promotion_candidate_count"] >= 1, payload

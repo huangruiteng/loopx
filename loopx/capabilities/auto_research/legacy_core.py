@@ -2632,7 +2632,6 @@ def build_live_auto_research_projection(
         source_kind=source_kind,
         best_dev=evidence_graph.get("best_dev_metric"),
         best_holdout=evidence_graph.get("best_holdout_metric"),
-        promotion_candidate_count=len(decision_candidates["promotion_candidates"]),
     )
     showcase_projection = {
         "schema_version": RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
@@ -2700,28 +2699,23 @@ def _board_public_claim_boundary(
     source_kind: str,
     best_dev: Any,
     best_holdout: Any,
-    promotion_candidate_count: int,
 ) -> dict[str, Any]:
     dev_present = _finite_float(best_dev, field="board.claim_boundary.best_dev") is not None
     holdout_present = _finite_float(best_holdout, field="board.claim_boundary.best_holdout") is not None
     rollout_backed = source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
     return {
         "schema_version": AUTO_RESEARCH_PUBLIC_CLAIM_BOUNDARY_SCHEMA_VERSION,
+        "metric_source_kind": source_kind,
+        "claim_source": "live_codex_e2e",
         "live_claim_scope": "dev_only",
-        "dev_evidence_present": dev_present,
-        "dev_claim_rule": "claim only when live_codex_e2e.claim_allowed is true",
+        "dev_metric_present": dev_present,
         "holdout_metric_present": holdout_present,
         "holdout_result_scope": "rollout_context_only" if rollout_backed else "projection_context_only",
         "holdout_claim_allowed": False,
-        "promotion_candidate_count": int(promotion_candidate_count),
         "promotion_result_scope": "candidate_only_not_auto_promoted",
         "promotion_claim_allowed": False,
         "first_screen_claim_allowed": False,
-        "public_claim": (
-            "Live lane-authored dev evidence may be shown only from live_codex_e2e; "
-            "held-out rollout context and promotion remain separate claims."
-        ),
-        "must_not_claim": [
+        "blocked_claims": [
             "live_holdout_result_without_authority",
             "automatic_promotion",
             "first_screen_product_claim_without_owner_review",
@@ -2889,7 +2883,6 @@ def build_auto_research_board_projection(
         source_kind=source_kind,
         best_dev=best_dev,
         best_holdout=best_holdout,
-        promotion_candidate_count=len(promotion_candidates),
     )
     return {
         "ok": True,
@@ -2947,13 +2940,6 @@ def build_auto_research_board_projection(
         },
         "claim_boundary": claim_boundary,
         "value_metrics": [
-            {
-                "label": "Live claim scope",
-                "value": claim_boundary["live_claim_scope"],
-                "baseline": "unbounded_live_claim",
-                "interpretation": "Only lane-authorized dev evidence can be stated as live by default.",
-                "source": "public_claim_boundary.live_claim_scope",
-            },
             {
                 "label": "Rollout held-out context",
                 "value": _metric_display(best_holdout),

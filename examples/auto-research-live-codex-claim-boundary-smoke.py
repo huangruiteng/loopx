@@ -113,13 +113,15 @@ def live_evidence_payload(*, claim_authority: dict[str, str] | None = None) -> d
 def assert_public_board_claim_boundary(payload: dict[str, Any]) -> None:
     boundary = payload["board"]["claim_boundary"]
     assert boundary["schema_version"] == "auto_research_public_claim_boundary_v0", payload
+    assert boundary["metric_source_kind"] == "loopx_rollout_event_log", payload
+    assert boundary["claim_source"] == "live_codex_e2e", payload
     assert boundary["live_claim_scope"] == "dev_only", payload
     assert boundary["holdout_result_scope"] == "rollout_context_only", payload
     assert boundary["holdout_claim_allowed"] is False, payload
     assert boundary["promotion_result_scope"] == "candidate_only_not_auto_promoted", payload
     assert boundary["promotion_claim_allowed"] is False, payload
     assert boundary["first_screen_claim_allowed"] is False, payload
-    assert "automatic_promotion" in boundary["must_not_claim"], payload
+    assert "automatic_promotion" in boundary["blocked_claims"], payload
 
 
 def main() -> int:
