@@ -342,9 +342,10 @@ def _runtime_shell_command(
     project: Path,
     registry: Path,
     runtime_root: Path,
+    errexit: bool = True,
 ) -> str:
     exports = [
-        "set -euo pipefail",
+        "set -euo pipefail" if errexit else "set -uo pipefail",
         f"export LOOPX_PROJECT={shlex.quote(str(project))}",
         f"export LOOPX_REGISTRY={shlex.quote(str(registry))}",
         f"export LOOPX_RUNTIME_ROOT={shlex.quote(str(runtime_root))}",
@@ -438,10 +439,14 @@ def _launch_auto_research_with_tmux(
     if not first_frontier:
         raise ValueError("first lane is missing a frontier command")
     frontier_command = _runtime_shell_command(
-        f'cd "$LOOPX_PROJECT"; {first_frontier}',
+        f'cd "$LOOPX_PROJECT"; {first_frontier}; '
+        'FRONTIER_STATUS=$?; '
+        'printf "\\n[frontier window ready]\\nexit=%s\\n" "$FRONTIER_STATUS"; '
+        'exec /bin/sh -i',
         project=project,
         registry=registry,
         runtime_root=runtime_root,
+        errexit=False,
     )
     subprocess.run(
         [tmux_bin, "new-session", "-d", "-s", session, "-n", "frontier", "bash", "-lc", frontier_command],
@@ -470,6 +475,7 @@ def _launch_auto_research_with_tmux(
                     project=project,
                     registry=registry,
                     runtime_root=runtime_root,
+                    errexit=False,
                 ),
             ],
             check=True,
@@ -511,77 +517,109 @@ def _tmux_visible_launch_acceptance(
 ) -> dict[str, object]:
     """Read back tmux pane evidence so launch success is not only process creation."""
 
-    # Give shells a short moment to render preflight markers before capture.
-    time.sleep(0.2)
-    list_result = subprocess.run(
-        [tmux_bin, "list-windows", "-t", session, "-F", "#{window_name}"],
-        check=False,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    observed_windows = [
-        line.strip()
-        for line in list_result.stdout.splitlines()
-        if line.strip()
-    ]
-    surviving_lanes = [lane for lane in expected_lanes if lane in observed_windows]
     required_markers = [
         "[LoopX quota guard]",
         "[bootstrap-or-stop]",
     ]
-    lane_checks: list[dict[str, object]] = []
-    for lane in expected_lanes:
-        capture_result = subprocess.run(
-            [tmux_bin, "capture-pane", "-pt", f"{session}:{lane}", "-S", "-200"],
+    last_payload: dict[str, object] | None = None
+    for attempt in range(20):
+        time.sleep(0.25)
+        list_result = subprocess.run(
+            [tmux_bin, "list-windows", "-t", session, "-F", "#{window_name}"],
             check=False,
             capture_output=True,
             text=True,
             env=env,
         )
-        capture = capture_result.stdout
-        role_profile_visible = (
-            "[LoopX role profile]" in capture
-            or "[LoopX role_profile]" in capture
+        observed_windows = [
+            line.strip()
+            for line in list_result.stdout.splitlines()
+            if line.strip()
+        ]
+        surviving_lanes = [lane for lane in expected_lanes if lane in observed_windows]
+        lane_checks: list[dict[str, object]] = []
+        for lane in expected_lanes:
+            capture_result = subprocess.run(
+                [tmux_bin, "capture-pane", "-pt", f"{session}:{lane}", "-S", "-200"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            capture = capture_result.stdout
+            visible_summary = "[LoopX visible acceptance]" in capture
+            role_profile_visible = (
+                "[LoopX role profile]" in capture
+                or "[LoopX role_profile]" in capture
+                or "role_profile=printed" in capture
+            )
+            quota_packet_visible = (
+                "[LoopX quota guard]" in capture
+                or "quota_guard=printed" in capture
+            )
+            bootstrap_or_stop_visible = (
+                "[bootstrap-or-stop]" in capture
+                or "bootstrap_or_stop=printed" in capture
+            )
+            markers_present = [marker for marker in required_markers if marker in capture]
+            if visible_summary:
+                markers_present.insert(0, "[LoopX visible acceptance]")
+            if role_profile_visible:
+                markers_present.insert(0, "[LoopX role profile]")
+            frontier_or_blocker_visible = (
+                "[LoopX auto-research frontier]" in capture
+                or "[LoopX blocked reason]" in capture
+                or "frontier_or_blocked_reason=printed" in capture
+            )
+            lane_checks.append(
+                {
+                    "lane_id": lane,
+                    "window_survived": lane in surviving_lanes,
+                    "capture_available": capture_result.returncode == 0,
+                    "role_profile_visible": role_profile_visible,
+                    "quota_packet_visible": quota_packet_visible,
+                    "frontier_or_blocked_reason_visible": frontier_or_blocker_visible,
+                    "bootstrap_or_stop_visible": bootstrap_or_stop_visible,
+                    "visible_acceptance_summary": visible_summary,
+                    "markers_present": markers_present,
+                }
+            )
+        accepted = (
+            list_result.returncode == 0
+            and len(surviving_lanes) == len(expected_lanes)
+            and all(
+                item["role_profile_visible"]
+                and item["quota_packet_visible"]
+                and item["frontier_or_blocked_reason_visible"]
+                and item["bootstrap_or_stop_visible"]
+                for item in lane_checks
+            )
         )
-        markers_present = [marker for marker in required_markers if marker in capture]
-        if role_profile_visible:
-            markers_present.insert(0, "[LoopX role profile]")
-        frontier_or_blocker_visible = (
-            "[LoopX auto-research frontier]" in capture
-            or "[LoopX blocked reason]" in capture
-        )
-        lane_checks.append(
-            {
-                "lane_id": lane,
-                "window_survived": lane in surviving_lanes,
-                "capture_available": capture_result.returncode == 0,
-                "role_profile_visible": role_profile_visible,
-                "quota_packet_visible": "[LoopX quota guard]" in capture,
-                "frontier_or_blocked_reason_visible": frontier_or_blocker_visible,
-                "bootstrap_or_stop_visible": "[bootstrap-or-stop]" in capture,
-                "markers_present": markers_present,
-            }
-        )
-    accepted = (
-        list_result.returncode == 0
-        and len(surviving_lanes) == len(expected_lanes)
-        and all(
-            item["role_profile_visible"]
-            and item["quota_packet_visible"]
-            and item["frontier_or_blocked_reason_visible"]
-            and item["bootstrap_or_stop_visible"]
-            for item in lane_checks
-        )
-    )
-    return {
+        last_payload = {
+            "schema_version": "auto_research_visible_launch_acceptance_v0",
+            "accepted": accepted,
+            "attempt_count": attempt + 1,
+            "observed_windows": observed_windows,
+            "expected_lanes": expected_lanes,
+            "surviving_lanes": surviving_lanes,
+            "missing_lanes": [lane for lane in expected_lanes if lane not in surviving_lanes],
+            "pane_checks": lane_checks,
+            "takeover_controls_visible": {
+                "attach_command": f"{tmux_bin} attach -t {session}",
+                "stop_command": f"{tmux_bin} kill-session -t {session}",
+            },
+        }
+        if accepted:
+            return last_payload
+    return last_payload or {
         "schema_version": "auto_research_visible_launch_acceptance_v0",
-        "accepted": accepted,
-        "observed_windows": observed_windows,
+        "accepted": False,
+        "attempt_count": 0,
+        "observed_windows": [],
         "expected_lanes": expected_lanes,
-        "surviving_lanes": surviving_lanes,
-        "missing_lanes": [lane for lane in expected_lanes if lane not in surviving_lanes],
-        "pane_checks": lane_checks,
+        "surviving_lanes": [],
+        "missing_lanes": expected_lanes,
+        "pane_checks": [],
         "takeover_controls_visible": {
             "attach_command": f"{tmux_bin} attach -t {session}",
             "stop_command": f"{tmux_bin} kill-session -t {session}",
@@ -714,6 +752,12 @@ def _execute_auto_research_demo_supervisor(
                 "workspace_mode": workspace_mode,
                 "workspace_write_scope": "user_selected_workspace_only",
                 "shared_state_route": "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
+                "shared_goal_surface": True,
+                "all_lane_workspace_isolation": False,
+                "mutation_isolation_policy": (
+                    "only mutating evidence-runner attempts require a claimed git worktree "
+                    "or equivalent execution boundary"
+                ),
             }
         )
     return payload
