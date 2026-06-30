@@ -43,6 +43,9 @@ def main() -> int:
         runtime_root = temp / "runtime"
         workspace = temp / "workspace"
         tmux_log = temp / "tmux.jsonl"
+        worker_skill = temp / "worker" / "SKILL.md"
+        worker_skill.parent.mkdir(parents=True)
+        worker_skill.write_text("# Worker-local playbook\n", encoding="utf-8")
         registry.write_text(json.dumps({"common_runtime_root": str(runtime_root)}), encoding="utf-8")
         write_executable(fake_bin / "loopx", "#!/usr/bin/env sh\nexit 0\n")
         write_executable(fake_bin / "codex", "#!/usr/bin/env sh\nexit 0\n")
@@ -82,7 +85,14 @@ def main() -> int:
                     "session_name": "loopx-visible-launcher-smoke",
                     "lanes": [
                         {"lane_id": "planner", "frontier": "true", "visible_launch_command": "true"},
-                        {"lane_id": "reviewer", "visible_launch_command": "true"},
+                        {
+                            "lane_id": "reviewer",
+                            "visible_launch_command": "true",
+                            "role_profile": {
+                                "required_skill": "loopx-auto-research",
+                                "worker_skill_source": "worker/SKILL.md",
+                            },
+                        },
                     ],
                 },
                 registry=registry,
@@ -105,6 +115,18 @@ def main() -> int:
         assert workspace_mode == "explicit_workspace", launch
         assert workspace.is_dir(), workspace
         assert launch["schema_version"] == "multi_agent_visible_launch_result_v0", launch
+        skills = launch["worker_skill_materialization"]
+        assert skills == [
+            {
+                "skill": "loopx-auto-research",
+                "source": "worker/SKILL.md",
+                "destination": ".codex/skills/loopx-auto-research/SKILL.md",
+                "materialized": True,
+            }
+        ], skills
+        assert (workspace / ".codex/skills/loopx-auto-research/SKILL.md").read_text(
+            encoding="utf-8"
+        ) == "# Worker-local playbook\n"
         assert launch["started_lanes"] == ["planner", "reviewer"], launch
         assert launch["surviving_lanes"] == ["planner", "reviewer"], launch
         acceptance = launch["visible_acceptance"]
