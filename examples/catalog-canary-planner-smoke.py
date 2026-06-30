@@ -46,10 +46,14 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "control-plane-refactor",
         "status-read-path",
         "review-packet-read-path",
+        "event-sourced-read-path",
         "cli-command-contract",
         "todo-lifecycle",
         "monitor-scheduler",
         "state-write-correctness",
+        "product-entry-workflows",
+        "cross-runtime-impl-review-demo",
+        "host-command-entry",
         "frontstage-rollout",
         "auto-research-demo",
         "benchmark-adapter-readiness",
@@ -135,6 +139,26 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     refactor_profile_ids = {profile["id"] for profile in refactor_payload["domain_profiles"]}
     assert "control-plane-refactor" in refactor_profile_ids, refactor_payload
 
+    work_lane_policy_payload = build_catalog_canary_plan(
+        changed_files=["loopx/policies/monitor_todo.py"],
+        surfaces=["resume_when resume_ready work-lane policy seam"],
+        max_checks_per_profile=3,
+    )
+    work_lane_profiles = {
+        profile["id"]: profile for profile in work_lane_policy_payload["domain_profiles"]
+    }
+    assert "control-plane-refactor" in work_lane_profiles, work_lane_policy_payload
+    work_lane_commands = [
+        check["command"] for check in work_lane_profiles["control-plane-refactor"]["checks"]
+    ]
+    assert "python3 examples/quota-resume-gated-open-todo-smoke.py" in work_lane_commands, (
+        work_lane_profiles["control-plane-refactor"]
+    )
+    assert all(
+        check["tier"] == "default"
+        for check in work_lane_profiles["control-plane-refactor"]["checks"]
+    ), work_lane_profiles["control-plane-refactor"]
+
     status_payload = build_catalog_canary_plan(
         changed_files=["loopx/status.py"],
         surfaces=["status --goal-id read-path"],
@@ -161,6 +185,23 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert review_packet_profile["deep_checks_available"] is True, review_packet_profile
     assert review_packet_profile["deep_checks_included"] is False, review_packet_profile
 
+    event_read_payload = build_catalog_canary_plan(
+        changed_files=["loopx/event_sourced_state.py", "loopx/rollout_event_log.py"],
+        surfaces=["event projection downstream read event-store read-path"],
+    )
+    event_read_profiles = {
+        profile["id"]: profile for profile in event_read_payload["domain_profiles"]
+    }
+    assert "event-sourced-read-path" in event_read_profiles, event_read_payload
+    event_read_profile = event_read_profiles["event-sourced-read-path"]
+    event_read_commands = [check["command"] for check in event_read_profile["checks"]]
+    assert "python3 examples/event-sourced-state-api-smoke.py" in event_read_commands, event_read_profile
+    assert "python3 examples/event-sourced-status-read-path-smoke.py" in event_read_commands, event_read_profile
+    assert "python3 examples/event-sourced-downstream-read-path-smoke.py" in event_read_commands, event_read_profile
+    assert all(check["tier"] == "default" for check in event_read_profile["checks"]), event_read_profile
+    assert event_read_profile["deep_checks_available"] is True, event_read_profile
+    assert event_read_profile["deep_checks_included"] is False, event_read_profile
+
     cli_payload = build_catalog_canary_plan(
         changed_files=["loopx/cli.py", "loopx/cli_commands/version.py"],
         surfaces=["cli command modularization"],
@@ -182,6 +223,80 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "python3 examples/todo-lifecycle-cli-smoke.py" in todo_commands, todo_profile
     assert all(check["tier"] == "default" for check in todo_profile["checks"]), todo_profile
     assert todo_profile["deep_checks_available"] is True, todo_profile
+
+    product_entry_payload = build_catalog_canary_plan(
+        changed_files=[
+            "README.md",
+            "docs/capabilities/issue-fix/README.md",
+            "docs/update-notes/README.md",
+            "loopx/capabilities/content_ops/surface.py",
+            "scripts/update_notes_release_job.py",
+        ],
+        surfaces=["product-entry issue-fix content-ops update-note cross-runtime demo"],
+        max_checks_per_profile=4,
+    )
+    product_entry_profiles = {
+        profile["id"]: profile for profile in product_entry_payload["domain_profiles"]
+    }
+    assert "product-entry-workflows" in product_entry_profiles, product_entry_payload
+    assert "install-update" not in product_entry_profiles, product_entry_payload
+    product_entry_profile = product_entry_profiles["product-entry-workflows"]
+    product_entry_commands = [check["command"] for check in product_entry_profile["checks"]]
+    assert "python3 examples/issue-fix-workflow-contract-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/content-ops-issue-fix-intake-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/readme-demo-surface-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/update-notes-archive-smoke.py" in product_entry_commands, product_entry_profile
+    assert all(check["tier"] == "default" for check in product_entry_profile["checks"]), product_entry_profile
+    assert product_entry_profile["deep_checks_available"] is True, product_entry_profile
+    assert product_entry_profile["deep_checks_included"] is False, product_entry_profile
+
+    cross_runtime_payload = build_catalog_canary_plan(
+        changed_files=[
+            "loopx/capabilities/cross_runtime/impl_review.py",
+            "loopx/cli_commands/starter.py",
+            "docs/product/cross-runtime-impl-review-demo.md",
+        ],
+        surfaces=[
+            "loopx demo impl-review claude implements codex reviews "
+            "cross_runtime_impl_review_demo_packet_v0"
+        ],
+        max_checks_per_profile=3,
+    )
+    cross_runtime_profiles = {
+        profile["id"]: profile for profile in cross_runtime_payload["domain_profiles"]
+    }
+    assert "cross-runtime-impl-review-demo" in cross_runtime_profiles, cross_runtime_payload
+    cross_runtime_profile = cross_runtime_profiles["cross-runtime-impl-review-demo"]
+    cross_runtime_commands = [check["command"] for check in cross_runtime_profile["checks"]]
+    assert (
+        "python3 examples/cross-runtime-impl-review-demo-smoke.py" in cross_runtime_commands
+    ), cross_runtime_profile
+    assert "python3 examples/readme-demo-surface-smoke.py" in cross_runtime_commands
+    assert all(check["tier"] == "default" for check in cross_runtime_profile["checks"])
+    assert cross_runtime_profile["deep_checks_available"] is False, cross_runtime_profile
+    assert cross_runtime_profile["deep_checks_included"] is False, cross_runtime_profile
+
+    host_command_payload = build_catalog_canary_plan(
+        changed_files=[
+            "loopx/cli_commands/slash_commands.py",
+            "docs/reference/protocols/codex-app-host-command-registry-v0.md",
+            "docs/reference/protocols/global-manager-command-v0.md",
+        ],
+        surfaces=["slash-commands /loopx-global-summary host command registry"],
+        max_checks_per_profile=3,
+    )
+    host_command_profiles = {
+        profile["id"]: profile for profile in host_command_payload["domain_profiles"]
+    }
+    assert "host-command-entry" in host_command_profiles, host_command_payload
+    host_command_profile = host_command_profiles["host-command-entry"]
+    host_command_commands = [check["command"] for check in host_command_profile["checks"]]
+    assert "python3 examples/slash-command-catalog-smoke.py" in host_command_commands
+    assert "python3 examples/codex-app-host-command-registry-smoke.py" in host_command_commands
+    assert "python3 examples/global-manager-command-protocol-smoke.py" in host_command_commands
+    assert all(check["tier"] == "default" for check in host_command_profile["checks"])
+    assert host_command_profile["deep_checks_available"] is False, host_command_profile
+    assert host_command_profile["deep_checks_included"] is False, host_command_profile
 
     auto_research_payload = build_catalog_canary_plan(
         changed_files=["loopx/capabilities/auto_research/core.py"],

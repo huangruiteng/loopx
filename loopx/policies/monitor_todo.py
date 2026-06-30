@@ -6,6 +6,7 @@ from typing import Any
 from ..todo_contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_MONITOR,
+    normalize_todo_resume_when,
     normalize_todo_status,
     normalize_todo_task_class,
 )
@@ -36,7 +37,11 @@ def monitor_todo_is_actionable_open(item: dict[str, Any]) -> bool:
     if item.get("done") is True:
         return False
     status = normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN
-    return status == TODO_STATUS_OPEN
+    if status != TODO_STATUS_OPEN:
+        return False
+    if normalize_todo_resume_when(item.get("resume_when")):
+        return item.get("resume_ready") is True
+    return True
 
 
 def monitor_todo_next_due_at(item: dict[str, Any]) -> datetime | None:

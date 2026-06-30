@@ -164,10 +164,10 @@ Then run `loopx doctor`. Work only from the current project root: if LoopX state
 already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
-and `.local/` are ignored. If this is Codex App, set or refresh this thread's
-heartbeat automation automatically from the LoopX generated task body; do not
-ask me to manually run `heartbeat-prompt`. Then stop and report the project
-connection status, current user gate, top agent todo, and next safe action.
+and `.local/` are ignored. If this is Codex App, set the heartbeat automation to start at 3 minutes.
+Automatically refresh it from the LoopX generated task body; do not ask me to
+manually run `heartbeat-prompt`. Then stop and report the project connection
+status, current user gate, top agent todo, and next safe action.
 ```
 
 Then start a real E2E exploration in normal language:
@@ -202,7 +202,9 @@ path, the agent asks a concrete question; if a safe fallback exists, it keeps
 working; if nothing material changed, it backs off or quiet-stops instead of
 spending compute forever. The agent may use `heartbeat-prompt --thin`
 internally to wire Codex App, but users do not need to run that command in the
-recommended path.
+recommended path. After the 3-minute bootstrap cadence, Codex App cadence
+should follow `quota should-run.scheduler_hint` for backoff and reset-to-initial
+updates.
 
 ### Codex CLI
 
@@ -521,6 +523,27 @@ loopx quota should-run --goal-id your-project-goal
 loopx heartbeat-prompt --thin --goal-id your-project-goal
 loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
 ```
+
+The `next_automatic_turn` reported by `quota plan` is only an advisory
+scheduling hint: it chooses the highest-compute eligible goal, while
+operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked
+goals stay out of the eligible lane.
+
+For stalled control-plane repair, `control_plane.self_repair.enabled=true` lets
+`quota should-run` return a bounded `decision=self_repair` contract; missing
+policy defaults off. When the payload includes a `gate_prompt` or
+`operator_question`, the target heartbeat should proactively ask that concrete
+user/controller gate and do not call the turn "no new user action" while they
+remain open. Even after a bounded safe-bypass step, its report still has to
+list existing open user todos. When `notify_user_on_open_todo=true`, skip
+delivery work and quota spend for that blocker-push turn.
+
+When `should_run=false` but `safe_bypass_allowed=true`, the heartbeat may still
+do one bounded read-only steering or analysis step. See
+`docs/quota-allocation.md` for the full allocation contract. After an automatic
+turn actually spends delivery compute, append one spend event. Do not append
+spend for quiet `should_run=false` skips, preflight failures, or pure dry-run
+previews.
 
 Three rules matter in daily use:
 

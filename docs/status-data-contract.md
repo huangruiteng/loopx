@@ -941,6 +941,10 @@ Item fields:
   `unclaimed_deferred_resume_candidates`, and
   `other_agent_deferred_resume_candidates`, where only the first two can wake
   the current side agent before an agent-scoped no-candidate wait is allowed.
+  Open todos may also carry `resume_when`; status should attach
+  `resume_condition` / `resume_ready` but keep the item out of executable
+  backlog until `resume_ready=true`. This lets agents see not-yet-unlocked
+  successors without accidentally selecting them as current work.
   Optional future fields such as `created_at`, lease TTLs, dependencies, or
   evidence links should extend this item shape rather than inventing another
   todo surface.

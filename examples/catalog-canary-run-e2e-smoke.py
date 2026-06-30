@@ -61,6 +61,25 @@ def assert_profile_fixture_executes() -> None:
     assert result["profile_id"] == "control-plane-refactor", result
 
 
+def assert_domain_checks_precede_family_checks() -> None:
+    payload = build_catalog_canary_run(
+        changed_files=["loopx/policies/monitor_todo.py"],
+        surfaces=["resume_when work-lane policy seam"],
+        max_checks_per_family=1,
+        max_checks_per_profile=3,
+        check_limit=3,
+        execute=False,
+    )
+    assert payload["ok"] is True, payload
+    commands = [check["command"] for check in payload["selected_checks"]]
+    assert commands == [
+        "python3 examples/control-plane-risk-characterization-smoke.py",
+        "python3 examples/hot-path-interface-budget-smoke.py",
+        "python3 examples/quota-resume-gated-open-todo-smoke.py",
+    ], payload
+    assert all(check["source"] == "domain_profile" for check in payload["selected_checks"]), payload
+
+
 def assert_cli_run_executes_catalog_selected_check() -> None:
     completed = subprocess.run(
         [
@@ -101,6 +120,7 @@ def main() -> int:
     assert_release_readiness_gets_no_write_argument()
     assert_preview_does_not_execute_or_write()
     assert_profile_fixture_executes()
+    assert_domain_checks_precede_family_checks()
     assert_cli_run_executes_catalog_selected_check()
     print("catalog-canary-run-e2e-smoke ok")
     return 0

@@ -107,25 +107,6 @@ def _display_argv(argv: list[str]) -> list[str]:
 def _planned_checks(plan: dict[str, Any]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for profile in plan.get("profiles", []):
-        if not isinstance(profile, dict):
-            continue
-        for check in profile.get("candidate_checks", []):
-            if not isinstance(check, dict):
-                continue
-            command = str(check.get("command") or "")
-            if not command or command in seen:
-                continue
-            seen.add(command)
-            checks.append(
-                {
-                    "source": "catalog_family",
-                    "profile_id": profile.get("id"),
-                    "profile_title": profile.get("family"),
-                    "tier": check.get("tier") or "default",
-                    **check,
-                }
-            )
     for profile in plan.get("domain_profiles", []):
         if not isinstance(profile, dict):
             continue
@@ -141,6 +122,25 @@ def _planned_checks(plan: dict[str, Any]) -> list[dict[str, Any]]:
                     "source": "domain_profile",
                     "profile_id": profile.get("id"),
                     "profile_title": profile.get("title"),
+                    "tier": check.get("tier") or "default",
+                    **check,
+                }
+            )
+    for profile in plan.get("profiles", []):
+        if not isinstance(profile, dict):
+            continue
+        for check in profile.get("candidate_checks", []):
+            if not isinstance(check, dict):
+                continue
+            command = str(check.get("command") or "")
+            if not command or command in seen:
+                continue
+            seen.add(command)
+            checks.append(
+                {
+                    "source": "catalog_family",
+                    "profile_id": profile.get("id"),
+                    "profile_title": profile.get("family"),
                     "tier": check.get("tier") or "default",
                     **check,
                 }

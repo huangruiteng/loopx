@@ -2030,8 +2030,6 @@ raise SystemExit(proc.returncode)
                 / "skillsbench_host_codex_goal_worker.py"
             )
             worker_first_action_timeout_sec = self._config.first_action_timeout_sec
-            if bridge_summary_path is not None:
-                worker_first_action_timeout_sec = 0.0
             cmd = [
                 sys.executable,
                 str(worker_script),

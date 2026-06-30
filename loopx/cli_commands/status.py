@@ -89,6 +89,13 @@ def register_status_commands(
     add_subcommand_format(diagnose_parser)
     diagnose_parser.add_argument("--goal-id", help="Goal id to diagnose. Defaults to the first attention item.")
     diagnose_parser.add_argument(
+        "--agent-id",
+        help=(
+            "Registered agent id for identity-scoped quota/todo projection. "
+            "Use this for multi-agent goals and heartbeat-driven diagnosis."
+        ),
+    )
+    diagnose_parser.add_argument(
         "--scan-root",
         default=default_public_scan_root(),
         help="Public files to scan for obvious private material. Defaults to the LoopX install root.",
@@ -502,6 +509,7 @@ def handle_diagnose_command(
             scan_roots=_scan_roots(args),
             limit=max(1, args.limit),
             goal_id=args.goal_id,
+            agent_id=args.agent_id,
         )
     except Exception as exc:
         payload = {

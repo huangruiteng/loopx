@@ -354,6 +354,12 @@ ordinary delivery work. Only when no ready current-agent/unclaimed deferred
 resume exists should agent-scoped quota fall through to `agent_scope_wait`,
 `reassignment_required`, or `scope_exhausted`.
 
+Open todos with `resume_when` use the same readiness signal before they enter
+ordinary execution lanes. Until `resume_ready=true`, quota must not include the
+todo in `capability_gate.runnable_candidates` or `agent_lane_next_action`; it
+may continue with a lower-priority executable fallback when the interaction
+contract allows safe scoped fallback work.
+
 For completed handoff gates, record that rationale structurally as
 `no_followup=true`; status projects the gate as `cleared_no_followup` instead
 of waking the blocked agent with `successor_replan_required`.

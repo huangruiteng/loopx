@@ -468,6 +468,13 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
         claimed_by="codex-main-control",
         action_kind="benchmark_run",
     )
+    unavailable_auto_research = todo_item(
+        todo_id="todo_unavailable_auto_research",
+        text="[P0] Validate the frontier with an unavailable auto-research capability.",
+        claimed_by="codex-main-control",
+        action_kind="auto_research_frontier",
+    )
+    unavailable_auto_research["required_capabilities"] = ["auto_research_frontier"]
     independent_benchmark = todo_item(
         todo_id="todo_benchmark_ledger_cleanup",
         text="[P1] Clean public-safe benchmark ledger summaries while target choice is pending.",
@@ -484,7 +491,7 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
         claimed_by="codex-main-control",
         action_kind="corrected_x_launch_timing_monitor",
     )
-    agent_items = [blocked_benchmark]
+    agent_items = [unavailable_auto_research, blocked_benchmark]
     if include_fallback:
         agent_items.append(independent_benchmark)
     agent_items.append(external_publish_monitor)
@@ -736,6 +743,12 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     selected = fallback["selected_executable"]
     assert selected["todo_id"] == "todo_benchmark_ledger_cleanup", fallback
     assert selected["todo_gate_relation"]["state"] == "independent", selected
+    lane_action = payload["agent_lane_next_action"]
+    assert lane_action["todo_id"] == "todo_benchmark_ledger_cleanup", payload
+    assert lane_action["source"] == "scoped_user_gate_fallback.selected_executable", lane_action
+    assert lane_action["selected_by"] == "scoped_user_gate_fallback", lane_action
+    assert lane_action["replaces_gated_goal_next_action"] is True, lane_action
+    assert "todo_benchmark_ledger_cleanup" in payload["protocol_action_packet"]["summary"], payload
     monitor_ids = {
         item["todo_id"]
         for item in payload["agent_todo_summary"]["first_open_items"]
