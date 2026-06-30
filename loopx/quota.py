@@ -5555,14 +5555,24 @@ def _boundary_projection_repair_hint(
     agent_todo_summary: dict[str, Any] | None,
     *,
     candidate_should_run: bool,
+    capability_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not candidate_should_run or not isinstance(agent_todo_summary, dict):
         return None
     candidate_items: list[dict[str, Any]] = []
-    for key in ("first_executable_items", "first_open_items"):
-        value = agent_todo_summary.get(key)
-        if isinstance(value, list):
-            candidate_items.extend(item for item in value if isinstance(item, dict))
+    if isinstance(capability_gate, dict):
+        if capability_gate.get("action") != "run":
+            return None
+        runnable_candidates = capability_gate.get("runnable_candidates")
+        if isinstance(runnable_candidates, list) and runnable_candidates:
+            candidate_items.extend(
+                item for item in runnable_candidates if isinstance(item, dict)
+            )
+    if not candidate_items:
+        for key in ("first_executable_items", "first_open_items"):
+            value = agent_todo_summary.get(key)
+            if isinstance(value, list):
+                candidate_items.extend(item for item in value if isinstance(item, dict))
     selected: dict[str, Any] | None = None
     for item in candidate_items:
         if not _todo_item_is_actionable_open(item):
@@ -6579,6 +6589,7 @@ def build_quota_should_run(
             candidate_should_run=bool(
                 normal_delivery_allowed or recovery_allowed or self_repair_allowed
             ),
+            capability_gate=capability_gate,
         )
         if boundary_projection_repair:
             stall_self_repair = boundary_projection_repair

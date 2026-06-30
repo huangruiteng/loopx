@@ -25,25 +25,28 @@ def status_payload(
     *,
     allowed_scopes: list[str],
     checkpointed_boundary_authority: list[dict] | None = None,
+    todos: list[dict] | None = None,
 ) -> dict:
-    todo = {
-        "index": 1,
-        "done": False,
-        "status": "open",
-        "text": TODO_TEXT,
-        "task_class": "advancement_task",
-        "action_kind": "implement",
-        "required_write_scopes": ["runners/openviking/**"],
-    }
+    todo_items = todos or [
+        {
+            "index": 1,
+            "done": False,
+            "status": "open",
+            "text": TODO_TEXT,
+            "task_class": "advancement_task",
+            "action_kind": "implement",
+            "required_write_scopes": ["runners/openviking/**"],
+        }
+    ]
     agent_todos = {
         "schema_version": "todo_summary_v0",
         "source_section": "Agent Todo",
-        "open_count": 1,
+        "open_count": len(todo_items),
         "done_count": 0,
-        "total_count": 1,
-        "first_open_items": [todo],
-        "first_executable_items": [todo],
-        "items": [todo],
+        "total_count": len(todo_items),
+        "first_open_items": todo_items,
+        "first_executable_items": todo_items,
+        "items": todo_items,
     }
     return {
         "ok": True,
@@ -164,6 +167,48 @@ def assert_allowed_scope_remains_runnable() -> None:
     assert payload["goal_boundary"]["write_scope"] == ["runners/**", "docs/**"], payload
 
 
+def assert_blocked_candidate_does_not_trigger_boundary_repair() -> None:
+    blocked_auto_research = {
+        "index": 1,
+        "done": False,
+        "status": "open",
+        "text": "Validate auto-research live evidence after the capability exists.",
+        "task_class": "advancement_task",
+        "action_kind": "validate_auto_research_live_bootstrap_hypothesis",
+        "required_capabilities": ["auto_research_frontier"],
+        "required_write_scopes": ["successor_todos", "grounding_refs"],
+    }
+    runnable_skillsbench = {
+        "index": 2,
+        "done": False,
+        "status": "open",
+        "text": "Rerun the SkillsBench reverse-tunnel app-server Goal batch.",
+        "task_class": "advancement_task",
+        "action_kind": "skillsbench_reverse_tunnel_batch_continuation",
+        "required_write_scopes": ["scripts/**", "docs/**", "examples/**"],
+        "target_capabilities": ["skillsbench_reverse_tunnel_batch"],
+    }
+    payload = build_quota_should_run(
+        status_payload(
+            allowed_scopes=["scripts/**", "docs/**", "examples/**"],
+            todos=[blocked_auto_research, runnable_skillsbench],
+        ),
+        goal_id=GOAL_ID,
+    )
+    assert payload["should_run"] is True, payload
+    assert payload["normal_delivery_allowed"] is True, payload
+    assert payload["effective_action"] == "normal_run", payload
+    assert "boundary_projection_gap" not in payload, payload
+    gate = payload["capability_gate"]
+    assert gate["action"] == "run", gate
+    assert gate["blocked_candidates"][0]["action_kind"] == (
+        "validate_auto_research_live_bootstrap_hypothesis"
+    ), gate
+    assert gate["runnable_candidates"][0]["action_kind"] == (
+        "skillsbench_reverse_tunnel_batch_continuation"
+    ), gate
+
+
 def assert_checkpointed_authority_compiles_into_goal_boundary() -> None:
     authority = build_checkpointed_boundary_authority_entry(
         write_scopes=["runners/**"],
@@ -217,6 +262,7 @@ def main() -> int:
     assert_required_write_scope_metadata_roundtrip()
     assert_missing_scope_repairs_boundary()
     assert_allowed_scope_remains_runnable()
+    assert_blocked_candidate_does_not_trigger_boundary_repair()
     assert_checkpointed_authority_compiles_into_goal_boundary()
     assert_expired_checkpointed_authority_does_not_authorize_write()
     print("quota-action-scope-guard-smoke ok")
