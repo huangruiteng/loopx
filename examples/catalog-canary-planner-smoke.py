@@ -45,6 +45,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "control-plane-refactor",
         "status-read-path",
         "cli-command-contract",
+        "todo-lifecycle",
         "monitor-scheduler",
         "state-write-correctness",
         "frontstage-rollout",
@@ -136,6 +137,18 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     cli_profile = next(profile for profile in cli_payload["domain_profiles"] if profile["id"] == "cli-command-contract")
     commands = [check["command"] for check in cli_profile["checks"]]
     assert "python3 examples/cli-version-command-modularization-smoke.py" in commands, cli_profile
+
+    todo_payload = build_catalog_canary_plan(
+        changed_files=["loopx/todos.py", "loopx/todo_contract.py"],
+        surfaces=["todo lifecycle todo claim todo list"],
+    )
+    todo_profiles = {profile["id"]: profile for profile in todo_payload["domain_profiles"]}
+    assert "todo-lifecycle" in todo_profiles, todo_payload
+    todo_profile = todo_profiles["todo-lifecycle"]
+    todo_commands = [check["command"] for check in todo_profile["checks"]]
+    assert "python3 examples/todo-lifecycle-cli-smoke.py" in todo_commands, todo_profile
+    assert all(check["tier"] == "default" for check in todo_profile["checks"]), todo_profile
+    assert todo_profile["deep_checks_available"] is True, todo_profile
 
 
 def assert_explicit_profile_can_include_deep_checks() -> None:

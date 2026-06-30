@@ -314,6 +314,56 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "todo-lifecycle",
+        "title": "Todo lifecycle contract",
+        "purpose": "Check todo metadata, lifecycle transitions, and event/list projection before todo read/write CLI changes ship.",
+        "catalog_families": ["State And Boundary", "Human Decision", "Planning Governance"],
+        "trigger_hints": (
+            "todo lifecycle",
+            "todo claim",
+            "todo list",
+            "todo complete",
+            "todo supersede",
+            "todo metadata",
+            "todo detail",
+            "loopx/todos.py",
+            "loopx/todo_contract.py",
+            "loopx/cli_commands/todo",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/todo-contract-smoke.py",
+                "tier": "default",
+                "reason": "guards the public todo status and metadata helper contract",
+            },
+            {
+                "command": "python3 examples/todo-cli-smoke.py",
+                "tier": "default",
+                "reason": "checks agent-facing todo add/update/list behavior on fixture state",
+            },
+            {
+                "command": "python3 examples/todo-lifecycle-cli-smoke.py",
+                "tier": "default",
+                "reason": "exercises claim, completion, successor, and handoff lifecycle transitions by todo_id",
+            },
+            {
+                "command": "python3 examples/todo-list-event-projection-smoke.py",
+                "tier": "default",
+                "reason": "guards event-sourced todo list projection with Markdown fallback",
+            },
+            {
+                "command": "python3 examples/todo-concurrent-write-lock-smoke.py",
+                "tier": "deep",
+                "reason": "samples lock behavior for concurrent todo writes",
+            },
+            {
+                "command": "python3 examples/todo-detail-cold-path-contract-smoke.py",
+                "tier": "deep",
+                "reason": "checks the cold-path todo detail contract when detail surfaces are promoted",
+            },
+        ],
+    },
+    {
         "id": "monitor-scheduler",
         "title": "Monitor scheduler routing",
         "purpose": "Check monitor due/quiet/replan behavior without polling external targets by default.",
