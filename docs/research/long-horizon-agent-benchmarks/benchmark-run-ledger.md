@@ -5,7 +5,7 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-30T17:53:32+08:00`
+- updated_at: `2026-06-30T18:32:43+08:00`
 
 ## Case Decisions
 
@@ -13,11 +13,11 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | --- | --- | --- | --- | --- | --- |
 | `skillsbench-cloud-oracle-sanity@v0` | `hello-world` | `single_arm_recorded` | - | - | `1` |
 | `skillsbench@1.1` | `3d-scan-calc` | `paired_baseline_solved_treatment_preserved` | - | - | `13` |
-| `skillsbench@1.1` | `ada-bathroom-plan-repair` | `paired_treatment_improved` | - | - | `5` |
-| `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_failed_treatment_candidate` | - | - | `2` |
+| `skillsbench@1.1` | `ada-bathroom-plan-repair` | `paired_treatment_improved` | - | - | `6` |
+| `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | - | `3` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `baseline_not_raw_codex_autonomous_max5,baseline_official_feedback_not_blinded,baseline_reward_feedback_forwarding_not...` | - | `11` |
 | `skillsbench@1.1` | `bike-rebalance` | `paired_treatment_improved` | - | - | `4` |
-| `skillsbench@1.1` | `citation-check` | `paired_treatment_improved` | - | - | `15` |
+| `skillsbench@1.1` | `citation-check` | `paired_baseline_solved_treatment_preserved` | - | - | `16` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `paired_no_score_uplift` | - | - | `5` |
 | `skillsbench@1.1` | `court-form-filling` | `baseline_failed_treatment_candidate` | - | - | `1` |
 | `skillsbench@1.1` | `crystallographic-wyckoff-position-analysis` | `baseline_failed_treatment_candidate` | - | - | `1` |
@@ -120,8 +120,10 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-blind-baseline-v0/ada-bathroom-plan-repair__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_loopx_treatment` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-blind-treatment-v0/ada-bathroom-plan-repair__loopx_blind_loop_v0/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-02-ada-bathroom-plan-repair/result.json` |
+| `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/ada-bathroom-plan-repair/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline` | `` | `missing` | `` | `` | `skillsbench_docker_compose_apt_repository_failure` | `.local/private-benchmark-jobs/skillsbench-adaptive-cruise-control-baseline-probe-20260616T0956CST/adaptive-cruise-control__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-03-adaptive-cruise-control/result.json` |
+| `skillsbench@1.1` | `adaptive-cruise-control` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_native_goal_worker_failed_codex_app_server_turn_timeout` | `skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/adaptive-cruise-control/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-baseline-20260616T101857CST/azure-bgp-oscillation-route-leak__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-baseline-20260616T102256CST/azure-bgp-oscillation-route-leak__codex_acp_blind_loop/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `.local/private-benchmark-jobs/skillsbench-azure-bgp-route-leak-blind-baseline-20260616T102456CST/azure-bgp-oscillation-route-leak__codex_acp_blind_loop/benchmark_run.compact.json` |
@@ -152,6 +154,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `missing` | `` | `1:missing,2:missing,3:missing,4:missing,5:missing,6:missing,7:missing,8:missing,9:missing,10:missing,11:missing,12:missing,13:missing,14:missing,15:missing` | `verifier_infrastructure_failure` | `.local/private-benchmark-jobs/skillsbench-citation-check-goalstart-earlyexit-20260628T1235Z/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_loopx_treatment` | `case_attempt` | `1.0` | `2` | `1:0,2:1*` | `none` | `cloud-ecs/skillsbench-citation-check-goalstart-taskrecenter-20260629T091301Z/jobs/skillsbench-citation-check-goalstart-taskrecenter-20260629T091301Z-goalstart/citation-check__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-06-citation-check/result.json` |
+| `skillsbench@1.1` | `citation-check` | `codex_app_server_goal_baseline` | `case_attempt` | `1.0` | `` | `` | `none` | `skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/citation-check/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `codex_goal_mode_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `loopx_automation_loop_treatment` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `` |
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | `baseline` | `` | `0.0` | `` | `1:0,2:0` | `official_verifier_solution_failure` | `.local/private-benchmark-jobs/skillsbench-civ6-adjacency-optimizer-blind-baseline-v0/civ6-adjacency-optimizer__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
