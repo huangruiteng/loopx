@@ -190,7 +190,16 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
             "codex-side-bypass": "propose_hypothesis",
             "codex-main-control": "claim_attempt",
         }
+        lane_workspaces = {
+            str(lane.get("agent_id")): Path(str(lane.get("workspace"))).resolve()
+            for lane in supervisor.get("lanes", [])
+            if isinstance(lane, dict) and lane.get("workspace")
+        }
         for agent_id, action in expected_actions.items():
+            lane_cwd = lane_workspaces.get(agent_id, default_workspace)
+            assert lane_cwd.is_dir(), lane_cwd
+            env = os.environ.copy()
+            env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{env.get('PYTHONPATH', '')}"
             quota = subprocess.run(
                 [
                     sys.executable,
@@ -209,7 +218,8 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
                     "--agent-id",
                     agent_id,
                 ],
-                cwd=REPO_ROOT,
+                cwd=lane_cwd,
+                env=env,
                 check=True,
                 capture_output=True,
                 text=True,
@@ -236,7 +246,8 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
                     "--agent-id",
                     agent_id,
                 ],
-                cwd=REPO_ROOT,
+                cwd=lane_cwd,
+                env=env,
                 check=True,
                 capture_output=True,
                 text=True,
@@ -294,6 +305,11 @@ def assert_visible_demo_local_control_plane(*, registry: Path, runtime_root: Pat
         "propose_hypothesis",
         "claim_attempt",
     }, payload
+    workspace_route = control["workspace_route"]
+    assert workspace_route["shared_goal_surface"] == "demo_local_loopx_registry_and_runtime", payload
+    assert workspace_route["side_lane_workspace"] == "independent_git_worktree", payload
+    assert workspace_route["side_lane_worktree_count"] == 2, payload
+    assert workspace_route["absolute_paths_recorded"] is False, payload
     assert control["absolute_paths_recorded"] is False, payload
     assert payload["workspace_retained"] is True, payload
     assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload

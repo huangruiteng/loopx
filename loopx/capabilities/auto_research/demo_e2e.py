@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -36,6 +37,56 @@ from ...status import collect_status
 
 AppendEvidence = Callable[[str], dict[str, object]]
 VisibleLauncher = Callable[..., dict[str, object]]
+
+
+def _safe_ref_fragment(value: object, *, fallback: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip()).strip("-._")
+    return text[:48] or fallback
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _prepare_visible_demo_git_workspaces(
+    *,
+    control_project: Path,
+    demo_root: Path,
+    lanes: list[dict[str, object]],
+    primary_agent: str | None,
+) -> dict[str, object]:
+    """Give side-agent lanes real git worktrees while sharing one LoopX state."""
+
+    (control_project / ".gitignore").write_text(".local/\n", encoding="utf-8")
+    _git(control_project, "init")
+    _git(control_project, "config", "user.email", "loopx-demo@example.invalid")
+    _git(control_project, "config", "user.name", "LoopX Demo")
+    _git(control_project, "add", ".")
+    _git(control_project, "commit", "-m", "seed visible auto research demo control plane")
+
+    worktree_root = demo_root / "visible-lane-worktrees"
+    side_count = 0
+    for index, lane in enumerate(lanes, start=1):
+        agent_id = str(lane.get("agent_id") or "").strip()
+        if not agent_id or agent_id == primary_agent:
+            lane["workspace_role"] = "primary_control_project"
+            continue
+        lane_id = _safe_ref_fragment(lane.get("lane_id"), fallback=f"lane-{index}")
+        branch = f"demo/{_safe_ref_fragment(agent_id, fallback=f'agent-{index}')}-{index}"
+        workspace = worktree_root / lane_id
+        _git(control_project, "worktree", "add", "-b", branch, str(workspace))
+        lane["workspace"] = str(workspace)
+        lane["workspace_role"] = "independent_git_worktree"
+        side_count += 1
+
+    return {
+        "schema_version": "auto_research_visible_demo_workspace_route_v0",
+        "shared_goal_surface": "demo_local_loopx_registry_and_runtime",
+        "primary_workspace": "control_project_git_worktree",
+        "side_lane_workspace": "independent_git_worktree",
+        "side_lane_worktree_count": side_count,
+        "absolute_paths_recorded": False,
+    }
 
 
 def _seed_visible_demo_control_plane(
@@ -155,6 +206,13 @@ def _seed_visible_demo_control_plane(
             }
         )
 
+    workspace_route = _prepare_visible_demo_git_workspaces(
+        control_project=control_project,
+        demo_root=demo_root,
+        lanes=lanes,
+        primary_agent=primary_agent,
+    )
+
     summary = {
         "schema_version": "auto_research_visible_demo_control_plane_v0",
         "mode": "demo_local_loopx_queue",
@@ -164,6 +222,7 @@ def _seed_visible_demo_control_plane(
         "seeded_todo_count": len(seeded_todos),
         "seeded_todos": seeded_todos,
         "state_route": "visible_lanes_use_LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
+        "workspace_route": workspace_route,
         "absolute_paths_recorded": False,
         "private_artifacts_recorded": False,
     }

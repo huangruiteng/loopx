@@ -203,7 +203,7 @@ def main() -> int:
             assert "loopx_polling_prompt=visible_bootstrap_prompt" in command, command
             assert "reasoning_effort=high" in command, command
             assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in command, command
-            assert 'codex -c model_reasoning_effort=high "$BOOTSTRAP_PROMPT"' in command, command
+            assert 'codex exec -c model_reasoning_effort=high --cd "$LOOPX_PROJECT" --sandbox danger-full-access "$BOOTSTRAP_PROMPT"' in command, command
             assert "[Codex CLI exited]" in command, command
             assert "inspect this pane; interrupt, close, or retry manually" in command, command
             assert "exec /bin/sh -i" in command, command

@@ -122,6 +122,7 @@ def main() -> int:
                 "source": "worker/SKILL.md",
                 "destination": ".codex/skills/loopx-auto-research/SKILL.md",
                 "materialized": True,
+                "workspace_count": 1,
             }
         ], skills
         assert (workspace / ".codex/skills/loopx-auto-research/SKILL.md").read_text(

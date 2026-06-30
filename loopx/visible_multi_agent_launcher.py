@@ -163,8 +163,9 @@ def build_visible_lane_command(
         "fi; "
         f"{visible_summary}; "
         'sleep "${LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS:-1}"; '
-        "printf '\\n[Starting visible Codex CLI]\\n'; "
-        f"{_q(codex_bin)} -c model_reasoning_effort={_q(reasoning_effort)} \"$BOOTSTRAP_PROMPT\"; "
+        "printf '\\n[Starting visible Codex exec]\\n'; "
+        f"{_q(codex_bin)} exec -c model_reasoning_effort={_q(reasoning_effort)} "
+        '--cd "$LOOPX_PROJECT" --sandbox danger-full-access "$BOOTSTRAP_PROMPT"; '
         "CODEX_STATUS=$?; "
         "printf '\\n[Codex CLI exited]\\nexit=%s\\n' \"$CODEX_STATUS\"; "
         f"{keep_visible}"
@@ -251,21 +252,37 @@ def _materialize_worker_skills(
         source = Path(source_name)
         if not source.is_absolute():
             source = source_root / source
-        destination = project / ".codex" / "skills" / skill_name / "SKILL.md"
+        workspace_values = [project]
+        lane_workspace = _lane_workspace(lane, default_project=project)
+        if lane_workspace != project:
+            workspace_values.append(lane_workspace)
         item = {
             "skill": skill_name,
             "source": source_name,
             "destination": f".codex/skills/{skill_name}/SKILL.md",
             "materialized": False,
+            "workspace_count": len(workspace_values),
         }
         if source.is_file():
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, destination)
+            for workspace in workspace_values:
+                destination = workspace / ".codex" / "skills" / skill_name / "SKILL.md"
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
             item["materialized"] = True
         else:
             item["missing_source"] = True
         results.append(item)
     return results
+
+
+def _lane_workspace(lane: dict[str, object], *, default_project: Path) -> Path:
+    raw = lane.get("workspace") or lane.get("project")
+    if not raw:
+        return default_project
+    path = Path(str(raw)).expanduser()
+    if not path.is_absolute():
+        path = default_project / path
+    return path.resolve()
 
 
 def execute_visible_multi_agent_launcher(
@@ -383,6 +400,9 @@ def _launch_with_tmux(
         launch_command = str(lane.get("visible_launch_command") or "")
         if not launch_command:
             raise ValueError(f"lane {lane_id} is missing visible_launch_command")
+        lane_project = _lane_workspace(lane, default_project=project)
+        if not lane_project.is_dir():
+            raise ValueError(f"lane {lane_id} workspace does not exist")
         subprocess.run(
             [
                 tmux_bin,
@@ -396,7 +416,7 @@ def _launch_with_tmux(
                 "-lc",
                 runtime_shell_command(
                     launch_command,
-                    project=project,
+                    project=lane_project,
                     registry=registry,
                     runtime_root=runtime_root,
                     errexit=False,
