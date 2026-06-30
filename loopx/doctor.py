@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -118,6 +119,53 @@ def short_revision(value: Any, *, length: int = 12) -> str | None:
     return text[:length] if len(text) > length else text
 
 
+def git_metadata_for_root(root: Path | None) -> dict[str, Any]:
+    if root is None:
+        return {
+            "root": None,
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+        }
+    try:
+        source_root = root.expanduser().resolve()
+    except OSError:
+        source_root = root.expanduser()
+    if not source_root.exists():
+        return {
+            "root": str(source_root),
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+        }
+
+    def _run(args: list[str]) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(source_root), *args],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
+    commit = _run(["rev-parse", "HEAD"])
+    branch = _run(["symbolic-ref", "--quiet", "--short", "HEAD"])
+    tag = _run(["describe", "--tags", "--exact-match"])
+    status = _run(["status", "--porcelain"])
+    dirty = None if commit is None and branch is None and tag is None and status is None else bool(status)
+    return {
+        "root": str(source_root),
+        "git_commit": commit,
+        "git_ref": branch or tag,
+        "git_dirty": dirty,
+    }
+
+
 def build_install_freshness(
     *,
     command_path: Path | None,
@@ -125,6 +173,7 @@ def build_install_freshness(
     repo_root: Path,
     skills: dict[str, dict[str, Any]],
     release_manifest: dict[str, Any] | None = None,
+    comparison_source: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -178,6 +227,21 @@ def build_install_freshness(
         or manifest_source.get("git_ref")
         or manifest_source.get("ref")
     )
+    comparison = comparison_source if isinstance(comparison_source, dict) else {}
+    comparison_source_git_commit = comparison.get("git_commit")
+    comparison_source_label = comparison.get("label") or "comparison_source"
+    manifest_source_matches_comparison = (
+        manifest_source_git_commit == comparison_source_git_commit
+        if manifest_source_git_commit and comparison_source_git_commit
+        else None
+    )
+    source_commit_mismatch = manifest_source_matches_comparison is False
+
+    if release_id and source_commit_mismatch and command_path is not None and not skill_problem:
+        status = "stale"
+        reason = f"release manifest source commit differs from {comparison_source_label} commit"
+        requires_upgrade = True
+
     manifest_skills = (
         manifest_body.get("skills") if isinstance(manifest_body.get("skills"), dict) else {}
     )
@@ -207,6 +271,13 @@ def build_install_freshness(
         "manifest_source_git_dirty": manifest_source.get("git_dirty"),
         "manifest_source_revision": manifest_source_revision,
         "manifest_source_revision_short": short_revision(manifest_source_revision),
+        "comparison_source_label": comparison_source_label if comparison else None,
+        "comparison_source_root": comparison.get("root"),
+        "comparison_source_git_commit": comparison_source_git_commit,
+        "comparison_source_git_commit_short": short_revision(comparison_source_git_commit),
+        "comparison_source_git_ref": comparison.get("git_ref"),
+        "comparison_source_git_dirty": comparison.get("git_dirty"),
+        "manifest_source_matches_comparison": manifest_source_matches_comparison,
         "manifest_archive_sha256": manifest_source.get("archive_sha256"),
         "manifest_skills_digest": manifest_skills.get("digest"),
     }
@@ -384,6 +455,10 @@ def collect_doctor() -> dict[str, Any]:
     release_root = command_release_root(command_realpath)
     canary_root = command_release_root(canary_realpath)
     release_manifest = load_release_manifest(release_root)
+    comparison_source = None
+    if canary_realpath and command_realpath and canary_realpath != command_realpath:
+        comparison_source = git_metadata_for_root(command_release_root(canary_realpath))
+        comparison_source["label"] = "loopx-canary"
     path_entries = os.environ.get("PATH", "").split(os.pathsep)
     local_bin = user_local_bin()
     skills_root = codex_home() / "skills"
@@ -414,6 +489,7 @@ def collect_doctor() -> dict[str, Any]:
         repo_root=repo_root,
         skills=skills,
         release_manifest=release_manifest,
+        comparison_source=comparison_source,
     )
     default_global_registry = global_registry_path(DEFAULT_RUNTIME_ROOT)
     global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
@@ -640,6 +716,8 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
                 f"- manifest_source: `{manifest_source_repo}` @ `{manifest_source_ref}`",
                 f"- manifest_source_git_commit: `{freshness.get('manifest_source_git_commit_short')}`",
                 f"- manifest_source_git_dirty: `{freshness.get('manifest_source_git_dirty')}`",
+                f"- comparison_source: `{freshness.get('comparison_source_label')}` @ `{freshness.get('comparison_source_git_commit_short')}`",
+                f"- manifest_source_matches_comparison: `{freshness.get('manifest_source_matches_comparison')}`",
                 f"- manifest_archive_sha256: `{freshness.get('manifest_archive_sha256')}`",
                 f"- manifest_skills_digest: `{freshness.get('manifest_skills_digest')}`",
                 "- upgrade_command:",

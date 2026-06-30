@@ -414,6 +414,48 @@ def main() -> int:
         assert fresh_install["status"] == "fresh", fresh_install
         assert fresh_install["requires_upgrade"] is False, fresh_install
 
+        commit_mismatch_install = build_install_freshness(
+            command_path=wrapper,
+            release_root=root / "releases" / "20260108T000000Z",
+            repo_root=REPO_ROOT,
+            skills={
+                "loopx-auto-research": {"exists": True, "required_phrases": True},
+                "loopx-project": {"exists": True, "required_phrases": True},
+                "loopx-pr-review": {"exists": True, "required_phrases": True},
+                "loopx-doc-registry": {"exists": True, "required_phrases": True},
+                "loopx-self-repair": {"exists": True, "required_phrases": True},
+            },
+            release_manifest={
+                "available": True,
+                "path": str(root / "release.json"),
+                "reason": None,
+                "manifest": {
+                    "package": {"version": "0.1.2"},
+                    "source": {
+                        "kind": "local_checkout",
+                        "git_commit": "a" * 40,
+                        "git_ref": "main",
+                        "git_dirty": False,
+                    },
+                    "skills": {"digest": "fixture-skills-digest"},
+                },
+            },
+            comparison_source={
+                "label": "loopx-canary",
+                "root": str(REPO_ROOT),
+                "git_commit": "b" * 40,
+                "git_ref": "main",
+                "git_dirty": False,
+            },
+            now=datetime(2026, 1, 8, 1, tzinfo=timezone.utc),
+        )
+        assert commit_mismatch_install["status"] == "stale", commit_mismatch_install
+        assert commit_mismatch_install["requires_upgrade"] is True, commit_mismatch_install
+        assert commit_mismatch_install["release_age_hours"] == 1.0, commit_mismatch_install
+        assert commit_mismatch_install["manifest_source_matches_comparison"] is False, commit_mismatch_install
+        assert commit_mismatch_install["comparison_source_git_commit_short"] == "b" * 12, commit_mismatch_install
+        assert "differs from loopx-canary commit" in commit_mismatch_install["reason"], commit_mismatch_install
+
         cli = subprocess.run(
             [
                 "loopx",
