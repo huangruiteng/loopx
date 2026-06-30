@@ -21,6 +21,10 @@ from .core import (
     build_research_evidence_graph_from_rollout_events,
     load_auto_research_evidence_packet_inputs,
 )
+from .live_evidence import (
+    build_live_codex_claim_from_evidence,
+    load_live_codex_e2e_evidence,
+)
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
@@ -177,6 +181,7 @@ def _command_text(
     agent_id: str,
     execute: bool,
     launch_visible: bool = False,
+    live_evidence: bool = False,
 ) -> str:
     parts = [
         shlex.quote(cli_bin),
@@ -193,6 +198,8 @@ def _command_text(
         parts.append("--execute")
     if launch_visible:
         parts.append("--launch-visible")
+    if live_evidence:
+        parts.extend(["--live-evidence", "<public-safe-live-evidence.json>"])
     return " ".join(parts)
 
 
@@ -231,6 +238,7 @@ def run_auto_research_demo_e2e(
     codex_bin: str,
     tmux_bin: str,
     reasoning_effort: str,
+    live_evidence_path: str | None,
     append_evidence: AppendEvidence,
     visible_launcher: VisibleLauncher | None = None,
 ) -> dict[str, object]:
@@ -238,6 +246,8 @@ def run_auto_research_demo_e2e(
         raise ValueError("--launch-visible requires --execute")
     if launch_visible and visible_launcher is None:
         raise ValueError("--launch-visible requires a visible launcher callback")
+    if live_evidence_path and not execute:
+        raise ValueError("--live-evidence requires --execute")
 
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,
@@ -269,6 +279,13 @@ def run_auto_research_demo_e2e(
                 agent_id=agent_id,
                 execute=True,
                 launch_visible=True,
+            ),
+            "live_codex_claim_from_evidence": _command_text(
+                cli_bin=cli_bin,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                execute=True,
+                live_evidence=True,
             ),
         },
         "supervisor": {
@@ -406,6 +423,13 @@ def run_auto_research_demo_e2e(
             if isinstance(live_boundary, dict):
                 live_boundary["visible_lanes_launched"] = True
                 live_boundary["visible_lanes_accepted"] = bool(visible_acceptance.get("accepted"))
+        if live_evidence_path:
+            live_evidence = load_live_codex_e2e_evidence(
+                evidence_path=live_evidence_path,
+                goal_id=goal_id,
+                agent_id=agent_id,
+            )
+            payload["live_codex_e2e"] = build_live_codex_claim_from_evidence(live_evidence)
         return payload
     finally:
         if tmp_obj is not None:

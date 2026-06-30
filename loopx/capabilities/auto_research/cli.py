@@ -318,6 +318,13 @@ def register_auto_research_commands(
         ),
     )
     demo_e2e_parser.add_argument(
+        "--live-evidence",
+        help=(
+            "Path to compact public-safe live Codex lane evidence. "
+            "Only this can flip live_codex_e2e.claim_allowed; raw transcripts are not read."
+        ),
+    )
+    demo_e2e_parser.add_argument(
         "--keep-workspace",
         action="store_true",
         help="Keep the temporary demo workspace after execution. The output payload still redacts its absolute path.",
@@ -633,6 +640,7 @@ def handle_auto_research_command(
                 codex_bin=args.codex_bin,
                 tmux_bin=args.tmux_bin,
                 reasoning_effort=args.reasoning_effort,
+                live_evidence_path=args.live_evidence,
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,
             )

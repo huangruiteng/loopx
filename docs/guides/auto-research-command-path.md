@@ -108,6 +108,26 @@ Truth boundary:
 - `--launch-visible` proves visible panes can start, but pane startup alone is
   not a live Codex research result.
 
+To claim a live Codex lane-authored E2E result, pass a compact public-safe
+evidence packet produced by the visible lanes:
+
+```bash
+loopx --registry "$LOOPX_REGISTRY" \
+  --runtime-root "$LOOPX_RUNTIME_ROOT" \
+  --format json auto-research demo-e2e \
+  --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass \
+  --reasoning-effort high \
+  --execute \
+  --live-evidence ./live-codex-e2e-evidence.public.json
+```
+
+That packet must use `source: live_codex_lane_output`, match the goal and
+agent, show accepted visible lanes, cite lane-authored evidence appended to
+LoopX state, and keep raw logs, private artifacts, credentials, and local
+absolute paths out of the payload. Without this packet,
+`live_codex_e2e.claim_allowed` stays `false`.
+
 For a full visible demo after an explicit replay step, add the visible lane
 launcher:
 
