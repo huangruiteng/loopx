@@ -666,6 +666,50 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "host-command-entry",
+        "title": "Host command entry and slash-command discovery",
+        "purpose": (
+            "Check slash-command discovery, Codex App host command routing, "
+            "and global manager command entry surfaces without mutating project state."
+        ),
+        "catalog_families": ["Human Decision", "Work Routing", "State And Boundary"],
+        "trigger_hints": (
+            "slash-command",
+            "slash command",
+            "slash-commands",
+            "/loopx-global-summary",
+            "/loopx-global-gates",
+            "/loopx-global-todos",
+            "/loopx-global-risks",
+            "global-manager",
+            "global manager",
+            "host command",
+            "host command registry",
+            "codex app host command",
+            "docs/reference/protocols/codex-app-host-command-registry-v0.md",
+            "docs/reference/protocols/global-manager-command-v0.md",
+            "loopx/cli_commands/slash_commands.py",
+            "loopx/cli_commands/summary_all.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/slash-command-catalog-smoke.py",
+                "tier": "default",
+                "reason": "guards public slash-command discovery and legacy alias visibility",
+            },
+            {
+                "command": "python3 examples/codex-app-host-command-registry-smoke.py",
+                "tier": "default",
+                "reason": "guards Codex App host command routing and fail-closed slash-command help",
+            },
+            {
+                "command": "python3 examples/global-manager-command-protocol-smoke.py",
+                "tier": "default",
+                "reason": "checks read-only global manager command protocol and aliases",
+            },
+        ],
+    },
+    {
         "id": "frontstage-rollout",
         "title": "Frontstage rollout projection",
         "purpose": "Check public frontstage/showcase projection data before visual browser smokes.",

@@ -53,6 +53,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "state-write-correctness",
         "product-entry-workflows",
         "cross-runtime-impl-review-demo",
+        "host-command-entry",
         "frontstage-rollout",
         "auto-research-demo",
         "benchmark-adapter-readiness",
@@ -254,6 +255,28 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in cross_runtime_profile["checks"])
     assert cross_runtime_profile["deep_checks_available"] is False, cross_runtime_profile
     assert cross_runtime_profile["deep_checks_included"] is False, cross_runtime_profile
+
+    host_command_payload = build_catalog_canary_plan(
+        changed_files=[
+            "loopx/cli_commands/slash_commands.py",
+            "docs/reference/protocols/codex-app-host-command-registry-v0.md",
+            "docs/reference/protocols/global-manager-command-v0.md",
+        ],
+        surfaces=["slash-commands /loopx-global-summary host command registry"],
+        max_checks_per_profile=3,
+    )
+    host_command_profiles = {
+        profile["id"]: profile for profile in host_command_payload["domain_profiles"]
+    }
+    assert "host-command-entry" in host_command_profiles, host_command_payload
+    host_command_profile = host_command_profiles["host-command-entry"]
+    host_command_commands = [check["command"] for check in host_command_profile["checks"]]
+    assert "python3 examples/slash-command-catalog-smoke.py" in host_command_commands
+    assert "python3 examples/codex-app-host-command-registry-smoke.py" in host_command_commands
+    assert "python3 examples/global-manager-command-protocol-smoke.py" in host_command_commands
+    assert all(check["tier"] == "default" for check in host_command_profile["checks"])
+    assert host_command_profile["deep_checks_available"] is False, host_command_profile
+    assert host_command_profile["deep_checks_included"] is False, host_command_profile
 
     auto_research_payload = build_catalog_canary_plan(
         changed_files=["loopx/capabilities/auto_research/core.py"],
