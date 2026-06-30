@@ -385,6 +385,51 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "event-sourced-read-path",
+        "title": "Event-sourced read-path contract",
+        "purpose": "Check event projection, status read path, downstream read surfaces, and migration gates before event-store/read-path changes ship.",
+        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "trigger_hints": (
+            "event-sourced",
+            "event sourced",
+            "event projection",
+            "event read-path",
+            "downstream read",
+            "event-store",
+            "event store",
+            "loopx/event_sourced_state.py",
+            "loopx/rollout_event_log.py",
+            "docs/reference/protocols/event-store-migration-bridge-v0.md",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/event-sourced-state-api-smoke.py",
+                "tier": "default",
+                "reason": "guards event append/replay API behavior used by read-path projections",
+            },
+            {
+                "command": "python3 examples/event-sourced-status-read-path-smoke.py",
+                "tier": "default",
+                "reason": "checks status consumption of event projection with Markdown fallback",
+            },
+            {
+                "command": "python3 examples/event-sourced-downstream-read-path-smoke.py",
+                "tier": "default",
+                "reason": "checks downstream read surfaces consume event projection without private state",
+            },
+            {
+                "command": "python3 examples/event-store-migration-bridge-smoke.py",
+                "tier": "deep",
+                "reason": "samples the migration bridge gates before bounded event read-path canaries",
+            },
+            {
+                "command": "python3 examples/event-sourced-replay-compaction-smoke.py",
+                "tier": "deep",
+                "reason": "checks replay compaction when broader event-store changes are promoted",
+            },
+        ],
+    },
+    {
         "id": "cli-command-contract",
         "title": "CLI command module contract",
         "purpose": "Check command-module boundaries, ownership budgets, and compatibility for LoopX CLI refactors.",
