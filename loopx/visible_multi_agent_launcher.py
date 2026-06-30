@@ -9,14 +9,14 @@ from collections.abc import Iterable
 from pathlib import Path
 
 
-_QUOTA_GATE_PY = (
+_QUOTA_READY_PY = (
     "import json,sys; "
     "p=json.load(sys.stdin); "
     "u=p.get('interaction_contract',{}).get('user_channel',{}); "
     "a=p.get('interaction_contract',{}).get('agent_channel',{}); "
     "delivery=a.get('delivery_allowed', p.get('should_run', True)); "
-    "ok=(not bool(u.get('action_required'))) and delivery is not False; "
-    "sys.exit(0 if ok else 42)"
+    "hard_gate=bool(u.get('action_required')); "
+    "sys.exit(42 if hard_gate else (0 if delivery is not False else 43))"
 )
 
 _QUOTA_BLOCKER_SUMMARY_PY = (
@@ -29,6 +29,29 @@ _QUOTA_BLOCKER_SUMMARY_PY = (
     "primary=a.get('primary_action') or p.get('recommended_action') or ''; "
     "print('reason=' + str(reason)); "
     "print('primary_action=' + str(primary))"
+)
+
+_FRONTIER_READY_PY = (
+    "import json,os,sys; "
+    "p=json.load(sys.stdin); "
+    "selected=(p.get('frontier') or {}).get('selected') or {}; "
+    "agent=os.environ.get('LOOPX_AGENT_ID'); "
+    "claimed=selected.get('claimed_by'); "
+    "ok=bool(selected) and (not claimed or claimed==agent); "
+    "sys.exit(0 if ok else 43)"
+)
+
+_SCOPED_LOOPX_WRAPPER_PY = (
+    "import os,shlex; "
+    "from pathlib import Path; "
+    "project=Path(os.environ['LOOPX_PROJECT']); "
+    "real=os.environ['LOOPX_REAL_CLI']; "
+    "registry=os.environ['LOOPX_REGISTRY']; "
+    "runtime=os.environ['LOOPX_RUNTIME_ROOT']; "
+    "target=project/'.local'/'bin'/'loopx'; "
+    "target.write_text('#!/usr/bin/env sh\\nexec ' + shlex.quote(real) + "
+    "' --registry ' + shlex.quote(registry) + "
+    "' --runtime-root ' + shlex.quote(runtime) + ' \"$@\"\\n', encoding='utf-8')"
 )
 
 
@@ -105,11 +128,9 @@ def build_visible_lane_command(
         'LOOPX_REAL_CLI="$(command -v loopx)"; '
         "export LOOPX_REAL_CLI; "
         'mkdir -p "$LOOPX_PROJECT/.local/bin"; '
-        "printf '%s\\n' "
-        "'#!/usr/bin/env sh' "
-        "'exec \"$LOOPX_REAL_CLI\" --registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" \"$@\"' "
-        '> "$LOOPX_PROJECT/.local/bin/loopx"; '
+        f"python3 -c {_q(_SCOPED_LOOPX_WRAPPER_PY)}; "
         'chmod +x "$LOOPX_PROJECT/.local/bin/loopx"; '
+        'export LOOPX_PANE_LOOPX="$LOOPX_PROJECT/.local/bin/loopx"; '
         'export PATH="$LOOPX_PROJECT/.local/bin:$PATH"; '
     )
     visible_summary = (
@@ -129,6 +150,20 @@ def build_visible_lane_command(
         'printf "\\n[user takeover]\\ninspect this pane; interrupt, close, or retry manually\\n"; '
         "exec /bin/sh -i"
     )
+    poll_header = (
+        'POLL_ATTEMPTS="${LOOPX_VISIBLE_POLL_ATTEMPTS:-6}"; '
+        'POLL_SLEEP="${LOOPX_VISIBLE_POLL_INTERVAL_SECONDS:-5}"; '
+        'POLL_INDEX=1; '
+        "while :; do "
+    )
+    poll_retry = (
+        'if [ "$POLL_INDEX" -lt "$POLL_ATTEMPTS" ]; then '
+        'printf "\\n[LoopX waiting for lane turn]\\nattempt=%s/%s sleep=%s\\n" "$POLL_INDEX" "$POLL_ATTEMPTS" "$POLL_SLEEP"; '
+        'POLL_INDEX=$((POLL_INDEX + 1)); '
+        'sleep "$POLL_SLEEP"; '
+        "continue; "
+        "fi; "
+    )
     return (
         "set -uo pipefail; "
         f"export LOOPX_ROLE_ID={_q(role_id)}; "
@@ -136,7 +171,8 @@ def build_visible_lane_command(
         'cd "$LOOPX_PROJECT"; '
         f"{scoped_loopx_wrapper}"
         f"{role_profile_command}"
-        "printf '\\n[LoopX quota guard]\\n'; "
+        f"{poll_header}"
+        "printf '\\n[LoopX quota guard]\\nattempt=%s/%s\\n' \"$POLL_INDEX\" \"$POLL_ATTEMPTS\"; "
         f"QUOTA_PACKET=\"$({quota_command} 2>&1)\"; "
         "QUOTA_STATUS=$?; "
         "printf '%s\\n' \"$QUOTA_PACKET\"; "
@@ -146,8 +182,16 @@ def build_visible_lane_command(
         "printf '\\n[bootstrap-or-stop]\\nstopped_before_frontier\\n'; "
         f"{keep_visible}; "
         "fi; "
-        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_QUOTA_GATE_PY)}; "
+        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_QUOTA_READY_PY)}; "
         "QUOTA_GATE_STATUS=$?; "
+        "if [ \"$QUOTA_GATE_STATUS\" -eq 43 ]; then "
+        f"{poll_retry}"
+        "printf '\\n[LoopX blocked reason]\\n'; "
+        "printf 'quota_wait_timeout attempts=%s\\n' \"$POLL_ATTEMPTS\"; "
+        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_QUOTA_BLOCKER_SUMMARY_PY)} || true; "
+        "printf '\\n[bootstrap-or-stop]\\nstopped_before_frontier\\n'; "
+        f"{keep_visible}; "
+        "fi; "
         "if [ \"$QUOTA_GATE_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX blocked reason]\\n'; "
         f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_QUOTA_BLOCKER_SUMMARY_PY)} || true; "
@@ -155,14 +199,32 @@ def build_visible_lane_command(
         f"{keep_visible}; "
         "fi; "
         f"printf '\\n{frontier_label}\\n'; "
-        f"{frontier_command}; "
+        f"FRONTIER_PACKET=\"$({frontier_command} 2>&1)\"; "
         "FRONTIER_STATUS=$?; "
+        "printf '%s\\n' \"$FRONTIER_PACKET\"; "
         "if [ \"$FRONTIER_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX blocked reason]\\n'; "
         "printf 'frontier_command_failed exit=%s\\n' \"$FRONTIER_STATUS\"; "
         "printf '\\n[bootstrap-or-stop]\\nstopped_before_bootstrap\\n'; "
         f"{keep_visible}; "
         "fi; "
+        f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_FRONTIER_READY_PY)}; "
+        "FRONTIER_READY_STATUS=$?; "
+        "if [ \"$FRONTIER_READY_STATUS\" -eq 43 ]; then "
+        f"{poll_retry}"
+        "printf '\\n[LoopX blocked reason]\\n'; "
+        "printf 'frontier_wait_timeout attempts=%s\\n' \"$POLL_ATTEMPTS\"; "
+        "printf '\\n[bootstrap-or-stop]\\nstopped_before_bootstrap\\n'; "
+        f"{keep_visible}; "
+        "fi; "
+        "if [ \"$FRONTIER_READY_STATUS\" -ne 0 ]; then "
+        "printf '\\n[LoopX blocked reason]\\n'; "
+        "printf 'frontier_not_ready exit=%s\\n' \"$FRONTIER_READY_STATUS\"; "
+        "printf '\\n[bootstrap-or-stop]\\nstopped_before_bootstrap\\n'; "
+        f"{keep_visible}; "
+        "fi; "
+        "break; "
+        "done; "
         "printf '\\n[bootstrap-or-stop]\\ncontinuing_to_visible_bootstrap\\n'; "
         "printf '\\n[Codex bootstrap prompt]\\n'; "
         f"BOOTSTRAP_PROMPT=\"$({bootstrap_command} 2>&1)\"; "
@@ -298,6 +360,20 @@ def _lane_workspace(lane: dict[str, object], *, default_project: Path) -> Path:
     return path.resolve()
 
 
+def _script_slug(value: str) -> str:
+    slug = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in value)
+    slug = "-".join(part for part in slug.split("-") if part)
+    return (slug or "lane")[:80]
+
+
+def _write_tmux_script(*, script_dir: Path, name: str, command: str) -> Path:
+    script_dir.mkdir(parents=True, exist_ok=True)
+    script = script_dir / f"{_script_slug(name)}.sh"
+    script.write_text(f"#!/usr/bin/env bash\n{command}\n", encoding="utf-8")
+    script.chmod(0o700)
+    return script
+
+
 def execute_visible_multi_agent_launcher(
     *,
     payload: dict[str, object],
@@ -391,6 +467,7 @@ def _launch_with_tmux(
             )
         subprocess.run([tmux_bin, "kill-session", "-t", session], check=True, env=env)
 
+    script_dir = runtime_root / "visible-launcher" / _script_slug(session)
     first_frontier = str(lanes[0].get("frontier") or "")
     frontier_command = runtime_shell_command(
         f'cd "$LOOPX_PROJECT"; {first_frontier}; '
@@ -402,12 +479,18 @@ def _launch_with_tmux(
         runtime_root=runtime_root,
         errexit=False,
     )
+    frontier_script = _write_tmux_script(
+        script_dir=script_dir,
+        name="frontier",
+        command=frontier_command,
+    )
     subprocess.run(
-        [tmux_bin, "new-session", "-d", "-s", session, "-n", "frontier", "bash", "-lc", frontier_command],
+        [tmux_bin, "new-session", "-d", "-s", session, "-n", "frontier", "bash", str(frontier_script)],
         check=True,
         env=env,
     )
     started_lanes = []
+    launcher_scripts = {"frontier": str(frontier_script)}
     for lane in lanes:
         lane_id = str(lane.get("lane_id") or lane_default)
         launch_command = str(lane.get("visible_launch_command") or "")
@@ -416,6 +499,17 @@ def _launch_with_tmux(
         lane_project = _lane_workspace(lane, default_project=project)
         if not lane_project.is_dir():
             raise ValueError(f"lane {lane_id} workspace does not exist")
+        lane_script = _write_tmux_script(
+            script_dir=script_dir,
+            name=lane_id,
+            command=runtime_shell_command(
+                launch_command,
+                project=lane_project,
+                registry=registry,
+                runtime_root=runtime_root,
+                errexit=False,
+            ),
+        )
         subprocess.run(
             [
                 tmux_bin,
@@ -426,19 +520,13 @@ def _launch_with_tmux(
                 "-n",
                 lane_id,
                 "bash",
-                "-lc",
-                runtime_shell_command(
-                    launch_command,
-                    project=lane_project,
-                    registry=registry,
-                    runtime_root=runtime_root,
-                    errexit=False,
-                ),
+                str(lane_script),
             ],
             check=True,
             env=env,
         )
         started_lanes.append(lane_id)
+        launcher_scripts[lane_id] = str(lane_script)
     if attach:
         subprocess.run([tmux_bin, "attach", "-t", session], check=True, env=env)
     acceptance = _tmux_acceptance(
@@ -462,6 +550,8 @@ def _launch_with_tmux(
         "attach_command": f"{tmux_bin} attach -t {session}",
         "stop_command": f"{tmux_bin} kill-session -t {session}",
         "workspace_mode": workspace_mode,
+        "script_mode": "runtime_local_files",
+        "launcher_script_count": len(launcher_scripts),
         "attach_requested": attach,
         "operator_takeover": "attach to the tmux session, interrupt any lane, or kill the session",
         "visible_acceptance": acceptance,

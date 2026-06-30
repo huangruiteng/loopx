@@ -130,6 +130,8 @@ def main() -> int:
         ) == "# Worker-local playbook\n"
         assert launch["started_lanes"] == ["planner", "reviewer"], launch
         assert launch["surviving_lanes"] == ["planner", "reviewer"], launch
+        assert launch["script_mode"] == "runtime_local_files", launch
+        assert launch["launcher_script_count"] == 3, launch
         acceptance = launch["visible_acceptance"]
         assert acceptance["schema_version"] == "multi_agent_visible_launch_acceptance_v0", acceptance
         assert acceptance["accepted"] is True, acceptance
@@ -138,6 +140,8 @@ def main() -> int:
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 2, log_entries
+        tmux_starts = [entry for entry in log_entries if entry[:1] in (["new-session"], ["new-window"])]
+        assert all("-lc" not in entry for entry in tmux_starts), tmux_starts
 
     print("visible-multi-agent-launcher-smoke ok")
     return 0

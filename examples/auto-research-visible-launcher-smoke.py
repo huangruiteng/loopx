@@ -156,6 +156,8 @@ def main() -> int:
         assert launch["attach_command"] == "tmux attach -t loopx-auto-research-smoke", launch
         assert launch["stop_command"] == "tmux kill-session -t loopx-auto-research-smoke", launch
         assert launch["workspace_mode"] == "explicit_workspace", launch
+        assert launch["script_mode"] == "runtime_local_files", launch
+        assert launch["launcher_script_count"] == 4, launch
         acceptance = launch["visible_acceptance"]
         assert acceptance["schema_version"] == "auto_research_visible_launch_acceptance_v0", acceptance
         assert acceptance["accepted"] is True, acceptance
@@ -191,9 +193,17 @@ def main() -> int:
             assert "LOOPX_REQUIRED_SKILL" in command, command
             assert "quota should-run" in command, command
             assert "auto-research frontier" in command, command
+            assert "LOOPX_VISIBLE_POLL_ATTEMPTS" in command, command
+            assert "LOOPX_VISIBLE_POLL_INTERVAL_SECONDS" in command, command
+            assert "[LoopX waiting for lane turn]" in command, command
+            assert "quota_wait_timeout" in command, command
+            assert "frontier_wait_timeout" in command, command
+            assert "frontier_not_ready" in command, command
             assert "[Codex bootstrap prompt]" in command, command
             assert "You are a visible LoopX auto-research lane" in command, command
-            assert "pane-local `loopx` command on PATH" in command, command
+            assert "pane-local LoopX wrapper" in command, command
+            assert "LOOPX_PANE_LOOPX" in command, command
+            assert "registry/runtime baked in" in command, command
             assert "visible LoopX polling turn" in command, command
             assert "follow their interaction_contract" in command, command
             assert "generated LoopX heartbeat/polling prompt" in command, command
@@ -203,7 +213,8 @@ def main() -> int:
             assert "loopx_agent_handshake=role_profile_quota_frontier_bootstrap" in command, command
             assert "loopx_polling_prompt=visible_bootstrap_prompt" in command, command
             assert "loopx_cli_scope=demo_local_wrapper" in command, command
-            assert 'exec "$LOOPX_REAL_CLI" --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" "$@"' in command, command
+            assert "--registry " in command, command
+            assert "--runtime-root " in command, command
             assert "reasoning_effort=high" in command, command
             assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in command, command
             assert 'codex exec -c model_reasoning_effort=high --cd "$LOOPX_PROJECT" --skip-git-repo-check --sandbox danger-full-access "$BOOTSTRAP_PROMPT"' in command, command
@@ -215,6 +226,8 @@ def main() -> int:
         assert log_entries[0][:1] == ["has-session"], log_entries
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 3, log_entries
+        tmux_starts = [entry for entry in log_entries if entry[:1] in (["new-session"], ["new-window"])]
+        assert all("-lc" not in entry for entry in tmux_starts), tmux_starts
         assert any(entry[:1] == ["list-windows"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["capture-pane"]) == 3, log_entries
         assert_public_safe(payload)
