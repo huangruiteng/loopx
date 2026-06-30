@@ -61,13 +61,20 @@ for line in sys.stdin:
                 "error": {"code": -32602, "message": "missing high effort"},
             }), flush=True)
             continue
-        result = {"turn": {"id": "turn-skillsbench", "status": "running"}}
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-event-skillsbench", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-response-skillsbench", "status": "running"}}
         print(json.dumps({"id": mid, "result": result}), flush=True)
         print(json.dumps({
             "method": "item/agentMessage/delta",
             "params": {
                 "threadId": "thread-skillsbench",
-                "turnId": "turn-skillsbench",
+                "turnId": "turn-event-skillsbench",
                 "itemId": "item-skillsbench",
                 "delta": "private worker answer",
             },
@@ -76,7 +83,7 @@ for line in sys.stdin:
             "method": "turn/completed",
             "params": {
                 "threadId": "thread-skillsbench",
-                "turn": {"id": "turn-skillsbench", "status": "completed"},
+                "turn": {"id": "turn-event-skillsbench", "status": "completed"},
             },
         }), flush=True)
         continue
@@ -438,6 +445,9 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert payload["ok"] is True, payload
         assert payload["turn"]["turn_completed_observed"] is True, payload
         assert payload["turn"]["completion_source_of_truth"] == "codex_turn_completion", payload
+        assert payload["turn"]["turn_id_source"] == "event_stream", payload
+        assert payload["turn"]["turn_start_response_turn_id_present"] is True, payload
+        assert payload["turn"]["turn_event_stream_turn_id_present"] is True, payload
         assert "completion_marker_requested" not in payload["turn"], payload
         assert "completion_marker_observed" not in payload["turn"], payload
         assert "completion_marker_deleted" not in payload["turn"], payload

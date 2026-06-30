@@ -39,13 +39,20 @@ for line in sys.stdin:
                 "error": {"code": -32602, "message": "missing high effort"},
             }), flush=True)
             continue
-        result = {"turn": {"id": "turn-smoke", "status": "running"}}
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-smoke",
+                "turn": {"id": "turn-event-smoke", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-response-smoke", "status": "running"}}
         print(json.dumps({"id": mid, "result": result}), flush=True)
         print(json.dumps({
             "method": "item/agentMessage/delta",
             "params": {
                 "threadId": "thread-smoke",
-                "turnId": "turn-smoke",
+                "turnId": "turn-event-smoke",
                 "itemId": "item-smoke",
                 "delta": "Synthetic final answer.",
             },
@@ -54,7 +61,7 @@ for line in sys.stdin:
             "method": "turn/completed",
             "params": {
                 "threadId": "thread-smoke",
-                "turn": {"id": "turn-smoke", "status": "completed"},
+                "turn": {"id": "turn-event-smoke", "status": "completed"},
             },
         }), flush=True)
         continue
@@ -91,13 +98,16 @@ def main() -> int:
         )
         try:
             assert turn.thread_id == "thread-smoke"
-            assert turn.turn_id == "turn-smoke"
+            assert turn.turn_id == "turn-event-smoke"
             compact = module.compact_turn_metadata(turn)
             assert compact["schema_version"] == "codex_app_server_goal_turn_driver_v0"
             assert compact["thread_id_present"] is True
             assert compact["goal_get_present"] is True
             assert compact["goal_status"] == "active"
             assert compact["turn_id_present"] is True
+            assert compact["turn_id_source"] == "event_stream", compact
+            assert compact["turn_start_response_turn_id_present"] is True, compact
+            assert compact["turn_event_stream_turn_id_present"] is True, compact
             assert compact["turn_completed_observed"] is False
             assert compact["raw_transcript_recorded"] is False
             assert "Synthetic prompt" not in json.dumps(compact)
