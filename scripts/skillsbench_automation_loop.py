@@ -1117,6 +1117,9 @@ def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
         configured_raw is None
         and bool(getattr(args, "host_local_acp_launch", False))
     ):
+        if getattr(args, "route", "") == "codex-app-server-goal-baseline":
+            outer_timeout = max(0, int(getattr(args, "outer_timeout_sec", 0) or 0))
+            return max(configured, outer_timeout)
         bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
         if bridge_idle_timeout > 0:
             return max(
@@ -12339,7 +12342,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Per-prompt timeout for local Codex exec in host-local ACP launch "
             "mode. Omit to use the host-local bridge idle timeout plus a small "
-            "agent timeout margin."
+            "agent timeout margin, except codex-app-server-goal-baseline which "
+            "uses the longer of the default exec timeout and --outer-timeout-sec."
         ),
     )
     parser.add_argument(

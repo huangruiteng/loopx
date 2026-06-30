@@ -30,6 +30,7 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     build_skillsbench_remote_command_file_bridge_probe_request,
 )
 from scripts.skillsbench_automation_loop import (  # noqa: E402
+    DEFAULT_TIMEOUT_SEC,
     DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
     _apply_agent_message_only_no_tool_calls_attribution,
@@ -183,6 +184,7 @@ print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
         agent_idle_timeout=7200,
         host_local_acp_launch=True,
         local_codex_exec_timeout_sec=21600,
+        route="loopx-product-mode",
     )
     assert _effective_local_codex_exec_timeout_sec(timeout_args) == 21600
     assert _effective_benchflow_agent_timeout_sec(timeout_args) == (
@@ -193,6 +195,7 @@ print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
         host_local_acp_launch=True,
         local_codex_bridge_idle_timeout_sec=None,
         local_codex_exec_timeout_sec=None,
+        route="loopx-product-mode",
     )
     assert _effective_local_codex_exec_timeout_sec(
         default_host_local_timeout_args
@@ -204,8 +207,34 @@ print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
         agent_idle_timeout=7200,
         host_local_acp_launch=False,
         local_codex_exec_timeout_sec=21600,
+        route="loopx-product-mode",
     )
     assert _effective_benchflow_agent_timeout_sec(non_host_local_timeout_args) == 7200
+    app_server_goal_timeout_args = SimpleNamespace(
+        agent_idle_timeout=900,
+        host_local_acp_launch=True,
+        local_codex_bridge_idle_timeout_sec=None,
+        local_codex_exec_timeout_sec=None,
+        outer_timeout_sec=3600,
+        route="codex-app-server-goal-baseline",
+    )
+    assert _effective_local_codex_exec_timeout_sec(app_server_goal_timeout_args) == (
+        DEFAULT_TIMEOUT_SEC
+    )
+    assert _effective_benchflow_agent_timeout_sec(app_server_goal_timeout_args) == (
+        DEFAULT_TIMEOUT_SEC + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
+    )
+    app_server_goal_outer_timeout_args = SimpleNamespace(
+        agent_idle_timeout=900,
+        host_local_acp_launch=True,
+        local_codex_bridge_idle_timeout_sec=None,
+        local_codex_exec_timeout_sec=None,
+        outer_timeout_sec=21600,
+        route="codex-app-server-goal-baseline",
+    )
+    assert _effective_local_codex_exec_timeout_sec(
+        app_server_goal_outer_timeout_args
+    ) == 21600
     replaced = _replace_option_value(
         ["relay", "--remote-command-file-bridge-command", "old", "--keep", "x"],
         "--remote-command-file-bridge-command",
