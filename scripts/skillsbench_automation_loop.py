@@ -77,6 +77,7 @@ import sys
 import tempfile
 import textwrap
 import time
+import urllib.parse
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
@@ -172,7 +173,33 @@ HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
     "GOAL_HARNESS_REMOTE_BENCH_ROOT",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+    "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
 )
+CODEX_API_REVERSE_TUNNEL_PROXY_ENV_KEYS = (
+    "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
+    "CODEX_API_REVERSE_TUNNEL_PROXY",
+)
+CODEX_API_PROXY_FORWARD_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+    "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
+)
+CODEX_API_EGRESS_TEST_HOST = "chatgpt.com"
+CODEX_API_EGRESS_TEST_PORT = 443
+CODEX_API_EGRESS_MODE_CHOICES = ("auto", "reverse-tunnel", "direct")
+DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC = 8.0
 _MISSING = object()
 SUPPORTED_ROUTES = (
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -1166,15 +1193,275 @@ def _effective_local_codex_task_output_quiet_timeout_sec(
     )
 
 
-def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
+def _codex_api_egress_preflight_required(args: argparse.Namespace) -> bool:
+    return (
+        getattr(args, "route", "") == "codex-app-server-goal-baseline"
+        and bool(getattr(args, "host_local_acp_launch", False))
+    )
+
+
+def _codex_api_egress_requested_mode(args: argparse.Namespace | None) -> str:
+    requested = ""
+    if args is not None:
+        requested = str(getattr(args, "codex_api_egress_mode", "") or "")
+    if requested in CODEX_API_EGRESS_MODE_CHOICES:
+        return requested
+    return "auto"
+
+
+def _codex_api_egress_resolved_mode(args: argparse.Namespace | None) -> str:
+    if args is None or not _codex_api_egress_preflight_required(args):
+        return "not_required"
+    requested = _codex_api_egress_requested_mode(args)
+    if requested == "auto":
+        # Formal remote app-server benchmark runs must use the reverse tunnel
+        # path by default; direct egress is only for explicit local debugging.
+        return "reverse-tunnel"
+    return requested
+
+
+def _codex_api_reverse_tunnel_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
+    explicit = ""
+    if args is not None:
+        explicit = str(getattr(args, "codex_api_reverse_tunnel_proxy", "") or "")
+    if explicit:
+        return explicit, "cli"
+    for key in CODEX_API_REVERSE_TUNNEL_PROXY_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            return value, f"env:{key}"
+    return "", ""
+
+
+def _proxy_host_kind(host: str) -> str:
+    normalized = host.strip("[]").lower()
+    if normalized in {"localhost", "127.0.0.1", "::1"}:
+        return "loopback"
+    if normalized.startswith("10.") or normalized.startswith("192.168."):
+        return "private"
+    if normalized.startswith("172."):
+        try:
+            second_octet = int(normalized.split(".", 2)[1])
+        except (IndexError, ValueError):
+            second_octet = -1
+        if 16 <= second_octet <= 31:
+            return "private"
+    return "public_or_unknown"
+
+
+def _parse_proxy_endpoint(proxy_url: str) -> tuple[str, str, int]:
+    parsed = urllib.parse.urlparse(proxy_url)
+    scheme = (parsed.scheme or "").lower()
+    host = parsed.hostname or ""
+    port = int(parsed.port or (443 if scheme == "https" else 80))
+    return scheme, host, port
+
+
+def _public_codex_api_egress_contract(
+    args: argparse.Namespace,
+    *,
+    status: str = "pending",
+    ready: bool = False,
+    error_kind: str = "",
+) -> dict[str, Any]:
+    proxy_url, proxy_source = _codex_api_reverse_tunnel_proxy(args)
+    requested_mode = _codex_api_egress_requested_mode(args)
+    resolved_mode = _codex_api_egress_resolved_mode(args)
+    scheme = ""
+    host = ""
+    port = 0
+    parse_error = ""
+    if proxy_url:
+        try:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+        except Exception as exc:
+            parse_error = type(exc).__name__
+    proxy_endpoint_kind = _proxy_host_kind(host) if host else ""
+    return {
+        "schema_version": "skillsbench_codex_api_egress_preflight_v0",
+        "required": _codex_api_egress_preflight_required(args),
+        "ready": bool(ready),
+        "status": status,
+        "error_kind": error_kind or parse_error,
+        "requested_mode": requested_mode,
+        "resolved_mode": resolved_mode,
+        "reverse_tunnel_required": resolved_mode == "reverse-tunnel",
+        "proxy_configured": bool(proxy_url),
+        "proxy_source": proxy_source.split(":", 1)[0] if proxy_source else "",
+        "proxy_env_key": proxy_source.split(":", 1)[1] if proxy_source.startswith("env:") else "",
+        "proxy_scheme": scheme[:20],
+        "proxy_endpoint_kind": proxy_endpoint_kind,
+        "proxy_endpoint_port": port,
+        "proxy_url_recorded": False,
+        "raw_probe_output_recorded": False,
+        "test_host": CODEX_API_EGRESS_TEST_HOST,
+        "test_host_public_only": True,
+    }
+
+
+def _probe_http_connect_proxy(
+    *,
+    host: str,
+    port: int,
+    timeout_sec: float,
+) -> str:
+    with socket.create_connection((host, port), timeout=timeout_sec) as sock:
+        sock.settimeout(timeout_sec)
+        request = (
+            f"CONNECT {CODEX_API_EGRESS_TEST_HOST}:{CODEX_API_EGRESS_TEST_PORT} "
+            "HTTP/1.1\r\n"
+            f"Host: {CODEX_API_EGRESS_TEST_HOST}:{CODEX_API_EGRESS_TEST_PORT}\r\n"
+            "Proxy-Connection: close\r\n\r\n"
+        )
+        sock.sendall(request.encode("ascii"))
+        response = sock.recv(256).decode("iso-8859-1", errors="replace")
+    first_line = response.splitlines()[0] if response.splitlines() else ""
+    if " 200 " in f" {first_line} ":
+        return "http_connect_ready"
+    if " 407 " in f" {first_line} ":
+        return "proxy_auth_required"
+    return "proxy_connect_rejected"
+
+
+def _run_codex_api_egress_preflight(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    if not _codex_api_egress_preflight_required(args):
+        contract = _public_codex_api_egress_contract(
+            args,
+            status="not_required",
+            ready=True,
+        )
+        plan["codex_api_egress_preflight"] = contract
+        return contract
+    proxy_url, _source = _codex_api_reverse_tunnel_proxy(args)
+    timeout_sec = max(
+        1.0,
+        float(
+            getattr(
+                args,
+                "codex_api_egress_preflight_timeout_sec",
+                DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC,
+            )
+            or DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC
+        ),
+    )
+    status = "pending"
+    error_kind = ""
+    ready = False
+    mode = _codex_api_egress_resolved_mode(args)
+    try:
+        if mode == "reverse-tunnel":
+            if not proxy_url:
+                status = "missing_reverse_tunnel_proxy"
+                ready = False
+            else:
+                scheme, host, port = _parse_proxy_endpoint(proxy_url)
+                if not host or not port:
+                    raise ValueError("proxy endpoint missing host or port")
+                if scheme == "http":
+                    status = _probe_http_connect_proxy(
+                        host=host,
+                        port=port,
+                        timeout_sec=timeout_sec,
+                    )
+                    ready = status == "http_connect_ready"
+                else:
+                    status = "unsupported_proxy_scheme"
+                    ready = False
+        elif mode == "direct":
+            with socket.create_connection(
+                (CODEX_API_EGRESS_TEST_HOST, CODEX_API_EGRESS_TEST_PORT),
+                timeout=timeout_sec,
+            ):
+                pass
+            status = "direct_tcp_ready"
+            ready = True
+        else:
+            status = "unsupported_egress_mode"
+            ready = False
+    except Exception as exc:
+        error_kind = type(exc).__name__
+        status = "failed"
+        ready = False
+    contract = _public_codex_api_egress_contract(
+        args,
+        status=status,
+        ready=ready,
+        error_kind=error_kind,
+    )
+    plan["codex_api_egress_preflight"] = contract
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    if isinstance(prerequisites, dict):
+        _sync_codex_api_egress_contract(prerequisites, contract)
+    if not ready:
+        raise SkillsBenchSetupPreflightBlocked(
+            "codex API egress preflight blocked: run the native app-server "
+            "goal baseline with --codex-api-egress-mode reverse-tunnel and "
+            "configure --codex-api-reverse-tunnel-proxy or "
+            "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY"
+        )
+    return contract
+
+
+def _sync_codex_api_egress_contract(
+    target: dict[str, Any],
+    contract: dict[str, Any],
+) -> None:
+    target["codex_api_egress_preflight_required"] = bool(contract.get("required"))
+    target["codex_api_egress_preflight_ready"] = bool(contract.get("ready"))
+    target["codex_api_egress_preflight_status"] = str(contract.get("status") or "")
+    target["codex_api_egress_preflight_error_kind"] = str(
+        contract.get("error_kind") or ""
+    )
+    target["codex_api_egress_mode_requested"] = str(
+        contract.get("requested_mode") or ""
+    )
+    target["codex_api_egress_mode_resolved"] = str(
+        contract.get("resolved_mode") or ""
+    )
+    target["codex_api_reverse_tunnel_required"] = bool(
+        contract.get("reverse_tunnel_required")
+    )
+    target["codex_api_reverse_tunnel_proxy_configured"] = bool(
+        contract.get("proxy_configured")
+    )
+    target["codex_api_reverse_tunnel_proxy_source"] = str(
+        contract.get("proxy_source") or ""
+    )
+    target["codex_api_reverse_tunnel_proxy_scheme"] = str(
+        contract.get("proxy_scheme") or ""
+    )
+    target["codex_api_reverse_tunnel_proxy_endpoint_kind"] = str(
+        contract.get("proxy_endpoint_kind") or ""
+    )
+    port = contract.get("proxy_endpoint_port")
+    target["codex_api_reverse_tunnel_proxy_endpoint_port"] = (
+        int(port) if isinstance(port, int) and not isinstance(port, bool) else 0
+    )
+    target["codex_api_reverse_tunnel_proxy_url_recorded"] = False
+
+
+def _host_local_acp_target_env(
+    agent_env: object,
+    *,
+    args: argparse.Namespace | None = None,
+) -> dict[str, str]:
     if not isinstance(agent_env, dict):
-        return {}
+        agent_env = {}
     target_env: dict[str, str] = {}
     for key in HOST_LOCAL_ACP_TARGET_ENV_KEYS:
         value = agent_env.get(key)
         if value is None:
             continue
         target_env[key] = str(value)
+    proxy_url, _proxy_source = _codex_api_reverse_tunnel_proxy(args)
+    if proxy_url and args is not None and _codex_api_egress_preflight_required(args):
+        for key in CODEX_API_PROXY_FORWARD_ENV_KEYS:
+            target_env[key] = proxy_url
+        target_env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
+        target_env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
     return target_env
 
 
@@ -1856,6 +2143,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
         "host_local_acp_codex_exec_failure_category",
+        "codex_api_egress_preflight_status",
+        "codex_api_egress_preflight_error_kind",
+        "codex_api_egress_mode_requested",
+        "codex_api_egress_mode_resolved",
+        "codex_api_reverse_tunnel_proxy_source",
+        "codex_api_reverse_tunnel_proxy_scheme",
+        "codex_api_reverse_tunnel_proxy_endpoint_kind",
         "host_local_acp_proxy_endpoint_status",
         "host_local_acp_proxy_endpoint_env_key",
         "host_local_acp_proxy_endpoint_scheme",
@@ -1882,6 +2176,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_rollout_planes_available",
         "host_local_acp_codex_exec_preflight_requested",
         "host_local_acp_codex_exec_preflight_ready",
+        "codex_api_egress_preflight_required",
+        "codex_api_egress_preflight_ready",
+        "codex_api_reverse_tunnel_required",
+        "codex_api_reverse_tunnel_proxy_configured",
+        "codex_api_reverse_tunnel_proxy_url_recorded",
         "host_local_acp_codex_exec_preflight_response_marker_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_required",
         "host_local_acp_codex_exec_preflight_bridge_action_observed",
@@ -2064,6 +2363,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_task_facing_success_count",
         "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count",
         "host_local_acp_codex_exec_failure_trace_count",
+        "codex_api_reverse_tunnel_proxy_endpoint_port",
         "host_local_acp_proxy_endpoint_loopback_port",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
@@ -5863,6 +6163,15 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     loopx_source_mount = _loopx_source_mount_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     is_app_server_goal_route = route == "codex-app-server-goal-baseline"
+    codex_api_egress_preflight = _public_codex_api_egress_contract(
+        args,
+        status=(
+            "pending"
+            if _codex_api_egress_preflight_required(args)
+            else "not_required"
+        ),
+        ready=not _codex_api_egress_preflight_required(args),
+    )
     remote_command_file_bridge_materialized = bool(
         args.remote_command_file_bridge_ready
         or args.remote_command_file_bridge_probe
@@ -6003,6 +6312,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "ledger_path": str(Path(args.ledger_path).expanduser()),
         "run_permission_policy": run_permission_policy,
         "task_setup_preflight": setup_preflight,
+        "codex_api_egress_preflight": codex_api_egress_preflight,
         "task_staging": {
             "schema_version": "skillsbench_task_staging_v0",
             "staged": False,
@@ -6095,6 +6405,43 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "host_local_acp_launch_status": (
                 "pending" if args.host_local_acp_launch else "not_requested"
             ),
+            "codex_api_egress_preflight_required": bool(
+                codex_api_egress_preflight.get("required")
+            ),
+            "codex_api_egress_preflight_ready": bool(
+                codex_api_egress_preflight.get("ready")
+            ),
+            "codex_api_egress_preflight_status": str(
+                codex_api_egress_preflight.get("status") or ""
+            ),
+            "codex_api_egress_preflight_error_kind": str(
+                codex_api_egress_preflight.get("error_kind") or ""
+            ),
+            "codex_api_egress_mode_requested": str(
+                codex_api_egress_preflight.get("requested_mode") or ""
+            ),
+            "codex_api_egress_mode_resolved": str(
+                codex_api_egress_preflight.get("resolved_mode") or ""
+            ),
+            "codex_api_reverse_tunnel_required": bool(
+                codex_api_egress_preflight.get("reverse_tunnel_required")
+            ),
+            "codex_api_reverse_tunnel_proxy_configured": bool(
+                codex_api_egress_preflight.get("proxy_configured")
+            ),
+            "codex_api_reverse_tunnel_proxy_source": str(
+                codex_api_egress_preflight.get("proxy_source") or ""
+            ),
+            "codex_api_reverse_tunnel_proxy_scheme": str(
+                codex_api_egress_preflight.get("proxy_scheme") or ""
+            ),
+            "codex_api_reverse_tunnel_proxy_endpoint_kind": str(
+                codex_api_egress_preflight.get("proxy_endpoint_kind") or ""
+            ),
+            "codex_api_reverse_tunnel_proxy_endpoint_port": int(
+                codex_api_egress_preflight.get("proxy_endpoint_port") or 0
+            ),
+            "codex_api_reverse_tunnel_proxy_url_recorded": False,
             "loopx_workflow_lifecycle_checkpoint": bool(
                 _is_loopx_product_mode_route(args.route)
                 and args.host_local_acp_launch
@@ -6378,6 +6725,31 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             value = prerequisites.get(source)
             if isinstance(value, int) and not isinstance(value, bool):
                 config[target] = value
+        for field in (
+            "codex_api_egress_preflight_required",
+            "codex_api_egress_preflight_ready",
+            "codex_api_reverse_tunnel_required",
+            "codex_api_reverse_tunnel_proxy_configured",
+            "codex_api_reverse_tunnel_proxy_url_recorded",
+        ):
+            value = prerequisites.get(field)
+            if isinstance(value, bool):
+                config[field] = value
+        for field in (
+            "codex_api_egress_preflight_status",
+            "codex_api_egress_preflight_error_kind",
+            "codex_api_egress_mode_requested",
+            "codex_api_egress_mode_resolved",
+            "codex_api_reverse_tunnel_proxy_source",
+            "codex_api_reverse_tunnel_proxy_scheme",
+            "codex_api_reverse_tunnel_proxy_endpoint_kind",
+        ):
+            value = prerequisites.get(field)
+            if isinstance(value, str) and value:
+                config[field] = value[:80]
+        value = prerequisites.get("codex_api_reverse_tunnel_proxy_endpoint_port")
+        if isinstance(value, int) and not isinstance(value, bool):
+            config["codex_api_reverse_tunnel_proxy_endpoint_port"] = value
     return config
 
 
@@ -10000,7 +10372,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             )
             prerequisites.setdefault("host_local_acp_sandbox_bridge_configured", False)
             prerequisites.setdefault("host_local_acp_sandbox_bridge_path_recorded", False)
-        target_env = _host_local_acp_target_env(agent_env)
+        target_env = _host_local_acp_target_env(agent_env, args=args)
         prerequisites["host_local_acp_target_env_forwarded"] = bool(target_env)
         prerequisites["host_local_acp_target_env_key_count"] = len(target_env)
         prerequisites["host_local_acp_target_env_keys"] = sorted(target_env)
@@ -12311,6 +12683,39 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--codex-api-reverse-tunnel-proxy",
+        default=os.environ.get("LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY", ""),
+        help=(
+            "HTTP proxy URL for a reverse tunnel that lets a remote host-side "
+            "Codex app-server reach the Codex backend. The URL is forwarded "
+            "only to the private worker environment and is never written to "
+            "public compact artifacts; public artifacts record only a redacted "
+            "proxy source/scheme/port summary."
+        ),
+    )
+    parser.add_argument(
+        "--codex-api-egress-mode",
+        choices=CODEX_API_EGRESS_MODE_CHOICES,
+        default=os.environ.get("LOOPX_CODEX_API_EGRESS_MODE", "auto"),
+        help=(
+            "How native app-server goal workers reach the Codex backend. "
+            "For formal host-local app-server benchmark runs, auto resolves "
+            "to reverse-tunnel so the runner fails fast unless a checked HTTP "
+            "CONNECT reverse tunnel proxy is configured. direct is intended "
+            "only for explicit local debugging."
+        ),
+    )
+    parser.add_argument(
+        "--codex-api-egress-preflight-timeout-sec",
+        type=float,
+        default=DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC,
+        help=(
+            "Timeout for the native app-server Codex API egress preflight. "
+            "For remote benchmark hosts, configure a reverse tunnel proxy "
+            "before running formal codex-app-server-goal-baseline cases."
+        ),
+    )
+    parser.add_argument(
         "--host-local-acp-codex-exec-preflight",
         action="store_true",
         help=(
@@ -12539,6 +12944,16 @@ async def async_main(
             "skillsbench task source preflight blocked: "
             "task missing from canonical tasks source before full case run"
         )
+
+    if (
+        _codex_api_egress_preflight_required(args)
+        and not args.reduce_only
+    ):
+        try:
+            _run_codex_api_egress_preflight(args, plan)
+        finally:
+            _write_public_runner_config(plan)
+            _write_public_runner_prerequisites(plan)
 
     if (
         _host_local_acp_codex_exec_preflight_should_run(args)

@@ -1740,6 +1740,10 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, Any]:
         "volume_mount_failure": r"mount|volume|bind source path",
         "permission_denied": r"permission denied|operation not permitted",
         "missing_file": r"no such file|not found|does not exist",
+        "codex_api_egress_failure": (
+            r"codex api egress preflight|reverse tunnel proxy|"
+            r"loopx_codex_api_reverse_tunnel_proxy"
+        ),
         "task_output_quiet_timeout": r"codex_exec_task_output_quiet_timeout",
         "image_build": r"failed to solve|failed to build|dockerfile|pull access denied|manifest unknown",
         "port_conflict": r"port is already allocated|address already in use|ports are not available|bind for",

@@ -149,6 +149,172 @@ def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
     assert args.route != "codex-goal-mode-baseline", args
 
 
+def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-api-tunnel-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        proxy_url = "http://127.0.0.1:18080"
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--codex-api-egress-mode",
+                "reverse-tunnel",
+                "--codex-api-reverse-tunnel-proxy",
+                proxy_url,
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+            ]
+        )
+        plan = build_plan(args)
+        egress = plan["codex_api_egress_preflight"]
+        assert egress["required"] is True, egress
+        assert egress["ready"] is False, egress
+        assert egress["status"] == "pending", egress
+        assert egress["requested_mode"] == "reverse-tunnel", egress
+        assert egress["resolved_mode"] == "reverse-tunnel", egress
+        assert egress["reverse_tunnel_required"] is True, egress
+        assert egress["proxy_configured"] is True, egress
+        assert egress["proxy_source"] == "cli", egress
+        assert egress["proxy_scheme"] == "http", egress
+        assert egress["proxy_endpoint_kind"] == "loopback", egress
+        assert egress["proxy_endpoint_port"] == 18080, egress
+        assert egress["proxy_url_recorded"] is False, egress
+        assert proxy_url not in json.dumps(plan, sort_keys=True), plan
+
+        target_env = skillsbench_loop._host_local_acp_target_env({}, args=args)
+        for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+            assert target_env[key] == proxy_url, target_env
+        assert target_env["LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY"] == proxy_url
+        assert "127.0.0.1" in target_env["NO_PROXY"], target_env
+
+        config = plan["runner_config"]
+        assert config["codex_api_egress_preflight_required"] is True, config
+        assert config["codex_api_egress_mode_requested"] == "reverse-tunnel", config
+        assert config["codex_api_egress_mode_resolved"] == "reverse-tunnel", config
+        assert config["codex_api_reverse_tunnel_required"] is True, config
+        assert config["codex_api_reverse_tunnel_proxy_configured"] is True, config
+        assert config["codex_api_reverse_tunnel_proxy_endpoint_port"] == 18080, config
+        assert config["codex_api_reverse_tunnel_proxy_url_recorded"] is False, config
+        assert proxy_url not in json.dumps(config, sort_keys=True), config
+
+
+def test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-api-proxy-scheme-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        proxy_url = "socks5://127.0.0.1:18080"
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--codex-api-egress-mode",
+                "reverse-tunnel",
+                "--codex-api-reverse-tunnel-proxy",
+                proxy_url,
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+            ]
+        )
+        plan = build_plan(args)
+        try:
+            skillsbench_loop._run_codex_api_egress_preflight(args, plan)
+        except skillsbench_loop.SkillsBenchSetupPreflightBlocked:
+            pass
+        else:  # pragma: no cover - assertion path for script-style smoke
+            raise AssertionError("unsupported proxy scheme should block preflight")
+
+        egress = plan["codex_api_egress_preflight"]
+        assert egress["status"] == "unsupported_proxy_scheme", egress
+        assert egress["ready"] is False, egress
+        assert egress["resolved_mode"] == "reverse-tunnel", egress
+        assert egress["proxy_scheme"] == "socks5", egress
+        assert egress["proxy_url_recorded"] is False, egress
+        assert proxy_url not in json.dumps(plan, sort_keys=True), plan
+
+
+def test_codex_app_server_goal_blocks_without_codex_api_egress() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-api-egress-block-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        original_create_connection = skillsbench_loop.socket.create_connection
+
+        def fake_create_connection(*_args: Any, **_kwargs: Any) -> None:
+            raise TimeoutError("simulated blocked codex api egress")
+
+        skillsbench_loop.socket.create_connection = fake_create_connection
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = skillsbench_automation_loop_main(
+                    [
+                        "--task-id",
+                        "citation-check",
+                        "--route",
+                        "codex-app-server-goal-baseline",
+                        "--host-local-acp-launch",
+                        "--remote-command-file-bridge-ready",
+                        "--skillsbench-root",
+                        str(skillsbench_root),
+                        "--jobs-dir",
+                        str(root / "jobs"),
+                        "--job-name",
+                        "skillsbench-codex-api-egress-block",
+                        "--rollout-name",
+                        "citation-check__codex_app_server_goal",
+                    ]
+                )
+        finally:
+            skillsbench_loop.socket.create_connection = original_create_connection
+
+        assert rc == 0, stderr.getvalue()
+        payload = json.loads(stderr.getvalue())
+        assert payload["compact_closeout_recorded"] is True, payload
+        compact = json.loads(
+            Path(payload["compact_benchmark_run_json"]).read_text(encoding="utf-8")
+        )
+        prereqs = compact["runner_prerequisites"]
+        assert prereqs["codex_api_egress_preflight_required"] is True, compact
+        assert prereqs["codex_api_egress_preflight_ready"] is False, compact
+        assert prereqs["codex_api_egress_preflight_status"] == (
+            "missing_reverse_tunnel_proxy"
+        ), compact
+        assert prereqs["codex_api_egress_mode_requested"] == "auto", compact
+        assert prereqs["codex_api_egress_mode_resolved"] == "reverse-tunnel", compact
+        assert prereqs["codex_api_reverse_tunnel_required"] is True, compact
+        assert prereqs["codex_api_reverse_tunnel_proxy_configured"] is False, compact
+        assert prereqs["codex_api_reverse_tunnel_proxy_url_recorded"] is False, compact
+        assert "codex_api_egress_failure" in compact["runner_failure_fingerprint"][
+            "matched_patterns"
+        ], compact
+        assert "simulated blocked codex api egress" not in json.dumps(compact), compact
+
+
 def test_skillsbench_plan_only_batch_parallel_case_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-plan-batch-") as tmp:
         root = Path(tmp)
@@ -12511,6 +12677,9 @@ def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> N
 
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
+    test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract()
+    test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme()
+    test_codex_app_server_goal_blocks_without_codex_api_egress()
     test_skillsbench_plan_only_batch_parallel_case_contract()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
