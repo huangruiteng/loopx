@@ -3118,7 +3118,11 @@ def _skillsbench_native_goal_worker_failure_label(
 ) -> str:
     if counters.get("native_goal_worker_route") is not True:
         return ""
-    if trace_status == "public_trace_observed":
+    has_worker_failure_trace = bool(
+        counters.get("native_goal_worker_failure_trace_count", 0)
+        or counters.get("native_goal_worker_failure_category")
+    )
+    if trace_status == "public_trace_observed" and not has_worker_failure_trace:
         return ""
 
     reason = ""

@@ -61,11 +61,36 @@ for line in sys.stdin:
                 "error": {"code": -32602, "message": "missing high effort"},
             }), flush=True)
             continue
+        prompt_text = msg.get("params", {}).get("input", [{}])[0].get("text", "")
         print(json.dumps({
             "method": "turn/started",
             "params": {
                 "threadId": "thread-skillsbench",
                 "turn": {"id": "turn-event-skillsbench", "status": "inProgress"},
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "item/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-event-skillsbench",
+                "item": {
+                    "id": "user-item-skillsbench",
+                    "type": "userMessage",
+                    "content": [{"type": "text", "text": prompt_text}],
+                },
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "item/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-event-skillsbench",
+                "item": {
+                    "id": "user-item-skillsbench",
+                    "type": "userMessage",
+                    "content": [{"type": "text", "text": prompt_text}],
+                },
             },
         }), flush=True)
         result = {"turn": {"id": "turn-response-skillsbench", "status": "running"}}
@@ -113,6 +138,60 @@ for line in sys.stdin:
     elif method == "turn/start":
         result = {"turn": {"id": "turn-skillsbench", "status": "running"}}
         print(json.dumps({"id": mid, "result": result}), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
+FAKE_CODEX_USER_ONLY_COMPLETED = """#!/usr/bin/env python3
+import json
+import sys
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        prompt_text = msg.get("params", {}).get("input", [{}])[0].get("text", "")
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-user-only", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-user-only", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-user-only",
+                "item": {
+                    "id": "user-item-only",
+                    "type": "userMessage",
+                    "content": [{"type": "text", "text": prompt_text}],
+                },
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-user-only", "status": "completed"},
+            },
+        }), flush=True)
         continue
     else:
         result = {}
@@ -452,6 +531,8 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert "completion_marker_observed" not in payload["turn"], payload
         assert "completion_marker_deleted" not in payload["turn"], payload
         assert payload["turn"]["assistant_message_present"] is True, payload
+        assert payload["turn"]["user_message_item_count"] == 1, payload
+        assert payload["turn"]["agent_message_item_count"] == 0, payload
         assert payload["loopx_case_lifecycle_packet_injected"] is False, payload
         assert payload["turn"]["loopx_case_lifecycle_packet_injected"] is False, payload
         assert payload["private_response_text"]["written"] is True, payload
@@ -517,6 +598,57 @@ def test_host_worker_fails_closed_on_first_action_timeout() -> None:
         assert payload["turn"]["first_action_timeout_sec"] == 1.0, payload
         assert not private_response.exists(), result
         assert not list(work.glob(".loopx_app_server_goal_worker_response_*.txt"))
+
+
+def test_host_worker_fails_closed_when_only_user_message_echo_completes() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-worker-user-only-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_USER_ONLY_COMPLETED, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 1, result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is False, payload
+        assert payload["error_type"] == "codex_app_server_no_assistant_message", payload
+        assert (
+            payload["worker_contract"]["first_blocker"]
+            == "codex_app_server_no_assistant_message"
+        ), payload
+        assert payload["turn"]["turn_completed_observed"] is True, payload
+        assert payload["turn"]["assistant_message_present"] is False, payload
+        assert payload["turn"]["user_message_item_count"] == 1, payload
+        assert payload["turn"]["non_user_item_completed_count"] == 0, payload
+        assert not private_response.exists(), result
 
 
 def test_acp_relay_delegates_to_app_server_goal_worker() -> None:

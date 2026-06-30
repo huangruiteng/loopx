@@ -39,11 +39,36 @@ for line in sys.stdin:
                 "error": {"code": -32602, "message": "missing high effort"},
             }), flush=True)
             continue
+        prompt_text = msg.get("params", {}).get("input", [{}])[0].get("text", "")
         print(json.dumps({
             "method": "turn/started",
             "params": {
                 "threadId": "thread-smoke",
                 "turn": {"id": "turn-event-smoke", "status": "inProgress"},
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "item/started",
+            "params": {
+                "threadId": "thread-smoke",
+                "turnId": "turn-event-smoke",
+                "item": {
+                    "id": "user-item-smoke",
+                    "type": "userMessage",
+                    "content": [{"type": "text", "text": prompt_text}],
+                },
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "item/completed",
+            "params": {
+                "threadId": "thread-smoke",
+                "turnId": "turn-event-smoke",
+                "item": {
+                    "id": "user-item-smoke",
+                    "type": "userMessage",
+                    "content": [{"type": "text", "text": prompt_text}],
+                },
             },
         }), flush=True)
         result = {"turn": {"id": "turn-response-smoke", "status": "running"}}
@@ -109,6 +134,8 @@ def main() -> int:
             assert compact["turn_start_response_turn_id_present"] is True, compact
             assert compact["turn_event_stream_turn_id_present"] is True, compact
             assert compact["turn_completed_observed"] is False
+            assert compact["user_message_item_count"] == 1, compact
+            assert compact["agent_message_item_count"] == 0, compact
             assert compact["raw_transcript_recorded"] is False
             assert "Synthetic prompt" not in json.dumps(compact)
             observed = module.observe_codex_app_server_goal_turn(
@@ -120,6 +147,8 @@ def main() -> int:
             compact = module.compact_turn_metadata(turn)
             assert compact["turn_completed_observed"] is True, compact
             assert compact["assistant_message_present"] is True, compact
+            assert compact["user_message_item_count"] == 1, compact
+            assert compact["agent_message_item_count"] == 0, compact
             assert "Synthetic final answer." not in json.dumps(compact), compact
         finally:
             turn.terminate()

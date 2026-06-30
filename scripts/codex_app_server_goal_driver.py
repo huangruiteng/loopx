@@ -34,6 +34,8 @@ class CodexAppServerGoalTurn:
     agent_message_delta_count: int = 0
     agent_message_item_count: int = 0
     item_completed_count: int = 0
+    non_user_item_completed_count: int = 0
+    user_message_item_count: int = 0
     notifications: list[str] = field(default_factory=list)
     _responses: "queue.Queue[dict[str, Any] | Exception] | None" = field(
         default=None,
@@ -230,8 +232,13 @@ def _record_turn_event(
     if method == "item/completed":
         turn.item_completed_count += 1
         item = params.get("item")
+        item_type = str(item.get("type") or "") if isinstance(item, dict) else ""
+        if item_type == "userMessage":
+            turn.user_message_item_count += 1
+            return False
+        turn.non_user_item_completed_count += 1
         item_text = _item_text(item)
-        if item_text:
+        if item_type == "agentMessage" and item_text:
             turn.agent_message_item_count += 1
             if not turn._assistant_message_parts:
                 turn._assistant_message_parts.append(item_text)
@@ -584,6 +591,8 @@ def compact_turn_metadata(turn: CodexAppServerGoalTurn) -> dict[str, Any]:
         "agent_message_delta_count": int(turn.agent_message_delta_count),
         "agent_message_item_count": int(turn.agent_message_item_count),
         "item_completed_count": int(turn.item_completed_count),
+        "non_user_item_completed_count": int(turn.non_user_item_completed_count),
+        "user_message_item_count": int(turn.user_message_item_count),
         "assistant_message_present": bool(assistant_message),
         "assistant_message_chars": len(assistant_message),
         "assistant_message_sha256": sha256(assistant_message.encode()).hexdigest()

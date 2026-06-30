@@ -105,12 +105,12 @@ def _first_action_observed(turn: Any) -> bool:
         return True
     if int(getattr(turn, "agent_message_item_count", 0) or 0) > 0:
         return True
-    if int(getattr(turn, "item_completed_count", 0) or 0) > 0:
+    if int(getattr(turn, "non_user_item_completed_count", 0) or 0) > 0:
         return True
     notifications = getattr(turn, "notifications", []) or []
     for method in notifications:
         text = str(method or "")
-        if text.startswith("item/"):
+        if text.startswith("item/agentMessage"):
             return True
     return False
 
@@ -201,6 +201,12 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                 "benchmark_case_lifecycle_contract": lifecycle_contract,
             }
         )
+        if (
+            not worker_error_type
+            and not args.no_wait_for_completion
+            and compact.get("assistant_message_present") is not True
+        ):
+            worker_error_type = "codex_app_server_no_assistant_message"
         private_response_written = False
         if args.response_text_file and turn.assistant_message:
             response_path = Path(args.response_text_file).expanduser()
