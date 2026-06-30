@@ -342,6 +342,49 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "review-packet-read-path",
+        "title": "Review-packet read-path contract",
+        "purpose": "Check operator review packets, handoff-only payloads, and task-graph lineage before review-packet/read-path changes ship.",
+        "catalog_families": ["Work Routing", "Human Decision", "State And Boundary"],
+        "trigger_hints": (
+            "review-packet",
+            "review packet",
+            "handoff-only",
+            "project-agent handoff",
+            "operator packet",
+            "loopx/review_packet.py",
+            "loopx/cli_commands/status",
+            "docs/status-data-contract.md",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/review-packet-cli-smoke.py",
+                "tier": "default",
+                "reason": "guards CLI-visible review-packet and handoff-only JSON contracts",
+            },
+            {
+                "command": "python3 examples/review-packet-smoke.py",
+                "tier": "default",
+                "reason": "checks dashboard/operator packet copy and public-safe handoff text",
+            },
+            {
+                "command": "python3 examples/task-graph-projection-fixture-smoke.py",
+                "tier": "default",
+                "reason": "guards task-graph lineage consumed by review packets without private sources",
+            },
+            {
+                "command": "python3 examples/control-plane-integrated-canary-smoke.py",
+                "tier": "deep",
+                "reason": "samples the bounded status -> quota -> review-packet event read path",
+            },
+            {
+                "command": "python3 examples/hot-path-interface-budget-smoke.py",
+                "tier": "deep",
+                "reason": "checks review-packet handoff interface budgets after hot-path changes",
+            },
+        ],
+    },
+    {
         "id": "cli-command-contract",
         "title": "CLI command module contract",
         "purpose": "Check command-module boundaries, ownership budgets, and compatibility for LoopX CLI refactors.",

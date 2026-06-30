@@ -45,6 +45,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "install-update",
         "control-plane-refactor",
         "status-read-path",
+        "review-packet-read-path",
         "cli-command-contract",
         "todo-lifecycle",
         "monitor-scheduler",
@@ -143,6 +144,22 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     status_commands = [check["command"] for check in status_profiles["status-read-path"]["checks"]]
     assert "python3 examples/status-goal-filter-smoke.py" in status_commands, status_payload
     assert all(check["tier"] == "default" for check in status_profiles["status-read-path"]["checks"]), status_payload
+
+    review_packet_payload = build_catalog_canary_plan(
+        changed_files=["loopx/review_packet.py", "loopx/cli_commands/status.py"],
+        surfaces=["review-packet handoff-only operator packet read-path"],
+    )
+    review_packet_profiles = {
+        profile["id"]: profile for profile in review_packet_payload["domain_profiles"]
+    }
+    assert "review-packet-read-path" in review_packet_profiles, review_packet_payload
+    review_packet_profile = review_packet_profiles["review-packet-read-path"]
+    review_packet_commands = [check["command"] for check in review_packet_profile["checks"]]
+    assert "python3 examples/review-packet-cli-smoke.py" in review_packet_commands, review_packet_profile
+    assert "python3 examples/review-packet-smoke.py" in review_packet_commands, review_packet_profile
+    assert all(check["tier"] == "default" for check in review_packet_profile["checks"]), review_packet_profile
+    assert review_packet_profile["deep_checks_available"] is True, review_packet_profile
+    assert review_packet_profile["deep_checks_included"] is False, review_packet_profile
 
     cli_payload = build_catalog_canary_plan(
         changed_files=["loopx/cli.py", "loopx/cli_commands/version.py"],
