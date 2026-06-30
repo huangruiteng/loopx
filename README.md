@@ -170,23 +170,32 @@ ask me to manually run `heartbeat-prompt`. Then stop and report the project
 connection status, current user gate, top agent todo, and next safe action.
 ```
 
-Then start a real long-running task in normal language:
+Then start a real E2E exploration in normal language:
 
 ```text
-/loopx Stabilize our flaky checkout tests, split the fix into safe PR-sized
-steps, keep private logs out of public artifacts, and hand off any production
-or release decision back to me.
+/loopx Explore an LLM semantic rerank slice for a recommendation or search
+system: build an offline eval set, implement a minimal candidate -> semantic
+feature -> rerank -> eval path, add trace/cache/fallback/cost guardrails,
+compare baseline vs treatment, and stop for production traffic, private data,
+credentials, or AB/canary gates.
 ```
 
-LoopX will plan before writing state, then create ordered P0/P1/P2 todos such
-as:
+LoopX will plan before writing state, then create ordered P0/P1/P2 todos that
+make the algorithm, infra, validation, and human gates visible.
+
+<details>
+<summary>Example visible todos</summary>
 
 ```text
-[P0] Reproduce the flaky checkout failure and capture public-safe evidence.
-[P0] Patch the narrowest failing path and run the focused smoke.
-[P1] Open or prepare the PR with validation notes and remaining risk.
-[P2] Add a follow-up monitor or cleanup task only if the evidence justifies it.
+[P0] Build the offline eval set: samples, labels, baseline, metrics, leakage check.
+[P0] Implement the vertical slice: candidate input -> semantic feature -> rerank -> eval.
+[P0] Add infra guardrails: trace schema, cache/fallback, rate limit, latency/cost budget.
+[P0] Ask before production traffic, private data, credentials, or AB/canary decisions.
+[P1] Compare baseline vs treatment with effect, cost, latency, and failure cases.
+[P2] Write the promotion handoff: canary evidence, rollback plan, and next experiment.
 ```
+
+</details>
 
 After that, each tick reads `quota should-run`: if a user gate blocks the chosen
 path, the agent asks a concrete question; if a safe fallback exists, it keeps
