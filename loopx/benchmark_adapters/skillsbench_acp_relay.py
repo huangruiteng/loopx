@@ -2397,6 +2397,7 @@ raise SystemExit(proc.returncode)
                     "completion_source_of_truth",
                     "first_action_timeout_sec",
                     "first_action_observed",
+                    "effective_action_observed",
                     "raw_transcript_recorded",
                     "raw_assistant_message_recorded",
                 ),

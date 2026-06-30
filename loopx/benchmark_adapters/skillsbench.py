@@ -2400,6 +2400,12 @@ def _skillsbench_controller_trace_counters(
         "native_goal_worker_assistant_message_present_count": count(
             "native_goal_worker_assistant_message_present_count"
         ),
+        "native_goal_worker_first_action_observed_count": count(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "native_goal_worker_effective_action_observed_count": count(
+            "native_goal_worker_effective_action_observed_count"
+        ),
         "remote_command_file_bridge_consumed_by_solver": controller_trace.get(
             "remote_command_file_bridge_consumed_by_solver"
         )
@@ -3479,6 +3485,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ),
         "assistant_message_present_count": _controller_public_count(
             "native_goal_worker_assistant_message_present_count"
+        ),
+        "first_action_observed_count": _controller_public_count(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "effective_action_observed_count": _controller_public_count(
+            "native_goal_worker_effective_action_observed_count"
         ),
         "failure_trace_count": _controller_public_count(
             "native_goal_worker_failure_trace_count"
@@ -5302,6 +5314,14 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "native_goal_worker_prompt_received_count": controller_counters.get(
                 "native_goal_worker_prompt_received_count", 0
+            ),
+            "native_goal_worker_first_action_observed_count": controller_counters.get(
+                "native_goal_worker_first_action_observed_count", 0
+            ),
+            "native_goal_worker_effective_action_observed_count": (
+                controller_counters.get(
+                    "native_goal_worker_effective_action_observed_count", 0
+                )
             ),
             "native_goal_worker_trace_status": native_goal_worker_trace_status,
             "native_goal_worker_countable_baseline": native_goal_worker_countable,

@@ -144,6 +144,51 @@ for line in sys.stdin:
     print(json.dumps({"id": mid, "result": result}), flush=True)
 """
 
+FAKE_CODEX_THOUGHT_ONLY_NO_COMPLETION = """#!/usr/bin/env python3
+import json
+import sys
+import time
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-thought-only", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-thought-only", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-thought-only",
+                "itemId": "item-thought-only",
+                "delta": "thinking heartbeat without task action",
+            },
+        }), flush=True)
+        time.sleep(10)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
 FAKE_CODEX_USER_ONLY_COMPLETED = """#!/usr/bin/env python3
 import json
 import sys
@@ -598,6 +643,56 @@ def test_host_worker_fails_closed_on_first_action_timeout() -> None:
         assert payload["turn"]["first_action_timeout_sec"] == 1.0, payload
         assert not private_response.exists(), result
         assert not list(work.glob(".loopx_app_server_goal_worker_response_*.txt"))
+
+
+def test_host_worker_treats_thought_delta_as_no_effective_first_action() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-worker-thought-only-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_THOUGHT_ONLY_NO_COMPLETION, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--first-action-timeout-sec",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 1, result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is False, payload
+        assert payload["error_type"] == "codex_exec_first_action_timeout", payload
+        assert payload["turn"]["first_action_observed"] is True, payload
+        assert payload["turn"]["effective_action_observed"] is False, payload
+        assert payload["turn"]["agent_message_delta_count"] == 1, payload
+        assert payload["turn"]["turn_completed_observed"] is False, payload
+        assert payload["turn"]["assistant_message_present"] is False, payload
+        assert not private_response.exists(), payload
 
 
 def test_host_worker_fails_closed_when_only_user_message_echo_completes() -> None:

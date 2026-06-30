@@ -1576,6 +1576,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -1816,6 +1818,8 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
         "goal_get_count",
         "turn_start_count",
         "assistant_message_present_count",
+        "first_action_observed_count",
+        "effective_action_observed_count",
         "failure_trace_count",
         "bridge_task_facing_operation_count",
         "bridge_task_facing_success_count",
@@ -3689,6 +3693,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -4196,6 +4202,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "native_goal_worker_trace_count",
             "native_goal_worker_lifecycle_trace_count",
             "native_goal_worker_prompt_received_count",
+            "native_goal_worker_first_action_observed_count",
+            "native_goal_worker_effective_action_observed_count",
         ):
             value = validation.get(field)
             if isinstance(value, int) and not isinstance(value, bool):

@@ -115,6 +115,18 @@ def _first_action_observed(turn: Any) -> bool:
     return False
 
 
+def _effective_action_observed(turn: Any) -> bool:
+    if bool(getattr(turn, "turn_completed_observed", False)):
+        return True
+    if str(getattr(turn, "assistant_message", "") or ""):
+        return True
+    if int(getattr(turn, "agent_message_item_count", 0) or 0) > 0:
+        return True
+    if int(getattr(turn, "non_user_item_completed_count", 0) or 0) > 0:
+        return True
+    return False
+
+
 def _wait_for_worker_turn_completion(
     turn: Any,
     *,
@@ -133,7 +145,7 @@ def _wait_for_worker_turn_completion(
             return True
         if (
             first_action_deadline
-            and not _first_action_observed(turn)
+            and not _effective_action_observed(turn)
             and time.monotonic() >= first_action_deadline
         ):
             raise TimeoutError("codex_exec_first_action_timeout")
@@ -195,6 +207,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                     0.0, float(args.first_action_timeout_sec or 0.0)
                 ),
                 "first_action_observed": _first_action_observed(turn),
+                "effective_action_observed": _effective_action_observed(turn),
                 "loopx_mode": args.loopx_mode,
                 "loopx_access_packet_mode": args.loopx_access_packet_mode,
                 "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),

@@ -7258,6 +7258,8 @@ def _merge_app_server_goal_worker_trace_summary(
     turn_start_count = 0
     turn_completed_count = 0
     assistant_message_count = 0
+    first_action_count = 0
+    effective_action_count = 0
     raw_material_recorded = False
     for path in files:
         try:
@@ -7311,6 +7313,10 @@ def _merge_app_server_goal_worker_trace_summary(
             turn_completed_count += 1
         if turn.get("assistant_message_present") is True:
             assistant_message_count += 1
+        if turn.get("first_action_observed") is True:
+            first_action_count += 1
+        if turn.get("effective_action_observed") is True:
+            effective_action_count += 1
         boundary = (
             payload.get("boundary")
             if isinstance(payload.get("boundary"), dict)
@@ -7350,6 +7356,10 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_turn_completed_observed_count"] = turn_completed_count
     trace["native_goal_worker_assistant_message_present_count"] = (
         assistant_message_count
+    )
+    trace["native_goal_worker_first_action_observed_count"] = first_action_count
+    trace["native_goal_worker_effective_action_observed_count"] = (
+        effective_action_count
     )
     trace["native_goal_worker_public_trace_read"] = worker_trace_count > 0
     trace["native_goal_worker_raw_material_recorded"] = raw_material_recorded
