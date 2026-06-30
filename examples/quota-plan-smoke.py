@@ -2044,6 +2044,49 @@ def assert_monitor_poll_event_carries_agent_id() -> None:
     assert target["effective_action"] == "monitor_quiet_skip", target
 
 
+def assert_delivery_completion_spend_preserves_requested_agent_id() -> None:
+    before = {
+        "goal_id": "delivery-completion-goal",
+        "should_run": False,
+        "normal_delivery_allowed": False,
+        "recovery_delivery_allowed": False,
+        "effective_action": "monitor_quiet_skip",
+        "self_repair_allowed": False,
+        "capability_repair_allowed": False,
+        "workspace_repair_allowed": False,
+        "state": "eligible",
+        "safe_bypass_allowed": False,
+        "quota": {
+            "compute": 1.0,
+            "window_hours": 24,
+            "slot_minutes": 1,
+            "spent_slots": 0,
+            "allowed_slots": 1440,
+        },
+    }
+    after = deepcopy(before)
+    after["quota"] = {**before["quota"], "spent_slots": 1}
+    preview = {
+        "ok": True,
+        "mode": "spend-slot",
+        "dry_run": True,
+        "goal_id": "delivery-completion-goal",
+        "slots": 1,
+        "agent_id": SCOPED_AGENT_ID,
+        "before": before,
+        "after": after,
+        "delivery_completion_spend": True,
+        "delivery_run_generated_at": "2026-01-01T00:00:00+00:00",
+        "delivery_run_classification": "validated_delivery_fixture",
+    }
+    event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert event["agent_id"] == SCOPED_AGENT_ID, event
+    assert event["quota_event"]["agent_id"] == SCOPED_AGENT_ID, event
+    assert event["quota_event"]["delivery_run_classification"] == "validated_delivery_fixture", event
+    assert "validated delivery" in event["health_check"], event
+
+
 def main() -> int:
     assert_default_quota_is_duty_cycle()
     assert_rolling_window_ledger_expires_old_spends()
@@ -2071,6 +2114,7 @@ def main() -> int:
     assert_safe_bypass_slot_preview(status_payload)
     assert_quota_void_event_net_ledger()
     assert_monitor_poll_event_carries_agent_id()
+    assert_delivery_completion_spend_preserves_requested_agent_id()
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="loopx-quota-plan-smoke-") as tmp:
         cli_plan, cli_markdown = run_cli_quota_plan(Path(tmp))

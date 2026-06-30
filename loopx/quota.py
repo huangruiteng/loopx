@@ -7237,6 +7237,7 @@ def build_quota_slot_preview(
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     safe_slots = max(1, _int_number(slots, default=1))
+    safe_requested_agent_id = normalize_todo_claimed_by(agent_id)
     before = build_quota_should_run(
         status_payload,
         goal_id=safe_goal_id,
@@ -7267,6 +7268,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": (
@@ -7304,6 +7306,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": before.get("reason") or "goal is not eligible for quota accounting preview",
@@ -7319,6 +7322,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": "goal has no quota payload to preview",
@@ -7356,6 +7360,7 @@ def build_quota_slot_preview(
         "dry_run": True,
         "goal_id": safe_goal_id,
         "slots": safe_slots,
+        "agent_id": safe_requested_agent_id,
         "appended": False,
         "registry_mutated": False,
         "before": before,
@@ -7863,7 +7868,7 @@ def build_quota_slot_spend_event(
         raise ValueError(f"quota slot spend source must be one of: {', '.join(sorted(VALID_SLOT_SPEND_SOURCES))}")
     before = preview.get("before") if isinstance(preview.get("before"), dict) else {}
     after = preview.get("after") if isinstance(preview.get("after"), dict) else {}
-    safe_agent_id = _quota_decision_agent_id(before)
+    safe_agent_id = normalize_todo_claimed_by(preview.get("agent_id")) or _quota_decision_agent_id(before)
     slots = max(1, _int_number(preview.get("slots"), default=1))
     before_compact = _compact_quota_decision(before)
     after_compact = _compact_quota_decision(after)
