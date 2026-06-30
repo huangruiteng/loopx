@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import subprocess
 import threading
@@ -23,6 +24,7 @@ class CodexAppServerGoalTurn:
     process: subprocess.Popen[str]
     thread_id: str
     turn_id: str
+    work_dir: Path | None = None
     turn_id_source: str = ""
     turn_start_response_turn_id_present: bool = False
     turn_event_stream_turn_id_present: bool = False
@@ -36,12 +38,16 @@ class CodexAppServerGoalTurn:
     item_completed_count: int = 0
     non_user_item_completed_count: int = 0
     user_message_item_count: int = 0
+    session_event_count: int = 0
+    session_log_observed: bool = False
+    session_task_complete_observed: bool = False
     notifications: list[str] = field(default_factory=list)
     _responses: "queue.Queue[dict[str, Any] | Exception] | None" = field(
         default=None,
         repr=False,
     )
     _assistant_message_parts: list[str] = field(default_factory=list, repr=False)
+    _session_offsets: dict[str, int] = field(default_factory=dict, repr=False)
 
     def terminate(self, *, timeout_sec: float = 2.0) -> None:
         self.process.terminate()
@@ -65,6 +71,57 @@ def _reader_thread(
                 out.put(exc)
     finally:
         out.put(EOFError("codex app-server stream closed"))
+
+
+def _process_descendant_pids(root_pid: int) -> set[int]:
+    proc_root = Path("/proc")
+    if not proc_root.exists():
+        return {root_pid}
+    children: dict[int, list[int]] = {}
+    for stat_path in proc_root.glob("[0-9]*/stat"):
+        try:
+            text = stat_path.read_text(errors="ignore")
+            pid = int(stat_path.parent.name)
+            # /proc/<pid>/stat has a comm field in parentheses; ppid follows it.
+            after_comm = text.rsplit(")", 1)[1].strip().split()
+            ppid = int(after_comm[1])
+        except Exception:
+            continue
+        children.setdefault(ppid, []).append(pid)
+    seen: set[int] = set()
+    stack = [root_pid]
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        stack.extend(children.get(pid, []))
+    return seen
+
+
+def _codex_session_jsonl_paths(turn: CodexAppServerGoalTurn) -> list[Path]:
+    paths: list[Path] = []
+    if turn.work_dir is not None:
+        try:
+            paths.extend(turn.work_dir.glob("rollout-*.jsonl"))
+        except OSError:
+            pass
+    proc = turn.process
+    proc_root = Path("/proc")
+    if not proc_root.exists() or proc.pid is None:
+        return sorted(set(paths))
+    for pid in sorted(_process_descendant_pids(int(proc.pid))):
+        fd_dir = proc_root / str(pid) / "fd"
+        if not fd_dir.exists():
+            continue
+        for fd in fd_dir.iterdir():
+            try:
+                target = Path(os.readlink(fd))
+            except OSError:
+                continue
+            if target.suffix == ".jsonl" and target.name.startswith("rollout-"):
+                paths.append(target)
+    return sorted(set(paths))
 
 
 def _send_json(proc: subprocess.Popen[str], message: dict[str, Any]) -> None:
@@ -325,6 +382,43 @@ def _record_turn_event(
     return False
 
 
+def _observe_codex_session_events(turn: CodexAppServerGoalTurn) -> bool:
+    observed_completion = False
+    for path in _codex_session_jsonl_paths(turn):
+        try:
+            current_size = path.stat().st_size
+        except OSError:
+            continue
+        key = str(path)
+        offset = int(turn._session_offsets.get(key, 0) or 0)
+        if offset > current_size:
+            offset = 0
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore") as handle:
+                handle.seek(offset)
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except Exception:
+                        continue
+                    turn.session_log_observed = True
+                    turn.session_event_count += 1
+                    if _message_event_name(msg) in {
+                        "event_msg:task_complete",
+                        "event_msg:task_completed",
+                        "event_msg:turn_completed",
+                    }:
+                        turn.session_task_complete_observed = True
+                    if _record_turn_event(turn, msg, raise_on_error=False):
+                        observed_completion = True
+                turn._session_offsets[key] = handle.tell()
+        except OSError:
+            continue
+    return observed_completion or bool(turn.turn_completed_observed)
+
+
 def observe_codex_app_server_goal_turn(
     turn: CodexAppServerGoalTurn,
     *,
@@ -335,6 +429,8 @@ def observe_codex_app_server_goal_turn(
     """Drain app-server turn events without making completion a success gate."""
     if turn._responses is None:
         return bool(turn.turn_completed_observed)
+    if _observe_codex_session_events(turn):
+        return True
     deadline = time.monotonic() + max(0.0, timeout_sec)
     while True:
         wait = 0.0
@@ -343,10 +439,14 @@ def observe_codex_app_server_goal_turn(
         try:
             msg = turn._responses.get(timeout=wait) if wait else turn._responses.get_nowait()
         except queue.Empty:
+            if _observe_codex_session_events(turn):
+                return True
             if not until_completed or time.monotonic() >= deadline:
                 return bool(turn.turn_completed_observed)
             continue
         if _record_turn_event(turn, msg, raise_on_error=raise_on_error):
+            return True
+        if _observe_codex_session_events(turn):
             return True
         if not until_completed and timeout_sec <= 0:
             continue
@@ -516,6 +616,7 @@ def start_codex_app_server_goal_turn(
             process=proc,
             thread_id=thread_id,
             turn_id=turn_id,
+            work_dir=work_dir,
             turn_id_source="event_stream" if event_stream_turn_id else "turn_start_response",
             turn_start_response_turn_id_present=bool(response_turn_id),
             turn_event_stream_turn_id_present=bool(event_stream_turn_id),
@@ -621,6 +722,7 @@ def start_codex_app_server_goal_followup_turn(
         process=turn.process,
         thread_id=turn.thread_id,
         turn_id=turn_id,
+        work_dir=work_dir,
         turn_id_source="event_stream" if event_stream_turn_id else "turn_start_response",
         turn_start_response_turn_id_present=bool(response_turn_id),
         turn_event_stream_turn_id_present=bool(event_stream_turn_id),
@@ -662,6 +764,9 @@ def compact_turn_metadata(turn: CodexAppServerGoalTurn) -> dict[str, Any]:
         "item_completed_count": int(turn.item_completed_count),
         "non_user_item_completed_count": int(turn.non_user_item_completed_count),
         "user_message_item_count": int(turn.user_message_item_count),
+        "session_log_observed": bool(turn.session_log_observed),
+        "session_event_count": int(turn.session_event_count),
+        "session_task_complete_observed": bool(turn.session_task_complete_observed),
         "assistant_message_present": bool(assistant_message),
         "assistant_message_chars": len(assistant_message),
         "assistant_message_sha256": sha256(assistant_message.encode()).hexdigest()

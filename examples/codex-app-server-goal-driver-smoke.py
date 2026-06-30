@@ -16,6 +16,7 @@ SCRIPT = REPO / "scripts" / "codex_app_server_goal_driver.py"
 
 FAKE_CODEX = """#!/usr/bin/env python3
 import json
+import time
 import sys
 
 for line in sys.stdin:
@@ -72,6 +73,27 @@ for line in sys.stdin:
                 "type": "event_msg",
                 "payload": {"type": "task_complete"},
             }), flush=True)
+            continue
+        if "session-file completion" in prompt_text:
+            result = {"turn": {"id": "turn-session-file-smoke", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            with open("rollout-fake-session-smoke.jsonl", "a", encoding="utf-8") as session:
+                session.write(json.dumps({
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": "Session file final answer."}
+                        ],
+                    },
+                }) + "\\n")
+                session.write(json.dumps({
+                    "type": "event_msg",
+                    "payload": {"type": "task_complete"},
+                }) + "\\n")
+                session.flush()
+                time.sleep(30)
             continue
         print(json.dumps({
             "method": "turn/started",
@@ -236,6 +258,34 @@ def main() -> int:
             assert "Event style final answer." not in json.dumps(compact), compact
         finally:
             event_completed_turn.terminate()
+
+        session_completed_turn = module.start_codex_app_server_goal_turn(
+            codex_bin=str(fake),
+            work_dir=root / "work-session-completed",
+            objective="Synthetic objective.",
+            prompt="Synthetic session-file completion prompt.",
+            model_name="gpt-5.5",
+            reasoning_effort="high",
+            response_timeout_sec=5,
+            wait_for_completion=True,
+            turn_timeout_sec=5,
+        )
+        try:
+            compact = module.compact_turn_metadata(session_completed_turn)
+            assert compact["turn_id_present"] is True, compact
+            assert compact["turn_completed_observed"] is True, compact
+            assert compact["turn_status"] == "completed", compact
+            assert compact["session_log_observed"] is True, compact
+            assert compact["session_event_count"] >= 2, compact
+            assert compact["session_task_complete_observed"] is True, compact
+            assert compact["assistant_message_present"] is True, compact
+            assert compact["assistant_message_chars"] == len(
+                "Session file final answer."
+            )
+            assert "event_msg:task_complete" in compact["notifications"], compact
+            assert "Session file final answer." not in json.dumps(compact), compact
+        finally:
+            session_completed_turn.terminate()
 
     print("codex app-server goal driver smoke passed")
     return 0
