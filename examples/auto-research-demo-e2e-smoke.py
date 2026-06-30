@@ -240,6 +240,19 @@ def main() -> int:
 
         guide = GUIDE.read_text(encoding="utf-8")
         normalized_guide = " ".join(guide.split())
+        help_text = run_cli(
+            [
+                "auto-research",
+                "demo-e2e",
+                "--help",
+            ],
+            registry=registry,
+            runtime_root=runtime_root,
+        ).stdout
+        normalized_help = " ".join(help_text.split())
+        assert "Visible panes alone do not make the" in normalized_help, help_text
+        assert "round kernel a live Codex E2E result." in normalized_help, help_text
+        assert "Visible panes alone do not make the replay" not in help_text, help_text
         assert "## 0. Prove The Multi-Round Positive Path" in guide, guide
         assert "auto-research demo-e2e" in guide, guide
         assert "does not claim that visible Codex lanes authored the research result" in normalized_guide, guide
