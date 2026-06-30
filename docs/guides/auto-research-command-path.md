@@ -75,13 +75,19 @@ The default visible digital employees are:
 
 | Pane | Role | What it owns |
 | --- | --- | --- |
-| `codex-product-capability:research-curator` | Research curator | Keeps the research contract, protected boundary, metric, stop policy, and operator gates explicit. |
+| `codex-product-capability:research-curator` | Research curator | Keeps the research contract, protected boundary, metric, stop policy, evidence review, and operator gates explicit. |
 | `codex-side-bypass:hypothesis-mapper` | Hypothesis mapper | Turns ideas into todo-backed hypotheses, successor links, and retirement rationale. |
-| `codex-main-control:evidence-runner` | Evidence runner | Executes one selected hypothesis in an isolated workspace and preserves scored or unscored evidence. |
-| `codex-value-explorer:evidence-verifier` | Evidence verifier | Classifies evidence into supported, contradicted, retry-needed, promotion-ready, or retired states. |
+| `codex-main-control:evidence-runner` | Evidence runner | Executes one selected hypothesis under an isolated attempt boundary when mutation is required and preserves scored or unscored evidence. |
 
 Each pane must route through its own quota/frontier/bootstrap path. The
-supervisor only makes those panes visible.
+supervisor only makes those panes visible. The panes share the same LoopX
+goal surface: registry, runtime root, frontier, todo projection, and evidence
+graph. Do not move every pane into an unrelated empty workspace; isolate only
+mutating evidence-runner attempts with a claimed git worktree or equivalent
+execution boundary.
+
+For compatibility or product experiments, `--agent` can still name explicit
+lanes, including a separate evidence-verifier lane.
 
 ## 3. Render The Acceptance Packet
 

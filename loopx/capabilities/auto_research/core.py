@@ -35,7 +35,7 @@ AUTO_RESEARCH_DEMO_DEFAULT_LANES = (
         "codex-product-capability",
         "research-curator",
         "research_curator",
-        "Keep the research contract, protected boundary, metric, stop policy, and operator gates explicit.",
+        "Keep the research contract, protected boundary, metric, stop policy, evidence review, and operator gates explicit.",
     ),
     (
         "codex-side-bypass",
@@ -47,13 +47,7 @@ AUTO_RESEARCH_DEMO_DEFAULT_LANES = (
         "codex-main-control",
         "evidence-runner",
         "evidence_runner",
-        "Execute one selected hypothesis in an isolated workspace and preserve scored or unscored evidence.",
-    ),
-    (
-        "codex-value-explorer",
-        "evidence-verifier",
-        "evidence_verifier",
-        "Classify evidence into supported, contradicted, retry-needed, promotion-ready, or retired states.",
+        "Execute one selected hypothesis under an isolated attempt boundary and preserve scored or unscored evidence.",
     ),
 )
 AUTO_RESEARCH_ROLE_PROFILE_REF = AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION
@@ -992,7 +986,19 @@ def _env_lane_launch_command(
     role_profile: dict[str, Any],
 ) -> str:
     role_profile_prefix = _role_profile_shell_prefix(role_profile)
-    keep_visible = 'printf "\\n[user takeover]\\ninspect this pane; interrupt, close, or retry manually\\n"; exec "${SHELL:-/bin/sh}"'
+    visible_summary = (
+        'printf "\\n[LoopX visible acceptance]\\n"; '
+        'printf "role_profile=printed\\n"; '
+        'printf "quota_guard=printed\\n"; '
+        'printf "frontier_or_blocked_reason=printed\\n"; '
+        'printf "bootstrap_or_stop=printed\\n"; '
+        'printf "takeover_controls=visible\\n"'
+    )
+    keep_visible = (
+        f"{visible_summary}; "
+        'printf "\\n[user takeover]\\ninspect this pane; interrupt, close, or retry manually\\n"; '
+        "exec /bin/sh -i"
+    )
     return (
         "set -uo pipefail; "
         f"export LOOPX_ROLE_ID={_shell_arg(role_id)}; "
@@ -1037,8 +1043,13 @@ def _env_lane_launch_command(
         "printf '\\n[bootstrap-or-stop]\\nstopped_before_codex\\n'; "
         f"{keep_visible}; "
         "fi; "
+        f"{visible_summary}; "
+        'sleep "${LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS:-1}"; '
         "printf '\\n[Starting visible Codex CLI]\\n'; "
-        f"exec {_shell_arg(codex_bin)} \"$BOOTSTRAP_PROMPT\""
+        f"{_shell_arg(codex_bin)} \"$BOOTSTRAP_PROMPT\"; "
+        "CODEX_STATUS=$?; "
+        "printf '\\n[Codex CLI exited]\\nexit=%s\\n' \"$CODEX_STATUS\"; "
+        f"{keep_visible}"
     )
 
 
@@ -1086,7 +1097,12 @@ def build_auto_research_demo_supervisor_plan(
     cli = _compact_public_token(cli_bin, field="cli_bin")
     codex = _compact_public_token(codex_bin, field="codex_bin")
     tmux = _compact_public_token(tmux_bin, field="tmux_bin")
+    uses_default_lanes = agent_specs is None
     lanes = _demo_lane_specs(agent_specs)
+    default_lane_ids = [
+        lane_id
+        for _agent_id, lane_id, _role_id, _responsibility in AUTO_RESEARCH_DEMO_DEFAULT_LANES
+    ]
 
     pane_plans: list[dict[str, Any]] = []
     for lane in lanes:
@@ -1165,7 +1181,7 @@ def build_auto_research_demo_supervisor_plan(
         )
 
     env_lines = [
-        "set -euo pipefail",
+        "set -uo pipefail",
         ": ${LOOPX_PROJECT:?set LOOPX_PROJECT to the repo root before running}",
         ": ${LOOPX_REGISTRY:?set LOOPX_REGISTRY to the LoopX registry path before running}",
         ": ${LOOPX_RUNTIME_ROOT:?set LOOPX_RUNTIME_ROOT to the LoopX runtime root before running}",
@@ -1173,6 +1189,9 @@ def build_auto_research_demo_supervisor_plan(
     frontier_launch_command = (
         'cd "$LOOPX_PROJECT"; '
         + _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=lanes[0]["agent_id"])
+        + '; FRONTIER_STATUS=$?; '
+        + 'printf "\\n[frontier window ready]\\nexit=%s\\n" "$FRONTIER_STATUS"; '
+        + 'exec /bin/sh -i'
     )
     start_script = [
         *env_lines,
@@ -1221,6 +1240,24 @@ def build_auto_research_demo_supervisor_plan(
                 "research_evidence_graph",
             ],
             "decentralized_rule": "each lane reads its own quota/frontier projection and writes back through normal LoopX todo/evidence APIs",
+        },
+        "goal_surface": {
+            "schema_version": "auto_research_shared_goal_surface_v0",
+            "shared_goal_id": goal,
+            "lane_count": len(pane_plans),
+            "lane_ids": [str(pane["lane_id"]) for pane in pane_plans],
+            "uses_default_lanes": uses_default_lanes,
+            "default_lane_count": len(default_lane_ids),
+            "default_lane_ids": default_lane_ids,
+            "shared_state_route": "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
+            "shared_frontier": True,
+            "lane_identity_source": "role_profile_v0_plus_agent_scoped_quota",
+            "all_lane_workspace_isolation": False,
+            "mutation_isolation_policy": (
+                "only mutating evidence-runner attempts require a claimed git worktree "
+                "or equivalent execution boundary"
+            ),
+            "explicit_agent_override": True,
         },
         "lanes": pane_plans,
         "commands": {
@@ -1330,6 +1367,12 @@ def build_auto_research_demo_supervisor_plan(
             "writes_loopx_state": False,
             "spends_loopx_quota": False,
             "external_service_call": False,
+            "shared_goal_surface": True,
+            "all_lane_workspace_isolation": False,
+            "mutation_isolation_policy": (
+                "only mutating evidence-runner attempts require a claimed git worktree "
+                "or equivalent execution boundary"
+            ),
         },
         "operator_notes": [
             "Set LOOPX_PROJECT, LOOPX_REGISTRY, and LOOPX_RUNTIME_ROOT in the user shell before running the script.",
