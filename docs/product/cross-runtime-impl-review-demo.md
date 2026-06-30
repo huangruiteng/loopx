@@ -46,6 +46,8 @@ review-packet + quota should-run decide next handoff
 Minimal command surface:
 
 ```bash
+loopx demo impl-review --preset claude-codex --dry-run
+
 loopx todo add --goal-id <goal> --role agent \
   --text "[P0] Implement <bounded requirement>." \
   --claimed-by claude-code-impl
@@ -79,7 +81,7 @@ selects the review todo.
 ## State Shape
 
 ```yaml
-cross_runtime_impl_review_demo_v0:
+cross_runtime_impl_review_demo_packet_v0:
   goal_id: "public demo goal"
   requirement: "bounded user-visible change"
   roles:
@@ -141,12 +143,13 @@ requires verifier evidence before completion.
 
 1. **Docs/demo only.** README and this note describe the role contract, commands,
    and boundary.
-2. **Fixture rehearsal.** Add a public fixture showing implementer evidence,
+2. **Fixture rehearsal.** The public smoke checks implementer evidence,
    reviewer verdict, verifier result, and next handoff without running either
    runtime.
-3. **Host adapter packet.** Add a dry-run CLI packet such as
-   `loopx demo impl-review --preset claude-codex --dry-run` that writes no
-   state and only renders the planned todos and gates.
+3. **Host adapter packet.** `loopx demo impl-review --preset claude-codex
+   --dry-run` renders `cross_runtime_impl_review_demo_packet_v0`; it writes no
+   state, launches no runtime, and only renders planned todos, gates, commands,
+   and evidence boundaries.
 4. **Opt-in execution.** Only after the packet is stable, launch Claude Code or
    Codex through their native visible surfaces and record compact evidence.
 

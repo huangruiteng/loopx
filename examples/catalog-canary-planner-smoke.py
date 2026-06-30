@@ -52,6 +52,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "monitor-scheduler",
         "state-write-correctness",
         "product-entry-workflows",
+        "cross-runtime-impl-review-demo",
         "frontstage-rollout",
         "auto-research-demo",
         "benchmark-adapter-readiness",
@@ -227,6 +228,32 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in product_entry_profile["checks"]), product_entry_profile
     assert product_entry_profile["deep_checks_available"] is True, product_entry_profile
     assert product_entry_profile["deep_checks_included"] is False, product_entry_profile
+
+    cross_runtime_payload = build_catalog_canary_plan(
+        changed_files=[
+            "loopx/capabilities/cross_runtime/impl_review.py",
+            "loopx/cli_commands/starter.py",
+            "docs/product/cross-runtime-impl-review-demo.md",
+        ],
+        surfaces=[
+            "loopx demo impl-review claude implements codex reviews "
+            "cross_runtime_impl_review_demo_packet_v0"
+        ],
+        max_checks_per_profile=3,
+    )
+    cross_runtime_profiles = {
+        profile["id"]: profile for profile in cross_runtime_payload["domain_profiles"]
+    }
+    assert "cross-runtime-impl-review-demo" in cross_runtime_profiles, cross_runtime_payload
+    cross_runtime_profile = cross_runtime_profiles["cross-runtime-impl-review-demo"]
+    cross_runtime_commands = [check["command"] for check in cross_runtime_profile["checks"]]
+    assert (
+        "python3 examples/cross-runtime-impl-review-demo-smoke.py" in cross_runtime_commands
+    ), cross_runtime_profile
+    assert "python3 examples/readme-demo-surface-smoke.py" in cross_runtime_commands
+    assert all(check["tier"] == "default" for check in cross_runtime_profile["checks"])
+    assert cross_runtime_profile["deep_checks_available"] is False, cross_runtime_profile
+    assert cross_runtime_profile["deep_checks_included"] is False, cross_runtime_profile
 
     auto_research_payload = build_catalog_canary_plan(
         changed_files=["loopx/capabilities/auto_research/core.py"],

@@ -627,6 +627,45 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "cross-runtime-impl-review-demo",
+        "title": "Cross-runtime implementation/review demo",
+        "purpose": (
+            "Check the Claude Code implementation + Codex review demo packet "
+            "without writing state or launching either runtime."
+        ),
+        "catalog_families": [
+            "Human Decision",
+            "Work Routing",
+            "Evidence Lifecycle",
+            "State And Boundary",
+        ],
+        "trigger_hints": (
+            "cross-runtime",
+            "impl-review",
+            "claude implements",
+            "codex reviews",
+            "claude-code-impl",
+            "codex-review",
+            "loopx demo impl-review",
+            "cross_runtime_impl_review_demo_packet_v0",
+            "docs/product/cross-runtime-impl-review-demo.md",
+            "loopx/capabilities/cross_runtime",
+            "loopx/cli_commands/starter.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/cross-runtime-impl-review-demo-smoke.py",
+                "tier": "default",
+                "reason": "guards the dry-run packet, CLI route, role split, and no-write boundary",
+            },
+            {
+                "command": "python3 examples/readme-demo-surface-smoke.py",
+                "tier": "default",
+                "reason": "guards the public README and product note entry points for the demo",
+            },
+        ],
+    },
+    {
         "id": "frontstage-rollout",
         "title": "Frontstage rollout projection",
         "purpose": "Check public frontstage/showcase projection data before visual browser smokes.",
