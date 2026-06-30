@@ -19,15 +19,32 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.doctor import add_promotion_readiness_freshness, build_install_freshness  # noqa: E402
+from loopx.release_manifest import build_release_manifest, load_release_manifest  # noqa: E402
 
 
-def git_output(args: list[str]) -> str:
-    return subprocess.run(
+def git_output(args: list[str]) -> str | None:
+    result = subprocess.run(
         ["git", "-C", str(REPO_ROOT), *args],
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
-    ).stdout.strip()
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def source_git_commit(root: Path = REPO_ROOT) -> str:
+    if root == REPO_ROOT:
+        commit = git_output(["rev-parse", "HEAD"])
+        if commit:
+            return commit
+    release_manifest = load_release_manifest(root)
+    manifest = release_manifest.get("manifest") if isinstance(release_manifest, dict) else None
+    source = manifest.get("source") if isinstance(manifest, dict) else None
+    commit = source.get("git_commit") if isinstance(source, dict) else None
+    assert isinstance(commit, str) and commit, release_manifest
+    return commit
 
 
 def run_install(env: dict[str, str], release_id: str) -> subprocess.CompletedProcess[str]:
@@ -66,6 +83,48 @@ def write_promotion_readiness(
     return readiness_record
 
 
+def assert_release_snapshot_source_fallback(root: Path) -> None:
+    source_root = root / "source-snapshot"
+    release_root = root / "nested-release"
+    source_root.mkdir()
+    release_root.mkdir()
+    source_manifest = {
+        "schema_version": "loopx_release_manifest_v0",
+        "release_id": "fixture-source",
+        "source": {
+            "kind": "github_archive",
+            "repo": "huangruiteng/loopx",
+            "ref": "main",
+            "git_commit": "abc123def4567890abc123def4567890abc123de",
+            "git_ref": "main",
+            "git_dirty": False,
+            "archive_url": "https://example.com/loopx.tar.gz",
+            "archive_sha256": "f" * 64,
+        },
+        "package": {"name": "loopx", "version": "0.1.2"},
+        "skills": {"digest": "fixture", "items": {}},
+    }
+    (source_root / "release.json").write_text(
+        json.dumps(source_manifest, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    nested_manifest = build_release_manifest(
+        release_root=release_root,
+        release_id="fixture-nested",
+        source_root=source_root,
+        installed_at="2026-01-01T00:00:00Z",
+    )
+    assert nested_manifest["source"]["git_commit"] == source_manifest["source"]["git_commit"], nested_manifest
+    assert nested_manifest["source"]["git_ref"] == source_manifest["source"]["git_ref"], nested_manifest
+    assert nested_manifest["source"]["git_dirty"] is False, nested_manifest
+    assert nested_manifest["source"]["kind"] == "github_archive", nested_manifest
+    assert nested_manifest["source"]["repo"] == source_manifest["source"]["repo"], nested_manifest
+    assert nested_manifest["source"]["ref"] == source_manifest["source"]["ref"], nested_manifest
+    assert nested_manifest["source"]["archive_url"] == source_manifest["source"]["archive_url"], nested_manifest
+    assert nested_manifest["source"]["archive_sha256"] == source_manifest["source"]["archive_sha256"], nested_manifest
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-install-smoke-") as tmp:
         root = Path(tmp)
@@ -93,6 +152,7 @@ def main() -> int:
         (bin_dir / "goal-harness-canary").symlink_to(legacy_canary)
         codex_home = home / ".codex"
         profile = home / ".zshrc"
+        assert_release_snapshot_source_fallback(root)
         env = {
             **os.environ,
             "HOME": str(home),
@@ -103,7 +163,7 @@ def main() -> int:
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
         }
-        source_commit = git_output(["rev-parse", "HEAD"])
+        source_commit = source_git_commit()
 
         install = run_install(env, "install-smoke-initial")
         assert "loopx installed locally" in install.stdout, install.stdout

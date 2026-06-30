@@ -94,6 +94,70 @@ def _git_metadata(source_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _manifest_source_metadata(source_root: Path | None) -> dict[str, Any]:
+    if source_root is None:
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    manifest_path = source_root.expanduser() / RELEASE_MANIFEST_FILENAME
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    source = manifest.get("source") if isinstance(manifest, dict) else None
+    if not isinstance(source, dict):
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    return {
+        "git_commit": source.get("git_commit"),
+        "git_ref": source.get("git_ref") or source.get("ref"),
+        "git_dirty": source.get("git_dirty"),
+        "kind": source.get("kind"),
+        "repo": source.get("repo"),
+        "ref": source.get("ref"),
+        "archive_url": source.get("archive_url"),
+        "archive_sha256": source.get("archive_sha256"),
+    }
+
+
+def _source_metadata(source_root: Path | None) -> dict[str, Any]:
+    git_metadata = _git_metadata(source_root)
+    if any(git_metadata.get(key) is not None for key in ("git_commit", "git_ref", "git_dirty")):
+        return {
+            **git_metadata,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    return _manifest_source_metadata(source_root)
+
+
 def build_release_manifest(
     *,
     release_root: Path,
@@ -103,12 +167,12 @@ def build_release_manifest(
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     source_env = env or os.environ
-    archive_url = source_env.get("LOOPX_ARCHIVE_URL")
-    archive_sha256 = source_env.get("LOOPX_ARCHIVE_SHA256")
-    repo = source_env.get("LOOPX_REPO")
-    ref = source_env.get("LOOPX_REF")
-    source_kind = "github_archive" if archive_url else "local_checkout"
-    git_metadata = _git_metadata(source_root)
+    source_metadata = _source_metadata(source_root)
+    archive_url = source_env.get("LOOPX_ARCHIVE_URL") or source_metadata.get("archive_url")
+    archive_sha256 = source_env.get("LOOPX_ARCHIVE_SHA256") or source_metadata.get("archive_sha256")
+    repo = source_env.get("LOOPX_REPO") or source_metadata.get("repo")
+    ref = source_env.get("LOOPX_REF") or source_metadata.get("ref")
+    source_kind = "github_archive" if archive_url else (source_metadata.get("kind") or "local_checkout")
     skills_root = release_root / "skills"
     skills: dict[str, Any] = {}
     if skills_root.exists():
@@ -129,9 +193,9 @@ def build_release_manifest(
             "kind": source_kind,
             "repo": repo,
             "ref": ref,
-            "git_commit": git_metadata["git_commit"],
-            "git_ref": git_metadata["git_ref"],
-            "git_dirty": git_metadata["git_dirty"],
+            "git_commit": source_metadata["git_commit"],
+            "git_ref": source_metadata["git_ref"],
+            "git_dirty": source_metadata["git_dirty"],
             "archive_url": archive_url,
             "archive_sha256": archive_sha256,
         },
