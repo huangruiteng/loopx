@@ -1214,6 +1214,18 @@ def _codex_api_egress_resolved_mode(args: argparse.Namespace | None) -> str:
     return requested
 
 
+def _formal_app_server_goal_bootstrap_light_guard_required(
+    args: argparse.Namespace | None,
+) -> bool:
+    return bool(
+        args is not None
+        and getattr(args, "route", "") == "codex-app-server-goal-baseline"
+        and getattr(args, "host_local_acp_launch", False)
+        and not getattr(args, "reduce_only", False)
+        and _codex_api_egress_resolved_mode(args) == "reverse-tunnel"
+    )
+
+
 def _codex_api_reverse_tunnel_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
     explicit = ""
     if args is not None:
@@ -4981,6 +4993,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
         "verifier_bootstrap_risk_preflight_blocked",
+        "verifier_bootstrap_fail_fast_defaulted",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
@@ -5135,6 +5148,7 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -5142,7 +5156,11 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         raw = value.get(field)
         if isinstance(raw, str) and raw:
             compact[field] = raw[:180]
-    for field in ("nearest_canonical_task_ids", "verifier_bootstrap_risk_categories"):
+    for field in (
+        "nearest_canonical_task_ids",
+        "verifier_bootstrap_risk_categories",
+        "bootstrap_light_blocking_fields",
+    ):
         raw_items = value.get(field)
         if isinstance(raw_items, list):
             compact[field] = [
@@ -5555,6 +5573,30 @@ def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     return label[:limit]
 
 
+SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS = (
+    "apt_setup_risk_detected",
+    "apt_retry_patch_required",
+    "dockerfile_pip_install_risk_detected",
+    "dockerfile_pip_bootstrap_patch_required",
+    "verifier_bootstrap_risk_detected",
+    "verifier_uv_bootstrap_risk_detected",
+    "verifier_external_download_risk_detected",
+    "verifier_package_install_risk_detected",
+)
+
+
+def skillsbench_bootstrap_light_blocking_fields(
+    preflight: dict[str, Any],
+) -> list[str]:
+    if preflight.get("canonical_task_present") is False:
+        return ["canonical_task_present"]
+    return [
+        field
+        for field in SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS
+        if preflight.get(field) is True
+    ]
+
+
 def skillsbench_task_setup_preflight(
     *,
     task_path: Path,
@@ -5585,6 +5627,8 @@ def skillsbench_task_setup_preflight(
         "verifier_external_download_risk_detected": False,
         "verifier_package_install_risk_detected": False,
         "verifier_bootstrap_risk_categories": [],
+        "bootstrap_light_candidate_eligible": False,
+        "bootstrap_light_blocking_fields": [],
     }
     skillsbench_root = expanded_task_path.parent.parent
     canonical_task_exists = expanded_task_path.is_dir()
@@ -5621,9 +5665,13 @@ def skillsbench_task_setup_preflight(
                 ),
             }
         )
+        preflight["bootstrap_light_blocking_fields"] = (
+            skillsbench_bootstrap_light_blocking_fields(preflight)
+        )
         return preflight
     if sandbox != "docker":
         preflight["status"] = "not_applicable"
+        preflight["bootstrap_light_candidate_eligible"] = True
         return preflight
 
     dockerfile = expanded_task_path / "environment" / "Dockerfile"
@@ -5631,6 +5679,7 @@ def skillsbench_task_setup_preflight(
     preflight["dockerfile_present"] = dockerfile_exists
     if not dockerfile_exists:
         preflight["status"] = "no_dockerfile"
+        preflight["bootstrap_light_candidate_eligible"] = True
         return preflight
 
     apt_risk = dockerfile_needs_apt_retry_patch(dockerfile)
@@ -5648,6 +5697,15 @@ def skillsbench_task_setup_preflight(
         setup_status = "verifier_bootstrap_risk_detected"
     else:
         setup_status = "ok"
+    risk_fields = skillsbench_bootstrap_light_blocking_fields(
+        {
+            **preflight,
+            "apt_setup_risk_detected": apt_risk,
+            "apt_retry_patch_required": apt_risk,
+            "dockerfile_pip_install_risk_detected": pip_risk,
+            "dockerfile_pip_bootstrap_patch_required": pip_risk,
+        }
+    )
     preflight.update(
         {
             "status": setup_status,
@@ -5655,10 +5713,12 @@ def skillsbench_task_setup_preflight(
             "apt_retry_patch_required": apt_risk,
             "dockerfile_pip_install_risk_detected": pip_risk,
             "dockerfile_pip_bootstrap_patch_required": pip_risk,
+            "bootstrap_light_candidate_eligible": not risk_fields,
+            "bootstrap_light_blocking_fields": risk_fields,
             "selection_recommendation": (
                 "route_to_setup_repair_or_use_fail_fast_guard"
-                if apt_risk or pip_risk or verifier_bootstrap_risk
-                else "eligible_for_full_pair"
+                if risk_fields
+                else "eligible_for_bootstrap_light_full_pair"
             ),
         }
     )
@@ -6276,6 +6336,15 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "include_task_skills": bool(args.include_task_skills),
         "host_local_acp_launch": bool(args.host_local_acp_launch),
+        "bootstrap_light_candidate_required": bool(
+            _formal_app_server_goal_bootstrap_light_guard_required(args)
+        ),
+        "fail_fast_on_verifier_bootstrap_risk": bool(
+            args.fail_fast_on_verifier_bootstrap_risk
+        ),
+        "verifier_bootstrap_fail_fast_defaulted": bool(
+            getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+        ),
         "remote_command_file_bridge_ready": bool(
             remote_command_file_bridge_materialized
         ),
@@ -6681,7 +6750,13 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         value = plan.get(field)
         if isinstance(value, int) and not isinstance(value, bool):
             config[field] = value
-    for field in ("include_task_skills", "host_local_acp_launch"):
+    for field in (
+        "include_task_skills",
+        "host_local_acp_launch",
+        "bootstrap_light_candidate_required",
+        "fail_fast_on_verifier_bootstrap_risk",
+        "verifier_bootstrap_fail_fast_defaulted",
+    ):
         value = plan.get(field)
         if isinstance(value, bool):
             config[field] = value
@@ -12109,6 +12184,7 @@ def _build_runner_exception_closeout_payload(
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    raw_argv = list(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", default="react-performance-debugging")
     parser.add_argument(
@@ -12617,7 +12693,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "setup-preflight failure instead of spending a full case attempt."
         ),
     )
-    args = parser.parse_args(argv)
+    verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
+    args = parser.parse_args(raw_argv)
+    args.verifier_bootstrap_fail_fast_defaulted = False
+    if (
+        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        and not args.fail_fast_on_verifier_bootstrap_risk
+    ):
+        args.fail_fast_on_verifier_bootstrap_risk = True
+        args.verifier_bootstrap_fail_fast_defaulted = not verifier_fail_fast_explicit
     if args.parallel_cases < 1:
         parser.error("--parallel-cases must be >= 1")
     batch_task_ids = _split_task_ids_arg(args.task_ids)
@@ -12706,6 +12790,9 @@ async def async_main(
         if isinstance(staging, dict):
             staging["verifier_bootstrap_risk_detected"] = True
             staging["verifier_bootstrap_risk_preflight_blocked"] = True
+            staging["verifier_bootstrap_fail_fast_defaulted"] = bool(
+                getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+            )
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench verifier bootstrap risk preflight blocked: "
             "verifier dependency bootstrap risk detected before full case run"

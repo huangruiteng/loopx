@@ -23,12 +23,16 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
 )
 
 
-def _write_task(root: Path, relative: str) -> None:
+def _write_task(root: Path, relative: str, *, verifier_text: str = "") -> None:
     task = root / relative
     dockerfile = task / "environment" / "Dockerfile"
     dockerfile.parent.mkdir(parents=True, exist_ok=True)
     dockerfile.write_text("FROM scratch\n", encoding="utf-8")
     (task / "task.toml").write_text('version = "1.1"\n', encoding="utf-8")
+    if verifier_text:
+        verifier = task / "verifier" / "test.sh"
+        verifier.parent.mkdir(parents=True, exist_ok=True)
+        verifier.write_text(verifier_text, encoding="utf-8")
 
 
 def test_sanity_task_source_fails_before_runner_spend() -> None:
@@ -106,6 +110,84 @@ def test_sanity_task_source_fails_before_runner_spend() -> None:
         )
 
 
+def test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-verifier-preflight-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        _write_task(
+            skillsbench_root,
+            "tasks/verifier-network-bootstrap",
+            verifier_text=(
+                "#!/usr/bin/env bash\n"
+                "curl -LsSf https://astral.sh/uv/install.sh | sh\n"
+            ),
+        )
+
+        jobs = root / "jobs"
+        ledger = root / "ledger.json"
+        args = [
+            "--task-id",
+            "verifier-network-bootstrap",
+            "--route",
+            "codex-app-server-goal-baseline",
+            "--skillsbench-root",
+            str(skillsbench_root),
+            "--jobs-dir",
+            str(jobs),
+            "--job-name",
+            "skillsbench-verifier-bootstrap-preflight",
+            "--run-group-id",
+            "skillsbench-verifier-bootstrap-preflight",
+            "--ledger-path",
+            str(ledger),
+            "--update-ledger",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+        ]
+        parsed = parse_args(args)
+        assert parsed.fail_fast_on_verifier_bootstrap_risk is True
+        assert parsed.verifier_bootstrap_fail_fast_defaulted is True
+        plan = build_plan(parsed)
+        preflight = plan["task_setup_preflight"]
+        assert preflight["status"] == "verifier_bootstrap_risk_detected", preflight
+        assert preflight["bootstrap_light_candidate_eligible"] is False, preflight
+        assert "verifier_bootstrap_risk_detected" in preflight[
+            "bootstrap_light_blocking_fields"
+        ], preflight
+        assert plan["bootstrap_light_candidate_required"] is True, plan
+        assert plan["fail_fast_on_verifier_bootstrap_risk"] is True, plan
+        assert plan["verifier_bootstrap_fail_fast_defaulted"] is True, plan
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            rc = skillsbench_automation_loop_main(args)
+
+        assert rc == 0, stderr.getvalue()
+        compact_path = (
+            jobs
+            / "skillsbench-verifier-bootstrap-preflight"
+            / "verifier-network-bootstrap__codex_app_server_goal"
+            / "benchmark_run.compact.json"
+        )
+        compact = json.loads(compact_path.read_text(encoding="utf-8"))
+        assert compact["first_blocker"] == (
+            "skillsbench_verifier_bootstrap_risk_preflight_blocked"
+        )
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_verifier_bootstrap_risk_preflight_blocked"
+        )
+        assert compact["task_setup_preflight"][
+            "bootstrap_light_candidate_eligible"
+        ] is False
+        assert "verifier_bootstrap_risk_detected" in compact[
+            "task_setup_preflight"
+        ]["bootstrap_light_blocking_fields"]
+        assert compact["task_staging"]["verifier_bootstrap_risk_preflight_blocked"] is True
+        assert compact["runner_config"]["fail_fast_on_verifier_bootstrap_risk"] is True
+        assert compact["runner_config"]["verifier_bootstrap_fail_fast_defaulted"] is True
+
+
 if __name__ == "__main__":
     test_sanity_task_source_fails_before_runner_spend()
+    test_reverse_tunnel_app_goal_defaults_verifier_bootstrap_fail_fast()
     print("skillsbench-task-source-preflight-smoke ok")

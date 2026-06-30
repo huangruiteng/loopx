@@ -2452,6 +2452,7 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
         "verifier_bootstrap_risk_preflight_blocked",
+        "verifier_bootstrap_fail_fast_defaulted",
         "app_skills_mount_patch_applied",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
@@ -2516,6 +2517,7 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -2537,6 +2539,12 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
     )
     if verifier_risk_categories:
         compact["verifier_bootstrap_risk_categories"] = verifier_risk_categories
+    bootstrap_light_blocking_fields = public_safe_compact_list(
+        value.get("bootstrap_light_blocking_fields"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if bootstrap_light_blocking_fields:
+        compact["bootstrap_light_blocking_fields"] = bootstrap_light_blocking_fields
     return compact
 
 
