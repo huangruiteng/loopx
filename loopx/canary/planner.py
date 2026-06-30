@@ -811,11 +811,49 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "catalog-canary-contract",
+        "title": "Catalog canary contract",
+        "purpose": "Check catalog-to-canary planning, JSON actionability, and shell-free no-write execution.",
+        "catalog_families": ["Planning Governance", "State And Boundary", "Work Routing"],
+        "trigger_hints": (
+            "catalog canary",
+            "canary planner",
+            "canary runner",
+            "canary plan",
+            "canary run",
+            "loopx/canary",
+            "loopx/cli_commands/canary.py",
+            "examples/catalog-canary",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/catalog-canary-planner-smoke.py",
+                "tier": "default",
+                "reason": "guards catalog coverage, selector routing, and actionable JSON plan commands",
+            },
+            {
+                "command": "python3 examples/catalog-canary-run-e2e-smoke.py",
+                "tier": "default",
+                "reason": "guards shell-free no-write canary execution from the selected catalog plan",
+            },
+        ],
+    },
+    {
         "id": "benchmark-adapter-readiness",
         "title": "Benchmark adapter readiness",
         "purpose": "Check public adapter contracts and evidence boundaries without launching benchmark jobs by default.",
         "catalog_families": ["Evidence Lifecycle", "State And Boundary", "Work Routing"],
-        "trigger_hints": ("benchmark", "adapter", "runner", "ledger", "skillsbench", "terminal-bench"),
+        "trigger_hints": (
+            "benchmark",
+            "benchmark adapter",
+            "benchmark runner",
+            "benchmark ledger",
+            "skillsbench",
+            "terminal-bench",
+            "loopx/benchmark",
+            "loopx/benchmark_case_state.py",
+            "examples/benchmark",
+        ),
         "checks": [
             {
                 "command": "python3 examples/benchmark-core-adapter-contract-smoke.py",
@@ -1141,6 +1179,52 @@ def _domain_profile_with_checks(
     return copied
 
 
+def flatten_catalog_canary_checks(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return selected canary checks in execution order."""
+
+    checks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for profile in plan.get("domain_profiles", []):
+        if not isinstance(profile, dict):
+            continue
+        for check in profile.get("checks", []):
+            if not isinstance(check, dict):
+                continue
+            command = str(check.get("command") or "")
+            if not command or command in seen:
+                continue
+            seen.add(command)
+            checks.append(
+                {
+                    "source": "domain_profile",
+                    "profile_id": profile.get("id"),
+                    "profile_title": profile.get("title"),
+                    "tier": check.get("tier") or "default",
+                    **check,
+                }
+            )
+    for profile in plan.get("profiles", []):
+        if not isinstance(profile, dict):
+            continue
+        for check in profile.get("candidate_checks", []):
+            if not isinstance(check, dict):
+                continue
+            command = str(check.get("command") or "")
+            if not command or command in seen:
+                continue
+            seen.add(command)
+            checks.append(
+                {
+                    "source": "catalog_family",
+                    "profile_id": profile.get("id"),
+                    "profile_title": profile.get("family"),
+                    "tier": check.get("tier") or "default",
+                    **check,
+                }
+            )
+    return checks
+
+
 def build_catalog_canary_plan(
     *,
     catalog_path: Path | None = None,
@@ -1196,7 +1280,7 @@ def build_catalog_canary_plan(
         ]
         selected_domain_profiles.append(profile_copy)
 
-    return {
+    payload = {
         "ok": True,
         "schema_version": CANARY_PLAN_SCHEMA_VERSION,
         "source": packet["source"],
@@ -1223,6 +1307,11 @@ def build_catalog_canary_plan(
             "necessity/risk packet before implementation."
         ),
     }
+    suggested_checks = flatten_catalog_canary_checks(payload)
+    payload["suggested_check_count"] = len(suggested_checks)
+    payload["suggested_checks"] = suggested_checks
+    payload["commands"] = [str(check.get("command") or "") for check in suggested_checks]
+    return payload
 
 
 def render_catalog_canary_profiles_markdown(payload: dict[str, Any]) -> str:

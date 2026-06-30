@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .planner import REPO_ROOT, build_catalog_canary_plan
+from .planner import REPO_ROOT, build_catalog_canary_plan, flatten_catalog_canary_checks
 
 
 CANARY_RUN_SCHEMA_VERSION = "catalog_canary_run_v0"
@@ -104,50 +104,6 @@ def _display_argv(argv: list[str]) -> list[str]:
     return displayed
 
 
-def _planned_checks(plan: dict[str, Any]) -> list[dict[str, Any]]:
-    checks: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for profile in plan.get("domain_profiles", []):
-        if not isinstance(profile, dict):
-            continue
-        for check in profile.get("checks", []):
-            if not isinstance(check, dict):
-                continue
-            command = str(check.get("command") or "")
-            if not command or command in seen:
-                continue
-            seen.add(command)
-            checks.append(
-                {
-                    "source": "domain_profile",
-                    "profile_id": profile.get("id"),
-                    "profile_title": profile.get("title"),
-                    "tier": check.get("tier") or "default",
-                    **check,
-                }
-            )
-    for profile in plan.get("profiles", []):
-        if not isinstance(profile, dict):
-            continue
-        for check in profile.get("candidate_checks", []):
-            if not isinstance(check, dict):
-                continue
-            command = str(check.get("command") or "")
-            if not command or command in seen:
-                continue
-            seen.add(command)
-            checks.append(
-                {
-                    "source": "catalog_family",
-                    "profile_id": profile.get("id"),
-                    "profile_title": profile.get("family"),
-                    "tier": check.get("tier") or "default",
-                    **check,
-                }
-            )
-    return checks
-
-
 def _run_check(check: dict[str, Any], *, timeout_seconds: float) -> dict[str, Any]:
     normalized = normalize_canary_command(str(check.get("command") or ""))
     result = {**check, "normalized": normalized}
@@ -216,7 +172,7 @@ def build_catalog_canary_run(
         max_checks_per_family=max_checks_per_family,
         max_checks_per_profile=max_checks_per_profile,
     )
-    planned = _planned_checks(plan)
+    planned = flatten_catalog_canary_checks(plan)
     selected = planned[: max(0, check_limit)]
     normalized = [
         {**check, "normalized": normalize_canary_command(str(check.get("command") or ""))}

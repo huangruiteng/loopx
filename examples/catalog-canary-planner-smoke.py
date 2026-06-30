@@ -56,6 +56,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "host-command-entry",
         "frontstage-rollout",
         "auto-research-demo",
+        "catalog-canary-contract",
         "benchmark-adapter-readiness",
     } <= domain_profile_ids, payload
 
@@ -80,6 +81,11 @@ def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
         assert all(check["tier"] == "default" for check in profile["checks"]), profile
         assert profile["deep_checks_available"] is True, profile
         assert profile["deep_checks_included"] is False, profile
+    assert payload["suggested_check_count"] == len(payload["suggested_checks"]), payload
+    assert payload["commands"] == [
+        check["command"] for check in payload["suggested_checks"]
+    ], payload
+    assert payload["suggested_checks"][0]["source"] == "domain_profile", payload
     assert payload["executes_checks"] is False, payload
 
 
@@ -332,6 +338,19 @@ def assert_explicit_profile_can_include_deep_checks() -> None:
     assert "owner-review necessity/risk packet" in payload["note"], payload
 
 
+def assert_catalog_canary_selects_own_profile_not_benchmark() -> None:
+    payload = build_catalog_canary_plan(
+        changed_files=["loopx/canary/planner.py", "loopx/canary/runner.py"],
+        surfaces=["catalog canary runner"],
+    )
+    domain_profiles = {profile["id"]: profile for profile in payload["domain_profiles"]}
+    assert "catalog-canary-contract" in domain_profiles, payload
+    assert "benchmark-adapter-readiness" not in domain_profiles, payload
+    commands = payload["commands"]
+    assert "python3 examples/catalog-canary-planner-smoke.py" in commands, payload
+    assert "python3 examples/catalog-canary-run-e2e-smoke.py" in commands, payload
+
+
 def assert_coverage_audit_tracks_p0_p1_patterns() -> None:
     payload = build_catalog_canary_coverage_audit()
     assert payload["ok"] is True, payload
@@ -402,6 +421,9 @@ def assert_cli_json_plan_is_dry_run() -> None:
     assert payload["dry_run"] is True, payload
     assert payload["executes_checks"] is False, payload
     assert payload["profile_count"] >= 1, payload
+    assert payload["suggested_check_count"] == len(payload["commands"]), payload
+    assert payload["commands"], payload
+    assert all(check["command"] in payload["commands"] for check in payload["suggested_checks"]), payload
     work_routing = next(profile for profile in payload["profiles"] if profile["family"] == "Work Routing")
     assert len(work_routing["candidate_checks"]) == 1, work_routing
     assert any(profile["id"] == "monitor-scheduler" for profile in payload["domain_profiles"]), payload
@@ -435,6 +457,7 @@ def main() -> int:
     assert_plan_selects_minimal_profiles_from_changed_surfaces()
     assert_pr_release_and_refactor_profiles_select()
     assert_explicit_profile_can_include_deep_checks()
+    assert_catalog_canary_selects_own_profile_not_benchmark()
     assert_coverage_audit_tracks_p0_p1_patterns()
     with tempfile.TemporaryDirectory(prefix="loopx-catalog-canary-smoke-") as tmp:
         tmp_dir = Path(tmp)
