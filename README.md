@@ -126,12 +126,27 @@ then start real work with `/loopx <complex task>`.
 
 Choose your surface:
 
-| Surface | Best when | Start with |
-| --- | --- | --- |
-| Codex App | You want a long-running agent that can wake up, re-check gates, and keep moving. | Paste the setup message below, then ask `/loopx <complex task>`. |
-| Codex CLI | You want the visible TUI to stay primary while LoopX keeps the state. | Run `codex`, paste the setup message, then ask `/loopx <complex task>`. |
-| Claude Code | You want Claude Code's native `/loop` to drive each tick. | Install the opt-in adapter, run `/loopx <task>`, then `/loop`. |
-| Manual shell / other agents | You want LoopX state without a supported runtime bridge. | `curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh \| bash`, then `loopx doctor` and `loopx bootstrap`. |
+- **Codex App**
+  - Best when: you want a long-running agent that can wake up, re-check gates,
+    and keep moving.
+  - Start with: paste the setup message below, then ask
+    `/loopx <complex task>`.
+
+- **Codex CLI**
+  - Best when: you want the visible TUI to stay primary while LoopX keeps the
+    state.
+  - Start with: run `codex`, paste the setup message, then ask
+    `/loopx <complex task>`.
+
+- **Claude Code**
+  - Best when: you want Claude Code's native `/loop` to drive each tick.
+  - Start with: install the opt-in adapter, run `/loopx <task>`, then `/loop`.
+
+- **Manual shell / other agents**
+  - Best when: you want LoopX state without a supported runtime bridge.
+  - Start with:
+    `curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash`,
+    then `loopx doctor` and `loopx bootstrap`.
 
 ### Codex App
 
@@ -260,10 +275,10 @@ loopx bootstrap \
 
 ### Advanced: Dynamic Workflow Scripts
 
-For teams that already have their own agent runner, hardware harness, or
-multi-agent scheduler, LoopX can be used as the control-plane API inside that
-workflow. Your script or supervisor owns the executor loop; LoopX owns the
-state contract:
+For teams that already have their own agent runner, custom workflow runtime,
+tool harness, or multi-agent scheduler, LoopX can be used as the control-plane
+API inside that workflow. Your script or supervisor owns the executor loop;
+LoopX owns the state contract:
 
 ```text
 loopx quota should-run      # should any agent act now?
@@ -272,10 +287,11 @@ loopx refresh-state         # what evidence or blocker should the next turn see?
 loopx quota spend-slot      # account for a completed automatic slice
 ```
 
-This is the shape used by advanced showcases such as the
-[hardware-agent workflow](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
-your agents can orchestrate devices, tools, or side agents, while LoopX keeps
-goals, gates, todos, evidence, quota, and handoff state reviewable.
+This is the shape used by advanced showcases such as
+[dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
+your agents can orchestrate external tools, devices, domain-specific runners,
+or side agents, while LoopX keeps goals, gates, todos, evidence, quota, and
+handoff state reviewable.
 
 Clone-based install is only for contributors who want the live canary wrapper:
 
@@ -300,9 +316,9 @@ points:
   a reproducible synthetic demo where a human gate stays visible while safe
   fallback work continues.
 - [LoopX self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md)
-  and the [hardware-agent workflow](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
-  public-safe evidence that one control plane can coordinate primary and side
-  agents without hiding ownership or scope.
+  and [dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
+  public-safe evidence that one control plane can coordinate primary agents,
+  side agents, and external tools without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental notes below.
