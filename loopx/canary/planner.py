@@ -253,6 +253,31 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "cli-command-contract",
+        "title": "CLI command module contract",
+        "purpose": "Check command-module boundaries, ownership budgets, and compatibility for LoopX CLI refactors.",
+        "catalog_families": ["State And Boundary", "Planning Governance"],
+        "trigger_hints": (
+            "loopx/cli.py",
+            "loopx/cli_commands",
+            "cli command",
+            "command modularization",
+            "command-module",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/cli-version-command-modularization-smoke.py",
+                "tier": "default",
+                "reason": "guards a low-risk command migration plus old version invocations",
+            },
+            {
+                "command": "python3 examples/cli-control-plane-command-modularization-smoke.py",
+                "tier": "default",
+                "reason": "samples todo/quota command compatibility after CLI command refactors",
+            },
+        ],
+    },
+    {
         "id": "monitor-scheduler",
         "title": "Monitor scheduler routing",
         "purpose": "Check monitor due/quiet/replan behavior without polling external targets by default.",

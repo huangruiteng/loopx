@@ -43,6 +43,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "pr-review-and-merge",
         "release-promotion",
         "control-plane-refactor",
+        "cli-command-contract",
         "monitor-scheduler",
         "state-write-correctness",
         "frontstage-rollout",
@@ -114,6 +115,16 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     )
     refactor_profile_ids = {profile["id"] for profile in refactor_payload["domain_profiles"]}
     assert "control-plane-refactor" in refactor_profile_ids, refactor_payload
+
+    cli_payload = build_catalog_canary_plan(
+        changed_files=["loopx/cli.py", "loopx/cli_commands/version.py"],
+        surfaces=["cli command modularization"],
+    )
+    cli_profile_ids = {profile["id"] for profile in cli_payload["domain_profiles"]}
+    assert "cli-command-contract" in cli_profile_ids, cli_payload
+    cli_profile = next(profile for profile in cli_payload["domain_profiles"] if profile["id"] == "cli-command-contract")
+    commands = [check["command"] for check in cli_profile["checks"]]
+    assert "python3 examples/cli-version-command-modularization-smoke.py" in commands, cli_profile
 
 
 def assert_explicit_profile_can_include_deep_checks() -> None:

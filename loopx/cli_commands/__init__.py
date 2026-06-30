@@ -158,6 +158,7 @@ from .terminal_bench_environment_result import (
     register_terminal_bench_environment_result_commands,
 )
 from .todo import handle_todo_command, register_todo_command
+from .version import handle_version_command, register_version_command
 from .worker_bridge import handle_worker_bridge_command, register_worker_bridge_commands
 
 __all__ = [
@@ -224,6 +225,7 @@ __all__ = [
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",
     "handle_todo_command",
+    "handle_version_command",
     "handle_worker_bridge_command",
     "register_agents_last_exam_commands",
     "register_agents_last_exam_baked_input_commands",
@@ -266,5 +268,6 @@ __all__ = [
     "register_terminal_bench_adapter_commands",
     "register_terminal_bench_environment_result_commands",
     "register_todo_command",
+    "register_version_command",
     "register_worker_bridge_commands",
 ]
