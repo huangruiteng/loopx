@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -45,6 +46,24 @@ def run_cli(root: Path, *args: str, registry_path: Path, runtime: Path) -> dict:
         text=True,
     )
     return json.loads(result.stdout)
+
+
+def run_projected_loopx_command(
+    root: Path,
+    command: str,
+    *extra_args: str,
+    registry_path: Path,
+    runtime: Path,
+) -> dict:
+    tokens = shlex.split(command)
+    assert tokens and tokens[0] == "loopx", command
+    return run_cli(
+        root,
+        *tokens[1:],
+        *extra_args,
+        registry_path=registry_path,
+        runtime=runtime,
+    )
 
 
 def run_cli_result(root: Path, *args: str, registry_path: Path, runtime: Path) -> tuple[int, dict]:
@@ -698,26 +717,47 @@ def main() -> int:
         assert interaction["agent_channel"]["must_attempt"] is False, interaction
         assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
         assert interaction["cli_channel"]["spend_after_validation"] is False, interaction
-        assert "quota monitor-poll" in interaction["cli_channel"]["next_cli_actions"][0], interaction
+        actions = interaction["cli_channel"]["next_cli_actions"]
+        monitor_poll_action = actions[0]
+        assert shlex.split(monitor_poll_action) == [
+            "loopx",
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--execute",
+        ], interaction
 
         for index in range(5):
             poll_reason = f"fixture monitor poll no material transition {index}"
-            poll = run_cli(
-                root,
-                "quota",
-                "monitor-poll",
-                "--goal-id",
-                GOAL_ID,
-                "--source",
-                "heartbeat",
-                "--reason-summary",
-                poll_reason,
-                "--execute",
-                "--scan-path",
-                str(project),
-                registry_path=registry_path,
-                runtime=runtime,
-            )
+            if index == 0:
+                poll = run_projected_loopx_command(
+                    root,
+                    monitor_poll_action,
+                    "--reason-summary",
+                    poll_reason,
+                    "--scan-path",
+                    str(project),
+                    registry_path=registry_path,
+                    runtime=runtime,
+                )
+            else:
+                poll = run_cli(
+                    root,
+                    "quota",
+                    "monitor-poll",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--source",
+                    "heartbeat",
+                    "--reason-summary",
+                    poll_reason,
+                    "--execute",
+                    "--scan-path",
+                    str(project),
+                    registry_path=registry_path,
+                    runtime=runtime,
+                )
             assert poll["ok"] is True, poll
             assert poll["appended"] is True, poll
             assert poll["registry_mutated"] is False, poll
