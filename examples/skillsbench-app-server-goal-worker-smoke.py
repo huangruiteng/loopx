@@ -1298,16 +1298,27 @@ sys.exit(0)
 
 
 def test_acp_relay_fails_fast_when_app_server_worker_never_uses_bridge() -> None:
-    fake_worker = """#!/usr/bin/env python3
-import time
-
-time.sleep(30)
-"""
     with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-bridge-first-action-") as tmp:
         root = Path(tmp)
         worker = root / "fake_worker.py"
         work = root / "work"
         trace_dir = root / "worker-traces"
+        timeout_arg = trace_dir / "first_action_timeout_arg.txt"
+        fake_worker = f"""#!/usr/bin/env python3
+import argparse
+import time
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--first-action-timeout-sec")
+args, _ = parser.parse_known_args()
+Path({str(timeout_arg)!r}).parent.mkdir(parents=True, exist_ok=True)
+Path({str(timeout_arg)!r}).write_text(
+    str(args.first_action_timeout_sec),
+    encoding="utf-8",
+)
+time.sleep(30)
+"""
         worker.write_text(fake_worker, encoding="utf-8")
         worker.chmod(0o755)
         work.mkdir()
@@ -1395,6 +1406,7 @@ time.sleep(30)
         assert trace["worker_process"]["stage"] == "first_action_timeout", trace
         assert trace["worker_contract"]["first_blocker"] == "first_action_timeout", trace
         assert trace["worker_process"]["stderr_bytes"] > 0, trace
+        assert timeout_arg.read_text(encoding="utf-8") == "0.0"
         trace_text = json.dumps(trace, sort_keys=True)
         assert "private task placeholder" not in trace_text, trace
         assert str(work) not in trace_text, trace

@@ -2029,6 +2029,9 @@ raise SystemExit(proc.returncode)
                 / "scripts"
                 / "skillsbench_host_codex_goal_worker.py"
             )
+            worker_first_action_timeout_sec = self._config.first_action_timeout_sec
+            if bridge_summary_path is not None:
+                worker_first_action_timeout_sec = 0.0
             cmd = [
                 sys.executable,
                 str(worker_script),
@@ -2055,7 +2058,7 @@ raise SystemExit(proc.returncode)
                 "--turn-timeout-sec",
                 str(self._config.timeout_sec),
                 "--first-action-timeout-sec",
-                str(self._config.first_action_timeout_sec),
+                str(worker_first_action_timeout_sec),
                 "--reasoning-effort",
                 str(self._config.reasoning_effort or "high"),
                 "--runner-integration-ready",
