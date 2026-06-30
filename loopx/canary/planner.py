@@ -895,6 +895,10 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
+def _catalog_profile_id(profile: dict[str, Any]) -> str:
+    return _slug(str(profile.get("id") or profile.get("family") or ""))
+
+
 def _split_table_row(line: str) -> list[str]:
     return [cell.strip() for cell in line.strip().strip("|").split("|")]
 
@@ -1260,31 +1264,48 @@ def build_catalog_canary_plan(
     selector_blob = _selector_blob(changed_files, surfaces)
     max_checks = max(1, max_checks_per_family)
     max_profile_checks = max(1, max_checks_per_profile)
+    catalog_profile_ids = {
+        _catalog_profile_id(profile)
+        for profile in packet["profiles"]
+        if isinstance(profile, dict)
+    }
+    requested_catalog_profiles = requested_profiles & catalog_profile_ids
+    requested_domain_profiles = requested_profiles - requested_catalog_profiles
 
     selected_profiles: list[dict[str, Any]] = []
     for profile in packet["profiles"]:
-        if requested_profiles and not requested_families and not selector_blob:
+        profile_id = _catalog_profile_id(profile)
+        if requested_domain_profiles and not requested_catalog_profiles and not requested_families and not selector_blob:
             continue
         reasons = _selection_reasons(profile, selector_blob)
+        if requested_catalog_profiles and profile_id not in requested_catalog_profiles:
+            continue
         if requested_families and _slug(str(profile.get("family") or "")) not in requested_families:
             continue
-        if not requested_families and selector_blob and not reasons:
+        if not requested_catalog_profiles and not requested_families and selector_blob and not reasons:
             continue
         profile_copy = dict(profile)
         profile_copy["candidate_checks"] = list(profile_copy.get("candidate_checks", []))[:max_checks]
-        profile_copy["selection_reasons"] = reasons or [
-            "selected because no narrower selector was provided",
-        ]
+        if requested_catalog_profiles and profile_id in requested_catalog_profiles:
+            profile_copy["selection_reasons"] = reasons or [
+                "selected because this catalog profile was explicitly requested",
+            ]
+        else:
+            profile_copy["selection_reasons"] = reasons or [
+                "selected because no narrower selector was provided",
+            ]
         selected_profiles.append(profile_copy)
 
     selected_domain_profiles: list[dict[str, Any]] = []
     for profile in packet["domain_profiles"]:
         reasons = _domain_selection_reasons(profile, selector_blob)
-        if requested_profiles and _slug(str(profile.get("id") or "")) not in requested_profiles:
+        if requested_domain_profiles and _slug(str(profile.get("id") or "")) not in requested_domain_profiles:
             continue
-        if not requested_profiles and selector_blob and not reasons:
+        if requested_catalog_profiles and not requested_domain_profiles:
             continue
-        if not requested_profiles and not selector_blob:
+        if not requested_domain_profiles and selector_blob and not reasons:
+            continue
+        if not requested_domain_profiles and not selector_blob:
             continue
         profile_copy = _domain_profile_with_checks(
             profile,

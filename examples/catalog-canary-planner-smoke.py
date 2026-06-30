@@ -351,6 +351,26 @@ def assert_explicit_profile_can_include_deep_checks() -> None:
     assert "owner-review necessity/risk packet" in payload["note"], payload
 
 
+def assert_explicit_catalog_profile_id_selects_family_profile() -> None:
+    payload = build_catalog_canary_plan(
+        profiles=["state-and-boundary"],
+        max_checks_per_family=4,
+    )
+    assert payload["profile_count"] == 1, payload
+    assert payload["domain_profile_count"] == 0, payload
+    profile = payload["profiles"][0]
+    assert profile["id"] == "state-and-boundary", profile
+    assert profile["family"] == "State And Boundary", profile
+    assert profile["selection_reasons"] == [
+        "selected because this catalog profile was explicitly requested",
+    ], profile
+    assert "python3 examples/todo-contract-smoke.py" in payload["commands"], payload
+    assert all(
+        check["source"] == "catalog_family"
+        for check in payload["suggested_checks"]
+    ), payload
+
+
 def assert_catalog_canary_selects_own_profile_not_benchmark() -> None:
     payload = build_catalog_canary_plan(
         changed_files=["loopx/canary/planner.py", "loopx/canary/runner.py"],
@@ -554,6 +574,33 @@ def assert_cli_json_plan_is_dry_run() -> None:
     assert any(profile["id"] == "monitor-scheduler" for profile in payload["domain_profiles"]), payload
 
 
+def assert_cli_profile_accepts_catalog_profile_id() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--format",
+            "json",
+            "canary",
+            "plan",
+            "--profile",
+            "state-and-boundary",
+            "--max-checks-per-family",
+            "1",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    payload = json.loads(completed.stdout)
+    assert payload["profile_count"] == 1, payload
+    assert payload["domain_profile_count"] == 0, payload
+    assert payload["profiles"][0]["id"] == "state-and-boundary", payload
+    assert payload["commands"] == ["python3 examples/todo-contract-smoke.py"], payload
+
+
 def assert_cli_json_coverage_audit_is_dry_run() -> None:
     completed = subprocess.run(
         [
@@ -582,6 +629,7 @@ def main() -> int:
     assert_plan_selects_minimal_profiles_from_changed_surfaces()
     assert_pr_release_and_refactor_profiles_select()
     assert_explicit_profile_can_include_deep_checks()
+    assert_explicit_catalog_profile_id_selects_family_profile()
     assert_catalog_canary_selects_own_profile_not_benchmark()
     assert_install_update_does_not_select_release_promotion()
     assert_coverage_audit_tracks_p0_p1_patterns()
@@ -593,6 +641,7 @@ def main() -> int:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     assert_cli_json_plan_is_dry_run()
+    assert_cli_profile_accepts_catalog_profile_id()
     assert_cli_json_coverage_audit_is_dry_run()
     print("catalog-canary-planner-smoke ok")
     return 0
