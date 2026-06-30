@@ -121,22 +121,22 @@ Requirements: Python 3.11+, `curl`, `tar`, macOS or Linux shell. Git is only
 needed for contributor clone/canary workflows. The Python package has no
 runtime dependencies outside the standard library.
 
-The easiest start is agent-first: ask the agent you already use to install,
-connect, diagnose, and show the next safe action before doing longer work.
+Start agent-first: paste one setup message for the surface you already use,
+then start real work with `/loopx <complex task>`.
 
-Pick the surface you already use:
+Choose your surface:
 
 | Surface | Best when | Start with |
 | --- | --- | --- |
-| Codex App | You want recurring heartbeats and scheduler backoff inside Codex App. | Paste the setup message below, then use `loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"`. |
-| Codex CLI | You want the visible TUI to stay primary. | Run `codex`, paste the setup message, then set `/goal <thin task_body>`. |
+| Codex App | You want a long-running agent that can wake up, re-check gates, and keep moving. | Paste the setup message below, then ask `/loopx <complex task>`. |
+| Codex CLI | You want the visible TUI to stay primary while LoopX keeps the state. | Run `codex`, paste the setup message, then ask `/loopx <complex task>`. |
 | Claude Code | You want Claude Code's native `/loop` to drive each tick. | Install the opt-in adapter, run `/loopx <task>`, then `/loop`. |
 | Manual shell / other agents | You want LoopX state without a supported runtime bridge. | `curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh \| bash`, then `loopx doctor` and `loopx bootstrap`. |
 
 ### Codex App
 
-Best when you want LoopX to keep working through Codex App heartbeats. Paste
-this in the current project thread:
+Best when you want a long-running or decentralized multi-agent workflow without
+hand-writing scheduler prompts. Paste this in the current project thread:
 
 ```text
 Connect the current project to LoopX.
@@ -149,24 +149,36 @@ Then run `loopx doctor`. Work only from the current project root: if LoopX state
 already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
-and `.local/` are ignored. After the project is connected, set or refresh this
-thread's heartbeat automation to start at 3 minutes using the task body from
-`loopx heartbeat-prompt --thin`, then follow `quota should-run.scheduler_hint`
-for backoff and loop self-stop. Then stop and report the goal id, current user
-gate, top agent todo, and next safe action.
+and `.local/` are ignored. If this is Codex App, set or refresh this thread's
+heartbeat automation automatically from the LoopX generated task body; do not
+ask me to manually run `heartbeat-prompt`. Then stop and report the project
+connection status, current user gate, top agent todo, and next safe action.
 ```
 
-The generated heartbeat body is the recurring Codex App work surface:
+Then start a real long-running task in normal language:
 
-```bash
-loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+```text
+/loopx Stabilize our flaky checkout tests, split the fix into safe PR-sized
+steps, keep private logs out of public artifacts, and hand off any production
+or release decision back to me.
 ```
 
-The 3-minute interval is only the bootstrap cadence. On long waits,
-`quota should-run` returns `scheduler_hint`: Codex App automations should back
-off toward the recommended interval, while Codex CLI TUI and Claude Code loops
-should run a final quota/replan check after the unchanged-poll limit and then
-exit/stop if the guard is still unchanged instead of polling forever.
+LoopX will plan before writing state, then create ordered P0/P1/P2 todos such
+as:
+
+```text
+[P0] Reproduce the flaky checkout failure and capture public-safe evidence.
+[P0] Patch the narrowest failing path and run the focused smoke.
+[P1] Open or prepare the PR with validation notes and remaining risk.
+[P2] Add a follow-up monitor or cleanup task only if the evidence justifies it.
+```
+
+After that, each tick reads `quota should-run`: if a user gate blocks the chosen
+path, the agent asks a concrete question; if a safe fallback exists, it keeps
+working; if nothing material changed, it backs off or quiet-stops instead of
+spending compute forever. The agent may use `heartbeat-prompt --thin`
+internally to wire Codex App, but users do not need to run that command in the
+recommended path.
 
 ### Codex CLI
 
@@ -192,16 +204,16 @@ already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
-execution. After the project is connected, generate the thin heartbeat prompt
-and set the current Codex CLI goal to `/goal <thin task_body>`. Then stop and
-report the goal id, current user gate, top agent todo, and next safe action.
+execution. Then stop and report the project connection status, current user
+gate, top agent todo, and next safe action. After that I will start work with
+`/loopx <complex task>`.
 ```
 
-That one message is the install, connect, heartbeat setup, and status check.
-The first useful TUI response should show the current goal, any concrete user
-gate, top todos, and next safe action. Hidden `codex exec` is not the default
-bootstrap path. Details for generated messages, later same-TUI automation, and
-proof capture live in [Getting Started](docs/guides/getting-started.md).
+That one message is the install, connect, and status check. The first useful
+TUI response should show the current goal, any concrete user gate, top todos,
+and next safe action. Hidden `codex exec` is not the default bootstrap path.
+Details for generated messages, later same-TUI automation, and proof capture
+live in [Getting Started](docs/guides/getting-started.md).
 
 A successful connection looks like this:
 
@@ -245,6 +257,25 @@ loopx bootstrap \
   --objective "Improve this project through bounded, verified goal segments." \
   --goal-doc GOAL.md
 ```
+
+### Advanced: Dynamic Workflow Scripts
+
+For teams that already have their own agent runner, hardware harness, or
+multi-agent scheduler, LoopX can be used as the control-plane API inside that
+workflow. Your script or supervisor owns the executor loop; LoopX owns the
+state contract:
+
+```text
+loopx quota should-run      # should any agent act now?
+loopx todo claim/update     # who owns this slice, and what changed?
+loopx refresh-state         # what evidence or blocker should the next turn see?
+loopx quota spend-slot      # account for a completed automatic slice
+```
+
+This is the shape used by advanced showcases such as the
+[hardware-agent workflow](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
+your agents can orchestrate devices, tools, or side agents, while LoopX keeps
+goals, gates, todos, evidence, quota, and handoff state reviewable.
 
 Clone-based install is only for contributors who want the live canary wrapper:
 
