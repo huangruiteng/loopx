@@ -26,6 +26,8 @@ COMMON_NODE_PATHS = [
     "/usr/local/bin",
 ]
 READINESS_GOAL_ID = "loopx-meta"
+DEFAULT_READINESS_AGENT_ID = "codex-product-capability"
+DEFAULT_READINESS_AGENT_LANE = "product_capability_catalog_canary"
 READINESS_CLASSIFICATION = "canary_promotion_readiness_smoke_group"
 READINESS_RECOMMENDED_ACTION = (
     "Canary promotion-readiness smoke passed; promotion may proceed after doctor/status reports fresh evidence."
@@ -54,6 +56,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run checks only; do not append the promotion-readiness evidence event.",
     )
+    parser.add_argument(
+        "--agent-id",
+        default=os.environ.get("LOOPX_AGENT_ID") or DEFAULT_READINESS_AGENT_ID,
+        help=(
+            "Registered agent id used for the readiness evidence writeback. "
+            "Defaults to LOOPX_AGENT_ID or codex-product-capability."
+        ),
+    )
+    parser.add_argument(
+        "--agent-lane",
+        default=os.environ.get("LOOPX_AGENT_LANE") or DEFAULT_READINESS_AGENT_LANE,
+        help=(
+            "Public-safe agent lane label used for the readiness evidence writeback. "
+            "Defaults to LOOPX_AGENT_LANE or product_capability_catalog_canary."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -72,25 +90,41 @@ def run_command(label: str, command: list[str], env: dict[str, str]) -> None:
     subprocess.run(command, cwd=REPO_ROOT, env=env, check=True)
 
 
-def write_readiness_evidence(env: dict[str, str]) -> None:
+def write_readiness_evidence(
+    env: dict[str, str],
+    *,
+    agent_id: str | None = None,
+    agent_lane: str | None = None,
+) -> None:
+    resolved_agent_id = (
+        agent_id or os.environ.get("LOOPX_AGENT_ID") or DEFAULT_READINESS_AGENT_ID
+    ).strip()
+    resolved_agent_lane = (
+        agent_lane or os.environ.get("LOOPX_AGENT_LANE") or DEFAULT_READINESS_AGENT_LANE
+    ).strip()
+    command = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "refresh-state",
+        "--goal-id",
+        READINESS_GOAL_ID,
+        "--classification",
+        READINESS_CLASSIFICATION,
+        "--recommended-action",
+        READINESS_RECOMMENDED_ACTION,
+        "--delivery-batch-scale",
+        "multi_surface",
+        "--delivery-outcome",
+        "primary_goal_outcome",
+    ]
+    if resolved_agent_id:
+        command.extend(["--agent-id", resolved_agent_id])
+    if resolved_agent_lane:
+        command.extend(["--agent-lane", resolved_agent_lane])
     run_command(
         "promotion readiness evidence writeback",
-        [
-            sys.executable,
-            "-m",
-            "loopx.cli",
-            "refresh-state",
-            "--goal-id",
-            READINESS_GOAL_ID,
-            "--classification",
-            READINESS_CLASSIFICATION,
-            "--recommended-action",
-            READINESS_RECOMMENDED_ACTION,
-            "--delivery-batch-scale",
-            "multi_surface",
-            "--delivery-outcome",
-            "primary_goal_outcome",
-        ],
+        command,
         env,
     )
 
@@ -109,7 +143,11 @@ def main() -> int:
 
     evidence_suffix = " without evidence writeback"
     if not args.no_write_evidence:
-        write_readiness_evidence(env)
+        write_readiness_evidence(
+            env,
+            agent_id=args.agent_id,
+            agent_lane=args.agent_lane,
+        )
         evidence_suffix = " with evidence writeback"
 
     suffix = " with browser smokes" if args.include_browser else " without browser smokes"

@@ -101,6 +101,13 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
                         "status": "active-read-only",
                         "repo": str(project),
                         "state_file": state_file,
+                        "coordination": {
+                            "primary_agent": "codex-main-control",
+                            "registered_agents": [
+                                "codex-main-control",
+                                "codex-product-capability",
+                            ],
+                        },
                         "adapter": {
                             "kind": "harness_self_improvement",
                             "status": "connected-read-only",
@@ -167,6 +174,9 @@ def main() -> int:
         assert record["delivery_batch_scale"] == "multi_surface", record
         assert record["delivery_outcome"] == "primary_goal_outcome", record
         assert record["recommended_action"] == module.READINESS_RECOMMENDED_ACTION, record
+        assert record["progress_scope"] == "agent_lane", record
+        assert record["agent_id"] == module.DEFAULT_READINESS_AGENT_ID, record
+        assert record["agent_lane"] == module.DEFAULT_READINESS_AGENT_LANE, record
 
         json_path = Path(record["json_path"])
         markdown_path = Path(record["markdown_path"])
@@ -179,6 +189,9 @@ def main() -> int:
         assert payload["classification"] == module.READINESS_CLASSIFICATION, payload
         assert payload["delivery_batch_scale"] == "multi_surface", payload
         assert payload["delivery_outcome"] == "primary_goal_outcome", payload
+        assert payload["progress_scope"] == "agent_lane", payload
+        assert payload["agent_id"] == module.DEFAULT_READINESS_AGENT_ID, payload
+        assert payload["agent_lane"] == module.DEFAULT_READINESS_AGENT_LANE, payload
         assert payload["state"]["path"] == str(state_path), payload
 
         global_registry = runtime / "registry.global.json"
