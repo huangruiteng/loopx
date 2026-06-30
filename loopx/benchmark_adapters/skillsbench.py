@@ -31,14 +31,10 @@ SKILLSBENCH_PRODUCT_MODE_CASE_STATE_PATH = benchmark_case_active_state_path(
 SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE = "raw-codex-autonomous-max5"
 SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
 SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
-SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE = (
-    "loopx-goal-start-verifier-feedback-todo"
-)
 SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES = frozenset(
     {
         SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
         SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-        SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     }
 )
 SKILLSBENCH_ROUTES = (
@@ -47,12 +43,10 @@ SKILLSBENCH_ROUTES = (
     "loopx-prompt-polling-test",
     "codex-app-server-goal-baseline",
     "codex-goal-mode-baseline",
-    "automation-loop-treatment",
     "curated-skills-baseline",
     SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
     SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
     SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-    SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
 )
 SKILLSBENCH_DEFAULT_ROUTE = "loopx-blind-loop-treatment"
 
@@ -101,27 +95,16 @@ def _is_skillsbench_loopx_product_mode_treatment_route(route: str) -> bool:
 
 
 def _is_skillsbench_goal_start_product_mode_route(route: str) -> bool:
-    return route in {
-        SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-        SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
-    }
-
-
-def _is_skillsbench_verifier_feedback_todo_route(route: str) -> bool:
-    return route == SKILLSBENCH_LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
+    return route == SKILLSBENCH_LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
 
 
 def _skillsbench_product_mode_arm_id(route: str) -> str:
-    if _is_skillsbench_verifier_feedback_todo_route(route):
-        return "loopx_goal_start_verifier_feedback_todo"
     if _is_skillsbench_goal_start_product_mode_route(route):
         return "loopx_goal_start_product_mode"
     return "loopx_product_mode"
 
 
 def _skillsbench_product_mode_outer_controller(route: str) -> str:
-    if _is_skillsbench_verifier_feedback_todo_route(route):
-        return "loopx_goal_start_verifier_feedback_todo"
     if _is_skillsbench_goal_start_product_mode_route(route):
         return "loopx_goal_start_product_mode"
     return "loopx_product_mode"
@@ -391,21 +374,14 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
         }
     if _is_skillsbench_loopx_product_mode_treatment_route(route):
         goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
-        verifier_feedback_todo_route = _is_skillsbench_verifier_feedback_todo_route(route)
         return {
             "mode": (
-                "skillsbench_loopx_goal_start_verifier_feedback_todo_experiment"
-                if verifier_feedback_todo_route
-                else
                 "skillsbench_loopx_goal_start_product_mode_treatment"
                 if goal_start_product_mode
                 else "skillsbench_loopx_product_mode_treatment"
             ),
             "arm_id": _skillsbench_product_mode_arm_id(route),
             "source_runner": (
-                "loopx_skillsbench_goal_start_verifier_feedback_todo_lifecycle_driver"
-                if verifier_feedback_todo_route
-                else
                 "loopx_skillsbench_goal_start_product_lifecycle_driver"
                 if goal_start_product_mode
                 else "loopx_skillsbench_canonical_product_lifecycle_driver"
@@ -416,9 +392,6 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
             "native_goal_mode_confirmation_status": "not_requested",
             "codex_acp_protocol_used": True,
             "skillsbench_route_semantics": (
-                "codex_agent_with_loopx_goal_start_ranked_todo_plan_selected_p0_lifecycle_and_verifier_failure_feedback_todo"
-                if verifier_feedback_todo_route
-                else
                 "codex_agent_with_loopx_goal_start_ranked_todo_plan_selected_p0_lifecycle_no_reward_feedback"
                 if goal_start_product_mode
                 else "codex_agent_with_loopx_state_todo_replan_cli_no_reward_feedback"
@@ -427,23 +400,17 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
             "loopx_automation_loop": True,
             "loopx_inside_case": True,
             "product_mode": True,
-            "verifier_failure_feedback_todo_route": verifier_feedback_todo_route,
-            "verifier_failure_feedback_forwarded": verifier_feedback_todo_route,
-            "verifier_failure_todo_required": verifier_feedback_todo_route,
+            "verifier_failure_feedback_todo_route": False,
+            "verifier_failure_feedback_forwarded": False,
+            "verifier_failure_todo_required": False,
             "blind_loop": False,
-            "official_feedback_blinded": not verifier_feedback_todo_route,
-            "reward_feedback_forwarded": verifier_feedback_todo_route,
+            "official_feedback_blinded": True,
+            "reward_feedback_forwarded": False,
             "case_semantics_changed_by_harness": True,
             "official_score_comparable_to_native_codex": True,
             "official_score_comparable_to_loopx_treatment": True,
             "first_blocker": "none",
             "next_action": (
-                "run LoopX goal-start product-mode with verifier failure "
-                "feedback enabled: when the previous official verifier reward "
-                "is below passing, create a new case-local LoopX todo for the "
-                "failure before the next repair attempt"
-                if verifier_feedback_todo_route
-                else
                 "run LoopX goal-start product-mode treatment with a compact ranked "
                 "todo plan, selected P0 todo lifecycle, replan/status writeback, "
                 "and LoopX CLI/ledger surfaces; do not return official reward or "
@@ -515,33 +482,6 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "thread/start plus thread/goal/set/get plus turn/start, ingest "
                 "only compact no-upload evidence, and fail closed rather than "
                 "falling back to ACP or slash-prefix prompt experiments"
-            ),
-        }
-    if route == "automation-loop-treatment":
-        return {
-            "mode": "skillsbench_loopx_automation_loop_treatment",
-            "arm_id": "loopx_automation_loop_treatment",
-            "source_runner": "loopx_skillsbench_automation_loop_treatment_skeleton",
-            "inner_codex_goal_mode": False,
-            "native_goal_mode_requested": False,
-            "native_goal_mode_invoked": False,
-            "native_goal_mode_confirmation_status": "not_requested",
-            "codex_acp_protocol_used": True,
-            "skillsbench_route_semantics": "codex_acp_ordinary_agent_with_outer_reward_feedback_loop",
-            "curated_skills_visible": False,
-            "loopx_automation_loop": True,
-            "loopx_inside_case": False,
-            "blind_loop": False,
-            "official_feedback_blinded": False,
-            "reward_feedback_forwarded": True,
-            "case_semantics_changed_by_harness": False,
-            "official_score_comparable_to_native_codex": True,
-            "official_score_comparable_to_loopx_treatment": True,
-            "first_blocker": "skillsbench_adapter_skeleton_no_real_case",
-            "next_action": (
-                "run the automation-loop treatment only after the paired baseline "
-                "failure is compact-attributed and control-plane-addressable; the "
-                "inner case actor must be ordinary Codex CLI, not Codex goal mode"
             ),
         }
     if route == "curated-skills-baseline":
@@ -1798,9 +1738,6 @@ def build_skillsbench_benchmark_run(
         route
     )
     is_goal_start_product_mode = _is_skillsbench_goal_start_product_mode_route(route)
-    is_verifier_feedback_todo_route = _is_skillsbench_verifier_feedback_todo_route(
-        route
-    )
     validation: dict[str, Any] = {
         "cli_skeleton_present": True,
         "skillsbench_route_declared": True,
@@ -1866,18 +1803,13 @@ def build_skillsbench_benchmark_run(
                 if route == "raw-codex-autonomous-max5"
                 else [
                     "ordinary_codex_cli_actor",
-                    "loopx_goal_start_verifier_feedback_todo"
-                    if is_verifier_feedback_todo_route
-                    else
                     "loopx_goal_start_product_mode"
                     if is_goal_start_product_mode
                     else "loopx_product_mode",
                     "ranked_todo_plan_selected_p0_lifecycle"
                     if is_goal_start_product_mode
                     else "goal_state_todos_replan_cli",
-                    "verifier_failure_feedback_todo"
-                    if is_verifier_feedback_todo_route
-                    else "official_feedback_withheld",
+                    "official_feedback_withheld",
                     "fixture_only",
                     "no_upload",
                     "single_task_planned",
@@ -1901,15 +1833,6 @@ def build_skillsbench_benchmark_run(
                     "single_task_planned",
                 ]
                 if route == "loopx-blind-loop-treatment"
-                else [
-                    "ordinary_codex_cli_actor",
-                    "loopx_automation_loop",
-                    "reward_feedback_ablation",
-                    "fixture_only",
-                    "no_upload",
-                    "single_task_planned",
-                ]
-                if route == "automation-loop-treatment"
                 else [
                     "skillsbench_curated_skills_visible",
                     "fixture_only",
@@ -1973,9 +1896,9 @@ def build_skillsbench_benchmark_run(
             ),
             "declared_done_requires_no_remaining_goals": is_product_mode_treatment,
             "goal_start_product_mode": is_goal_start_product_mode,
-            "verifier_failure_feedback_todo_route": is_verifier_feedback_todo_route,
+            "verifier_failure_feedback_todo_route": False,
             "verifier_failure_feedback_forwarded_to_agent": False,
-            "verifier_failure_todo_required": is_verifier_feedback_todo_route,
+            "verifier_failure_todo_required": False,
             "goal_start_plan_observed": False,
             "planned_todo_count": 0,
             "planned_p0_count": 0,
@@ -1993,8 +1916,6 @@ def build_skillsbench_benchmark_run(
                 if route == "loopx-blind-loop-treatment"
                 else _skillsbench_product_mode_outer_controller(route)
                 if is_product_mode_treatment
-                else "reward_feedback_automation_loop_ablation"
-                if route == "automation-loop-treatment"
                 else "raw_codex_autonomous_max5"
                 if route == "raw-codex-autonomous-max5"
                 else "fixed_blind_loop_runner"
@@ -2007,7 +1928,6 @@ def build_skillsbench_benchmark_run(
                 "ordinary_codex_acp_agent"
                 if route
                 in {
-                    "automation-loop-treatment",
                     "loopx-blind-loop-treatment",
                     "loopx-prompt-polling-test",
                     "codex-acp-blind-loop-baseline",
@@ -2090,7 +2010,6 @@ def build_skillsbench_benchmark_run(
             "leaderboard_evidence": False,
         },
         "evidence_files": [
-            "doc:automation-loop-treatment-case-selection-20260614.md",
             "doc:benchmark-run-ledger-v0.md",
             "smoke:skillsbench-benchmark-run-smoke.py",
         ],
@@ -3353,8 +3272,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         if route == "loopx-prompt-polling-test"
         else _skillsbench_product_mode_outer_controller(route)
         if _is_skillsbench_loopx_product_mode_treatment_route(route)
-        else "reward_feedback_automation_loop_ablation"
-        if route == "automation-loop-treatment"
         else "raw_codex_autonomous_max5"
         if route == "raw-codex-autonomous-max5"
         else "fixed_blind_loop_runner"
@@ -3367,7 +3284,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         else "ordinary_codex_acp_agent"
         if route
         in {
-            "automation-loop-treatment",
             "loopx-blind-loop-treatment",
             "loopx-prompt-polling-test",
             "codex-acp-blind-loop-baseline",

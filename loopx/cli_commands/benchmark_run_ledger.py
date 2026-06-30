@@ -130,8 +130,8 @@ def register_benchmark_run_ledger_commands(
             "SkillsBench route for the no-run compact adapter skeleton. "
             "Default is loopx-blind-loop-treatment: ordinary Codex "
             "inside the case, no /goal mode, and no official reward/pass-fail "
-            "or verifier output returned during the loop. "
-            "automation-loop-treatment is a reward-feedback ablation."
+            "or verifier output returned during the loop. Official verifier "
+            "feedback routes are not exposed here."
         ),
     )
     benchmark_run_parser.add_argument(

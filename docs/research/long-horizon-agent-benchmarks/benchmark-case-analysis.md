@@ -194,15 +194,15 @@ Interaction-count assessment:
   counters. Both observed cases still classify as `skillsbench_runner_error`
   with no public worker trace directory, so they are runner/observation repair
   assets rather than model-quality or uplift evidence.
-- The treatment route is `loopx_automation_loop_treatment`, still with
-  `loopx_inside_case=false`; LoopX is the outer automation loop,
-  not an in-case solver skill. Current positive, neutral, and regression
-  treatment runs all use the same shape: two controller decisions, meaning an
-  initial prompt plus one follow-up after failed reward.
-- The follow-up payload after failed reward should be treated as reward
-  feedback. It forwards `previous_reward`, `previous_verifier_error`, and
-  `previous_tool_calls`; private verifier output tail can leak verifier/reward
-  diagnostics into the treatment and should stay disabled by default.
+- Historical `loopx_automation_loop_treatment` rows are now classified only as
+  deprecated oracle-feedback evidence. They used `loopx_inside_case=false` and a
+  scheduler-side follow-up after failed reward, so they are useful as a boundary
+  caution but not as a fair LoopX treatment or future experiment arm.
+- Any follow-up payload after failed official reward should be treated as reward
+  feedback and must not be fed back into the agent. Signals such as
+  `previous_reward`, `previous_verifier_error`, `previous_tool_calls`, and
+  verifier-output tails leak oracle/verifier diagnostics; the executable
+  SkillsBench routes no longer expose them.
 - Blind-loop max5 remains the fair prompt/continuation guard: compare
   `codex-acp-blind-loop-baseline` against
   `loopx-blind-loop-treatment`, with ordinary Codex ACP/CLI inside both
@@ -1152,8 +1152,9 @@ Why it matters:
 - It adds a baseline-failing SkillsBench case without setup confound.
 - It shows that the automation-loop machinery ran, observed feedback, and
   still did not improve official score.
-- It is a good control for tuning verifier-feedback summaries and treatment
-  specificity.
+- It is a good historical control for showing that verifier feedback is an
+  oracle-assisted ablation, not a route to tune or ship as fair LoopX
+  treatment.
 - It now also guards blind-loop prompt, continuation, and termination changes
   alongside `manufacturing-codebook-normalization`.
 

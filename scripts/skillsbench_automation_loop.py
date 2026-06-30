@@ -20,16 +20,13 @@ output back to the agent:
 The historical ``loopx-blind-loop-treatment`` route is kept as an alias
 for existing SkillsBench rows that used the same no-feedback polling semantics.
 The ``codex-acp-blind-loop-baseline`` route uses the same no-reward loop budget
-with an ordinary Codex prompt and no LoopX controller semantics. The
-older ``automation-loop-treatment`` route intentionally forwards failed-reward
-feedback and is kept only as a reward-feedback ablation.
+with an ordinary Codex prompt and no LoopX controller semantics.
 
-The ``loopx-goal-start-verifier-feedback-todo`` route is a separate
-goal-start experiment arm: it preserves the case-local LoopX lifecycle, but
-when an intermediate official verifier reward is observed below the pass
-threshold it forwards that failure signal and requires the agent to create a
-new LoopX todo before repairing. It is not the no-feedback main-table
-treatment.
+Routes that forward official verifier reward, pass/fail status, verifier
+errors, or verifier output back to the agent are intentionally unsupported for
+SkillsBench product-mode research. Official verifier artifacts may be reduced
+into private metrics and public-safe compact counters only after the agent turn;
+they must not become continuation prompts or case-local LoopX todos.
 
 For the ``codex-goal-mode-baseline`` route it uses BenchFlow's user hook only
 to request a slash-goal-style initial prompt, with no reward follow-up, no Goal
@@ -123,13 +120,11 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
 from loopx.benchmark_core.loop_protocol import (  # noqa: E402
-    AUTOMATION_LOOP_TREATMENT_ROUTE,
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-    LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
     LOOPX_PROMPT_POLLING_TEST_ROUTE,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
@@ -208,10 +203,8 @@ SUPPORTED_ROUTES = (
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-    LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     "codex-goal-mode-baseline",
-    AUTOMATION_LOOP_TREATMENT_ROUTE,
 )
 DEFAULT_ROUTE = LOOPX_BLIND_LOOP_TREATMENT_ROUTE
 CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
@@ -231,7 +224,6 @@ LOOPX_PRODUCT_MODE_FAMILY_ROUTES = frozenset(
     {
         LOOPX_PRODUCT_MODE_ROUTE,
         LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-        LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     }
 )
 PRODUCT_MODE_CONTROLLER_ROUTES = frozenset(
@@ -247,19 +239,10 @@ def _is_loopx_product_mode_route(route: str) -> bool:
 
 
 def _is_goal_start_product_mode_route(route: str) -> bool:
-    return route in {
-        LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-        LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
-    }
-
-
-def _is_verifier_feedback_todo_route(route: str) -> bool:
-    return route == LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
+    return route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
 
 
 def _product_mode_arm_id_for_route(route: str) -> str:
-    if _is_verifier_feedback_todo_route(route):
-        return "loopx_goal_start_verifier_feedback_todo"
     if _is_goal_start_product_mode_route(route):
         return "loopx_goal_start_product_mode"
     return "loopx_product_mode"
@@ -6127,8 +6110,6 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         rollout_suffix = "loopx_prompt_polling_test"
     elif route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE:
         rollout_suffix = "loopx_blind_loop"
-    elif route == LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE:
-        rollout_suffix = "loopx_goal_start_verifier_feedback_todo"
     elif route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE:
         rollout_suffix = "loopx_goal_start_product_mode"
     elif route == LOOPX_PRODUCT_MODE_ROUTE:
@@ -6139,8 +6120,6 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         rollout_suffix = "codex_acp_blind_loop"
     elif route == "codex-app-server-goal-baseline":
         rollout_suffix = "codex_app_server_goal"
-    elif route == "automation-loop-treatment":
-        rollout_suffix = "loopx_reward_feedback_ablation"
     else:
         rollout_suffix = route_slug
     rollout_name = args.rollout_name or f"{task_id}__{rollout_suffix}"
@@ -6462,15 +6441,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "goal_start_selected_p0_lifecycle_required": (
                 _is_goal_start_product_mode_route(args.route)
             ),
-            "verifier_failure_feedback_todo_route": _is_verifier_feedback_todo_route(
-                args.route
-            ),
-            "verifier_failure_feedback_forwarded_to_agent": (
-                _is_verifier_feedback_todo_route(args.route)
-            ),
-            "verifier_failure_todo_required": _is_verifier_feedback_todo_route(
-                args.route
-            ),
+            "verifier_failure_feedback_todo_route": False,
+            "verifier_failure_feedback_forwarded_to_agent": False,
+            "verifier_failure_todo_required": False,
             "host_local_acp_codex_exec_preflight_requested": bool(
                 _host_local_acp_codex_exec_preflight_should_run(args)
             ),
@@ -7169,7 +7142,6 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
     )
     loopx_product_mode = _is_loopx_product_mode_route(route)
     goal_start_product_mode = _is_goal_start_product_mode_route(route)
-    verifier_feedback_todo_route = _is_verifier_feedback_todo_route(route)
     trace.update(
         {
         "case_goal_state_packet_present": False,
@@ -7188,9 +7160,9 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         ),
         "declared_done_requires_no_remaining_goals": loopx_product_mode,
         "goal_start_product_mode": goal_start_product_mode,
-        "verifier_failure_feedback_todo_route": verifier_feedback_todo_route,
+        "verifier_failure_feedback_todo_route": False,
         "verifier_failure_feedback_forwarded_to_agent": False,
-        "verifier_failure_todo_required": verifier_feedback_todo_route,
+        "verifier_failure_todo_required": False,
         "verifier_failure_feedback_todo_prompt_count": 0,
         "verifier_failure_feedback_todo_round": None,
         "official_feedback_forwarded_count": 0,
@@ -8946,80 +8918,6 @@ def _merge_acp_trajectory_summary(
     trace["private_agent_trajectory_summary_recorded"] = False
 
 
-def _build_controller_user(max_output_chars: int, trace: dict[str, Any]):
-    from benchflow.sandbox.user import BaseUser, RoundResult
-
-    class GoalHarnessAutomationUser(BaseUser):
-        """Private scheduler-side user for one SkillsBench task."""
-
-        async def run(
-            self,
-            round: int,
-            instruction: str,
-            round_result: RoundResult | None = None,
-        ) -> str | None:
-            _inc_counter(trace, "heartbeat_count")
-            trace["max_round_observed"] = max(int(trace.get("max_round_observed", -1)), round)
-            if round == 0:
-                _inc_counter(trace, "controller_action_decisions")
-                _inc_counter(trace, "initial_prompt_count")
-                trace["last_decision"] = "send_initial_controller_prompt"
-                return (
-                    "LoopX automation-loop round 1. "
-                    "You are running inside the official SkillsBench sandbox. "
-                    "Solve the benchmark task using ordinary Codex agent behavior; "
-                    "do not invoke /goal mode, external LoopX CLI, upload, "
-                    "submit, or ask the human for routine execution choices. "
-                    "Inspect the workspace, implement the fix, and run local "
-                    "validation before finishing.\n\n"
-                    "--- TASK INSTRUCTION ---\n"
-                    f"{instruction}"
-                )
-
-            reward = _record_round_reward(
-                trace,
-                agent_round=round,
-                round_result=round_result,
-            )
-            if reward is not None and reward >= 1.0:
-                _inc_counter(trace, "controller_action_decisions")
-                _inc_counter(trace, "stop_decision_count")
-                trace["last_decision"] = "stop_after_official_reward_pass"
-                return None
-
-            verifier_error = (
-                round_result.verifier_error if round_result else None
-            ) or "none"
-            if round_result and (round_result.verifier_error or round_result.verifier_output):
-                _inc_counter(trace, "verifier_feedback_observation_count")
-            verifier_tail = _tail(
-                round_result.verifier_output if round_result else None,
-                limit=max_output_chars,
-            )
-            feedback = [
-                f"previous_reward={reward if reward is not None else 'missing'}",
-                f"previous_verifier_error={verifier_error}",
-                f"previous_tool_calls={round_result.n_tool_calls if round_result else 0}",
-            ]
-            if verifier_tail:
-                feedback.append("private_verifier_output_tail:\n" + verifier_tail)
-            _inc_counter(trace, "controller_action_decisions")
-            _inc_counter(trace, "followup_prompt_count")
-            trace["last_decision"] = "send_followup_after_failed_reward"
-            return (
-                f"LoopX automation-loop follow-up round {round + 1}. "
-                "The previous attempt did not pass the verifier. Continue in the "
-                "same workspace, read /app/instruction.md if needed, inspect the "
-                "failure, make the smallest correct fix, and rerun validation. "
-                "Do not ask or wait for a human during benchmark execution; if "
-                "the sandbox, task workspace, or required tooling is technically "
-                "unavailable, record that blocker and otherwise keep solving.\n\n"
-                + "\n".join(feedback)
-            )
-
-    return GoalHarnessAutomationUser()
-
-
 def _build_blind_loop_user(
     *,
     route: str,
@@ -9127,95 +9025,6 @@ def _build_codex_goal_mode_baseline_user():
 
     return CodexGoalModeBaselineUser()
 
-
-def _verifier_failure_feedback_todo_applicable(
-    reward: float | int | None,
-) -> bool:
-    return bool(
-        isinstance(reward, (int, float))
-        and not isinstance(reward, bool)
-        and reward < 1.0
-    )
-
-
-def _record_verifier_failure_feedback_todo_prompt(
-    trace: dict[str, Any],
-    *,
-    agent_round: int,
-    reward: float | int | None,
-) -> None:
-    trace["verifier_failure_feedback_todo_route"] = True
-    trace["verifier_failure_feedback_forwarded_to_agent"] = True
-    trace["verifier_failure_todo_required"] = True
-    _inc_counter(trace, "official_feedback_forwarded_count")
-    trace["verifier_failure_feedback_todo_round"] = agent_round
-    if isinstance(reward, (int, float)) and not isinstance(reward, bool):
-        trace["verifier_failure_feedback_score"] = float(reward)
-    current = trace.get("verifier_failure_feedback_todo_prompt_count")
-    if not isinstance(current, int) or isinstance(current, bool):
-        current = 0
-    trace["verifier_failure_feedback_todo_prompt_count"] = current + 1
-
-
-def _build_verifier_failure_feedback_todo_prompt(
-    *,
-    round_number: int,
-    max_rounds: int,
-    case_cli_prefix: str,
-    case_goal_id: str,
-    case_agent_id: str,
-    case_state_path: str,
-    reward: float | int | None,
-) -> str:
-    safe_round = max(1, round_number)
-    previous_round = max(1, safe_round - 1)
-    reward_text = (
-        str(float(reward))
-        if isinstance(reward, (int, float)) and not isinstance(reward, bool)
-        else "missing"
-    )
-    todo_text = shlex.quote(
-        "Verifier feedback after round "
-        f"{previous_round}: official reward was {reward_text}; "
-        "repair the solution and validate before closeout."
-    )
-    note_text = shlex.quote(
-        f"round {previous_round} verifier feedback converted into repair todo"
-    )
-    evidence_text = shlex.quote(
-        f"official reward below pass threshold: {reward_text}"
-    )
-    return (
-        f"Verifier-feedback LoopX continuation round {safe_round} of "
-        f"{max_rounds}. The previous official verifier attempt did not pass "
-        f"(previous_reward={reward_text}). This experimental route intentionally "
-        "forwards only the non-passing reward signal so LoopX can turn failed "
-        "external validation into fresh case-local work. Do not copy raw "
-        "verifier output into LoopX state.\n\n"
-        "Before doing more task work, create a new case-local LoopX todo for "
-        "this verifier failure, then continue from the updated active state at "
-        f"`{case_state_path}`:\n\n"
-        "```bash\n"
-        f"{case_cli_prefix} todo add --goal-id {case_goal_id} --role agent "
-        f"--text {todo_text} --task-class advancement_task "
-        f"--action-kind verifier_failure_repair "
-        f"--claimed-by {case_agent_id}\n"
-        f"{case_cli_prefix} refresh-state --goal-id {case_goal_id} "
-        "--classification benchmark_case_verifier_failure_feedback "
-        "--delivery-batch-scale single_surface "
-        "--delivery-outcome outcome_gap "
-        f"--agent-id {case_agent_id} --agent-lane benchmark_case "
-        "--no-global-sync\n"
-        "```\n\n"
-        "After that todo exists, inspect the task workspace, repair the "
-        "solution, and validate locally. When validation supports completion, "
-        "update or complete the verifier-failure repair todo with public-safe "
-        f"note {note_text} and evidence {evidence_text}, then run the normal "
-        "selected-P0 closeout only after task-facing validation passes. Do not "
-        "answer with prose only."
-    )
-
-
 def _build_product_mode_user(
     *,
     route: str,
@@ -9228,7 +9037,6 @@ def _build_product_mode_user(
 
     treatment = _is_loopx_product_mode_route(route)
     goal_start_product_mode = _is_goal_start_product_mode_route(route)
-    verifier_feedback_todo_route = _is_verifier_feedback_todo_route(route)
     payload = case_payload or {}
     case_state_path = str(
         payload.get("case_state_path") or PRODUCT_MODE_CASE_STATE_PATH
@@ -9261,12 +9069,6 @@ def _build_product_mode_user(
     )
 
     feedback_policy_clause = (
-        "This experimental route will forward only non-passing official reward "
-        "feedback after failed verifier attempts, and each forwarded failure "
-        "must first become a new case-local LoopX todo before repair work. "
-        "No raw verifier output should be copied into LoopX state.\n\n"
-        if verifier_feedback_todo_route
-        else
         "No official reward, pass/fail status, verifier error, verifier output, "
         "or verifier tail will be shown during this run.\n\n"
     )
@@ -9682,10 +9484,6 @@ def _build_product_mode_user(
                 "is not by itself evidence that the official verifier passed or "
                 "failed. "
                 + (
-                    "If a verifier-failure block is not included in this prompt, "
-                    "no new official failure feedback is being forwarded. "
-                    if verifier_feedback_todo_route
-                    else
                     "You are not being shown official reward, pass/fail status, "
                     "verifier error, or verifier output. "
                 )
@@ -9712,10 +9510,7 @@ def _build_product_mode_user(
                 round_result=round_result,
             )
             if round_result is not None:
-                if verifier_feedback_todo_route:
-                    trace["official_feedback_forwarded"] = True
-                else:
-                    _inc_counter(trace, "official_feedback_blinded_count")
+                _inc_counter(trace, "official_feedback_blinded_count")
                 if treatment:
                     _merge_round_result_trajectory_lifecycle_summary(round_result, trace)
                     _merge_acp_trajectory_summary(plan or {}, trace)
@@ -9846,32 +9641,6 @@ def _build_product_mode_user(
                         return host_local_idle_no_progress_prompt(
                             round + 1,
                             task_instruction=instruction,
-                        )
-                    if (
-                        verifier_feedback_todo_route
-                        and self._task_instruction_sent
-                        and product_mode_entry_lifecycle_gate_satisfied()
-                        and round < max_rounds
-                        and _verifier_failure_feedback_todo_applicable(reward)
-                    ):
-                        _record_verifier_failure_feedback_todo_prompt(
-                            trace,
-                            agent_round=round,
-                            reward=reward,
-                        )
-                        _inc_counter(trace, "controller_action_decisions")
-                        _inc_counter(trace, "followup_prompt_count")
-                        trace["last_decision"] = (
-                            "send_verifier_failure_feedback_todo_continuation"
-                        )
-                        return _build_verifier_failure_feedback_todo_prompt(
-                            round_number=round + 1,
-                            max_rounds=max_rounds,
-                            case_cli_prefix=case_cli_prefix,
-                            case_goal_id=case_goal_id,
-                            case_agent_id=case_agent_id,
-                            case_state_path=case_state_path,
-                            reward=reward,
                         )
                 if _round_result_declared_done(round_result):
                     if treatment:
@@ -10954,13 +10723,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
             goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
         )
-    if args.route == "automation-loop-treatment":
-        controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
-        controller_user = _build_controller_user(
-            args.max_verifier_output_chars,
-            controller_trace,
-        )
-    elif args.route in {
+    if args.route in {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
         LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
         LOOPX_PROMPT_POLLING_TEST_ROUTE,
@@ -12180,14 +11943,10 @@ def update_ledger(
         if args.route == "codex-acp-blind-loop-baseline"
         else "LoopX goal-start product-mode treatment"
         if args.route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
-        else "LoopX goal-start verifier-feedback todo experiment"
-        if args.route == LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
         else "LoopX product-mode treatment"
         if args.route == LOOPX_PRODUCT_MODE_ROUTE
         else "raw Codex autonomous max5 baseline"
         if args.route == "raw-codex-autonomous-max5"
-        else "LoopX reward-feedback ablation"
-        if args.route == "automation-loop-treatment"
         else "Codex ACP baseline"
     )
     return update_benchmark_run_ledger(
@@ -12217,11 +11976,7 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, An
         "codex-acp-blind-loop-baseline": "skillsbench_codex_acp_blind_loop_baseline_result_v0",
         "loopx-product-mode": "skillsbench_loopx_product_mode_result_v0",
         "loopx-goal-start-product-mode": "skillsbench_loopx_goal_start_product_mode_result_v0",
-        "loopx-goal-start-verifier-feedback-todo": (
-            "skillsbench_loopx_goal_start_verifier_feedback_todo_result_v0"
-        ),
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
-        "automation-loop-treatment": "skillsbench_reward_feedback_ablation_result_v0",
         "codex-app-server-goal-baseline": "skillsbench_codex_app_server_goal_baseline_result_v0",
         "codex-goal-mode-baseline": "skillsbench_codex_goal_mode_baseline_result_v0",
     }
@@ -12369,16 +12124,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "the main-table raw/new comparison routes; "
             "loopx-goal-start-product-mode adds /loopx goal-start planning "
             "with a compact ranked todo plan before selected-P0 lifecycle; "
-            "loopx-goal-start-verifier-feedback-todo is an explicit experiment "
-            "arm that forwards non-passing verifier reward feedback and requires "
-            "the agent to create a new case-local LoopX todo before repairing; "
             "codex-app-server-goal-baseline is the native Codex Goal baseline "
             "contract using app-server thread/goal/set/get and turn/start; "
             "codex-goal-mode-baseline sends one /goal-prefixed prompt request "
             "with no reward follow-up, but native goal-mode invocation remains "
             "unconfirmed without CLI slash-command/goal-state evidence and is "
-            "blocked by default except for --plan-only or explicit experiments; "
-            "automation-loop-treatment is a reward-feedback ablation."
+            "blocked by default except for --plan-only or explicit experiments. "
+            "Routes that return official verifier feedback to the agent are "
+            "unsupported because they leak oracle signal into the loop."
         ),
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)

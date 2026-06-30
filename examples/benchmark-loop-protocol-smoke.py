@@ -14,13 +14,11 @@ from loopx.benchmark_core.loop_protocol import (
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-    LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     LOOPX_PACKET_ONLY_OBSERVATION_ROUTE,
     LOOPX_PROMPT_POLLING_TEST_ROUTE,
     MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID,
     PACKET_ONLY_OBSERVATION_PROTOCOL_ID,
     PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID,
-    PRODUCT_MODE_VERIFIER_FEEDBACK_TODO_PROTOCOL_ID,
     RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
     build_benchmark_loop_contract,
@@ -77,17 +75,13 @@ def main() -> int:
     assert goal_start_product["product_mode"] is True
     assert goal_start_product["official_feedback_blinded"] is True
 
-    verifier_feedback_todo = build_benchmark_loop_contract(
-        route=LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
+    legacy_feedback_route = build_benchmark_loop_contract(
+        route="loopx-goal-start-verifier-feedback-todo",
         max_rounds=16,
     )
-    assert (
-        verifier_feedback_todo["protocol_id"]
-        == PRODUCT_MODE_VERIFIER_FEEDBACK_TODO_PROTOCOL_ID
-    )
-    assert verifier_feedback_todo["product_mode"] is True
-    assert verifier_feedback_todo["official_feedback_forwarded"] is True
-    assert verifier_feedback_todo["official_feedback_blinded"] is False
+    assert legacy_feedback_route["official_feedback_forwarded"] is False
+    assert legacy_feedback_route["official_feedback_blinded"] is True
+    assert legacy_feedback_route["product_mode"] is False
 
     product_contract = build_product_mode_main_table_comparison_contract()
     assert product_contract["protocol_id"] == PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID

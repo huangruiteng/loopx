@@ -3810,6 +3810,7 @@ def compact_skillsbench_run(
     passed: bool,
     exception_type: str = "",
     round_reward_trace: dict[str, Any] | None = None,
+    payload_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     trial: dict[str, Any] = {
         "task_id": task_id,
@@ -3840,6 +3841,8 @@ def compact_skillsbench_run(
     }
     if round_reward_trace is not None:
         payload["round_reward_trace"] = round_reward_trace
+    if payload_overrides:
+        payload.update(payload_overrides)
     compact = compact_benchmark_run(payload)
     assert compact is not None, payload
     return compact
@@ -3958,7 +3961,7 @@ def test_skillsbench_verifier_tail_disabled_at_zero() -> None:
     assert _tail("private verifier output", limit=0) == ""
     assert _tail("private verifier output", limit=-1) == ""
     assert _tail("abcdef", limit=3) == "def"
-    args = parse_args(["--task-id", "sample-task", "--route", "automation-loop-treatment"])
+    args = parse_args(["--task-id", "sample-task", "--route", "loopx-goal-start-product-mode"])
     assert args.max_verifier_output_chars == 0, args
     default_args = parse_args(["--task-id", "sample-task"])
     assert default_args.route == "loopx-blind-loop-treatment", default_args
@@ -5848,7 +5851,7 @@ def test_skillsbench_codex_acp_model_control_warning() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="automation-loop-treatment",
+                route="loopx-goal-start-product-mode",
                 runner_warning_labels=["codex_acp_set_model_unsupported"],
             )
         )
@@ -6722,7 +6725,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
 
         controller_trace = {
             "schema_version": "skillsbench_loopx_controller_trace_v0",
-            "route": "automation-loop-treatment",
+            "route": "loopx-goal-start-product-mode",
             "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
             "heartbeat_count": 2,
             "controller_action_decisions": 2,
@@ -6741,7 +6744,7 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="automation-loop-treatment",
+                route="loopx-goal-start-product-mode",
                 controller_trace=controller_trace,
             )
         )
@@ -9820,7 +9823,7 @@ def test_cli_dry_run_skillsbench_skeleton() -> None:
                 "--goal-id",
                 GOAL_ID,
                 "--skillsbench-route",
-                "automation-loop-treatment",
+                "loopx-goal-start-product-mode",
                 "--include-task-name",
                 "citation-check",
             ],
@@ -9835,7 +9838,7 @@ def test_cli_dry_run_skillsbench_skeleton() -> None:
         assert payload["benchmark_run"]["benchmark_id"] == "skillsbench@1.1", payload
         assert payload["benchmark_cli"]["benchmark"] == "skillsbench", payload
         assert payload["benchmark_cli"]["skillsbench_route"] == (
-            "automation-loop-treatment"
+            "loopx-goal-start-product-mode"
         ), payload
         assert payload["benchmark_cli"]["real_runner_invoked"] is False, payload
         assert payload["benchmark_cli"]["real_codex_invoked"] is False, payload
@@ -9982,7 +9985,7 @@ def test_skillsbench_runner_plan_supports_controller_trace_path() -> None:
                 "--task-id",
                 "software-dependency-audit",
                 "--route",
-                "automation-loop-treatment",
+                "loopx-goal-start-product-mode",
                 "--jobs-dir",
                 str(root / "jobs"),
                 "--plan-only",
@@ -9994,7 +9997,7 @@ def test_skillsbench_runner_plan_supports_controller_trace_path() -> None:
         )
         payload = json.loads(result.stdout)
         plan = payload["launch_plan"]
-        assert plan["route"] == "automation-loop-treatment", plan
+        assert plan["route"] == "loopx-goal-start-product-mode", plan
         assert plan["controller_trace_json"].endswith(
             "loopx_controller_trace.public.json"
         ), plan
@@ -10056,14 +10059,36 @@ def test_skillsbench_compact_runs_update_ledger_pair() -> None:
         ledger_path = root / "benchmark-run-ledger.json"
         baseline = compact_skillsbench_run(
             task_id="citation-check",
-            mode="codex_goal_mode_baseline",
+            mode="skillsbench_raw_codex_autonomous_max5",
             score=0.0,
             passed=False,
             exception_type="AgentRuntimeError",
+            round_reward_trace={
+                "schema_version": "benchmark_round_reward_trace_v0",
+                "source": "loopx_controller_trace",
+                "round_index_origin": "agent_round_1_is_first_completed_agent_attempt",
+                "records": [
+                    {
+                        "agent_round": 1,
+                        "reward_present": True,
+                        "reward": 0.0,
+                        "passed": False,
+                    }
+                ],
+                "success_observed": False,
+                "max_rounds_budget": 5,
+                "official_feedback_blinded": True,
+                "reward_feedback_forwarded": False,
+            },
+            payload_overrides={
+                "official_feedback_blinded": True,
+                "reward_feedback_forwarded": False,
+                "product_mode": True,
+            },
         )
         treatment = compact_skillsbench_run(
             task_id="citation-check",
-            mode="skillsbench_loopx_automation_loop_treatment",
+            mode="skillsbench_loopx_product_mode_treatment",
             score=1.0,
             passed=True,
             round_reward_trace={
@@ -10086,9 +10111,27 @@ def test_skillsbench_compact_runs_update_ledger_pair() -> None:
                 ],
                 "first_success_round": 2,
                 "success_observed": True,
-                "max_rounds_budget": 2,
-                "official_feedback_blinded": False,
-                "reward_feedback_forwarded": True,
+                "max_rounds_budget": 5,
+                "official_feedback_blinded": True,
+                "reward_feedback_forwarded": False,
+            },
+            payload_overrides={
+                "loopx_inside_case": True,
+                "official_feedback_blinded": True,
+                "reward_feedback_forwarded": False,
+                "product_mode": True,
+                "product_mode_lifecycle_contract": {
+                    "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                    "required": True,
+                    "satisfied": True,
+                    "countable_treatment": True,
+                    "checkpoint_required": True,
+                    "closeout_required": True,
+                    "closeout_satisfied": True,
+                    "state_read_count": 1,
+                    "state_write_count": 1,
+                    "agent_operation_trace_required": False,
+                },
             },
         )
         baseline_update = update_benchmark_run_ledger(
@@ -10098,7 +10141,9 @@ def test_skillsbench_compact_runs_update_ledger_pair() -> None:
             notes="compact baseline failure fixture; no raw task/log material",
             dry_run=False,
         )
-        assert baseline_update["entry"]["arm_id"] == "codex_goal_mode_baseline"
+        assert baseline_update["entry"]["arm_id"] == (
+            "skillsbench_raw_codex_autonomous_max5"
+        )
         assert baseline_update["case_decision"]["decision"] == (
             "baseline_failed_treatment_candidate"
         )
@@ -10106,18 +10151,18 @@ def test_skillsbench_compact_runs_update_ledger_pair() -> None:
             ledger_path=ledger_path,
             benchmark_run=treatment,
             run_group_id="skillsbench-citation-check-pair",
-            notes="compact automation-loop treatment fixture; no raw task/log material",
+            notes="compact product-mode treatment fixture; no raw task/log material",
             dry_run=False,
         )
         assert treatment_update["entry"]["arm_id"] == (
-            "loopx_automation_loop_treatment"
+            "codex_loopx_treatment"
         )
         assert treatment_update["case_decision"]["decision"] == (
             "paired_treatment_improved"
         )
         assert treatment_update["entry"]["first_success_round"] == 2
         assert treatment_update["entry"]["round_rewards"][1]["passed"] is True
-        assert treatment_update["entry"]["reward_feedback_forwarded"] is True
+        assert treatment_update["entry"]["reward_feedback_forwarded"] is False
         ledger = load_benchmark_run_ledger(ledger_path)
         case = ledger["benchmarks"]["skillsbench@1.1"]["cases"]["citation-check"]
         assert len(case["runs"]) == 2, case
@@ -10133,7 +10178,7 @@ def test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs() -> None:
         ledger_path = root / "benchmark-run-ledger.json"
         compact = compact_skillsbench_run(
             task_id="software-dependency-audit",
-            mode="skillsbench_loopx_automation_loop_treatment",
+            mode="skillsbench_loopx_product_mode_treatment",
             score=0.0,
             passed=False,
         )

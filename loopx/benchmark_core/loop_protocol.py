@@ -13,22 +13,15 @@ BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION = (
 )
 MAX5_BLIND_LOOP_NO_FEEDBACK_PROTOCOL_ID = "max5_blind_loop_no_feedback"
 PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID = "product_mode_max5_no_feedback"
-PRODUCT_MODE_VERIFIER_FEEDBACK_TODO_PROTOCOL_ID = (
-    "product_mode_verifier_feedback_todo"
-)
 PACKET_ONLY_OBSERVATION_PROTOCOL_ID = "packet_only_observation"
 
 BLIND_LOOP_DEFAULT_MAX_ROUNDS = 5
 CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE = "codex-acp-blind-loop-baseline"
 LOOPX_BLIND_LOOP_TREATMENT_ROUTE = "loopx-blind-loop-treatment"
 LOOPX_PROMPT_POLLING_TEST_ROUTE = "loopx-prompt-polling-test"
-AUTOMATION_LOOP_TREATMENT_ROUTE = "automation-loop-treatment"
 RAW_CODEX_AUTONOMOUS_MAX5_ROUTE = "raw-codex-autonomous-max5"
 LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
 LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
-LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE = (
-    "loopx-goal-start-verifier-feedback-todo"
-)
 CODEX_APP_SERVER_GOAL_BASELINE_ROUTE = "codex-app-server-goal-baseline"
 LOOPX_PACKET_ONLY_OBSERVATION_ROUTE = (
     "loopx-packet-only-observation"
@@ -57,14 +50,12 @@ PRODUCT_MODE_ROUTES = frozenset(
         RAW_CODEX_AUTONOMOUS_MAX5_ROUTE,
         LOOPX_PRODUCT_MODE_ROUTE,
         LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-        LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     }
 )
 LOOPX_PRODUCT_MODE_TREATMENT_ROUTES = frozenset(
     {
         LOOPX_PRODUCT_MODE_ROUTE,
         LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
-        LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
     }
 )
 
@@ -107,10 +98,7 @@ def build_benchmark_loop_contract(
         if isinstance(max_rounds, int) and not isinstance(max_rounds, bool) and max_rounds > 0
         else BLIND_LOOP_DEFAULT_MAX_ROUNDS
     )
-    feedback_forwarded = route in {
-        AUTOMATION_LOOP_TREATMENT_ROUTE,
-        LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE,
-    }
+    feedback_forwarded = False
     blind_loop = route in BLIND_LOOP_ROUTES
     product_mode = route in PRODUCT_MODE_ROUTES
     resolved_protocol = protocol_id or (
@@ -118,8 +106,6 @@ def build_benchmark_loop_contract(
         if blind_loop and not feedback_forwarded and budget == BLIND_LOOP_DEFAULT_MAX_ROUNDS
         else PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
         if product_mode and not feedback_forwarded and budget == BLIND_LOOP_DEFAULT_MAX_ROUNDS
-        else PRODUCT_MODE_VERIFIER_FEEDBACK_TODO_PROTOCOL_ID
-        if route == LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
         else PACKET_ONLY_OBSERVATION_PROTOCOL_ID
         if route == LOOPX_PACKET_ONLY_OBSERVATION_ROUTE
         else "custom_or_legacy_loop"
@@ -183,25 +169,16 @@ def build_product_mode_main_table_comparison_contract(
         max_rounds=budget,
         protocol_id=(
             PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
-            if treatment_route
-            in {LOOPX_PRODUCT_MODE_ROUTE, LOOPX_GOAL_START_PRODUCT_MODE_ROUTE}
-            else PRODUCT_MODE_VERIFIER_FEEDBACK_TODO_PROTOCOL_ID
-            if treatment_route == LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
+            if treatment_route in {LOOPX_PRODUCT_MODE_ROUTE, LOOPX_GOAL_START_PRODUCT_MODE_ROUTE}
             else None
         ),
     )
     treatment_arm_id = (
-        "loopx_goal_start_verifier_feedback_todo"
-        if treatment_route == LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
-        else
         "loopx_goal_start_product_mode"
         if treatment_route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
         else "loopx_product_mode"
     )
     treatment_agent_surface = (
-        "loopx_goal_start_verifier_feedback_todo_lifecycle_cli"
-        if treatment_route == LOOPX_GOAL_START_VERIFIER_FEEDBACK_TODO_ROUTE
-        else
         "loopx_goal_start_plan_todo_lifecycle_cli"
         if treatment_route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
         else "loopx_state_todo_replan_cli"
