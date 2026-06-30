@@ -79,6 +79,9 @@ private evidence migration, production actions, or public first-screen copy.
   responsibilities.
 - `agent_lane_next_action` is per-agent runnable routing; `## Next Action` is
   durable goal-level guidance.
+- `goal_route_hint` may summarize current, other-agent, and unclaimed lane
+  signals for hosts, but it is read-only advisory projection and must preserve
+  shared `## Next Action`.
 - Monitor routing is attribute based, not name based:
   `task_class=continuous_monitor` plus due metadata defines due monitor work,
   while `waiting_on=external_evidence` or

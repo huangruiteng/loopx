@@ -1125,6 +1125,13 @@ render it as an agent-lane pointer, not as `recommended_action` replacement.
 Human markdown should label this pointer as the current agent's todo and mark
 co-displayed global agent todo rows as goal-wide, so `--agent-id` is not
 mistaken for a filter that replaces the primary/global queue.
+The same scoped guard may include
+`goal_route_hint.schema_version=goal_route_hint_v0`. This is a goal-level
+read-path synthesis over the current `agent_lane_next_action`,
+`agent_scope_frontier`, and compact per-agent todo lanes. It carries
+`preserves_goal_next_action=true` and `goal_next_action_mutation=none` so hosts
+can explain the lane decision without mutating shared `## Next Action` or
+collapsing other agents' queues into the current agent's route.
 Within a candidate source, selection is ordered by current-agent claim first,
 then `capability_repair_mode=true`, then priority/index. A repair-mode item
 therefore stays visible as the suggested agent-lane slice even when an older

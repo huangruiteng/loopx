@@ -1258,9 +1258,25 @@ def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -
     assert next_action["confidence"] == "selected", next_action
     assert next_action["source"] == "capability_gate.runnable_candidates", next_action
     assert next_action["preserves_goal_next_action"] is True, next_action
+    route_hint = guard["goal_route_hint"]
+    assert route_hint["schema_version"] == "goal_route_hint_v0", route_hint
+    assert route_hint["route_decision"] == "run_current_agent_lane", route_hint
+    assert route_hint["agent_id"] == "codex-side-bypass", route_hint
+    assert route_hint["primary_agent"] == "codex-main-control", route_hint
+    assert route_hint["preserves_goal_next_action"] is True, route_hint
+    assert route_hint["goal_next_action_mutation"] == "none", route_hint
+    assert route_hint["has_durable_next_action"] is True, route_hint
+    assert route_hint["has_latest_run_recommended_action"] is False, route_hint
+    assert route_hint["selected_action_differs_from_durable"] is True, route_hint
+    assert route_hint["current_agent_next_action"]["todo_id"] == "todo_side_tui", route_hint
+    assert route_hint["other_agent_next_actions"][0]["todo_id"] == "todo_primary", route_hint
+    assert route_hint["counts"]["current_agent_claimed_advancement_count"] == 2, route_hint
+    assert route_hint["counts"]["other_agent_claimed_advancement_count"] == 1, route_hint
     assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_side_tui", guard
     markdown = render_quota_should_run_markdown(guard)
     assert "agent_lane_next_action: todo_id=todo_side_tui" in markdown, markdown
+    assert "goal_route_hint: decision=run_current_agent_lane" in markdown, markdown
+    assert "goal_route_hint_current_action: todo_id=todo_side_tui" in markdown, markdown
     assert side_action in markdown, markdown
     assert primary_action not in guard["agent_lane_next_action"]["text"], guard
 
@@ -1314,6 +1330,14 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert hint["reason_code"] == "blocked_by_other_agent_frontier", hint
     assert hint["target_todo_id"] == "todo_primary_suite", hint
     assert hint["quiet_noop_allowed"] is True, hint
+    route_hint = guard["goal_route_hint"]
+    assert route_hint["schema_version"] == "goal_route_hint_v0", route_hint
+    assert route_hint["route_decision"] == "agent_scope_wait", route_hint
+    assert route_hint["preserves_goal_next_action"] is True, route_hint
+    assert route_hint["has_durable_next_action"] is True, route_hint
+    assert route_hint["frontier_hint"]["decision"] == "quiet_noop_blocker", route_hint
+    assert route_hint["other_agent_next_actions"][0]["todo_id"] == "todo_primary_suite", route_hint
+    assert "current_agent_next_action" not in route_hint, route_hint
     assert frontier["frontier_hint"] == hint, frontier
     assert "codex-side-bypass" in guard["recommended_action"], guard
     assert "codex-main-control" in guard["recommended_action"], guard
