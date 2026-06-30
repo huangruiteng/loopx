@@ -366,7 +366,7 @@ def register_auto_research_commands(
         action="store_true",
         help=(
             "With --execute, also launch the visible multi-lane supervisor. "
-            "Visible panes alone do not make the replay a live Codex E2E result."
+            "Visible panes alone do not make the multi-round kernel a live Codex E2E result."
         ),
     )
     demo_e2e_parser.add_argument(
