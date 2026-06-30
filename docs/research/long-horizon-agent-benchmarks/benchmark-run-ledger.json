@@ -67,10 +67,10 @@
         "3d-scan-calc": {
           "case_id": "3d-scan-calc",
           "latest_decision": {
-            "baseline_failure_scope": "case_or_solution",
-            "baseline_run_id": "295919e0907d",
-            "decision": "paired_treatment_improved",
-            "official_score_delta": 1.0,
+            "baseline_failure_scope": "passed",
+            "baseline_run_id": "379b296b4f16",
+            "decision": "paired_baseline_solved_treatment_preserved",
+            "official_score_delta": 0.0,
             "treatment_failure_scope": "passed",
             "treatment_run_id": "7ea835b649e7"
           },
@@ -1015,6 +1015,85 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false,
+              "verifier_attempt_countable": true
+            },
+            {
+              "actual_model_verified": false,
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex-app-server-goal-baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "runs/skillsbench-3d-scan-calc-native-goal-revtunnel-pr941-real-20260630T093746Z/benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "none",
+              "attempt_lifecycle_phase": "verifier_scored",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": true,
+              "case_id": "3d-scan-calc",
+              "case_ids": [
+                "3d-scan-calc"
+              ],
+              "codex_acp_runtime_preflight_passed": true,
+              "failure_class": "none",
+              "failure_scope": "passed",
+              "job_name": "skillsbench_1_1_3d_scan_calc_codex_app_server_goal_baseline",
+              "launcher_attempt_countable": true,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "max_rounds_budget": 16,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "model_control_status": "reported_model_from_result_metadata",
+              "notes": "3d-scan-calc reverse-tunnel app-server Goal canary on main after PR #941; official reward=1.0; bridge task-facing ops 6/6; no upload.",
+              "official_feedback_blinded": true,
+              "official_passed": true,
+              "official_score": 1.0,
+              "official_score_attempt_countable": true,
+              "product_mode_lifecycle_contract": {
+                "checkpoint_count": 0,
+                "checkpoint_required": false,
+                "checkpoint_round": 0,
+                "countable_treatment": true,
+                "orchestrated_driver_counts_as_product_mode": false,
+                "orchestrated_driver_lifecycle_satisfied": false,
+                "required": false,
+                "satisfied": true,
+                "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+                "state_read_count": 0,
+                "state_write_count": 0
+              },
+              "recorded_at": "2026-06-30T17:53:32+08:00",
+              "reward_feedback_forwarded": false,
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "run_group_id": "skillsbench-3d-scan-calc-native-goal-revtunnel-pr941-real-20260630T093746Z",
+              "run_id": "379b296b4f16",
+              "score_status": "passed",
+              "solver_attempt_countable": true,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_staging": {
+                "app_skills_mount_patch_applied": true,
+                "apt_retry_patch_applied": true,
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "codex_acp_runtime_tools_patch_applied": true,
+                "include_task_skills": false,
+                "original_task_mutated": false,
+                "resource_cap_patch": {
+                  "applied": false,
+                  "host_cpus": 32.0
+                },
+                "staged": true,
+                "task_skills_removed": true,
+                "verifier_bootstrap_risk_detected": true,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
               "verifier_attempt_countable": true
             }
           ]
@@ -12169,7 +12248,7 @@
           ]
         }
       },
-      "run_count": 193
+      "run_count": 194
     },
     "swe-marathon": {
       "benchmark_id": "swe-marathon",
@@ -16221,5 +16300,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-30T06:18:22+08:00"
+  "updated_at": "2026-06-30T17:53:32+08:00"
 }

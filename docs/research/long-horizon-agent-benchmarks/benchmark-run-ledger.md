@@ -5,14 +5,14 @@ benchmark case outcomes and artifact references; it must not contain raw
 logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-30T06:18:22+08:00`
+- updated_at: `2026-06-30T17:53:32+08:00`
 
 ## Case Decisions
 
 | Benchmark | Case | Decision | Product Pair | Case Routing | Runs |
 | --- | --- | --- | --- | --- | --- |
 | `skillsbench-cloud-oracle-sanity@v0` | `hello-world` | `single_arm_recorded` | - | - | `1` |
-| `skillsbench@1.1` | `3d-scan-calc` | `paired_treatment_improved` | - | - | `12` |
+| `skillsbench@1.1` | `3d-scan-calc` | `paired_baseline_solved_treatment_preserved` | - | - | `13` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `paired_treatment_improved` | - | - | `5` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_failed_treatment_candidate` | - | - | `2` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | `product_mode_pair_incomplete` | `baseline_not_raw_codex_autonomous_max5,baseline_official_feedback_not_blinded,baseline_reward_feedback_forwarding_not...` | - | `11` |
@@ -114,6 +114,7 @@ logs, task prompts, trajectories, credentials, uploads, or absolute paths.
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_loopx_treatment` | `` | `missing` | `` | `` | `skillsbench_host_local_acp_codex_exec_preflight_failed_bridge_command_failed` | `.local/private-benchmark-jobs/skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111718Z/3d-scan-calc__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_loopx_treatment` | `case_attempt` | `1.0` | `2` | `1:0,2:1*,3:1*,4:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-3d-scan-calc-goalstart-revchan-shim-20260628T111849Z/3d-scan-calc__loopx_goal_start_product_mode/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `3d-scan-calc` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-goal-baseline-30case-20260629T1921Z-r12-01-3d-scan-calc/result.json` |
+| `skillsbench@1.1` | `3d-scan-calc` | `codex-app-server-goal-baseline` | `case_attempt` | `1.0` | `` | `` | `none` | `runs/skillsbench-3d-scan-calc-native-goal-revtunnel-pr941-real-20260630T093746Z/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_goal_mode_baseline` | `` | `missing` | `` | `` | `skillsbench_codex_acp_launch_failed` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-pair-20260615T2346CST/ada-bathroom-plan-repair__codex_goal_mode_baseline_20260615T2346CST/ada-bathroom-plan-repair__codex_goal_mode_baseline/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_goal_mode_baseline` | `` | `missing` | `` | `` | `skillsbench_codex_acp_binary_missing` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-preflight-rerun-20260616T0124CST/ada-bathroom-plan-repair__codex_goal_mode_baseline_preflight_rerun_20260616T0124CST/ada-bathroom-plan-repair__codex_goal_mode_baseline/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `baseline` | `` | `1.0` | `1` | `1:1*` | `none` | `.local/private-benchmark-jobs/skillsbench-ada-bathroom-plan-repair-blind-baseline-v0/ada-bathroom-plan-repair__codex_acp_blind_loop_v0/benchmark_run.compact.json` |
