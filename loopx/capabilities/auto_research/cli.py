@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +24,10 @@ from . import (
     render_auto_research_markdown,
 )
 from .demo_e2e import run_auto_research_demo_e2e
+from .live_evidence import (
+    LIVE_CODEX_E2E_DEFAULT_OUTPUT,
+    capture_live_codex_e2e_evidence,
+)
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
@@ -205,6 +210,44 @@ def register_auto_research_commands(
         "--dry-run",
         action="store_true",
         help="Preview rollout events without appending them.",
+    )
+
+    live_evidence_parser = auto_research_sub.add_parser(
+        "capture-live-evidence",
+        help="Build compact public-safe live Codex E2E evidence after lane-authored evidence is appended.",
+    )
+    add_subcommand_format(live_evidence_parser)
+    live_evidence_parser.add_argument(
+        "--packet",
+        required=True,
+        help="Path to the public auto_research_evidence_packet_v0 JSON produced by a visible lane.",
+    )
+    live_evidence_parser.add_argument(
+        "--append-result",
+        required=True,
+        help="Path to the JSON output from a real auto-research append-evidence run.",
+    )
+    live_evidence_parser.add_argument("--agent-id", required=True)
+    live_evidence_parser.add_argument(
+        "--lane-count",
+        type=int,
+        default=3,
+        help="Accepted visible lane count to record in the compact live evidence.",
+    )
+    live_evidence_parser.add_argument(
+        "--visible-lanes-accepted",
+        action="store_true",
+        help="Required acknowledgement that the visible lanes were launched and accepted.",
+    )
+    live_evidence_parser.add_argument(
+        "--output",
+        default=LIVE_CODEX_E2E_DEFAULT_OUTPUT,
+        help="Output path for --execute. The path is not recorded in the evidence payload.",
+    )
+    live_evidence_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write the compact evidence JSON to --output. Omit to preview the payload.",
     )
 
     demo_supervisor_parser = auto_research_sub.add_parser(
@@ -575,6 +618,19 @@ def handle_auto_research_command(
                 runtime_root_arg=runtime_root_arg,
                 dry_run=args.dry_run,
             )
+        elif args.auto_research_command == "capture-live-evidence":
+            payload = capture_live_codex_e2e_evidence(
+                packet_path=args.packet,
+                append_result_path=args.append_result,
+                agent_id=args.agent_id,
+                lane_count=args.lane_count,
+                visible_lanes_accepted=args.visible_lanes_accepted,
+            )
+            if args.execute:
+                Path(args.output).expanduser().write_text(
+                    json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
         elif args.auto_research_command == "demo-supervisor":
             payload = build_auto_research_demo_supervisor_plan(
                 goal_id=args.goal_id,
@@ -647,7 +703,8 @@ def handle_auto_research_command(
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
-                "`board`, `acceptance`, `append-evidence`, `demo-supervisor`, or `demo-e2e` subcommand"
+                "`board`, `acceptance`, `append-evidence`, `capture-live-evidence`, "
+                "`demo-supervisor`, or `demo-e2e` subcommand"
             )
     except Exception as exc:
         payload = {

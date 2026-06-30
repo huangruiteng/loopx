@@ -3657,4 +3657,21 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- skipped_existing: `{payload.get('skipped_existing_count')}`",
         ]
         return "\n".join(lines) + "\n"
+    if payload.get("schema_version") == "auto_research_live_codex_lane_e2e_evidence_v0":
+        visible = payload.get("visible_lanes") if isinstance(payload.get("visible_lanes"), dict) else {}
+        evidence = payload.get("lane_evidence") if isinstance(payload.get("lane_evidence"), dict) else {}
+        lines = [
+            "# LoopX Auto Research Live Evidence",
+            "",
+            f"- schema: `{payload.get('schema_version')}`",
+            f"- goal_id: `{payload.get('goal_id')}`",
+            f"- agent_id: `{payload.get('agent_id')}`",
+            f"- source: `{payload.get('source')}`",
+            f"- visible_lanes_accepted: `{visible.get('accepted')}`",
+            f"- lane_count: `{visible.get('lane_count')}`",
+            f"- evidence_events: `{evidence.get('evidence_event_count')}`",
+            f"- result_status: `{evidence.get('result_status')}`",
+            f"- protected_scope_clean: `{evidence.get('protected_scope_clean')}`",
+        ]
+        return "\n".join(lines) + "\n"
     return render_auto_research_projection_markdown(payload)

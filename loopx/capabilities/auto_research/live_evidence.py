@@ -3,8 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .core import (
+    AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
+    load_auto_research_evidence_packet,
+    validate_auto_research_evidence_packet,
+)
+
 
 LIVE_CODEX_E2E_EVIDENCE_SCHEMA_VERSION = "auto_research_live_codex_lane_e2e_evidence_v0"
+LIVE_CODEX_E2E_DEFAULT_OUTPUT = "live-codex-e2e-evidence.public.json"
 
 
 def _require_dict(payload: dict[str, object], key: str) -> dict[str, object]:
@@ -40,6 +47,114 @@ def _assert_live_evidence_public_safe(payload: dict[str, object]) -> None:
     leaked = [needle for needle in forbidden if needle.lower() in text.lower()]
     if leaked:
         raise ValueError("live evidence must be compact and public-safe; forbidden material detected")
+
+
+def _load_json_object(path: str | Path, *, field: str) -> dict[str, object]:
+    try:
+        payload = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"{field} must be readable JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{field} root must be an object")
+    return payload
+
+
+def _metric_by_split(packet: dict[str, object], split: str) -> object:
+    for event in packet.get("evidence_events") or []:
+        if not isinstance(event, dict) or event.get("split") != split:
+            continue
+        metric = event.get("metric")
+        if isinstance(metric, dict):
+            return metric.get("value")
+    return None
+
+
+def build_live_codex_e2e_evidence_from_packet(
+    *,
+    packet: dict[str, object],
+    append_result: dict[str, object],
+    agent_id: str,
+    lane_count: int,
+    visible_lanes_accepted: bool,
+) -> dict[str, object]:
+    packet = validate_auto_research_evidence_packet(packet)
+    if append_result.get("schema_version") != AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION:
+        raise ValueError(f"append result schema_version must be {AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION}")
+    if append_result.get("dry_run") is not False:
+        raise ValueError("append result must come from a real append-evidence run")
+    summary = packet["summary"]
+    goal_id = summary["goal_id"]
+    if append_result.get("goal_id") != goal_id:
+        raise ValueError("append result goal_id must match the evidence packet")
+    if str(agent_id) != str(packet["hypothesis"]["claimed_by"]):
+        raise ValueError("agent_id must match the packet hypothesis claimed_by field")
+    if not isinstance(lane_count, int) or lane_count <= 0:
+        raise ValueError("lane_count must be a positive integer")
+    if not visible_lanes_accepted:
+        raise ValueError("live evidence capture requires accepted visible lanes")
+    if append_result.get("appended_count", 0) <= 0:
+        raise ValueError("append result must include at least one fresh appended event")
+    counts = append_result.get("counts_by_kind")
+    if not isinstance(counts, dict) or int(counts.get("research_evidence") or 0) <= 0:
+        raise ValueError("append result must include at least one research_evidence event")
+    if summary.get("status") != "supported":
+        raise ValueError("live evidence can only be captured from a supported packet")
+    if summary.get("protected_scope_clean") is not True:
+        raise ValueError("live evidence requires protected_scope_clean=true")
+    if int(summary.get("negative_evidence_count") or 0) != 0:
+        raise ValueError("live evidence requires zero negative evidence")
+    if int(summary.get("needs_retry_count") or 0) != 0:
+        raise ValueError("live evidence requires zero retry-needed evidence")
+    payload = {
+        "ok": True,
+        "schema_version": LIVE_CODEX_E2E_EVIDENCE_SCHEMA_VERSION,
+        "source": "live_codex_lane_output",
+        "goal_id": goal_id,
+        "agent_id": agent_id,
+        "visible_lanes": {
+            "launched": True,
+            "accepted": True,
+            "lane_count": lane_count,
+        },
+        "lane_evidence": {
+            "lane_authored": True,
+            "evidence_source": "live_codex_lane_output",
+            "append_status": "appended_to_loopx_state",
+            "evidence_event_count": int(summary["evidence_event_count"]),
+            "result_status": summary["status"],
+            "protected_scope_clean": True,
+            "dev_metric": _metric_by_split(packet, "dev"),
+            "holdout_metric": _metric_by_split(packet, "holdout"),
+        },
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "credentials_recorded": False,
+            "local_workspace_path_redacted": True,
+        },
+    }
+    _assert_live_evidence_public_safe(payload)
+    return payload
+
+
+def capture_live_codex_e2e_evidence(
+    *,
+    packet_path: str,
+    append_result_path: str,
+    agent_id: str,
+    lane_count: int,
+    visible_lanes_accepted: bool,
+) -> dict[str, object]:
+    packet = load_auto_research_evidence_packet(packet_path)
+    append_result = _load_json_object(append_result_path, field="append_result_file")
+    return build_live_codex_e2e_evidence_from_packet(
+        packet=packet,
+        append_result=append_result,
+        agent_id=agent_id,
+        lane_count=lane_count,
+        visible_lanes_accepted=visible_lanes_accepted,
+    )
 
 
 def load_live_codex_e2e_evidence(

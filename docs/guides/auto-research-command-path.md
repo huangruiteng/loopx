@@ -108,8 +108,23 @@ Truth boundary:
 - `--launch-visible` proves visible panes can start, but pane startup alone is
   not a live Codex research result.
 
-To claim a live Codex lane-authored E2E result, pass a compact public-safe
-evidence packet produced by the visible lanes:
+To claim a live Codex lane-authored E2E result, first let the visible lane that
+appended evidence capture the compact public-safe live proof:
+
+```bash
+loopx --registry "$LOOPX_REGISTRY" \
+  --runtime-root "$LOOPX_RUNTIME_ROOT" \
+  --format json auto-research capture-live-evidence \
+  --packet ./evidence.public.json \
+  --append-result ./append-result.public.json \
+  --agent-id codex-side-bypass \
+  --lane-count 3 \
+  --visible-lanes-accepted \
+  --output ./live-codex-e2e-evidence.public.json \
+  --execute
+```
+
+Then pass that compact evidence packet to the E2E acceptance command:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -122,10 +137,10 @@ loopx --registry "$LOOPX_REGISTRY" \
   --live-evidence ./live-codex-e2e-evidence.public.json
 ```
 
-That packet must use `source: live_codex_lane_output`, match the goal and
-agent, show accepted visible lanes, cite lane-authored evidence appended to
-LoopX state, and keep raw logs, private artifacts, credentials, and local
-absolute paths out of the payload. Without this packet,
+The capture helper requires `source: live_codex_lane_output`, matching goal and
+agent, accepted visible lanes, lane-authored evidence appended to LoopX state,
+and zero raw logs, private artifacts, credentials, or local absolute paths in
+the payload. Without this packet,
 `live_codex_e2e.claim_allowed` stays `false`.
 
 For a full visible demo after an explicit replay step, add the visible lane

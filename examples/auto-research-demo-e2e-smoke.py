@@ -186,6 +186,7 @@ def main() -> int:
         assert "live_codex_e2e.executed" in guide, guide
         assert "live_codex_e2e.claim_allowed" in guide, guide
         assert "not_collected_from_codex_lane_output" in guide, guide
+        assert "capture-live-evidence" in guide, guide
         assert "--live-evidence" in guide, guide
         assert "raw logs" in guide, guide
         assert "private artifacts" in guide, guide
