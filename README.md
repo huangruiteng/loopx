@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/loopx-logo.png" alt="LoopX loop engineering logo" width="180">
+<img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="720">
 
 **Loop engineering for long-running AI agents.**
 

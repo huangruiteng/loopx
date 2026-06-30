@@ -26,6 +26,8 @@ def main() -> int:
 
     for required in [
         '<div align="center">',
+        "docs/assets/loopx-social-preview.png",
+        "LoopX loop engineering social preview banner",
         "Loop engineering for long-running AI agents.",
         "Manage Codex, Claude Code, Cursor, and other agent runtimes",
         "## How It Works",
@@ -40,6 +42,9 @@ def main() -> int:
         "docs/product/cross-runtime-impl-review-demo.md",
     ]:
         assert required in readme, required
+
+    first_screen = readme.split("## How It Works", 1)[0]
+    assert "docs/assets/loopx-logo.png" not in first_screen
 
     for required in [
         "`/loopx <implementation goal>`",
