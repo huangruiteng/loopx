@@ -253,6 +253,42 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "status-read-path",
+        "title": "Status read-path contract",
+        "purpose": "Check scoped status reads, markdown rendering, and goal-channel status export before status/read-path changes ship.",
+        "catalog_families": ["Work Routing", "State And Boundary"],
+        "trigger_hints": (
+            "read-path",
+            "status --goal-id",
+            "status data",
+            "goal status",
+            "loopx/status.py",
+            "loopx/cli_commands/status",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/status-goal-filter-smoke.py",
+                "tier": "default",
+                "reason": "guards scoped status projection and global default status behavior",
+            },
+            {
+                "command": "python3 examples/status-markdown-smoke.py",
+                "tier": "default",
+                "reason": "checks operator-facing markdown status rendering",
+            },
+            {
+                "command": "python3 examples/goal-channel-status-export-smoke.py",
+                "tier": "default",
+                "reason": "guards goal-channel status export consumed by non-hot-path readers",
+            },
+            {
+                "command": "python3 examples/status-quota-perf-budget-smoke.py",
+                "tier": "deep",
+                "reason": "runs the broader status/quota performance budget sample when explicitly requested",
+            },
+        ],
+    },
+    {
         "id": "cli-command-contract",
         "title": "CLI command module contract",
         "purpose": "Check command-module boundaries, ownership budgets, and compatibility for LoopX CLI refactors.",

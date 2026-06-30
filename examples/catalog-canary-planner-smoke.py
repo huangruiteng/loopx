@@ -43,6 +43,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "pr-review-and-merge",
         "release-promotion",
         "control-plane-refactor",
+        "status-read-path",
         "cli-command-contract",
         "monitor-scheduler",
         "state-write-correctness",
@@ -115,6 +116,16 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     )
     refactor_profile_ids = {profile["id"] for profile in refactor_payload["domain_profiles"]}
     assert "control-plane-refactor" in refactor_profile_ids, refactor_payload
+
+    status_payload = build_catalog_canary_plan(
+        changed_files=["loopx/status.py"],
+        surfaces=["status --goal-id read-path"],
+    )
+    status_profiles = {profile["id"]: profile for profile in status_payload["domain_profiles"]}
+    assert "status-read-path" in status_profiles, status_payload
+    status_commands = [check["command"] for check in status_profiles["status-read-path"]["checks"]]
+    assert "python3 examples/status-goal-filter-smoke.py" in status_commands, status_payload
+    assert all(check["tier"] == "default" for check in status_profiles["status-read-path"]["checks"]), status_payload
 
     cli_payload = build_catalog_canary_plan(
         changed_files=["loopx/cli.py", "loopx/cli_commands/version.py"],
