@@ -12,6 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "diagnose-smoke-goal"
+SCOPED_GOAL_ID = "diagnose-smoke-agent-scoped"
 
 
 def run_cli(*args: str, cwd: Path = REPO_ROOT) -> dict:
@@ -61,6 +62,79 @@ def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding:
     if not onboarding:
         args.append("--no-onboarding-scan")
     return run_cli(*args)
+
+
+def write_agent_scoped_registry(root: Path, runtime: Path) -> Path:
+    project = write_project(root, "agent-scoped-project")
+    state_file = f".codex/goals/{SCOPED_GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_path = project / state_file
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        "---\n"
+        "status: active\n"
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Agent-Scoped Diagnose Fixture\n\n"
+        "## User Todo\n\n"
+        "- [ ] [P0 user gate] Review the scoped projection repair PR before merge.\n"
+        "  <!-- loopx:todo todo_id=todo_user_gate_scoped status=open "
+        "task_class=user_gate action_kind=review_pr priority=P0 "
+        "blocks_agent=codex-main-control -->\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P1] Continue only safe fallback work after the scoped gate is projected.\n"
+        "  <!-- loopx:todo todo_id=todo_agent_fallback status=open "
+        "task_class=advancement_task action_kind=diagnose_projection "
+        "claimed_by=codex-main-control priority=P1 -->\n",
+        encoding="utf-8",
+    )
+    registry = project / ".loopx" / "registry.json"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": SCOPED_GOAL_ID,
+                        "domain": "agent-diagnose-fixture",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": state_file,
+                        "adapter": {
+                            "kind": "fixture_connected_delivery_v0",
+                            "status": "connected-delivery",
+                        },
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                        },
+                        "coordination": {
+                            "primary_agent": "codex-main-control",
+                            "registered_agents": ["codex-main-control", "codex-side-observer"],
+                            "agent_profiles": {
+                                "codex-main-control": {
+                                    "role": "primary-agent",
+                                    "scope": "review, merge, final closeout",
+                                },
+                                "codex-side-observer": {
+                                    "role": "side-agent",
+                                    "scope": "read-only observation",
+                                },
+                            },
+                            "write_scope": ["docs/**"],
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry
 
 
 def main() -> int:
@@ -117,6 +191,35 @@ def main() -> int:
         assert gated_selected["todo_evidence"]["user_open_count"] == 1, gated_selected
         assert "autonomous=yes/no" in str(gated_selected["user_question"]), gated_selected
         assert "can_self_drive" not in gated_selected, gated_selected
+
+        scoped_registry = write_agent_scoped_registry(root, runtime)
+        scoped_packet = run_cli(
+            "--registry",
+            str(scoped_registry),
+            "--runtime-root",
+            str(runtime),
+            "diagnose",
+            "--goal-id",
+            SCOPED_GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
+        )
+        scoped_selected = scoped_packet["selected"]
+        assert scoped_packet["agent_id"] == "codex-main-control", scoped_packet
+        assert scoped_selected["agent_id"] == "codex-main-control", scoped_selected
+        assert scoped_selected["machine_signal"] == "user_or_controller_attention", scoped_selected
+        assert scoped_selected["todo_evidence"]["user_open_count"] == 1, scoped_selected
+        assert "Review the scoped projection repair PR" in str(scoped_selected), scoped_selected
+        assert "Regenerate the installed heartbeat automation prompt" not in str(scoped_selected), (
+            scoped_selected
+        )
+        assert (
+            scoped_selected["quota_signals"]["agent_identity"]["agent_id"]
+            == "codex-main-control"
+        ), scoped_selected
+        assert any("--agent-id codex-main-control" in command for command in scoped_selected["agent_commands"]), (
+            scoped_selected
+        )
 
     print("agent-diagnose-packet-smoke ok")
     return 0

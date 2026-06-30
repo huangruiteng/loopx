@@ -17,6 +17,7 @@ from .paths import resolve_runtime_root
 from .quota import (
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     QUOTA_SLOT_SPENT_CLASSIFICATION,
+    QUOTA_SLOT_VOIDED_CLASSIFICATION,
     goal_quota_with_spend_ledger,
 )
 from .registry import read_json, registry_goals
@@ -24,6 +25,7 @@ from .registry import read_json, registry_goals
 
 STATUS_NEUTRAL_CLASSIFICATIONS = {
     QUOTA_SLOT_SPENT_CLASSIFICATION,
+    QUOTA_SLOT_VOIDED_CLASSIFICATION,
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     *PROMOTION_READINESS_CLASSIFICATIONS,
 }
