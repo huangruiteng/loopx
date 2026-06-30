@@ -1226,6 +1226,15 @@ def _formal_app_server_goal_bootstrap_light_guard_required(
     )
 
 
+def _formal_app_server_goal_bootstrap_light_fail_fast_required(
+    args: argparse.Namespace | None,
+) -> bool:
+    return bool(
+        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        and not getattr(args, "allow_staged_bootstrap_repair_run", False)
+    )
+
+
 def _codex_api_reverse_tunnel_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
     explicit = ""
     if args is not None:
@@ -5646,6 +5655,23 @@ def _bootstrap_light_blocker_kind(blocking_fields: list[str]) -> str:
     return "setup"
 
 
+def _bootstrap_light_preflight_block_required(
+    args: argparse.Namespace,
+    *,
+    blocker_kind: str,
+) -> bool:
+    if getattr(args, "reduce_only", False):
+        return False
+    fail_fast_required = _formal_app_server_goal_bootstrap_light_fail_fast_required(
+        args
+    )
+    if blocker_kind in {"apt", "dockerfile_package"}:
+        return bool(args.fail_fast_on_apt_risk or fail_fast_required)
+    if blocker_kind == "verifier":
+        return bool(args.fail_fast_on_verifier_bootstrap_risk or fail_fast_required)
+    return False
+
+
 def _mark_bootstrap_light_preflight_blocked(
     *,
     staging: dict[str, Any],
@@ -6432,6 +6458,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "bootstrap_light_candidate_required": bool(
             _formal_app_server_goal_bootstrap_light_guard_required(args)
         ),
+        "bootstrap_light_fail_fast_required": bool(
+            _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        ),
+        "allow_staged_bootstrap_repair_run": bool(
+            getattr(args, "allow_staged_bootstrap_repair_run", False)
+        ),
         "fail_fast_on_apt_risk": bool(args.fail_fast_on_apt_risk),
         "apt_risk_fail_fast_defaulted": bool(
             getattr(args, "apt_risk_fail_fast_defaulted", False)
@@ -6859,6 +6891,8 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "include_task_skills",
         "host_local_acp_launch",
         "bootstrap_light_candidate_required",
+        "bootstrap_light_fail_fast_required",
+        "allow_staged_bootstrap_repair_run",
         "fail_fast_on_apt_risk",
         "apt_risk_fail_fast_defaulted",
         "fail_fast_on_verifier_bootstrap_risk",
@@ -12801,6 +12835,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "setup-preflight failure instead of spending a full case attempt."
         ),
     )
+    parser.add_argument(
+        "--allow-staged-bootstrap-repair-run",
+        action="store_true",
+        help=(
+            "For formal reverse-tunnel app-server Goal runs, allow the runner "
+            "to stage an isolated task copy and apply existing public-safe "
+            "Dockerfile/verifier bootstrap repairs instead of treating those "
+            "repairable setup risks as automatic preflight blockers. Explicit "
+            "--fail-fast-on-* flags still block."
+        ),
+    )
     apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
     verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
     args = parser.parse_args(raw_argv)
@@ -12808,19 +12853,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     args.verifier_bootstrap_fail_fast_defaulted = False
     args.bootstrap_light_fail_fast_defaulted = False
     if (
-        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
         and not args.fail_fast_on_apt_risk
     ):
         args.fail_fast_on_apt_risk = True
         args.apt_risk_fail_fast_defaulted = not apt_fail_fast_explicit
     if (
-        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
         and not args.fail_fast_on_verifier_bootstrap_risk
     ):
         args.fail_fast_on_verifier_bootstrap_risk = True
         args.verifier_bootstrap_fail_fast_defaulted = not verifier_fail_fast_explicit
     args.bootstrap_light_fail_fast_defaulted = bool(
-        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
         and (
             args.apt_risk_fail_fast_defaulted
             or args.verifier_bootstrap_fail_fast_defaulted
@@ -12898,8 +12943,10 @@ async def async_main(
         bootstrap_light_blocking_fields
     )
     if (
-        (args.fail_fast_on_apt_risk or _formal_app_server_goal_bootstrap_light_guard_required(args))
-        and not args.reduce_only
+        _bootstrap_light_preflight_block_required(
+            args,
+            blocker_kind=bootstrap_light_blocker_kind,
+        )
         and bootstrap_light_blocker_kind in {"apt", "dockerfile_package"}
     ):
         staging = plan.setdefault("task_staging", {})
@@ -12920,11 +12967,10 @@ async def async_main(
             "Dockerfile package bootstrap risk detected before full case run"
         )
     if (
-        (
-            args.fail_fast_on_verifier_bootstrap_risk
-            or _formal_app_server_goal_bootstrap_light_guard_required(args)
+        _bootstrap_light_preflight_block_required(
+            args,
+            blocker_kind=bootstrap_light_blocker_kind,
         )
-        and not args.reduce_only
         and bootstrap_light_blocker_kind == "verifier"
     ):
         staging = plan.setdefault("task_staging", {})
