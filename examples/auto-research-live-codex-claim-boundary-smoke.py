@@ -186,9 +186,13 @@ def main() -> int:
         )
         claimed_payload = json.loads(claimed.stdout)
         live = claimed_payload["live_codex_e2e"]
+        protected_eval = claimed_payload["protected_eval_result"]
+        research_loop = claimed_payload["research_loop"]
         assert claimed_payload["ok"] is True, claimed_payload
-        assert claimed_payload["replay_result"]["dev_metric"] == 4.0, claimed_payload
-        assert claimed_payload["replay_result"]["holdout_metric"] == 4.5, claimed_payload
+        assert protected_eval["dev_metric"] == 4.0, claimed_payload
+        assert protected_eval["holdout_metric"] == 4.5, claimed_payload
+        assert research_loop["dev_metric"] == 4.0, claimed_payload
+        assert research_loop["holdout_metric"] == 4.5, claimed_payload
         assert live["executed"] is True, claimed_payload
         assert live["claim_allowed"] is True, claimed_payload
         assert live["claim_scope"] == "dev_only", claimed_payload

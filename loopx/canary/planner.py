@@ -790,14 +790,19 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks the deterministic positive demo route, route contract, and no-live-claim boundary",
             },
             {
-                "command": "python3 examples/auto-research-one-click-ux-smoke.py",
-                "tier": "default",
-                "reason": "checks the one-command visible UX packet with fake tmux/Codex binaries",
-            },
-            {
                 "command": "python3 examples/decentralized-auto-research-frontier-smoke.py",
                 "tier": "default",
                 "reason": "checks shared frontier, evidence graph, board projection, and public boundary fixtures",
+            },
+            {
+                "command": "python3 examples/auto-research-live-codex-claim-boundary-smoke.py",
+                "tier": "default",
+                "reason": "guards that live E2E claims stay dev-only unless held-out or promotion authority is explicit",
+            },
+            {
+                "command": "python3 examples/auto-research-one-click-ux-smoke.py",
+                "tier": "default",
+                "reason": "checks the one-command visible UX packet with fake tmux/Codex binaries",
             },
             {
                 "command": "python3 examples/auto-research-demo-supervisor-smoke.py",
@@ -813,11 +818,6 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/auto-research-rollout-readpath-smoke.py",
                 "tier": "deep",
                 "reason": "checks rollout event read-path projection into live evidence graphs",
-            },
-            {
-                "command": "python3 examples/auto-research-live-codex-claim-boundary-smoke.py",
-                "tier": "deep",
-                "reason": "guards that live E2E claims require lane-authored public evidence",
             },
             {
                 "command": "python3 examples/auto-research-live-evidence-capture-smoke.py",
