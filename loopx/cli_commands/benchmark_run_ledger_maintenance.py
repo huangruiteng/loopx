@@ -846,13 +846,18 @@ def handle_benchmark_run_ledger_maintenance_command(
                 )
 
             input_path_text = args.benchmark_run_json or args.post_launch_json
+            compact_artifact_ref_cwd = None
             if input_path_text == "-":
                 run_input = json.loads(sys.stdin.read())
                 compact_artifact_ref = args.compact_artifact_ref
             else:
                 input_path = Path(input_path_text).expanduser()
                 run_input = json.loads(input_path.read_text(encoding="utf-8"))
-                compact_artifact_ref = args.compact_artifact_ref or str(input_path)
+                if args.compact_artifact_ref:
+                    compact_artifact_ref = args.compact_artifact_ref
+                else:
+                    compact_artifact_ref = str(input_path)
+                    compact_artifact_ref_cwd = input_path.parent
             if not isinstance(run_input, dict):
                 raise ValueError("ledger input JSON must contain an object")
 
@@ -882,6 +887,7 @@ def handle_benchmark_run_ledger_maintenance_command(
                 arm_id=args.arm_id,
                 notes=args.run_ledger_note,
                 dry_run=dry_run,
+                cwd=compact_artifact_ref_cwd,
             )
             payload = {
                 "ok": True,

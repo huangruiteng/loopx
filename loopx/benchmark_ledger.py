@@ -44,7 +44,12 @@ PRIVATE_ARTIFACT_REF_PATH_MARKERS = (
     "/tmp/",
 )
 PUBLIC_LEDGER_LINEAGE_RESULT_FILENAMES = {
+    "benchmark-run.json",
+    "benchmark_run.json",
+    "compact-run.json",
+    "loopx-worker-benchmark-run.json",
     "result.json",
+    "skillsbench-compact-benchmark-run-v0.json",
 }
 PRIVATE_ARTIFACT_REF_PATH_PARTS = {
     ".local",
@@ -547,6 +552,48 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
     execution_style = _compact_text(value.get("execution_style"), limit=120)
     if execution_style:
         compact["execution_style"] = execution_style
+    return compact
+
+
+def _compact_skillsbench_solution_quality_signals(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "source",
+        "outcome_class",
+        "rubric_miss_label_status",
+    ):
+        text = _compact_text(value.get(field), limit=120)
+        if text:
+            compact[field] = text
+    for field in ("solution_action_labels", "rubric_miss_labels", "public_limits"):
+        labels = _compact_list(value.get(field), limit=12)
+        if labels:
+            compact[field] = labels
+    worker_activity = (
+        value.get("worker_activity")
+        if isinstance(value.get("worker_activity"), dict)
+        else {}
+    )
+    compact_worker_activity: dict[str, Any] = {}
+    for field in (
+        "task_facing_activity_observed",
+        "worker_turn_or_bridge_observed",
+    ):
+        if isinstance(worker_activity.get(field), bool):
+            compact_worker_activity[field] = worker_activity[field]
+    for field in (
+        "tool_call_count",
+        "bridge_task_facing_operation_count",
+        "bridge_task_facing_success_count",
+    ):
+        raw = worker_activity.get(field)
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            compact_worker_activity[field] = max(0, raw)
+    if compact_worker_activity:
+        compact["worker_activity"] = compact_worker_activity
     return compact
 
 
@@ -1687,6 +1734,11 @@ def build_benchmark_run_ledger_entry(
     )
     if product_mode_lifecycle_contract:
         entry["product_mode_lifecycle_contract"] = product_mode_lifecycle_contract
+    solution_quality_signals = _compact_skillsbench_solution_quality_signals(
+        benchmark_run.get("solution_quality_signals")
+    )
+    if solution_quality_signals:
+        entry["solution_quality_signals"] = solution_quality_signals
     attempt_accounting = (
         benchmark_run.get("attempt_accounting")
         if isinstance(benchmark_run.get("attempt_accounting"), dict)
@@ -2979,10 +3031,16 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
         "run_group_id",
         "arm_id",
         "route",
+        "artifact_refs",
         "status",
         "score_status",
         "official_score",
         "official_passed",
+        "round_reward_count",
+        "round_success_observed",
+        "max_rounds_budget",
+        "official_feedback_blinded",
+        "reward_feedback_forwarded",
         "failure_class",
         "failure_scope",
         "failure_labels",
@@ -2994,6 +3052,9 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
         "verifier_reward_artifact_recovery_status",
         "verifier_reward_artifact_recovered",
         "official_result_json_materialized",
+        "solution_quality_signals",
+        "task_setup_preflight",
+        "task_staging",
         "repair_class",
         "repair_priority",
     )
