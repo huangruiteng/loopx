@@ -17,3 +17,6 @@ loopx = "loopx.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["loopx*"]
+
+[tool.setuptools.package-data]
+"loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]

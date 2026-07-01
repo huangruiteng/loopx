@@ -324,9 +324,10 @@ def _materialize_worker_skills(
         source_name = str(profile.get("worker_skill_source") or "").strip()
         if not skill_name or not source_name:
             continue
-        source = Path(source_name)
-        if not source.is_absolute():
-            source = source_root / source
+        source, source_resolution = _resolve_worker_skill_source(
+            source_name,
+            source_root=source_root,
+        )
         workspace_values = [project]
         lane_workspace = _lane_workspace(lane, default_project=project)
         if lane_workspace != project:
@@ -337,6 +338,7 @@ def _materialize_worker_skills(
             "destination": f".codex/skills/{skill_name}/SKILL.md",
             "materialized": False,
             "workspace_count": len(workspace_values),
+            "source_resolution": source_resolution,
         }
         if source.is_file():
             for workspace in workspace_values:
@@ -348,6 +350,28 @@ def _materialize_worker_skills(
             item["missing_source"] = True
         results.append(item)
     return results
+
+
+def _resolve_worker_skill_source(source_name: str, *, source_root: Path) -> tuple[Path, str]:
+    source = Path(source_name)
+    if source.is_absolute():
+        return source, "absolute"
+
+    package_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        ("source_root", source_root / source),
+        ("package_root", package_root / source),
+        ("module_root", Path(__file__).resolve().parent / source),
+    ]
+    seen: set[Path] = set()
+    for label, candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_file():
+            return resolved, label
+    return (source_root / source), "missing"
 
 
 def _worker_skill_materialization_errors(items: list[dict[str, object]]) -> list[str]:

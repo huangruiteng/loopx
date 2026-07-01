@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -118,6 +119,63 @@ def main() -> int:
         removed_replay_source = "deterministic_" + "protected_eval_kernel"
         assert removed_replay_source not in json.dumps(payload, sort_keys=True), payload
         assert_public_safe(payload)
+        if shutil.which("tmux") and shutil.which("true"):
+            session_name = "loopx-auto-research-worker-skill-smoke"
+            try:
+                visible = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "loopx.cli",
+                        "--registry",
+                        str(registry),
+                        "--runtime-root",
+                        str(runtime_root),
+                        "--format",
+                        "json",
+                        "auto-research",
+                        "demo-e2e",
+                        "--agent-id",
+                        AGENT_ID,
+                        "--demo-run-id",
+                        "worker-skill-visible-smoke",
+                        "--execute",
+                        "--no-attach",
+                        "--replace-existing",
+                        "--session-name",
+                        session_name,
+                        "--workspace",
+                        str(workspace),
+                        "--create-workspace",
+                        "--codex-bin",
+                        "true",
+                    ],
+                    cwd=workspace,
+                    env=env,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                if visible.returncode != 0:
+                    raise AssertionError(
+                        f"visible demo-e2e failed rc={visible.returncode}\nstdout={visible.stdout}\nstderr={visible.stderr}"
+                    )
+                visible_payload = json.loads(visible.stdout)
+                launch = visible_payload["visible_launch"]["launch_result"]
+                assert launch["started_lane_count"] == 4, visible_payload
+                assert launch["attach_requested"] is False, visible_payload
+                skill_items = launch["worker_skill_materialization"]
+                assert skill_items, visible_payload
+                assert {item["source_resolution"] for item in skill_items} == {"package_root"}, skill_items
+                assert all(item["materialized"] is True for item in skill_items), skill_items
+                assert_public_safe(visible_payload)
+            finally:
+                subprocess.run(
+                    ["tmux", "kill-session", "-t", session_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
     print("auto-research-demo-e2e-worker-loop-smoke ok")
     return 0
 
