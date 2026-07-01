@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections import Counter
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .kernel import run_builtin_lightweight_demo
@@ -49,6 +51,33 @@ PrintPayload = Callable[
 ]
 FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
+
+AUTO_RESEARCH_DEMO_GOAL_PREFIX = "loopx-auto-research-demo"
+
+
+def _demo_goal_suffix(value: object, *, fallback: str = "run") -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip()).strip("-._")
+    return text[:40] or fallback
+
+
+def _resolve_demo_goal_surface(
+    *,
+    goal_id: str | None,
+    demo_run_id: str | None,
+    inherit_default_goal: bool,
+) -> tuple[str, str]:
+    if inherit_default_goal and goal_id:
+        raise ValueError("--inherit-default-goal cannot be combined with --goal-id")
+    if inherit_default_goal and demo_run_id:
+        raise ValueError("--inherit-default-goal cannot be combined with --demo-run-id")
+    if goal_id and demo_run_id:
+        raise ValueError("--demo-run-id is only used when --goal-id is omitted")
+    if inherit_default_goal:
+        return AUTO_RESEARCH_DEFAULT_GOAL_ID, "inherited_default_goal"
+    if goal_id:
+        return goal_id, "explicit_goal"
+    run_id = demo_run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{AUTO_RESEARCH_DEMO_GOAL_PREFIX}-{_demo_goal_suffix(run_id)}", "fresh_demo_goal"
 
 
 def register_auto_research_commands(
@@ -380,8 +409,19 @@ def register_auto_research_commands(
     add_subcommand_format(demo_supervisor_parser)
     demo_supervisor_parser.add_argument(
         "--goal-id",
-        default=AUTO_RESEARCH_DEFAULT_GOAL_ID,
-        help="Research goal id whose frontier each lane should inspect.",
+        help=(
+            "Research goal id whose frontier each lane should inspect. "
+            "Omit to use a fresh demo-local goal surface."
+        ),
+    )
+    demo_supervisor_parser.add_argument(
+        "--demo-run-id",
+        help="Public-safe suffix for the generated demo goal id when --goal-id is omitted.",
+    )
+    demo_supervisor_parser.add_argument(
+        "--inherit-default-goal",
+        action="store_true",
+        help=f"Opt into the shared internal demo goal {AUTO_RESEARCH_DEFAULT_GOAL_ID}.",
     )
     demo_supervisor_parser.add_argument(
         "--agent",
@@ -454,8 +494,19 @@ def register_auto_research_commands(
     demo_e2e_parser.add_argument("--agent-id", required=True)
     demo_e2e_parser.add_argument(
         "--goal-id",
-        default=AUTO_RESEARCH_DEFAULT_GOAL_ID,
-        help="Research goal id for the positive demo evidence.",
+        help=(
+            "Research goal id for the demo evidence. "
+            "Omit to create a fresh isolated demo goal surface."
+        ),
+    )
+    demo_e2e_parser.add_argument(
+        "--demo-run-id",
+        help="Public-safe suffix for the generated demo goal id when --goal-id is omitted.",
+    )
+    demo_e2e_parser.add_argument(
+        "--inherit-default-goal",
+        action="store_true",
+        help=f"Opt into reusing the shared internal demo goal {AUTO_RESEARCH_DEFAULT_GOAL_ID}.",
     )
     demo_e2e_parser.add_argument(
         "--tracking-goal-id",
@@ -833,8 +884,13 @@ def handle_auto_research_command(
                 max_rounds=args.max_rounds,
             )
         elif args.auto_research_command == "demo-supervisor":
-            payload = build_auto_research_demo_supervisor_plan(
+            goal_id, goal_surface_mode = _resolve_demo_goal_surface(
                 goal_id=args.goal_id,
+                demo_run_id=args.demo_run_id,
+                inherit_default_goal=args.inherit_default_goal,
+            )
+            payload = build_auto_research_demo_supervisor_plan(
+                goal_id=goal_id,
                 agent_specs=args.agent,
                 session_name=args.session_name,
                 cli_bin=args.cli_bin,
@@ -842,6 +898,14 @@ def handle_auto_research_command(
                 tmux_bin=args.tmux_bin,
                 reasoning_effort=args.reasoning_effort,
             )
+            payload["goal_surface_route"] = {
+                "schema_version": "auto_research_demo_goal_surface_v0",
+                "mode": goal_surface_mode,
+                "goal_id": goal_id,
+                "fresh_by_default": goal_surface_mode == "fresh_demo_goal",
+                "reuses_default_internal_goal": goal_id == AUTO_RESEARCH_DEFAULT_GOAL_ID,
+                "default_internal_goal_id": AUTO_RESEARCH_DEFAULT_GOAL_ID,
+            }
             if args.execute:
                 payload = _execute_auto_research_demo_supervisor(
                     payload,
@@ -857,6 +921,12 @@ def handle_auto_research_command(
                     create_workspace=args.create_workspace,
                 )
         elif args.auto_research_command == "demo-e2e":
+            goal_id, goal_surface_mode = _resolve_demo_goal_surface(
+                goal_id=args.goal_id,
+                demo_run_id=args.demo_run_id,
+                inherit_default_goal=args.inherit_default_goal,
+            )
+
             def append_demo_e2e_evidence(packet_path: str) -> dict[str, object]:
                 return _append_auto_research_rollout_events(
                     packet_path=packet_path,
@@ -890,7 +960,8 @@ def handle_auto_research_command(
 
             payload = run_auto_research_demo_e2e(
                 agent_id=args.agent_id,
-                goal_id=args.goal_id,
+                goal_id=goal_id,
+                goal_surface_mode=goal_surface_mode,
                 tracking_goal_id=args.tracking_goal_id,
                 objective=args.objective,
                 output_dir=args.output_dir,
