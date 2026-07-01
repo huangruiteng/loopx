@@ -942,13 +942,11 @@ def _auto_research_codex_bootstrap_prompt(
             "",
             "Evidence runner minimal live demo path:",
             "1. Confirm the selected frontier action is `run_dev_eval` or `write_evidence` for this agent.",
-            "2. Run the quickstart dev evaluator from this pane workspace:",
-            "   `python3 auto_research_knn_pack/protected_eval.py --solution auto_research_knn_pack/solution_candidate.py --split dev > .local/evidence-runner/dev-result.public.json`",
-            "3. Build the public evidence packet:",
-            "   `loopx --format json auto-research evidence --contract auto_research_knn_pack/research_contract.json --eval-result .local/evidence-runner/dev-result.public.json --hypothesis-id hyp_quickstart_partial_selection --todo-id <selected todo_id> --agent-id \"$LOOPX_AGENT_ID\" --claimed-by \"$LOOPX_AGENT_ID\" --mechanism-family partial_selection --hypothesis \"Use exact partial selection to avoid full distance sorting.\" > .local/evidence-runner/evidence.public.json`",
-            "4. Run `append-evidence --dry-run`, then real `append-evidence --output .local/evidence-runner/append-result.public.json`.",
-            "5. Run `capture-live-evidence --packet .local/evidence-runner/evidence.public.json --append-result .local/evidence-runner/append-result.public.json --agent-id \"$LOOPX_AGENT_ID\" --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --output .local/evidence-runner/live-codex-e2e-evidence.public.json --execute`.",
-            "6. Complete only the selected todo after the evidence files exist and the append result reports appended evidence.",
+            "2. Preview the real LoopX-selected worker turn:",
+            "   `loopx --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\"`",
+            "3. Execute the same worker turn only when the preview selected this lane:",
+            "   `loopx --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\" --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --execute`",
+            "4. Complete only the selected todo after worker-turn reports executed=true, appended evidence, and live_evidence.written=true.",
         ]
     return "\n".join(
         [

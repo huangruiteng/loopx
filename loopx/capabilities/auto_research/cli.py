@@ -23,6 +23,7 @@ from . import (
     load_auto_research_fixture,
     render_auto_research_markdown,
     run_builtin_lightweight_demo,
+    run_auto_research_worker_turn,
 )
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
@@ -253,6 +254,54 @@ def register_auto_research_commands(
         "--execute",
         action="store_true",
         help="Write the compact evidence JSON to --output. Omit to preview the payload.",
+    )
+
+    worker_turn_parser = auto_research_sub.add_parser(
+        "worker-turn",
+        help="Run one LoopX-selected auto-research worker turn from quota/frontier.",
+    )
+    add_subcommand_format(worker_turn_parser)
+    worker_turn_parser.add_argument("--agent-id", required=True)
+    worker_turn_parser.add_argument(
+        "--goal-id",
+        default=AUTO_RESEARCH_DEFAULT_GOAL_ID,
+        help="Research goal id whose quota/frontier this worker should obey.",
+    )
+    worker_turn_parser.add_argument(
+        "--objective",
+        default=AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+        help="Public-safe objective used only when the quickstart pack must be created.",
+    )
+    worker_turn_parser.add_argument(
+        "--output-dir",
+        default="auto_research_knn_pack",
+        help="Quickstart pack directory inside the worker workspace.",
+    )
+    worker_turn_parser.add_argument(
+        "--evidence-dir",
+        default=".local/auto-research-worker",
+        help="Local-only evidence output directory inside the worker workspace.",
+    )
+    worker_turn_parser.add_argument(
+        "--lane-count",
+        type=int,
+        default=1,
+        help="Visible lane count recorded when live evidence is captured.",
+    )
+    worker_turn_parser.add_argument(
+        "--visible-lanes-accepted",
+        action="store_true",
+        help="Acknowledge that the visible lanes were launched and accepted.",
+    )
+    worker_turn_parser.add_argument(
+        "--live-evidence-output",
+        default=LIVE_CODEX_E2E_DEFAULT_OUTPUT,
+        help="Local filename for compact public-safe live evidence.",
+    )
+    worker_turn_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Run the selected worker action. Omit to show the plan from quota/frontier.",
     )
 
     demo_supervisor_parser = auto_research_sub.add_parser(
@@ -664,6 +713,30 @@ def handle_auto_research_command(
                     json.dumps(payload, indent=2, sort_keys=True) + "\n",
                     encoding="utf-8",
                 )
+        elif args.auto_research_command == "worker-turn":
+            def append_worker_evidence(packet_path: str) -> dict[str, object]:
+                return _append_auto_research_rollout_events(
+                    packet_path=packet_path,
+                    registry_path=registry_path,
+                    runtime_root_arg=runtime_root_arg,
+                    dry_run=False,
+                )
+
+            payload = run_auto_research_worker_turn(
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root_arg,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+                objective=args.objective,
+                workspace=Path.cwd(),
+                output_dir=args.output_dir,
+                evidence_dir=args.evidence_dir,
+                execute=args.execute,
+                append_evidence=append_worker_evidence if args.execute else None,
+                lane_count=args.lane_count,
+                visible_lanes_accepted=args.visible_lanes_accepted,
+                live_evidence_output=args.live_evidence_output,
+            )
         elif args.auto_research_command == "demo-supervisor":
             payload = build_auto_research_demo_supervisor_plan(
                 goal_id=args.goal_id,
@@ -746,7 +819,7 @@ def handle_auto_research_command(
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
                 "`board`, `acceptance`, `append-evidence`, `capture-live-evidence`, "
-                "`demo-supervisor`, `demo-e2e`, or `lite-e2e` subcommand"
+                "`worker-turn`, `demo-supervisor`, `demo-e2e`, or `lite-e2e` subcommand"
             )
     except Exception as exc:
         payload = {
