@@ -5795,6 +5795,10 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
                     "python3 -m pip install" in verifier_text
                     and "uv==${loopx_uv_version}" in verifier_text
                 ),
+                "verifier_uv_env_source_guard_patch_applied": (
+                    'if [ -f "$HOME/.local/bin/env" ]; then' in verifier_text
+                    and '. "$HOME/.local/bin/env"' in verifier_text
+                ),
                 "verifier_uv_bootstrap_mirror_host": (
                     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
                 ),
@@ -6883,6 +6887,7 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
         "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+        "verifier_uv_env_source_guard_patch_applied": False,
     }
     if not verifier.exists():
         return metadata
@@ -6952,6 +6957,7 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
     if not inserted:
         patched_lines.extend(block.splitlines())
     patched = "\n".join(patched_lines).rstrip() + "\n"
+    patched, source_guard_applied = _patch_verifier_uv_env_source_guard(patched)
     if patched != original:
         _write_text_atomic(verifier, patched)
     metadata.update(
@@ -6960,6 +6966,7 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
             "verifier_uv_bootstrap_mirror_patch_required": True,
             "verifier_uv_bootstrap_mirror_patch_applied": True,
             "verifier_uv_bootstrap_pip_fallback_patch_applied": True,
+            "verifier_uv_env_source_guard_patch_applied": source_guard_applied,
             "verifier_uv_bootstrap_version": version,
             "verifier_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
@@ -6967,6 +6974,34 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
         }
     )
     return metadata
+
+
+def _patch_verifier_uv_env_source_guard(text: str) -> tuple[str, bool]:
+    """Guard uv installer env sourcing when the pip wheel already provided uvx."""
+
+    source_lines = {
+        'source "$HOME/.local/bin/env"',
+        "source $HOME/.local/bin/env",
+        '. "$HOME/.local/bin/env"',
+        ". $HOME/.local/bin/env",
+    }
+    replacement = [
+        'if [ -f "$HOME/.local/bin/env" ]; then',
+        '  . "$HOME/.local/bin/env"',
+        "fi",
+    ]
+    patched_lines: list[str] = []
+    applied = False
+    for line in text.splitlines():
+        if line.strip() in source_lines:
+            indent = line[: len(line) - len(line.lstrip())]
+            patched_lines.extend(f"{indent}{part}" for part in replacement)
+            applied = True
+        else:
+            patched_lines.append(line)
+    if not applied:
+        return text, False
+    return "\n".join(patched_lines).rstrip() + "\n", True
 
 
 def _verifier_benchmark_egress_proxy_exports(
@@ -7115,10 +7150,19 @@ def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
     )
     patched_lines: list[str] = []
     inserted = False
+    heredoc_delimiter: str | None = None
     for line in text.splitlines():
         patched_lines.append(line)
+        if heredoc_delimiter is not None:
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = _dockerfile_heredoc_delimiter(line)
         stripped = line.strip()
-        if stripped.upper().startswith("FROM ") and " scratch" not in stripped.lower():
+        if (
+            _is_dockerfile_from_instruction(stripped)
+            and " scratch" not in stripped.lower()
+        ):
             patched_lines.extend(["", *block.splitlines(), ""])
             inserted = True
     if not inserted:
@@ -7128,6 +7172,27 @@ def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
         return False
     _write_text_atomic(dockerfile, patched)
     return True
+
+
+def _dockerfile_heredoc_delimiter(line: str) -> str | None:
+    """Return a Dockerfile shell heredoc delimiter opened on this line."""
+
+    match = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", line)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _is_dockerfile_from_instruction(stripped_line: str) -> bool:
+    """Match Dockerfile ``FROM`` instructions without matching heredoc Python."""
+
+    return bool(
+        re.match(
+            r"^FROM(?:\s+--platform=\S+)?\s+\S+(?:\s+AS\s+\S+)?\s*$",
+            stripped_line,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:

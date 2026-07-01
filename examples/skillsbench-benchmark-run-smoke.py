@@ -6036,6 +6036,47 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         ), staged_text
 
 
+def test_skillsbench_docker_pip_bootstrap_skips_python_heredoc_imports() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-pip-heredoc-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "latex-formula-extraction"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        dockerfile.write_text(
+            "FROM ubuntu:24.04\n"
+            "RUN python3 - <<'PY'\n"
+            "from huggingface_hub import snapshot_download\n"
+            "snapshot_download(repo_id='example/model')\n"
+            "PY\n"
+            "RUN pip3 install marker-pdf==1.3.3\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="latex-formula-extraction-goalstart",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_pip_bootstrap_patch_applied"] is True, metadata
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert staged_text.count(DOCKER_PIP_BOOTSTRAP_BEGIN) == 1, staged_text
+        heredoc_body = staged_text[
+            staged_text.index("RUN python3 - <<'PY'") : staged_text.index(
+                "PY\nRUN pip3 install"
+            )
+        ]
+        assert DOCKER_PIP_BOOTSTRAP_BEGIN not in heredoc_body, staged_text
+        assert staged_text.index(DOCKER_PIP_BOOTSTRAP_BEGIN) < staged_text.index(
+            "RUN python3 - <<'PY'"
+        ), staged_text
+
+
 def test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-runtime-tools-apt-") as tmp:
         root = Path(tmp)
@@ -6086,6 +6127,7 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
             "#!/bin/sh\n"
             "apt-get update\n"
             "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n"
+            "source \"$HOME/.local/bin/env\"\n"
             "uvx --with pytest==8.4.1 pytest /tests/test_outputs.py\n"
         )
         verifier.write_text(original_verifier, encoding="utf-8")
@@ -6111,6 +6153,9 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert metadata[
             "verifier_uv_bootstrap_pip_fallback_patch_applied"
         ] is True, metadata
+        assert metadata["verifier_uv_env_source_guard_patch_applied"] is True, (
+            metadata
+        )
         assert metadata["verifier_uv_bootstrap_version"] == "0.9.7", metadata
         assert metadata["verifier_uv_bootstrap_mirror_host"] == (
             DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
@@ -6126,6 +6171,12 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert "uv==${loopx_uv_version}" in staged_verifier, staged_verifier
         assert "loopx_uv_installer_timeout_sec" in staged_verifier, staged_verifier
         assert "timeout \"${loopx_uv_installer_timeout_sec}\" sh -c" in (
+            staged_verifier
+        )
+        assert 'if [ -f "$HOME/.local/bin/env" ]; then' in staged_verifier, (
+            staged_verifier
+        )
+        assert "source \"$HOME/.local/bin/env\"" not in staged_verifier, (
             staged_verifier
         )
         assert "releases.astral.sh/github/uv/releases/download" in staged_verifier, (
