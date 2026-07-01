@@ -959,6 +959,31 @@ def test_skillsbench_recovered_reward_closeout_fields_survive_current_aggregate(
         ] == 4, summary
 
 
+def test_skillsbench_solution_quality_signals_are_derived_for_old_compact_runs() -> None:
+    entry = build_benchmark_run_ledger_entry(
+        {
+            "schema_version": "benchmark_run_v0",
+            "benchmark_id": "skillsbench@1.1",
+            "case_id": "old-compact-run-fixture",
+            "official_task_score": {"passed": False, "value": 0.0},
+            "interaction_counters": {
+                "remote_command_file_bridge_agent_task_facing_operation_count": 3,
+                "remote_command_file_bridge_agent_task_facing_success_count": 2,
+            },
+        }
+    )
+
+    solution_quality = entry["solution_quality_signals"]
+    assert solution_quality["outcome_class"] == "official_zero", solution_quality
+    assert solution_quality["solution_action_labels"] == [
+        "official_zero_after_public_worker_activity",
+        "rubric_miss_labels_unavailable_compact_only",
+    ], solution_quality
+    assert solution_quality["worker_activity"][
+        "bridge_task_facing_operation_count"
+    ] == 3, solution_quality
+
+
 def test_skillsbench_product_mode_pair_review_is_ledgered() -> None:
     baseline = {
         "schema_version": "benchmark_run_v0",

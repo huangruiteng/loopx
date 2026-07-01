@@ -12,6 +12,9 @@ from .benchmark_core import (
     classify_benchmark_artifact_path,
     classify_product_mode_main_table_pair,
 )
+from .benchmark_adapters.skillsbench_signals import (
+    build_skillsbench_solution_quality_signals,
+)
 
 
 BENCHMARK_RUN_LEDGER_SCHEMA_VERSION = "benchmark_run_ledger_v0"
@@ -595,6 +598,21 @@ def _compact_skillsbench_solution_quality_signals(value: Any) -> dict[str, Any]:
     if compact_worker_activity:
         compact["worker_activity"] = compact_worker_activity
     return compact
+
+
+def _ledger_skillsbench_solution_quality_signals(
+    benchmark_run: dict[str, Any],
+    *,
+    benchmark_id: str,
+) -> dict[str, Any]:
+    signals = _compact_skillsbench_solution_quality_signals(
+        benchmark_run.get("solution_quality_signals")
+    )
+    if signals or not benchmark_id.lower().startswith("skillsbench"):
+        return signals
+    return _compact_skillsbench_solution_quality_signals(
+        build_skillsbench_solution_quality_signals(benchmark_run)
+    )
 
 
 def _terminal_bench_case_id_from_job_name(
@@ -1734,8 +1752,9 @@ def build_benchmark_run_ledger_entry(
     )
     if product_mode_lifecycle_contract:
         entry["product_mode_lifecycle_contract"] = product_mode_lifecycle_contract
-    solution_quality_signals = _compact_skillsbench_solution_quality_signals(
-        benchmark_run.get("solution_quality_signals")
+    solution_quality_signals = _ledger_skillsbench_solution_quality_signals(
+        benchmark_run,
+        benchmark_id=benchmark_id,
     )
     if solution_quality_signals:
         entry["solution_quality_signals"] = solution_quality_signals
