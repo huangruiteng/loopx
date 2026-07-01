@@ -551,7 +551,147 @@ _SKILLSBENCH_SETUP_FAILURE_LABELS = {
     "skillsbench_docker_setup_preflight_blocked",
     "skillsbench_docker_compose_setup_failure",
     "skillsbench_docker_compose_unclassified_setup_failure",
+    "skillsbench_compose_setup_blocked_before_agent_rounds",
+    "skillsbench_runner_setup_blocked_before_agent_rounds",
+    "skillsbench_app_server_goal_pre_agent_materialization_blocked",
 }
+
+_SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
+    "compose_setup_blocked_before_agent_rounds": (
+        "skillsbench_compose_setup_blocked_before_agent_rounds"
+    ),
+    "runner_setup_blocked_before_agent_rounds": (
+        "skillsbench_runner_setup_blocked_before_agent_rounds"
+    ),
+}
+
+_SKILLSBENCH_PRE_AGENT_SETUP_REPLACEABLE_ATTRIBUTIONS = {
+    "",
+    "none",
+    "score_missing",
+    "skillsbench_runner_error",
+    "skillsbench_result_json_missing_after_runner_exit",
+    "official_score_zero_case_failure",
+    "official_verifier_solution_failure",
+    "verifier_infrastructure_failure",
+}
+
+
+def _skillsbench_number(value: Any) -> float | int | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _skillsbench_official_score_missing(benchmark_run: dict[str, Any]) -> bool:
+    official = (
+        benchmark_run.get("official_task_score")
+        if isinstance(benchmark_run.get("official_task_score"), dict)
+        else {}
+    )
+    if _skillsbench_number(official.get("value")) is not None:
+        return False
+    return _skillsbench_number(benchmark_run.get("official_score")) is None
+
+
+def _skillsbench_pre_agent_setup_diagnostic_label(
+    benchmark_run: dict[str, Any],
+) -> str:
+    diagnostic = benchmark_run.get("compose_setup_diagnostic")
+    if not isinstance(diagnostic, dict):
+        return ""
+    label = _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS.get(
+        str(diagnostic.get("status") or "")
+    )
+    if not label:
+        return ""
+    route = str(benchmark_run.get("route") or "")
+    mode = str(benchmark_run.get("mode") or "")
+    if route != "codex-app-server-goal-baseline" and mode != (
+        "skillsbench_codex_app_server_goal_baseline"
+    ):
+        return ""
+    if benchmark_run.get("native_goal_worker_route") is not True:
+        validation = benchmark_run.get("validation")
+        if not isinstance(validation, dict) or validation.get(
+            "native_goal_worker_route"
+        ) is not True:
+            return ""
+    if benchmark_run.get("native_goal_worker_connected") is True:
+        return ""
+    trace_count = benchmark_run.get("native_goal_worker_trace_count")
+    if (
+        isinstance(trace_count, int)
+        and not isinstance(trace_count, bool)
+        and trace_count > 0
+    ):
+        return ""
+    if diagnostic.get("agent_rounds_started") is True:
+        return ""
+    if not _skillsbench_official_score_missing(benchmark_run):
+        return ""
+    return label
+
+
+def apply_skillsbench_pre_agent_setup_diagnostic_attribution(
+    benchmark_run: dict[str, Any],
+) -> dict[str, Any]:
+    """Project app-server pre-agent setup blockers into terminal attribution.
+
+    The app-server Goal route can be selected before BenchFlow/compose has
+    materialized the native worker. Without this projection, downstream
+    reducers only see `native_goal_worker_route=true` plus no worker trace and
+    report a misleading worker connection failure.
+    """
+
+    label = _skillsbench_pre_agent_setup_diagnostic_label(benchmark_run)
+    if not label:
+        return benchmark_run
+    current = str(benchmark_run.get("score_failure_attribution") or "")
+    if (
+        current in _SKILLSBENCH_PRE_AGENT_SETUP_REPLACEABLE_ATTRIBUTIONS
+        or current.startswith("skillsbench_native_goal_worker_")
+    ):
+        benchmark_run["score_failure_attribution"] = label
+        benchmark_run["first_blocker"] = label
+    benchmark_run["pre_agent_setup_materialization_blocked"] = True
+    benchmark_run["native_goal_worker_pre_agent_setup_blocked"] = True
+
+    labels = [
+        item
+        for item in benchmark_run.get("failure_attribution_labels", [])
+        if isinstance(item, str) and item
+    ]
+    for item in (
+        label,
+        "skillsbench_app_server_goal_pre_agent_materialization_blocked",
+        "skillsbench_runner_setup_error",
+    ):
+        if item not in labels:
+            labels.append(item)
+    benchmark_run["failure_attribution_labels"] = labels
+
+    runner_failure = benchmark_run.get("runner_failure")
+    if not isinstance(runner_failure, dict):
+        runner_failure = {
+            "schema_version": "skillsbench_runner_failure_v0",
+            "raw_error_recorded": False,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+        }
+        benchmark_run["runner_failure"] = runner_failure
+    runner_failure["exception_type"] = label
+    runner_failure["failure_class"] = label
+    runner_failure["pre_agent_setup_materialization_blocked"] = True
+
+    attempt_accounting = benchmark_run.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["failure_class"] = (
+            BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED.value
+        )
+    return benchmark_run
 
 
 def _skillsbench_verifier_uv_bootstrap_failure(verifier_error_text: str) -> bool:

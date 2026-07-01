@@ -103,6 +103,7 @@ from loopx.benchmark_case_state import (  # noqa: E402
     benchmark_case_active_state_write_command,
 )
 from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
+    apply_skillsbench_pre_agent_setup_diagnostic_attribution,
     build_skillsbench_app_server_goal_worker_contract,
     build_skillsbench_run_permission_policy,
     build_skillsbench_worker_handshake_preflight,
@@ -12186,6 +12187,7 @@ def reduce_result(
     diagnostic = build_compose_setup_diagnostic(compact, plan)
     if diagnostic.get("status") != "not_applicable":
         compact["compose_setup_diagnostic"] = diagnostic
+        apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
@@ -12983,6 +12985,7 @@ def build_runner_failure_compact(
     diagnostic = build_compose_setup_diagnostic(compact, plan)
     if diagnostic.get("status") != "not_applicable":
         compact["compose_setup_diagnostic"] = diagnostic
+        apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
     trials = compact.get("trials")
     if isinstance(trials, list) and trials:
         trial = trials[0]

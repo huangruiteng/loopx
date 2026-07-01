@@ -40,6 +40,18 @@ PRIVATE_ARTIFACT_REF_PATH_MARKERS = (
     "/var/folders/",
     "/tmp/",
 )
+PUBLIC_LEDGER_LINEAGE_RESULT_FILENAMES = {
+    "result.json",
+}
+PRIVATE_ARTIFACT_REF_PATH_PARTS = {
+    ".local",
+    "private",
+    "private-benchmark-jobs",
+    "users",
+    "volumes",
+    "var",
+    "tmp",
+}
 
 
 def _now_local_iso() -> str:
@@ -579,6 +591,24 @@ def _public_ledger_artifact_ref(
         return None
     classification = classify_benchmark_artifact_path(ref)
     if classification.get("allowed_to_read") is not True:
+        normalized = ref.replace("\\", "/").strip("/")
+        parts = [part for part in normalized.split("/") if part]
+        if (
+            not normalized
+            or ref.startswith("/")
+            or ref.startswith("~")
+            or ":" in normalized
+            or len(parts) != len(normalized.split("/"))
+            or any(part in {".", ".."} or part.startswith(".") for part in parts)
+            or any(part.lower() in PRIVATE_ARTIFACT_REF_PATH_PARTS for part in parts)
+            or classification.get("private_raw_surface") is True
+        ):
+            return None
+        basename = _compact_text(classification.get("basename"), limit=160)
+        if basename in PUBLIC_LEDGER_LINEAGE_RESULT_FILENAMES:
+            return normalized
+        if "." not in basename:
+            return normalized
         return None
     normalized = ref.replace("\\", "/")
     if any(marker in normalized for marker in PRIVATE_ARTIFACT_REF_PATH_MARKERS):
@@ -639,6 +669,8 @@ def _official_score(benchmark_run: dict[str, Any]) -> tuple[float | int | None, 
 def _infer_arm_id_from_job_name(job_name: str) -> str:
     if not job_name:
         return ""
+    if "codex_app_server_goal_baseline" in job_name:
+        return "codex_app_server_goal_baseline"
     if "codex_goal_mode_baseline" in job_name:
         return "codex_goal_mode_baseline"
     if "hardened_codex_baseline" in job_name:
@@ -656,6 +688,8 @@ def _infer_arm_id_from_job_name(job_name: str) -> str:
 
 def _infer_arm_id(benchmark_run: dict[str, Any]) -> str:
     mode = _compact_text(benchmark_run.get("mode"), limit=120)
+    if mode == "skillsbench_codex_app_server_goal_baseline":
+        return "codex_app_server_goal_baseline"
     if mode == "codex_goal_mode_baseline":
         return "codex_goal_mode_baseline"
     if mode in {"hardened_codex_baseline", "hardened-codex"}:
@@ -695,6 +729,40 @@ def _score_status(benchmark_run: dict[str, Any], score: float | int | None, pass
     return "passed" if passed else "failed"
 
 
+_SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
+    "compose_setup_blocked_before_agent_rounds": (
+        "skillsbench_compose_setup_blocked_before_agent_rounds"
+    ),
+    "runner_setup_blocked_before_agent_rounds": (
+        "skillsbench_runner_setup_blocked_before_agent_rounds"
+    ),
+}
+
+
+def _skillsbench_pre_agent_setup_failure_class(
+    benchmark_run: dict[str, Any],
+) -> str:
+    diagnostic = (
+        benchmark_run.get("compose_setup_diagnostic")
+        if isinstance(benchmark_run.get("compose_setup_diagnostic"), dict)
+        else {}
+    )
+    label = _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS.get(
+        _compact_text(diagnostic.get("status"), limit=120)
+    )
+    if not label:
+        return ""
+    mode = _compact_text(benchmark_run.get("mode"), limit=120)
+    route = _compact_text(benchmark_run.get("route"), limit=120)
+    if mode != "skillsbench_codex_app_server_goal_baseline" and route != (
+        "codex-app-server-goal-baseline"
+    ):
+        return ""
+    if diagnostic.get("agent_rounds_started") is True:
+        return ""
+    return label
+
+
 def _failure_class(benchmark_run: dict[str, Any], score: float | int | None) -> str:
     if _source_schema(benchmark_run) == "terminal_bench_post_launch_materialization_v0":
         compact_failure = _compact_text(
@@ -715,6 +783,10 @@ def _failure_class(benchmark_run: dict[str, Any], score: float | int | None) -> 
         return first_blocker or "post_launch_compact_result_missing"
     if score is not None and score != 0:
         return "none"
+    if score is None:
+        pre_agent_setup = _skillsbench_pre_agent_setup_failure_class(benchmark_run)
+        if pre_agent_setup:
+            return pre_agent_setup
     setup_blocker = _compact_first_from_lists(
         benchmark_run,
         "worker_setup_diagnostic_blockers",

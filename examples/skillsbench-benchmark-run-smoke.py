@@ -49,6 +49,7 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
 from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
+    apply_skillsbench_pre_agent_setup_diagnostic_attribution,
     skillsbench_runner_error_attribution,
     skillsbench_runner_error_fingerprint,
 )
@@ -5092,6 +5093,106 @@ def test_skillsbench_unclassified_compose_failure_fingerprint() -> None:
         assert "/Users/example/private/job/root" not in text, compact
 
 
+def test_skillsbench_app_server_pre_agent_setup_overrides_route_selected_gap() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-appserver-preagent-") as tmp:
+        root = Path(tmp)
+        run_dir = (
+            root
+            / "official"
+            / "2026-07-01__09-50-00"
+            / "fix-build-agentops__preagent"
+        )
+        result_path = run_dir / "result.json"
+        write_json(
+            result_path,
+            {
+                "task_name": "fix-build-agentops",
+                "rollout_name": "fix-build-agentops__preagent",
+                "rewards": None,
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 0,
+                "n_prompts": 1,
+                "error": "BenchFlow setup blocked before agent lifecycle",
+                "verifier_error": None,
+                "partial_trajectory": False,
+                "trajectory_source": None,
+            },
+        )
+        write_json(run_dir / "timing.json", {"environment_setup": 1.0, "total": 1.0})
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "last_decision": "host_app_server_goal_worker_selected",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": False,
+            "native_goal_worker_trace_dir_present": False,
+            "native_goal_worker_public_trace_read": False,
+            "native_goal_worker_trace_count": 0,
+            "native_goal_worker_connect_count": 0,
+        }
+        compact = build_skillsbench_benchflow_result_benchmark_run(
+            result_path,
+            route="codex-app-server-goal-baseline",
+            controller_trace=controller_trace,
+        )
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_native_goal_worker_uncountable_worker_route_selected_not_connected"
+        ), compact
+        compact["compose_setup_diagnostic"] = {
+            "schema_version": "skillsbench_compose_setup_diagnostic_v0",
+            "status": "runner_setup_blocked_before_agent_rounds",
+            "route": "codex-app-server-goal-baseline",
+            "failure_class": compact["score_failure_attribution"],
+            "agent_rounds_started": False,
+            "official_score_missing": True,
+            "case_attempt_budget_should_count": False,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+        }
+
+        legacy_reduced = compact_benchmark_run(compact)
+        assert legacy_reduced is not None
+        assert legacy_reduced["score_failure_attribution"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), legacy_reduced
+        assert "native_goal_worker_public_trace_missing" not in legacy_reduced[
+            "validation"
+        ]["failed_checks"], legacy_reduced
+        assert "pre_agent_setup_materialization_blocked" in legacy_reduced[
+            "validation"
+        ]["failed_checks"], legacy_reduced
+
+        apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), compact
+        accounting = compact["attempt_accounting"]
+        assert accounting["failure_label"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), accounting
+        assert accounting["failure_class"] == "job_materialization_failed", accounting
+
+        ledger_path = root / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            run_group_id="skillsbench-appserver-preagent-test",
+            arm_id="baseline",
+            dry_run=False,
+        )
+        entry = update["entry"]
+        assert entry["arm_id"] == "codex_app_server_goal_baseline", entry
+        assert entry["failure_class"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), entry
+        assert entry["attempt_failure_label"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), entry
+
+
 def test_skillsbench_volume_mount_failure_attribution() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-volume-mount-") as tmp:
         result_path = write_official_skillsbench_volume_mount_failure(Path(tmp))
@@ -5968,7 +6069,12 @@ def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> N
         assert case["latest_decision"]["decision"] == (
             "baseline_setup_preflight_selection_required"
         ), case
-        entry = case["runs"][0]
+        entry = next(
+            run
+            for run in case["runs"]
+            if run.get("run_group_id") == "setup-fuzzing-py-apt-risk-preflight"
+            and run.get("job_name") == "setup-fuzzing-py-apt-risk-preflight"
+        )
         assert entry["repair_class"] == "skillsbench_setup_preflight_selection", (
             entry
         )
@@ -6059,7 +6165,14 @@ def test_skillsbench_verifier_bootstrap_preflight_blocks_full_run_without_benchf
         assert case["latest_decision"]["decision"] == (
             "baseline_verifier_bootstrap_preflight_selection_required"
         ), case
-        entry = case["runs"][0]
+        entry = next(
+            run
+            for run in case["runs"]
+            if run.get("run_group_id")
+            == "organize-messy-files-verifier-bootstrap-preflight"
+            and run.get("job_name")
+            == "organize-messy-files-verifier-bootstrap-preflight"
+        )
         assert entry["repair_class"] == (
             "skillsbench_verifier_bootstrap_preflight_selection"
         ), entry

@@ -2631,6 +2631,128 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     return compact
 
 
+_SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
+    "compose_setup_blocked_before_agent_rounds": (
+        "skillsbench_compose_setup_blocked_before_agent_rounds"
+    ),
+    "runner_setup_blocked_before_agent_rounds": (
+        "skillsbench_runner_setup_blocked_before_agent_rounds"
+    ),
+}
+
+
+def _skillsbench_compact_official_score_missing(compact: dict[str, Any]) -> bool:
+    official = (
+        compact.get("official_task_score")
+        if isinstance(compact.get("official_task_score"), dict)
+        else {}
+    )
+    value = official.get("value")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return False
+    value = compact.get("official_score")
+    return not (isinstance(value, (int, float)) and not isinstance(value, bool))
+
+
+def _skillsbench_compact_pre_agent_setup_label(compact: dict[str, Any]) -> str:
+    diagnostic = compact.get("compose_setup_diagnostic")
+    if not isinstance(diagnostic, dict):
+        return ""
+    label = _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS.get(
+        str(diagnostic.get("status") or "")
+    )
+    if not label:
+        return ""
+    if compact.get("mode") != "skillsbench_codex_app_server_goal_baseline":
+        return ""
+    validation = (
+        compact.get("validation") if isinstance(compact.get("validation"), dict) else {}
+    )
+    native_route = (
+        compact.get("native_goal_worker_route")
+        if "native_goal_worker_route" in compact
+        else validation.get("native_goal_worker_route")
+    )
+    if native_route is not True:
+        return ""
+    native_connected = (
+        compact.get("native_goal_worker_connected")
+        if "native_goal_worker_connected" in compact
+        else validation.get("native_goal_worker_connected")
+    )
+    if native_connected is True:
+        return ""
+    trace_count = (
+        compact.get("native_goal_worker_trace_count")
+        if "native_goal_worker_trace_count" in compact
+        else validation.get("native_goal_worker_trace_count")
+    )
+    if (
+        isinstance(trace_count, int)
+        and not isinstance(trace_count, bool)
+        and trace_count > 0
+    ):
+        return ""
+    if diagnostic.get("agent_rounds_started") is True:
+        return ""
+    if not _skillsbench_compact_official_score_missing(compact):
+        return ""
+    return label
+
+
+def _apply_skillsbench_pre_agent_setup_compact_projection(
+    compact: dict[str, Any],
+) -> None:
+    label = _skillsbench_compact_pre_agent_setup_label(compact)
+    if not label:
+        return
+    current = str(compact.get("score_failure_attribution") or "")
+    if (
+        current in {"", "none", "score_missing", "skillsbench_runner_error"}
+        or current.startswith("skillsbench_native_goal_worker_")
+    ):
+        compact["score_failure_attribution"] = label
+        compact["first_blocker"] = label
+    labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str) and item
+    ]
+    for item in (
+        label,
+        "skillsbench_app_server_goal_pre_agent_materialization_blocked",
+        "skillsbench_runner_setup_error",
+    ):
+        if item not in labels:
+            labels.append(item)
+    compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["exception_type"] = label
+        runner_failure["failure_class"] = label
+        runner_failure["pre_agent_setup_materialization_blocked"] = True
+    validation = compact.get("validation")
+    if isinstance(validation, dict):
+        failed = [
+            item
+            for item in validation.get("failed_checks", [])
+            if isinstance(item, str) and item
+        ]
+        failed = [
+            item for item in failed if item != "native_goal_worker_public_trace_missing"
+        ]
+        if "pre_agent_setup_materialization_blocked" not in failed:
+            failed.append("pre_agent_setup_materialization_blocked")
+        validation["failed_checks"] = failed[:MAX_BENCHMARK_RUN_LIST_ITEMS]
+        validation["all_passed"] = False
+    compact["pre_agent_setup_materialization_blocked"] = True
+    compact["native_goal_worker_pre_agent_setup_blocked"] = True
+
+
 def _compact_benchmark_result_discovery(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -4044,6 +4166,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if compose_setup_diagnostic:
         compact["compose_setup_diagnostic"] = compose_setup_diagnostic
+        _apply_skillsbench_pre_agent_setup_compact_projection(compact)
 
     progress = _compact_numeric_map(
         source.get("progress"),
@@ -4115,9 +4238,6 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if case_event_timeline:
         compact["case_event_timeline"] = case_event_timeline
-    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
-    if post_run_debug_gate:
-        compact["post_run_debug_gate"] = post_run_debug_gate
 
     preflight_guard = _compact_benchmark_preflight_guard(source.get("preflight_guard"))
     if preflight_guard:
@@ -4196,10 +4316,17 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         )
         if (
             native_goal_worker_trace_missing
+            and compact.get("pre_agent_setup_materialization_blocked") is not True
             and "native_goal_worker_public_trace_missing" not in failed
             and len(failed) < MAX_BENCHMARK_RUN_LIST_ITEMS
         ):
             failed.append("native_goal_worker_public_trace_missing")
+        if (
+            compact.get("pre_agent_setup_materialization_blocked") is True
+            and "pre_agent_setup_materialization_blocked" not in failed
+            and len(failed) < MAX_BENCHMARK_RUN_LIST_ITEMS
+        ):
+            failed.append("pre_agent_setup_materialization_blocked")
         compact_validation: dict[str, Any] = {
             "all_passed": not failed
             and all(
@@ -4320,6 +4447,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             if isinstance(validation.get(field), bool):
                 compact_validation[field] = validation[field]
         compact["validation"] = compact_validation
+        _apply_skillsbench_pre_agent_setup_compact_projection(compact)
+
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
+    if post_run_debug_gate:
+        compact["post_run_debug_gate"] = post_run_debug_gate
 
     trials: list[dict[str, Any]] = []
     for trial in trials_source or []:
