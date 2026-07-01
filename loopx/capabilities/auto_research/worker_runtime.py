@@ -12,9 +12,11 @@ from .core import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,
+    RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
     build_auto_research_quickstart,
     build_live_auto_research_projection,
     load_auto_research_evidence_packet_inputs,
+    validate_research_hypothesis,
 )
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
@@ -25,11 +27,17 @@ from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
 from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from ...status import collect_status
+from ...todos import complete_goal_todo
 
 
 AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION = "auto_research_worker_turn_v0"
 AUTO_RESEARCH_WORKER_FRONTIER_SCHEMA_VERSION = "auto_research_worker_frontier_v0"
-SUPPORTED_WORKER_ACTIONS = {"run_dev_eval", "write_evidence"}
+SUPPORTED_WORKER_ACTIONS = {
+    "write_research_contract",
+    "propose_hypothesis",
+    "run_dev_eval",
+    "write_evidence",
+}
 
 AppendEvidence = Callable[[str], dict[str, object]]
 
@@ -42,6 +50,14 @@ def _slug(value: object, *, default: str = "item") -> str:
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _artifact_summary(kind: str, *, filename: str) -> dict[str, object]:
+    return {
+        "kind": kind,
+        "filename": filename,
+        "paths_are_local_only": True,
+    }
 
 
 def _run_protected_eval(*, pack_dir: Path, split: str, output_path: Path) -> dict[str, object]:
@@ -84,6 +100,117 @@ def _ensure_quickstart_pack(
         cwd=workspace,
     )
     return pack_dir, "created"
+
+
+def _write_contract_artifact(
+    *,
+    pack_dir: Path,
+    output_path: Path,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+) -> dict[str, object]:
+    contract = json.loads((pack_dir / "research_contract.json").read_text(encoding="utf-8"))
+    artifact = {
+        "ok": True,
+        "schema_version": "auto_research_worker_contract_artifact_v0",
+        "goal_id": goal_id,
+        "todo_id": todo_id,
+        "agent_id": agent_id,
+        "research_contract": contract,
+        "summary": {
+            "status": "contract_written",
+            "metric": contract.get("metric"),
+            "promotion_policy": contract.get("promotion_policy"),
+        },
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+        },
+    }
+    _write_json(output_path, artifact)
+    return artifact
+
+
+def _write_hypothesis_artifact(
+    *,
+    output_path: Path,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+) -> dict[str, object]:
+    hypothesis = validate_research_hypothesis(
+        {
+            "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
+            "hypothesis_id": f"hyp_{_slug(todo_id, default='todo')}_partial_selection",
+            "parent_hypothesis_id": "hyp_quickstart_partial_selection",
+            "todo_id": todo_id,
+            "claimed_by": agent_id,
+            "mechanism_family": "partial_selection",
+            "hypothesis": "Use exact partial selection to avoid full distance sorting.",
+            "status": "active",
+            "grounding_refs": ["quickstart:knn_exact_pack"],
+            "blocked_by": [],
+        }
+    )
+    artifact = {
+        "ok": True,
+        "schema_version": "auto_research_worker_hypothesis_artifact_v0",
+        "goal_id": goal_id,
+        "todo_id": todo_id,
+        "agent_id": agent_id,
+        "hypothesis": hypothesis,
+        "summary": {
+            "status": "hypothesis_mapped",
+            "hypothesis_id": hypothesis["hypothesis_id"],
+            "mechanism_family": hypothesis["mechanism_family"],
+        },
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+        },
+    }
+    _write_json(output_path, artifact)
+    return artifact
+
+
+def _complete_selected_todo(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+    action: str,
+    execute: bool,
+) -> dict[str, object]:
+    if not execute:
+        return {"requested": True, "executed": False}
+    result = complete_goal_todo(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        role="agent",
+        claimed_by=agent_id,
+        note=f"auto-research worker-turn completed {action}",
+        evidence=(
+            f"worker-turn agent={agent_id} action={action} wrote public-safe local artifact "
+            "and obeyed quota/frontier before completion"
+        ),
+        no_followup=True,
+        side_agent_self_merged=True,
+        dry_run=False,
+    )
+    return {
+        "requested": True,
+        "executed": True,
+        "ok": bool(result.get("ok")),
+        "changed": bool(result.get("changed")),
+        "todo_id": result.get("todo_id"),
+        "status": "done" if result.get("completed") else None,
+        "side_agent_self_merged": bool(result.get("side_agent_self_merged")),
+    }
 
 
 def load_auto_research_worker_frontier(
@@ -163,12 +290,12 @@ def run_auto_research_worker_turn(
     lane_count: int = 1,
     visible_lanes_accepted: bool = False,
     live_evidence_output: str = LIVE_CODEX_E2E_DEFAULT_OUTPUT,
+    complete_selected_todo: bool = False,
 ) -> dict[str, object]:
     """Run one LoopX-selected visible worker action.
 
     The worker does not choose its own work. It reads quota/frontier, checks the
-    selected action, then performs only the small public k-NN dev-eval evidence
-    turn that the visible auto-research demo currently needs.
+    selected action, then performs one small public-safe research turn.
     """
 
     workspace = workspace.resolve()
@@ -214,10 +341,11 @@ def run_auto_research_worker_turn(
             "agent_id": agent_id,
             "selected_todo_id": todo_id,
             "selected_action": action,
-            "would_execute": "quickstart_dev_eval_then_append_public_evidence",
+            "would_execute": action,
+            "completion": {"requested": complete_selected_todo, "executed": False},
             "frontier": frontier_packet,
         }
-    if append_evidence is None:
+    if action in {"run_dev_eval", "write_evidence"} and append_evidence is None:
         raise ValueError("execute requires an append_evidence callback")
 
     pack_dir, pack_mode = _ensure_quickstart_pack(
@@ -228,10 +356,96 @@ def run_auto_research_worker_turn(
         objective=objective,
     )
     run_dir = workspace / evidence_dir / _slug(agent_id, default="agent") / _slug(todo_id, default="todo")
+    contract_artifact_path = run_dir / "research-contract.public.json"
+    hypothesis_artifact_path = run_dir / "hypothesis.public.json"
     dev_result_path = run_dir / "dev-result.public.json"
     evidence_packet_path = run_dir / "evidence.public.json"
     append_result_path = run_dir / "append-result.public.json"
     live_evidence_path = run_dir / live_evidence_output
+
+    if action == "write_research_contract":
+        artifact = _write_contract_artifact(
+            pack_dir=pack_dir,
+            output_path=contract_artifact_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+        )
+        completion = (
+            _complete_selected_todo(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                todo_id=todo_id,
+                agent_id=agent_id,
+                action=action,
+                execute=True,
+            )
+            if complete_selected_todo
+            else {"requested": False}
+        )
+        return {
+            "ok": True,
+            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+            "mode": "execute",
+            "goal_id": goal_id,
+            "agent_id": agent_id,
+            "selected_todo_id": todo_id,
+            "selected_action": action,
+            "executed": True,
+            "pack_mode": pack_mode,
+            "artifact": _artifact_summary("research_contract", filename="research-contract.public.json"),
+            "artifact_status": artifact["summary"]["status"],
+            "completion": completion,
+            "frontier": frontier_packet,
+            "public_boundary": {
+                "raw_logs_recorded": False,
+                "private_artifacts_recorded": False,
+                "absolute_paths_recorded": False,
+                "credentials_recorded": False,
+            },
+        }
+
+    if action == "propose_hypothesis":
+        artifact = _write_hypothesis_artifact(
+            output_path=hypothesis_artifact_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+        )
+        completion = (
+            _complete_selected_todo(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                todo_id=todo_id,
+                agent_id=agent_id,
+                action=action,
+                execute=True,
+            )
+            if complete_selected_todo
+            else {"requested": False}
+        )
+        return {
+            "ok": True,
+            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+            "mode": "execute",
+            "goal_id": goal_id,
+            "agent_id": agent_id,
+            "selected_todo_id": todo_id,
+            "selected_action": action,
+            "executed": True,
+            "pack_mode": pack_mode,
+            "artifact": _artifact_summary("research_hypothesis", filename="hypothesis.public.json"),
+            "artifact_status": artifact["summary"]["status"],
+            "hypothesis_id": artifact["summary"]["hypothesis_id"],
+            "completion": completion,
+            "frontier": frontier_packet,
+            "public_boundary": {
+                "raw_logs_recorded": False,
+                "private_artifacts_recorded": False,
+                "absolute_paths_recorded": False,
+                "credentials_recorded": False,
+            },
+        }
 
     dev_result = _run_protected_eval(pack_dir=pack_dir, split="dev", output_path=dev_result_path)
     packet = load_auto_research_evidence_packet_inputs(
@@ -266,6 +480,18 @@ def run_auto_research_worker_turn(
         if isinstance(live_evidence, dict) and isinstance(live_evidence.get("lane_evidence"), dict)
         else {}
     )
+    completion = (
+        _complete_selected_todo(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+            action=action,
+            execute=True,
+        )
+        if complete_selected_todo
+        else {"requested": False}
+    )
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
@@ -297,6 +523,7 @@ def run_auto_research_worker_turn(
             "append_result": "append-result.public.json",
             "live_evidence": live_evidence_output if live_evidence else None,
         },
+        "completion": completion,
         "frontier": frontier_packet,
         "public_boundary": {
             "raw_logs_recorded": False,

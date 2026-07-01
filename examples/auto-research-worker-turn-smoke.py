@@ -20,6 +20,8 @@ from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e
 
 
 GOAL_ID = "loopx-auto-research-knn"
+CURATOR_AGENT_ID = "codex-product-capability"
+MAPPER_AGENT_ID = "codex-side-bypass"
 EVIDENCE_AGENT_ID = "codex-main-control"
 
 
@@ -44,7 +46,9 @@ def run_worker_turn(
     registry: Path,
     runtime_root: str | None,
     workspace: Path,
+    agent_id: str,
     execute: bool,
+    complete: bool = False,
 ) -> dict[str, Any]:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -64,13 +68,15 @@ def run_worker_turn(
         "--goal-id",
         GOAL_ID,
         "--agent-id",
-        EVIDENCE_AGENT_ID,
+        agent_id,
         "--lane-count",
         "3",
         "--visible-lanes-accepted",
     ]
     if execute:
         args.append("--execute")
+    if complete:
+        args.append("--complete-selected-todo")
     result = subprocess.run(
         args,
         cwd=workspace,
@@ -126,30 +132,52 @@ def main() -> int:
             visible_runtime_root: str | None,
             default_workspace: Path,
         ) -> dict[str, object]:
-            preview = run_worker_turn(
+            curator_preview = run_worker_turn(
                 registry=visible_registry,
                 runtime_root=visible_runtime_root,
                 workspace=default_workspace,
+                agent_id=CURATOR_AGENT_ID,
                 execute=False,
             )
-            executed = run_worker_turn(
+            curator_executed = run_worker_turn(
                 registry=visible_registry,
                 runtime_root=visible_runtime_root,
                 workspace=default_workspace,
+                agent_id=CURATOR_AGENT_ID,
                 execute=True,
+                complete=True,
             )
-            captured["preview"] = preview
-            captured["executed"] = executed
+            mapper_executed = run_worker_turn(
+                registry=visible_registry,
+                runtime_root=visible_runtime_root,
+                workspace=default_workspace,
+                agent_id=MAPPER_AGENT_ID,
+                execute=True,
+                complete=True,
+            )
+            evidence_executed = run_worker_turn(
+                registry=visible_registry,
+                runtime_root=visible_runtime_root,
+                workspace=default_workspace,
+                agent_id=EVIDENCE_AGENT_ID,
+                execute=True,
+                complete=True,
+            )
+            captured["curator_preview"] = curator_preview
+            captured["curator_executed"] = curator_executed
+            captured["mapper_executed"] = mapper_executed
+            captured["evidence_executed"] = evidence_executed
             return {
                 "ok": True,
                 "schema_version": "auto_research_worker_turn_fake_launch_v0",
                 "mode": "executed_visible_launch",
                 "launch_result": {
                     "schema_version": "auto_research_worker_turn_fake_launch_result_v0",
-                    "worker_turn_executed": bool(executed.get("executed")),
+                    "worker_turn_executed": bool(evidence_executed.get("executed")),
+                    "worker_turn_count": 3,
                     "visible_acceptance": {
-                        "accepted": bool(executed.get("executed")),
-                        "worker_turn_schema": executed.get("schema_version"),
+                        "accepted": bool(evidence_executed.get("executed")),
+                        "worker_turn_schema": evidence_executed.get("schema_version"),
                     },
                 },
                 "public_boundary": {
@@ -181,19 +209,34 @@ def main() -> int:
         )
 
         assert payload["ok"] is True, payload
-        preview = captured["preview"]
-        executed = captured["executed"]
+        preview = captured["curator_preview"]
+        curator_executed = captured["curator_executed"]
+        mapper_executed = captured["mapper_executed"]
+        executed = captured["evidence_executed"]
         assert preview["schema_version"] == "auto_research_worker_turn_v0", preview
         assert preview["mode"] == "dry_run", preview
-        assert preview["selected_action"] == "run_dev_eval", preview
+        assert preview["selected_action"] == "write_research_contract", preview
         assert preview["selected_todo_id"], preview
+        assert curator_executed["schema_version"] == "auto_research_worker_turn_v0", curator_executed
+        assert curator_executed["mode"] == "execute", curator_executed
+        assert curator_executed["selected_action"] == "write_research_contract", curator_executed
+        assert curator_executed["artifact"]["kind"] == "research_contract", curator_executed
+        assert curator_executed["artifact_status"] == "contract_written", curator_executed
+        assert curator_executed["completion"]["status"] == "done", curator_executed
+        assert mapper_executed["schema_version"] == "auto_research_worker_turn_v0", mapper_executed
+        assert mapper_executed["mode"] == "execute", mapper_executed
+        assert mapper_executed["selected_action"] == "propose_hypothesis", mapper_executed
+        assert mapper_executed["artifact"]["kind"] == "research_hypothesis", mapper_executed
+        assert mapper_executed["artifact_status"] == "hypothesis_mapped", mapper_executed
+        assert mapper_executed["hypothesis_id"].startswith("hyp_"), mapper_executed
+        assert mapper_executed["completion"]["status"] == "done", mapper_executed
         assert executed["schema_version"] == "auto_research_worker_turn_v0", executed
         assert executed["mode"] == "execute", executed
         assert executed["selected_action"] == "run_dev_eval", executed
-        assert executed["selected_todo_id"] == preview["selected_todo_id"], executed
         assert executed["executed"] is True, executed
         assert executed["dev_metric"] == 4.0, executed
         assert executed["packet_status"] == "supported", executed
+        assert executed["completion"]["status"] == "done", executed
         assert executed["append"]["appended_count"] == 2, executed
         assert executed["append"]["counts_by_kind"] == {
             "research_evidence": 1,
@@ -204,8 +247,11 @@ def main() -> int:
         assert executed["live_evidence"]["dev_metric"] == 4.0, executed
         assert executed["frontier"]["frontier"]["selected"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
         assert payload["visible_launch"]["launch_result"]["worker_turn_executed"] is True, payload
+        assert payload["visible_launch"]["launch_result"]["worker_turn_count"] == 3, payload
         assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload
         assert_public_safe(preview)
+        assert_public_safe(curator_executed)
+        assert_public_safe(mapper_executed)
         assert_public_safe(executed)
         assert_public_safe(payload["visible_launch"])
 

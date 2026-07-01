@@ -299,6 +299,11 @@ def register_auto_research_commands(
         help="Local filename for compact public-safe live evidence.",
     )
     worker_turn_parser.add_argument(
+        "--complete-selected-todo",
+        action="store_true",
+        help="After a successful --execute turn, mark the selected LoopX todo done.",
+    )
+    worker_turn_parser.add_argument(
         "--execute",
         action="store_true",
         help="Run the selected worker action. Omit to show the plan from quota/frontier.",
@@ -736,6 +741,7 @@ def handle_auto_research_command(
                 lane_count=args.lane_count,
                 visible_lanes_accepted=args.visible_lanes_accepted,
                 live_evidence_output=args.live_evidence_output,
+                complete_selected_todo=args.complete_selected_todo,
             )
         elif args.auto_research_command == "demo-supervisor":
             payload = build_auto_research_demo_supervisor_plan(
