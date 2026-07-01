@@ -751,6 +751,62 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "runtime-connector-catalog",
+        "title": "Runtime connector catalog",
+        "purpose": (
+            "Check Codex App heartbeat, Codex CLI TUI, Claude Code loop, "
+            "and worker bridge connector contracts from the public runtime catalog."
+        ),
+        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "trigger_hints": (
+            "runtime connector",
+            "runtime connector catalog",
+            "runtime-connector-catalog",
+            "docs/runtime-connector-catalog.md",
+            "codex app heartbeat",
+            "codex_app_heartbeat",
+            "codex cli tui",
+            "codex_cli_tui",
+            "claude code loop",
+            "claude_code_loop",
+            "shell worker",
+            "http webhook",
+            "worker bridge",
+            "worker_bridge",
+            "scheduler_hint",
+            "scoped identity",
+            "runtime loop",
+            "host runtime",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/heartbeat-prompt-smoke.py",
+                "tier": "default",
+                "reason": "guards Codex App heartbeat identity, scheduler hints, and no-spend cadence behavior",
+            },
+            {
+                "command": "python3 examples/codex-cli-tui-bootstrap-smoke-bundle-smoke.py",
+                "tier": "default",
+                "reason": "checks Codex CLI TUI bootstrap bundle and scoped LoopX command contract",
+            },
+            {
+                "command": "python3 examples/claude-goalmode-lifecycle-smoke.py",
+                "tier": "default",
+                "reason": "checks the Claude Code goal-mode loop lifecycle without production actions",
+            },
+            {
+                "command": "python3 examples/worker-bridge-install-contract-smoke.py",
+                "tier": "default",
+                "reason": "checks generic worker bridge install/status contracts without private runtime material",
+            },
+            {
+                "command": "python3 examples/host-integration-surface-smoke.py",
+                "tier": "deep",
+                "reason": "samples the broader host integration surface when connector catalog changes are promoted",
+            },
+        ],
+    },
+    {
         "id": "frontstage-rollout",
         "title": "Frontstage rollout projection",
         "purpose": "Check public frontstage/showcase projection data before visual browser smokes.",
