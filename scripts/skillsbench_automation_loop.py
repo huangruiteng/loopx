@@ -478,6 +478,12 @@ DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN = (
 DOCKER_ELAN_TOOLCHAIN_RETRY_END = (
     "# END LOOPX_SKILLSBENCH_ELAN_TOOLCHAIN_RETRY"
 )
+DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_NETWORK_DOWNLOAD_RETRY"
+)
+DOCKER_NETWORK_DOWNLOAD_RETRY_END = (
+    "# END LOOPX_SKILLSBENCH_NETWORK_DOWNLOAD_RETRY"
+)
 VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
 )
@@ -5657,6 +5663,8 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_elan_toolchain_retry_patch_applied",
         "dockerfile_wget_gpg_key_retry_patch_required",
         "dockerfile_wget_gpg_key_retry_patch_applied",
+        "dockerfile_network_download_retry_patch_required",
+        "dockerfile_network_download_retry_patch_applied",
         "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
@@ -5764,6 +5772,9 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30"
             in dockerfile_text
             and "| gpg --dearmor" in dockerfile_text
+        ),
+        "dockerfile_network_download_retry_patch_applied": (
+            DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN in dockerfile_text
         ),
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
@@ -6457,6 +6468,69 @@ def patch_dockerfile_wget_gpg_key_retry(dockerfile: Path) -> bool:
 
     patched, count = pattern.subn(replace, original)
     if count == 0 or patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def dockerfile_needs_network_download_retry_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(
+        re.search(r"\bwget\s+[^;\n]*https?://", text)
+        or re.search(r"\bgit\s+clone\s+https?://", text)
+        or re.search(r"\bmvn\s+", text)
+    )
+
+
+def patch_dockerfile_network_download_retry(dockerfile: Path) -> bool:
+    """Add staged retry/timeout defaults for common build-time downloads."""
+
+    if not dockerfile_needs_network_download_retry_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN,
+        DOCKER_NETWORK_DOWNLOAD_RETRY_END,
+    )
+    wget_pattern = re.compile(
+        r"\bwget(?P<args>(?:\s+(?!https?://)[^\s\\;&|]+)*)\s+"
+        r"(?P<url>https?://[^\s\\;&|]+)"
+    )
+
+    def replace_wget(match: re.Match[str]) -> str:
+        args = match.group("args") or ""
+        if "--tries" in args or "--timeout" in args:
+            return match.group(0)
+        return (
+            f"wget{args} --tries=5 --timeout=120 --read-timeout=120 "
+            f"--retry-connrefused {match.group('url')}"
+        )
+
+    text = wget_pattern.sub(replace_wget, text)
+    block = (
+        f"{DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN}\n"
+        "ENV GIT_HTTP_LOW_SPEED_LIMIT=1000 \\\n"
+        "    GIT_HTTP_LOW_SPEED_TIME=120 \\\n"
+        "    MAVEN_OPTS=\"-Dmaven.wagon.http.retryHandler.count=5 "
+        "-Dmaven.wagon.httpconnectionManager.ttlSeconds=60 "
+        "-Dhttp.keepAlive=false\"\n"
+        f"{DOCKER_NETWORK_DOWNLOAD_RETRY_END}"
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        patched_lines.append(line)
+        stripped = line.strip()
+        if stripped.upper().startswith("FROM ") and " scratch" not in stripped.lower():
+            patched_lines.extend(["", *block.splitlines(), ""])
+            inserted = True
+    if not inserted:
+        patched_lines = [*block.splitlines(), "", *text.splitlines()]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched == original:
         return False
     _write_text_atomic(dockerfile, patched)
     return True
@@ -7188,6 +7262,8 @@ def stage_task_for_sandbox(
         "dockerfile_elan_toolchain_retry_patch_applied": False,
         "dockerfile_wget_gpg_key_retry_patch_required": False,
         "dockerfile_wget_gpg_key_retry_patch_applied": False,
+        "dockerfile_network_download_retry_patch_required": False,
+        "dockerfile_network_download_retry_patch_applied": False,
         "codex_acp_runtime_tools_patch_applied": False,
         "empty_skills_build_context_required": False,
         "empty_skills_build_context_created": False,
@@ -7232,6 +7308,9 @@ def stage_task_for_sandbox(
     needs_wget_gpg_key_retry_patch = dockerfile_needs_wget_gpg_key_retry_patch(
         task_path / "environment" / "Dockerfile"
     )
+    needs_network_download_retry_patch = dockerfile_needs_network_download_retry_patch(
+        task_path / "environment" / "Dockerfile"
+    )
     verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
     needs_verifier_uv_mirror_patch = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
@@ -7257,6 +7336,9 @@ def stage_task_for_sandbox(
     )
     metadata["dockerfile_wget_gpg_key_retry_patch_required"] = (
         needs_wget_gpg_key_retry_patch
+    )
+    metadata["dockerfile_network_download_retry_patch_required"] = (
+        needs_network_download_retry_patch
     )
     metadata["verifier_bootstrap_risk_detected"] = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
@@ -7286,6 +7368,7 @@ def stage_task_for_sandbox(
         and not needs_gcr_mirror_patch
         and not needs_elan_toolchain_retry_patch
         and not needs_wget_gpg_key_retry_patch
+        and not needs_network_download_retry_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
         and not needs_verifier_proxy_env_patch
@@ -7339,6 +7422,9 @@ def stage_task_for_sandbox(
     wget_gpg_key_retry_patched = patch_dockerfile_wget_gpg_key_retry(
         staged_path / "environment" / "Dockerfile"
     )
+    network_download_retry_patched = patch_dockerfile_network_download_retry(
+        staged_path / "environment" / "Dockerfile"
+    )
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
     )
@@ -7370,6 +7456,9 @@ def stage_task_for_sandbox(
             ),
             "dockerfile_wget_gpg_key_retry_patch_applied": (
                 wget_gpg_key_retry_patched
+            ),
+            "dockerfile_network_download_retry_patch_applied": (
+                network_download_retry_patched
             ),
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
             "empty_skills_build_context_required": empty_skills_context_required,

@@ -79,6 +79,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_APP_SKILLS_MOUNT_KEEP_FILE,
     DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN,
     DOCKER_GCR_MIRROR_BEGIN,
+    DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN,
     DOCKER_PIP_BOOTSTRAP_BEGIN,
     DOCKER_HOST_CPU_ENV,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
@@ -5939,6 +5940,48 @@ def test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download() -> Non
         assert (
             "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
             "https://example.invalid/public.key | gpg --dearmor"
+        ) in staged_text, staged_text
+
+
+def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-build-download-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "fix-druid-loophole-cve"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n"
+            "RUN wget https://archive.example.invalid/project.tar.gz && \\\n"
+            "    git clone https://github.com/example/project.git && \\\n"
+            "    mvn dependency:resolve -DskipTests\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="fix-druid-loophole-cve-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_network_download_retry_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["dockerfile_network_download_retry_patch_applied"] is True, (
+            metadata
+        )
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN in staged_text, staged_text
+        assert "GIT_HTTP_LOW_SPEED_LIMIT=1000" in staged_text, staged_text
+        assert "maven.wagon.http.retryHandler.count=5" in staged_text, staged_text
+        assert (
+            "wget --tries=5 --timeout=120 --read-timeout=120 "
+            "--retry-connrefused https://archive.example.invalid/project.tar.gz"
         ) in staged_text, staged_text
 
 
@@ -13924,6 +13967,7 @@ if __name__ == "__main__":
     test_skillsbench_docker_task_staging_rewrites_gcr_oss_fuzz_base()
     test_skillsbench_docker_task_staging_hardens_elan_toolchain_install()
     test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download()
+    test_skillsbench_docker_task_staging_hardens_build_downloads()
     test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults()
     test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror()
     test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap()
