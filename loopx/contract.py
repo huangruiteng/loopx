@@ -31,8 +31,8 @@ LEAK_PATTERNS = {
             [
                 "Bear" + "er" + r"\s+[A-Za-z0-9._-]+",
                 "AK" + "IA" + r"[0-9A-Z]{16}",
-                "tok" + "en=",
-                "pass" + "word=",
+                r"(?<![A-Za-z0-9_])" + "tok" + "en=",
+                r"(?<![A-Za-z0-9_])" + "pass" + "word=",
                 "Author" + "ization:",
             ]
         ),

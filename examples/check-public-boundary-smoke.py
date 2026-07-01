@@ -100,6 +100,39 @@ def main() -> int:
         if not any("public.md" in str(item) and "private_doc_url" in str(item) for item in errors):
             raise AssertionError(public_payload)
 
+        scheduler_marker = project / "scheduler.py"
+        scheduler_marker.write_text("reset_token=args.reset_token\n", encoding="utf-8")
+        scheduler_marker_check = run_cli(
+            root,
+            "--format",
+            "json",
+            "check",
+            "--scan-path",
+            str(scheduler_marker),
+        )
+        if scheduler_marker_check.returncode != 0:
+            raise AssertionError(scheduler_marker_check.stderr or scheduler_marker_check.stdout)
+        scheduler_marker_payload = json.loads(scheduler_marker_check.stdout)
+        if not scheduler_marker_payload.get("ok"):
+            raise AssertionError(scheduler_marker_payload)
+
+        credential_marker = project / "credential.py"
+        credential_marker.write_text("tok" + "en=abc123\n", encoding="utf-8")
+        credential_check = run_cli(
+            root,
+            "--format",
+            "json",
+            "check",
+            "--scan-path",
+            str(credential_marker),
+        )
+        if credential_check.returncode == 0:
+            raise AssertionError(credential_check.stdout)
+        credential_payload = json.loads(credential_check.stdout)
+        credential_errors = credential_payload.get("errors") or []
+        if not any("credential.py" in str(item) and "credential" in str(item) for item in credential_errors):
+            raise AssertionError(credential_payload)
+
         git_project = root / "git-project"
         git_project.mkdir()
         init = run_git(git_project, "init")
