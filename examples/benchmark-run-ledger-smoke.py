@@ -24,6 +24,7 @@ from loopx.benchmark_ledger import (  # noqa: E402
     merge_benchmark_run_ledgers,
     render_benchmark_run_ledger_markdown,
     update_benchmark_run_ledger,
+    upsert_benchmark_run_ledger_entry,
 )
 from loopx.status import compact_benchmark_run  # noqa: E402
 
@@ -982,6 +983,64 @@ def test_skillsbench_solution_quality_signals_are_derived_for_old_compact_runs()
     assert solution_quality["worker_activity"][
         "bridge_task_facing_operation_count"
     ] == 3, solution_quality
+
+
+def test_run_ledger_logical_backfill_preserves_existing_run_id() -> None:
+    benchmark_run = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "case_id": "latex-formula-extraction",
+        "job_name": "skillsbench_1_1_latex_formula_extraction_codex_app_server_goal_baseline",
+        "mode": "skillsbench_codex_app_server_goal_baseline",
+        "official_task_score": {"passed": False, "value": 0.0},
+        "interaction_counters": {
+            "remote_command_file_bridge_agent_task_facing_operation_count": 13,
+            "remote_command_file_bridge_agent_task_facing_success_count": 13,
+        },
+    }
+    old_entry = build_benchmark_run_ledger_entry(
+        benchmark_run,
+        run_group_id="skillsbench-revtunnel-appgoal-infra-rerun14",
+        arm_id="codex_app_server_goal_baseline",
+    )
+    old_entry.pop("artifact_refs", None)
+    old_entry.pop("solution_quality_signals", None)
+    new_entry = build_benchmark_run_ledger_entry(
+        benchmark_run,
+        compact_artifact_ref="benchmark_run.compact.json",
+        run_group_id="skillsbench-revtunnel-appgoal-infra-rerun14",
+        arm_id="codex_app_server_goal_baseline",
+    )
+    assert old_entry["run_id"] != new_entry["run_id"]
+
+    updated = upsert_benchmark_run_ledger_entry(
+        {
+            "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+            "benchmarks": {
+                "skillsbench@1.1": {
+                    "benchmark_id": "skillsbench@1.1",
+                    "cases": {
+                        "latex-formula-extraction": {
+                            "case_id": "latex-formula-extraction",
+                            "runs": [old_entry],
+                        }
+                    },
+                }
+            },
+        },
+        new_entry,
+    )
+    runs = updated["benchmarks"]["skillsbench@1.1"]["cases"][
+        "latex-formula-extraction"
+    ]["runs"]
+    assert len(runs) == 1, runs
+    assert runs[0]["run_id"] == old_entry["run_id"], runs
+    assert runs[0]["artifact_refs"] == {
+        "compact_artifact_ref": "benchmark_run.compact.json"
+    }, runs
+    assert runs[0]["solution_quality_signals"]["worker_activity"][
+        "bridge_task_facing_success_count"
+    ] == 13, runs
 
 
 def test_skillsbench_product_mode_pair_review_is_ledgered() -> None:

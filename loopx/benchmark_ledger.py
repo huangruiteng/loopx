@@ -29,6 +29,17 @@ DEFAULT_AGENT_TIMEOUT_REPAIR_MULTIPLIER = 8
 DEFAULT_AGENT_SETUP_TIMEOUT_REPAIR_MULTIPLIER = 8
 DEFAULT_CODEX_SETUP_TIMEOUT_REPAIR_INSTALL_STRATEGY = "require_existing_codex"
 RUNTIME_CODEX_INSTALL_STRATEGY = "runtime_install_if_missing"
+LEDGER_LOGICAL_BACKFILL_FIELDS = (
+    "artifact_refs",
+    "solution_quality_signals",
+    "round_reward_count",
+    "round_success_observed",
+    "max_rounds_budget",
+    "official_feedback_blinded",
+    "reward_feedback_forwarded",
+    "task_setup_preflight",
+    "task_staging",
+)
 TERMINAL_BENCH_JOB_CASE_ARM_MARKERS = (
     "_codex_goal_mode_baseline",
     "_codex_loopx_treatment",
@@ -474,6 +485,45 @@ def _run_matches_token(run: dict[str, Any], *needles: str) -> bool:
         if any(lower_needle in token for token in tokens):
             return True
     return False
+
+
+def _ledger_missing_value(value: Any) -> bool:
+    return value is None or value in ("", [], {})
+
+
+def _ledger_logical_backfill_key(run: dict[str, Any]) -> tuple[str, ...]:
+    values: list[str] = []
+    for field in ("run_group_id", "arm_id", "job_name", "mode"):
+        text = _compact_text(run.get(field), limit=220)
+        if not text:
+            return ()
+        values.append(text)
+    return tuple(values)
+
+
+def _ledger_result_equivalent_for_backfill(
+    run: dict[str, Any],
+    entry: dict[str, Any],
+) -> bool:
+    for field in ("status", "score_status", "official_passed", "failure_class"):
+        if run.get(field) != entry.get(field):
+            return False
+    return run.get("official_score") == entry.get("official_score")
+
+
+def _merge_ledger_logical_backfill_fields(
+    run: dict[str, Any],
+    entry: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    merged = dict(run)
+    changed = False
+    for field in LEDGER_LOGICAL_BACKFILL_FIELDS:
+        if _ledger_missing_value(merged.get(field)) and not _ledger_missing_value(
+            entry.get(field)
+        ):
+            merged[field] = entry[field]
+            changed = True
+    return merged, changed
 
 
 def _product_mode_baseline_run(run: dict[str, Any]) -> bool:
@@ -2375,6 +2425,21 @@ def upsert_benchmark_run_ledger_entry(
             runs[index] = entry
             replaced = True
             break
+    if not replaced:
+        entry_backfill_key = _ledger_logical_backfill_key(entry)
+        if entry_backfill_key:
+            for index, run in enumerate(runs):
+                if (
+                    run.get("run_id") == entry.get("run_id")
+                    or _ledger_logical_backfill_key(run) != entry_backfill_key
+                    or not _ledger_result_equivalent_for_backfill(run, entry)
+                ):
+                    continue
+                merged, changed = _merge_ledger_logical_backfill_fields(run, entry)
+                if changed:
+                    runs[index] = merged
+                replaced = True
+                break
     if not replaced:
         runs.append(entry)
     runs.sort(key=lambda run: (str(run.get("recorded_at", "")), str(run.get("run_id", ""))))
