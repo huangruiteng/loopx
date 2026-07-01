@@ -176,6 +176,49 @@ human_target.write_text(
 human_target.chmod(0o700)
 """
 
+_VISIBLE_CODEX_STREAM_FILTER_PY = r"""
+import re
+import sys
+
+
+def redact_local_paths(text):
+    slash = chr(47)
+    prefixes = [
+        slash + "private" + slash + "var" + slash + "folders",
+        slash + "var" + slash + "folders",
+        slash + "private" + slash + "tmp",
+        slash + "tmp",
+    ]
+    for prefix in prefixes:
+        text = re.sub(re.escape(prefix) + r"[^ \n\r\t'\"`]+", "<local-path>", text)
+    return text
+
+
+skip_skill_block = False
+waiting_for_first_codex = True
+for raw in sys.stdin:
+    line = raw.rstrip("\n")
+    if waiting_for_first_codex:
+        if line == "codex":
+            waiting_for_first_codex = False
+            print("[Codex]", flush=True)
+        continue
+    if "BEGIN_SKILL" in line:
+        skip_skill_block = True
+        print("[Codex stream note] worker-local skill block hidden; Codex output continues below.", flush=True)
+        continue
+    if "END_SKILL" in line:
+        skip_skill_block = False
+        continue
+    if skip_skill_block:
+        continue
+    if " WARN codex_core_" in line:
+        continue
+    if line.startswith("warning: Skill descriptions were shortened"):
+        continue
+    print(redact_local_paths(line), flush=True)
+"""
+
 
 def _q(value: object) -> str:
     return shlex.quote(str(value))
@@ -393,6 +436,7 @@ def build_visible_lane_command(
         'if [ -n "${LOOPX_AGENT_ID:-}" ]; then printf "agent=%s\\n" "$LOOPX_AGENT_ID"; fi; '
         'if [ -n "${LOOPX_LANE_ID:-}" ]; then printf "lane=%s\\n" "$LOOPX_LANE_ID"; fi; '
         "printf 'codex_output=streaming_below\\n'; "
+        "printf 'codex_stream_filter=public_safe\\n'; "
         "if [ \"$BOOTSTRAP_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX blocked reason]\\n'; "
         "printf 'bootstrap_command_failed exit=%s\\n' \"$BOOTSTRAP_STATUS\"; "
@@ -403,7 +447,8 @@ def build_visible_lane_command(
         'sleep "${LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS:-1}"; '
         "printf '\\n[Starting visible Codex exec]\\n'; "
         f"{_q(codex_bin)} exec -c model_reasoning_effort={_q(reasoning_effort)} "
-        '--cd "$LOOPX_PROJECT" --skip-git-repo-check --sandbox danger-full-access "$BOOTSTRAP_PROMPT"; '
+        '--cd "$LOOPX_PROJECT" --skip-git-repo-check --sandbox danger-full-access "$BOOTSTRAP_PROMPT" '
+        f"2>&1 | python3 -u -c {_q(_VISIBLE_CODEX_STREAM_FILTER_PY)}; "
         "CODEX_STATUS=$?; "
         "printf '\\n[Codex CLI exited]\\nexit=%s\\n' \"$CODEX_STATUS\"; "
         f"{keep_visible}"
@@ -483,7 +528,7 @@ def build_visible_multi_agent_payload(
             ],
             "machine_json_policy": "file_or_explicit_machine_channel_only",
             "visible_json_policy": "markdown_or_compact_summary_only",
-            "codex_stream": "stdout_stderr_visible_below_bootstrap",
+            "codex_stream": "public_filtered_stdout_stderr_visible_below_bootstrap",
             "forbidden_visible_content": [
                 "raw_quota_json",
                 "raw_frontier_json",
@@ -513,6 +558,7 @@ def build_visible_multi_agent_payload(
             "human_stream_contract": "multi_agent_visible_human_stream_contract_v0",
             "machine_json_file_bound": True,
             "codex_stream_visible": True,
+            "codex_stream_public_filter": True,
         },
         "boundary": {
             "starts_visible_processes": False,

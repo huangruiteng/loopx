@@ -315,6 +315,7 @@ def main() -> int:
                     assert "role_profile_path=" not in capture, (lane, capture)
                     assert "[Codex bootstrap prompt]" not in capture, (lane, capture)
                     assert "codex_output=streaming_below" in capture, (lane, capture)
+                    assert "codex_stream_filter=public_safe" in capture, (lane, capture)
                     assert f"goal={visible_payload['goal_id']}" in capture, (lane, capture)
                 assert_public_safe(visible_payload)
             finally:

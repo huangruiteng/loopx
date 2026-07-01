@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from loopx.visible_multi_agent_launcher import (  # noqa: E402
     _SCOPED_LOOPX_WRAPPER_PY,
+    _VISIBLE_CODEX_STREAM_FILTER_PY,
     build_visible_multi_agent_payload,
     execute_visible_multi_agent_launcher,
 )
@@ -97,6 +98,37 @@ def main() -> int:
     assert 'FRONTIER_ARTIFACT_NAME="frontier.public.json"' in launcher_source
     assert 'artifact=%s\\\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT_NAME"' in launcher_source
     assert 'artifact=%s\\\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT"' not in launcher_source
+    assert "_VISIBLE_CODEX_STREAM_FILTER_PY" in launcher_source
+    assert "worker-local skill block hidden" in launcher_source
+    assert " WARN codex_core_" in launcher_source
+
+    slash = "/"
+    private_tmp = slash + "private" + slash + "tmp"
+    var_folders = slash + "var" + slash + "folders"
+    filtered = subprocess.run(
+        [sys.executable, "-u", "-c", _VISIBLE_CODEX_STREAM_FILTER_PY],
+        input=(
+            "OpenAI Codex v0\n"
+            "user\n"
+            "hidden bootstrap prompt\n"
+            "codex\n"
+            "codex says hello\n"
+            "2026-01-01T00:00:00Z  WARN codex_core_plugins::manifest: noisy\n"
+            f"exec in {private_tmp}/loopx-demo/path\n"
+            "BEGIN_SKILL\nhidden skill body\nEND_SKILL\n"
+            f"result saved under {var_folders}/demo/file\n"
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "codex says hello" in filtered, filtered
+    assert "hidden bootstrap prompt" not in filtered, filtered
+    assert "WARN codex_core" not in filtered, filtered
+    assert "hidden skill body" not in filtered, filtered
+    assert private_tmp not in filtered, filtered
+    assert var_folders not in filtered, filtered
+    assert "<local-path>" in filtered, filtered
 
     dry_packet = build_visible_multi_agent_payload(
         goal_id="loopx-meta",
@@ -120,10 +152,11 @@ def main() -> int:
         "file_or_explicit_machine_channel_only"
     ), dry_packet
     assert dry_packet["human_stream_contract"]["codex_stream"] == (
-        "stdout_stderr_visible_below_bootstrap"
+        "public_filtered_stdout_stderr_visible_below_bootstrap"
     ), dry_packet
     assert dry_packet["acceptance"]["machine_json_file_bound"] is True, dry_packet
     assert dry_packet["acceptance"]["codex_stream_visible"] is True, dry_packet
+    assert dry_packet["acceptance"]["codex_stream_public_filter"] is True, dry_packet
     assert dry_packet["boundary"]["hidden_prompt_injection"] is False, dry_packet
     assert dry_packet["boundary"]["spends_loopx_quota"] is False, dry_packet
 
