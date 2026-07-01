@@ -239,6 +239,8 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
                     str(skillsbench_root),
                     "--jobs-dir",
                     str(root / "jobs"),
+                    "--benchmark-egress-no-proxy",
+                    "example-cache.invalid,127.0.0.1",
                 ]
             )
             plan = build_plan(args)
@@ -249,19 +251,28 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
             assert egress["proxy_scheme"] == "http", egress
             assert egress["proxy_endpoint_kind"] == "public_or_unknown", egress
             assert egress["proxy_endpoint_port"] == 18080, egress
+            assert egress["no_proxy_configured"] is True, egress
+            assert egress["no_proxy_entry_count"] >= 5, egress
+            assert egress["no_proxy_raw_value_recorded"] is False, egress
             assert egress["proxy_url_recorded"] is False, egress
             assert egress["raw_proxy_url_recorded"] is False, egress
             assert proxy_url not in json.dumps(plan, sort_keys=True), plan
+            assert "example-cache.invalid" not in json.dumps(plan, sort_keys=True), plan
 
             private_env = skillsbench_loop._benchmark_egress_proxy_env(args)
             for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
                 assert private_env[key] == proxy_url, private_env
+            assert "127.0.0.1" in private_env["NO_PROXY"], private_env
+            assert "hifis-storage.desy.de" in private_env["NO_PROXY"], private_env
+            assert "example-cache.invalid" in private_env["NO_PROXY"], private_env
 
             target_env = skillsbench_loop._host_local_acp_target_env({}, args=args)
             for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
                 assert target_env[key] == proxy_url, target_env
             assert target_env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] == proxy_url
             assert "127.0.0.1" in target_env["NO_PROXY"], target_env
+            assert "hifis-storage.desy.de" in target_env["NO_PROXY"], target_env
+            assert "example-cache.invalid" in target_env["NO_PROXY"], target_env
 
             previous_docker_config = os.environ.get("DOCKER_CONFIG")
             with skillsbench_loop._benchmark_egress_proxy_env_applied(args):
@@ -272,6 +283,8 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
                 assert docker_proxy["httpProxy"] == proxy_url, docker_proxy
                 assert docker_proxy["httpsProxy"] == proxy_url, docker_proxy
                 assert "127.0.0.1" in docker_proxy["noProxy"], docker_proxy
+                assert "hifis-storage.desy.de" in docker_proxy["noProxy"], docker_proxy
+                assert "example-cache.invalid" in docker_proxy["noProxy"], docker_proxy
             if previous_docker_config is None:
                 assert "DOCKER_CONFIG" not in os.environ
             else:
@@ -282,11 +295,15 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
             assert config["benchmark_egress_proxy_configured"] is True, config
             assert config["benchmark_egress_proxy_endpoint_kind"] == "public_or_unknown", config
             assert config["benchmark_egress_proxy_endpoint_port"] == 18080, config
+            assert config["benchmark_egress_no_proxy_configured"] is True, config
+            assert config["benchmark_egress_no_proxy_entry_count"] >= 5, config
+            assert config["benchmark_egress_no_proxy_raw_value_recorded"] is False, config
             assert config["benchmark_egress_proxy_url_recorded"] is False, config
             assert config["benchmark_egress_proxy_docker_config_injected"] is False, config
             assert config["benchmark_egress_proxy_docker_config_path_recorded"] is False, config
             assert config["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] is False, config
             assert proxy_url not in json.dumps(config, sort_keys=True), config
+            assert "example-cache.invalid" not in json.dumps(config, sort_keys=True), config
         finally:
             if previous is None:
                 os.environ.pop("LOOPX_SKILLSBENCH_EGRESS_PROXY", None)
@@ -5962,8 +5979,8 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
                 "https_proxy": proxy_url,
                 "http_proxy": proxy_url,
                 "all_proxy": proxy_url,
-                "NO_PROXY": "localhost,127.0.0.1,::1",
-                "no_proxy": "localhost,127.0.0.1,::1",
+                "NO_PROXY": "localhost,127.0.0.1,::1,hifis-storage.desy.de",
+                "no_proxy": "localhost,127.0.0.1,::1,hifis-storage.desy.de",
             },
         )
 
@@ -5992,6 +6009,9 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
         ) < staged_verifier.index("set -x"), staged_verifier
         assert f"export HTTPS_PROXY={proxy_url}" in staged_verifier, staged_verifier
         assert f"export HTTP_PROXY={proxy_url}" in staged_verifier, staged_verifier
+        assert "export NO_PROXY=localhost,127.0.0.1,::1,hifis-storage.desy.de" in (
+            staged_verifier
+        ), staged_verifier
         assert "case \"$-\" in *x*) loopx_restore_xtrace=1; set +x;; esac" in (
             staged_verifier
         )
@@ -13636,6 +13656,8 @@ if __name__ == "__main__":
     test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract()
     test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme()
     test_codex_app_server_goal_blocks_without_codex_api_egress()
+    test_benchmark_egress_proxy_env_is_public_safe_and_forwarded()
+    test_benchmark_egress_proxy_require_mode_blocks_without_proxy()
     test_skillsbench_plan_only_batch_parallel_case_contract()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
@@ -13713,6 +13735,7 @@ if __name__ == "__main__":
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
     test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults()
     test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror()
+    test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap()
     test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow()
     test_skillsbench_verifier_bootstrap_preflight_blocks_full_run_without_benchflow()
     test_skillsbench_docker_task_staging_caps_local_cpu_request()

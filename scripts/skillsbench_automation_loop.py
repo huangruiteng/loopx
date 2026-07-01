@@ -275,6 +275,13 @@ BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS = (
     "http_proxy",
     "all_proxy",
 )
+BENCHMARK_EGRESS_NO_PROXY_ENV_KEYS = (
+    "LOOPX_SKILLSBENCH_EGRESS_NO_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_NO_PROXY",
+)
+DEFAULT_BENCHMARK_EGRESS_NO_PROXY = (
+    "localhost,127.0.0.1,::1,hifis-storage.desy.de"
+)
 BENCHMARK_EGRESS_PROXY_MODE_CHOICES = ("auto", "off", "require")
 BENCHMARK_EGRESS_TEST_HOST = "pypi.org"
 BENCHMARK_EGRESS_TEST_PORT = 443
@@ -1371,6 +1378,35 @@ def _normalized_proxy_url(proxy_url: str) -> str:
     return f"http://{raw}"
 
 
+def _merged_no_proxy(*values: str) -> str:
+    entries: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for raw_entry in str(value or "").split(","):
+            entry = raw_entry.strip()
+            if not entry:
+                continue
+            key = entry.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(entry)
+    return ",".join(entries)
+
+
+def _benchmark_egress_no_proxy(args: argparse.Namespace | None) -> str:
+    configured = ""
+    if args is not None:
+        configured = str(getattr(args, "benchmark_egress_no_proxy", "") or "")
+    if not configured:
+        for key in BENCHMARK_EGRESS_NO_PROXY_ENV_KEYS:
+            value = os.environ.get(key)
+            if value:
+                configured = value
+                break
+    return _merged_no_proxy(DEFAULT_BENCHMARK_EGRESS_NO_PROXY, configured)
+
+
 def _benchmark_egress_proxy_requested_mode(
     args: argparse.Namespace | None,
 ) -> str:
@@ -1622,6 +1658,12 @@ def _public_benchmark_egress_proxy_contract(
             scheme, host, port = _parse_proxy_endpoint(proxy_url)
         except Exception as exc:
             parse_error = type(exc).__name__
+    no_proxy = _benchmark_egress_no_proxy(args) if proxy_mode != "off" else ""
+    no_proxy_entry_count = (
+        len([entry for entry in no_proxy.split(",") if entry.strip()])
+        if no_proxy
+        else 0
+    )
     configured = bool(proxy_url)
     if status == "pending":
         if proxy_mode == "off":
@@ -1652,6 +1694,9 @@ def _public_benchmark_egress_proxy_contract(
         "proxy_scheme": scheme[:20],
         "proxy_endpoint_kind": _proxy_host_kind(host) if host else "",
         "proxy_endpoint_port": port,
+        "no_proxy_configured": bool(no_proxy),
+        "no_proxy_entry_count": no_proxy_entry_count,
+        "no_proxy_raw_value_recorded": False,
         "proxy_url_recorded": False,
         "raw_proxy_url_recorded": False,
         "raw_probe_output_recorded": False,
@@ -1763,6 +1808,16 @@ def _sync_benchmark_egress_proxy_contract(
     target["benchmark_egress_proxy_endpoint_port"] = (
         int(port) if isinstance(port, int) and not isinstance(port, bool) else 0
     )
+    target["benchmark_egress_no_proxy_configured"] = bool(
+        contract.get("no_proxy_configured")
+    )
+    entry_count = contract.get("no_proxy_entry_count")
+    target["benchmark_egress_no_proxy_entry_count"] = (
+        int(entry_count)
+        if isinstance(entry_count, int) and not isinstance(entry_count, bool)
+        else 0
+    )
+    target["benchmark_egress_no_proxy_raw_value_recorded"] = False
     target.setdefault("benchmark_egress_proxy_docker_config_injected", False)
     target.setdefault("benchmark_egress_proxy_docker_config_path_recorded", False)
     target.setdefault("benchmark_egress_proxy_docker_config_raw_proxy_recorded", False)
@@ -1776,8 +1831,9 @@ def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, st
         return {}
     env = {key: proxy_url for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS}
     env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
-    env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
-    env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
+    no_proxy = _benchmark_egress_no_proxy(args)
+    env["NO_PROXY"] = no_proxy
+    env["no_proxy"] = no_proxy
     return env
 
 
@@ -2607,6 +2663,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchmark_egress_proxy_configured",
         "benchmark_egress_proxy_required",
         "benchmark_egress_proxy_url_recorded",
+        "benchmark_egress_no_proxy_configured",
+        "benchmark_egress_no_proxy_raw_value_recorded",
         "benchmark_egress_proxy_agent_env_injected",
         "benchmark_egress_proxy_docker_config_injected",
         "benchmark_egress_proxy_docker_config_path_recorded",
@@ -2802,6 +2860,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_failure_trace_count",
         "codex_api_reverse_tunnel_proxy_endpoint_port",
         "benchmark_egress_proxy_endpoint_port",
+        "benchmark_egress_no_proxy_entry_count",
         "host_local_acp_proxy_endpoint_loopback_port",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
@@ -7466,6 +7525,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "benchmark_egress_proxy_endpoint_port": int(
                 benchmark_egress_proxy.get("proxy_endpoint_port") or 0
             ),
+            "benchmark_egress_no_proxy_configured": bool(
+                benchmark_egress_proxy.get("no_proxy_configured")
+            ),
+            "benchmark_egress_no_proxy_entry_count": int(
+                benchmark_egress_proxy.get("no_proxy_entry_count") or 0
+            ),
+            "benchmark_egress_no_proxy_raw_value_recorded": False,
             "benchmark_egress_proxy_url_recorded": False,
             "benchmark_egress_proxy_agent_env_injected": False,
             "benchmark_egress_proxy_docker_config_injected": False,
@@ -7774,6 +7840,8 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "benchmark_egress_proxy_configured",
             "benchmark_egress_proxy_required",
             "benchmark_egress_proxy_url_recorded",
+            "benchmark_egress_no_proxy_configured",
+            "benchmark_egress_no_proxy_raw_value_recorded",
             "benchmark_egress_proxy_agent_env_injected",
             "benchmark_egress_proxy_docker_config_injected",
             "benchmark_egress_proxy_docker_config_path_recorded",
@@ -7807,6 +7875,9 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         value = prerequisites.get("benchmark_egress_proxy_endpoint_port")
         if isinstance(value, int) and not isinstance(value, bool):
             config["benchmark_egress_proxy_endpoint_port"] = value
+        value = prerequisites.get("benchmark_egress_no_proxy_entry_count")
+        if isinstance(value, int) and not isinstance(value, bool):
+            config["benchmark_egress_no_proxy_entry_count"] = value
     return config
 
 
@@ -13664,6 +13735,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "LOOPX_SKILLSBENCH_EGRESS_PROXY when present, off disables proxy "
             "injection, and require fails before a run unless a valid private "
             "HTTP CONNECT proxy is configured."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-no-proxy",
+        default=os.environ.get("LOOPX_SKILLSBENCH_EGRESS_NO_PROXY", ""),
+        help=(
+            "Comma-separated NO_PROXY additions for benchmark setup/verifier "
+            "egress. The value is merged with loopback and public benchmark "
+            "endpoint defaults, forwarded only to private subprocess/worker "
+            "environments, and never recorded raw in public artifacts."
         ),
     )
     parser.add_argument(
