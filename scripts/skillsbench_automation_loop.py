@@ -6446,6 +6446,21 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "max_rounds": args.max_rounds,
+        "independent_goal_retry": {
+            "schema_version": "skillsbench_independent_goal_retry_config_v0",
+            "enabled": bool(int(getattr(args, "independent_goal_retries", 1) or 1) > 1),
+            "attempt_budget": max(
+                1, int(getattr(args, "independent_goal_retries", 1) or 1)
+            ),
+            "route_supported": route == "codex-app-server-goal-baseline",
+            "fresh_goal_thread_per_attempt": True,
+            "stop_policy": "stop_after_first_official_reward_1_or_retry_budget",
+            "official_reward_feedback_forwarded_to_agent": False,
+            "verifier_output_forwarded_to_agent": False,
+            "raw_task_text_read_into_public_state": False,
+            "raw_trajectory_read_into_public_state": False,
+            "raw_verifier_output_read_into_public_state": False,
+        },
         "treatment_prompt_style": args.treatment_prompt_style,
         "outer_timeout_sec": args.outer_timeout_sec,
         "sandbox_setup_timeout_sec": args.sandbox_setup_timeout,
@@ -12405,6 +12420,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--independent-goal-retries",
+        type=int,
+        default=1,
+        help=(
+            "Run the same codex-app-server-goal-baseline case as multiple "
+            "independent native Goal attempts. Each attempt gets a fresh "
+            "job/rollout/thread; official verifier reward is observed only by "
+            "the runner to decide whether to stop before the retry budget, and "
+            "is never forwarded to the worker."
+        ),
+    )
+    parser.add_argument(
         "--treatment-prompt-style",
         choices=("structured", "baseline-safe"),
         default="structured",
@@ -12880,6 +12907,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--task-ids must not contain duplicate task ids")
     if args.task_ids is not None and len(batch_task_ids) == 1:
         args.task_id = batch_task_ids[0]
+    if args.independent_goal_retries < 1:
+        parser.error("--independent-goal-retries must be >= 1")
+    if args.independent_goal_retries > 1:
+        if args.route != "codex-app-server-goal-baseline":
+            parser.error(
+                "--independent-goal-retries currently applies only to "
+                "codex-app-server-goal-baseline"
+            )
+        if args.reduce_only:
+            parser.error("--independent-goal-retries is not compatible with --reduce-only")
+        if len(batch_task_ids) > 1:
+            parser.error(
+                "--independent-goal-retries is not compatible with multi-case "
+                "--task-ids; retry one case at a time"
+            )
     if (
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and not args.plan_only
@@ -13299,6 +13341,208 @@ async def async_batch_main(
     }
 
 
+def _independent_goal_retry_enabled(args: argparse.Namespace) -> bool:
+    return int(getattr(args, "independent_goal_retries", 1) or 1) > 1
+
+
+def _safe_retry_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
+    return slug or "retry"
+
+
+def _clone_args_for_independent_goal_retry(
+    args: argparse.Namespace,
+    *,
+    attempt_index: int,
+    run_group_id: str,
+    base_job_name: str,
+) -> argparse.Namespace:
+    attempt_number = attempt_index + 1
+    attempt_args = argparse.Namespace(**vars(args))
+    attempt_args.independent_goal_retries = 1
+    attempt_args.task_ids = None
+    attempt_args.parallel_cases = 1
+    attempt_args.run_group_id = run_group_id
+    attempt_args.job_name = f"{base_job_name}-attempt-{attempt_number:02d}"
+    route_slug = _safe_retry_slug(str(args.route).replace("-", "_"))
+    attempt_args.rollout_name = (
+        f"{args.task_id}__{route_slug}_independent_attempt_{attempt_number:02d}"
+    )
+    return attempt_args
+
+
+def _official_reward_from_payload(payload: dict[str, Any]) -> float | None:
+    official_task_score = payload.get("official_task_score")
+    if isinstance(official_task_score, dict):
+        value = official_task_score.get("value")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    value = payload.get("official_score")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _official_success_from_payload(payload: dict[str, Any]) -> bool:
+    official_task_score = payload.get("official_task_score")
+    if isinstance(official_task_score, dict):
+        if official_task_score.get("passed") is True:
+            return True
+    reward = _official_reward_from_payload(payload)
+    return bool(reward is not None and reward >= 1.0)
+
+
+def _independent_goal_retry_attempt_summary(
+    payload: dict[str, Any],
+    *,
+    attempt_index: int,
+) -> dict[str, Any]:
+    launch_plan = payload.get("launch_plan")
+    if not isinstance(launch_plan, dict):
+        launch_plan = {}
+    official_reward = _official_reward_from_payload(payload)
+    official_success = _official_success_from_payload(payload)
+    summary: dict[str, Any] = {
+        "schema_version": "skillsbench_independent_goal_retry_attempt_v0",
+        "attempt_index": attempt_index,
+        "attempt_number": attempt_index + 1,
+        "ok": payload.get("ok") is True,
+        "runner_returncode": int(payload.get("runner_returncode") or 0),
+        "official_success": official_success,
+        "official_reward": official_reward,
+        "score_failure_attribution": str(
+            payload.get("score_failure_attribution") or ""
+        ),
+        "raw_stdout_recorded": False,
+        "raw_stderr_recorded": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+    }
+    for key in (
+        "task_id",
+        "route",
+        "run_group_id",
+        "job_name",
+        "rollout_name",
+        "compact_benchmark_run_json",
+        "result_json",
+    ):
+        value = payload.get(key) or launch_plan.get(key)
+        if value:
+            summary[key] = str(value)
+    if not summary.get("compact_benchmark_run_json") and launch_plan.get(
+        "compact_benchmark_run_json"
+    ):
+        summary["compact_benchmark_run_json"] = str(
+            launch_plan.get("compact_benchmark_run_json")
+        )
+    if not summary.get("result_json") and launch_plan.get("result_json"):
+        summary["result_json"] = str(launch_plan.get("result_json"))
+    return summary
+
+
+async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[str, Any]:
+    attempt_budget = max(1, int(getattr(args, "independent_goal_retries", 1) or 1))
+    run_group_id = str(
+        args.run_group_id
+        or f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+    )
+    base_job_name = _safe_retry_slug(
+        str(
+            args.job_name
+            or f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+        )
+    )
+    jobs_dir = Path(args.jobs_dir).expanduser()
+    attempts: list[dict[str, Any]] = []
+    success_observed = False
+    first_success_attempt: int | None = None
+
+    for attempt_index in range(attempt_budget):
+        attempt_args = _clone_args_for_independent_goal_retry(
+            args,
+            attempt_index=attempt_index,
+            run_group_id=run_group_id,
+            base_job_name=base_job_name,
+        )
+        attempt_plan = build_plan(attempt_args)
+        try:
+            payload = await async_main(attempt_args, plan=attempt_plan)
+            payload["runner_returncode"] = 0
+        except Exception as exc:
+            payload, returncode = _build_runner_exception_closeout_payload(
+                attempt_args,
+                attempt_plan,
+                exc,
+            )
+            payload["runner_returncode"] = returncode
+        attempt_summary = _independent_goal_retry_attempt_summary(
+            payload,
+            attempt_index=attempt_index,
+        )
+        attempts.append(attempt_summary)
+        if attempt_summary.get("official_success") is True:
+            success_observed = True
+            first_success_attempt = attempt_index + 1
+            break
+
+    stop_reason = (
+        "stop_after_first_official_reward_1_without_feedback"
+        if success_observed
+        else "stop_after_independent_goal_retry_budget"
+    )
+    observed_rewards = [
+        float(attempt["official_reward"])
+        for attempt in attempts
+        if isinstance(attempt.get("official_reward"), (int, float))
+        and not isinstance(attempt.get("official_reward"), bool)
+    ]
+    best_official_reward = max(observed_rewards) if observed_rewards else None
+    final_official_reward = observed_rewards[-1] if observed_rewards else None
+    retry_summary = {
+        "schema_version": "skillsbench_independent_goal_retry_summary_v0",
+        "ok": success_observed,
+        "independent_goal_retry": True,
+        "task_id": str(args.task_id),
+        "route": str(args.route),
+        "run_group_id": run_group_id,
+        "attempt_budget": attempt_budget,
+        "attempts_started": len(attempts),
+        "attempts_completed": len(attempts),
+        "success_observed": success_observed,
+        "first_success_attempt": first_success_attempt,
+        "best_official_reward": best_official_reward,
+        "final_official_reward": final_official_reward,
+        "official_task_score": {
+            "kind": "skillsbench_independent_goal_retry_best_reward",
+            "value": best_official_reward,
+            "passed": success_observed,
+        },
+        "stop_reason": stop_reason,
+        "fresh_goal_thread_per_attempt": True,
+        "official_reward_feedback_forwarded_to_agent": False,
+        "verifier_output_forwarded_to_agent": False,
+        "reward_feedback_forwarded": False,
+        "raw_task_text_read_into_public_state": False,
+        "raw_trajectory_read_into_public_state": False,
+        "raw_verifier_output_read_into_public_state": False,
+        "attempts": attempts,
+        "runner_returncode": 0 if success_observed else max(
+            int(attempt.get("runner_returncode") or 0) for attempt in attempts
+        ),
+    }
+    summary_path = jobs_dir / base_job_name / "independent_goal_retry_summary.public.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(retry_summary, indent=2, sort_keys=True, default=_json_default)
+        + "\n",
+        encoding="utf-8",
+    )
+    retry_summary["retry_summary_json"] = str(summary_path)
+    return retry_summary
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     logging.getLogger().setLevel(logging.WARNING)
@@ -13544,13 +13788,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     task_ids = _batch_task_ids(args)
     batch_mode = len(task_ids) > 1
+    independent_retry_mode = _independent_goal_retry_enabled(args) and not args.plan_only
     if args.run_group_id is None:
         args.run_group_id = (
             f"skillsbench-batch-{args.route}-{_now_stamp()}"
             if batch_mode
+            else f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+            if independent_retry_mode
             else f"skillsbench-{args.task_id}-{args.route}-{_now_stamp()}"
         )
-    plan = None if batch_mode else build_plan(args)
+    plan = None if batch_mode or independent_retry_mode else build_plan(args)
     previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
     def _closeout_sigterm_handler(signum: int, frame: Any) -> None:
@@ -13562,10 +13809,26 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if batch_mode:
             payload = asyncio.run(async_batch_main(args, task_ids=task_ids))
+        elif independent_retry_mode:
+            payload = asyncio.run(async_independent_goal_retry_main(args))
         else:
             payload = asyncio.run(async_main(args, plan=plan))
     except (KeyboardInterrupt, SkillsBenchRunnerInterrupted) as exc:
         if plan is None:
+            if independent_retry_mode:
+                payload = {
+                    "ok": False,
+                    "independent_goal_retry": True,
+                    "task_id": str(args.task_id),
+                    "route": str(args.route),
+                    "attempt_budget": int(args.independent_goal_retries),
+                    "run_group_id": args.run_group_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "compact_closeout_recorded": False,
+                }
+                print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+                return 1
             payload = {
                 "ok": False,
                 "batch": True,
@@ -13593,6 +13856,20 @@ def main(argv: list[str] | None = None) -> int:
         return returncode
     except Exception as exc:
         if plan is None:
+            if independent_retry_mode:
+                payload = {
+                    "ok": False,
+                    "independent_goal_retry": True,
+                    "task_id": str(args.task_id),
+                    "route": str(args.route),
+                    "attempt_budget": int(args.independent_goal_retries),
+                    "run_group_id": args.run_group_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "compact_closeout_recorded": False,
+                }
+                print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+                return 1
             payload = {
                 "ok": False,
                 "batch": True,

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import importlib.util
 import subprocess
@@ -36,6 +37,7 @@ from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
 
 ROUTE = "codex-app-server-goal-baseline"
 WORKER_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_host_codex_goal_worker.py"
+RUNNER_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"
 
 FAKE_CODEX = """#!/usr/bin/env python3
 import json
@@ -311,6 +313,16 @@ def _load_worker_module() -> Any:
     return module
 
 
+def _load_runner_module() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "skillsbench_automation_loop", RUNNER_SCRIPT
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_route_contract_requires_native_goal_proof() -> None:
     contract = skillsbench_route_contract(ROUTE)
     assert contract["native_goal_mode_requested"] is True, contract
@@ -455,6 +467,136 @@ def test_launcher_plan_only_marks_runner_ready_with_host_acp_launch() -> None:
     assert (
         prereq["codex_app_server_goal_worker_runner_integration_ready"] is True
     ), prereq
+
+
+def test_launcher_plan_only_records_independent_retry_config() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-retry-plan-") as tmp:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(RUNNER_SCRIPT),
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                ROUTE,
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--remote-command-file-bridge-ready",
+                "--host-local-acp-launch",
+                "--independent-goal-retries",
+                "3",
+                "--plan-only",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    payload = json.loads(result.stdout)
+    plan = payload["launch_plan"]
+    retry = plan["independent_goal_retry"]
+    assert retry["schema_version"] == "skillsbench_independent_goal_retry_config_v0", retry
+    assert retry["enabled"] is True, retry
+    assert retry["attempt_budget"] == 3, retry
+    assert retry["fresh_goal_thread_per_attempt"] is True, retry
+    assert retry["stop_policy"] == "stop_after_first_official_reward_1_or_retry_budget", retry
+    assert retry["official_reward_feedback_forwarded_to_agent"] is False, retry
+    assert retry["verifier_output_forwarded_to_agent"] is False, retry
+    assert retry["raw_task_text_read_into_public_state"] is False, retry
+    assert retry["raw_trajectory_read_into_public_state"] is False, retry
+    assert retry["raw_verifier_output_read_into_public_state"] is False, retry
+
+
+def test_independent_goal_retry_stops_after_first_success() -> None:
+    runner = _load_runner_module()
+    original_async_main = runner.async_main
+    original_build_plan = runner.build_plan
+
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-retry-") as tmp:
+        tmp_path = Path(tmp)
+
+        def fake_build_plan(args: Namespace) -> dict[str, Any]:
+            rollout_name = args.rollout_name or "rollout"
+            return {
+                "task_id": args.task_id,
+                "route": args.route,
+                "run_group_id": args.run_group_id,
+                "job_name": args.job_name,
+                "rollout_name": rollout_name,
+                "compact_benchmark_run_json": str(
+                    tmp_path / args.job_name / rollout_name / "benchmark_run.compact.json"
+                ),
+                "result_json": str(
+                    tmp_path / args.job_name / rollout_name / "result.json"
+                ),
+            }
+
+        async def fake_async_main(args: Namespace, *, plan: dict[str, Any] | None = None) -> dict[str, Any]:
+            assert args.independent_goal_retries == 1, args
+            attempt_number = int(str(args.job_name).rsplit("-", 1)[-1])
+            reward = 1.0 if attempt_number == 2 else 0.0
+            return {
+                "ok": True,
+                "launch_plan": plan or {},
+                "official_task_score": {
+                    "kind": "fake_skillsbench_reward",
+                    "value": reward,
+                    "passed": reward >= 1.0,
+                },
+                "score_failure_attribution": (
+                    "none" if reward >= 1.0 else "official_score_zero_case_failure"
+                ),
+            }
+
+        runner.build_plan = fake_build_plan
+        runner.async_main = fake_async_main
+        try:
+            payload = asyncio.run(
+                runner.async_independent_goal_retry_main(
+                    Namespace(
+                        task_id="bike-rebalance",
+                        task_ids=None,
+                        route=ROUTE,
+                        jobs_dir=str(tmp_path),
+                        run_group_id="retry-group",
+                        job_name="retry-job",
+                        rollout_name=None,
+                        independent_goal_retries=3,
+                        parallel_cases=1,
+                    )
+                )
+            )
+        finally:
+            runner.async_main = original_async_main
+            runner.build_plan = original_build_plan
+
+        assert payload["schema_version"] == "skillsbench_independent_goal_retry_summary_v0", payload
+        assert payload["ok"] is True, payload
+        assert payload["attempt_budget"] == 3, payload
+        assert payload["attempts_started"] == 2, payload
+        assert payload["first_success_attempt"] == 2, payload
+        assert payload["best_official_reward"] == 1.0, payload
+        assert payload["final_official_reward"] == 1.0, payload
+        assert payload["official_task_score"]["passed"] is True, payload
+        assert payload["stop_reason"] == "stop_after_first_official_reward_1_without_feedback", payload
+        assert payload["official_reward_feedback_forwarded_to_agent"] is False, payload
+        assert payload["verifier_output_forwarded_to_agent"] is False, payload
+        assert payload["reward_feedback_forwarded"] is False, payload
+        assert payload["raw_task_text_read_into_public_state"] is False, payload
+        assert payload["raw_trajectory_read_into_public_state"] is False, payload
+        assert payload["raw_verifier_output_read_into_public_state"] is False, payload
+        assert len(payload["attempts"]) == 2, payload
+        assert payload["attempts"][0]["official_reward"] == 0.0, payload
+        assert payload["attempts"][1]["official_reward"] == 1.0, payload
+        assert payload["attempts"][1]["official_success"] is True, payload
+        for attempt in payload["attempts"]:
+            assert attempt["raw_task_text_read"] is False, attempt
+            assert attempt["raw_trajectory_read"] is False, attempt
+            assert attempt["raw_verifier_output_read"] is False, attempt
+        summary_path = Path(payload["retry_summary_json"])
+        assert summary_path.exists(), payload
+        saved = json.loads(summary_path.read_text(encoding="utf-8"))
+        assert saved["first_success_attempt"] == 2, saved
 
 
 def test_host_worker_contract_only_cli() -> None:
@@ -1517,7 +1659,7 @@ time.sleep(30)
                 "--timeout-sec",
                 "20",
                 "--first-action-timeout-sec",
-                "1",
+                "5",
                 "--remote-command-file-bridge-command",
                 bridge_command,
                 "--worker-public-trace-dir",
