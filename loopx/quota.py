@@ -1892,6 +1892,7 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
         "current_agent_claimed_monitor_items",
         "items",
     )
+    ready_successor_todo_ids = _handoff_ready_successor_todo_ids(value)
     open_items: list[dict[str, Any]] = []
     for key in source_keys:
         source_items = value.get(key) if isinstance(value.get(key), list) else []
@@ -1910,8 +1911,40 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
             )
             if duplicate:
                 continue
-            open_items.append(_compact_todo_summary_item(item, text=text))
+            compact = _compact_todo_summary_item(item, text=text)
+            todo_id = normalize_todo_id(compact.get("todo_id"))
+            if (
+                todo_id
+                and todo_id in ready_successor_todo_ids
+                and normalize_todo_resume_when(compact.get("resume_when"))
+                and "resume_ready" not in compact
+            ):
+                compact["resume_ready"] = True
+                compact["resume_condition"] = {
+                    "schema_version": "todo_resume_condition_v0",
+                    "resume_when": compact.get("resume_when"),
+                    "satisfied": True,
+                    "source": "handoff_gate_cleared_with_successor",
+                }
+            open_items.append(compact)
     return open_items
+
+
+def _handoff_ready_successor_todo_ids(value: dict[str, Any]) -> set[str]:
+    ready: set[str] = set()
+    for gate in _todo_summary_handoff_gates(value):
+        if not isinstance(gate, dict):
+            continue
+        if str(gate.get("gate_state") or "") != HandoffGateState.CLEARED_WITH_SUCCESSOR.value:
+            continue
+        successor_ids = gate.get("successor_todo_ids")
+        if not isinstance(successor_ids, list):
+            continue
+        for todo_id in successor_ids:
+            normalized = normalize_todo_id(todo_id)
+            if normalized:
+                ready.add(normalized)
+    return ready
 
 
 def _todo_summary_handoff_gates(value: dict[str, Any]) -> list[dict[str, Any]]:

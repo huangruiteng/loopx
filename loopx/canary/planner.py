@@ -308,7 +308,12 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "work-lane policy",
             "resume_when",
             "resume_ready",
+            "handoff",
+            "blocks_agent",
+            "unblocks_todo_id",
+            "successor",
             "loopx/policies/monitor_todo.py",
+            "loopx/todo_handoff_gate.py",
         ),
         "checks": [
             {
@@ -325,6 +330,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/quota-resume-gated-open-todo-smoke.py",
                 "tier": "default",
                 "reason": "guards resume_when-gated open todos from entering executable quota lanes early",
+            },
+            {
+                "command": "python3 examples/quota-cleared-blocker-successor-gate-smoke.py",
+                "tier": "default",
+                "reason": "guards cleared handoff gates waking the blocked agent through a concrete successor todo",
             },
             {
                 "command": "python3 examples/work-lane-contract-smoke.py",

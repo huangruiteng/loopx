@@ -161,7 +161,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     work_lane_policy_payload = build_catalog_canary_plan(
         changed_files=["loopx/policies/monitor_todo.py"],
         surfaces=["resume_when resume_ready work-lane policy seam"],
-        max_checks_per_profile=3,
+        max_checks_per_profile=4,
     )
     work_lane_profiles = {
         profile["id"]: profile for profile in work_lane_policy_payload["domain_profiles"]
@@ -171,6 +171,9 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         check["command"] for check in work_lane_profiles["control-plane-refactor"]["checks"]
     ]
     assert "python3 examples/quota-resume-gated-open-todo-smoke.py" in work_lane_commands, (
+        work_lane_profiles["control-plane-refactor"]
+    )
+    assert "python3 examples/quota-cleared-blocker-successor-gate-smoke.py" in work_lane_commands, (
         work_lane_profiles["control-plane-refactor"]
     )
     assert all(
