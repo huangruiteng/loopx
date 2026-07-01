@@ -490,6 +490,8 @@ DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN = (
 DOCKER_NETWORK_DOWNLOAD_RETRY_END = (
     "# END LOOPX_SKILLSBENCH_NETWORK_DOWNLOAD_RETRY"
 )
+DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_BASE = "https://mirrors.huaweicloud.com/apache"
+DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST = "mirrors.huaweicloud.com"
 VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
 )
@@ -5671,6 +5673,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_wget_gpg_key_retry_patch_applied",
         "dockerfile_network_download_retry_patch_required",
         "dockerfile_network_download_retry_patch_applied",
+        "dockerfile_apache_archive_mirror_patch_required",
+        "dockerfile_apache_archive_mirror_patch_applied",
+        "dockerfile_apache_archive_raw_url_recorded",
         "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
@@ -5698,6 +5703,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "bootstrap_light_blocker_kind",
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
+        "dockerfile_apache_archive_mirror_host",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -5782,6 +5788,15 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "dockerfile_network_download_retry_patch_applied": (
             DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN in dockerfile_text
         ),
+        "dockerfile_apache_archive_mirror_patch_applied": (
+            DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST in dockerfile_text
+        ),
+        "dockerfile_apache_archive_mirror_host": (
+            DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+            if DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST in dockerfile_text
+            else ""
+        ),
+        "dockerfile_apache_archive_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
         ),
@@ -6481,6 +6496,36 @@ def patch_dockerfile_wget_gpg_key_retry(dockerfile: Path) -> bool:
 
     patched, count = pattern.subn(replace, original)
     if count == 0 or patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def dockerfile_needs_apache_archive_mirror_rewrite(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return (
+        "https://archive.apache.org/dist/druid/" in text
+        or "http://archive.apache.org/dist/druid/" in text
+    )
+
+
+def patch_dockerfile_apache_archive_mirror(dockerfile: Path) -> bool:
+    """Rewrite known slow Apache archive Druid downloads to a public mirror."""
+
+    if not dockerfile_needs_apache_archive_mirror_rewrite(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    mirror_base = DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_BASE.rstrip("/")
+    patched = original.replace(
+        "https://archive.apache.org/dist/druid/",
+        f"{mirror_base}/druid/",
+    ).replace(
+        "http://archive.apache.org/dist/druid/",
+        f"{mirror_base}/druid/",
+    )
+    if patched == original:
         return False
     _write_text_atomic(dockerfile, patched)
     return True
@@ -7409,6 +7454,10 @@ def stage_task_for_sandbox(
         "dockerfile_wget_gpg_key_retry_patch_applied": False,
         "dockerfile_network_download_retry_patch_required": False,
         "dockerfile_network_download_retry_patch_applied": False,
+        "dockerfile_apache_archive_mirror_patch_required": False,
+        "dockerfile_apache_archive_mirror_patch_applied": False,
+        "dockerfile_apache_archive_mirror_host": "",
+        "dockerfile_apache_archive_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": False,
         "empty_skills_build_context_required": False,
         "empty_skills_build_context_created": False,
@@ -7460,6 +7509,11 @@ def stage_task_for_sandbox(
     needs_network_download_retry_patch = dockerfile_needs_network_download_retry_patch(
         task_path / "environment" / "Dockerfile"
     )
+    needs_apache_archive_mirror_patch = (
+        dockerfile_needs_apache_archive_mirror_rewrite(
+            task_path / "environment" / "Dockerfile"
+        )
+    )
     verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
     needs_verifier_uv_mirror_patch = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
@@ -7492,6 +7546,13 @@ def stage_task_for_sandbox(
     metadata["dockerfile_network_download_retry_patch_required"] = (
         needs_network_download_retry_patch
     )
+    metadata["dockerfile_apache_archive_mirror_patch_required"] = (
+        needs_apache_archive_mirror_patch
+    )
+    if needs_apache_archive_mirror_patch:
+        metadata["dockerfile_apache_archive_mirror_host"] = (
+            DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+        )
     metadata["verifier_bootstrap_risk_detected"] = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
     )
@@ -7527,6 +7588,7 @@ def stage_task_for_sandbox(
         and not needs_elan_toolchain_retry_patch
         and not needs_wget_gpg_key_retry_patch
         and not needs_network_download_retry_patch
+        and not needs_apache_archive_mirror_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
         and not needs_verifier_proxy_env_patch
@@ -7585,6 +7647,9 @@ def stage_task_for_sandbox(
     wget_gpg_key_retry_patched = patch_dockerfile_wget_gpg_key_retry(
         staged_path / "environment" / "Dockerfile"
     )
+    apache_archive_mirror_patched = patch_dockerfile_apache_archive_mirror(
+        staged_path / "environment" / "Dockerfile"
+    )
     network_download_retry_patched = patch_dockerfile_network_download_retry(
         staged_path / "environment" / "Dockerfile"
     )
@@ -7623,6 +7688,15 @@ def stage_task_for_sandbox(
             "dockerfile_network_download_retry_patch_applied": (
                 network_download_retry_patched
             ),
+            "dockerfile_apache_archive_mirror_patch_applied": (
+                apache_archive_mirror_patched
+            ),
+            "dockerfile_apache_archive_mirror_host": (
+                DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+                if apache_archive_mirror_patched
+                else ""
+            ),
+            "dockerfile_apache_archive_raw_url_recorded": False,
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
             "empty_skills_build_context_required": empty_skills_context_required,
             "empty_skills_build_context_created": empty_skills_context_created,
