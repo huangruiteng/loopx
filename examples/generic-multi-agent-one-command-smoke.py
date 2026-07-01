@@ -306,6 +306,11 @@ def main() -> int:
             )
         assert all("reasoning_effort=high" in command for command in new_window_payloads), new_window_payloads
         assert all("model_reasoning_effort=high" in command for command in new_window_payloads), new_window_payloads
+        launcher_source = (ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
+            encoding="utf-8"
+        )
+        assert "loopx_cli_scope=scoped_loopx_wrapper" in launcher_source
+        assert "demo_local_wrapper" not in launcher_source
 
     smoke_source = Path(__file__).read_text(encoding="utf-8").lower()
     domain_marker = "auto" + "-research"

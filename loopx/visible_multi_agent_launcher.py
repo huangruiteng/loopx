@@ -141,7 +141,7 @@ def build_visible_lane_command(
         'printf "bootstrap_or_stop=printed\\n"; '
         'printf "loopx_agent_handshake=role_profile_quota_frontier_bootstrap\\n"; '
         'printf "loopx_polling_prompt=visible_bootstrap_prompt\\n"; '
-        'printf "loopx_cli_scope=demo_local_wrapper\\n"; '
+        'printf "loopx_cli_scope=scoped_loopx_wrapper\\n"; '
         'printf "takeover_controls=visible\\n"; '
         f"printf 'reasoning_effort=%s\\n' {_q(reasoning_effort)}"
     )

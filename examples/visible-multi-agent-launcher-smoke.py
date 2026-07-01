@@ -25,6 +25,9 @@ def main() -> int:
     auto_research_cli = (ROOT / "loopx/capabilities/auto_research/cli.py").read_text(
         encoding="utf-8"
     )
+    launcher_source = (ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
+        encoding="utf-8"
+    )
     assert "from ...visible_multi_agent_launcher import execute_visible_multi_agent_launcher" in auto_research_cli
     forbidden_defs = [
         "def _launch_auto_research_with_tmux",
@@ -34,6 +37,8 @@ def main() -> int:
     ]
     leaked_defs = [name for name in forbidden_defs if name in auto_research_cli]
     assert not leaked_defs, leaked_defs
+    assert "demo_local_wrapper" not in launcher_source
+    assert "loopx_cli_scope=scoped_loopx_wrapper" in launcher_source
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -69,6 +74,7 @@ def main() -> int:
                     "    print('[LoopX frontier]')",
                     "    print('[bootstrap-or-stop]')",
                     "    print('loopx_agent_handshake=role_profile_quota_frontier_bootstrap')",
+                    "    print('loopx_cli_scope=scoped_loopx_wrapper')",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
                     "",
