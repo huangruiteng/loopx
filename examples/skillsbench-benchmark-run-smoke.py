@@ -86,6 +86,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     RUNNER_CONFIG_PUBLIC_FILENAME,
     RUNNER_PREREQUISITES_PUBLIC_FILENAME,
     SkillsBenchProductModeNoLifecycleRequests,
+    VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
     VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
     _tail,
     _apply_agent_message_only_no_tool_calls_attribution,
@@ -220,7 +221,7 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
         task_dir.mkdir(parents=True)
         (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
 
-        proxy_url = "http://benchmark-proxy.internal:18080"
+        proxy_url = "http://benchmark-proxy.example.invalid:18080"
         previous = os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY")
         os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
         try:
@@ -4620,6 +4621,66 @@ def test_skillsbench_official_result_builder() -> None:
         assert compact["read_boundary"]["trajectory_read"] is False
 
 
+def test_skillsbench_verifier_uv_bootstrap_error_is_not_solution_failure() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-uv-bootstrap-result-") as tmp:
+        root = Path(tmp)
+        run_dir = root / "official" / "2026-07-01__12-00-00" / "citation-check__abc123"
+        result_path = run_dir / "result.json"
+        write_json(
+            result_path,
+            {
+                "task_name": "citation-check",
+                "rollout_name": "citation-check__abc123",
+                "rewards": {"reward": 0.0},
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 5,
+                "n_prompts": 1,
+                "error": None,
+                "verifier_error": (
+                    "downloading uv 0.9.7 x86_64-unknown-linux-gnu\n"
+                    "failed to download https://releases.astral.sh/github/uv/"
+                    "releases/download/0.9.7/uv-x86_64-unknown-linux-gnu.tar.gz\n"
+                    "/verifier/test.sh: line 27: uvx: command not found"
+                ),
+                "partial_trajectory": False,
+                "trajectory_source": "acp",
+            },
+        )
+        write_json(run_dir / "timing.json", {"agent_execution": 5.0, "total": 65.0})
+
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="codex-app-server-goal-baseline",
+            )
+        )
+
+        assert compact is not None
+        assert compact["official_score_status"] == "missing", compact
+        assert "official_score" not in compact, compact
+        assert "value" not in compact["official_task_score"], compact
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_verifier_uv_bootstrap_failure"
+        ), compact
+        labels = compact["failure_attribution_labels"]
+        assert "skillsbench_verifier_uv_bootstrap_failure" in labels, compact
+        assert "skillsbench_verifier_bootstrap_failure" in labels, compact
+        assert "verifier_infrastructure_failure" in labels, compact
+        assert "official_verifier_solution_failure" not in labels, compact
+        assert "official_score_zero_case_failure" not in labels, compact
+        assert "skillsbench_verifier_uv_bootstrap_zero_reward_ignored" in compact[
+            "runner_warning_labels"
+        ], compact
+        accounting = compact["attempt_accounting"]
+        assert accounting["failure_class"] == "verifier_failed", compact
+        assert accounting["case_attempt_countable"] is True, compact
+        assert accounting["solver_attempt_countable"] is True, compact
+        assert accounting["verifier_attempt_countable"] is True, compact
+        assert accounting["official_score_attempt_countable"] is False, compact
+
+
 def test_skillsbench_result_reward_artifact_recovery() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-reward-recovery-") as tmp:
         result_path = write_official_skillsbench_reward_artifact_recovery_result(
@@ -5751,6 +5812,74 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert staged_verifier.index("INSTALLER_DOWNLOAD_URL") < staged_verifier.index(
             "astral.sh/uv/0.9.7/install.sh"
         ), staged_verifier
+
+
+def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-verifier-proxy-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "citation-check"
+        dockerfile = task / "environment" / "Dockerfile"
+        verifier = task / "verifier" / "test.sh"
+        dockerfile.parent.mkdir(parents=True)
+        verifier.parent.mkdir(parents=True)
+        dockerfile.write_text("FROM python:3.12-slim\n", encoding="utf-8")
+        original_verifier = (
+            "#!/bin/sh\n"
+            "set -x\n"
+            "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n"
+            "uvx --with pytest==8.4.1 pytest /tests/test_outputs.py\n"
+        )
+        verifier.write_text(original_verifier, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        proxy_url = "http://benchmark-proxy.example.invalid:18080"
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="citation-check-goalstart",
+            sandbox="docker",
+            include_task_skills=False,
+            benchmark_egress_proxy_env={
+                "LOOPX_SKILLSBENCH_EGRESS_PROXY": proxy_url,
+                "HTTPS_PROXY": proxy_url,
+                "HTTP_PROXY": proxy_url,
+                "ALL_PROXY": proxy_url,
+                "https_proxy": proxy_url,
+                "http_proxy": proxy_url,
+                "all_proxy": proxy_url,
+                "NO_PROXY": "localhost,127.0.0.1,::1",
+                "no_proxy": "localhost,127.0.0.1,::1",
+            },
+        )
+
+        assert metadata["staged"] is True, metadata
+        assert metadata["benchmark_egress_proxy_verifier_env_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["benchmark_egress_proxy_verifier_env_patch_applied"] is True, (
+            metadata
+        )
+        assert metadata["benchmark_egress_proxy_verifier_env_key_count"] >= 8, metadata
+        assert metadata[
+            "benchmark_egress_proxy_verifier_env_raw_proxy_recorded"
+        ] is False, metadata
+        assert proxy_url not in json.dumps(metadata, sort_keys=True), metadata
+        assert verifier.read_text(encoding="utf-8") == original_verifier
+
+        staged_verifier = (staged_path / "verifier" / "test.sh").read_text(
+            encoding="utf-8"
+        )
+        assert VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN in staged_verifier, (
+            staged_verifier
+        )
+        assert staged_verifier.index(
+            VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN
+        ) < staged_verifier.index("set -x"), staged_verifier
+        assert f"export HTTPS_PROXY={proxy_url}" in staged_verifier, staged_verifier
+        assert f"export HTTP_PROXY={proxy_url}" in staged_verifier, staged_verifier
+        assert "case \"$-\" in *x*) loopx_restore_xtrace=1; set +x;; esac" in (
+            staged_verifier
+        )
 
 
 def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> None:

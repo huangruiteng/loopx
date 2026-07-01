@@ -78,7 +78,7 @@ import urllib.parse
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from typing import Any, Mapping, get_args, get_origin
 from urllib.parse import urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -467,6 +467,12 @@ VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
 )
 VERIFIER_UV_BOOTSTRAP_MIRROR_END = (
     "# END LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
+)
+VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
+)
+VERIFIER_BENCHMARK_EGRESS_PROXY_END = (
+    "# END LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
 )
 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE = (
     "https://releases.astral.sh/github/uv/releases/download"
@@ -5576,6 +5582,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
+        "benchmark_egress_proxy_verifier_env_patch_required",
+        "benchmark_egress_proxy_verifier_env_patch_applied",
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded",
         "verifier_bootstrap_risk_preflight_blocked",
         "verifier_bootstrap_fail_fast_defaulted",
         "codex_acp_runtime_tools_patch_applied",
@@ -5596,6 +5605,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
     count = value.get("bootstrap_light_blocking_field_count")
     if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
         compact["bootstrap_light_blocking_field_count"] = count
+    key_count = value.get("benchmark_egress_proxy_verifier_env_key_count")
+    if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
+        compact["benchmark_egress_proxy_verifier_env_key_count"] = key_count
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -5677,6 +5689,14 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
         if uv_versions:
             discovered["verifier_uv_bootstrap_version"] = uv_versions[0]
+    if VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN in verifier_text:
+        discovered.update(
+            {
+                "benchmark_egress_proxy_verifier_env_patch_required": True,
+                "benchmark_egress_proxy_verifier_env_patch_applied": True,
+                "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+            }
+        )
     if DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text:
         discovered.update(
             {
@@ -6575,6 +6595,84 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
     return metadata
 
 
+def _verifier_benchmark_egress_proxy_exports(
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if not isinstance(proxy_env, Mapping):
+        return {}
+    proxy_url = str(proxy_env.get("LOOPX_SKILLSBENCH_EGRESS_PROXY") or "").strip()
+    if not proxy_url:
+        for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS:
+            proxy_url = str(proxy_env.get(key) or "").strip()
+            if proxy_url:
+                break
+    if not proxy_url:
+        return {}
+    exports = {
+        key: proxy_url
+        for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS
+    }
+    no_proxy = str(proxy_env.get("NO_PROXY") or proxy_env.get("no_proxy") or "").strip()
+    if no_proxy:
+        exports["NO_PROXY"] = no_proxy
+        exports["no_proxy"] = no_proxy
+    return exports
+
+
+def patch_verifier_benchmark_egress_proxy_env(
+    verifier: Path,
+    *,
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    """Forward the private benchmark egress proxy into staged verifier scripts."""
+
+    exports = _verifier_benchmark_egress_proxy_exports(proxy_env)
+    metadata: dict[str, Any] = {
+        "benchmark_egress_proxy_verifier_env_patch_required": bool(exports),
+        "benchmark_egress_proxy_verifier_env_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_key_count": len(exports),
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+    }
+    if not verifier.exists() or not exports:
+        return metadata
+    try:
+        original = verifier.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return metadata
+    text = _strip_marker_block(
+        original,
+        VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        VERIFIER_BENCHMARK_EGRESS_PROXY_END,
+    )
+    block_lines = [
+        VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        "# Forward the runtime benchmark egress proxy into verifier bootstrap commands.",
+        "# The concrete proxy is staged only in the private prepared task copy.",
+        "loopx_restore_xtrace=''",
+        "case \"$-\" in *x*) loopx_restore_xtrace=1; set +x;; esac",
+    ]
+    for key in sorted(exports):
+        block_lines.append(f"export {key}={shlex.quote(exports[key])}")
+    block_lines.extend(
+        [
+            "[ -z \"${loopx_restore_xtrace}\" ] || set -x",
+            "unset loopx_restore_xtrace",
+            VERIFIER_BENCHMARK_EGRESS_PROXY_END,
+        ]
+    )
+    block = "\n".join(block_lines)
+    lines = text.splitlines()
+    insert_at = 0
+    if lines and lines[0].startswith("#!"):
+        insert_at = 1
+    patched_lines = [*lines[:insert_at], block, *lines[insert_at:]]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(verifier, patched)
+    metadata["benchmark_egress_proxy_verifier_env_patch_applied"] = True
+    return metadata
+
+
 def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
     """Add public-safe apt retry/no-cache defaults to staged Dockerfiles."""
 
@@ -6730,6 +6828,7 @@ def stage_task_for_sandbox(
     job_name: str,
     sandbox: str,
     include_task_skills: bool = True,
+    benchmark_egress_proxy_env: Mapping[str, str] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
@@ -6749,6 +6848,10 @@ def stage_task_for_sandbox(
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_patch_required": False,
+        "benchmark_egress_proxy_verifier_env_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_key_count": 0,
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
         "task_skills_removed": False,
         "resource_cap_patch": {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -6777,6 +6880,12 @@ def stage_task_for_sandbox(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
         and verifier_risk.get("verifier_uv_bootstrap_version")
     )
+    verifier_proxy_exports = _verifier_benchmark_egress_proxy_exports(
+        benchmark_egress_proxy_env
+    )
+    needs_verifier_proxy_env_patch = bool(
+        verifier_proxy_exports and (task_path / "verifier" / "test.sh").exists()
+    )
     needs_runtime_tools_patch = (task_path / "environment" / "Dockerfile").exists()
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
@@ -6794,6 +6903,12 @@ def stage_task_for_sandbox(
     metadata["verifier_uv_bootstrap_mirror_patch_required"] = (
         needs_verifier_uv_mirror_patch
     )
+    metadata["benchmark_egress_proxy_verifier_env_patch_required"] = (
+        needs_verifier_proxy_env_patch
+    )
+    metadata["benchmark_egress_proxy_verifier_env_key_count"] = len(
+        verifier_proxy_exports
+    )
     if isinstance(verifier_risk.get("verifier_uv_bootstrap_version"), str):
         metadata["verifier_uv_bootstrap_version"] = verifier_risk[
             "verifier_uv_bootstrap_version"
@@ -6806,6 +6921,7 @@ def stage_task_for_sandbox(
         and not needs_pip_bootstrap_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
+        and not needs_verifier_proxy_env_patch
     ):
         metadata["resource_cap_patch"] = {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -6846,6 +6962,10 @@ def stage_task_for_sandbox(
     uv_mirror_metadata = patch_verifier_uv_bootstrap_mirror(
         staged_path / "verifier" / "test.sh"
     )
+    verifier_proxy_metadata = patch_verifier_benchmark_egress_proxy_env(
+        staged_path / "verifier" / "test.sh",
+        proxy_env=benchmark_egress_proxy_env,
+    )
     resource_cap_patch = patch_task_cpu_cap_for_local_docker(
         staged_path / "task.toml",
         host_cpus=host_cpus,
@@ -6875,6 +6995,7 @@ def stage_task_for_sandbox(
         ):
             continue
         metadata[key] = value
+    metadata.update(verifier_proxy_metadata)
     return staged_path, metadata
 
 
@@ -7163,6 +7284,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 and setup_preflight.get("verifier_uv_bootstrap_version")
             ),
             "verifier_uv_bootstrap_mirror_patch_applied": False,
+            "benchmark_egress_proxy_verifier_env_patch_required": False,
+            "benchmark_egress_proxy_verifier_env_patch_applied": False,
+            "benchmark_egress_proxy_verifier_env_key_count": 0,
+            "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
             "verifier_uv_bootstrap_version": (
                 str(setup_preflight.get("verifier_uv_bootstrap_version"))
                 if setup_preflight.get("verifier_uv_bootstrap_version")
@@ -10952,6 +11077,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         job_name=str(plan["job_name"]),
         sandbox=args.sandbox,
         include_task_skills=bool(args.include_task_skills),
+        benchmark_egress_proxy_env=_benchmark_egress_proxy_env(args),
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)

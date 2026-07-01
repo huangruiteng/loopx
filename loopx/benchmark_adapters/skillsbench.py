@@ -554,6 +554,31 @@ _SKILLSBENCH_SETUP_FAILURE_LABELS = {
 }
 
 
+def _skillsbench_verifier_uv_bootstrap_failure(verifier_error_text: str) -> bool:
+    text = str(verifier_error_text or "").lower()
+    if not text:
+        return False
+    indicators = (
+        "uvx: command not found",
+        "uv: command not found",
+        "failed to download",
+        "releases.astral.sh",
+        "astral.sh/uv",
+        "uv-x86_64-unknown-linux-gnu",
+        "uv-aarch64-unknown-linux-gnu",
+        "installer_download_url",
+    )
+    if any(indicator in text for indicator in indicators) and re.search(
+        r"\buvx?\b|astral|releases\.astral|installer_download_url",
+        text,
+    ):
+        return True
+    return bool(
+        re.search(r"\buvx?\b.*(?:download|bootstrap|not found|installer)", text)
+        or re.search(r"(?:download|bootstrap|installer).*\buvx?\b", text)
+    )
+
+
 def _skillsbench_attempt_setup_blocked(failure_labels: Iterable[str]) -> bool:
     return any(
         str(label) in _SKILLSBENCH_SETUP_FAILURE_LABELS for label in failure_labels
@@ -582,6 +607,8 @@ def _skillsbench_attempt_failure_class(
         return BenchmarkFailureClass.SOLVER_FAILED
     if score_failure_attribution.startswith("skillsbench_native_goal_worker_"):
         return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
+    if "skillsbench_verifier_uv_bootstrap_failure" in set(failure_labels):
+        return BenchmarkFailureClass.VERIFIER_FAILED
     if verifier_error_text and reward_value is None:
         return BenchmarkFailureClass.VERIFIER_FAILED
     if reward_value is None and score_failure_attribution != "none":
@@ -3325,7 +3352,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         reward_value, reward_artifact_source = _skillsbench_rollout_reward_artifact(
             result_path
         )
-    official_passed = bool(reward_value is not None and reward_value >= 1)
 
     timing_path = result_path.with_name("timing.json")
     timing: dict[str, Any] = {}
@@ -3352,6 +3378,17 @@ def build_skillsbench_benchflow_result_benchmark_run(
     verifier_error = result.get("verifier_error")
     error_text = str(error).strip() if error else ""
     verifier_error_text = str(verifier_error).strip() if verifier_error else ""
+    verifier_uv_bootstrap_failure = _skillsbench_verifier_uv_bootstrap_failure(
+        verifier_error_text
+    )
+    if (
+        verifier_uv_bootstrap_failure
+        and reward_value == 0
+        and reward_artifact_source is None
+    ):
+        reward_value = None
+        warning_labels.append("skillsbench_verifier_uv_bootstrap_zero_reward_ignored")
+    official_passed = bool(reward_value is not None and reward_value >= 1)
     failure_labels: list[str] = []
     exception_type = "none"
     score_failure_attribution = "none"
@@ -3367,11 +3404,31 @@ def build_skillsbench_benchflow_result_benchmark_run(
         )
     elif verifier_error_text:
         if score_failure_attribution in {"none", "skillsbench_runner_error"}:
-            exception_type = "skillsbench_verifier_error"
-            failure_labels.append("verifier_infrastructure_failure")
-            score_failure_attribution = "verifier_infrastructure_failure"
+            if verifier_uv_bootstrap_failure:
+                exception_type = "skillsbench_verifier_uv_bootstrap_failure"
+                failure_labels.extend(
+                    [
+                        "skillsbench_verifier_uv_bootstrap_failure",
+                        "skillsbench_verifier_bootstrap_failure",
+                        "verifier_infrastructure_failure",
+                    ]
+                )
+                score_failure_attribution = (
+                    "skillsbench_verifier_uv_bootstrap_failure"
+                )
+            else:
+                exception_type = "skillsbench_verifier_error"
+                failure_labels.append("verifier_infrastructure_failure")
+                score_failure_attribution = "verifier_infrastructure_failure"
         elif "verifier_infrastructure_failure" not in failure_labels:
             failure_labels.append("verifier_infrastructure_failure")
+        if (
+            verifier_uv_bootstrap_failure
+            and "skillsbench_verifier_uv_bootstrap_failure" not in failure_labels
+        ):
+            failure_labels.append("skillsbench_verifier_uv_bootstrap_failure")
+            if "skillsbench_verifier_bootstrap_failure" not in failure_labels:
+                failure_labels.append("skillsbench_verifier_bootstrap_failure")
 
     n_tool_calls = result.get("n_tool_calls")
     tool_calls = n_tool_calls if isinstance(n_tool_calls, int) else 0
