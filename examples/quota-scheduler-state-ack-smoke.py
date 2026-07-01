@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.policies.scheduler_hint import build_scheduler_hint  # noqa: E402
 from loopx.quota import AgentScopeFrontierAction  # noqa: E402
 from loopx.scheduler_state import SCHEDULER_STATE_SCHEMA_VERSION  # noqa: E402
+from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK  # noqa: E402
 
 
 AGENT_SCOPE_ACTIONS = [action.value for action in AgentScopeFrontierAction]
@@ -255,9 +256,82 @@ def assert_cli_scheduler_ack_progression() -> None:
         assert "recommended_rrule" not in final_app, current
 
 
+def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
+    from argparse import Namespace
+    from loopx.cli_commands import quota as quota_command
+
+    seen: dict[str, object] = {}
+
+    def fake_collect_status(**kwargs):
+        seen["limit"] = kwargs.get("limit")
+        return {"ok": True, "runtime_root": str(REPO_ROOT)}
+
+    def fake_record_quota_scheduler_ack(status_payload, **kwargs):
+        seen["status_payload"] = status_payload
+        seen["ack_kwargs"] = kwargs
+        return {"ok": True, "mode": "scheduler-ack", "dry_run": True}
+
+    def fake_print_payload(payload, output_format, renderer):
+        seen["payload"] = payload
+        seen["output_format"] = output_format
+        seen["renderer"] = renderer
+
+    args = Namespace(
+        quota_command="scheduler-ack",
+        goal_id="scheduler-state-ack-smoke",
+        agent_id="codex-side-agent",
+        available_capabilities=None,
+        include_scheduler_detail=False,
+        slots=1,
+        source="heartbeat",
+        void_generated_at=None,
+        reason_summary=None,
+        todo_id=None,
+        target_key=None,
+        result_hash=None,
+        material_change=False,
+        cadence=None,
+        next_due_at=None,
+        next_agent_todo=None,
+        next_user_todo=None,
+        next_claimed_by=None,
+        surface="codex_app",
+        state_key="scheduler_hint.codex_app.stateful_backoff",
+        applied_rrule="FREQ=MINUTELY;INTERVAL=10",
+        reset_token=None,
+        identity_signature=None,
+        dry_run=False,
+        execute=False,
+        scan_root=str(REPO_ROOT),
+        scan_path=[],
+        limit=5,
+        format="json",
+    )
+    original_collect_status = quota_command.collect_status
+    original_record_ack = quota_command.record_quota_scheduler_ack
+    try:
+        quota_command.collect_status = fake_collect_status
+        quota_command.record_quota_scheduler_ack = fake_record_quota_scheduler_ack
+        rc = quota_command.handle_quota_command(
+            args,
+            registry_path=REPO_ROOT / ".loopx" / "registry.json",
+            runtime_root_arg=None,
+            print_payload=fake_print_payload,
+            append_cli_rollout_event=lambda **_: {},
+        )
+    finally:
+        quota_command.collect_status = original_collect_status
+        quota_command.record_quota_scheduler_ack = original_record_ack
+
+    assert rc == 0, rc
+    assert seen["limit"] == AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, seen
+    assert seen["payload"] == {"ok": True, "mode": "scheduler-ack", "dry_run": True}, seen
+
+
 def main() -> int:
     assert_policy_state_progression()
     assert_cli_scheduler_ack_progression()
+    assert_cli_scheduler_ack_uses_should_run_lookback()
     print("quota-scheduler-state-ack-smoke ok")
     return 0
 
