@@ -949,7 +949,7 @@ def _auto_research_codex_bootstrap_prompt(
         "Minimal live worker-turn path:",
         f"1. Confirm the selected frontier action matches this role ({expected_actions}).",
         "2. Confirm the pane-local wrapper exists: `test -x \"$LOOPX_PANE_LOOPX\"`.",
-        "3. Single-pane preview, using human-readable output:",
+        "3. Single-pane preview, using human-readable output. This command re-reads quota and frontier internally:",
         "   `\"$LOOPX_PANE_LOOPX\" auto-research worker-turn --format markdown --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\"`",
         "4. Single-pane execute, only when the preview selected this lane:",
         "   `\"$LOOPX_PANE_LOOPX\" auto-research worker-turn --format markdown --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\" --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
@@ -957,6 +957,7 @@ def _auto_research_codex_bootstrap_prompt(
         "   `\"$LOOPX_PANE_LOOPX\" auto-research worker-loop --format markdown --goal-id \"$LOOPX_GOAL_ID\" $LOOPX_WORKER_LOOP_AGENT_ARGS --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
         "6. Stop after the selected command reports executed/completed turns and no runnable frontier.",
         "7. For evidence-runner, additionally require appended evidence and live_evidence.written=true.",
+        "8. Do not run `--help` or full quota/status dumps on the first screen; if deep debugging is needed, redirect machine details to a local artifact and print a short summary.",
     ]
     return "\n".join(
         [
@@ -967,7 +968,8 @@ def _auto_research_codex_bootstrap_prompt(
             "Use only the pane-local LoopX wrapper: `$LOOPX_PANE_LOOPX`. Do not call bare `loopx` or an absolute LoopX binary; those can hit the wrong registry and make this demo goal look missing.",
             "The wrapper has this demo's registry/runtime baked in. If `$LOOPX_PANE_LOOPX` is unset or not executable, stop and report that blocker instead of falling back.",
             "Visible panes are for human observation: run worker-turn and worker-loop with `--format markdown`. Use `--format json` only when redirecting to an artifact file and printing a compact summary.",
-            "This pane is a visible LoopX polling turn: before each new action, rerun the printed quota should-run and auto-research frontier commands, then follow their interaction_contract.",
+            "This pane is a visible LoopX polling turn: use worker-turn preview/execute as the human-facing polling command; it re-reads quota and frontier internally.",
+            "Avoid `--help` probes and full quota/status dumps in the visible pane unless you are explaining a blocker.",
             "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the printed frontier explicitly asks for it.",
             "If a future scheduled automation owns this lane, it must use a generated LoopX heartbeat/polling prompt; this visible bootstrap is the local manual polling prompt.",
             "",
@@ -3469,6 +3471,8 @@ def _render_auto_research_worker_turn_markdown(payload: dict[str, object]) -> st
         f"- selected_todo: `{payload.get('selected_todo_id') or selected.get('todo_id')}`",
         f"- selected_action: `{payload.get('selected_action') or selected.get('allowed_action')}`",
         f"- selected_title: {selected.get('title')}",
+        f"- blocker: `{payload.get('blocker')}`",
+        f"- blocker_detail: {payload.get('blocker_detail')}",
         f"- executed: `{payload.get('executed')}`",
         f"- would_execute: `{payload.get('would_execute')}`",
         f"- completion_status: `{completion.get('status')}`",

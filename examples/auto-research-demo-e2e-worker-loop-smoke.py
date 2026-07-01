@@ -48,6 +48,8 @@ def main() -> int:
     assert "Use loopx-project" not in bootstrap_source
     assert "read that local JSON profile" not in bootstrap_source
     assert "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH`" in bootstrap_source
+    assert "Do not run `--help`" in bootstrap_source
+    assert "worker-turn preview/execute as the human-facing polling command" in bootstrap_source
 
     worker_markdown = render_auto_research_markdown(
         {
@@ -80,6 +82,39 @@ def main() -> int:
     assert "# LoopX Auto Research Worker Turn" in worker_markdown
     assert "- selected_action: `run_dev_eval`" in worker_markdown
     assert '"schema_version"' not in worker_markdown
+
+    blocked_markdown = render_auto_research_markdown(
+        {
+            "ok": True,
+            "schema_version": "auto_research_worker_turn_v0",
+            "mode": "blocked",
+            "goal_id": GOAL_ID,
+            "agent_id": "codex-value-explorer",
+            "selected_todo_id": "todo_holdout_smoke",
+            "selected_action": "run_holdout_eval",
+            "executed": False,
+            "blocker": "waiting_for_dev_evidence",
+            "blocker_detail": "no dev-supported auto-research hypothesis is ready for holdout validation",
+            "completion": {"requested": True, "executed": False},
+            "frontier": {
+                "quota": {
+                    "should_run": True,
+                    "state": "eligible",
+                    "user_action_required": False,
+                },
+                "frontier": {
+                    "selected": {
+                        "todo_id": "todo_holdout_smoke",
+                        "allowed_action": "run_holdout_eval",
+                        "title": "Run held-out validation.",
+                    }
+                },
+            },
+        }
+    )
+    assert "- mode: `blocked`" in blocked_markdown
+    assert "- blocker: `waiting_for_dev_evidence`" in blocked_markdown
+    assert "Traceback" not in blocked_markdown
 
     loop_markdown = render_auto_research_markdown(
         {
