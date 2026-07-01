@@ -122,6 +122,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     product_mode_case_state_seed_text,
     product_mode_soft_verify_policy_for_route,
     reduce_result,
+    update_ledger as update_skillsbench_ledger,
     _runner_prerequisite_failure_attribution,
     _subcommand_family_count,
     _sync_relay_closeout_counts_into_compact,
@@ -10293,6 +10294,67 @@ def test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs() -> None:
         assert len(case["runs"]) == 4, case
 
 
+def test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-ledger-global-sync-") as tmp:
+        root = Path(tmp)
+        global_ledger = root / "global" / "benchmark-run-ledger.json"
+        run_group_ledger = root / "run-group" / "benchmark-run-ledger.json"
+        inherited_compact = compact_skillsbench_run(
+            task_id="3d-scan-calc",
+            mode="skillsbench_codex_app_server_goal_baseline",
+            score=1.0,
+            passed=True,
+        )
+        update_benchmark_run_ledger(
+            ledger_path=global_ledger,
+            benchmark_run=inherited_compact,
+            run_group_id="skillsbench-global-existing",
+            dry_run=False,
+        )
+        new_compact = compact_skillsbench_run(
+            task_id="tictoc-unnecessary-abort-detection",
+            mode="skillsbench_codex_app_server_goal_baseline",
+            score=1.0,
+            passed=True,
+        )
+        args = parse_args(
+            [
+                "--task-id",
+                "tictoc-unnecessary-abort-detection",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--ledger-path",
+                str(run_group_ledger),
+                "--global-ledger-path",
+                str(global_ledger),
+                "--run-group-id",
+                "skillsbench-revtunnel-appgoal-batch5-fixture",
+                "--update-ledger",
+            ]
+        )
+        compact_path = (
+            root
+            / "remote-public"
+            / "tictoc-unnecessary-abort-detection"
+            / "benchmark_run.compact.json"
+        )
+        update = update_skillsbench_ledger(args, new_compact, compact_path=compact_path)
+        assert update["ledger_scope"] == "run_group_with_global_sync", update
+        assert update["global_ledger_inheritance"]["status"] == "inherited", update
+        assert update["global_ledger_inheritance"]["inherited"] is True, update
+        assert update["primary_ledger_update"]["updated"] is True, update
+        assert update["global_ledger_update"]["updated"] is True, update
+
+        local_ledger = load_benchmark_run_ledger(run_group_ledger)
+        global_payload = load_benchmark_run_ledger(global_ledger)
+        local_cases = local_ledger["benchmarks"]["skillsbench@1.1"]["cases"]
+        global_cases = global_payload["benchmarks"]["skillsbench@1.1"]["cases"]
+        assert "3d-scan-calc" in local_cases, local_cases
+        assert "tictoc-unnecessary-abort-detection" in local_cases, local_cases
+        assert "tictoc-unnecessary-abort-detection" in global_cases, global_cases
+        assert ".local" not in json.dumps(update, sort_keys=True), update
+
+
 def test_skillsbench_runner_failure_compact_closeout() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-runner-failure-") as tmp:
         args = parse_args(
@@ -13186,6 +13248,7 @@ if __name__ == "__main__":
     test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr()
     test_skillsbench_compact_runs_update_ledger_pair()
     test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()
+    test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger()
     test_skillsbench_runner_failure_compact_closeout()
     test_skillsbench_runner_failure_case_event_timeline_is_compacted()
     test_skillsbench_runner_failure_recovers_zero_score_from_controller_trace()

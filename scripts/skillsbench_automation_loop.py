@@ -152,6 +152,10 @@ DEFAULT_LEDGER = (
     REPO_ROOT
     / "docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json"
 )
+TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS = {
+    "official_score_zero_case_failure",
+    "official_verifier_solution_failure",
+}
 DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
@@ -179,6 +183,66 @@ HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "no_proxy",
     "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
 )
+
+
+def _expanded_path(value: str | os.PathLike[str]) -> Path:
+    return Path(value).expanduser()
+
+
+def _same_ledger_path(left: Path, right: Path) -> bool:
+    return left.resolve(strict=False) == right.resolve(strict=False)
+
+
+def _ledger_scope_label(primary_path: Path, global_path: Path) -> str:
+    if _same_ledger_path(primary_path, global_path):
+        return "global"
+    return "run_group_with_global_sync"
+
+
+def _inherit_global_ledger_snapshot(
+    *,
+    primary_path: Path,
+    global_path: Path,
+    dry_run: bool,
+    enabled: bool,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "schema_version": "skillsbench_global_ledger_inheritance_v0",
+        "enabled": enabled,
+        "dry_run": dry_run,
+        "inherited": False,
+        "markdown_inherited": False,
+        "primary_ledger_path": str(primary_path),
+        "global_ledger_path": str(global_path),
+    }
+    if not enabled:
+        result["status"] = "disabled"
+        return result
+    if _same_ledger_path(primary_path, global_path):
+        result["status"] = "same_as_global"
+        return result
+    if primary_path.exists():
+        result["status"] = "primary_ledger_already_exists"
+        return result
+    if not global_path.exists():
+        result["status"] = "global_ledger_missing"
+        return result
+    if dry_run:
+        result["status"] = "would_inherit"
+        result["inherited"] = True
+        result["markdown_inherited"] = global_path.with_suffix(".md").exists()
+        return result
+
+    primary_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(global_path, primary_path)
+    result["inherited"] = True
+    global_markdown = global_path.with_suffix(".md")
+    primary_markdown = primary_path.with_suffix(".md")
+    if global_markdown.exists():
+        shutil.copy2(global_markdown, primary_markdown)
+        result["markdown_inherited"] = True
+    result["status"] = "inherited"
+    return result
 CODEX_API_REVERSE_TUNNEL_PROXY_ENV_KEYS = (
     "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
     "CODEX_API_REVERSE_TUNNEL_PROXY",
@@ -6627,7 +6691,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "route_supported": route == "codex-app-server-goal-baseline",
             "fresh_goal_thread_per_attempt": True,
-            "stop_policy": "stop_after_first_official_reward_1_or_retry_budget",
+            "stop_policy": (
+                "stop_after_first_official_reward_1_or_first_terminal_"
+                "official_nonpassing_or_retry_budget"
+            ),
             "official_reward_feedback_forwarded_to_agent": False,
             "verifier_output_forwarded_to_agent": False,
             "raw_task_text_read_into_public_state": False,
@@ -6689,6 +6756,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else ""
         ),
         "ledger_path": str(Path(args.ledger_path).expanduser()),
+        "global_ledger_path": str(Path(args.global_ledger_path).expanduser()),
+        "ledger_scope": _ledger_scope_label(
+            Path(args.ledger_path).expanduser(),
+            Path(args.global_ledger_path).expanduser(),
+        ),
+        "global_ledger_sync_enabled": not bool(args.skip_global_ledger_sync),
+        "ledger_inherit_enabled": not bool(args.skip_ledger_inherit),
         "run_permission_policy": run_permission_policy,
         "task_setup_preflight": setup_preflight,
         "codex_api_egress_preflight": codex_api_egress_preflight,
@@ -7058,6 +7132,9 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "job_name",
         "rollout_name",
         "treatment_prompt_style",
+        "ledger_path",
+        "global_ledger_path",
+        "ledger_scope",
     )
     for field in string_fields:
         value = plan.get(field)
@@ -7086,6 +7163,8 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "fail_fast_on_verifier_bootstrap_risk",
         "verifier_bootstrap_fail_fast_defaulted",
         "bootstrap_light_fail_fast_defaulted",
+        "global_ledger_sync_enabled",
+        "ledger_inherit_enabled",
     ):
         value = plan.get(field)
         if isinstance(value, bool):
@@ -12375,8 +12454,17 @@ def update_ledger(
         if args.route == "raw-codex-autonomous-max5"
         else "Codex ACP baseline"
     )
-    return update_benchmark_run_ledger(
-        ledger_path=Path(args.ledger_path).expanduser(),
+    primary_ledger_path = _expanded_path(args.ledger_path)
+    global_ledger_path = _expanded_path(args.global_ledger_path)
+    dry_run = not args.update_ledger
+    ledger_inheritance = _inherit_global_ledger_snapshot(
+        primary_path=primary_ledger_path,
+        global_path=global_ledger_path,
+        dry_run=dry_run,
+        enabled=not bool(args.skip_ledger_inherit),
+    )
+    primary_update = update_benchmark_run_ledger(
+        ledger_path=primary_ledger_path,
         benchmark_run=compact,
         compact_artifact_ref=compact_path,
         run_group_id=args.run_group_id,
@@ -12385,8 +12473,34 @@ def update_ledger(
             "no raw task/log/trajectory read into public state"
         ),
         cwd=REPO_ROOT,
-        dry_run=not args.update_ledger,
+        dry_run=dry_run,
     )
+    global_update: dict[str, Any] | None = None
+    if (
+        not args.skip_global_ledger_sync
+        and not _same_ledger_path(primary_ledger_path, global_ledger_path)
+    ):
+        global_update = update_benchmark_run_ledger(
+            ledger_path=global_ledger_path,
+            benchmark_run=compact,
+            compact_artifact_ref=compact_path,
+            run_group_id=args.run_group_id,
+            notes=(
+                f"official SkillsBench BenchFlow {note_route}; compact result only; "
+                "no raw task/log/trajectory read into public state"
+            ),
+            cwd=REPO_ROOT,
+            dry_run=dry_run,
+        )
+
+    result = dict(primary_update)
+    result["ledger_scope"] = _ledger_scope_label(primary_ledger_path, global_ledger_path)
+    result["primary_ledger_update"] = primary_update
+    result["global_ledger_path"] = str(global_ledger_path)
+    result["global_ledger_sync_enabled"] = not bool(args.skip_global_ledger_sync)
+    result["global_ledger_update"] = global_update
+    result["global_ledger_inheritance"] = ledger_inheritance
+    return result
 
 
 def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, Any]:
@@ -12723,6 +12837,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
     )
     parser.add_argument("--ledger-path", default=str(DEFAULT_LEDGER))
+    parser.add_argument(
+        "--global-ledger-path",
+        default=str(DEFAULT_LEDGER),
+        help=(
+            "Canonical benchmark_run_ledger_v0 JSON. When --ledger-path points "
+            "to a run-group/local ledger, the runner inherits this ledger first "
+            "and syncs the new row back here unless --skip-global-ledger-sync is set."
+        ),
+    )
+    parser.add_argument(
+        "--skip-global-ledger-sync",
+        action="store_true",
+        help="Do not upsert run-group/local ledger rows back into --global-ledger-path.",
+    )
+    parser.add_argument(
+        "--skip-ledger-inherit",
+        action="store_true",
+        help="Do not initialize a missing run-group/local ledger from --global-ledger-path.",
+    )
     parser.add_argument("--goal-id", default=DEFAULT_GOAL_ID)
     parser.add_argument("--registry", default=str(REPO_ROOT / ".loopx/registry.json"))
     parser.add_argument("--runtime-root", default=str(REPO_ROOT / ".local"))
@@ -13565,6 +13698,16 @@ def _official_success_from_payload(payload: dict[str, Any]) -> bool:
     return bool(reward is not None and reward >= 1.0)
 
 
+def _terminal_official_nonpassing_from_payload(payload: dict[str, Any]) -> bool:
+    reward = _official_reward_from_payload(payload)
+    if reward is None or _official_success_from_payload(payload):
+        return False
+    return (
+        str(payload.get("score_failure_attribution") or "")
+        in TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS
+    )
+
+
 def _independent_goal_retry_attempt_summary(
     payload: dict[str, Any],
     *,
@@ -13575,6 +13718,7 @@ def _independent_goal_retry_attempt_summary(
         launch_plan = {}
     official_reward = _official_reward_from_payload(payload)
     official_success = _official_success_from_payload(payload)
+    terminal_official_nonpassing = _terminal_official_nonpassing_from_payload(payload)
     summary: dict[str, Any] = {
         "schema_version": "skillsbench_independent_goal_retry_attempt_v0",
         "attempt_index": attempt_index,
@@ -13583,6 +13727,7 @@ def _independent_goal_retry_attempt_summary(
         "runner_returncode": int(payload.get("runner_returncode") or 0),
         "official_success": official_success,
         "official_reward": official_reward,
+        "terminal_official_nonpassing": terminal_official_nonpassing,
         "score_failure_attribution": str(
             payload.get("score_failure_attribution") or ""
         ),
@@ -13647,6 +13792,8 @@ async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[st
     attempts: list[dict[str, Any]] = []
     success_observed = False
     first_success_attempt: int | None = None
+    terminal_official_nonpassing_observed = False
+    first_terminal_official_nonpassing_attempt: int | None = None
 
     for attempt_index in range(attempt_budget):
         attempt_args = _clone_args_for_independent_goal_retry(
@@ -13683,12 +13830,17 @@ async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[st
             success_observed = True
             first_success_attempt = attempt_index + 1
             break
+        if attempt_summary.get("terminal_official_nonpassing") is True:
+            terminal_official_nonpassing_observed = True
+            first_terminal_official_nonpassing_attempt = attempt_index + 1
+            break
 
-    stop_reason = (
-        "stop_after_first_official_reward_1_without_feedback"
-        if success_observed
-        else "stop_after_independent_goal_retry_budget"
-    )
+    if success_observed:
+        stop_reason = "stop_after_first_official_reward_1_without_feedback"
+    elif terminal_official_nonpassing_observed:
+        stop_reason = "stop_after_first_terminal_official_nonpassing_verifier_result"
+    else:
+        stop_reason = "stop_after_independent_goal_retry_budget"
     observed_rewards = [
         float(attempt["official_reward"])
         for attempt in attempts
@@ -13709,6 +13861,12 @@ async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[st
         "attempts_completed": len(attempts),
         "success_observed": success_observed,
         "first_success_attempt": first_success_attempt,
+        "terminal_official_nonpassing_observed": (
+            terminal_official_nonpassing_observed
+        ),
+        "first_terminal_official_nonpassing_attempt": (
+            first_terminal_official_nonpassing_attempt
+        ),
         "best_official_reward": best_official_reward,
         "final_official_reward": final_official_reward,
         "official_task_score": {

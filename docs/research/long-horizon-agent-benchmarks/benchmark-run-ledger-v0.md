@@ -25,6 +25,16 @@ routing lesson.
 
 - Machine source: `benchmark-run-ledger.json`
 - Human view: `benchmark-run-ledger.md`
+- Canonical global source: `docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json`
+
+Benchmark launchers may also materialize a run-group/local
+`remote-ledger/benchmark-run-ledger.json` so interrupted or remote workspaces can
+resume with the current view. That local ledger is not canonical by itself. A
+run-group ledger should inherit the canonical global ledger before its first
+write, then upsert each terminal compact closeout back into the canonical global
+ledger. If a run-group ledger contains rows that the canonical global ledger
+does not, treat that as a sync gap rather than as two independent result
+sources.
 
 Both files are generated from compact `benchmark_run_v0` events. The Markdown
 view is for humans; the JSON is the source of truth.

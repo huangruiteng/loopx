@@ -499,7 +499,10 @@ def test_launcher_plan_only_records_independent_retry_config() -> None:
     assert retry["enabled"] is True, retry
     assert retry["attempt_budget"] == 3, retry
     assert retry["fresh_goal_thread_per_attempt"] is True, retry
-    assert retry["stop_policy"] == "stop_after_first_official_reward_1_or_retry_budget", retry
+    assert retry["stop_policy"] == (
+        "stop_after_first_official_reward_1_or_first_terminal_"
+        "official_nonpassing_or_retry_budget"
+    ), retry
     assert retry["official_reward_feedback_forwarded_to_agent"] is False, retry
     assert retry["verifier_output_forwarded_to_agent"] is False, retry
     assert retry["raw_task_text_read_into_public_state"] is False, retry
@@ -534,17 +537,17 @@ def test_independent_goal_retry_stops_after_first_success() -> None:
         async def fake_async_main(args: Namespace, *, plan: dict[str, Any] | None = None) -> dict[str, Any]:
             assert args.independent_goal_retries == 1, args
             attempt_number = int(str(args.job_name).rsplit("-", 1)[-1])
-            reward = 1.0 if attempt_number == 2 else 0.0
+            reward = 1.0 if attempt_number == 2 else None
             return {
-                "ok": True,
+                "ok": reward is not None,
                 "launch_plan": plan or {},
                 "official_task_score": {
                     "kind": "fake_skillsbench_reward",
                     "value": reward,
-                    "passed": reward >= 1.0,
+                    "passed": reward == 1.0,
                 },
                 "score_failure_attribution": (
-                    "none" if reward >= 1.0 else "official_score_zero_case_failure"
+                    "none" if reward == 1.0 else "skillsbench_runner_error"
                 ),
             }
 
@@ -586,9 +589,87 @@ def test_independent_goal_retry_stops_after_first_success() -> None:
         assert payload["raw_trajectory_read_into_public_state"] is False, payload
         assert payload["raw_verifier_output_read_into_public_state"] is False, payload
         assert len(payload["attempts"]) == 2, payload
-        assert payload["attempts"][0]["official_reward"] == 0.0, payload
+        assert payload["attempts"][0]["official_reward"] is None, payload
+        assert payload["attempts"][0]["terminal_official_nonpassing"] is False, payload
         assert payload["attempts"][1]["official_reward"] == 1.0, payload
-        assert payload["attempts"][1]["official_success"] is True, payload
+
+
+def test_independent_goal_retry_stops_after_first_terminal_nonpassing_score() -> None:
+    runner = _load_runner_module()
+    original_async_main = runner.async_main
+    original_build_plan = runner.build_plan
+
+    with tempfile.TemporaryDirectory(prefix="skillsbench-independent-nonpass-") as tmp:
+        tmp_path = Path(tmp)
+
+        def fake_build_plan(args: Namespace) -> dict[str, Any]:
+            rollout_name = args.rollout_name or "bike-rebalance__codex_app_server_goal"
+            return {
+                "task_id": args.task_id,
+                "route": args.route,
+                "run_group_id": args.run_group_id,
+                "job_name": args.job_name,
+                "rollout_name": rollout_name,
+                "compact_benchmark_run_json": str(
+                    tmp_path / args.job_name / rollout_name / "benchmark_run.compact.json"
+                ),
+                "result_json": str(
+                    tmp_path / args.job_name / rollout_name / "result.json"
+                ),
+            }
+
+        async def fake_async_main(
+            args: Namespace,
+            *,
+            plan: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            assert args.independent_goal_retries == 1, args
+            return {
+                "ok": True,
+                "launch_plan": plan or {},
+                "official_task_score": {
+                    "kind": "fake_skillsbench_reward",
+                    "value": 0.0,
+                    "passed": False,
+                },
+                "score_failure_attribution": "official_verifier_solution_failure",
+            }
+
+        runner.build_plan = fake_build_plan
+        runner.async_main = fake_async_main
+        try:
+            payload = asyncio.run(
+                runner.async_independent_goal_retry_main(
+                    Namespace(
+                        task_id="bike-rebalance",
+                        task_ids=None,
+                        route=ROUTE,
+                        jobs_dir=str(tmp_path),
+                        run_group_id="retry-nonpass",
+                        job_name="retry-job",
+                        rollout_name=None,
+                        independent_goal_retries=3,
+                        parallel_cases=1,
+                    )
+                )
+            )
+        finally:
+            runner.async_main = original_async_main
+            runner.build_plan = original_build_plan
+
+        assert payload["ok"] is False, payload
+        assert payload["attempt_budget"] == 3, payload
+        assert payload["attempts_started"] == 1, payload
+        assert payload["terminal_official_nonpassing_observed"] is True, payload
+        assert payload["first_terminal_official_nonpassing_attempt"] == 1, payload
+        assert payload["best_official_reward"] == 0.0, payload
+        assert payload["final_official_reward"] == 0.0, payload
+        assert payload["stop_reason"] == (
+            "stop_after_first_terminal_official_nonpassing_verifier_result"
+        ), payload
+        assert len(payload["attempts"]) == 1, payload
+        assert payload["attempts"][0]["terminal_official_nonpassing"] is True, payload
+        assert payload["official_reward_feedback_forwarded_to_agent"] is False, payload
         for attempt in payload["attempts"]:
             assert attempt["raw_task_text_read"] is False, attempt
             assert attempt["raw_trajectory_read"] is False, attempt
@@ -596,7 +677,8 @@ def test_independent_goal_retry_stops_after_first_success() -> None:
         summary_path = Path(payload["retry_summary_json"])
         assert summary_path.exists(), payload
         saved = json.loads(summary_path.read_text(encoding="utf-8"))
-        assert saved["first_success_attempt"] == 2, saved
+        assert saved["first_success_attempt"] is None, saved
+        assert saved["terminal_official_nonpassing_observed"] is True, saved
 
 
 def test_host_worker_contract_only_cli() -> None:
@@ -2103,6 +2185,9 @@ if __name__ == "__main__":
     test_app_server_goal_launcher_allows_explicit_first_action_disable()
     test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge()
     test_acp_relay_yields_after_task_output_quiet_timeout()
+    test_launcher_plan_only_records_independent_retry_config()
+    test_independent_goal_retry_stops_after_first_success()
+    test_independent_goal_retry_stops_after_first_terminal_nonpassing_score()
     test_full_run_fails_closed_until_bridge_is_materialized()
     test_full_run_with_bridge_ready_requires_host_acp_launch()
     test_launcher_patches_rollout_planes_connect_acp()
