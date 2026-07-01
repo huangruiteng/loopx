@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.auto_research import (  # noqa: E402
+from loopx.capabilities.auto_research.legacy_core import (  # noqa: E402
     AUTO_RESEARCH_ARTIFACT_PACKET_SCHEMA_VERSION,
     AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION,
     RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,

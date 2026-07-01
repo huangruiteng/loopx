@@ -16,8 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.auto_research import build_auto_research_demo_supervisor_plan  # noqa: E402
 from loopx.capabilities.auto_research.demo_e2e import _seed_visible_demo_control_plane  # noqa: E402
+from loopx.capabilities.auto_research.legacy_core import (  # noqa: E402
+    build_auto_research_demo_supervisor_plan,
+)
 
 
 GOAL_ID = "loopx-auto-research-knn"
