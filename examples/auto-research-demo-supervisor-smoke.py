@@ -114,6 +114,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "LOOPX_GOAL_ID" in lane["visible_launch_command"], lane
         assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in lane["visible_launch_command"], lane
         assert "LOOPX_ROLE_PROFILE_JSON" in lane["visible_launch_command"], lane
+        assert "LOOPX_ROLE_PROFILE_PATH" in lane["visible_launch_command"], lane
+        assert "role_profile_path=%s" in lane["visible_launch_command"], lane
         assert "LOOPX_REQUIRED_SKILL" in lane["visible_launch_command"], lane
         assert "bootstrap-or-stop" in lane["visible_launch_command"], lane
         assert lane["visible_codex_tui"] == "codex", lane

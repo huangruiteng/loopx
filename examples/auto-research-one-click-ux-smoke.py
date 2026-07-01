@@ -288,6 +288,8 @@ def main() -> int:
         assert f"--goal-id {TRACKING_GOAL_ID}" not in script_text, script_text
         assert "LOOPX_VISIBLE_LANE_COUNT=3" in script_text, script_text
         assert "LOOPX_REQUIRED_SKILL=loopx-auto-research" in script_text, script_text
+        assert "LOOPX_ROLE_PROFILE_PATH" in script_text, script_text
+        assert "role_profile_path=%s" in script_text, script_text
         assert "LOOPX_WORKER_SKILL_PATH" in script_text, script_text
         assert "worker_skill_path=%s" in script_text, script_text
         assert "model_reasoning_effort=high" in script_text, script_text

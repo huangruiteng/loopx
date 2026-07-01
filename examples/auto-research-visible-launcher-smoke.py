@@ -189,7 +189,12 @@ def main() -> int:
             assert profile["stop_conditions"], profile
             assert "[LoopX role profile]" in command, command
             assert "LOOPX_ROLE_PROFILE_JSON" in command, command
+            assert "LOOPX_ROLE_PROFILE_PATH" in command, command
+            assert "role_profile_path=%s" in command, command
+            assert ".local/loopx-role-profiles" in command, command
+            assert "read that local JSON profile" in command, command
             assert "LOOPX_ROLE_ID" in command, command
+            assert "LOOPX_LANE_ID" in command, command
             assert "LOOPX_ROLE_PROFILE_REF" in command, command
             assert "LOOPX_REQUIRED_SKILL" in command, command
             assert "LOOPX_VISIBLE_LANE_COUNT=3" in command, command

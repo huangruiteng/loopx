@@ -955,6 +955,7 @@ def _auto_research_codex_bootstrap_prompt(
             "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",
             "Use loopx-project for quota/status, then follow the worker-local loopx-auto-research role playbook for this pane.",
             "If LOOPX_WORKER_SKILL_PATH is present, read that local playbook path instead of relying on global skill discovery.",
+            "If LOOPX_ROLE_PROFILE_PATH is present, read that local JSON profile before relying on pane title or environment-only identity.",
             "Use the pane-local LoopX wrapper. Prefer `./.local/bin/loopx` or `$LOOPX_PANE_LOOPX`; bare `loopx` is allowed only after `command -v loopx` points inside this workspace.",
             "The wrapper has this demo's registry/runtime baked in, so do not bypass it with an absolute LoopX binary unless the printed quota/frontier commands explicitly require it.",
             "This pane is a visible LoopX polling turn: before each new action, rerun the printed quota should-run and auto-research frontier commands, then follow their interaction_contract.",
@@ -969,7 +970,8 @@ def _auto_research_codex_bootstrap_prompt(
             f"Responsibility: {responsibility}",
             f"Reasoning: model_reasoning_effort={effort}",
             "",
-            "Before any write, resolve identity from LOOPX_ROLE_PROFILE_JSON, the printed quota packet, and the printed auto-research frontier.",
+            "Before any write, resolve identity from LOOPX_ROLE_PROFILE_PATH or LOOPX_ROLE_PROFILE_JSON, the printed quota packet, and the printed auto-research frontier.",
+            "Prefer the durable local profile at LOOPX_ROLE_PROFILE_PATH when it exists; use LOOPX_ROLE_PROFILE_JSON only as a fallback.",
             "If any of those disagree, or quota/frontier no longer selects this role, stop and report the blocker in this pane.",
             f"Allowed actions: {allowed_actions}",
             f"Allowed write scope: {write_scope}",
@@ -1053,6 +1055,7 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
     return (
         f"export LOOPX_GOAL_ID={_shell_arg(str(role_profile['goal_id']))}; "
         f"export LOOPX_AGENT_ID={_shell_arg(str(role_profile['agent_id']))}; "
+        f"export LOOPX_LANE_ID={_shell_arg(str(role_profile['lane_id']))}; "
         f"export LOOPX_ROLE_ID={_shell_arg(str(role_profile['role_id']))}; "
         f"export LOOPX_ROLE_PHASE={_shell_arg(str(role_profile['phase']))}; "
         f"export LOOPX_ROLE_PROFILE_REF={_shell_arg(str(role_profile['schema_version']))}; "
@@ -1062,7 +1065,12 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         'export LOOPX_WORKER_SKILL_PATH="$LOOPX_WORKER_SKILL_ROOT/$LOOPX_REQUIRED_SKILL/SKILL.md"; '
         f"LOOPX_ROLE_PROFILE_JSON={_shell_arg(profile_json)}; "
         "export LOOPX_ROLE_PROFILE_JSON; "
+        'export LOOPX_ROLE_PROFILE_DIR="$LOOPX_PROJECT/.local/loopx-role-profiles"; '
+        'mkdir -p "$LOOPX_ROLE_PROFILE_DIR"; '
+        'export LOOPX_ROLE_PROFILE_PATH="$LOOPX_ROLE_PROFILE_DIR/$LOOPX_LANE_ID.public.json"; '
+        'printf "%s\\n" "$LOOPX_ROLE_PROFILE_JSON" > "$LOOPX_ROLE_PROFILE_PATH"; '
         "printf '\\n[LoopX role profile]\\n'; "
+        "printf 'role_profile_path=%s\\n' \"$LOOPX_ROLE_PROFILE_PATH\"; "
         "printf '%s\\n' \"$LOOPX_ROLE_PROFILE_JSON\"; "
         "printf 'worker_skill_path=%s\\n' \"$LOOPX_WORKER_SKILL_PATH\"; "
     )
