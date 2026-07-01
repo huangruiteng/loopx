@@ -195,6 +195,12 @@ def main() -> int:
         assert wrapper.resolve().name == "loopx", wrapper.resolve()
         release_root = wrapper.resolve().parents[1]
         assert (release_root / "loopx" / "cli.py").is_file(), release_root
+        dashboard_page = release_root / "apps" / "dashboard" / "src" / "views" / "dashboard-page.tsx"
+        action_packet = release_root / "apps" / "dashboard" / "src" / "data" / "action-packet.ts"
+        dashboard_node_modules = release_root / "apps" / "dashboard" / "node_modules"
+        assert dashboard_page.is_file(), dashboard_page
+        assert action_packet.is_file(), action_packet
+        assert not dashboard_node_modules.exists(), dashboard_node_modules
         assert (release_root / ".github" / "workflows" / "update-notes.yml").is_file(), release_root
         assert (release_root / "LICENSE").is_file(), release_root
         release_manifest_path = release_root / "release.json"
