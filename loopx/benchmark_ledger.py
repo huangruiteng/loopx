@@ -2755,6 +2755,147 @@ def _iter_ledger_runs(ledger: dict[str, Any]) -> list[dict[str, Any]]:
     return runs
 
 
+def merge_benchmark_run_ledgers(
+    *,
+    target_ledger_path: str | Path,
+    source_ledger_paths: list[str | Path],
+    benchmark_ids: list[str] | None = None,
+    run_group_contains: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Merge public benchmark_run_ledger_v0 files into one canonical ledger."""
+
+    if not source_ledger_paths:
+        raise ValueError("at least one source benchmark run ledger is required")
+    target_path = Path(target_ledger_path).expanduser()
+    markdown_path = target_path.with_suffix(".md")
+    benchmark_filter = {
+        _compact_text(value, limit=120)
+        for value in (benchmark_ids or [])
+        if _compact_text(value, limit=120)
+    }
+    run_group_filters = [
+        _compact_text(value, limit=160)
+        for value in (run_group_contains or [])
+        if _compact_text(value, limit=160)
+    ]
+    unique_sources: list[Path] = []
+    seen_sources: set[str] = set()
+    for source in source_ledger_paths:
+        source_path = Path(source).expanduser()
+        source_key = str(source_path.resolve(strict=False))
+        if source_key in seen_sources:
+            continue
+        seen_sources.add(source_key)
+        unique_sources.append(source_path)
+
+    def apply_merge(start_ledger: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        updated = _normalize_benchmark_run_ledger(dict(start_ledger))
+        before_run_ids = {
+            _compact_text(run.get("run_id"), limit=80)
+            for run in _iter_ledger_runs(updated)
+            if _compact_text(run.get("run_id"), limit=80)
+        }
+        before_signatures = {_ledger_entry_signature(run) for run in _iter_ledger_runs(updated)}
+        source_ledger_count = 0
+        missing_source_count = 0
+        source_run_count = 0
+        considered_run_count = 0
+        merged_run_count = 0
+        skipped_run_count = 0
+        skipped_by_reason: dict[str, int] = {}
+
+        def skip(reason: str) -> None:
+            nonlocal skipped_run_count
+            skipped_run_count += 1
+            skipped_by_reason[reason] = skipped_by_reason.get(reason, 0) + 1
+
+        for source_path in unique_sources:
+            if not source_path.exists():
+                missing_source_count += 1
+                continue
+            source_ledger_count += 1
+            source_ledger = load_benchmark_run_ledger(source_path)
+            for run in _iter_ledger_runs(source_ledger):
+                if not isinstance(run, dict):
+                    continue
+                source_run_count += 1
+                benchmark_id = _compact_text(run.get("benchmark_id"), limit=120)
+                if benchmark_filter and benchmark_id not in benchmark_filter:
+                    skip("benchmark_filter")
+                    continue
+                run_group_id = _compact_text(run.get("run_group_id"), limit=160)
+                if run_group_filters and not any(
+                    token in run_group_id for token in run_group_filters
+                ):
+                    skip("run_group_filter")
+                    continue
+                if not _entry_is_public_ledger_closeout(run):
+                    skip("non_terminal")
+                    continue
+                considered_run_count += 1
+                updated = upsert_benchmark_run_ledger_entry(updated, dict(run))
+                merged_run_count += 1
+
+        updated = _normalize_benchmark_run_ledger(updated)
+        after_runs = _iter_ledger_runs(updated)
+        after_run_ids = {
+            _compact_text(run.get("run_id"), limit=80)
+            for run in after_runs
+            if _compact_text(run.get("run_id"), limit=80)
+        }
+        after_signatures = {_ledger_entry_signature(run) for run in after_runs}
+        summary = {
+            "schema_version": "benchmark_run_ledger_merge_v0",
+            "ok": True,
+            "dry_run": dry_run,
+            "updated": not dry_run,
+            "ledger_path": str(target_path),
+            "markdown_path": str(markdown_path),
+            "source_ledger_count": source_ledger_count,
+            "missing_source_count": missing_source_count,
+            "source_run_count": source_run_count,
+            "considered_run_count": considered_run_count,
+            "merged_run_count": merged_run_count,
+            "new_run_id_count": len(after_run_ids - before_run_ids),
+            "new_signature_count": len(after_signatures - before_signatures),
+            "target_run_count": len(after_runs),
+            "skipped_run_count": skipped_run_count,
+            "skipped_by_reason": skipped_by_reason,
+            "benchmark_ids": sorted(benchmark_filter),
+            "run_group_contains": run_group_filters,
+            "source_paths_recorded": False,
+        }
+        return updated, summary
+
+    if dry_run:
+        _, summary = apply_merge(load_benchmark_run_ledger(target_path))
+    else:
+        with _LedgerWriteLock(target_path):
+            updated, summary = apply_merge(load_benchmark_run_ledger(target_path))
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
+            tmp_markdown_path = markdown_path.with_suffix(markdown_path.suffix + ".tmp")
+            tmp_path.write_text(
+                json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            tmp_markdown_path.write_text(
+                render_benchmark_run_ledger_markdown(updated),
+                encoding="utf-8",
+            )
+            tmp_path.replace(target_path)
+            tmp_markdown_path.replace(markdown_path)
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "updated": not dry_run,
+        "ledger_path": str(target_path),
+        "markdown_path": str(markdown_path),
+        "merge": summary,
+    }
+
+
 def _history_benchmark_run(record: dict[str, Any]) -> dict[str, Any] | None:
     if record.get("schema_version") == "benchmark_run_v0":
         return record

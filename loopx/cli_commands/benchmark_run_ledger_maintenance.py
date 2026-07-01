@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import sys
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from ..benchmark_ledger import (
     archive_benchmark_run_ledger_runs,
     check_benchmark_run_ledger_drift,
     load_benchmark_run_ledger,
+    merge_benchmark_run_ledgers,
     update_benchmark_run_ledger,
 )
 from ..history import collect_history, load_registry
@@ -30,6 +32,7 @@ OutputFormat = Callable[[argparse.Namespace], str]
 BENCHMARK_RUN_LEDGER_MAINTENANCE_COMMANDS = {
     "run-ledger-archive",
     "run-ledger-check",
+    "run-ledger-merge",
     "run-ledger-upsert",
 }
 
@@ -186,6 +189,38 @@ def render_benchmark_run_ledger_archive_markdown(payload: dict[str, object]) -> 
     return "\n".join(lines) + "\n"
 
 
+def render_benchmark_run_ledger_merge_markdown(payload: dict[str, object]) -> str:
+    merge = payload.get("merge") if isinstance(payload.get("merge"), dict) else {}
+    read_boundary = (
+        payload.get("read_boundary")
+        if isinstance(payload.get("read_boundary"), dict)
+        else {}
+    )
+    lines = [
+        "# Benchmark Run Ledger Merge",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- updated: `{payload.get('updated')}`",
+        f"- source_ledger_count: `{merge.get('source_ledger_count')}`",
+        f"- source_run_count: `{merge.get('source_run_count')}`",
+        f"- considered_run_count: `{merge.get('considered_run_count')}`",
+        f"- merged_run_count: `{merge.get('merged_run_count')}`",
+        f"- new_run_id_count: `{merge.get('new_run_id_count')}`",
+        f"- target_run_count: `{merge.get('target_run_count')}`",
+        f"- source paths recorded: `{merge.get('source_paths_recorded')}`",
+        f"- ledger: `{payload.get('ledger_path')}`",
+        f"- compact only: `{read_boundary.get('compact_only')}`",
+        f"- raw logs read: `{read_boundary.get('raw_logs_read')}`",
+        f"- task text read: `{read_boundary.get('task_text_read')}`",
+    ]
+    if merge.get("skipped_by_reason"):
+        lines.append(f"- skipped_by_reason: `{merge.get('skipped_by_reason')}`")
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
+    return "\n".join(lines) + "\n"
+
+
 def register_benchmark_run_ledger_maintenance_commands(
     benchmark_subparsers: argparse._SubParsersAction,
 ) -> None:
@@ -313,6 +348,59 @@ def register_benchmark_run_ledger_maintenance_commands(
         "--execute",
         action="store_true",
         help="Write the benchmark run ledger update.",
+    )
+
+    benchmark_run_ledger_merge_parser = benchmark_subparsers.add_parser(
+        "run-ledger-merge",
+        help=(
+            "Merge multiple public benchmark_run_ledger_v0 JSON files into one "
+            "canonical ledger. This reads compact ledger rows only."
+        ),
+    )
+    benchmark_run_ledger_merge_parser.add_argument(
+        "--run-ledger-path",
+        default=str(BENCHMARK_RUN_LEDGER_DEFAULT_PATH),
+        help="Target benchmark_run_ledger_v0 JSON. Markdown is rendered next to it.",
+    )
+    benchmark_run_ledger_merge_parser.add_argument(
+        "--source-run-ledger-path",
+        action="append",
+        default=[],
+        help="Source benchmark_run_ledger_v0 JSON. May be passed multiple times.",
+    )
+    benchmark_run_ledger_merge_parser.add_argument(
+        "--source-run-ledger-glob",
+        action="append",
+        default=[],
+        help=(
+            "Glob for source benchmark_run_ledger_v0 JSON files. May be passed "
+            "multiple times; matched source paths are not recorded in the output."
+        ),
+    )
+    benchmark_run_ledger_merge_parser.add_argument(
+        "--benchmark-id",
+        action="append",
+        default=[],
+        help="Only merge runs for this benchmark id. May be passed multiple times.",
+    )
+    benchmark_run_ledger_merge_parser.add_argument(
+        "--run-group-contains",
+        action="append",
+        default=[],
+        help=(
+            "Only merge runs whose run_group_id contains this public-safe token. "
+            "May be passed multiple times."
+        ),
+    )
+    benchmark_run_ledger_merge_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview merge update without writing. This is the default.",
+    )
+    benchmark_run_ledger_merge_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write the merged benchmark run ledger.",
     )
 
     benchmark_run_ledger_check_parser = benchmark_subparsers.add_parser(
@@ -450,6 +538,75 @@ def handle_benchmark_run_ledger_maintenance_command(
             payload,
             output_format(args),
             render_benchmark_run_ledger_archive_markdown,
+        )
+        return 0 if payload.get("ok") else 1
+
+    if args.benchmark_command == "run-ledger-merge":
+        try:
+            if args.dry_run and args.execute:
+                raise ValueError(
+                    "benchmark run-ledger-merge accepts either --dry-run or --execute, not both"
+                )
+            source_paths = [Path(value).expanduser() for value in args.source_run_ledger_path]
+            for pattern in args.source_run_ledger_glob or []:
+                source_paths.extend(
+                    Path(value).expanduser()
+                    for value in glob.glob(str(Path(pattern).expanduser()), recursive=True)
+                )
+            if not source_paths:
+                raise ValueError(
+                    "provide at least one --source-run-ledger-path or --source-run-ledger-glob"
+                )
+            merge_update = merge_benchmark_run_ledgers(
+                target_ledger_path=args.run_ledger_path,
+                source_ledger_paths=source_paths,
+                benchmark_ids=list(args.benchmark_id or []),
+                run_group_contains=list(args.run_group_contains or []),
+                dry_run=not bool(args.execute),
+            )
+            payload = {
+                "ok": True,
+                "dry_run": not bool(args.execute),
+                "updated": bool(args.execute),
+                "ledger_path": args.run_ledger_path,
+                "markdown_path": merge_update.get("markdown_path"),
+                "merge": merge_update.get("merge"),
+                "read_boundary": {
+                    "compact_only": True,
+                    "raw_logs_read": False,
+                    "task_text_read": False,
+                    "trajectory_read": False,
+                    "docker_invoked": False,
+                    "model_api_invoked": False,
+                    "upload_invoked": False,
+                },
+            }
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "dry_run": not bool(getattr(args, "execute", False)),
+                "updated": False,
+                "ledger_path": args.run_ledger_path,
+                "merge": {
+                    "schema_version": "benchmark_run_ledger_merge_v0",
+                    "ok": False,
+                    "source_paths_recorded": False,
+                },
+                "read_boundary": {
+                    "compact_only": True,
+                    "raw_logs_read": False,
+                    "task_text_read": False,
+                    "trajectory_read": False,
+                    "docker_invoked": False,
+                    "model_api_invoked": False,
+                    "upload_invoked": False,
+                },
+                "error": str(exc),
+            }
+        print_payload(
+            payload,
+            output_format(args),
+            render_benchmark_run_ledger_merge_markdown,
         )
         return 0 if payload.get("ok") else 1
 

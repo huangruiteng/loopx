@@ -20,6 +20,7 @@ from loopx.benchmark_ledger import (  # noqa: E402
     BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
     build_benchmark_run_ledger_entry,
     load_benchmark_run_ledger,
+    merge_benchmark_run_ledgers,
     render_benchmark_run_ledger_markdown,
     update_benchmark_run_ledger,
 )
@@ -1800,6 +1801,80 @@ def test_ledger_artifact_refs_do_not_record_private_local_paths() -> None:
         assert "`benchmark_run.compact.json`" in rendered, rendered
 
 
+def test_ledger_merge_combines_run_group_ledgers_without_source_paths() -> None:
+    def skillsbench_compact(case_id: str, *, score: float, run_id: str) -> dict[str, Any]:
+        return {
+            "schema_version": "benchmark_run_v0",
+            "run_id": run_id,
+            "benchmark_id": "skillsbench@1.1",
+            "case_id": case_id,
+            "case_ids": [case_id],
+            "mode": "skillsbench_codex_app_server_goal_baseline",
+            "arm_id": "codex_app_server_goal_baseline",
+            "route": "codex-app-server-goal-baseline",
+            "official_task_score": {
+                "kind": "skillsbench_reward",
+                "value": score,
+                "passed": score >= 1.0,
+            },
+            "score_failure_attribution": (
+                "none" if score >= 1.0 else "official_verifier_solution_failure"
+            ),
+            "round_reward_trace": {
+                "records": [{"agent_round": 1, "reward": score, "passed": score >= 1.0}],
+                "first_success_round": 1 if score >= 1.0 else None,
+                "success_observed": score >= 1.0,
+                "max_rounds_budget": 10,
+                "official_feedback_blinded": True,
+                "reward_feedback_forwarded": False,
+            },
+        }
+
+    with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-merge-") as tmp:
+        root = Path(tmp)
+        source_a = root / "batch-a" / "benchmark-run-ledger.json"
+        source_b = root / "batch-b" / "benchmark-run-ledger.json"
+        target = root / "current" / "benchmark-run-ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=source_a,
+            benchmark_run=skillsbench_compact("alpha-case", score=1.0, run_id="run-alpha"),
+            run_group_id="skillsbench-revtunnel-appgoal-batch5-alpha",
+        )
+        update_benchmark_run_ledger(
+            ledger_path=source_b,
+            benchmark_run=skillsbench_compact("beta-case", score=0.0, run_id="run-beta"),
+            run_group_id="skillsbench-revtunnel-appgoal-batch5-beta",
+        )
+        dry_run = merge_benchmark_run_ledgers(
+            target_ledger_path=target,
+            source_ledger_paths=[source_a, source_b],
+            benchmark_ids=["skillsbench@1.1"],
+            run_group_contains=["batch5"],
+            dry_run=True,
+        )
+        assert dry_run["merge"]["updated"] is False, dry_run
+        assert target.exists() is False, "dry-run must not write the target ledger"
+
+        merged = merge_benchmark_run_ledgers(
+            target_ledger_path=target,
+            source_ledger_paths=[source_a, source_b, source_a],
+            benchmark_ids=["skillsbench@1.1"],
+            run_group_contains=["batch5"],
+            dry_run=False,
+        )
+        assert merged["merge"]["source_ledger_count"] == 2, merged
+        assert merged["merge"]["merged_run_count"] == 2, merged
+        assert merged["merge"]["new_run_id_count"] == 2, merged
+        assert merged["merge"]["source_paths_recorded"] is False, merged
+        serialized_merge = json.dumps(merged, sort_keys=True)
+        assert "source-run-ledger" not in serialized_merge, serialized_merge
+
+        ledger = load_benchmark_run_ledger(target)
+        cases = ledger["benchmarks"]["skillsbench@1.1"]["cases"]
+        assert set(cases) == {"alpha-case", "beta-case"}, cases
+        assert (root / "current" / "benchmark-run-ledger.md").exists()
+
+
 if __name__ == "__main__":
     test_ledger_entry_upsert_from_compact_run()
     test_ledger_classifies_compact_trial_exception_failure()
@@ -1822,4 +1897,5 @@ if __name__ == "__main__":
     test_cli_post_launch_json_updates_run_ledger()
     test_cli_run_ledger_archive_hides_old_skillsbench_rows_from_current_view()
     test_ledger_artifact_refs_do_not_record_private_local_paths()
+    test_ledger_merge_combines_run_group_ledgers_without_source_paths()
     print("benchmark-run-ledger-smoke: ok")
