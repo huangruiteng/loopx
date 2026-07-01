@@ -961,9 +961,9 @@ def _auto_research_codex_bootstrap_prompt(
     return "\n".join(
         [
             "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",
-            "Use loopx-project for quota/status, then follow the worker-local loopx-auto-research role playbook for this pane.",
-            "If LOOPX_WORKER_SKILL_PATH is present, read that local playbook path instead of relying on global skill discovery.",
-            "If LOOPX_ROLE_PROFILE_PATH is present, read that local JSON profile before relying on pane title or environment-only identity.",
+            "Use the pane-local LoopX wrapper for quota/status/frontier, then follow this compact role prompt.",
+            "The worker-local loopx-auto-research playbook is available at `$LOOPX_WORKER_SKILL_PATH` for ambiguous cases, but do not print or cat it in the visible pane.",
+            "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH` or `$LOOPX_ROLE_PROFILE_JSON`; the visible role summary above is the human-facing profile.",
             "Use only the pane-local LoopX wrapper: `$LOOPX_PANE_LOOPX`. Do not call bare `loopx` or an absolute LoopX binary; those can hit the wrong registry and make this demo goal look missing.",
             "The wrapper has this demo's registry/runtime baked in. If `$LOOPX_PANE_LOOPX` is unset or not executable, stop and report that blocker instead of falling back.",
             "Visible panes are for human observation: run worker-turn and worker-loop with `--format markdown`. Use `--format json` only when redirecting to an artifact file and printing a compact summary.",
@@ -979,8 +979,7 @@ def _auto_research_codex_bootstrap_prompt(
             f"Responsibility: {responsibility}",
             f"Reasoning: model_reasoning_effort={effort}",
             "",
-            "Before any write, resolve identity from LOOPX_ROLE_PROFILE_PATH or LOOPX_ROLE_PROFILE_JSON, the printed quota packet, and the printed auto-research frontier.",
-            "Prefer the durable local profile at LOOPX_ROLE_PROFILE_PATH when it exists; use LOOPX_ROLE_PROFILE_JSON only as a fallback.",
+            "Before any write, resolve identity from the visible role summary, environment variables, quota summary, and auto-research frontier summary.",
             "If any of those disagree, or quota/frontier no longer selects this role, stop and report the blocker in this pane.",
             f"Allowed actions: {allowed_actions}",
             f"Allowed write scope: {write_scope}",
@@ -989,7 +988,7 @@ def _auto_research_codex_bootstrap_prompt(
             f"Stop conditions: {stop_conditions}",
             "",
             "Live E2E proof contract:",
-            "- Work only from the printed auto-research frontier and this role profile.",
+            "- Work only from the printed auto-research frontier and compact role summary.",
             "- The lightweight multi-round kernel is not live Codex evidence; do not claim kernel metrics as lane-authored results.",
             "- If you author evidence, write a public packet, run append-evidence with --output .local/evidence-runner/append-result.public.json, then run capture-live-evidence.",
             "- capture-live-evidence should create .local/evidence-runner/live-codex-e2e-evidence.public.json only after the real append succeeds.",
@@ -3439,9 +3438,92 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_auto_research_worker_turn_markdown(payload: dict[str, object]) -> str:
+    frontier_packet = payload.get("frontier") if isinstance(payload.get("frontier"), dict) else {}
+    quota = frontier_packet.get("quota") if isinstance(frontier_packet.get("quota"), dict) else {}
+    frontier = (
+        frontier_packet.get("frontier")
+        if isinstance(frontier_packet.get("frontier"), dict)
+        else {}
+    )
+    selected = frontier.get("selected") if isinstance(frontier.get("selected"), dict) else {}
+    completion = payload.get("completion") if isinstance(payload.get("completion"), dict) else {}
+    append = payload.get("append") if isinstance(payload.get("append"), dict) else {}
+    live_evidence = (
+        payload.get("live_evidence")
+        if isinstance(payload.get("live_evidence"), dict)
+        else {}
+    )
+    artifact = payload.get("artifact") if isinstance(payload.get("artifact"), dict) else {}
+    artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), dict) else {}
+    lines = [
+        "# LoopX Auto Research Worker Turn",
+        "",
+        f"- schema: `{payload.get('schema_version')}`",
+        f"- mode: `{payload.get('mode')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- agent_id: `{payload.get('agent_id')}`",
+        f"- quota_should_run: `{quota.get('should_run')}`",
+        f"- quota_state: `{quota.get('state')}`",
+        f"- user_action_required: `{quota.get('user_action_required')}`",
+        f"- selected_todo: `{payload.get('selected_todo_id') or selected.get('todo_id')}`",
+        f"- selected_action: `{payload.get('selected_action') or selected.get('allowed_action')}`",
+        f"- selected_title: {selected.get('title')}",
+        f"- executed: `{payload.get('executed')}`",
+        f"- would_execute: `{payload.get('would_execute')}`",
+        f"- completion_status: `{completion.get('status')}`",
+        f"- completion_executed: `{completion.get('executed')}`",
+        f"- artifact: `{artifact.get('filename') or artifacts.get('evidence_packet')}`",
+        f"- artifact_status: `{payload.get('artifact_status') or payload.get('packet_status')}`",
+        f"- dev_metric: `{payload.get('dev_metric')}`",
+        f"- holdout_metric: `{payload.get('holdout_metric')}`",
+        f"- appended_count: `{append.get('appended_count')}`",
+        f"- live_evidence_written: `{live_evidence.get('written')}`",
+        f"- public_boundary: raw_logs=`False`, private_artifacts=`False`, paths=`local-only`",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _render_auto_research_worker_loop_markdown(payload: dict[str, object]) -> str:
+    turns = payload.get("turns") if isinstance(payload.get("turns"), list) else []
+    lines = [
+        "# LoopX Auto Research Worker Loop",
+        "",
+        f"- schema: `{payload.get('schema_version')}`",
+        f"- mode: `{payload.get('mode')}`",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- round_count: `{payload.get('round_count')}`",
+        f"- max_rounds: `{payload.get('max_rounds')}`",
+        f"- stop_reason: `{payload.get('stop_reason')}`",
+        f"- turn_count: `{payload.get('turn_count')}`",
+        f"- executed_turn_count: `{payload.get('executed_turn_count')}`",
+        f"- completed_turn_count: `{payload.get('completed_turn_count')}`",
+        f"- selected_actions: `{', '.join(str(action) for action in payload.get('selected_actions') or [])}`",
+        "",
+        "## Turns",
+        "",
+    ]
+    if not turns:
+        lines.append("- none")
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+        lines.append(
+            f"- round `{turn.get('round')}` agent `{turn.get('agent_id')}` "
+            f"mode `{turn.get('mode')}` action `{turn.get('selected_action')}` "
+            f"executed `{turn.get('executed')}` completion `{turn.get('completion_status')}` "
+            f"dev `{turn.get('dev_metric')}` holdout `{turn.get('holdout_metric')}`"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def render_auto_research_markdown(payload: dict[str, object]) -> str:
     if not payload.get("ok"):
         return f"# LoopX Auto Research\n\n- ok: `False`\n- error: `{payload.get('error')}`\n"
+    if payload.get("schema_version") == "auto_research_worker_turn_v0":
+        return _render_auto_research_worker_turn_markdown(payload)
+    if payload.get("schema_version") == "auto_research_worker_loop_v0":
+        return _render_auto_research_worker_loop_markdown(payload)
     if payload.get("schema_version") == AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION:
         surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
         summary = (

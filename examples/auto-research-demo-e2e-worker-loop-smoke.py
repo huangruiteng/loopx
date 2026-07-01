@@ -35,6 +35,9 @@ def assert_public_safe(payload: Any) -> None:
 
 
 def main() -> int:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.capabilities.auto_research.legacy_core import render_auto_research_markdown
+
     bootstrap_source = (
         REPO_ROOT / "loopx/capabilities/auto_research/legacy_core.py"
     ).read_text(encoding="utf-8")
@@ -42,6 +45,72 @@ def main() -> int:
     assert "--format json auto-research worker-loop" not in bootstrap_source
     assert "auto-research worker-turn --format markdown" in bootstrap_source
     assert "Do not call bare `loopx`" in bootstrap_source
+    assert "Use loopx-project" not in bootstrap_source
+    assert "read that local JSON profile" not in bootstrap_source
+    assert "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH`" in bootstrap_source
+
+    worker_markdown = render_auto_research_markdown(
+        {
+            "ok": True,
+            "schema_version": "auto_research_worker_turn_v0",
+            "mode": "dry_run",
+            "goal_id": GOAL_ID,
+            "agent_id": AGENT_ID,
+            "selected_todo_id": "todo_worker_smoke",
+            "selected_action": "run_dev_eval",
+            "would_execute": "run_dev_eval",
+            "executed": False,
+            "completion": {"requested": False, "executed": False},
+            "frontier": {
+                "quota": {
+                    "should_run": True,
+                    "state": "eligible",
+                    "user_action_required": False,
+                },
+                "frontier": {
+                    "selected": {
+                        "todo_id": "todo_worker_smoke",
+                        "allowed_action": "run_dev_eval",
+                        "title": "Run dev evidence.",
+                    }
+                },
+            },
+        }
+    )
+    assert "# LoopX Auto Research Worker Turn" in worker_markdown
+    assert "- selected_action: `run_dev_eval`" in worker_markdown
+    assert '"schema_version"' not in worker_markdown
+
+    loop_markdown = render_auto_research_markdown(
+        {
+            "ok": True,
+            "schema_version": "auto_research_worker_loop_v0",
+            "mode": "execute",
+            "goal_id": GOAL_ID,
+            "round_count": 1,
+            "max_rounds": 2,
+            "stop_reason": "no_runnable_frontier",
+            "turn_count": 1,
+            "executed_turn_count": 1,
+            "completed_turn_count": 1,
+            "selected_actions": ["run_dev_eval"],
+            "turns": [
+                {
+                    "round": 1,
+                    "agent_id": AGENT_ID,
+                    "mode": "execute",
+                    "selected_action": "run_dev_eval",
+                    "executed": True,
+                    "completion_status": "done",
+                    "dev_metric": 4.0,
+                    "holdout_metric": None,
+                }
+            ],
+        }
+    )
+    assert "# LoopX Auto Research Worker Loop" in loop_markdown
+    assert "agent `codex-side-bypass`" in loop_markdown
+    assert '"turns"' not in loop_markdown
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
