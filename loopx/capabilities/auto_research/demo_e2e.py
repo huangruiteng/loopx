@@ -626,6 +626,7 @@ def run_auto_research_demo_e2e(
     live_evidence_path: str | None,
     append_evidence: AppendEvidence,
     visible_launcher: VisibleLauncher | None = None,
+    goal_surface_mode: str = "explicit_goal",
 ) -> dict[str, object]:
     if launch_visible and not execute:
         raise ValueError("--launch-visible requires --execute")
@@ -637,6 +638,7 @@ def run_auto_research_demo_e2e(
     tracking_goal = tracking_goal_id.strip() if isinstance(tracking_goal_id, str) else ""
     if tracking_goal == goal_id:
         tracking_goal = ""
+    reuses_default_internal_goal = goal_id == AUTO_RESEARCH_DEFAULT_GOAL_ID
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,
         session_name=session_name,
@@ -657,14 +659,21 @@ def run_auto_research_demo_e2e(
         "tracking_goal_id": tracking_goal or None,
         "route_contract": {
             "schema_version": "auto_research_demo_frontier_route_v0",
+            "goal_surface_mode": goal_surface_mode,
             "frontier_goal_id": goal_id,
             "tracking_goal_id": tracking_goal or None,
             "tracking_goal_drives_frontier": False,
             "visible_lanes_read_goal_id": goal_id,
-            "dedicated_positive_demo_frontier": goal_id == AUTO_RESEARCH_DEFAULT_GOAL_ID,
+            "fresh_goal_default": goal_surface_mode == "fresh_demo_goal",
+            "inherits_default_goal": goal_surface_mode == "inherited_default_goal",
+            "reuses_default_internal_goal": reuses_default_internal_goal,
+            "default_internal_goal_id": AUTO_RESEARCH_DEFAULT_GOAL_ID,
+            "dedicated_positive_demo_frontier": not reuses_default_internal_goal,
             "reason": (
-                "Use --goal-id for the research frontier that visible lanes inspect. "
-                "--tracking-goal-id is metadata for the parent productization goal and must not reroute panes."
+                "Omitting --goal-id creates an isolated demo goal surface. "
+                "Use --goal-id to target a specific research frontier, or --inherit-default-goal "
+                "to intentionally reuse the internal shared demo goal. --tracking-goal-id is metadata "
+                "for the parent productization goal and must not reroute panes."
             ),
         },
         "agent_id": agent_id,
