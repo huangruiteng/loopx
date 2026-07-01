@@ -35,6 +35,14 @@ def assert_public_safe(payload: Any) -> None:
 
 
 def main() -> int:
+    bootstrap_source = (
+        REPO_ROOT / "loopx/capabilities/auto_research/legacy_core.py"
+    ).read_text(encoding="utf-8")
+    assert "--format json auto-research worker-turn" not in bootstrap_source
+    assert "--format json auto-research worker-loop" not in bootstrap_source
+    assert "auto-research worker-turn --format markdown" in bootstrap_source
+    assert "Do not call bare `loopx`" in bootstrap_source
+
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
         workspace = temp / "workspace"
