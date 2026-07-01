@@ -834,13 +834,14 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "id": "auto-research-demo",
         "title": "Auto-research demo and frontier route",
         "purpose": (
-            "Check visible auto-research demo routing, deterministic E2E replay, "
-            "and shared frontier projection without launching real Codex lanes by default."
+            "Check the minimal auto-research kernel and shared frontier projection; "
+            "keep legacy visible/demo wrappers out of the default canary path."
         ),
         "catalog_families": ["Work Routing", "Evidence Lifecycle", "State And Boundary", "Human Decision"],
         "trigger_hints": (
             "auto-research",
             "auto research",
+            "lite-e2e",
             "demo-supervisor",
             "demo e2e",
             "frontier",
@@ -851,9 +852,9 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/auto-research-demo-e2e-smoke.py",
+                "command": "python3 examples/auto-research-lightweight-kernel-smoke.py",
                 "tier": "default",
-                "reason": "checks the deterministic positive demo route, route contract, and no-live-claim boundary",
+                "reason": "checks the minimal real kernel and one-command lite-e2e path",
             },
             {
                 "command": "python3 examples/decentralized-auto-research-frontier-smoke.py",
@@ -861,19 +862,24 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks shared frontier, evidence graph, board projection, and public boundary fixtures",
             },
             {
-                "command": "python3 examples/auto-research-live-codex-claim-boundary-smoke.py",
-                "tier": "default",
-                "reason": "guards that live E2E claims stay dev-only unless held-out or promotion authority is explicit",
+                "command": "python3 examples/auto-research-demo-e2e-smoke.py",
+                "tier": "deep",
+                "reason": "samples the legacy demo route when compatibility coverage is explicitly requested",
             },
             {
-                "command": "python3 examples/auto-research-one-click-ux-smoke.py",
-                "tier": "default",
-                "reason": "checks the one-command visible UX packet with fake tmux/Codex binaries",
+                "command": "python3 examples/auto-research-live-codex-claim-boundary-smoke.py",
+                "tier": "deep",
+                "reason": "guards that live E2E claims stay dev-only unless held-out or promotion authority is explicit",
             },
             {
                 "command": "python3 examples/auto-research-demo-supervisor-smoke.py",
                 "tier": "deep",
                 "reason": "samples the full dry-run supervisor packet and lane bootstrap contract",
+            },
+            {
+                "command": "python3 examples/auto-research-one-click-ux-smoke.py",
+                "tier": "deep",
+                "reason": "checks the legacy one-command visible UX packet with fake tmux/Codex binaries",
             },
             {
                 "command": "python3 examples/auto-research-visible-launcher-smoke.py",
