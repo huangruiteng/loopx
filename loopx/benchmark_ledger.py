@@ -1504,6 +1504,21 @@ def build_benchmark_run_ledger_entry(
         if isinstance(benchmark_run.get("runner_prerequisites"), dict)
         else {}
     )
+    runner_failure = (
+        benchmark_run.get("runner_failure")
+        if isinstance(benchmark_run.get("runner_failure"), dict)
+        else {}
+    )
+    verifier_reward_artifact_recovery = (
+        benchmark_run.get("verifier_reward_artifact_recovery")
+        if isinstance(benchmark_run.get("verifier_reward_artifact_recovery"), dict)
+        else {}
+    )
+    validation = (
+        benchmark_run.get("validation")
+        if isinstance(benchmark_run.get("validation"), dict)
+        else {}
+    )
     runtime_preflight_passed = _codex_acp_runtime_preflight_passed(
         runner_prerequisites
     )
@@ -1576,7 +1591,50 @@ def build_benchmark_run_ledger_entry(
         else None,
         "failure_class": failure_class,
         "failure_scope": failure_scope,
-        "failure_labels": _compact_list(benchmark_run.get("failure_attribution_labels"), limit=8),
+        "failure_labels": _compact_list(
+            benchmark_run.get("failure_attribution_labels"),
+            limit=8,
+        ),
+        "runner_return_status": _compact_text(
+            benchmark_run.get("runner_return_status"),
+            limit=120,
+        ),
+        "runner_score_recovered_from_verifier_artifact": (
+            runner_failure.get("score_recovered_from_verifier_artifact")
+            if isinstance(
+                runner_failure.get("score_recovered_from_verifier_artifact"),
+                bool,
+            )
+            else None
+        ),
+        "verifier_reward_artifact_recovery_status": _compact_text(
+            verifier_reward_artifact_recovery.get("status"),
+            limit=120,
+        ),
+        "verifier_reward_artifact_recovered": (
+            validation.get("verifier_reward_artifact_recovered")
+            if isinstance(validation.get("verifier_reward_artifact_recovered"), bool)
+            else (
+                verifier_reward_artifact_recovery.get("reward_present")
+                if isinstance(
+                    verifier_reward_artifact_recovery.get("reward_present"),
+                    bool,
+                )
+                else None
+            )
+        ),
+        "official_result_json_materialized": (
+            verifier_reward_artifact_recovery.get("official_result_json_materialized")
+            if isinstance(
+                verifier_reward_artifact_recovery.get("official_result_json_materialized"),
+                bool,
+            )
+            else (
+                validation.get("official_result_json_materialized")
+                if isinstance(validation.get("official_result_json_materialized"), bool)
+                else None
+            )
+        ),
         "setup_blockers": _compact_list(
             benchmark_run.get("worker_setup_diagnostic_blockers"),
             limit=4,
@@ -2927,6 +2985,15 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
         "official_passed",
         "failure_class",
         "failure_scope",
+        "failure_labels",
+        "attempt_lifecycle_phase",
+        "attempt_failure_label",
+        "attempt_failure_class",
+        "runner_return_status",
+        "runner_score_recovered_from_verifier_artifact",
+        "verifier_reward_artifact_recovery_status",
+        "verifier_reward_artifact_recovered",
+        "official_result_json_materialized",
         "repair_class",
         "repair_priority",
     )

@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.benchmark import build_terminal_bench_harbor_result_benchmark_run  # noqa: E402
 from loopx.benchmark_ledger import (  # noqa: E402
     BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
+    build_benchmark_run_ledger_current_aggregate,
     build_benchmark_run_ledger_entry,
     load_benchmark_run_ledger,
     merge_benchmark_run_ledgers,
@@ -839,6 +840,92 @@ def test_passed_pair_routes_to_baseline_solved_non_regression() -> None:
         assert case["latest_decision"]["decision"] == (
             "paired_baseline_solved_treatment_preserved"
         ), case
+
+
+def test_skillsbench_recovered_reward_closeout_fields_survive_current_aggregate() -> None:
+    run = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "job_name": "skillsbench_recovered_reward_fixture",
+        "mode": "skillsbench_codex_app_server_goal_baseline",
+        "route": "codex-app-server-goal-baseline",
+        "official_score_status": "completed",
+        "official_task_score": {
+            "kind": "skillsbench_verifier_reward_recovered_from_verifier_artifact",
+            "passed": False,
+            "value": 0.0,
+        },
+        "score_failure_attribution": "official_score_zero_case_failure",
+        "runner_return_status": "interrupted_after_verifier_reward_artifact",
+        "failure_attribution_labels": [
+            "skillsbench_runner_error",
+            "official_score_zero_case_failure",
+            "skillsbench_runner_interrupted_after_verifier_reward_artifact",
+        ],
+        "runner_failure": {
+            "failure_class": "skillsbench_runner_interrupted_after_verifier_reward_artifact",
+            "score_recovered_from_verifier_artifact": True,
+        },
+        "verifier_reward_artifact_recovery": {
+            "schema_version": "skillsbench_verifier_reward_artifact_recovery_v0",
+            "status": "official_score_recovered_from_verifier_reward_artifact",
+            "official_result_json_materialized": False,
+            "reward_present": True,
+            "passed": False,
+        },
+        "validation": {
+            "verifier_reward_artifact_recovered": True,
+            "official_result_json_materialized": False,
+        },
+        "attempt_accounting": {
+            "lifecycle_phase": "worker_started",
+            "failure_label": "official_score_zero_case_failure",
+            "failure_class": "solver_failed",
+            "launcher_attempt_countable": True,
+            "case_attempt_countable": True,
+            "solver_attempt_countable": True,
+            "verifier_attempt_countable": True,
+            "official_score_attempt_countable": True,
+        },
+        "trials": [{"task_id": "recovered-reward-fixture", "exception_type": "none"}],
+    }
+    with tempfile.TemporaryDirectory(prefix="benchmark-ledger-recovered-reward-") as tmp:
+        root = Path(tmp)
+        ledger_path = root / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=run,
+            run_group_id="recovered-reward-closeout-fixture",
+            cwd=root,
+        )
+        entry = update["entry"]
+        assert entry["failure_class"] == "official_score_zero_case_failure", entry
+        assert entry["failure_scope"] == "case_or_solution", entry
+        assert entry["score_status"] == "failed", entry
+        assert entry["official_score_attempt_countable"] is True, entry
+        assert entry["runner_return_status"] == (
+            "interrupted_after_verifier_reward_artifact"
+        ), entry
+        assert entry["runner_score_recovered_from_verifier_artifact"] is True, entry
+        assert entry["verifier_reward_artifact_recovered"] is True, entry
+        assert entry["official_result_json_materialized"] is False, entry
+        assert entry["verifier_reward_artifact_recovery_status"] == (
+            "official_score_recovered_from_verifier_reward_artifact"
+        ), entry
+
+        aggregate = build_benchmark_run_ledger_current_aggregate(
+            load_benchmark_run_ledger(ledger_path),
+            canonical_case_ids=["recovered-reward-fixture"],
+        )
+        summary = aggregate["case_best"]["recovered-reward-fixture"]
+        assert summary["bucket"] == "official_zero", summary
+        assert summary["failure_class"] == "official_score_zero_case_failure", summary
+        assert summary["runner_return_status"] == (
+            "interrupted_after_verifier_reward_artifact"
+        ), summary
+        assert summary["runner_score_recovered_from_verifier_artifact"] is True, summary
+        assert summary["verifier_reward_artifact_recovered"] is True, summary
+        assert summary["official_result_json_materialized"] is False, summary
 
 
 def test_skillsbench_product_mode_pair_review_is_ledgered() -> None:
@@ -1888,6 +1975,7 @@ if __name__ == "__main__":
     test_verified_bridge_official_zero_routes_to_no_uplift_not_alignment()
     test_skillsbench_product_mode_pair_review_is_ledgered()
     test_skillsbench_product_mode_pair_blocks_shallow_lifecycle()
+    test_skillsbench_recovered_reward_closeout_fields_survive_current_aggregate()
     test_raw_max5_baseline_does_not_force_product_pair_without_product_treatment()
     test_ledger_ingests_post_launch_stale_active_marker()
     test_ledger_ingests_post_launch_ended_active_marker()
