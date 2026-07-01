@@ -149,7 +149,7 @@ def main() -> int:
         "loopx-auto-research-demo",
         "auto-research quickstart",
         "auto-research demo-supervisor",
-        "auto-research acceptance",
+        "auto-research worker-loop",
         "research-curator",
         "hypothesis-mapper",
         "evidence-runner",

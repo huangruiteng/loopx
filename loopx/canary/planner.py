@@ -846,7 +846,6 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "demo e2e",
             "frontier",
             "visible launcher",
-            "one-click",
             "loopx/capabilities/auto_research",
             "loopx/cli_commands/auto_research",
         ),
@@ -862,11 +861,6 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks shared frontier, evidence graph, board projection, and public boundary fixtures",
             },
             {
-                "command": "python3 examples/auto-research-demo-e2e-smoke.py",
-                "tier": "deep",
-                "reason": "samples the legacy demo route when compatibility coverage is explicitly requested",
-            },
-            {
                 "command": "python3 examples/auto-research-live-codex-claim-boundary-smoke.py",
                 "tier": "deep",
                 "reason": "guards that live E2E claims stay dev-only unless held-out or promotion authority is explicit",
@@ -875,16 +869,6 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/auto-research-demo-supervisor-smoke.py",
                 "tier": "deep",
                 "reason": "samples the full dry-run supervisor packet and lane bootstrap contract",
-            },
-            {
-                "command": "python3 examples/auto-research-one-click-ux-smoke.py",
-                "tier": "deep",
-                "reason": "checks the legacy one-command visible UX packet with fake tmux/Codex binaries",
-            },
-            {
-                "command": "python3 examples/auto-research-visible-launcher-smoke.py",
-                "tier": "deep",
-                "reason": "runs the fake visible launcher acceptance path without starting real Codex work",
             },
             {
                 "command": "python3 examples/auto-research-rollout-readpath-smoke.py",

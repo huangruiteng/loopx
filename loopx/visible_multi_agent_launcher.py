@@ -401,11 +401,9 @@ def execute_visible_multi_agent_launcher(
     launch_result_schema: str = "multi_agent_visible_launch_result_v0",
     acceptance_schema: str = "multi_agent_visible_launch_acceptance_v0",
     lane_default: str = "agent-lane",
-    terminal_lane_label_template: str = "[LoopX visible lane: {lane_id}]",
     frontier_or_blocker_markers: Iterable[str] = ("[LoopX frontier]", "[LoopX blocked reason]"),
     frontier_or_blocker_status_markers: Iterable[str] = ("frontier_or_blocked_reason=printed",),
 ) -> tuple[dict[str, object], str, str]:
-    del terminal_lane_label_template
     require_executable(cli_bin, field="cli_bin")
     require_executable(codex_bin, field="codex_bin")
     chosen = resolve_visible_launcher(requested=requested_launcher, tmux_bin=tmux_bin)

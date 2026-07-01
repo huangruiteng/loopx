@@ -277,9 +277,9 @@ Allowed actions:
 Useful command:
 
 ```bash
-loopx --format json auto-research acceptance \
+loopx --format json auto-research demo-supervisor \
   --goal-id "$LOOPX_GOAL_ID" \
-  --agent-id "$LOOPX_AGENT_ID"
+  --workspace "$LOOPX_PROJECT"
 ```
 
 Must not:

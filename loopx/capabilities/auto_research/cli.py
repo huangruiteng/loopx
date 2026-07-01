@@ -409,15 +409,15 @@ def register_auto_research_commands(
         "--execute",
         action="store_true",
         help=(
-            "Actually launch visible Codex CLI lanes. Omit for the default dry-run packet. "
+            "Launch visible Codex CLI lanes in tmux. Omit for the default dry-run packet. "
             "This only starts local visible terminals; LoopX writeback still happens through normal lane commands."
         ),
     )
     demo_supervisor_parser.add_argument(
         "--launcher",
-        choices=["auto", "tmux", "terminal"],
+        choices=["auto", "tmux"],
         default="auto",
-        help="Visible process launcher for --execute. auto prefers tmux, then macOS Terminal.",
+        help="Visible process launcher for --execute. auto currently resolves to tmux.",
     )
     demo_supervisor_parser.add_argument(
         "--attach",
@@ -518,9 +518,9 @@ def register_auto_research_commands(
     )
     demo_e2e_parser.add_argument(
         "--launcher",
-        choices=["auto", "tmux", "terminal"],
+        choices=["auto", "tmux"],
         default="auto",
-        help="Visible process launcher for --launch-visible.",
+        help="Visible process launcher for --launch-visible. auto currently resolves to tmux.",
     )
     demo_e2e_parser.add_argument(
         "--attach",
@@ -639,7 +639,6 @@ def _execute_auto_research_demo_supervisor(
         launch_result_schema="auto_research_demo_launch_result_v0",
         acceptance_schema="auto_research_visible_launch_acceptance_v0",
         lane_default="research-lane",
-        terminal_lane_label_template="[LoopX auto-research lane: {lane_id}]",
         frontier_or_blocker_markers=(
             "[LoopX auto-research frontier]",
             "[LoopX blocked reason]",
@@ -654,7 +653,7 @@ def _execute_auto_research_demo_supervisor(
             {
                 "dry_run_plan_only": False,
                 "starts_tmux": chosen == "tmux",
-                "opens_terminal": chosen == "terminal",
+                "opens_terminal": False,
                 "runs_codex": True,
                 "writes_loopx_state": False,
                 "spends_loopx_quota": False,

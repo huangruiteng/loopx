@@ -10,6 +10,3 @@ from .kernel import (
     run_builtin_lightweight_demo,
     run_lightweight_auto_research,
 )
-
-# Compatibility boundary for the older projection/demo implementation.
-from .legacy_core import *  # noqa: F401,F403

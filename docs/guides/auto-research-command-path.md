@@ -121,8 +121,8 @@ Expected minimal E2E result:
 - dev and holdout exactness are both `true`;
 - `protected_scope_clean` is `true`;
 - the board is rollout-backed and has at least one promotion candidate;
-- `acceptance.ready_for_real_launch` is `true`, meaning the visible launch
-  controls and public-safe board are ready for operator rehearsal.
+- visible launch controls stay separate from the research result and only prove
+  that panes can be inspected, stopped, or retried.
 
 Truth boundary:
 
@@ -133,8 +133,6 @@ Truth boundary:
   `protected_eval_kernel_positive_precheck`;
 - `claim_summary.cannot_claim` includes
   `visible_codex_workers_authored_result`;
-- `acceptance.ready_for_real_launch` does not mean live Codex lanes already
-  produced the positive k-NN evidence;
 - `--launch-visible` proves visible panes can start, but pane startup alone is
   not a live Codex research result.
 
@@ -154,7 +152,7 @@ loopx --registry "$LOOPX_REGISTRY" \
   --execute
 ```
 
-Then pass that compact evidence packet to the E2E acceptance command:
+Then pass that compact evidence packet back to the E2E readback command:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -267,26 +265,26 @@ execution boundary.
 For compatibility or product experiments, `--agent` can still name explicit
 lanes, including a separate evidence-verifier lane.
 
-## 3. Render The Acceptance Packet
+## 3. Run The Worker Loop
 
-Use the acceptance packet before a live rehearsal. It tells the user what must
-be visible and what remains unsafe.
+The visible panes should do work through the same CLI path a heartbeat worker
+uses: each turn re-reads quota, frontier, todo projection, and rollout evidence
+before writing anything.
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research acceptance \
+  --format json auto-research worker-loop \
   --goal-id loopx-auto-research-knn \
-  --agent-id codex-side-bypass
+  --agent-id codex-product-capability \
+  --agent-id codex-side-bypass \
+  --agent-id codex-main-control \
+  --max-rounds 3
 ```
 
-Accept the demo only when:
-
-- the board/frontier is read-only or rollout-backed;
-- the supervisor dry-run shows no hidden state write, quota spend, credential
-  access, raw-log read, or session-file read;
-- every lane has its own quota and frontier command before Codex starts;
-- attach and stop controls are visible.
+When the dry-run shows the selected lane work is safe, add `--execute` and
+`--complete-selected-todo`. This is the smallest real multi-agent loop: it is
+state-mediated, not a hidden leader workflow.
 
 ## 4. Launch A Visible Rehearsal
 
@@ -302,18 +300,6 @@ loopx --registry "$LOOPX_REGISTRY" \
   --execute \
   --launcher tmux \
   --attach
-```
-
-On macOS without tmux, use visible terminal windows instead:
-
-```bash
-loopx --registry "$LOOPX_REGISTRY" \
-  --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn \
-  --workspace "$PWD" \
-  --execute \
-  --launcher terminal
 ```
 
 The user can stop a tmux rehearsal with:
@@ -336,9 +322,11 @@ Useful read-only checks:
 ```bash
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" status
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research frontier --goal-id loopx-auto-research-knn
+  --format json auto-research frontier --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research board --goal-id loopx-auto-research-knn
+  --format json auto-research board --goal-id loopx-auto-research-knn \
+  --agent-id codex-side-bypass
 ```
 
 The demo is healthy when the user can identify the active hypothesis, see which

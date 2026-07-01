@@ -365,14 +365,6 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert (
         "python3 examples/decentralized-auto-research-frontier-smoke.py" in auto_research_commands
     ), auto_research_profile
-    assert (
-        "python3 examples/auto-research-demo-e2e-smoke.py"
-        not in auto_research_commands
-    ), auto_research_profile
-    assert (
-        "python3 examples/auto-research-one-click-ux-smoke.py"
-        not in auto_research_commands
-    ), auto_research_profile
     assert all(check["tier"] == "default" for check in auto_research_profile["checks"]), auto_research_profile
     assert auto_research_profile["deep_checks_available"] is True, auto_research_profile
 
