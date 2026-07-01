@@ -1481,12 +1481,17 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
         "could not find the file /app" in text
         or "main:/app/skills" in text
         or (
+            "mkdir -p /app" in text
+            and "permission denied" in text
+        )
+        or (
             "/app/skills" in text
             and (
                 "bind source path" in text
                 or "mount" in text
                 or "volume" in text
                 or "task skills" in text
+                or "permission denied" in text
             )
         )
     ):
@@ -4177,10 +4182,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             if item not in warning_labels:
                 warning_labels.append(item)
+    setup_failure_observed = _skillsbench_attempt_setup_blocked(failure_labels)
     native_goal_worker_uncountable = bool(
         native_goal_worker_failure_label
         and not official_passed
         and not native_goal_worker_countable_via_bridge_activity
+        and not setup_failure_observed
     )
     if native_goal_worker_uncountable:
         exception_type = native_goal_worker_failure_label

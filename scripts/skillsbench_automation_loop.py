@@ -449,6 +449,9 @@ def _benchflow_rollout_planes_class(module: Any) -> type[Any] | None:
 
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APP_SKILLS_MOUNT_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
+DOCKER_APP_SKILLS_MOUNT_KEEP_FILE = "loopx_app_skills_keep"
+DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_CONTEXT"
+DOCKER_APP_SKILLS_DOCKERIGNORE_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_CONTEXT"
 DOCKER_APT_RETRY_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APT_RETRY"
 DOCKER_APT_RETRY_END = "# END LOOPX_SKILLSBENCH_APT_RETRY"
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
@@ -6100,9 +6103,30 @@ def patch_dockerfile_app_skills_mount(dockerfile: Path) -> bool:
     )
     if re.search(r"^\s*FROM\s+scratch(?:\s|$)", text, flags=re.IGNORECASE | re.MULTILINE):
         return False
+    keep_file = dockerfile.parent / DOCKER_APP_SKILLS_MOUNT_KEEP_FILE
+    if not keep_file.exists():
+        _write_text_atomic(keep_file, "LoopX SkillsBench app skills mount marker.\n")
+    dockerignore = dockerfile.parent / ".dockerignore"
+    if dockerignore.exists():
+        dockerignore_text = _strip_marker_block(
+            dockerignore.read_text(encoding="utf-8", errors="replace"),
+            DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN,
+            DOCKER_APP_SKILLS_DOCKERIGNORE_END,
+        ).rstrip()
+        dockerignore_block = (
+            f"{DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN}\n"
+            f"!{DOCKER_APP_SKILLS_MOUNT_KEEP_FILE}\n"
+            f"{DOCKER_APP_SKILLS_DOCKERIGNORE_END}"
+        )
+        _write_text_atomic(
+            dockerignore,
+            (dockerignore_text + "\n\n" if dockerignore_text else "")
+            + dockerignore_block
+            + "\n",
+        )
     block = (
         f"{DOCKER_APP_SKILLS_MOUNT_BEGIN}\n"
-        "RUN mkdir -p /app /app/skills\n"
+        f"COPY {DOCKER_APP_SKILLS_MOUNT_KEEP_FILE} /app/skills/.loopx_keep\n"
         f"{DOCKER_APP_SKILLS_MOUNT_END}"
     )
     patched_lines: list[str] = []

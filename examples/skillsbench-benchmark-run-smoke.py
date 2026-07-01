@@ -75,6 +75,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
+    DOCKER_APP_SKILLS_MOUNT_KEEP_FILE,
     DOCKER_PIP_BOOTSTRAP_BEGIN,
     DOCKER_HOST_CPU_ENV,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
@@ -4261,6 +4262,36 @@ def write_official_skillsbench_app_skills_mount_failure(root: Path) -> Path:
     return result_path
 
 
+def write_official_skillsbench_app_skills_permission_failure(root: Path) -> Path:
+    run_dir = root / "official" / "2026-06-15__00-00-03" / "audit__perm"
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": "audit",
+            "rollout_name": "audit__perm",
+            "rewards": None,
+            "agent": "codex-acp",
+            "agent_name": "",
+            "model": "gpt-5.5",
+            "n_tool_calls": 0,
+            "n_prompts": 0,
+            "error": (
+                "Docker compose command failed for environment audit. "
+                "Command: docker compose build. Return code: 1. "
+                "Dockerfile:45 RUN mkdir -p /app /app/skills. "
+                "mkdir: cannot create directory '/app': Permission denied. "
+                "failed to solve: process did not complete successfully"
+            ),
+            "verifier_error": None,
+            "partial_trajectory": False,
+            "trajectory_source": None,
+        },
+    )
+    write_json(run_dir / "timing.json", {"environment_setup": 12.0, "total": 12.0})
+    return result_path
+
+
 def write_official_skillsbench_docker_port_conflict_failure(root: Path) -> Path:
     run_dir = root / "official" / "2026-06-15__00-00-02" / "setup-fuzzing-py__port"
     result_path = run_dir / "result.json"
@@ -4741,6 +4772,42 @@ def test_skillsbench_app_skills_failure_attribution() -> None:
         assert "skillsbench_environment_setup_error" in compact[
             "failure_attribution_labels"
         ], compact
+
+
+def test_skillsbench_app_skills_permission_failure_not_overridden_by_worker_route() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-skills-perm-") as tmp:
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": False,
+            "native_goal_worker_connect_count": 0,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        result_path = write_official_skillsbench_app_skills_permission_failure(Path(tmp))
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="codex-app-server-goal-baseline",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_environment_app_mount_missing"
+        ), compact
+        assert "skillsbench_environment_setup_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "skillsbench_native_goal_worker_uncountable_baseline" not in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert compact["runner_failure"]["failure_class"] == (
+            "skillsbench_environment_app_mount_missing"
+        ), compact
 
 
 def test_skillsbench_docker_pip_bootstrap_failure_attribution() -> None:
@@ -5427,11 +5494,13 @@ def test_skillsbench_docker_task_staging_adds_app_skills_mount() -> None:
         root = Path(tmp)
         task = root / "tasks" / "citation-check"
         dockerfile = task / "environment" / "Dockerfile"
+        dockerignore = task / "environment" / ".dockerignore"
         skills = task / "environment" / "skills" / "citation"
         skills.mkdir(parents=True)
         (skills / "SKILL.md").write_text("---\nname: citation\n---\n", encoding="utf-8")
         original_text = "FROM ubuntu:24.04\n\nWORKDIR /root\n"
         dockerfile.write_text(original_text, encoding="utf-8")
+        dockerignore.write_text("*\n", encoding="utf-8")
         (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
 
         staged_path, metadata = stage_task_for_sandbox(
@@ -5446,10 +5515,22 @@ def test_skillsbench_docker_task_staging_adds_app_skills_mount() -> None:
         assert metadata["original_task_mutated"] is False, metadata
         assert staged_path != task, staged_path
         assert dockerfile.read_text(encoding="utf-8") == original_text
+        assert dockerignore.read_text(encoding="utf-8") == "*\n"
         staged_dockerfile = staged_path / "environment" / "Dockerfile"
         staged_text = staged_dockerfile.read_text(encoding="utf-8")
         assert DOCKER_APP_SKILLS_MOUNT_BEGIN in staged_text, staged_text
-        assert "RUN mkdir -p /app /app/skills" in staged_text, staged_text
+        assert (
+            f"COPY {DOCKER_APP_SKILLS_MOUNT_KEEP_FILE} /app/skills/.loopx_keep"
+            in staged_text
+        ), staged_text
+        assert "RUN mkdir -p /app /app/skills" not in staged_text, staged_text
+        assert (
+            staged_path / "environment" / DOCKER_APP_SKILLS_MOUNT_KEEP_FILE
+        ).is_file()
+        staged_dockerignore = (
+            staged_path / "environment" / ".dockerignore"
+        ).read_text(encoding="utf-8")
+        assert f"!{DOCKER_APP_SKILLS_MOUNT_KEEP_FILE}" in staged_dockerignore
 
 
 def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
@@ -5483,7 +5564,14 @@ def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
             encoding="utf-8"
         )
         assert DOCKER_APP_SKILLS_MOUNT_BEGIN in staged_text, staged_text
-        assert "RUN mkdir -p /app /app/skills" in staged_text, staged_text
+        assert (
+            f"COPY {DOCKER_APP_SKILLS_MOUNT_KEEP_FILE} /app/skills/.loopx_keep"
+            in staged_text
+        ), staged_text
+        assert "RUN mkdir -p /app /app/skills" not in staged_text, staged_text
+        assert (
+            staged_path / "environment" / DOCKER_APP_SKILLS_MOUNT_KEEP_FILE
+        ).is_file()
 
 
 def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
@@ -13298,6 +13386,7 @@ if __name__ == "__main__":
     test_skillsbench_oracle_result_reward_artifact_recovery()
     test_skillsbench_app_mount_failure_attribution()
     test_skillsbench_app_skills_failure_attribution()
+    test_skillsbench_app_skills_permission_failure_not_overridden_by_worker_route()
     test_skillsbench_docker_port_conflict_attribution()
     test_skillsbench_docker_apt_failure_attribution()
     test_skillsbench_docker_daemon_unavailable_attribution()
