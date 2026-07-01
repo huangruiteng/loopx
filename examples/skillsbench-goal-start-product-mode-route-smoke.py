@@ -335,6 +335,9 @@ def _assert_app_server_goal_baseline_bridge_contract() -> None:
     assert "Native Codex Goal worker closeout contract" in prompt, prompt
     assert "immediately end the turn" in prompt, prompt
     assert "scored output file" in prompt, prompt
+    assert "relative task output file names from `/root`" in prompt, prompt
+    assert "`/root/<name>`" in prompt, prompt
+    assert "`/app/<name>` working copy alone is not a scored output" in prompt, prompt
 
 
 def _assert_verifier_feedback_routes_disabled() -> None:
