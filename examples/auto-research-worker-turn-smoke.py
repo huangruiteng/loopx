@@ -296,11 +296,15 @@ def main() -> int:
         )
         assert verifier["schema_version"] == "auto_research_worker_turn_v0", verifier
         assert verifier["mode"] == "execute", verifier
-        assert verifier["selected_action"] == "classify_evidence", verifier
-        assert verifier["artifact"]["kind"] == "evaluation_summary", verifier
-        assert verifier["artifact_status"] == "evaluation_summary_written", verifier
+        assert verifier["selected_action"] == "run_holdout_eval", verifier
+        assert verifier["artifact"]["kind"] == "holdout_validation", verifier
+        assert verifier["artifact_status"] == "holdout_evidence_appended", verifier
+        assert verifier["holdout_metric"] == 4.5, verifier
+        assert verifier["append"]["appended_count"] == 1, verifier
+        assert verifier["evaluation_summary"]["best_dev_metric"] == 4.0, verifier
+        assert verifier["evaluation_summary"]["best_holdout_metric"] == 4.5, verifier
+        assert verifier["evaluation_summary"]["claim_allowed"] is True, verifier
         assert verifier["completion"]["status"] == "done", verifier
-        assert verifier["promotion_decision_made"] is False, verifier
         assert_public_safe(verifier)
 
     print("auto-research-worker-turn-smoke ok")

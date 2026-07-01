@@ -138,7 +138,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         "research_curator": "`write_research_contract`",
         "hypothesis_mapper": "`propose_hypothesis`",
         "evidence_runner": "`run_dev_eval` or `write_evidence`",
-        "evidence_verifier": "`classify_evidence` or `write_evaluation_summary`",
+        "evidence_verifier": "`run_holdout_eval`, `classify_evidence`, or `write_evaluation_summary`",
     }
     for lane in lanes:
         assert expected_action_hints[lane["role_id"]] in lane["bootstrap_message"], lane

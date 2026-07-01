@@ -121,7 +121,7 @@ def main() -> int:
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
-            "classify_evidence",
+            "run_holdout_eval",
         ], payload
         evidence_turn = next(
             turn for turn in payload["turns"] if turn.get("selected_action") == "run_dev_eval"
@@ -129,6 +129,13 @@ def main() -> int:
         assert evidence_turn["dev_metric"] == 4.0, evidence_turn
         assert evidence_turn["appended_count"] == 2, evidence_turn
         assert evidence_turn["live_evidence_written"] is True, evidence_turn
+        verifier_turn = next(
+            turn for turn in payload["turns"] if turn.get("selected_action") == "run_holdout_eval"
+        )
+        assert verifier_turn["holdout_metric"] == 4.5, verifier_turn
+        assert verifier_turn["best_holdout_metric"] == 4.5, verifier_turn
+        assert verifier_turn["claim_allowed"] is True, verifier_turn
+        assert verifier_turn["appended_count"] == 1, verifier_turn
         assert_public_safe(payload)
     return 0
 
