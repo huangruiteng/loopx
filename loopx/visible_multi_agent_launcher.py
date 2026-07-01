@@ -292,6 +292,9 @@ def build_visible_lane_command(
         'printf "loopx_agent_handshake=role_profile_quota_frontier_bootstrap\\n"; '
         'printf "loopx_polling_prompt=visible_bootstrap_prompt\\n"; '
         'printf "loopx_cli_scope=scoped_loopx_wrapper\\n"; '
+        'printf "human_stream_contract=role_todo_progress_codex_stream\\n"; '
+        'printf "machine_json_policy=file_or_explicit_machine_channel_only\\n"; '
+        'printf "machine_artifacts=quota_frontier_bootstrap_public_files\\n"; '
         'printf "takeover_controls=visible\\n"; '
         f"printf 'reasoning_effort=%s\\n' {_q(reasoning_effort)}"
     )
@@ -421,6 +424,10 @@ def build_visible_multi_agent_payload(
     session = str(session_name or "loopx-visible-agents")
     attach_command = f"{_q(tmux_bin)} attach -t {_q(session)}"
     stop_command = f"{_q(tmux_bin)} kill-session -t {_q(session)}"
+    retry_command = (
+        "rerun the same visible launcher packet after refreshing quota, "
+        "frontier, and bootstrap"
+    )
     first_frontier = str(frontier_command or lane_list[0].get("frontier") or "")
     frontier_launcher = build_visible_frontier_command(first_frontier)
     start_script = [
@@ -456,10 +463,68 @@ def build_visible_multi_agent_payload(
         "goal_id": str(goal_id),
         "session_name": session,
         "lanes": lane_list,
+        "human_stream_contract": {
+            "schema_version": "multi_agent_visible_human_stream_contract_v0",
+            "human_pane": [
+                "role_profile_summary",
+                "quota_summary",
+                "frontier_or_blocked_summary",
+                "bootstrap_artifact_ref",
+                "codex_stream",
+                "compact_exit_summary",
+                "takeover_controls",
+            ],
+            "machine_artifacts": [
+                "quota.public.json",
+                "frontier.public.json",
+                "bootstrap-prompt.public.txt",
+                "role_local_public_artifacts",
+            ],
+            "machine_json_policy": "file_or_explicit_machine_channel_only",
+            "visible_json_policy": "markdown_or_compact_summary_only",
+            "codex_stream": "stdout_stderr_visible_below_bootstrap",
+            "forbidden_visible_content": [
+                "raw_quota_json",
+                "raw_frontier_json",
+                "raw_role_profile_json",
+                "credentials",
+                "raw_private_logs",
+                "absolute_local_artifact_paths",
+            ],
+        },
         "commands": {
             "start_script": start_script,
             "attach": attach_command,
             "stop": stop_command,
+            "retry": retry_command,
+        },
+        "acceptance": {
+            "schema_version": "multi_agent_visible_launcher_acceptance_contract_v0",
+            "required_markers": [
+                "role_profile=printed",
+                "quota_guard=printed",
+                "frontier_or_blocked_reason=printed",
+                "bootstrap_or_stop=printed",
+                "loopx_agent_handshake=role_profile_quota_frontier_bootstrap",
+                "human_stream_contract=role_todo_progress_codex_stream",
+                "machine_json_policy=file_or_explicit_machine_channel_only",
+            ],
+            "human_stream_contract": "multi_agent_visible_human_stream_contract_v0",
+            "machine_json_file_bound": True,
+            "codex_stream_visible": True,
+        },
+        "boundary": {
+            "starts_visible_processes": False,
+            "runs_agent_processes": False,
+            "writes_loopx_state": False,
+            "spends_loopx_quota": False,
+            "reads_raw_transcripts": False,
+            "reads_session_files": False,
+            "reads_credentials": False,
+            "hidden_prompt_injection": False,
+            "shared_goal_surface": True,
+            "all_lane_workspace_isolation": False,
+            "public_safe_redaction": True,
         },
     }
 
@@ -800,6 +865,8 @@ def _tmux_acceptance(
                 and any(marker in capture for marker in frontier_markers)
                 and ("[bootstrap-or-stop]" in capture or "bootstrap_or_stop=printed" in capture)
                 and "loopx_agent_handshake=role_profile_quota_frontier_bootstrap" in capture
+                and "human_stream_contract=role_todo_progress_codex_stream" in capture
+                and "machine_json_policy=file_or_explicit_machine_channel_only" in capture
                 and not blocked_before_bootstrap
             )
             pane_checks.append(

@@ -50,7 +50,7 @@ lanes = [
         "quota_guard": "loopx --format json --registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" quota should-run --goal-id loopx-meta --agent-id codex-main-control",
         "frontier": "printf '[LoopX frontier]\\nfrontier_or_blocked_reason=printed\\n'",
         "bootstrap_message": "printf '[bootstrap-or-stop]\\nmodel_reasoning_effort=high\\n'",
-        "visible_launch_command": "printf '[LoopX visible acceptance]\\n[LoopX role profile]\\n[LoopX quota guard]\\n[LoopX frontier]\\n[bootstrap-or-stop]\\nloopx_agent_handshake=role_profile_quota_frontier_bootstrap\\nloopx_polling_prompt=visible_bootstrap_prompt\\nreasoning_effort=high\\nmodel_reasoning_effort=high\\n'; exec /bin/sh -i",
+        "visible_launch_command": "printf '[LoopX visible acceptance]\\n[LoopX role profile]\\n[LoopX quota guard]\\n[LoopX frontier]\\n[bootstrap-or-stop]\\nloopx_agent_handshake=role_profile_quota_frontier_bootstrap\\nloopx_polling_prompt=visible_bootstrap_prompt\\nhuman_stream_contract=role_todo_progress_codex_stream\\nmachine_json_policy=file_or_explicit_machine_channel_only\\nreasoning_effort=high\\nmodel_reasoning_effort=high\\n'; exec /bin/sh -i",
         "reasoning_effort": "high",
         "lane_timeline": ["role_profile", "quota_guard", "frontier", "bootstrap"],
     },
@@ -63,7 +63,7 @@ lanes = [
         "quota_guard": "loopx --format json --registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" quota should-run --goal-id loopx-meta --agent-id codex-side-bypass",
         "frontier": "printf '[LoopX frontier]\\nfrontier_or_blocked_reason=printed\\n'",
         "bootstrap_message": "printf '[bootstrap-or-stop]\\nmodel_reasoning_effort=high\\n'",
-        "visible_launch_command": "printf '[LoopX visible acceptance]\\n[LoopX role profile]\\n[LoopX quota guard]\\n[LoopX frontier]\\n[bootstrap-or-stop]\\nloopx_agent_handshake=role_profile_quota_frontier_bootstrap\\nloopx_polling_prompt=visible_bootstrap_prompt\\nreasoning_effort=high\\nmodel_reasoning_effort=high\\n'; exec /bin/sh -i",
+        "visible_launch_command": "printf '[LoopX visible acceptance]\\n[LoopX role profile]\\n[LoopX quota guard]\\n[LoopX frontier]\\n[bootstrap-or-stop]\\nloopx_agent_handshake=role_profile_quota_frontier_bootstrap\\nloopx_polling_prompt=visible_bootstrap_prompt\\nhuman_stream_contract=role_todo_progress_codex_stream\\nmachine_json_policy=file_or_explicit_machine_channel_only\\nreasoning_effort=high\\nmodel_reasoning_effort=high\\n'; exec /bin/sh -i",
         "reasoning_effort": "high",
         "lane_timeline": ["role_profile", "quota_guard", "frontier", "bootstrap"],
     },
@@ -87,6 +87,27 @@ packet = {
         "mutation_isolation_policy": "only mutating attempts require a claimed worktree or equivalent execution boundary",
     },
     "lanes": lanes,
+    "human_stream_contract": {
+        "schema_version": "multi_agent_visible_human_stream_contract_v0",
+        "human_pane": [
+            "role_profile_summary",
+            "quota_summary",
+            "frontier_or_blocked_summary",
+            "bootstrap_artifact_ref",
+            "codex_stream",
+            "compact_exit_summary",
+            "takeover_controls",
+        ],
+        "machine_artifacts": [
+            "quota.public.json",
+            "frontier.public.json",
+            "bootstrap-prompt.public.txt",
+            "role_local_public_artifacts",
+        ],
+        "machine_json_policy": "file_or_explicit_machine_channel_only",
+        "visible_json_policy": "markdown_or_compact_summary_only",
+        "codex_stream": "stdout_stderr_visible_below_bootstrap",
+    },
     "commands": {
         "start_script": ["python -c <generic visible multi-agent launcher command>"],
         "attach": f"tmux attach -t {session_name}",
@@ -101,7 +122,11 @@ packet = {
             "[bootstrap-or-stop]",
             "loopx_agent_handshake=role_profile_quota_frontier_bootstrap",
             "loopx_polling_prompt=visible_bootstrap_prompt",
+            "human_stream_contract=role_todo_progress_codex_stream",
+            "machine_json_policy=file_or_explicit_machine_channel_only",
         ],
+        "machine_json_file_bound": True,
+        "codex_stream_visible": True,
     },
     "boundary": {
         "starts_visible_processes": False,
@@ -208,6 +233,8 @@ def fake_tmux_script() -> str:
             "    print('frontier_or_blocked_reason=printed')",
             "    print('loopx_agent_handshake=role_profile_quota_frontier_bootstrap')",
             "    print('loopx_polling_prompt=visible_bootstrap_prompt')",
+            "    print('human_stream_contract=role_todo_progress_codex_stream')",
+            "    print('machine_json_policy=file_or_explicit_machine_channel_only')",
             "    print('reasoning_effort=high')",
             "    print('model_reasoning_effort=high')",
             "    raise SystemExit(0)",
@@ -254,6 +281,11 @@ def main() -> int:
         assert dry_packet["reasoning_contract"]["default_reasoning_effort"] == "high", dry_packet
         assert dry_packet["shared_goal_surface"]["shared_state_route"] == "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT", dry_packet
         assert dry_packet["shared_goal_surface"]["all_lane_workspace_isolation"] is False, dry_packet
+        assert dry_packet["human_stream_contract"]["schema_version"] == "multi_agent_visible_human_stream_contract_v0", dry_packet
+        assert dry_packet["human_stream_contract"]["machine_json_policy"] == "file_or_explicit_machine_channel_only", dry_packet
+        assert dry_packet["human_stream_contract"]["codex_stream"] == "stdout_stderr_visible_below_bootstrap", dry_packet
+        assert dry_packet["acceptance"]["machine_json_file_bound"] is True, dry_packet
+        assert dry_packet["acceptance"]["codex_stream_visible"] is True, dry_packet
         assert dry_packet["boundary"]["starts_visible_processes"] is False, dry_packet
         assert dry_packet["boundary"]["spends_loopx_quota"] is False, dry_packet
         assert all(lane["reasoning_effort"] == "high" for lane in dry_packet["lanes"]), dry_packet

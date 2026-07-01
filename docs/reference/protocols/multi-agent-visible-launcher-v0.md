@@ -49,6 +49,27 @@ agent lane that must read the same goal state and pass its own guard.
     "all_lane_workspace_isolation": false,
     "mutation_isolation_policy": "only mutating attempts require a claimed worktree or equivalent execution boundary"
   },
+  "human_stream_contract": {
+    "schema_version": "multi_agent_visible_human_stream_contract_v0",
+    "human_pane": [
+      "role_profile_summary",
+      "quota_summary",
+      "frontier_or_blocked_summary",
+      "bootstrap_artifact_ref",
+      "codex_stream",
+      "compact_exit_summary",
+      "takeover_controls"
+    ],
+    "machine_artifacts": [
+      "quota.public.json",
+      "frontier.public.json",
+      "bootstrap-prompt.public.txt",
+      "role_local_public_artifacts"
+    ],
+    "machine_json_policy": "file_or_explicit_machine_channel_only",
+    "visible_json_policy": "markdown_or_compact_summary_only",
+    "codex_stream": "stdout_stderr_visible_below_bootstrap"
+  },
   "lanes": [],
   "commands": {
     "start_script": [],
@@ -69,6 +90,7 @@ Required top-level fields:
 - `goal_id` and `session_name`;
 - `reasoning_contract`;
 - `shared_goal_surface`;
+- `human_stream_contract`;
 - `lanes[]`;
 - `commands.attach`, `commands.stop`, and `commands.retry`;
 - `acceptance`;
@@ -145,6 +167,29 @@ Every visible lane follows the same generic start order:
 The launcher must not inject prompts into a hidden session, hide guard output,
 or continue a lane after a user gate is projected.
 
+## Human Stream Contract
+
+The first screen of each visible pane is for humans. It should show role,
+todo/progress, guard status, frontier or blocked reason, bootstrap status, and
+the live Codex CLI stream. Raw quota, frontier, role profile, and machine JSON
+belong in public-safe artifacts or an explicit machine channel.
+
+Required visible markers:
+
+- `role_profile=printed`;
+- `quota_guard=printed`;
+- `frontier_or_blocked_reason=printed`;
+- `bootstrap_or_stop=printed`;
+- `loopx_agent_handshake=role_profile_quota_frontier_bootstrap`;
+- `human_stream_contract=role_todo_progress_codex_stream`;
+- `machine_json_policy=file_or_explicit_machine_channel_only`.
+
+The human pane may print compact summaries and artifact basenames, but it should
+not dump raw JSON, credentials, private logs, raw transcripts, or absolute local
+artifact paths. The Codex CLI stdout/stderr stream remains visible below the
+bootstrap marker so the user can watch the real worker response instead of a
+parallel presentation layer.
+
 ## Host Controls
 
 The packet must expose:
@@ -214,11 +259,13 @@ A public fixture or implementation satisfies the contract when:
    high reasoning, lane timeline, and visible launch command;
 6. it requires attach, stop, retry, pane interrupt, and visible acceptance
    markers;
-7. dry-run mode starts no process, runs no agent, writes no LoopX state, and
+7. it has a human stream contract that keeps raw machine JSON in artifacts or
+   explicit machine channels while streaming Codex CLI output visibly;
+8. dry-run mode starts no process, runs no agent, writes no LoopX state, and
    spends no quota;
-8. execute mode still writes state and spends quota only through normal LoopX
+9. execute mode still writes state and spends quota only through normal LoopX
    writeback after validation;
-9. it keeps workspace isolation scoped to mutating attempts rather than
+10. it keeps workspace isolation scoped to mutating attempts rather than
    splitting the shared goal surface; and
-10. public docs and fixtures contain no raw transcripts, credentials, private
+11. public docs and fixtures contain no raw transcripts, credentials, private
     links, internal project names, or local absolute paths.

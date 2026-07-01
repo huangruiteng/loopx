@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from loopx.visible_multi_agent_launcher import (  # noqa: E402
     _SCOPED_LOOPX_WRAPPER_PY,
+    build_visible_multi_agent_payload,
     execute_visible_multi_agent_launcher,
 )
 
@@ -91,6 +92,37 @@ def main() -> int:
     assert "LOOPX_ALLOW_TTY_JSON" in launcher_source
     assert "stat.S_ISREG" in launcher_source
     assert "LOOPX_MACHINE_JSON=1 explicitly" in launcher_source
+    assert "human_stream_contract=role_todo_progress_codex_stream" in launcher_source
+    assert "machine_json_policy=file_or_explicit_machine_channel_only" in launcher_source
+
+    dry_packet = build_visible_multi_agent_payload(
+        goal_id="loopx-meta",
+        session_name="loopx-visible-launcher-contract-smoke",
+        lanes=[
+            {
+                "lane_id": "planner",
+                "frontier": "true",
+                "visible_launch_command": "true",
+            }
+        ],
+    )
+    assert dry_packet["commands"]["attach"] == "tmux attach -t loopx-visible-launcher-contract-smoke"
+    assert dry_packet["commands"]["stop"] == "tmux kill-session -t loopx-visible-launcher-contract-smoke"
+    assert "retry" in dry_packet["commands"], dry_packet
+    assert (
+        dry_packet["human_stream_contract"]["schema_version"]
+        == "multi_agent_visible_human_stream_contract_v0"
+    ), dry_packet
+    assert dry_packet["human_stream_contract"]["machine_json_policy"] == (
+        "file_or_explicit_machine_channel_only"
+    ), dry_packet
+    assert dry_packet["human_stream_contract"]["codex_stream"] == (
+        "stdout_stderr_visible_below_bootstrap"
+    ), dry_packet
+    assert dry_packet["acceptance"]["machine_json_file_bound"] is True, dry_packet
+    assert dry_packet["acceptance"]["codex_stream_visible"] is True, dry_packet
+    assert dry_packet["boundary"]["hidden_prompt_injection"] is False, dry_packet
+    assert dry_packet["boundary"]["spends_loopx_quota"] is False, dry_packet
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -142,6 +174,8 @@ def main() -> int:
                     "    print('[bootstrap-or-stop]')",
                     "    print('loopx_agent_handshake=role_profile_quota_frontier_bootstrap')",
                     "    print('loopx_cli_scope=scoped_loopx_wrapper')",
+                    "    print('human_stream_contract=role_todo_progress_codex_stream')",
+                    "    print('machine_json_policy=file_or_explicit_machine_channel_only')",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
                     "",
