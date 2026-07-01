@@ -113,7 +113,13 @@ def evidence_packet(dev: Path, holdout: Path) -> dict[str, Any]:
     )
 
 
-def append_packet(registry: Path, packet: Path, *, dry_run: bool = False) -> dict[str, Any]:
+def append_packet(
+    registry: Path,
+    packet: Path,
+    *,
+    dry_run: bool = False,
+    output: Path | None = None,
+) -> dict[str, Any]:
     args = [
         "-m",
         "loopx.cli",
@@ -128,6 +134,8 @@ def append_packet(registry: Path, packet: Path, *, dry_run: bool = False) -> dic
     ]
     if dry_run:
         args.append("--dry-run")
+    if output is not None:
+        args.extend(["--output", str(output)])
     return run_json(args)
 
 
@@ -176,11 +184,14 @@ def main() -> None:
         }, dry
         assert_public_safe(dry)
 
-        first = append_packet(registry, packet_path)
+        append_output = temp / "append-result.public.json"
+        first = append_packet(registry, packet_path, output=append_output)
         assert first["dry_run"] is False, first
         assert first["event_count"] == 3, first
         assert first["appended_count"] == 3, first
         assert first["skipped_existing_count"] == 0, first
+        assert append_output.is_file(), first
+        assert json.loads(append_output.read_text(encoding="utf-8")) == first, first
         assert_public_safe(first)
 
         second = append_packet(registry, packet_path)

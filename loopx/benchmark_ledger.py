@@ -8,7 +8,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .benchmark_core import classify_product_mode_main_table_pair
+from .benchmark_core import (
+    classify_benchmark_artifact_path,
+    classify_product_mode_main_table_pair,
+)
 
 
 BENCHMARK_RUN_LEDGER_SCHEMA_VERSION = "benchmark_run_ledger_v0"
@@ -27,6 +30,15 @@ TERMINAL_BENCH_JOB_CASE_ARM_MARKERS = (
     "_hardened_codex_baseline",
     "_baseline",
     "_treatment",
+)
+PRIVATE_ARTIFACT_REF_PATH_MARKERS = (
+    ".local/",
+    "/private/",
+    "private-benchmark-jobs",
+    "/Users/",
+    "/Volumes/",
+    "/var/folders/",
+    "/tmp/",
 )
 
 
@@ -113,15 +125,38 @@ def _compact_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
+        "verifier_bootstrap_risk_preflight_blocked",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in (
+        "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
+        "verifier_uv_bootstrap_version",
+        "verifier_uv_bootstrap_mirror_host",
+    ):
+        text = _compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
     cap = value.get("resource_cap_patch")
     if isinstance(cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -162,14 +197,25 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "verifier_present",
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
         "dockerfile_present",
         "canonical_task_present",
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    text = _compact_text(value.get("verifier_uv_bootstrap_version"), limit=140)
+    if text:
+        compact["verifier_uv_bootstrap_version"] = text
     nearest_ids = value.get("nearest_canonical_task_ids")
     if isinstance(nearest_ids, list):
         compact_nearest: list[str] = []
@@ -179,6 +225,15 @@ def _compact_task_setup_preflight(value: Any) -> dict[str, Any]:
                 compact_nearest.append(text)
         if compact_nearest:
             compact["nearest_canonical_task_ids"] = compact_nearest
+    verifier_categories = value.get("verifier_bootstrap_risk_categories")
+    if isinstance(verifier_categories, list):
+        compact_categories: list[str] = []
+        for item in verifier_categories[:5]:
+            text = _compact_text(item, limit=120)
+            if text:
+                compact_categories.append(text)
+        if compact_categories:
+            compact["verifier_bootstrap_risk_categories"] = compact_categories
     return compact
 
 
@@ -212,6 +267,9 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "runner_launch_preflight_passed",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
         "staged_task_prepared",
         "task_skills_removed",
         "codex_acp_runtime_tools_patch_applied",
@@ -509,6 +567,24 @@ def _relative_ref(value: str | Path | None, *, cwd: Path | None = None) -> str |
         except ValueError:
             return None
     return path.as_posix()
+
+
+def _public_ledger_artifact_ref(
+    value: str | Path | None,
+    *,
+    cwd: Path | None = None,
+) -> str | None:
+    ref = _relative_ref(value, cwd=cwd)
+    if not ref:
+        return None
+    classification = classify_benchmark_artifact_path(ref)
+    if classification.get("allowed_to_read") is not True:
+        return None
+    normalized = ref.replace("\\", "/")
+    if any(marker in normalized for marker in PRIVATE_ARTIFACT_REF_PATH_MARKERS):
+        basename = _compact_text(classification.get("basename"), limit=160)
+        return basename or None
+    return normalized
 
 
 def _case_ids(benchmark_run: dict[str, Any]) -> list[str]:
@@ -927,14 +1003,17 @@ def _repair_route(
                 "raw_task_text_required": False,
             },
         }
-    if failure_class == "skillsbench_docker_apt_setup_risk_preflight_blocked":
+    if failure_class in {
+        "skillsbench_docker_apt_setup_risk_preflight_blocked",
+        "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked",
+    }:
         return {
             "repair_priority": "P1",
             "repair_class": "skillsbench_setup_preflight_selection",
             "next_action": (
-                "select a non-apt-risk SkillsBench task for the next full "
-                "baseline/treatment pair or repair the Docker apt setup route "
-                "before rerunning this task"
+                "select a SkillsBench task without Docker package-bootstrap "
+                "setup risk for the next full baseline/treatment pair, or "
+                "repair the Docker setup route before rerunning this task"
             ),
             "repair_profile": {
                 "schema_version": "benchmark_repair_profile_v0",
@@ -942,8 +1021,7 @@ def _repair_route(
                 "rerun_allowed_after_profile_applied": True,
                 "required_preflight": [
                     "skillsbench_task_setup_preflight",
-                    "task_staging.apt_setup_risk_detected",
-                    "task_staging.apt_risk_preflight_blocked",
+                    "task_staging.bootstrap_light_preflight_blocked",
                 ],
                 "raw_logs_required": False,
                 "raw_task_text_required": False,
@@ -1244,9 +1322,12 @@ def build_benchmark_run_ledger_entry(
     failure_class = _failure_class(benchmark_run, score)
     failure_scope = _failure_scope(failure_class, score, passed)
     resolved_arm_id = _resolved_arm_id(benchmark_run, arm_id)
-    artifact = _relative_ref(artifact_ref, cwd=cwd)
-    result = _relative_ref(result_ref, cwd=cwd)
-    compact_artifact = _relative_ref(compact_artifact_ref, cwd=cwd)
+    identity_artifact = _relative_ref(artifact_ref, cwd=cwd)
+    identity_result = _relative_ref(result_ref, cwd=cwd)
+    identity_compact_artifact = _relative_ref(compact_artifact_ref, cwd=cwd)
+    artifact = _public_ledger_artifact_ref(artifact_ref, cwd=cwd)
+    result = _public_ledger_artifact_ref(result_ref, cwd=cwd)
+    compact_artifact = _public_ledger_artifact_ref(compact_artifact_ref, cwd=cwd)
     resolved_run_group_id = _compact_text(run_group_id, limit=160) or job_name
     identity = "|".join(
         str(part)
@@ -1256,7 +1337,13 @@ def build_benchmark_run_ledger_entry(
             resolved_arm_id,
             resolved_run_group_id,
             job_name,
-            artifact or result or compact_artifact or "",
+            identity_artifact
+            or identity_result
+            or identity_compact_artifact
+            or artifact
+            or result
+            or compact_artifact
+            or "",
         )
     )
     run_id = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:12]
@@ -1594,6 +1681,18 @@ def _entry_is_public_ledger_closeout(entry: dict[str, Any]) -> bool:
     return True
 
 
+def _ledger_run_archived(run: dict[str, Any]) -> bool:
+    return _compact_text(run.get("archive_state"), limit=40) == "archived"
+
+
+def _active_ledger_runs(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [run for run in runs if not _ledger_run_archived(run)]
+
+
+def _archived_ledger_runs(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [run for run in runs if _ledger_run_archived(run)]
+
+
 def _empty_ledger() -> dict[str, Any]:
     return {
         "schema_version": BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
@@ -1663,6 +1762,36 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
     for key in ("repair_priority", "repair_class", "next_action", "repair_profile"):
         normalized.pop(key, None)
     normalized.update(repair_route)
+    archive_state = _compact_text(normalized.get("archive_state"), limit=40)
+    if archive_state == "archived":
+        normalized["archive_state"] = "archived"
+        for key, limit in (
+            ("archive_reason", 220),
+            ("archive_batch_id", 120),
+            ("archived_at", 80),
+        ):
+            value = _compact_text(normalized.get(key), limit=limit)
+            if value:
+                normalized[key] = value
+            else:
+                normalized.pop(key, None)
+    else:
+        for key in ("archive_state", "archive_reason", "archive_batch_id", "archived_at"):
+            normalized.pop(key, None)
+    refs = normalized.get("artifact_refs")
+    if isinstance(refs, dict):
+        safe_refs: dict[str, str] = {}
+        for key in ("artifact_ref", "result_ref", "compact_artifact_ref"):
+            value = refs.get(key)
+            if not isinstance(value, str):
+                continue
+            safe_ref = _public_ledger_artifact_ref(value)
+            if safe_ref:
+                safe_refs[key] = safe_ref
+        if safe_refs:
+            normalized["artifact_refs"] = safe_refs
+        else:
+            normalized.pop("artifact_refs", None)
     return normalized
 
 
@@ -1721,10 +1850,28 @@ def _normalize_benchmark_run_ledger(ledger: dict[str, Any]) -> dict[str, Any]:
                 key=lambda run: (str(run.get("recorded_at", "")), str(run.get("run_id", ""))),
             )
             case["runs"] = ordered_runs
+            case["active_run_count"] = len(_active_ledger_runs(ordered_runs))
+            case["archived_run_count"] = len(_archived_ledger_runs(ordered_runs))
             case["latest_decision"] = _case_decision(case)
         benchmark["case_count"] = len(cases)
         benchmark["run_count"] = sum(
             len(value.get("runs", []))
+            for value in cases.values()
+            if isinstance(value, dict)
+        )
+        benchmark["active_case_count"] = sum(
+            1
+            for value in cases.values()
+            if isinstance(value, dict)
+            and value.get("active_run_count", 0)
+        )
+        benchmark["active_run_count"] = sum(
+            int(value.get("active_run_count", 0))
+            for value in cases.values()
+            if isinstance(value, dict)
+        )
+        benchmark["archived_run_count"] = sum(
+            int(value.get("archived_run_count", 0))
             for value in cases.values()
             if isinstance(value, dict)
         )
@@ -1766,7 +1913,13 @@ class _LedgerWriteLock:
 
 
 def _case_decision(case: dict[str, Any]) -> dict[str, Any]:
-    runs = [run for run in case.get("runs", []) if isinstance(run, dict)]
+    all_runs = [run for run in case.get("runs", []) if isinstance(run, dict)]
+    runs = _active_ledger_runs(all_runs)
+    if not runs and all_runs:
+        return {
+            "decision": "archived_only",
+            "archived_run_count": len(all_runs),
+        }
     baselines = [
         run
         for run in runs
@@ -1994,6 +2147,19 @@ def upsert_benchmark_run_ledger_entry(
     replaced = False
     for index, run in enumerate(runs):
         if run.get("run_id") == entry.get("run_id"):
+            if _ledger_run_archived(run) and "archive_state" not in entry:
+                entry = {
+                    **entry,
+                    "archive_state": "archived",
+                    "archive_reason": run.get("archive_reason"),
+                    "archive_batch_id": run.get("archive_batch_id"),
+                    "archived_at": run.get("archived_at"),
+                }
+                entry = {
+                    key: value
+                    for key, value in entry.items()
+                    if value not in (None, "", [])
+                }
             runs[index] = entry
             replaced = True
             break
@@ -2001,10 +2167,28 @@ def upsert_benchmark_run_ledger_entry(
         runs.append(entry)
     runs.sort(key=lambda run: (str(run.get("recorded_at", "")), str(run.get("run_id", ""))))
     case["runs"] = runs
+    case["active_run_count"] = len(_active_ledger_runs(runs))
+    case["archived_run_count"] = len(_archived_ledger_runs(runs))
     case["latest_decision"] = _case_decision(case)
     benchmark["case_count"] = len(cases)
     benchmark["run_count"] = sum(
         len(value.get("runs", []))
+        for value in cases.values()
+        if isinstance(value, dict)
+    )
+    benchmark["active_case_count"] = sum(
+        1
+        for value in cases.values()
+        if isinstance(value, dict)
+        and value.get("active_run_count", 0)
+    )
+    benchmark["active_run_count"] = sum(
+        int(value.get("active_run_count", 0))
+        for value in cases.values()
+        if isinstance(value, dict)
+    )
+    benchmark["archived_run_count"] = sum(
+        int(value.get("archived_run_count", 0))
         for value in cases.values()
         if isinstance(value, dict)
     )
@@ -2013,22 +2197,46 @@ def upsert_benchmark_run_ledger_entry(
 
 
 def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
+    benchmarks = ledger.get("benchmarks") if isinstance(ledger.get("benchmarks"), dict) else {}
+    total_active_runs = 0
+    total_archived_runs = 0
+    total_active_cases = 0
+    for benchmark in benchmarks.values():
+        if not isinstance(benchmark, dict):
+            continue
+        cases = benchmark.get("cases") if isinstance(benchmark.get("cases"), dict) else {}
+        if not isinstance(cases, dict):
+            continue
+        for case in cases.values():
+            if not isinstance(case, dict):
+                continue
+            runs = [run for run in case.get("runs", []) if isinstance(run, dict)]
+            active_runs = _active_ledger_runs(runs)
+            archived_runs = _archived_ledger_runs(runs)
+            if active_runs:
+                total_active_cases += 1
+            total_active_runs += len(active_runs)
+            total_archived_runs += len(archived_runs)
     lines = [
         "# Benchmark Run Ledger",
         "",
         "This file is generated from `benchmark_run_ledger_v0`. It records compact",
         "benchmark case outcomes and artifact references; it must not contain raw",
         "logs, task prompts, trajectories, credentials, uploads, or absolute paths.",
+        "Archived runs remain in JSON for traceability but are excluded from the",
+        "default case decisions, repair backlog, and active runs table.",
         "",
         f"- schema_version: `{ledger.get('schema_version')}`",
         f"- updated_at: `{ledger.get('updated_at')}`",
+        f"- active_case_count: `{total_active_cases}`",
+        f"- active_run_count: `{total_active_runs}`",
+        f"- archived_run_count: `{total_archived_runs}`",
         "",
         "## Case Decisions",
         "",
         "| Benchmark | Case | Decision | Product Pair | Case Routing | Runs |",
         "| --- | --- | --- | --- | --- | --- |",
     ]
-    benchmarks = ledger.get("benchmarks") if isinstance(ledger.get("benchmarks"), dict) else {}
     for benchmark_id in sorted(benchmarks):
         benchmark = benchmarks[benchmark_id]
         cases = benchmark.get("cases") if isinstance(benchmark, dict) else {}
@@ -2036,6 +2244,15 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
             continue
         for case_id in sorted(cases):
             case = cases[case_id]
+            runs = case.get("runs", []) if isinstance(case, dict) else []
+            active_runs = _active_ledger_runs(
+                [run for run in runs if isinstance(run, dict)]
+            )
+            archived_count = len(
+                _archived_ledger_runs([run for run in runs if isinstance(run, dict)])
+            )
+            if not active_runs:
+                continue
             decision = (
                 case.get("latest_decision")
                 if isinstance(case, dict) and isinstance(case.get("latest_decision"), dict)
@@ -2063,12 +2280,14 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
                         limit=120,
                     )
                     product_pair_cell = f"`{blocker or 'pair_incomplete'}`"
-            runs = case.get("runs", []) if isinstance(case, dict) else []
+            run_cell = str(len(active_runs))
+            if archived_count:
+                run_cell = f"{run_cell} active / {archived_count} archived"
             lines.append(
                 f"| `{benchmark_id}` | `{case_id}` | "
                 f"`{decision.get('decision', 'unknown')}` | "
                 f"{product_pair_cell} | "
-                f"{routing_cell} | `{len(runs)}` |"
+                f"{routing_cell} | `{run_cell}` |"
             )
     repair_rows: list[tuple[str, str, str, str, str, str, str, str]] = []
     priority_order = {"P0": 0, "P1": 1, "P2": 2}
@@ -2079,7 +2298,13 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
             continue
         for case_id in sorted(cases):
             case = cases[case_id]
-            runs = case.get("runs", []) if isinstance(case, dict) else []
+            runs = _active_ledger_runs(
+                [
+                    run
+                    for run in (case.get("runs", []) if isinstance(case, dict) else [])
+                    if isinstance(run, dict)
+                ]
+            )
             latest_run_by_arm: dict[str, dict[str, Any]] = {}
             for run in runs:
                 if not isinstance(run, dict):
@@ -2140,6 +2365,40 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
                 f"{profile} | "
                 f"{next_action} |"
             )
+    archived_summary: list[tuple[str, int, int]] = []
+    for benchmark_id in sorted(benchmarks):
+        benchmark = benchmarks[benchmark_id]
+        cases = benchmark.get("cases") if isinstance(benchmark, dict) else {}
+        if not isinstance(cases, dict):
+            continue
+        archived_case_count = 0
+        archived_run_count = 0
+        for case in cases.values():
+            if not isinstance(case, dict):
+                continue
+            runs = [run for run in case.get("runs", []) if isinstance(run, dict)]
+            archived_runs = _archived_ledger_runs(runs)
+            if archived_runs:
+                archived_case_count += 1
+                archived_run_count += len(archived_runs)
+        if archived_run_count:
+            archived_summary.append(
+                (benchmark_id, archived_case_count, archived_run_count)
+            )
+    if archived_summary:
+        lines.extend(
+            [
+                "",
+                "## Archived Run Summary",
+                "",
+                "| Benchmark | Archived Cases | Archived Runs |",
+                "| --- | --- | --- |",
+            ]
+        )
+        for benchmark_id, case_count, run_count in archived_summary:
+            lines.append(
+                f"| `{benchmark_id}` | `{case_count}` | `{run_count}` |"
+            )
     lines.extend(
         [
             "",
@@ -2156,7 +2415,13 @@ def render_benchmark_run_ledger_markdown(ledger: dict[str, Any]) -> str:
             continue
         for case_id in sorted(cases):
             case = cases[case_id]
-            runs = case.get("runs", []) if isinstance(case, dict) else []
+            runs = _active_ledger_runs(
+                [
+                    run
+                    for run in (case.get("runs", []) if isinstance(case, dict) else [])
+                    if isinstance(run, dict)
+                ]
+            )
             for run in runs:
                 refs = run.get("artifact_refs") if isinstance(run.get("artifact_refs"), dict) else {}
                 artifact = refs.get("compact_artifact_ref") or refs.get("result_ref") or refs.get("artifact_ref") or ""
@@ -2269,6 +2534,198 @@ def update_benchmark_run_ledger(
     }
 
 
+def _matches_any_pattern(value: str, patterns: list[str]) -> bool:
+    return any(pattern and pattern in value for pattern in patterns)
+
+
+def archive_benchmark_run_ledger_runs(
+    *,
+    ledger_path: str | Path,
+    benchmark_id: str,
+    reason: str,
+    run_group_contains: list[str] | None = None,
+    keep_run_group_contains: list[str] | None = None,
+    case_ids: list[str] | None = None,
+    arm_ids: list[str] | None = None,
+    archive_all_matching_benchmark: bool = False,
+    archive_batch_id: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Mark matching run-ledger rows archived without deleting traceable evidence."""
+
+    benchmark_filter = _compact_text(benchmark_id, limit=120)
+    archive_reason = _compact_text(reason, limit=220)
+    if not benchmark_filter:
+        raise ValueError("benchmark_id is required")
+    if not archive_reason:
+        raise ValueError("archive reason is required")
+    run_group_patterns = [
+        _compact_text(item, limit=160)
+        for item in (run_group_contains or [])
+        if _compact_text(item, limit=160)
+    ]
+    keep_patterns = [
+        _compact_text(item, limit=160)
+        for item in (keep_run_group_contains or [])
+        if _compact_text(item, limit=160)
+    ]
+    case_filters = {
+        _compact_text(item, limit=160)
+        for item in (case_ids or [])
+        if _compact_text(item, limit=160)
+    }
+    arm_filters = {
+        _compact_text(item, limit=120)
+        for item in (arm_ids or [])
+        if _compact_text(item, limit=120)
+    }
+    if not (
+        archive_all_matching_benchmark
+        or run_group_patterns
+        or case_filters
+        or arm_filters
+    ):
+        raise ValueError(
+            "provide a run/case/arm filter, or pass --archive-all-matching-benchmark"
+        )
+
+    path = Path(ledger_path)
+    markdown_path = path.with_suffix(".md")
+    archived_at = _now_local_iso()
+    batch_id = _compact_text(archive_batch_id, limit=120) or hashlib.sha1(
+        f"{benchmark_filter}|{archive_reason}|{archived_at}".encode("utf-8")
+    ).hexdigest()[:12]
+
+    def apply_archive(ledger: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        normalized = _normalize_benchmark_run_ledger(dict(ledger))
+        benchmarks = (
+            normalized.get("benchmarks")
+            if isinstance(normalized.get("benchmarks"), dict)
+            else {}
+        )
+        matched_run_count = 0
+        newly_archived_run_count = 0
+        already_archived_run_count = 0
+        kept_run_count = 0
+        archived_samples: list[dict[str, Any]] = []
+        benchmark = benchmarks.get(benchmark_filter)
+        if isinstance(benchmark, dict):
+            cases = benchmark.get("cases") if isinstance(benchmark.get("cases"), dict) else {}
+            for case in cases.values():
+                if not isinstance(case, dict):
+                    continue
+                case_id = _compact_text(case.get("case_id"), limit=160)
+                runs = [run for run in case.get("runs", []) if isinstance(run, dict)]
+                for run in runs:
+                    run_group_id = _compact_text(run.get("run_group_id"), limit=160)
+                    arm = _compact_text(run.get("arm_id"), limit=120)
+                    if keep_patterns and _matches_any_pattern(run_group_id, keep_patterns):
+                        kept_run_count += 1
+                        continue
+                    if case_filters and case_id not in case_filters:
+                        continue
+                    if arm_filters and arm not in arm_filters:
+                        continue
+                    if run_group_patterns and not _matches_any_pattern(
+                        run_group_id,
+                        run_group_patterns,
+                    ):
+                        continue
+                    matched_run_count += 1
+                    if _ledger_run_archived(run):
+                        already_archived_run_count += 1
+                        continue
+                    run["archive_state"] = "archived"
+                    run["archive_reason"] = archive_reason
+                    run["archive_batch_id"] = batch_id
+                    run["archived_at"] = archived_at
+                    newly_archived_run_count += 1
+                    if len(archived_samples) < 20:
+                        archived_samples.append(
+                            {
+                                "run_id": run.get("run_id"),
+                                "case_id": case_id,
+                                "arm_id": arm,
+                                "run_group_id": run_group_id,
+                                "official_score": run.get("official_score"),
+                                "failure_class": run.get("failure_class"),
+                            }
+                        )
+                case["runs"] = sorted(
+                    runs,
+                    key=lambda run: (
+                        str(run.get("recorded_at", "")),
+                        str(run.get("run_id", "")),
+                    ),
+                )
+                case["active_run_count"] = len(_active_ledger_runs(case["runs"]))
+                case["archived_run_count"] = len(_archived_ledger_runs(case["runs"]))
+                case["latest_decision"] = _case_decision(case)
+            benchmark["case_count"] = len(cases)
+            benchmark["run_count"] = sum(
+                len(value.get("runs", []))
+                for value in cases.values()
+                if isinstance(value, dict)
+            )
+            benchmark["active_case_count"] = sum(
+                1
+                for value in cases.values()
+                if isinstance(value, dict)
+                and value.get("active_run_count", 0)
+            )
+            benchmark["active_run_count"] = sum(
+                int(value.get("active_run_count", 0))
+                for value in cases.values()
+                if isinstance(value, dict)
+            )
+            benchmark["archived_run_count"] = sum(
+                int(value.get("archived_run_count", 0))
+                for value in cases.values()
+                if isinstance(value, dict)
+            )
+        normalized["updated_at"] = archived_at
+        summary = {
+            "schema_version": "benchmark_run_ledger_archive_v0",
+            "archive_batch_id": batch_id,
+            "benchmark_id": benchmark_filter,
+            "reason": archive_reason,
+            "matched_run_count": matched_run_count,
+            "newly_archived_run_count": newly_archived_run_count,
+            "already_archived_run_count": already_archived_run_count,
+            "kept_run_count": kept_run_count,
+            "archived_samples": archived_samples,
+            "truncated": newly_archived_run_count > len(archived_samples),
+        }
+        return normalized, summary
+
+    if dry_run:
+        updated, summary = apply_archive(load_benchmark_run_ledger(path))
+    else:
+        with _LedgerWriteLock(path):
+            updated, summary = apply_archive(load_benchmark_run_ledger(path))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = path.with_suffix(path.suffix + ".tmp")
+            tmp_markdown_path = markdown_path.with_suffix(markdown_path.suffix + ".tmp")
+            tmp_path.write_text(
+                json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            tmp_markdown_path.write_text(
+                render_benchmark_run_ledger_markdown(updated),
+                encoding="utf-8",
+            )
+            tmp_path.replace(path)
+            tmp_markdown_path.replace(markdown_path)
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "updated": not dry_run,
+        "ledger_path": str(path),
+        "markdown_path": str(markdown_path),
+        "archive": summary,
+    }
+
+
 def _ledger_entry_signature(entry: dict[str, Any]) -> tuple[str, ...]:
     return (
         _compact_text(entry.get("benchmark_id"), limit=120),
@@ -2296,6 +2753,147 @@ def _iter_ledger_runs(ledger: dict[str, Any]) -> list[dict[str, Any]]:
                 if isinstance(run, dict):
                     runs.append(run)
     return runs
+
+
+def merge_benchmark_run_ledgers(
+    *,
+    target_ledger_path: str | Path,
+    source_ledger_paths: list[str | Path],
+    benchmark_ids: list[str] | None = None,
+    run_group_contains: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Merge public benchmark_run_ledger_v0 files into one canonical ledger."""
+
+    if not source_ledger_paths:
+        raise ValueError("at least one source benchmark run ledger is required")
+    target_path = Path(target_ledger_path).expanduser()
+    markdown_path = target_path.with_suffix(".md")
+    benchmark_filter = {
+        _compact_text(value, limit=120)
+        for value in (benchmark_ids or [])
+        if _compact_text(value, limit=120)
+    }
+    run_group_filters = [
+        _compact_text(value, limit=160)
+        for value in (run_group_contains or [])
+        if _compact_text(value, limit=160)
+    ]
+    unique_sources: list[Path] = []
+    seen_sources: set[str] = set()
+    for source in source_ledger_paths:
+        source_path = Path(source).expanduser()
+        source_key = str(source_path.resolve(strict=False))
+        if source_key in seen_sources:
+            continue
+        seen_sources.add(source_key)
+        unique_sources.append(source_path)
+
+    def apply_merge(start_ledger: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        updated = _normalize_benchmark_run_ledger(dict(start_ledger))
+        before_run_ids = {
+            _compact_text(run.get("run_id"), limit=80)
+            for run in _iter_ledger_runs(updated)
+            if _compact_text(run.get("run_id"), limit=80)
+        }
+        before_signatures = {_ledger_entry_signature(run) for run in _iter_ledger_runs(updated)}
+        source_ledger_count = 0
+        missing_source_count = 0
+        source_run_count = 0
+        considered_run_count = 0
+        merged_run_count = 0
+        skipped_run_count = 0
+        skipped_by_reason: dict[str, int] = {}
+
+        def skip(reason: str) -> None:
+            nonlocal skipped_run_count
+            skipped_run_count += 1
+            skipped_by_reason[reason] = skipped_by_reason.get(reason, 0) + 1
+
+        for source_path in unique_sources:
+            if not source_path.exists():
+                missing_source_count += 1
+                continue
+            source_ledger_count += 1
+            source_ledger = load_benchmark_run_ledger(source_path)
+            for run in _iter_ledger_runs(source_ledger):
+                if not isinstance(run, dict):
+                    continue
+                source_run_count += 1
+                benchmark_id = _compact_text(run.get("benchmark_id"), limit=120)
+                if benchmark_filter and benchmark_id not in benchmark_filter:
+                    skip("benchmark_filter")
+                    continue
+                run_group_id = _compact_text(run.get("run_group_id"), limit=160)
+                if run_group_filters and not any(
+                    token in run_group_id for token in run_group_filters
+                ):
+                    skip("run_group_filter")
+                    continue
+                if not _entry_is_public_ledger_closeout(run):
+                    skip("non_terminal")
+                    continue
+                considered_run_count += 1
+                updated = upsert_benchmark_run_ledger_entry(updated, dict(run))
+                merged_run_count += 1
+
+        updated = _normalize_benchmark_run_ledger(updated)
+        after_runs = _iter_ledger_runs(updated)
+        after_run_ids = {
+            _compact_text(run.get("run_id"), limit=80)
+            for run in after_runs
+            if _compact_text(run.get("run_id"), limit=80)
+        }
+        after_signatures = {_ledger_entry_signature(run) for run in after_runs}
+        summary = {
+            "schema_version": "benchmark_run_ledger_merge_v0",
+            "ok": True,
+            "dry_run": dry_run,
+            "updated": not dry_run,
+            "ledger_path": str(target_path),
+            "markdown_path": str(markdown_path),
+            "source_ledger_count": source_ledger_count,
+            "missing_source_count": missing_source_count,
+            "source_run_count": source_run_count,
+            "considered_run_count": considered_run_count,
+            "merged_run_count": merged_run_count,
+            "new_run_id_count": len(after_run_ids - before_run_ids),
+            "new_signature_count": len(after_signatures - before_signatures),
+            "target_run_count": len(after_runs),
+            "skipped_run_count": skipped_run_count,
+            "skipped_by_reason": skipped_by_reason,
+            "benchmark_ids": sorted(benchmark_filter),
+            "run_group_contains": run_group_filters,
+            "source_paths_recorded": False,
+        }
+        return updated, summary
+
+    if dry_run:
+        _, summary = apply_merge(load_benchmark_run_ledger(target_path))
+    else:
+        with _LedgerWriteLock(target_path):
+            updated, summary = apply_merge(load_benchmark_run_ledger(target_path))
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = target_path.with_suffix(target_path.suffix + ".tmp")
+            tmp_markdown_path = markdown_path.with_suffix(markdown_path.suffix + ".tmp")
+            tmp_path.write_text(
+                json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            tmp_markdown_path.write_text(
+                render_benchmark_run_ledger_markdown(updated),
+                encoding="utf-8",
+            )
+            tmp_path.replace(target_path)
+            tmp_markdown_path.replace(markdown_path)
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "updated": not dry_run,
+        "ledger_path": str(target_path),
+        "markdown_path": str(markdown_path),
+        "merge": summary,
+    }
 
 
 def _history_benchmark_run(record: dict[str, Any]) -> dict[str, Any] | None:

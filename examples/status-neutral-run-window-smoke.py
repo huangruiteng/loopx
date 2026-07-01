@@ -13,7 +13,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.diagnose import collect_diagnosis  # noqa: E402
-from loopx.quota import QUOTA_MONITOR_POLL_CLASSIFICATION, build_quota_should_run  # noqa: E402
+from loopx.quota import (  # noqa: E402
+    QUOTA_MONITOR_POLL_CLASSIFICATION,
+    QUOTA_SLOT_SPENT_CLASSIFICATION,
+    QUOTA_SLOT_VOIDED_CLASSIFICATION,
+    build_quota_should_run,
+)
 from loopx.status import collect_status  # noqa: E402
 
 
@@ -129,6 +134,18 @@ def write_runs(root: Path) -> None:
             classification=QUOTA_MONITOR_POLL_CLASSIFICATION,
             action="monitor poll only; no status transition",
         )
+    append_run(
+        root,
+        generated_at="2026-01-01T00:07:00+00:00",
+        classification=QUOTA_SLOT_SPENT_CLASSIFICATION,
+        action="quota accounting only; no status transition",
+    )
+    append_run(
+        root,
+        generated_at="2026-01-01T00:08:00+00:00",
+        classification=QUOTA_SLOT_VOIDED_CLASSIFICATION,
+        action="quota void accounting only; no status transition",
+    )
 
 
 def main() -> int:
@@ -165,10 +182,10 @@ def main() -> int:
         run_goal = status["run_history"]["goals"][0]
         assert run_goal["latest_status_run"]["classification"] == REAL_CLASSIFICATION, run_goal
         assert len(run_goal["latest_runs"]) == 5, run_goal
-        assert {
-            run["classification"]
-            for run in run_goal["latest_runs"]
-        } == {QUOTA_MONITOR_POLL_CLASSIFICATION}, run_goal
+        latest_classifications = {run["classification"] for run in run_goal["latest_runs"]}
+        assert QUOTA_MONITOR_POLL_CLASSIFICATION in latest_classifications, run_goal
+        assert QUOTA_SLOT_SPENT_CLASSIFICATION in latest_classifications, run_goal
+        assert QUOTA_SLOT_VOIDED_CLASSIFICATION in latest_classifications, run_goal
 
         readiness = item["handoff_readiness"]
         assert readiness["post_handoff_latest_run"]["classification"] == REAL_CLASSIFICATION, readiness

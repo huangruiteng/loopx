@@ -17,6 +17,11 @@ export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
 ```
 
+The installer and `loopx update` use the public `stable` ref by default. Use
+`LOOPX_REF=main` or `loopx update --ref main` only for maintainer/dev repair
+when you intentionally want the current repository head instead of the stable
+channel.
+
 For a user who already installed from the archive, update through the explicit
 CLI flow:
 
@@ -26,6 +31,10 @@ loopx update --dry-run
 loopx update --execute
 loopx doctor
 ```
+
+Re-running the curl installer remains a repair/fallback path when the wrapper
+or local release snapshot is broken. It is not the primary update path for a
+healthy archive install.
 
 For contributors, keep the clone-plus-canary path:
 
@@ -38,6 +47,10 @@ loopx-canary doctor
 
 The no-clone path is the user default. The clone-plus-canary path is the
 maintainer validation path.
+
+Before promoting a stable install/update recommendation, maintainers must move
+the public `stable` ref to the release commit that passed this gate. Do not
+claim stable-channel readiness while `stable` is missing or stale.
 
 ## Compatibility Gate
 
@@ -87,6 +100,14 @@ The default promotion canary is:
 python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
 ```
 
+The default dashboard policy is `--dashboard-mode=auto`: source checkouts run
+dashboard demo-readiness when `apps/dashboard` is present, while installed
+release snapshots that omit the dashboard app skip that optional surface and
+keep the omission visible in the canary output. Use `--dashboard-mode=require`
+when the dashboard/frontstage itself is being promoted, and
+`--dashboard-mode=skip` only when the release boundary intentionally excludes
+the dashboard app.
+
 Use the writeback form only when you intentionally want to append fresh
 promotion-readiness evidence:
 
@@ -96,8 +117,9 @@ python3 examples/canary-promotion-readiness-smoke.py
 
 If the source checkout has optional frontend dependencies installed, dashboard
 readiness can be included in the same canary. If a release snapshot omits the
-dashboard app, record that as a release-boundary decision or follow-up instead
-of silently treating the dashboard path as covered.
+dashboard app, the canary should degrade gracefully and record that boundary
+rather than failing unrelated CLI/install promotion or silently treating the
+dashboard path as covered.
 
 ## What Is Safe To Depend On
 

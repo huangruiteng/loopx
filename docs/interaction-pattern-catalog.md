@@ -132,10 +132,14 @@ Concrete examples:
 Existing-contract-first rule: canary planning should consume current public
 runtime/status surfaces before proposing a new runtime contract. Prefer
 `quota should-run`, `status`, `review-packet`, `loopx check`, current smoke
-fixtures, and `loopx canary plan` output as the first evidence layer. A new
-runtime contract is justified only when these surfaces cannot represent a
-repeatable interaction that future controllers must route. In that case, stop
-at a review packet first: name the minimal missing behavior, list the existing
+fixtures, `loopx canary plan` output, and fixture-level `loopx canary run`
+checks as the first evidence layer. `loopx canary run` must stay no-write by
+default: it may execute selected repository-local fixture checks, but it should
+not write promotion evidence, create runtime contracts, poll external targets,
+or run deep/browser checks unless that deeper profile is explicitly selected. A
+new runtime contract is justified only when these surfaces cannot represent a
+repeatable interaction that future controllers must route. In that case, stop at
+a review packet first: name the minimal missing behavior, list the existing
 contract alternatives rejected, state compatibility and migration risk, and
 propose focused smokes for owner review before implementation.
 

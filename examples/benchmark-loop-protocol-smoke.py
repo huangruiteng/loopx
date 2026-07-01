@@ -75,6 +75,14 @@ def main() -> int:
     assert goal_start_product["product_mode"] is True
     assert goal_start_product["official_feedback_blinded"] is True
 
+    legacy_feedback_route = build_benchmark_loop_contract(
+        route="loopx-goal-start-verifier-feedback-todo",
+        max_rounds=16,
+    )
+    assert legacy_feedback_route["official_feedback_forwarded"] is False
+    assert legacy_feedback_route["official_feedback_blinded"] is True
+    assert legacy_feedback_route["product_mode"] is False
+
     product_contract = build_product_mode_main_table_comparison_contract()
     assert product_contract["protocol_id"] == PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
     assert product_contract["baseline_arm"]["route"] == RAW_CODEX_AUTONOMOUS_MAX5_ROUTE

@@ -182,7 +182,24 @@ print('codex stderr ok', file=sys.stderr)
                 text=True,
             )
             remote_last = root / "remote-last-message.txt"
-            prompt = "Private bridge command:\n/remote/tmp/bridge\n\nTask"
+            remote_bridge = "/remote/tmp/bridge"
+            first_request = (
+                '{"operation":"exec","cwd":"/app",'
+                '"command":"pwd && ls -la","timeout_sec":10}'
+            )
+            first_command = f"printf '%s\\n' '{first_request}' | {remote_bridge}"
+            prompt = f"""
+LoopX SkillsBench remote workspace bridge:
+- FIRST ACTION REQUIRED: copy and run this exact shell command:
+  `{first_command}`
+- Request examples:
+  - {{"operation":"exec","cwd":"/app","command":"pwd","timeout_sec":10}}
+
+Private bridge command:
+{remote_bridge}
+
+Task
+""".strip()
             env = os.environ.copy()
             env["LOOPX_REVERSE_CONNECT_TIMEOUT_SEC"] = "0.1"
             env["LOOPX_REVERSE_RESPONSE_TIMEOUT_SEC"] = "5"
@@ -214,7 +231,15 @@ print('codex stderr ok', file=sys.stderr)
             rewritten = prompt_dump.read_text(encoding="utf-8")
             assert "loopx-local-prompt-bridge" in rewritten
             assert str(local_bridge) not in rewritten
-            assert "/remote/tmp/bridge" not in rewritten
+            assert remote_bridge not in rewritten
+            copyable_packet = rewritten.split("FIRST ACTION REQUIRED:", 1)[1].split(
+                "Request examples:", 1
+            )[0]
+            bridge_line = rewritten.split("Private bridge command:\n", 1)[
+                1
+            ].splitlines()[0]
+            assert "loopx-local-prompt-bridge" in copyable_packet
+            assert bridge_line in copyable_packet
         finally:
             server.wait(timeout=5)
 

@@ -64,6 +64,7 @@ The first matrix should contain these simulator settings:
 | Setting | Purpose |
 | --- | --- |
 | `deterministic_scripted_user` | Reproducibility and contract checks without model calls. |
+| `rubric_derived_user_simulator` | Generates a task-design rubric from public task context, then gives bounded user-style process feedback against that rubric. |
 | `same_family_simulator_agent` | Same model family for simulator and worker. |
 | `stronger_simulator_weaker_agent` | Tests whether a stronger operator helps weaker workers. |
 | `weaker_simulator_stronger_agent` | Tests whether weaker supervision adds noise. |
@@ -74,6 +75,22 @@ The deterministic scripted user is the default smoke fixture. Model-backed
 settings require explicit operator approval and must be reported as assisted
 research, not official benchmark evidence.
 
+## Rubric-Derived Simulator
+
+The preferred non-oracle replacement for historical oracle-feedback ablations is a
+rubric-derived user simulator. Before the worker starts, the simulator builds a
+compact rubric from public task design: objective, visible constraints,
+deliverable format, allowed validation surfaces, and likely failure modes. The
+rubric is generated without official verifier results, hidden tests, gold
+answers, benchmark answer keys, private trajectories, or official reward.
+
+During the run, simulator messages may refer to rubric criteria such as
+missing validation, incomplete deliverable shape, unsupported assumptions,
+process drift, or evidence gaps. They must not reveal whether the official
+verifier passed, what hidden assertion failed, or which exact answer would
+score. This keeps assisted-mode gains attributable to user-collaboration and
+rubric discipline rather than verifier oracle leakage.
+
 ## Visibility Limits
 
 The simulator may see only:
@@ -83,10 +100,12 @@ The simulator may see only:
   Goal Tick phases;
 - validation output that the worker is allowed to inspect;
 - public-safe artifact manifests and compact run summaries.
+- generated task-design rubric summaries that satisfy the no-oracle audit.
 
 The simulator must not see hidden tests, expected solutions, benchmark answer
 keys, private project material, credentials, raw transcript material, raw runner
-logs, local host paths, or any state forbidden by the benchmark protocol.
+logs, local host paths, official verifier reward/pass/fail signals, official
+verifier error/output, or any state forbidden by the benchmark protocol.
 
 ## Intervention Budget
 
@@ -108,6 +127,7 @@ Allowed intervention types are process-level only:
 - `strategy_redirection`;
 - `continue_or_stop_after_failed_validation`;
 - `validation_triage`;
+- `rubric_gap_check`;
 - `process_drift_correction`;
 - `evidence_request`;
 - `handoff_quality_check`.

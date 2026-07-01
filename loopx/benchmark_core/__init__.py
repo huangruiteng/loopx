@@ -36,7 +36,6 @@ from .lifecycle import (
     canonical_lifecycle,
 )
 from .loop_protocol import (
-    AUTOMATION_LOOP_TREATMENT_ROUTE,
     BENCHMARK_LOOP_CONTROLLER_TRACE_SCHEMA_VERSION,
     BENCHMARK_LOOP_PROTOCOL_SCHEMA_VERSION,
     BENCHMARK_PRODUCT_MODE_COMPARISON_SCHEMA_VERSION,
@@ -126,7 +125,6 @@ __all__ = [
     "BenchmarkFailureClass",
     "BenchmarkLifecyclePhase",
     "BenchmarkRequest",
-    "AUTOMATION_LOOP_TREATMENT_ROUTE",
     "BLIND_LOOP_DEFAULT_MAX_ROUNDS",
     "build_benchmark_attempt_accounting",
     "build_benchmark_loop_contract",

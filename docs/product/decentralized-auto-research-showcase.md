@@ -268,6 +268,9 @@ The packet has two important product properties:
 - every lane receives its own `quota should-run` and `auto-research frontier`
   command, so work routing still comes from LoopX state, todo claims, gates,
   and evidence graph projections.
+- every lane prints `auto_research_role_profile_v0` before quota/frontier/
+  bootstrap, so the visible worker knows its role, skill section, write scope,
+  protected scope, and stop conditions before it starts.
 - the default "one-click" path is a dry-run rehearsal script: it checks the
   required environment variables and prints the tmux start, attach, and stop
   commands without starting tmux, launching Codex, writing LoopX state, or
@@ -282,10 +285,18 @@ Operators can pass explicit lanes when rehearsing a real local demo:
 ```bash
 loopx --format json auto-research demo-supervisor \
   --goal-id loopx-auto-research-knn \
-  --agent codex-side-bypass:hypothesis-runner \
-  --agent codex-product-capability:evidence-promoter \
-  --agent codex-main-control:control-plane-guard
+  --agent codex-product-capability:research-curator:research_curator \
+  --agent codex-side-bypass:hypothesis-mapper:hypothesis_mapper \
+  --agent codex-main-control:evidence-runner:evidence_runner \
+  --agent codex-value-explorer:evidence-verifier:evidence_verifier
 ```
+
+The third segment is optional for compatibility; when omitted, LoopX infers the
+role from the lane name or from the default role order. The v0 default uses
+three registered lanes: research curator, hypothesis mapper, and evidence
+runner. Evidence review is folded into the curator lane until a separately
+registered verifier lane is needed. The explicit `--agent` form remains the
+escape hatch for rehearsing a four-role layout.
 
 When the dry-run packet is acceptable, the same command can launch visible
 local Codex CLI TUIs. This is intentionally opt-in:
@@ -293,44 +304,45 @@ local Codex CLI TUIs. This is intentionally opt-in:
 ```bash
 loopx auto-research demo-supervisor \
   --goal-id loopx-auto-research-knn \
-  --agent codex-side-bypass:hypothesis-runner \
-  --agent codex-product-capability:evidence-promoter \
-  --agent codex-main-control:control-plane-guard \
+  --agent codex-product-capability:research-curator:research_curator \
+  --agent codex-side-bypass:hypothesis-mapper:hypothesis_mapper \
+  --agent codex-main-control:evidence-runner:evidence_runner \
+  --agent codex-value-explorer:evidence-verifier:evidence_verifier \
   --execute
 ```
 
-`--execute` auto-selects `tmux` when available and otherwise falls back to
-macOS Terminal. Use `--launcher tmux` or `--launcher terminal` to make the
-choice explicit. With tmux, `--attach` immediately joins the session and
-`--replace-existing` replaces a stale session with the same name. Terminal mode
-opens visible windows directly, so takeover is the normal terminal interrupt
-or closing the launched windows.
+`--execute` launches a tmux session. Use `--launcher tmux` to make the choice
+explicit. With tmux, `--attach` immediately joins the session and
+`--replace-existing` replaces a stale session with the same name. Takeover is
+the normal pane interrupt, shell prompt, or session kill command.
 
 The executed launcher still is not a leader. Each lane window first runs its
-own `quota should-run`, then renders its own `auto-research frontier`, then
-prints the `codex-cli-bootstrap-message`, and only then starts `codex` with
-that visible bootstrap prompt. The launcher itself does not write LoopX state
-or spend LoopX quota; any writeback must happen through the visible Codex lane's
-normal LoopX todo/evidence commands.
+own role profile, then runs `quota should-run`, then renders its own
+`auto-research frontier`, then prints the `codex-cli-bootstrap-message`, and
+only then starts `codex` with that visible bootstrap prompt. The launcher
+itself does not write LoopX state or spend LoopX quota; any writeback must
+happen through the visible Codex lane's normal LoopX todo/evidence commands.
+All lanes share the same LoopX goal surface: registry, runtime root, frontier,
+todo projection, and evidence graph. Workspace isolation is not applied to
+every pane by default; only mutating evidence-runner attempts need a claimed
+git worktree or equivalent execution boundary.
 
-For a tighter user handoff, render the demo acceptance packet. It links the
-experimental board output, the dry-run supervisor plan, and the takeover
-checklist into one operator-facing packet:
+The live worker path stays separate from the supervisor. The supervisor makes
+lanes visible; `worker-loop` is the small state-mediated executor that polls
+quota/frontier/todos and writes evidence through LoopX:
 
 ```bash
-loopx --format json auto-research acceptance \
+loopx --format json auto-research worker-loop \
   --goal-id loopx-auto-research-knn \
+  --agent-id codex-product-capability \
   --agent-id codex-side-bypass \
-  --agent codex-side-bypass:hypothesis-runner \
-  --agent codex-product-capability:evidence-promoter \
-  --agent codex-main-control:control-plane-guard
+  --agent-id codex-main-control \
+  --max-rounds 3
 ```
 
-The user should accept the demo only when the packet says the board is
-read-only, the supervisor is still `dry_run`, every lane has quota/frontier/
-bootstrap checks before Codex, and attach/stop controls are visible. It is
-still not a public-first-screen approval; `ready_for_public_first_screen` stays
-false until the first-screen review gate is explicitly cleared.
+When the dry-run selects safe runnable work, add `--execute` and
+`--complete-selected-todo`. This keeps auto-research as a decentralized
+state loop instead of growing a demo-specific leader workflow.
 
 ### Visible Operator Rehearsal Path
 
@@ -339,32 +351,32 @@ launcher:
 
 ```bash
 loopx --format json auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn \
-  --agent codex-side-bypass:hypothesis-runner \
-  --agent codex-product-capability:evidence-promoter \
-  --agent codex-main-control:control-plane-guard
+  --goal-id loopx-auto-research-knn
 ```
 
 The user should see four concrete things in the packet:
 
 - `mode: dry_run`, plus a boundary block showing `starts_tmux`,
   `runs_codex`, `writes_loopx_state`, and `spends_loopx_quota` are all false;
-- one pane plan per digital worker lane, with that lane's own
-  `quota should-run`, `auto-research frontier`, and
-  `codex-cli-bootstrap-message` commands;
+- one pane plan per default digital worker lane, with that lane's own
+  `auto_research_role_profile_v0`, `quota should-run`, `auto-research
+  frontier`, and `codex-cli-bootstrap-message` commands;
+- a shared goal-surface contract showing that all panes use the same LoopX
+  registry/runtime/frontier/evidence graph, while mutation isolation is reserved
+  for evidence-runner attempts;
 - a `start_script` array that can be copied into the user's shell only after
   the user sets `LOOPX_PROJECT`, `LOOPX_REGISTRY`, and
   `LOOPX_RUNTIME_ROOT`;
 - a `lane_timeline` for each lane, making the visible sequence explicit:
-  quota guard, frontier projection, bootstrap prompt, then visible Codex TUI;
+  role profile, quota guard, frontier projection, bootstrap prompt, then
+  visible Codex TUI;
 - explicit takeover controls: `tmux attach -t loopx-auto-research` to inspect
   every lane before accepting Codex prompts, and
   `tmux kill-session -t loopx-auto-research` to stop the rehearsal.
 
 After `--execute`, the packet includes `launch_result` with the selected
 launcher, started lanes, attach/stop command, and takeover instructions. For a
-first live demo, prefer `--execute --attach` when tmux is installed, or
-`--execute --launcher terminal` on a Mac without tmux.
+first live demo, prefer `--execute --attach` when tmux is installed.
 
 The safe demo acceptance bar is that the user can inspect the plan, attach to
 the visible tmux session before any Codex prompt is accepted, interrupt any
@@ -373,12 +385,10 @@ todo claims, frontier projection, and normal evidence writeback. The
 supervisor never becomes a leader agent; it is only a shell layout that makes
 the decentralized workers visible and interruptible.
 
-The packet also carries `demo_acceptance`: a compact, smoke-backed checklist
-for what must be visible before a human accepts the rehearsal. It is deliberately
-about observable behavior, not private demo notes: the rehearsal script must
-print without executing, each lane must show quota before frontier/bootstrap,
-attach and stop controls must be visible, and dry-run boundary fields must show
-no tmux, Codex, state, quota, credential, or session side effects.
+The launcher checklist is deliberately about observable behavior, not private
+demo notes: each lane must show quota before frontier/bootstrap, attach and
+stop controls must be visible, and dry-run boundary fields must show no tmux,
+Codex, state, quota, credential, or session side effects.
 
 The generated dry-run shell plan uses environment placeholders such as
 `LOOPX_PROJECT`, `LOOPX_REGISTRY`, and `LOOPX_RUNTIME_ROOT` instead of embedding

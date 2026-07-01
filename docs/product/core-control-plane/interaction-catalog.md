@@ -49,7 +49,7 @@ The schema deliberately joins product and runtime language:
 | IP-008 | Monitor Quiet Skip | Watch-only work stays alive without spending quota on unchanged polls. | `Todo`, `MonitorQuietSkip`, `Run Snapshot` | `QuotaCheck -> MonitorQuiet -> Ready` | `examples/monitor-scheduler-contract-smoke.py` |
 | IP-021 | Per-Todo Capability Gate | Missing runtime capability blocks only the affected candidate, not the entire goal. | `Todo`, `CapabilityGate`, `Projection` | `QuotaCheck -> CapabilityGate -> Repair/AskOwner/RunCandidate` | `examples/capability-gate-smoke.py` |
 | IP-026 | Agent-Scoped No-Candidate Gap | A side agent with no in-scope work waits quietly instead of inventing delivery. | `Claim`, `AgentScopeWait`, `Projection` | `QuotaCheck -> AgentScopeWait -> Ready` | `examples/refresh-state-agent-lane-scope-smoke.py` |
-| IP-029 | Handoff Todo Gate State | Cross-agent review and handoff become todo lifecycle, not hidden chat memory. | `Claim`, `Dependency / Resume`, `Handoff`, `Gate` | `OwnerRouteWait -> OwnerDecisionRecorded -> HandoffGateCleared` | `examples/status-markdown-smoke.py` |
+| IP-029 | Handoff Todo Gate State | Cross-agent review and handoff become todo lifecycle, not hidden chat memory. | `Claim`, `Dependency / Resume`, `Handoff`, `Gate` | `OwnerRouteWait -> OwnerDecisionRecorded -> HandoffGateCleared -> SuccessorReplan/SuccessorRun` | `examples/quota-cleared-blocker-successor-gate-smoke.py` |
 
 ## Pattern Families As A Graph
 

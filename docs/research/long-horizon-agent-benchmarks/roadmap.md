@@ -219,6 +219,11 @@ There are three result modes:
   after failed validation, and correct obvious process drift under a fixed
   intervention budget. This mode measures human-agent collaboration and must be
   reported separately from official leaderboard scores.
+- **Rubric-derived user-simulator mode:** generate a compact rubric from public
+  task design before the worker starts, then let a bounded simulator give
+  user-style feedback against that rubric. It must not consume official verifier
+  reward, pass/fail status, verifier errors, hidden tests, gold answers, or
+  benchmark answer keys.
 
 The first operator-simulator matrix should compare:
 
@@ -228,11 +233,13 @@ The first operator-simulator matrix should compare:
 - Codex CLI worker with a non-Codex simulator;
 - Doubao 2.0 style simulator or worker where available;
 - deterministic scripted user for reproducibility checks.
+- rubric-derived user simulator for non-oracle task-design feedback.
 
 The simulator contract should record:
 
 - model or simulator identity;
 - whether the simulator can see only public task state and worker artifacts;
+- the rubric generation source and no-oracle audit result;
 - cooperation level;
 - ambiguity and correction behavior;
 - tool/state grounding;

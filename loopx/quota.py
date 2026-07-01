@@ -168,6 +168,7 @@ DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
     "dependency_monitor",
 )
 EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_obligation_v0"
+PROJECTED_MONITOR_HANDLE_SCHEMA_VERSION = "projected_monitor_handle_v0"
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
@@ -395,6 +396,8 @@ def _external_evidence_poll_signal(
     ):
         return None
 
+    scoped_monitor_handle = _projected_monitor_handle(agent_todo_summary)
+    scoped_monitor_watch = _scoped_monitor_watch_without_advancement(agent_todo_summary)
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     action_texts = [
         str(value or "").strip()
@@ -472,12 +475,14 @@ def _external_evidence_poll_signal(
     direct_observe = direct_observe_action or direct_observe_todo or direct_observe_state
     if not direct_observe and not launched_wait:
         return None
+    if scoped_monitor_watch and not scoped_monitor_handle:
+        return None
 
     observation_target = next((text for text in action_texts if text), None) or next(
         (text for text in todo_texts if text),
         "",
     )
-    return {
+    signal = {
         "source": "active_state_or_latest_run",
         "trigger": "implicit_launched_external_poll",
         "observation_target": observation_target,
@@ -490,6 +495,71 @@ def _external_evidence_poll_signal(
             else "state"
         ),
     }
+    if scoped_monitor_handle:
+        signal["monitor_handle"] = scoped_monitor_handle
+    return signal
+
+
+def _todo_summary_monitor_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return []
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for key in (
+        "monitor_due_items",
+        "current_agent_claimed_monitor_items",
+        "monitor_open_items",
+        "claimed_monitor_open_items",
+        "first_open_items",
+    ):
+        values = summary.get(key)
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            if not _todo_item_is_actionable_open(value):
+                continue
+            if _todo_task_class(value) != TODO_TASK_CLASS_MONITOR:
+                continue
+            identity = (normalize_todo_id(value.get("todo_id")) or "", id(value))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            items.append(value)
+    return items
+
+
+def _projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    for item in _todo_summary_monitor_items(summary):
+        target_key = str(item.get("target_key") or "").strip()
+        if not target_key:
+            continue
+        handle: dict[str, Any] = {
+            "schema_version": PROJECTED_MONITOR_HANDLE_SCHEMA_VERSION,
+            "target_key": target_key,
+        }
+        todo_id = normalize_todo_id(item.get("todo_id"))
+        if todo_id:
+            handle["todo_id"] = todo_id
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if claimed_by:
+            handle["claimed_by"] = claimed_by
+        next_due_at = str(item.get("next_due_at") or "").strip()
+        if next_due_at:
+            handle["next_due_at"] = next_due_at
+        return handle
+    return None
+
+
+def _scoped_monitor_watch_without_advancement(summary: dict[str, Any] | None) -> bool:
+    if not isinstance(summary, dict):
+        return False
+    if not _todo_summary_claim_scope_agent_id(summary):
+        return False
+    if not _todo_summary_monitor_items(summary):
+        return False
+    return _open_todo_task_counts(summary).get("advancement", 0) <= 0
 
 
 def _post_handoff_latest_run(item: dict[str, Any]) -> dict[str, Any]:
@@ -590,7 +660,7 @@ def _external_evidence_observation_obligation(
     if poll_signal and poll_signal.get("observation_target"):
         observation_target = str(poll_signal.get("observation_target") or observation_target)
 
-    return {
+    obligation = {
         "schema_version": EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION,
         "required": True,
         "kind": "external_evidence_monitor" if explicit_wait else "launched_external_work_monitor",
@@ -631,6 +701,10 @@ def _external_evidence_observation_obligation(
             "compact transition or blocker writeback"
         ),
     }
+    monitor_handle = poll_signal.get("monitor_handle") if isinstance(poll_signal, dict) else None
+    if isinstance(monitor_handle, dict) and monitor_handle:
+        obligation["monitor_handle"] = monitor_handle
+    return obligation
 
 
 def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
@@ -943,6 +1017,10 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "consecutive_no_change",
         "material_change",
         "max_no_change_before_replan",
+        "route_continuation_replan_required",
+        "route_continuation_reason",
+        "route_id",
+        "route_key",
     ):
         if item.get(key) is not None:
             compact[key] = item.get(key)
@@ -1659,6 +1737,155 @@ def _deferred_visibility_lanes(
     return lanes
 
 
+def _todo_summary_route_continuation_candidates(value: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(value, dict):
+        return []
+    source_items: list[dict[str, Any]] = []
+    for key in (
+        "route_continuation_replan_candidates",
+        "route_continuation_candidates",
+    ):
+        raw_items = value.get(key) if isinstance(value.get(key), list) else []
+        source_items.extend(item for item in raw_items if isinstance(item, dict))
+
+    handoff_gates = _todo_summary_handoff_gates(value)
+    source_items.extend(
+        item
+        for item in handoff_gates
+        if isinstance(item, dict)
+        and item.get("route_continuation_replan_required") is True
+    )
+    if not source_items:
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in source_items:
+        if item.get("route_continuation_replan_required") is False:
+            continue
+        task_class = item.get("task_class")
+        if task_class is not None and _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        text = str(
+            item.get("text")
+            or item.get("title")
+            or item.get("recommended_action")
+            or item.get("route_continuation_reason")
+            or ""
+        ).strip()
+        identity = str(
+            item.get("todo_id")
+            or item.get("route_id")
+            or item.get("route_key")
+            or item.get("index")
+            or text
+        )
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        compact = _compact_todo_summary_item(item, text=text)
+        compact["route_continuation_replan_required"] = True
+        if item.get("route_continuation_reason") is not None:
+            compact["route_continuation_reason"] = item.get("route_continuation_reason")
+        if item.get("route_id") is not None:
+            compact["route_id"] = item.get("route_id")
+        if item.get("route_key") is not None:
+            compact["route_key"] = item.get("route_key")
+        candidates.append(compact)
+    return sorted(candidates, key=_todo_projection_sort_key)
+
+
+def _route_continuation_candidate_matches_agent(
+    item: dict[str, Any],
+    *,
+    agent_id: str,
+) -> bool:
+    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    if blocks_agent:
+        return blocks_agent == agent_id
+    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+    return not claimed_by or claimed_by == agent_id
+
+
+def _agent_filtered_route_continuation_items(
+    items: list[dict[str, Any]],
+    *,
+    agent_id: str | None,
+    claim: str,
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    for item in items:
+        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if claim == "current":
+            if not agent_id or not _route_continuation_candidate_matches_agent(
+                item,
+                agent_id=agent_id,
+            ):
+                continue
+        elif claim == "unclaimed":
+            if blocks_agent or claimed_by:
+                continue
+        elif claim == "other":
+            if not agent_id:
+                continue
+            if _route_continuation_candidate_matches_agent(item, agent_id=agent_id):
+                continue
+        selected.append(item)
+    return selected
+
+
+def _route_continuation_replan_lanes(
+    value: dict[str, Any],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any]:
+    candidates = _todo_summary_route_continuation_candidates(value)
+    if not candidates:
+        return {}
+    lanes: dict[str, Any] = {
+        "route_continuation_replan_count": len(candidates),
+        "route_continuation_replan_candidates": candidates[:TODO_BACKLOG_ITEM_LIMIT],
+    }
+    agent_id = (
+        normalize_todo_claimed_by(agent_identity.get("agent_id"))
+        if isinstance(agent_identity, dict)
+        else None
+    )
+    if agent_id:
+        current_agent_candidates = _agent_filtered_route_continuation_items(
+            candidates,
+            agent_id=agent_id,
+            claim="current",
+        )
+        unclaimed_candidates = _agent_filtered_route_continuation_items(
+            candidates,
+            agent_id=agent_id,
+            claim="unclaimed",
+        )
+        other_agent_candidates = _agent_filtered_route_continuation_items(
+            candidates,
+            agent_id=agent_id,
+            claim="other",
+        )
+        lanes.update(
+            {
+                "current_agent_route_continuation_replan_candidates": current_agent_candidates[:TODO_BACKLOG_ITEM_LIMIT],
+                "unclaimed_route_continuation_replan_candidates": unclaimed_candidates[:TODO_BACKLOG_ITEM_LIMIT],
+                "other_agent_route_continuation_replan_candidates": other_agent_candidates[:TODO_BACKLOG_ITEM_LIMIT],
+                "current_agent_route_continuation_replan_count": len(current_agent_candidates),
+                "unclaimed_route_continuation_replan_count": len(unclaimed_candidates),
+                "other_agent_route_continuation_replan_count": len(other_agent_candidates),
+                "route_continuation_replan_selection_policy": (
+                    "quota may wake the current side-agent for route continuation "
+                    "replan candidates claimed by that agent or unclaimed; other-agent "
+                    "route candidates remain diagnostic visibility"
+                ),
+            }
+        )
+    return lanes
+
+
 def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
     source_keys = (
         "active_next_action_items",
@@ -1674,6 +1901,7 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
         "current_agent_claimed_monitor_items",
         "items",
     )
+    ready_successor_todo_ids = _handoff_ready_successor_todo_ids(value)
     open_items: list[dict[str, Any]] = []
     for key in source_keys:
         source_items = value.get(key) if isinstance(value.get(key), list) else []
@@ -1692,8 +1920,40 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
             )
             if duplicate:
                 continue
-            open_items.append(_compact_todo_summary_item(item, text=text))
+            compact = _compact_todo_summary_item(item, text=text)
+            todo_id = normalize_todo_id(compact.get("todo_id"))
+            if (
+                todo_id
+                and todo_id in ready_successor_todo_ids
+                and normalize_todo_resume_when(compact.get("resume_when"))
+                and "resume_ready" not in compact
+            ):
+                compact["resume_ready"] = True
+                compact["resume_condition"] = {
+                    "schema_version": "todo_resume_condition_v0",
+                    "resume_when": compact.get("resume_when"),
+                    "satisfied": True,
+                    "source": "handoff_gate_cleared_with_successor",
+                }
+            open_items.append(compact)
     return open_items
+
+
+def _handoff_ready_successor_todo_ids(value: dict[str, Any]) -> set[str]:
+    ready: set[str] = set()
+    for gate in _todo_summary_handoff_gates(value):
+        if not isinstance(gate, dict):
+            continue
+        if str(gate.get("gate_state") or "") != HandoffGateState.CLEARED_WITH_SUCCESSOR.value:
+            continue
+        successor_ids = gate.get("successor_todo_ids")
+        if not isinstance(successor_ids, list):
+            continue
+        for todo_id in successor_ids:
+            normalized = normalize_todo_id(todo_id)
+            if normalized:
+                ready.add(normalized)
+    return ready
 
 
 def _todo_summary_handoff_gates(value: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1861,6 +2121,12 @@ def _summarize_user_todos(
             agent_identity=agent_identity,
         )
     )
+    summary.update(
+        _route_continuation_replan_lanes(
+            value,
+            agent_identity=agent_identity,
+        )
+    )
     if claimed_open_items or value.get("claimed_open_count"):
         summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
         summary["unclaimed_open_count"] = value.get(
@@ -1993,6 +2259,12 @@ def _summarize_project_asset_todos(
     )
     summary.update(
         _handoff_gate_lanes(
+            value,
+            agent_identity=agent_identity,
+        )
+    )
+    summary.update(
+        _route_continuation_replan_lanes(
             value,
             agent_identity=agent_identity,
         )
@@ -2217,19 +2489,27 @@ def _scoped_user_gate_fallback(
     user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
     *,
+    capability_gate: dict[str, Any] | None = None,
     allow_unrelated_gate: bool = False,
 ) -> dict[str, Any] | None:
     gates = _open_user_gate_todo_items(user_todo_summary)
     if not gates or not isinstance(agent_todo_summary, dict):
         return None
 
-    executable_items = (
-        agent_todo_summary.get("executable_backlog_items")
-        if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
-        else agent_todo_summary.get("first_executable_items")
-        if isinstance(agent_todo_summary.get("first_executable_items"), list)
-        else []
-    )
+    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
+        executable_items = (
+            capability_gate.get("runnable_candidates")
+            if isinstance(capability_gate.get("runnable_candidates"), list)
+            else []
+        )
+    else:
+        executable_items = (
+            agent_todo_summary.get("executable_backlog_items")
+            if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
+            else agent_todo_summary.get("first_executable_items")
+            if isinstance(agent_todo_summary.get("first_executable_items"), list)
+            else []
+        )
     executable_items = [item for item in executable_items if isinstance(item, dict)]
     claim_scope = (
         agent_todo_summary.get("claim_scope")
@@ -2389,12 +2669,43 @@ def _agent_lane_next_action(
     agent_todo_summary: dict[str, Any] | None,
     capability_gate: dict[str, Any] | None,
     active_next_action: Any = None,
+    scoped_user_gate_fallback: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(agent_identity, dict):
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
+
+    if isinstance(scoped_user_gate_fallback, dict):
+        selected = scoped_user_gate_fallback.get("selected_executable")
+        if isinstance(selected, dict):
+            text = _protocol_action_text(selected.get("text"), limit=500)
+            claimed_by = normalize_todo_claimed_by(selected.get("claimed_by"))
+            if (
+                text
+                and _todo_item_is_actionable_open(selected)
+                and _todo_task_class(selected) == TODO_TASK_CLASS_ADVANCEMENT
+                and (not claimed_by or claimed_by == agent_id)
+            ):
+                payload = dict(selected)
+                payload.update(
+                    {
+                        "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
+                        "agent_id": agent_id,
+                        "primary_agent": normalize_todo_claimed_by(
+                            agent_identity.get("primary_agent")
+                        ),
+                        "source": "scoped_user_gate_fallback.selected_executable",
+                        "selected_by": "scoped_user_gate_fallback",
+                        "confidence": "selected",
+                        "preserves_goal_next_action": False,
+                        "replaces_gated_goal_next_action": True,
+                    }
+                )
+                if not claimed_by:
+                    payload["claim_required_before_work"] = True
+                return payload
 
     candidate_sources: list[tuple[str, list[Any]]] = []
     candidate_sources.append(
@@ -2638,6 +2949,36 @@ def _agent_lane_frontier_hint(
                 ),
             )
         deferred_todo_id = _first_compact_todo_id(frontier.get("deferred_resume_candidates"))
+        route_todo_id = _first_compact_todo_id(
+            frontier.get("route_continuation_replan_candidates")
+        )
+        route_candidates = (
+            frontier.get("route_continuation_replan_candidates")
+            if isinstance(frontier.get("route_continuation_replan_candidates"), list)
+            else []
+        )
+        route_candidate = (
+            route_candidates[0]
+            if route_candidates and isinstance(route_candidates[0], dict)
+            else {}
+        )
+        route_target = (
+            route_todo_id
+            or normalize_todo_id(route_candidate.get("route_id"))
+            or normalize_todo_id(route_candidate.get("route_key"))
+        )
+        if route_candidate:
+            return build_hint(
+                AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+                source="agent_scope_frontier",
+                reason_code="route_continuation_replan_required",
+                target_todo_id=route_target,
+                quiet_noop_allowed=False,
+                next_cli_action=(
+                    f"loopx todo add --goal-id {goal_id} --role agent "
+                    "--text '<public-safe route continuation advancement todo>'"
+                ),
+            )
         return build_hint(
             AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
             source="agent_scope_frontier",
@@ -2806,6 +3147,57 @@ def _agent_scope_blocking_handoff_gates(
     return sorted(selected, key=_todo_projection_sort_key)
 
 
+def _agent_scope_route_continuation_replan_candidates(
+    agent_todo_summary: dict[str, Any],
+    *,
+    agent_id: str,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for key in (
+        "current_agent_route_continuation_replan_candidates",
+        "unclaimed_route_continuation_replan_candidates",
+    ):
+        value = agent_todo_summary.get(key)
+        if isinstance(value, list):
+            candidates.extend(item for item in value if isinstance(item, dict))
+    if not candidates:
+        value = agent_todo_summary.get("route_continuation_replan_candidates")
+        if isinstance(value, list):
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                if not _route_continuation_candidate_matches_agent(item, agent_id=agent_id):
+                    continue
+                candidates.append(item)
+
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if item.get("route_continuation_replan_required") is False:
+            continue
+        identity = str(
+            item.get("todo_id")
+            or item.get("route_id")
+            or item.get("route_key")
+            or item.get("index")
+            or item.get("text")
+            or ""
+        )
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        compact = _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact["route_continuation_replan_required"] = True
+        if item.get("route_continuation_reason") is not None:
+            compact["route_continuation_reason"] = item.get("route_continuation_reason")
+        if item.get("route_id") is not None:
+            compact["route_id"] = item.get("route_id")
+        if item.get("route_key") is not None:
+            compact["route_key"] = item.get("route_key")
+        unique.append(compact)
+    return sorted(unique, key=_todo_projection_sort_key)
+
+
 def _agent_scope_no_candidate_frontier(
     *,
     agent_identity: dict[str, Any] | None,
@@ -2889,6 +3281,53 @@ def _agent_scope_no_candidate_frontier(
                 "deferred_resume_candidate_count": len(deferred_resume_candidates),
             },
             "deferred_resume_candidates": deferred_resume_candidates[:3],
+        }
+
+    route_continuation_replan_candidates = _agent_scope_route_continuation_replan_candidates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if route_continuation_replan_candidates:
+        first_candidate = route_continuation_replan_candidates[0]
+        route_label = (
+            str(
+                first_candidate.get("route_id")
+                or first_candidate.get("route_key")
+                or first_candidate.get("todo_id")
+                or ""
+            ).strip()
+            or "<route>"
+        )
+        reason = (
+            f"current side-agent {agent_id} has no open current/unclaimed "
+            "advancement candidate, but the route continuation projection "
+            f"requires a successor replan for {route_label}"
+        )
+        recommended_action = (
+            "Run a bounded route continuation replan before quiet wait: create or "
+            f"claim the next concrete {agent_id}/unclaimed advancement todo for "
+            f"{route_label}, or record an explicit no-follow-up rationale."
+        )
+        return {
+            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+            "agent_id": agent_id,
+            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "blocks_delivery": True,
+            "requires_replan": True,
+            "quiet_noop_allowed": False,
+            "spend_policy": "spend once after validated route continuation replan/todo writeback",
+            "reason": reason,
+            "recommended_action": recommended_action,
+            "candidate_counts": {
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "route_continuation_replan_candidate_count": len(
+                    route_continuation_replan_candidates
+                ),
+            },
+            "route_continuation_replan_candidates": route_continuation_replan_candidates[:3],
         }
 
     blocking_handoff_gates = _agent_scope_blocking_handoff_gates(
@@ -3944,6 +4383,16 @@ def _interaction_primary_agent_action(payload: dict[str, Any], *, mode: str) -> 
 
 def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[str]:
     goal_id = str(payload.get("goal_id") or "<GOAL_ID>")
+    agent_identity = (
+        payload.get("agent_identity")
+        if isinstance(payload.get("agent_identity"), dict)
+        else {}
+    )
+    agent_arg = (
+        f" --agent-id {agent_identity.get('agent_id')}"
+        if agent_identity.get("agent_id")
+        else ""
+    )
     if mode == "automation_prompt_upgrade":
         automation_prompt_upgrade = (
             payload.get("automation_prompt_upgrade")
@@ -3968,6 +4417,17 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
             if isinstance(payload.get("agent_scope_frontier"), dict)
             else {}
         )
+        route_candidates = (
+            agent_scope_frontier.get("route_continuation_replan_candidates")
+            if isinstance(agent_scope_frontier.get("route_continuation_replan_candidates"), list)
+            else []
+        )
+        if route_candidates:
+            return [
+                f"loopx todo add --goal-id {goal_id} --role agent --text '<public-safe route continuation advancement todo>'",
+                f"loopx refresh-state --goal-id {goal_id} --classification route_continuation_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
+            ]
         candidates = (
             agent_scope_frontier.get("deferred_resume_candidates")
             if isinstance(agent_scope_frontier.get("deferred_resume_candidates"), list)
@@ -3977,20 +4437,10 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
         todo_id = str(first_candidate.get("todo_id") or "<todo_id>")
         return [
             f"loopx todo update --goal-id {goal_id} --todo-id {todo_id} --status open --note '<public-safe successor replan reason>'",
-            f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress",
-            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute",
+            f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
+            f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
         ]
     if _agent_scope_frontier_action(mode) is not None:
-        agent_identity = (
-            payload.get("agent_identity")
-            if isinstance(payload.get("agent_identity"), dict)
-            else {}
-        )
-        agent_arg = (
-            f" --agent-id {agent_identity.get('agent_id')}"
-            if agent_identity.get("agent_id")
-            else ""
-        )
         return [
             "no quota spend while this agent has no in-scope runnable candidate",
             f"loopx --format json quota should-run --goal-id {goal_id}{agent_arg}",
@@ -5211,14 +5661,24 @@ def _boundary_projection_repair_hint(
     agent_todo_summary: dict[str, Any] | None,
     *,
     candidate_should_run: bool,
+    capability_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not candidate_should_run or not isinstance(agent_todo_summary, dict):
         return None
     candidate_items: list[dict[str, Any]] = []
-    for key in ("first_executable_items", "first_open_items"):
-        value = agent_todo_summary.get(key)
-        if isinstance(value, list):
-            candidate_items.extend(item for item in value if isinstance(item, dict))
+    if isinstance(capability_gate, dict):
+        if capability_gate.get("action") != "run":
+            return None
+        runnable_candidates = capability_gate.get("runnable_candidates")
+        if isinstance(runnable_candidates, list) and runnable_candidates:
+            candidate_items.extend(
+                item for item in runnable_candidates if isinstance(item, dict)
+            )
+    if not candidate_items:
+        for key in ("first_executable_items", "first_open_items"):
+            value = agent_todo_summary.get(key)
+            if isinstance(value, list):
+                candidate_items.extend(item for item in value if isinstance(item, dict))
     selected: dict[str, Any] | None = None
     for item in candidate_items:
         if not _todo_item_is_actionable_open(item):
@@ -6235,6 +6695,7 @@ def build_quota_should_run(
             candidate_should_run=bool(
                 normal_delivery_allowed or recovery_allowed or self_repair_allowed
             ),
+            capability_gate=capability_gate,
         )
         if boundary_projection_repair:
             stall_self_repair = boundary_projection_repair
@@ -6426,12 +6887,19 @@ def build_quota_should_run(
                 or automation_prompt_upgrade.get("reason")
                 or selected_recommended_action
             )
+        scoped_user_gate_fallback = _scoped_user_gate_fallback(
+            user_todo_summary,
+            agent_todo_summary,
+            capability_gate=capability_gate,
+            allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
+        )
         agent_lane_next_action = None
         if not due_monitor_attempt:
             agent_lane_next_action = _agent_lane_next_action(
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,
                 capability_gate=capability_gate,
+                scoped_user_gate_fallback=scoped_user_gate_fallback,
                 active_next_action=(
                     item.get("active_state_next_action")
                     or (
@@ -6662,11 +7130,6 @@ def build_quota_should_run(
                         or "no-work polling should ask the current open user todo"
                     )
                     payload["open_todo_notification_policy"] = "repeat_until_resolved"
-        scoped_user_gate_fallback = _scoped_user_gate_fallback(
-            user_todo_summary,
-            agent_todo_summary,
-            allow_unrelated_gate=bool(payload.get("safe_bypass_allowed")),
-        )
         if scoped_user_gate_fallback:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
             payload["should_run"] = True
@@ -6901,6 +7364,7 @@ def build_quota_slot_preview(
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     safe_slots = max(1, _int_number(slots, default=1))
+    safe_requested_agent_id = normalize_todo_claimed_by(agent_id)
     before = build_quota_should_run(
         status_payload,
         goal_id=safe_goal_id,
@@ -6931,6 +7395,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": (
@@ -6968,6 +7433,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": before.get("reason") or "goal is not eligible for quota accounting preview",
@@ -6983,6 +7449,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": "goal has no quota payload to preview",
@@ -7020,6 +7487,7 @@ def build_quota_slot_preview(
         "dry_run": True,
         "goal_id": safe_goal_id,
         "slots": safe_slots,
+        "agent_id": safe_requested_agent_id,
         "appended": False,
         "registry_mutated": False,
         "before": before,
@@ -7837,7 +8305,7 @@ def build_quota_slot_spend_event(
         raise ValueError(f"quota slot spend source must be one of: {', '.join(sorted(VALID_SLOT_SPEND_SOURCES))}")
     before = preview.get("before") if isinstance(preview.get("before"), dict) else {}
     after = preview.get("after") if isinstance(preview.get("after"), dict) else {}
-    safe_agent_id = _quota_decision_agent_id(before)
+    safe_agent_id = normalize_todo_claimed_by(preview.get("agent_id")) or _quota_decision_agent_id(before)
     slots = max(1, _int_number(preview.get("slots"), default=1))
     before_compact = _compact_quota_decision(before)
     after_compact = _compact_quota_decision(after)
@@ -8753,6 +9221,23 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 "- agent_scope_deferred_resume_candidates: "
                 f"`{len(deferred_resume_candidates)}` "
                 f"top_todo_id={first_candidate.get('todo_id')}"
+            )
+        route_continuation_candidates = (
+            agent_scope_frontier.get("route_continuation_replan_candidates")
+            if isinstance(agent_scope_frontier.get("route_continuation_replan_candidates"), list)
+            else []
+        )
+        if route_continuation_candidates:
+            first_candidate = (
+                route_continuation_candidates[0]
+                if isinstance(route_continuation_candidates[0], dict)
+                else {}
+            )
+            lines.append(
+                "- agent_scope_route_continuation_replan_candidates: "
+                f"`{len(route_continuation_candidates)}` "
+                f"top_todo_id={first_candidate.get('todo_id')} "
+                f"route={first_candidate.get('route_id') or first_candidate.get('route_key') or ''}"
             )
     automation_prompt_upgrade = (
         payload.get("automation_prompt_upgrade")

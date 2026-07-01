@@ -43,7 +43,6 @@ SKILLSBENCH_ROUTES = (
     "loopx-prompt-polling-test",
     "codex-app-server-goal-baseline",
     "codex-goal-mode-baseline",
-    "automation-loop-treatment",
     "curated-skills-baseline",
     SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
     SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
@@ -69,6 +68,7 @@ SKILLSBENCH_APP_SERVER_GOAL_WORKER_CONTRACT_SCHEMA_VERSION = (
 SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_BLOCKER = (
     "skillsbench_verifier_dependency_prewarm_required"
 )
+SKILLSBENCH_RESULT_DISCOVERY_SCHEMA_VERSION = "skillsbench_result_discovery_v0"
 SKILLSBENCH_VERIFIER_DEPENDENCY_PREWARM_APT_PACKAGES = (
     "python3",
     "python3-pip",
@@ -140,6 +140,137 @@ def _skillsbench_rollout_reward_artifact(
     if not math.isfinite(reward):
         return None, None
     return reward, "official_skillsbench_rollout_verifier_reward_txt"
+
+
+def _skillsbench_safe_relative(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.name
+
+
+def discover_skillsbench_benchflow_result_json(
+    search_root: str | Path,
+    *,
+    expected_result_json: str | Path | None = None,
+    task_id: str | None = None,
+    rollout_name: str | None = None,
+) -> tuple[Path | None, dict[str, Any]]:
+    """Find an official SkillsBench/BenchFlow result.json below a safe root.
+
+    The discovery reads only compact official result.json metadata. It does not
+    inspect prompts, trajectories, verifier logs, task text, screenshots, or
+    credentials. This shared helper keeps CLI ledger ingest aligned with the
+    automation-loop reducer when BenchFlow materializes nested result paths.
+    """
+
+    root = Path(search_root).expanduser()
+    requested_task = str(task_id or "").strip()
+    requested_rollout = str(rollout_name or "").strip()
+
+    def base_discovery(status: str, policy: str) -> dict[str, Any]:
+        return {
+            "schema_version": SKILLSBENCH_RESULT_DISCOVERY_SCHEMA_VERSION,
+            "status": status,
+            "selection_policy": policy,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+        }
+
+    if root.name == "result.json":
+        discovery = base_discovery(
+            "found" if root.is_file() else "missing",
+            "explicit_result_json",
+        )
+        discovery["candidate_count"] = 1 if root.is_file() else 0
+        if root.is_file():
+            discovery["selected_relative_to_root"] = root.name
+            discovery["selected_relative_to_job"] = root.name
+            return root, discovery
+        return None, discovery
+
+    expected = Path(expected_result_json).expanduser() if expected_result_json else None
+    if expected is not None and expected.is_file():
+        discovery = base_discovery("found", "planned_result_path")
+        discovery["candidate_count"] = 1
+        discovery["selected_relative_to_root"] = _skillsbench_safe_relative(
+            expected,
+            root,
+        )
+        discovery["selected_relative_to_job"] = discovery["selected_relative_to_root"]
+        return expected, discovery
+
+    if not root.is_dir():
+        discovery = base_discovery("missing", "result_root_scan")
+        discovery["candidate_count"] = 0
+        return None, discovery
+
+    candidates = sorted(path for path in root.rglob("result.json") if path.is_file())
+    ranked: list[tuple[int, float, str, Path, list[str]]] = []
+    for candidate in candidates:
+        score = 0
+        reasons: list[str] = []
+        if requested_rollout and candidate.parent.name == requested_rollout:
+            score += 100
+            reasons.append("parent_matches_requested_rollout")
+        elif requested_task and candidate.parent.name.startswith(f"{requested_task}__"):
+            score += 30
+            reasons.append("parent_matches_task_rollout_prefix")
+        try:
+            result = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            result = {}
+        if isinstance(result, dict):
+            result_task = str(result.get("task_name") or "")
+            if requested_task and result_task == requested_task:
+                score += 50
+                reasons.append("result_task_matches_request")
+            result_rollout = str(result.get("rollout_name") or "")
+            if requested_rollout and result_rollout == requested_rollout:
+                score += 100
+                reasons.append("result_rollout_matches_request")
+            elif requested_task and result_rollout.startswith(f"{requested_task}__"):
+                score += 20
+                reasons.append("result_rollout_matches_task_prefix")
+            if not requested_task and not requested_rollout and len(candidates) == 1:
+                score += 1
+                reasons.append("single_candidate")
+        if score <= 0:
+            continue
+        try:
+            mtime = candidate.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        ranked.append((score, mtime, candidate.as_posix(), candidate, reasons))
+
+    if not ranked:
+        discovery = base_discovery(
+            "ambiguous" if candidates else "missing",
+            "result_root_scan_best_match",
+        )
+        discovery["candidate_count"] = len(candidates)
+        discovery["matched_candidate_count"] = 0
+        return None, discovery
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    top_score, _top_mtime, _path_key, selected, reasons = ranked[0]
+    tied_top_count = sum(
+        1 for score, _mtime, _path, _candidate, _reasons in ranked if score == top_score
+    )
+    discovery = base_discovery("found", "result_root_scan_best_match")
+    discovery.update(
+        {
+            "tie_breaker": "highest_match_score_then_newest_mtime",
+            "candidate_count": len(candidates),
+            "matched_candidate_count": len(ranked),
+            "top_score_candidate_count": tied_top_count,
+            "selected_relative_to_root": _skillsbench_safe_relative(selected, root),
+            "selection_reasons": reasons,
+        }
+    )
+    discovery["selected_relative_to_job"] = discovery["selected_relative_to_root"]
+    return selected, discovery
 
 
 def skillsbench_route_contract(route: str) -> dict[str, Any]:
@@ -269,6 +400,9 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
             "loopx_automation_loop": True,
             "loopx_inside_case": True,
             "product_mode": True,
+            "verifier_failure_feedback_todo_route": False,
+            "verifier_failure_feedback_forwarded": False,
+            "verifier_failure_todo_required": False,
             "blind_loop": False,
             "official_feedback_blinded": True,
             "reward_feedback_forwarded": False,
@@ -350,33 +484,6 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                 "falling back to ACP or slash-prefix prompt experiments"
             ),
         }
-    if route == "automation-loop-treatment":
-        return {
-            "mode": "skillsbench_loopx_automation_loop_treatment",
-            "arm_id": "loopx_automation_loop_treatment",
-            "source_runner": "loopx_skillsbench_automation_loop_treatment_skeleton",
-            "inner_codex_goal_mode": False,
-            "native_goal_mode_requested": False,
-            "native_goal_mode_invoked": False,
-            "native_goal_mode_confirmation_status": "not_requested",
-            "codex_acp_protocol_used": True,
-            "skillsbench_route_semantics": "codex_acp_ordinary_agent_with_outer_reward_feedback_loop",
-            "curated_skills_visible": False,
-            "loopx_automation_loop": True,
-            "loopx_inside_case": False,
-            "blind_loop": False,
-            "official_feedback_blinded": False,
-            "reward_feedback_forwarded": True,
-            "case_semantics_changed_by_harness": False,
-            "official_score_comparable_to_native_codex": True,
-            "official_score_comparable_to_loopx_treatment": True,
-            "first_blocker": "skillsbench_adapter_skeleton_no_real_case",
-            "next_action": (
-                "run the automation-loop treatment only after the paired baseline "
-                "failure is compact-attributed and control-plane-addressable; the "
-                "inner case actor must be ordinary Codex CLI, not Codex goal mode"
-            ),
-        }
     if route == "curated-skills-baseline":
         return {
             "mode": "skillsbench_curated_skills_baseline",
@@ -447,6 +554,31 @@ _SKILLSBENCH_SETUP_FAILURE_LABELS = {
 }
 
 
+def _skillsbench_verifier_uv_bootstrap_failure(verifier_error_text: str) -> bool:
+    text = str(verifier_error_text or "").lower()
+    if not text:
+        return False
+    indicators = (
+        "uvx: command not found",
+        "uv: command not found",
+        "failed to download",
+        "releases.astral.sh",
+        "astral.sh/uv",
+        "uv-x86_64-unknown-linux-gnu",
+        "uv-aarch64-unknown-linux-gnu",
+        "installer_download_url",
+    )
+    if any(indicator in text for indicator in indicators) and re.search(
+        r"\buvx?\b|astral|releases\.astral|installer_download_url",
+        text,
+    ):
+        return True
+    return bool(
+        re.search(r"\buvx?\b.*(?:download|bootstrap|not found|installer)", text)
+        or re.search(r"(?:download|bootstrap|installer).*\buvx?\b", text)
+    )
+
+
 def _skillsbench_attempt_setup_blocked(failure_labels: Iterable[str]) -> bool:
     return any(
         str(label) in _SKILLSBENCH_SETUP_FAILURE_LABELS for label in failure_labels
@@ -463,10 +595,20 @@ def _skillsbench_attempt_failure_class(
     if _skillsbench_attempt_setup_blocked(failure_labels):
         return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
     if score_failure_attribution in {
+        "skillsbench_host_local_acp_idle_no_task_output_progress",
         "skillsbench_product_mode_solver_activity_gap",
         "skillsbench_acp_agent_message_only_no_tool_calls",
     }:
+        if (
+            score_failure_attribution
+            == "skillsbench_host_local_acp_idle_no_task_output_progress"
+        ):
+            return BenchmarkFailureClass.OFFICIAL_SCORE_FAILED
         return BenchmarkFailureClass.SOLVER_FAILED
+    if score_failure_attribution.startswith("skillsbench_native_goal_worker_"):
+        return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
+    if "skillsbench_verifier_uv_bootstrap_failure" in set(failure_labels):
+        return BenchmarkFailureClass.VERIFIER_FAILED
     if verifier_error_text and reward_value is None:
         return BenchmarkFailureClass.VERIFIER_FAILED
     if reward_value is None and score_failure_attribution != "none":
@@ -1365,7 +1507,20 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
     if (
         "could not find the file /app" in text
         or "main:/app/skills" in text
-        or "/app/skills" in text
+        or (
+            "mkdir -p /app" in text
+            and "permission denied" in text
+        )
+        or (
+            "/app/skills" in text
+            and (
+                "bind source path" in text
+                or "mount" in text
+                or "volume" in text
+                or "task skills" in text
+                or "permission denied" in text
+            )
+        )
     ):
         label = "skillsbench_environment_app_mount_missing"
         return label, label, [label, "skillsbench_environment_setup_error"]
@@ -1421,6 +1576,16 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             "skillsbench_environment_setup_error",
         ]
     if (
+        "dockerfile package bootstrap risk preflight blocked" in text
+        or "dockerfile package bootstrap risk detected before full case run" in text
+    ):
+        label = "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked"
+        return label, label, [
+            label,
+            "skillsbench_docker_setup_preflight_blocked",
+            "skillsbench_environment_setup_error",
+        ]
+    if (
         "verifier bootstrap risk preflight blocked" in text
         or "verifier dependency bootstrap risk detected before full case run" in text
     ):
@@ -1454,6 +1619,23 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             return label, label, [
                 label,
                 "skillsbench_docker_compose_setup_failure",
+                "skillsbench_environment_setup_error",
+            ]
+        if (
+            "pip install" in text
+            or "python -m pip" in text
+            or "python3 -m pip" in text
+            or "files.pythonhosted.org" in text
+            or "pypi.org" in text
+            or "pypi.tuna.tsinghua.edu.cn" in text
+            or "no matching distribution found" in text
+            or "read timed out" in text
+        ):
+            label = "skillsbench_docker_compose_pip_bootstrap_failure"
+            return label, label, [
+                label,
+                "skillsbench_docker_compose_setup_failure",
+                "skillsbench_python_package_bootstrap_failure",
                 "skillsbench_environment_setup_error",
             ]
         if (
@@ -1500,6 +1682,9 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             "skillsbench_docker_compose_unclassified_setup_failure",
             "skillsbench_environment_setup_error",
         ]
+    if "codex_exec_task_output_quiet_timeout" in text:
+        label = "skillsbench_host_local_acp_task_output_quiet_timeout"
+        return label, label, [label, "skillsbench_host_local_acp_recoverable_timeout"]
     label = "skillsbench_runner_error"
     return label, label, [label]
 
@@ -1537,9 +1722,18 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, Any]:
         "volume_mount_failure": r"mount|volume|bind source path",
         "permission_denied": r"permission denied|operation not permitted",
         "missing_file": r"no such file|not found|does not exist",
+        "codex_api_egress_failure": (
+            r"codex api egress preflight|reverse tunnel proxy|"
+            r"loopx_codex_api_reverse_tunnel_proxy"
+        ),
+        "task_output_quiet_timeout": r"codex_exec_task_output_quiet_timeout",
         "image_build": r"failed to solve|failed to build|dockerfile|pull access denied|manifest unknown",
         "port_conflict": r"port is already allocated|address already in use|ports are not available|bind for",
         "apt_failure": r"apt-get|apt update|apt |gpg error|hash sum mismatch|failed to fetch",
+        "pip_bootstrap_failure": (
+            r"pip install|python3? -m pip|files\.pythonhosted\.org|pypi\.org|"
+            r"pypi\.tuna\.tsinghua\.edu\.cn|no matching distribution found"
+        ),
         "subprocess_command_timeout": r"command timed out after \d+ seconds",
         "timeout": r"timeout|timed out|deadline",
     }
@@ -1682,15 +1876,6 @@ def build_skillsbench_benchmark_run(
                 ]
                 if route == "loopx-blind-loop-treatment"
                 else [
-                    "ordinary_codex_cli_actor",
-                    "loopx_automation_loop",
-                    "reward_feedback_ablation",
-                    "fixture_only",
-                    "no_upload",
-                    "single_task_planned",
-                ]
-                if route == "automation-loop-treatment"
-                else [
                     "skillsbench_curated_skills_visible",
                     "fixture_only",
                     "no_upload",
@@ -1753,6 +1938,9 @@ def build_skillsbench_benchmark_run(
             ),
             "declared_done_requires_no_remaining_goals": is_product_mode_treatment,
             "goal_start_product_mode": is_goal_start_product_mode,
+            "verifier_failure_feedback_todo_route": False,
+            "verifier_failure_feedback_forwarded_to_agent": False,
+            "verifier_failure_todo_required": False,
             "goal_start_plan_observed": False,
             "planned_todo_count": 0,
             "planned_p0_count": 0,
@@ -1770,8 +1958,6 @@ def build_skillsbench_benchmark_run(
                 if route == "loopx-blind-loop-treatment"
                 else _skillsbench_product_mode_outer_controller(route)
                 if is_product_mode_treatment
-                else "reward_feedback_automation_loop_ablation"
-                if route == "automation-loop-treatment"
                 else "raw_codex_autonomous_max5"
                 if route == "raw-codex-autonomous-max5"
                 else "fixed_blind_loop_runner"
@@ -1784,7 +1970,6 @@ def build_skillsbench_benchmark_run(
                 "ordinary_codex_acp_agent"
                 if route
                 in {
-                    "automation-loop-treatment",
                     "loopx-blind-loop-treatment",
                     "loopx-prompt-polling-test",
                     "codex-acp-blind-loop-baseline",
@@ -1867,7 +2052,6 @@ def build_skillsbench_benchmark_run(
             "leaderboard_evidence": False,
         },
         "evidence_files": [
-            "doc:automation-loop-treatment-case-selection-20260614.md",
             "doc:benchmark-run-ledger-v0.md",
             "smoke:skillsbench-benchmark-run-smoke.py",
         ],
@@ -1997,6 +2181,27 @@ def _skillsbench_controller_trace_counters(
                 counts[name[:80]] = value
         return dict(sorted(counts.items()))
 
+    def text_value(key: str, *, limit: int = 120) -> str:
+        value = controller_trace.get(key)
+        if not isinstance(value, str):
+            return ""
+        return value[:limit]
+
+    def text_list(key: str, *, limit: int = 120, max_items: int = 12) -> list[str]:
+        raw = controller_trace.get(key)
+        if not isinstance(raw, list):
+            return []
+        items: list[str] = []
+        for value in raw:
+            if not isinstance(value, str) or not value:
+                continue
+            safe = value[:limit]
+            if safe not in items:
+                items.append(safe)
+            if len(items) >= max_items:
+                break
+        return items
+
     def max_direct_or_subcommands(key: str, commands: tuple[str, ...]) -> int:
         direct = count(key)
         derived = sum(subcommand_count(command) for command in commands)
@@ -2093,6 +2298,7 @@ def _skillsbench_controller_trace_counters(
             "verifier_feedback_observation_count"
         ),
         "official_feedback_blinded_count": count("official_feedback_blinded_count"),
+        "official_feedback_forwarded_count": count("official_feedback_forwarded_count"),
         "official_feedback_forwarded": controller_trace.get(
             "official_feedback_forwarded"
         )
@@ -2100,6 +2306,18 @@ def _skillsbench_controller_trace_counters(
         "blind_loop": controller_trace.get("blind_loop") is True,
         "product_mode": controller_trace.get("product_mode") is True,
         "goal_start_product_mode": controller_trace.get("goal_start_product_mode")
+        is True,
+        "verifier_failure_feedback_todo_route": controller_trace.get(
+            "verifier_failure_feedback_todo_route"
+        )
+        is True,
+        "verifier_failure_feedback_forwarded_to_agent": controller_trace.get(
+            "verifier_failure_feedback_forwarded_to_agent"
+        )
+        is True,
+        "verifier_failure_todo_required": controller_trace.get(
+            "verifier_failure_todo_required"
+        )
         is True,
         "goal_start_plan_observed": controller_trace.get("goal_start_plan_observed")
         is True,
@@ -2154,6 +2372,14 @@ def _skillsbench_controller_trace_counters(
             "product_mode_no_open_todo_below_passing_reward_stop"
         )
         is True,
+        "product_mode_host_local_idle_no_task_output_progress": controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress"
+        )
+        is True,
+        "product_mode_host_local_idle_no_task_output_progress_stop": controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_stop"
+        )
+        is True,
         "agent_declared_done": controller_trace.get("agent_declared_done") is True,
         "agent_declared_no_remaining_goals": controller_trace.get(
             "agent_declared_no_remaining_goals"
@@ -2191,6 +2417,21 @@ def _skillsbench_controller_trace_counters(
             "native_goal_worker_prompt_received_count"
         ),
         "native_goal_worker_ok_count": count("native_goal_worker_ok_count"),
+        "native_goal_worker_failure_trace_count": count(
+            "native_goal_worker_failure_trace_count"
+        ),
+        "native_goal_worker_failure_category": text_value(
+            "native_goal_worker_failure_category"
+        ),
+        "native_goal_worker_failure_categories": text_list(
+            "native_goal_worker_failure_categories"
+        ),
+        "native_goal_worker_first_blocker": text_value(
+            "native_goal_worker_first_blocker"
+        ),
+        "native_goal_worker_first_blockers": text_list(
+            "native_goal_worker_first_blockers"
+        ),
         "native_goal_worker_goal_get_count": count("native_goal_worker_goal_get_count"),
         "native_goal_worker_turn_start_count": count(
             "native_goal_worker_turn_start_count"
@@ -2200,6 +2441,12 @@ def _skillsbench_controller_trace_counters(
         ),
         "native_goal_worker_assistant_message_present_count": count(
             "native_goal_worker_assistant_message_present_count"
+        ),
+        "native_goal_worker_first_action_observed_count": count(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "native_goal_worker_effective_action_observed_count": count(
+            "native_goal_worker_effective_action_observed_count"
         ),
         "remote_command_file_bridge_consumed_by_solver": controller_trace.get(
             "remote_command_file_bridge_consumed_by_solver"
@@ -2439,6 +2686,12 @@ def _skillsbench_controller_trace_counters(
         "product_mode_declared_done_below_passing_reward_round": count(
             "product_mode_declared_done_below_passing_reward_round"
         ),
+        "verifier_failure_feedback_todo_prompt_count": count(
+            "verifier_failure_feedback_todo_prompt_count"
+        ),
+        "verifier_failure_feedback_todo_round": count(
+            "verifier_failure_feedback_todo_round"
+        ),
         "open_todo_count": count("open_todo_count"),
         "product_mode_no_open_todo_below_passing_reward_streak": count(
             "product_mode_no_open_todo_below_passing_reward_streak"
@@ -2457,6 +2710,33 @@ def _skillsbench_controller_trace_counters(
         ),
         "product_mode_no_open_todo_below_passing_reward_open_todo_count_public": count(
             "product_mode_no_open_todo_below_passing_reward_open_todo_count_public"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_streak": count(
+            "product_mode_host_local_idle_no_task_output_progress_streak"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_streak_threshold": count(
+            "product_mode_host_local_idle_no_task_output_progress_streak_threshold"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_round": count(
+            "product_mode_host_local_idle_no_task_output_progress_round"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_stop_count": count(
+            "product_mode_host_local_idle_no_task_output_progress_stop_count"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_stop_round": count(
+            "product_mode_host_local_idle_no_task_output_progress_stop_round"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count": count(
+            "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls": count(
+            "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops": count(
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops"
+        ),
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes": count(
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes"
         ),
         "product_mode_final_closeout_superseded_by_official_success": (
             controller_trace.get(
@@ -2585,6 +2865,20 @@ def _skillsbench_controller_trace_counters(
         counters["host_local_acp_codex_exec_failure_category"] = (
             host_codex_failure_category
         )
+    bridge_progress_status = _skillsbench_public_safe_label(
+        controller_trace.get("host_local_acp_bridge_progress_status") or ""
+    )
+    if bridge_progress_status:
+        counters["host_local_acp_bridge_progress_status"] = (
+            bridge_progress_status
+        )
+    bridge_progress_source = _skillsbench_public_safe_label(
+        controller_trace.get("host_local_acp_bridge_progress_signal_source") or ""
+    )
+    if bridge_progress_source:
+        counters["host_local_acp_bridge_progress_signal_source"] = (
+            bridge_progress_source
+        )
     host_codex_failure_categories: list[str] = []
     raw_host_codex_failure_categories = controller_trace.get(
         "host_local_acp_codex_exec_failure_categories"
@@ -2655,6 +2949,46 @@ def _skillsbench_controller_trace_counters(
     if no_open_todo_score_status:
         counters["product_mode_no_open_todo_below_passing_reward_score_status"] = (
             no_open_todo_score_status
+        )
+    host_idle_score = controller_trace.get(
+        "product_mode_host_local_idle_no_task_output_progress_score"
+    )
+    if (
+        isinstance(host_idle_score, (int, float))
+        and not isinstance(host_idle_score, bool)
+    ):
+        counters["product_mode_host_local_idle_no_task_output_progress_score"] = float(
+            host_idle_score
+        )
+    host_idle_score_status = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_score_status"
+        )
+        or ""
+    )
+    if host_idle_score_status:
+        counters["product_mode_host_local_idle_no_task_output_progress_score_status"] = (
+            host_idle_score_status
+        )
+    host_idle_category = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_category"
+        )
+        or ""
+    )
+    if host_idle_category:
+        counters["product_mode_host_local_idle_no_task_output_progress_category"] = (
+            host_idle_category
+        )
+    host_idle_policy = _skillsbench_public_safe_label(
+        controller_trace.get(
+            "product_mode_host_local_idle_no_task_output_progress_policy"
+        )
+        or ""
+    )
+    if host_idle_policy:
+        counters["product_mode_host_local_idle_no_task_output_progress_policy"] = (
+            host_idle_policy
         )
     declared_done_policy = _skillsbench_public_safe_label(
         controller_trace.get("product_mode_declared_done_policy") or ""
@@ -2748,6 +3082,45 @@ def _skillsbench_native_goal_worker_trace_status(
     return "worker_route_selected_not_connected"
 
 
+def _skillsbench_native_goal_worker_failure_label(
+    counters: dict[str, Any],
+    *,
+    trace_status: str,
+) -> str:
+    if counters.get("native_goal_worker_route") is not True:
+        return ""
+    has_worker_failure_trace = bool(
+        counters.get("native_goal_worker_failure_trace_count", 0)
+        or counters.get("native_goal_worker_failure_category")
+    )
+    if trace_status == "public_trace_observed" and not has_worker_failure_trace:
+        return ""
+
+    reason = ""
+    for key in (
+        "native_goal_worker_failure_category",
+        "native_goal_worker_first_blocker",
+    ):
+        value = counters.get(key)
+        if isinstance(value, str) and value:
+            reason = value
+            break
+    if not reason:
+        reason = trace_status or "compact_proof_missing"
+    safe_reason = re.sub(r"[^a-zA-Z0-9]+", "_", reason).strip("_").lower()
+    if not safe_reason:
+        safe_reason = "compact_proof_missing"
+    prefix = (
+        "skillsbench_native_goal_worker_failed"
+        if (
+            counters.get("native_goal_worker_failure_trace_count", 0)
+            or counters.get("native_goal_worker_failure_category")
+        )
+        else "skillsbench_native_goal_worker_uncountable"
+    )
+    return f"{prefix}_{safe_reason}"[:160]
+
+
 def _round_reward_trace_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
     numeric_records: list[dict[str, Any]] = []
     for item in records:
@@ -2818,6 +3191,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
     model: str | None = None,
     runner_warning_labels: Iterable[str] | None = None,
     controller_trace: dict[str, Any] | None = None,
+    result_discovery: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a public-safe benchmark_run_v0 from an official SkillsBench result.
 
@@ -2946,8 +3320,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         if route == "loopx-prompt-polling-test"
         else _skillsbench_product_mode_outer_controller(route)
         if _is_skillsbench_loopx_product_mode_treatment_route(route)
-        else "reward_feedback_automation_loop_ablation"
-        if route == "automation-loop-treatment"
         else "raw_codex_autonomous_max5"
         if route == "raw-codex-autonomous-max5"
         else "fixed_blind_loop_runner"
@@ -2960,7 +3332,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         else "ordinary_codex_acp_agent"
         if route
         in {
-            "automation-loop-treatment",
             "loopx-blind-loop-treatment",
             "loopx-prompt-polling-test",
             "codex-acp-blind-loop-baseline",
@@ -2981,7 +3352,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         reward_value, reward_artifact_source = _skillsbench_rollout_reward_artifact(
             result_path
         )
-    official_passed = bool(reward_value is not None and reward_value >= 1)
 
     timing_path = result_path.with_name("timing.json")
     timing: dict[str, Any] = {}
@@ -3008,6 +3378,17 @@ def build_skillsbench_benchflow_result_benchmark_run(
     verifier_error = result.get("verifier_error")
     error_text = str(error).strip() if error else ""
     verifier_error_text = str(verifier_error).strip() if verifier_error else ""
+    verifier_uv_bootstrap_failure = _skillsbench_verifier_uv_bootstrap_failure(
+        verifier_error_text
+    )
+    if (
+        verifier_uv_bootstrap_failure
+        and reward_value == 0
+        and reward_artifact_source is None
+    ):
+        reward_value = None
+        warning_labels.append("skillsbench_verifier_uv_bootstrap_zero_reward_ignored")
+    official_passed = bool(reward_value is not None and reward_value >= 1)
     failure_labels: list[str] = []
     exception_type = "none"
     score_failure_attribution = "none"
@@ -3023,11 +3404,31 @@ def build_skillsbench_benchflow_result_benchmark_run(
         )
     elif verifier_error_text:
         if score_failure_attribution in {"none", "skillsbench_runner_error"}:
-            exception_type = "skillsbench_verifier_error"
-            failure_labels.append("verifier_infrastructure_failure")
-            score_failure_attribution = "verifier_infrastructure_failure"
+            if verifier_uv_bootstrap_failure:
+                exception_type = "skillsbench_verifier_uv_bootstrap_failure"
+                failure_labels.extend(
+                    [
+                        "skillsbench_verifier_uv_bootstrap_failure",
+                        "skillsbench_verifier_bootstrap_failure",
+                        "verifier_infrastructure_failure",
+                    ]
+                )
+                score_failure_attribution = (
+                    "skillsbench_verifier_uv_bootstrap_failure"
+                )
+            else:
+                exception_type = "skillsbench_verifier_error"
+                failure_labels.append("verifier_infrastructure_failure")
+                score_failure_attribution = "verifier_infrastructure_failure"
         elif "verifier_infrastructure_failure" not in failure_labels:
             failure_labels.append("verifier_infrastructure_failure")
+        if (
+            verifier_uv_bootstrap_failure
+            and "skillsbench_verifier_uv_bootstrap_failure" not in failure_labels
+        ):
+            failure_labels.append("skillsbench_verifier_uv_bootstrap_failure")
+            if "skillsbench_verifier_bootstrap_failure" not in failure_labels:
+                failure_labels.append("skillsbench_verifier_bootstrap_failure")
 
     n_tool_calls = result.get("n_tool_calls")
     tool_calls = n_tool_calls if isinstance(n_tool_calls, int) else 0
@@ -3102,6 +3503,80 @@ def build_skillsbench_benchflow_result_benchmark_run(
     def _trajectory_public_count(name: str) -> int:
         value = trajectory_summary.get(name, 0)
         return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+    native_goal_worker_trace_count = controller_counters.get(
+        "native_goal_worker_trace_count", 0
+    )
+    if not isinstance(native_goal_worker_trace_count, int) or isinstance(
+        native_goal_worker_trace_count, bool
+    ):
+        native_goal_worker_trace_count = 0
+    native_goal_worker_trace_observed = native_goal_worker_trace_count > 0
+    native_goal_worker_trace_status = _skillsbench_native_goal_worker_trace_status(
+        controller_counters
+    )
+    native_goal_worker_failure_label = (
+        _skillsbench_native_goal_worker_failure_label(
+            controller_counters,
+            trace_status=native_goal_worker_trace_status,
+        )
+    )
+    native_goal_worker_bridge_task_success_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_success_count"
+    )
+    native_goal_worker_bridge_task_operation_count = _controller_public_count(
+        "remote_command_file_bridge_agent_task_facing_operation_count"
+    )
+    native_goal_worker_countable_via_bridge_activity = bool(
+        route == "codex-app-server-goal-baseline"
+        and native_goal_worker_failure_label
+        and reward_value is not None
+        and native_goal_worker_bridge_task_success_count > 0
+    )
+    native_goal_worker_countable = bool(
+        not native_goal_worker_failure_label
+        or native_goal_worker_countable_via_bridge_activity
+    )
+    native_goal_worker_contract = {
+        "schema_version": "skillsbench_native_goal_worker_contract_v0",
+        "required": controller_counters.get("native_goal_worker_route") is True,
+        "countable_baseline": native_goal_worker_countable,
+        "countability_source": (
+            "remote_command_file_bridge_task_facing_success"
+            if native_goal_worker_countable_via_bridge_activity
+            else "app_server_turn_trace"
+            if not native_goal_worker_failure_label
+            else "none"
+        ),
+        "trace_status": native_goal_worker_trace_status,
+        "trace_count": native_goal_worker_trace_count,
+        "ok_count": _controller_public_count("native_goal_worker_ok_count"),
+        "goal_get_count": _controller_public_count("native_goal_worker_goal_get_count"),
+        "turn_start_count": _controller_public_count(
+            "native_goal_worker_turn_start_count"
+        ),
+        "assistant_message_present_count": _controller_public_count(
+            "native_goal_worker_assistant_message_present_count"
+        ),
+        "first_action_observed_count": _controller_public_count(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "effective_action_observed_count": _controller_public_count(
+            "native_goal_worker_effective_action_observed_count"
+        ),
+        "failure_trace_count": _controller_public_count(
+            "native_goal_worker_failure_trace_count"
+        ),
+        "failure_category": str(
+            controller_counters.get("native_goal_worker_failure_category") or ""
+        )[:120],
+        "bridge_task_facing_operation_count": native_goal_worker_bridge_task_operation_count,
+        "bridge_task_facing_success_count": native_goal_worker_bridge_task_success_count,
+        "first_blocker": str(
+            controller_counters.get("native_goal_worker_first_blocker") or ""
+        )[:120],
+        "failure_label": native_goal_worker_failure_label,
+    }
 
     product_mode_lifecycle_required = _is_skillsbench_loopx_product_mode_treatment_route(
         route
@@ -3639,13 +4114,35 @@ def build_skillsbench_benchflow_result_benchmark_run(
         and agent_bridge_task_facing_operation_count > 0
         and agent_bridge_final_closeout_satisfied
     )
+    host_local_acp_idle_no_task_output_progress_stop = bool(
+        controller_counters.get(
+            "product_mode_host_local_idle_no_task_output_progress_stop"
+        )
+        is True
+    )
+    host_local_acp_task_output_quiet_after_bridge_attempt = bool(
+        host_local_acp_codex_exec_failure_present
+        and host_local_acp_codex_exec_failure_category
+        == "codex_exec_task_output_quiet_timeout"
+        and reward_value is not None
+        and agent_bridge_task_facing_success_count > 0
+    )
     if (
         host_local_acp_codex_exec_failure_present
         and not official_passed
         and not host_local_acp_idle_timeout_after_countable_closeout
+        and not host_local_acp_task_output_quiet_after_bridge_attempt
     ):
-        host_failure_label = "skillsbench_host_local_acp_codex_exec_failed"
-        if host_local_acp_codex_exec_failure_category:
+        if host_local_acp_idle_no_task_output_progress_stop:
+            host_failure_label = (
+                "skillsbench_host_local_acp_idle_no_task_output_progress"
+            )
+        else:
+            host_failure_label = "skillsbench_host_local_acp_codex_exec_failed"
+        if (
+            host_local_acp_codex_exec_failure_category
+            and not host_local_acp_idle_no_task_output_progress_stop
+        ):
             host_failure_label = (
                 f"{host_failure_label}_{host_local_acp_codex_exec_failure_category}"
             )
@@ -3674,16 +4171,50 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ]
         controller_budget_cutoff_before_followup = False
         controller_budget_cutoff_reason = "none"
-        for item in (
+        host_failure_extra_labels = [
             host_failure_label,
-            "skillsbench_host_local_acp_codex_exec_failed",
-            "skillsbench_runner_setup_error",
             "skillsbench_product_mode_transport_failure"
             if _is_skillsbench_loopx_product_mode_treatment_route(route)
             else "",
-        ):
+        ]
+        if not host_local_acp_idle_no_task_output_progress_stop:
+            host_failure_extra_labels.extend(
+                [
+                    "skillsbench_host_local_acp_codex_exec_failed",
+                    "skillsbench_runner_setup_error",
+                ]
+            )
+        for item in host_failure_extra_labels:
             if item and item not in failure_labels:
                 failure_labels.append(item)
+    elif host_local_acp_task_output_quiet_after_bridge_attempt:
+        warning_label = (
+            "skillsbench_host_local_acp_task_output_quiet_after_bridge_attempt"
+        )
+        failure_labels = [
+            item
+            for item in failure_labels
+            if item
+            not in {
+                "skillsbench_runner_error",
+                "skillsbench_host_local_acp_task_output_quiet_timeout",
+                "verifier_infrastructure_failure",
+                "official_verifier_solution_failure",
+            }
+        ]
+        if reward_value == 0 and score_failure_attribution in {
+            "",
+            "none",
+            "skillsbench_runner_error",
+            "skillsbench_host_local_acp_task_output_quiet_timeout",
+        }:
+            exception_type = "none"
+            score_failure_attribution = "official_score_zero_case_failure"
+            runner_score_failure_attribution = "none"
+            if "official_score_zero_case_failure" not in failure_labels:
+                failure_labels.append("official_score_zero_case_failure")
+        if warning_label not in warning_labels:
+            warning_labels.append(warning_label)
     elif host_local_acp_idle_timeout_after_countable_closeout:
         warning_label = (
             "skillsbench_host_local_acp_idle_timeout_after_countable_closeout"
@@ -3708,10 +4239,53 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             if item not in warning_labels:
                 warning_labels.append(item)
+    setup_failure_observed = _skillsbench_attempt_setup_blocked(failure_labels)
+    native_goal_worker_uncountable = bool(
+        native_goal_worker_failure_label
+        and not official_passed
+        and not native_goal_worker_countable_via_bridge_activity
+        and not setup_failure_observed
+    )
+    if native_goal_worker_uncountable:
+        exception_type = native_goal_worker_failure_label
+        score_failure_attribution = native_goal_worker_failure_label
+        runner_score_failure_attribution = native_goal_worker_failure_label
+        contract_official_score_comparable_to_native_codex = False
+        contract_official_score_comparable_to_loopx_treatment = False
+        failure_labels = [
+            item
+            for item in failure_labels
+            if item
+            not in {
+                "skillsbench_runner_error",
+                "skillsbench_codex_acp_jsonrpc_internal_error",
+                "skillsbench_codex_acp_transport_error",
+                "skillsbench_controller_budget_not_exercised",
+                "skillsbench_result_error_cut_off_followup_loop",
+                "skillsbench_result_timeout_after_agent_round_no_reward_artifact",
+                "skillsbench_result_error_after_agent_round",
+                "skillsbench_reward_artifact_missing",
+                "verifier_infrastructure_failure",
+                "official_score_zero_case_failure",
+                "official_verifier_solution_failure",
+            }
+        ]
+        for item in (
+            native_goal_worker_failure_label,
+            "skillsbench_native_goal_worker_uncountable_baseline",
+            "skillsbench_app_server_goal_worker_compact_proof_missing",
+            "skillsbench_runner_setup_error",
+        ):
+            if item and item not in failure_labels:
+                failure_labels.append(item)
     if trajectory_summary:
         evidence_files.append("loopx:acp_trajectory_summary")
     runner_failure: dict[str, Any] | None = None
-    if error_text:
+    runner_failure_fingerprint: dict[str, Any] | None = None
+    if (
+        error_text
+        and not host_local_acp_task_output_quiet_after_bridge_attempt
+    ) or native_goal_worker_uncountable:
         runner_failure = {
             "schema_version": "skillsbench_runner_failure_v0",
             "exception_type": exception_type,
@@ -3765,9 +4339,23 @@ def build_skillsbench_benchflow_result_benchmark_run(
                     )
                 ),
             }
-        runner_failure_fingerprint = skillsbench_runner_error_fingerprint(
-            error_text
-        )
+        if native_goal_worker_uncountable:
+            runner_failure["native_goal_worker"] = {
+                "schema_version": "skillsbench_native_goal_worker_failure_v0",
+                "trace_status": native_goal_worker_trace_status,
+                "failure_label": native_goal_worker_failure_label,
+                "failure_category": native_goal_worker_contract.get(
+                    "failure_category", ""
+                ),
+                "first_blocker": native_goal_worker_contract.get("first_blocker", ""),
+                "trace_count": native_goal_worker_trace_count,
+                "raw_transcript_recorded": False,
+                "raw_assistant_message_recorded": False,
+            }
+        if error_text:
+            runner_failure_fingerprint = skillsbench_runner_error_fingerprint(
+                error_text
+            )
     round_reward_records = controller_counters.get("round_rewards")
     if not isinstance(round_reward_records, list):
         round_reward_records = []
@@ -3963,17 +4551,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         failure_labels = []
         runner_failure = None
 
-    native_goal_worker_trace_count = controller_counters.get(
-        "native_goal_worker_trace_count", 0
-    )
-    if not isinstance(native_goal_worker_trace_count, int) or isinstance(
-        native_goal_worker_trace_count, bool
-    ):
-        native_goal_worker_trace_count = 0
-    native_goal_worker_trace_observed = native_goal_worker_trace_count > 0
-    native_goal_worker_trace_status = _skillsbench_native_goal_worker_trace_status(
-        controller_counters
-    )
     setup_blocked = _skillsbench_attempt_setup_blocked(failure_labels)
     attempt_accounting = build_benchmark_attempt_accounting(
         lifecycle=_skillsbench_attempt_lifecycle(
@@ -4197,6 +4774,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "controller_official_feedback_blinded_count": controller_counters.get(
                 "official_feedback_blinded_count", 0
             ),
+            "controller_official_feedback_forwarded_count": controller_counters.get(
+                "official_feedback_forwarded_count", 0
+            ),
             "controller_official_feedback_forwarded": controller_counters.get(
                 "official_feedback_forwarded", False
             ),
@@ -4204,6 +4784,21 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode": controller_counters.get("product_mode", False),
             "goal_start_product_mode": controller_counters.get(
                 "goal_start_product_mode", False
+            ),
+            "verifier_failure_feedback_todo_route": controller_counters.get(
+                "verifier_failure_feedback_todo_route", False
+            ),
+            "verifier_failure_feedback_forwarded_to_agent": controller_counters.get(
+                "verifier_failure_feedback_forwarded_to_agent", False
+            ),
+            "verifier_failure_todo_required": controller_counters.get(
+                "verifier_failure_todo_required", False
+            ),
+            "verifier_failure_feedback_todo_prompt_count": controller_counters.get(
+                "verifier_failure_feedback_todo_prompt_count", 0
+            ),
+            "verifier_failure_feedback_todo_round": controller_counters.get(
+                "verifier_failure_feedback_todo_round", 0
             ),
             "goal_start_plan_observed": controller_counters.get(
                 "goal_start_plan_observed", False
@@ -4270,6 +4865,13 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "product_mode_no_open_todo_below_passing_reward_stop": controller_counters.get(
                 "product_mode_no_open_todo_below_passing_reward_stop", False
             ),
+            "product_mode_host_local_idle_no_task_output_progress": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress", False
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_stop": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop",
+                False,
+            ),
             "product_mode_lifecycle_checkpoint_count": controller_counters.get(
                 "product_mode_lifecycle_checkpoint_count", 0
             ),
@@ -4329,6 +4931,53 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "product_mode_no_open_todo_below_passing_reward_score_status": controller_counters.get(
                 "product_mode_no_open_todo_below_passing_reward_score_status", ""
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_streak": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_streak",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_streak_threshold": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_streak_threshold",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_round": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_round",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_stop_count": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop_count",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_stop_round": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop_round",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes",
+                0,
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_score": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_score"
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_score_status": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_score_status",
+                "",
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_category": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_category",
+                "",
+            ),
+            "product_mode_host_local_idle_no_task_output_progress_policy": controller_counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_policy",
+                "",
             ),
             "product_mode_final_closeout_superseded_by_official_success": (
                 controller_counters.get(
@@ -4423,6 +5072,15 @@ def build_skillsbench_benchflow_result_benchmark_run(
             ),
             "native_goal_worker_ok_count": controller_counters.get(
                 "native_goal_worker_ok_count", 0
+            ),
+            "native_goal_worker_failure_trace_count": controller_counters.get(
+                "native_goal_worker_failure_trace_count", 0
+            ),
+            "native_goal_worker_failure_category": controller_counters.get(
+                "native_goal_worker_failure_category", ""
+            ),
+            "native_goal_worker_first_blocker": controller_counters.get(
+                "native_goal_worker_first_blocker", ""
             ),
             "native_goal_worker_goal_get_count": controller_counters.get(
                 "native_goal_worker_goal_get_count", 0
@@ -4622,6 +5280,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
                     "host_local_acp_codex_exec_failure_trace_present", False
                 )
             ),
+            "host_local_acp_bridge_progress_status": controller_counters.get(
+                "host_local_acp_bridge_progress_status", ""
+            ),
+            "host_local_acp_bridge_progress_signal_source": controller_counters.get(
+                "host_local_acp_bridge_progress_signal_source", ""
+            ),
             "host_local_acp_codex_exec_failure_trace_count": (
                 controller_counters.get(
                     "host_local_acp_codex_exec_failure_trace_count", 0
@@ -4674,6 +5338,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "does_not_upload_or_submit": True,
         },
         "product_mode_lifecycle_contract": product_mode_lifecycle_contract,
+        "native_goal_worker_contract": native_goal_worker_contract,
         "trials": [
             {
                 "task_id": task_id,
@@ -4724,7 +5389,22 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "native_goal_worker_prompt_received_count": controller_counters.get(
                 "native_goal_worker_prompt_received_count", 0
             ),
+            "native_goal_worker_first_action_observed_count": controller_counters.get(
+                "native_goal_worker_first_action_observed_count", 0
+            ),
+            "native_goal_worker_effective_action_observed_count": (
+                controller_counters.get(
+                    "native_goal_worker_effective_action_observed_count", 0
+                )
+            ),
             "native_goal_worker_trace_status": native_goal_worker_trace_status,
+            "native_goal_worker_countable_baseline": native_goal_worker_countable,
+            "native_goal_worker_failure_category": native_goal_worker_contract.get(
+                "failure_category", ""
+            ),
+            "native_goal_worker_first_blocker": native_goal_worker_contract.get(
+                "first_blocker", ""
+            ),
             "remote_command_file_bridge_consumed_by_solver": (
                 controller_counters.get(
                     "remote_command_file_bridge_consumed_by_solver", False
@@ -4782,6 +5462,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "official_score_comparable_to_native_codex": contract_official_score_comparable_to_native_codex,
             "official_score_comparable_to_loopx_treatment": contract_official_score_comparable_to_loopx_treatment,
             "product_mode_lifecycle": product_mode_lifecycle_contract,
+            "native_goal_worker": native_goal_worker_contract,
             "leaderboard_evidence": False,
         },
         "evidence_files": evidence_files,
@@ -4848,9 +5529,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         benchmark_run["timing"] = timing_summary
     if round_reward_trace is not None:
         benchmark_run["round_reward_trace"] = round_reward_trace
+    if isinstance(result_discovery, dict) and result_discovery:
+        benchmark_run["result_discovery"] = dict(result_discovery)
     if runner_failure is not None:
         benchmark_run["runner_failure"] = runner_failure
-        benchmark_run["runner_failure_fingerprint"] = runner_failure_fingerprint
+        if runner_failure_fingerprint is not None:
+            benchmark_run["runner_failure_fingerprint"] = runner_failure_fingerprint
     if partial_trajectory and not host_local_acp_codex_exec_failure_present:
         benchmark_run["failure_attribution_labels"].append("partial_trajectory")
     return benchmark_run

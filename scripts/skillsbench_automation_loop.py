@@ -20,9 +20,13 @@ output back to the agent:
 The historical ``loopx-blind-loop-treatment`` route is kept as an alias
 for existing SkillsBench rows that used the same no-feedback polling semantics.
 The ``codex-acp-blind-loop-baseline`` route uses the same no-reward loop budget
-with an ordinary Codex prompt and no LoopX controller semantics. The
-older ``automation-loop-treatment`` route intentionally forwards failed-reward
-feedback and is kept only as a reward-feedback ablation.
+with an ordinary Codex prompt and no LoopX controller semantics.
+
+Routes that forward official verifier reward, pass/fail status, verifier
+errors, or verifier output back to the agent are intentionally unsupported for
+SkillsBench product-mode research. Official verifier artifacts may be reduced
+into private metrics and public-safe compact counters only after the agent turn;
+they must not become continuation prompts or case-local LoopX todos.
 
 For the ``codex-goal-mode-baseline`` route it uses BenchFlow's user hook only
 to request a slash-goal-style initial prompt, with no reward follow-up, no Goal
@@ -52,6 +56,7 @@ When invoked from the LoopX repository with a Python that cannot import
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
 import contextlib
 import importlib
@@ -63,14 +68,18 @@ import re
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
+import urllib.parse
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from typing import Any, Mapping, get_args, get_origin
+from urllib.parse import urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -79,6 +88,8 @@ from loopx.benchmark_case_state import (  # noqa: E402
     BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION,
     BENCHMARK_CASE_LOOPX_AGENT_ID,
     BENCHMARK_CASE_LOOPX_CLI_PATH,
+    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS,
+    BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS,
     BENCHMARK_CASE_LOOPX_REGISTRY_PATH,
     BENCHMARK_CASE_LOOPX_RUNTIME_ROOT,
     BENCHMARK_CASE_LOOPX_SOURCE_MOUNT_TARGET,
@@ -109,7 +120,6 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
 from loopx.benchmark_core.loop_protocol import (  # noqa: E402
-    AUTOMATION_LOOP_TREATMENT_ROUTE,
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
@@ -142,20 +152,132 @@ DEFAULT_LEDGER = (
     REPO_ROOT
     / "docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json"
 )
+TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS = {
+    "official_score_zero_case_failure",
+    "official_verifier_solution_failure",
+}
 DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
+DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC = 3600
+DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC = 600
+DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC = 3600
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
 DEFAULT_MAX_ROUNDS = 16
 PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS = 10
 RUNNER_PREREQUISITES_PUBLIC_FILENAME = "runner_prerequisites.public.json"
+RUNNER_CONFIG_PUBLIC_FILENAME = "runner_config.public.json"
 HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
     "GOAL_HARNESS_REMOTE_BENCH_ROOT",
+    "LOOPX_SKILLSBENCH_EGRESS_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_PROXY",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+    "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
 )
+
+
+def _expanded_path(value: str | os.PathLike[str]) -> Path:
+    return Path(value).expanduser()
+
+
+def _same_ledger_path(left: Path, right: Path) -> bool:
+    return left.resolve(strict=False) == right.resolve(strict=False)
+
+
+def _ledger_scope_label(primary_path: Path, global_path: Path) -> str:
+    if _same_ledger_path(primary_path, global_path):
+        return "global"
+    return "run_group_with_global_sync"
+
+
+def _inherit_global_ledger_snapshot(
+    *,
+    primary_path: Path,
+    global_path: Path,
+    dry_run: bool,
+    enabled: bool,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "schema_version": "skillsbench_global_ledger_inheritance_v0",
+        "enabled": enabled,
+        "dry_run": dry_run,
+        "inherited": False,
+        "markdown_inherited": False,
+        "primary_ledger_path": str(primary_path),
+        "global_ledger_path": str(global_path),
+    }
+    if not enabled:
+        result["status"] = "disabled"
+        return result
+    if _same_ledger_path(primary_path, global_path):
+        result["status"] = "same_as_global"
+        return result
+    if primary_path.exists():
+        result["status"] = "primary_ledger_already_exists"
+        return result
+    if not global_path.exists():
+        result["status"] = "global_ledger_missing"
+        return result
+    if dry_run:
+        result["status"] = "would_inherit"
+        result["inherited"] = True
+        result["markdown_inherited"] = global_path.with_suffix(".md").exists()
+        return result
+
+    primary_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(global_path, primary_path)
+    result["inherited"] = True
+    global_markdown = global_path.with_suffix(".md")
+    primary_markdown = primary_path.with_suffix(".md")
+    if global_markdown.exists():
+        shutil.copy2(global_markdown, primary_markdown)
+        result["markdown_inherited"] = True
+    result["status"] = "inherited"
+    return result
+CODEX_API_REVERSE_TUNNEL_PROXY_ENV_KEYS = (
+    "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
+    "CODEX_API_REVERSE_TUNNEL_PROXY",
+)
+CODEX_API_PROXY_FORWARD_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+    "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
+)
+CODEX_API_EGRESS_TEST_HOST = "chatgpt.com"
+CODEX_API_EGRESS_TEST_PORT = 443
+CODEX_API_EGRESS_MODE_CHOICES = ("auto", "reverse-tunnel", "direct")
+DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC = 8.0
+BENCHMARK_EGRESS_PROXY_ENV_KEYS = (
+    "LOOPX_SKILLSBENCH_EGRESS_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_PROXY",
+)
+BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+)
+BENCHMARK_EGRESS_PROXY_MODE_CHOICES = ("auto", "off", "require")
+BENCHMARK_EGRESS_TEST_HOST = "pypi.org"
+BENCHMARK_EGRESS_TEST_PORT = 443
+DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC = 8.0
 _MISSING = object()
 SUPPORTED_ROUTES = (
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -166,7 +288,6 @@ SUPPORTED_ROUTES = (
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
     "codex-goal-mode-baseline",
-    AUTOMATION_LOOP_TREATMENT_ROUTE,
 )
 DEFAULT_ROUTE = LOOPX_BLIND_LOOP_TREATMENT_ROUTE
 CODEX_ACP_SET_MODEL_UNSUPPORTED_LABEL = "codex_acp_set_model_unsupported"
@@ -255,15 +376,22 @@ def _tuple_annotation_arity(annotation: Any) -> int | None:
     if start < 0 or end <= start:
         return None
     depth = 0
-    count = 1
+    parts: list[str] = []
+    current: list[str] = []
     for char in text[start + 1 : end]:
         if char == "[":
             depth += 1
         elif char == "]" and depth > 0:
             depth -= 1
         elif char == "," and depth == 0:
-            count += 1
-    return count
+            parts.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current).strip())
+    if parts and parts[-1] == "...":
+        return None
+    return len(parts)
 
 
 def _benchflow_connect_acp_return_arity(target: Any) -> int:
@@ -276,8 +404,54 @@ def _benchflow_connect_acp_return_arity(target: Any) -> int:
     return _tuple_annotation_arity(annotation) or 3
 
 
+def _benchflow_connect_as_unpack_arity(target: Any) -> int | None:
+    try:
+        source = inspect.getsource(target)
+    except (OSError, TypeError):
+        return None
+    try:
+        tree = ast.parse(textwrap.dedent(source))
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value.value if isinstance(node.value, ast.Await) else node.value
+        if not isinstance(value, ast.Call):
+            continue
+        func = value.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "connect_acp"):
+            continue
+        if not node.targets:
+            continue
+        target_node = node.targets[0]
+        if isinstance(target_node, ast.Tuple):
+            return len(target_node.elts)
+    return None
+
+
+def _benchflow_rollout_planes_class(module: Any) -> type[Any] | None:
+    if module is None:
+        return None
+    direct = getattr(module, "DefaultRolloutPlanes", None)
+    if isinstance(direct, type):
+        return direct
+    factory = getattr(module, "default_rollout_planes", None)
+    if not callable(factory):
+        return None
+    try:
+        instance = factory()
+    except Exception:
+        return None
+    klass = instance.__class__
+    return klass if isinstance(klass, type) else None
+
+
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APP_SKILLS_MOUNT_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
+DOCKER_APP_SKILLS_MOUNT_KEEP_FILE = "loopx_app_skills_keep"
+DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_CONTEXT"
+DOCKER_APP_SKILLS_DOCKERIGNORE_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_CONTEXT"
 DOCKER_APT_RETRY_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APT_RETRY"
 DOCKER_APT_RETRY_END = "# END LOOPX_SKILLSBENCH_APT_RETRY"
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
@@ -286,6 +460,27 @@ DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_END = (
     "# END LOOPX_SKILLSBENCH_CODEX_ACP_RUNTIME_TOOLS"
 )
+DOCKER_PIP_BOOTSTRAP_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
+DOCKER_PIP_BOOTSTRAP_END = "# END LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
+VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
+)
+VERIFIER_UV_BOOTSTRAP_MIRROR_END = (
+    "# END LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
+)
+VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
+)
+VERIFIER_BENCHMARK_EGRESS_PROXY_END = (
+    "# END LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
+)
+DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE = (
+    "https://releases.astral.sh/github/uv/releases/download"
+)
+DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST = "releases.astral.sh"
+DEFAULT_DOCKER_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL = "https://pypi.org/simple"
+DEFAULT_DOCKER_PIP_INDEX_HOST = "pypi.tuna.tsinghua.edu.cn"
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
 LOOPX_CLI_RE = re.compile(r"(?:^|\s|/)loopx(?:\s|$)")
@@ -306,6 +501,7 @@ PROTECTED_DIRECTIVE_RE = re.compile(
 DECLARED_DONE_MARKER = "AGENT_DECLARED_DONE_NO_REMAINING_GOALS"
 PRODUCT_MODE_FINAL_CLOSEOUT_MAX_CHECKPOINTS = 3
 PRODUCT_MODE_NO_OPEN_TODO_STOP_STREAK_THRESHOLD = 2
+PRODUCT_MODE_HOST_LOCAL_IDLE_NO_PROGRESS_STREAK_THRESHOLD = 2
 CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD = (
     "set -e; "
     "export DEBIAN_FRONTEND=noninteractive; "
@@ -497,6 +693,15 @@ def _now_stamp() -> str:
     return datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%Z")
 
 
+def _split_task_ids_arg(value: str | None) -> list[str]:
+    return [part for part in re.split(r"[,\s]+", value or "") if part]
+
+
+def _safe_batch_suffix(task_id: str, index: int) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", task_id).strip("-")
+    return f"{index + 1:02d}-{slug or 'task'}"
+
+
 def _json_default(value: Any) -> str:
     if isinstance(value, Path):
         return str(value)
@@ -513,6 +718,81 @@ def _compact_size_bucket(size: int) -> str:
     if size < 5000:
         return "1000_4999"
     return "5000_plus"
+
+
+LOCAL_PROXY_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+)
+LOOPBACK_PROXY_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _host_local_proxy_endpoint_probe(
+    *,
+    env: dict[str, str] | None = None,
+    timeout_sec: float = 1.0,
+) -> dict[str, Any]:
+    """Probe a configured loopback proxy without recording the raw proxy URL."""
+
+    source_env = env if env is not None else os.environ
+    for key in LOCAL_PROXY_ENV_KEYS:
+        raw_value = str(source_env.get(key) or "").strip()
+        if not raw_value:
+            continue
+        parsed = urlsplit(raw_value if "://" in raw_value else f"http://{raw_value}")
+        host = parsed.hostname or ""
+        if host not in LOOPBACK_PROXY_HOSTS:
+            return {
+                "configured": True,
+                "checked": False,
+                "status": "non_loopback_proxy",
+                "env_key": key,
+                "proxy_scheme": parsed.scheme[:20],
+                "raw_proxy_url_recorded": False,
+            }
+        if parsed.scheme in {"http", "https", "ws", "wss"}:
+            default_port = 443 if parsed.scheme in {"https", "wss"} else 80
+        else:
+            default_port = 1080
+        try:
+            port = parsed.port or default_port
+        except ValueError as exc:
+            return {
+                "configured": True,
+                "checked": False,
+                "status": "invalid_loopback_proxy_port",
+                "env_key": key,
+                "proxy_scheme": parsed.scheme[:20],
+                "raw_proxy_url_recorded": False,
+                "error_class": exc.__class__.__name__[:80],
+            }
+        result: dict[str, Any] = {
+            "configured": True,
+            "checked": True,
+            "status": "checking",
+            "env_key": key,
+            "proxy_scheme": parsed.scheme[:20],
+            "loopback_proxy_port": port,
+            "raw_proxy_url_recorded": False,
+        }
+        try:
+            with socket.create_connection((host, port), timeout=timeout_sec):
+                result["status"] = "reachable"
+                return result
+        except OSError as exc:
+            result["status"] = "unreachable"
+            result["error_class"] = exc.__class__.__name__[:80]
+            return result
+    return {
+        "configured": False,
+        "checked": False,
+        "status": "not_configured",
+        "raw_proxy_url_recorded": False,
+    }
 
 
 def materialize_local_codex_participant(
@@ -794,6 +1074,12 @@ def _host_local_acp_launch_command(
             args.dataset,
             "--task-id",
             args.task_id,
+            "--run-group-id",
+            str(plan.get("run_group_id") or ""),
+            "--job-name",
+            str(plan.get("job_name") or ""),
+            "--rollout-name",
+            str(plan.get("rollout_name") or ""),
             "--codex-bin",
             args.local_codex_bin,
             "--sandbox",
@@ -801,14 +1087,11 @@ def _host_local_acp_launch_command(
             "--timeout-sec",
             str(_effective_local_codex_exec_timeout_sec(args)),
             "--first-action-timeout-sec",
-            str(
-                max(
-                    0,
-                    int(getattr(args, "local_codex_first_action_timeout_sec", 0) or 0),
-                )
-            ),
+            str(_effective_local_codex_first_action_timeout_sec(args)),
             "--bridge-idle-timeout-sec",
             str(_effective_local_codex_bridge_idle_timeout_sec(args)),
+            "--task-output-quiet-timeout-sec",
+            str(_effective_local_codex_task_output_quiet_timeout_sec(args)),
         ]
     )
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
@@ -819,8 +1102,11 @@ def _host_local_acp_launch_command(
         command.extend(["--stream-heartbeat-interval-sec", str(heartbeat_interval)])
     if args.model:
         command.extend(["--model", args.model])
+    bridge_enabled_route = args.route in PRODUCT_MODE_CONTROLLER_ROUTES or (
+        args.route == "codex-app-server-goal-baseline"
+    )
     if (
-        args.route in PRODUCT_MODE_CONTROLLER_ROUTES
+        bridge_enabled_route
         and args.host_local_acp_launch
         and args.remote_command_file_bridge_solver_command
         and (
@@ -917,9 +1203,23 @@ def _host_local_acp_launch_command(
 
 
 def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
-    configured = max(1, int(args.local_codex_exec_timeout_sec or 0))
+    configured_raw = getattr(args, "local_codex_exec_timeout_sec", None)
+    configured = max(1, int(configured_raw or DEFAULT_TIMEOUT_SEC))
     idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
-    if configured == DEFAULT_TIMEOUT_SEC and idle_timeout > 0:
+    if (
+        configured_raw is None
+        and bool(getattr(args, "host_local_acp_launch", False))
+    ):
+        if getattr(args, "route", "") == "codex-app-server-goal-baseline":
+            outer_timeout = max(0, int(getattr(args, "outer_timeout_sec", 0) or 0))
+            return max(configured, outer_timeout)
+        bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
+        if bridge_idle_timeout > 0:
+            return max(
+                1,
+                bridge_idle_timeout + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
+            )
+    if configured_raw is None and idle_timeout > 0:
         return min(configured, idle_timeout)
     return configured
 
@@ -943,18 +1243,638 @@ def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> 
     configured = getattr(args, "local_codex_bridge_idle_timeout_sec", None)
     if configured is not None:
         return max(0, int(configured or 0))
-    return max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+    if bool(getattr(args, "host_local_acp_launch", False)):
+        return DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+    requested = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+    if requested <= 0:
+        return DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC
+    return min(requested, DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC)
 
 
-def _host_local_acp_target_env(agent_env: object) -> dict[str, str]:
-    if not isinstance(agent_env, dict):
+def _effective_local_codex_first_action_timeout_sec(args: argparse.Namespace) -> int:
+    configured = getattr(args, "local_codex_first_action_timeout_sec", None)
+    if configured is not None:
+        return max(0, int(configured or 0))
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and getattr(args, "route", "") == "codex-app-server-goal-baseline"
+    ):
+        idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+        if idle_timeout > 0:
+            return min(idle_timeout, DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC)
+        return DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC
+    return 0
+
+
+def _effective_local_codex_task_output_quiet_timeout_sec(
+    args: argparse.Namespace,
+) -> int:
+    configured = getattr(args, "local_codex_task_output_quiet_timeout_sec", None)
+    if configured is not None:
+        requested = max(0, int(configured or 0))
+        if requested <= 0:
+            return 0
+        bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
+        if bridge_idle_timeout <= 0:
+            return requested
+        return min(requested, bridge_idle_timeout)
+    bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
+    if bridge_idle_timeout <= 0:
+        return 0
+    return min(
+        DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC,
+        bridge_idle_timeout,
+    )
+
+
+def _codex_api_egress_preflight_required(args: argparse.Namespace) -> bool:
+    return (
+        getattr(args, "route", "") == "codex-app-server-goal-baseline"
+        and bool(getattr(args, "host_local_acp_launch", False))
+    )
+
+
+def _codex_api_egress_requested_mode(args: argparse.Namespace | None) -> str:
+    requested = ""
+    if args is not None:
+        requested = str(getattr(args, "codex_api_egress_mode", "") or "")
+    if requested in CODEX_API_EGRESS_MODE_CHOICES:
+        return requested
+    return "auto"
+
+
+def _codex_api_egress_resolved_mode(args: argparse.Namespace | None) -> str:
+    if args is None or not _codex_api_egress_preflight_required(args):
+        return "not_required"
+    requested = _codex_api_egress_requested_mode(args)
+    if requested == "auto":
+        # Formal remote app-server benchmark runs must use the reverse tunnel
+        # path by default; direct egress is only for explicit local debugging.
+        return "reverse-tunnel"
+    return requested
+
+
+def _formal_app_server_goal_bootstrap_light_guard_required(
+    args: argparse.Namespace | None,
+) -> bool:
+    return bool(
+        args is not None
+        and getattr(args, "route", "") == "codex-app-server-goal-baseline"
+        and getattr(args, "host_local_acp_launch", False)
+        and not getattr(args, "reduce_only", False)
+        and _codex_api_egress_resolved_mode(args) == "reverse-tunnel"
+    )
+
+
+def _formal_app_server_goal_bootstrap_light_fail_fast_required(
+    args: argparse.Namespace | None,
+) -> bool:
+    return bool(
+        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        and not getattr(args, "allow_staged_bootstrap_repair_run", False)
+    )
+
+
+def _codex_api_reverse_tunnel_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
+    explicit = ""
+    if args is not None:
+        explicit = str(getattr(args, "codex_api_reverse_tunnel_proxy", "") or "")
+    if explicit:
+        return explicit, "cli"
+    for key in CODEX_API_REVERSE_TUNNEL_PROXY_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            return value, f"env:{key}"
+    return "", ""
+
+
+def _benchmark_egress_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
+    explicit = ""
+    if args is not None:
+        explicit = str(getattr(args, "benchmark_egress_proxy", "") or "")
+    if explicit:
+        return _normalized_proxy_url(explicit), "cli"
+    for key in BENCHMARK_EGRESS_PROXY_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            return _normalized_proxy_url(value), f"env:{key}"
+    return "", ""
+
+
+def _normalized_proxy_url(proxy_url: str) -> str:
+    raw = str(proxy_url or "").strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        return raw
+    return f"http://{raw}"
+
+
+def _benchmark_egress_proxy_requested_mode(
+    args: argparse.Namespace | None,
+) -> str:
+    requested = ""
+    if args is not None:
+        requested = str(getattr(args, "benchmark_egress_proxy_mode", "") or "")
+    if requested in BENCHMARK_EGRESS_PROXY_MODE_CHOICES:
+        return requested
+    return "auto"
+
+
+def _proxy_host_kind(host: str) -> str:
+    normalized = host.strip("[]").lower()
+    if normalized in {"localhost", "127.0.0.1", "::1"}:
+        return "loopback"
+    if normalized.startswith("10.") or normalized.startswith("192.168."):
+        return "private"
+    if normalized.startswith("172."):
+        try:
+            second_octet = int(normalized.split(".", 2)[1])
+        except (IndexError, ValueError):
+            second_octet = -1
+        if 16 <= second_octet <= 31:
+            return "private"
+    if normalized.startswith("100."):
+        try:
+            second_octet = int(normalized.split(".", 2)[1])
+        except (IndexError, ValueError):
+            second_octet = -1
+        if 64 <= second_octet <= 127:
+            return "private"
+    return "public_or_unknown"
+
+
+def _parse_proxy_endpoint(proxy_url: str) -> tuple[str, str, int]:
+    parsed = urllib.parse.urlparse(proxy_url)
+    scheme = (parsed.scheme or "").lower()
+    host = parsed.hostname or ""
+    port = int(parsed.port or (443 if scheme == "https" else 80))
+    return scheme, host, port
+
+
+def _public_codex_api_egress_contract(
+    args: argparse.Namespace,
+    *,
+    status: str = "pending",
+    ready: bool = False,
+    error_kind: str = "",
+) -> dict[str, Any]:
+    proxy_url, proxy_source = _codex_api_reverse_tunnel_proxy(args)
+    requested_mode = _codex_api_egress_requested_mode(args)
+    resolved_mode = _codex_api_egress_resolved_mode(args)
+    scheme = ""
+    host = ""
+    port = 0
+    parse_error = ""
+    if proxy_url:
+        try:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+        except Exception as exc:
+            parse_error = type(exc).__name__
+    proxy_endpoint_kind = _proxy_host_kind(host) if host else ""
+    return {
+        "schema_version": "skillsbench_codex_api_egress_preflight_v0",
+        "required": _codex_api_egress_preflight_required(args),
+        "ready": bool(ready),
+        "status": status,
+        "error_kind": error_kind or parse_error,
+        "requested_mode": requested_mode,
+        "resolved_mode": resolved_mode,
+        "reverse_tunnel_required": resolved_mode == "reverse-tunnel",
+        "proxy_configured": bool(proxy_url),
+        "proxy_source": proxy_source.split(":", 1)[0] if proxy_source else "",
+        "proxy_env_key": proxy_source.split(":", 1)[1] if proxy_source.startswith("env:") else "",
+        "proxy_scheme": scheme[:20],
+        "proxy_endpoint_kind": proxy_endpoint_kind,
+        "proxy_endpoint_port": port,
+        "proxy_url_recorded": False,
+        "raw_probe_output_recorded": False,
+        "test_host": CODEX_API_EGRESS_TEST_HOST,
+        "test_host_public_only": True,
+    }
+
+
+def _probe_http_connect_proxy(
+    *,
+    host: str,
+    port: int,
+    timeout_sec: float,
+    target_host: str = CODEX_API_EGRESS_TEST_HOST,
+    target_port: int = CODEX_API_EGRESS_TEST_PORT,
+) -> str:
+    with socket.create_connection((host, port), timeout=timeout_sec) as sock:
+        sock.settimeout(timeout_sec)
+        request = (
+            f"CONNECT {target_host}:{target_port} "
+            "HTTP/1.1\r\n"
+            f"Host: {target_host}:{target_port}\r\n"
+            "Proxy-Connection: close\r\n\r\n"
+        )
+        sock.sendall(request.encode("ascii"))
+        response = sock.recv(256).decode("iso-8859-1", errors="replace")
+    first_line = response.splitlines()[0] if response.splitlines() else ""
+    if " 200 " in f" {first_line} ":
+        return "http_connect_ready"
+    if " 407 " in f" {first_line} ":
+        return "proxy_auth_required"
+    return "proxy_connect_rejected"
+
+
+def _run_codex_api_egress_preflight(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    if not _codex_api_egress_preflight_required(args):
+        contract = _public_codex_api_egress_contract(
+            args,
+            status="not_required",
+            ready=True,
+        )
+        plan["codex_api_egress_preflight"] = contract
+        return contract
+    proxy_url, _source = _codex_api_reverse_tunnel_proxy(args)
+    timeout_sec = max(
+        1.0,
+        float(
+            getattr(
+                args,
+                "codex_api_egress_preflight_timeout_sec",
+                DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC,
+            )
+            or DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC
+        ),
+    )
+    status = "pending"
+    error_kind = ""
+    ready = False
+    mode = _codex_api_egress_resolved_mode(args)
+    try:
+        if mode == "reverse-tunnel":
+            if not proxy_url:
+                status = "missing_reverse_tunnel_proxy"
+                ready = False
+            else:
+                scheme, host, port = _parse_proxy_endpoint(proxy_url)
+                if not host or not port:
+                    raise ValueError("proxy endpoint missing host or port")
+                if scheme == "http":
+                    status = _probe_http_connect_proxy(
+                        host=host,
+                        port=port,
+                        timeout_sec=timeout_sec,
+                    )
+                    ready = status == "http_connect_ready"
+                else:
+                    status = "unsupported_proxy_scheme"
+                    ready = False
+        elif mode == "direct":
+            with socket.create_connection(
+                (CODEX_API_EGRESS_TEST_HOST, CODEX_API_EGRESS_TEST_PORT),
+                timeout=timeout_sec,
+            ):
+                pass
+            status = "direct_tcp_ready"
+            ready = True
+        else:
+            status = "unsupported_egress_mode"
+            ready = False
+    except Exception as exc:
+        error_kind = type(exc).__name__
+        status = "failed"
+        ready = False
+    contract = _public_codex_api_egress_contract(
+        args,
+        status=status,
+        ready=ready,
+        error_kind=error_kind,
+    )
+    plan["codex_api_egress_preflight"] = contract
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    if isinstance(prerequisites, dict):
+        _sync_codex_api_egress_contract(prerequisites, contract)
+    if not ready:
+        raise SkillsBenchSetupPreflightBlocked(
+            "codex API egress preflight blocked: run the native app-server "
+            "goal baseline with --codex-api-egress-mode reverse-tunnel and "
+            "configure --codex-api-reverse-tunnel-proxy or "
+            "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY"
+        )
+    return contract
+
+
+def _sync_codex_api_egress_contract(
+    target: dict[str, Any],
+    contract: dict[str, Any],
+) -> None:
+    target["codex_api_egress_preflight_required"] = bool(contract.get("required"))
+    target["codex_api_egress_preflight_ready"] = bool(contract.get("ready"))
+    target["codex_api_egress_preflight_status"] = str(contract.get("status") or "")
+    target["codex_api_egress_preflight_error_kind"] = str(
+        contract.get("error_kind") or ""
+    )
+    target["codex_api_egress_mode_requested"] = str(
+        contract.get("requested_mode") or ""
+    )
+    target["codex_api_egress_mode_resolved"] = str(
+        contract.get("resolved_mode") or ""
+    )
+    target["codex_api_reverse_tunnel_required"] = bool(
+        contract.get("reverse_tunnel_required")
+    )
+    target["codex_api_reverse_tunnel_proxy_configured"] = bool(
+        contract.get("proxy_configured")
+    )
+    target["codex_api_reverse_tunnel_proxy_source"] = str(
+        contract.get("proxy_source") or ""
+    )
+    target["codex_api_reverse_tunnel_proxy_scheme"] = str(
+        contract.get("proxy_scheme") or ""
+    )
+    target["codex_api_reverse_tunnel_proxy_endpoint_kind"] = str(
+        contract.get("proxy_endpoint_kind") or ""
+    )
+    port = contract.get("proxy_endpoint_port")
+    target["codex_api_reverse_tunnel_proxy_endpoint_port"] = (
+        int(port) if isinstance(port, int) and not isinstance(port, bool) else 0
+    )
+    target["codex_api_reverse_tunnel_proxy_url_recorded"] = False
+
+
+def _public_benchmark_egress_proxy_contract(
+    args: argparse.Namespace,
+    *,
+    status: str = "pending",
+    ready: bool = False,
+    error_kind: str = "",
+) -> dict[str, Any]:
+    proxy_mode = _benchmark_egress_proxy_requested_mode(args)
+    proxy_url = ""
+    proxy_source = ""
+    if proxy_mode != "off":
+        proxy_url, proxy_source = _benchmark_egress_proxy(args)
+    scheme = ""
+    host = ""
+    port = 0
+    parse_error = ""
+    if proxy_url:
+        try:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+        except Exception as exc:
+            parse_error = type(exc).__name__
+    configured = bool(proxy_url)
+    if status == "pending":
+        if proxy_mode == "off":
+            status = "disabled"
+            ready = True
+        elif not configured and proxy_mode == "auto":
+            status = "not_configured"
+            ready = True
+        elif not configured:
+            status = "missing_required_proxy"
+            ready = False
+    return {
+        "schema_version": "skillsbench_benchmark_egress_proxy_v0",
+        "requested_mode": proxy_mode,
+        "ready": bool(ready),
+        "status": status,
+        "error_kind": error_kind or parse_error,
+        "proxy_configured": configured,
+        "proxy_required": proxy_mode == "require",
+        "proxy_source": (
+            proxy_source.split(":", 1)[0] if proxy_source else ""
+        ),
+        "proxy_env_key": (
+            proxy_source.split(":", 1)[1]
+            if proxy_source.startswith("env:")
+            else ""
+        ),
+        "proxy_scheme": scheme[:20],
+        "proxy_endpoint_kind": _proxy_host_kind(host) if host else "",
+        "proxy_endpoint_port": port,
+        "proxy_url_recorded": False,
+        "raw_proxy_url_recorded": False,
+        "raw_probe_output_recorded": False,
+        "test_host": BENCHMARK_EGRESS_TEST_HOST,
+        "test_host_public_only": True,
+    }
+
+
+def _run_benchmark_egress_proxy_preflight(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    proxy_mode = _benchmark_egress_proxy_requested_mode(args)
+    proxy_url, _source = _benchmark_egress_proxy(args)
+    timeout_sec = max(
+        1.0,
+        float(
+            getattr(
+                args,
+                "benchmark_egress_proxy_preflight_timeout_sec",
+                DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC,
+            )
+            or DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC
+        ),
+    )
+    status = "pending"
+    ready = False
+    error_kind = ""
+    try:
+        if proxy_mode == "off":
+            status = "disabled"
+            ready = True
+        elif not proxy_url:
+            status = (
+                "not_configured"
+                if proxy_mode == "auto"
+                else "missing_required_proxy"
+            )
+            ready = proxy_mode == "auto"
+        else:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+            if not host or not port:
+                raise ValueError("proxy endpoint missing host or port")
+            if scheme != "http":
+                status = "unsupported_proxy_scheme"
+                ready = False
+            else:
+                status = _probe_http_connect_proxy(
+                    host=host,
+                    port=port,
+                    timeout_sec=timeout_sec,
+                    target_host=BENCHMARK_EGRESS_TEST_HOST,
+                    target_port=BENCHMARK_EGRESS_TEST_PORT,
+                )
+                ready = status == "http_connect_ready"
+    except Exception as exc:
+        status = "failed"
+        ready = False
+        error_kind = type(exc).__name__
+    contract = _public_benchmark_egress_proxy_contract(
+        args,
+        status=status,
+        ready=ready,
+        error_kind=error_kind,
+    )
+    plan["benchmark_egress_proxy"] = contract
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    if isinstance(prerequisites, dict):
+        _sync_benchmark_egress_proxy_contract(prerequisites, contract)
+    if not ready:
+        raise SkillsBenchSetupPreflightBlocked(
+            "benchmark egress proxy preflight blocked: configure a valid "
+            "private proxy in LOOPX_SKILLSBENCH_EGRESS_PROXY or run with "
+            "--benchmark-egress-proxy-mode off for explicit no-proxy runs"
+        )
+    return contract
+
+
+def _sync_benchmark_egress_proxy_contract(
+    target: dict[str, Any],
+    contract: dict[str, Any],
+) -> None:
+    target["benchmark_egress_proxy_ready"] = bool(contract.get("ready"))
+    target["benchmark_egress_proxy_configured"] = bool(
+        contract.get("proxy_configured")
+    )
+    target["benchmark_egress_proxy_required"] = bool(contract.get("proxy_required"))
+    target["benchmark_egress_proxy_url_recorded"] = False
+    target["benchmark_egress_proxy_status"] = str(contract.get("status") or "")
+    target["benchmark_egress_proxy_error_kind"] = str(
+        contract.get("error_kind") or ""
+    )
+    target["benchmark_egress_proxy_mode_requested"] = str(
+        contract.get("requested_mode") or ""
+    )
+    target["benchmark_egress_proxy_source"] = str(
+        contract.get("proxy_source") or ""
+    )
+    target["benchmark_egress_proxy_env_key"] = str(
+        contract.get("proxy_env_key") or ""
+    )
+    target["benchmark_egress_proxy_scheme"] = str(
+        contract.get("proxy_scheme") or ""
+    )
+    target["benchmark_egress_proxy_endpoint_kind"] = str(
+        contract.get("proxy_endpoint_kind") or ""
+    )
+    port = contract.get("proxy_endpoint_port")
+    target["benchmark_egress_proxy_endpoint_port"] = (
+        int(port) if isinstance(port, int) and not isinstance(port, bool) else 0
+    )
+    target.setdefault("benchmark_egress_proxy_docker_config_injected", False)
+    target.setdefault("benchmark_egress_proxy_docker_config_path_recorded", False)
+    target.setdefault("benchmark_egress_proxy_docker_config_raw_proxy_recorded", False)
+
+
+def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, str]:
+    if args is None or _benchmark_egress_proxy_requested_mode(args) == "off":
         return {}
+    proxy_url, _source = _benchmark_egress_proxy(args)
+    if not proxy_url:
+        return {}
+    env = {key: proxy_url for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS}
+    env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
+    env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
+    env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
+    return env
+
+
+def _docker_config_payload_with_proxy(
+    *,
+    proxy_url: str,
+    no_proxy: str,
+) -> dict[str, Any]:
+    """Return a Docker client config that forwards proxies without mutating home."""
+
+    docker_config_dir = os.environ.get("DOCKER_CONFIG")
+    source_config = (
+        Path(docker_config_dir).expanduser() / "config.json"
+        if docker_config_dir
+        else Path.home() / ".docker" / "config.json"
+    )
+    payload: dict[str, Any] = {}
+    if source_config.exists():
+        try:
+            loaded = json.loads(source_config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            loaded = {}
+        if isinstance(loaded, dict):
+            payload = loaded
+    proxies = payload.setdefault("proxies", {})
+    if not isinstance(proxies, dict):
+        proxies = {}
+        payload["proxies"] = proxies
+    proxies["default"] = {
+        "httpProxy": proxy_url,
+        "httpsProxy": proxy_url,
+        "noProxy": no_proxy,
+    }
+    return payload
+
+
+@contextlib.contextmanager
+def _benchmark_egress_proxy_env_applied(
+    args: argparse.Namespace,
+) -> Any:
+    proxy_env = _benchmark_egress_proxy_env(args)
+    if not proxy_env:
+        yield
+        return
+    docker_config_tmp: tempfile.TemporaryDirectory[str] | None = None
+    docker_config_env: dict[str, str] = {}
+    proxy_url = proxy_env.get("LOOPX_SKILLSBENCH_EGRESS_PROXY", "")
+    if proxy_url:
+        docker_config_tmp = tempfile.TemporaryDirectory(
+            prefix="loopx-skillsbench-docker-proxy-"
+        )
+        docker_config_path = Path(docker_config_tmp.name) / "config.json"
+        docker_config_payload = _docker_config_payload_with_proxy(
+            proxy_url=proxy_url,
+            no_proxy=proxy_env.get("NO_PROXY", "localhost,127.0.0.1,::1"),
+        )
+        docker_config_path.write_text(
+            json.dumps(docker_config_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        docker_config_env["DOCKER_CONFIG"] = docker_config_tmp.name
+    keys = set(proxy_env) | set(docker_config_env)
+    previous = {key: os.environ.get(key) for key in keys}
+    try:
+        os.environ.update(proxy_env)
+        os.environ.update(docker_config_env)
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        if docker_config_tmp is not None:
+            docker_config_tmp.cleanup()
+
+
+def _host_local_acp_target_env(
+    agent_env: object,
+    *,
+    args: argparse.Namespace | None = None,
+) -> dict[str, str]:
+    if not isinstance(agent_env, dict):
+        agent_env = {}
     target_env: dict[str, str] = {}
     for key in HOST_LOCAL_ACP_TARGET_ENV_KEYS:
         value = agent_env.get(key)
         if value is None:
             continue
         target_env[key] = str(value)
+    proxy_url, _proxy_source = _codex_api_reverse_tunnel_proxy(args)
+    if proxy_url and args is not None and _codex_api_egress_preflight_required(args):
+        for key in CODEX_API_PROXY_FORWARD_ENV_KEYS:
+            target_env[key] = proxy_url
+        target_env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
+        target_env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
+    for key, value in _benchmark_egress_proxy_env(args).items():
+        target_env.setdefault(key, value)
     return target_env
 
 
@@ -1086,6 +2006,12 @@ def _host_local_acp_codex_exec_preflight_should_run(
 ) -> bool:
     """Return whether the host-local Codex exec path must be probed first."""
 
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and str(getattr(args, "route", "") or "")
+        == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+    ):
+        return False
     if bool(getattr(args, "host_local_acp_codex_exec_preflight", False)):
         return True
     return bool(
@@ -1260,6 +2186,44 @@ def _run_host_local_acp_codex_exec_preflight(
         int(getattr(args, "host_local_acp_codex_exec_preflight_attempts", 1) or 1),
     )
     command = _host_local_acp_codex_exec_preflight_command(args, plan)
+    proxy_probe = _host_local_proxy_endpoint_probe()
+    prerequisites["host_local_acp_proxy_endpoint_status"] = proxy_probe["status"]
+    prerequisites["host_local_acp_proxy_endpoint_checked"] = (
+        proxy_probe.get("checked") is True
+    )
+    prerequisites["host_local_acp_proxy_endpoint_raw_url_recorded"] = False
+    if proxy_probe.get("configured") is True:
+        prerequisites["host_local_acp_proxy_endpoint_env_key"] = str(
+            proxy_probe.get("env_key") or ""
+        )[:80]
+        prerequisites["host_local_acp_proxy_endpoint_scheme"] = str(
+            proxy_probe.get("proxy_scheme") or ""
+        )[:20]
+    if isinstance(proxy_probe.get("loopback_proxy_port"), int):
+        prerequisites["host_local_acp_proxy_endpoint_loopback_port"] = proxy_probe[
+            "loopback_proxy_port"
+        ]
+    if proxy_probe.get("error_class"):
+        prerequisites["host_local_acp_proxy_endpoint_error_class"] = str(
+            proxy_probe.get("error_class") or ""
+        )[:80]
+    if proxy_probe["status"] in {"unreachable", "invalid_loopback_proxy_port"}:
+        proxy_blocker = "skillsbench_host_local_acp_proxy_endpoint_unreachable"
+        proxy_failure_category = "codex_proxy_endpoint_unreachable"
+        proxy_error = "host-local ACP proxy endpoint unreachable"
+        if proxy_probe["status"] == "invalid_loopback_proxy_port":
+            proxy_blocker = "skillsbench_host_local_acp_proxy_endpoint_invalid"
+            proxy_failure_category = "codex_proxy_endpoint_invalid"
+            proxy_error = "host-local ACP proxy endpoint invalid"
+        prerequisites["host_local_acp_codex_exec_preflight_status"] = "failed"
+        prerequisites["host_local_acp_codex_exec_preflight_first_blocker"] = (
+            proxy_blocker
+        )
+        prerequisites["host_local_acp_codex_exec_failure_category"] = (
+            proxy_failure_category
+        )
+        prerequisites["host_local_acp_codex_exec_preflight_ready"] = False
+        raise RuntimeError(proxy_error)
     relay_trace_dir = str(plan.get("host_local_acp_relay_trace_dir") or "")
     preflight_trace_dir = (
         Path(relay_trace_dir) / "codex-exec-preflight" if relay_trace_dir else None
@@ -1579,6 +2543,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_stage",
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
         "benchflow_intermediate_soft_verify_orphan_cleanup_status",
+        "host_local_acp_attempt_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
@@ -1592,6 +2557,26 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
         "host_local_acp_codex_exec_failure_category",
+        "codex_api_egress_preflight_status",
+        "codex_api_egress_preflight_error_kind",
+        "codex_api_egress_mode_requested",
+        "codex_api_egress_mode_resolved",
+        "codex_api_reverse_tunnel_proxy_source",
+        "codex_api_reverse_tunnel_proxy_scheme",
+        "codex_api_reverse_tunnel_proxy_endpoint_kind",
+        "benchmark_egress_proxy_status",
+        "benchmark_egress_proxy_error_kind",
+        "benchmark_egress_proxy_mode_requested",
+        "benchmark_egress_proxy_source",
+        "benchmark_egress_proxy_env_key",
+        "benchmark_egress_proxy_scheme",
+        "benchmark_egress_proxy_endpoint_kind",
+        "host_local_acp_proxy_endpoint_status",
+        "host_local_acp_proxy_endpoint_env_key",
+        "host_local_acp_proxy_endpoint_scheme",
+        "host_local_acp_proxy_endpoint_error_class",
+        "host_local_acp_bridge_progress_status",
+        "host_local_acp_bridge_progress_signal_source",
         "runner_interruption_kind",
         "runner_interruption_status",
         "reduce_only_prerequisites_source",
@@ -1612,12 +2597,27 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_rollout_planes_available",
         "host_local_acp_codex_exec_preflight_requested",
         "host_local_acp_codex_exec_preflight_ready",
+        "codex_api_egress_preflight_required",
+        "codex_api_egress_preflight_ready",
+        "codex_api_reverse_tunnel_required",
+        "codex_api_reverse_tunnel_proxy_configured",
+        "codex_api_reverse_tunnel_proxy_url_recorded",
+        "benchmark_egress_proxy_ready",
+        "benchmark_egress_proxy_configured",
+        "benchmark_egress_proxy_required",
+        "benchmark_egress_proxy_url_recorded",
+        "benchmark_egress_proxy_agent_env_injected",
+        "benchmark_egress_proxy_docker_config_injected",
+        "benchmark_egress_proxy_docker_config_path_recorded",
+        "benchmark_egress_proxy_docker_config_raw_proxy_recorded",
         "host_local_acp_codex_exec_preflight_response_marker_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_required",
         "host_local_acp_codex_exec_preflight_bridge_action_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_success_observed",
         "host_local_acp_codex_exec_preflight_bridge_trace_present",
         "host_local_acp_codex_exec_preflight_bridge_raw_material_recorded",
+        "host_local_acp_proxy_endpoint_checked",
+        "host_local_acp_proxy_endpoint_raw_url_recorded",
         "container_codex_acp_install_skipped",
         "benchflow_agent_install_skipped_by_runtime_layer",
         "benchflow_rollout_planes_module_available",
@@ -1679,6 +2679,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
         "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
+        "host_local_acp_attempt_cleanup_requested",
+        "host_local_acp_attempt_cleanup_raw_logs_read",
+        "host_local_acp_attempt_cleanup_raw_command_recorded",
         "goal_start_product_mode",
         "goal_start_plan_required",
         "goal_start_selected_p0_lifecycle_required",
@@ -1711,6 +2714,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_agent_timeout_original_sec",
         "benchflow_agent_timeout_effective_sec",
         "benchflow_agent_timeout_host_local_acp_exec_timeout_sec",
+        "benchflow_agent_timeout_host_local_acp_task_output_quiet_timeout_sec",
         "benchflow_agent_timeout_host_local_acp_margin_sec",
         "host_local_acp_connect_return_arity",
         "benchflow_user_loop_recovery_round",
@@ -1738,6 +2742,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_orphan_cleanup_term_sent_count",
         "benchflow_intermediate_soft_verify_orphan_cleanup_kill_sent_count",
         "benchflow_intermediate_soft_verify_orphan_cleanup_alive_after_count",
+        "host_local_acp_attempt_cleanup_match_count",
+        "host_local_acp_attempt_cleanup_term_sent_count",
+        "host_local_acp_attempt_cleanup_kill_sent_count",
+        "host_local_acp_attempt_cleanup_alive_after_count",
         "benchflow_verifier_prep_timeout_sec",
         "benchflow_final_verifier_timeout_sec",
         "benchflow_final_verifier_timeout_override_count",
@@ -1791,6 +2799,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_task_facing_success_count",
         "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count",
         "host_local_acp_codex_exec_failure_trace_count",
+        "codex_api_reverse_tunnel_proxy_endpoint_port",
+        "benchmark_egress_proxy_endpoint_port",
+        "host_local_acp_proxy_endpoint_loopback_port",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -1801,6 +2812,21 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
             for key in target_keys
             if isinstance(key, str) and key in HOST_LOCAL_ACP_TARGET_ENV_KEYS
         ][: len(HOST_LOCAL_ACP_TARGET_ENV_KEYS)]
+    planned_todo_ids = _goal_start_public_todo_id_list(value.get("planned_todo_ids"))
+    if planned_todo_ids:
+        compact["planned_todo_ids"] = planned_todo_ids
+    planned_todo_texts = _goal_start_public_text_list(
+        value.get("planned_todo_texts_public_safe")
+    )
+    if planned_todo_texts:
+        compact["planned_todo_texts_public_safe"] = planned_todo_texts
+    command_records = _goal_start_public_command_records(
+        value.get("remote_command_file_bridge_agent_successful_loopx_command_records")
+    )
+    if command_records:
+        compact[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
     for field in (
         "host_local_acp_codex_exec_preflight_bridge_returncode_counts",
         "host_local_acp_codex_exec_preflight_bridge_failure_category_counts",
@@ -2031,6 +3057,171 @@ def cleanup_benchflow_setup_stall_children(
             except ProcessLookupError:
                 continue
             except PermissionError:
+                continue
+        cleanup["kill_sent_count"] = kill_sent
+        time.sleep(0.1)
+        alive = {pid for pid in alive if is_alive(pid)}
+    cleanup["alive_after_count"] = len(alive)
+    if alive:
+        cleanup["status"] = "cleanup_incomplete"
+    elif kill_sent:
+        cleanup["status"] = "killed"
+    else:
+        cleanup["status"] = "terminated"
+    return publish()
+
+
+def cleanup_host_local_acp_attempt_children(
+    plan: dict[str, Any],
+    *,
+    grace_seconds: float = 3.0,
+) -> dict[str, Any]:
+    """Terminate host-local ACP/app-server worker processes scoped to one attempt."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    cleanup: dict[str, Any] = {
+        "schema_version": "skillsbench_host_local_acp_attempt_cleanup_v0",
+        "requested": True,
+        "raw_logs_read": False,
+        "raw_command_recorded": False,
+        "status": "not_attempted",
+        "match_count": 0,
+        "term_sent_count": 0,
+        "kill_sent_count": 0,
+        "alive_after_count": 0,
+    }
+
+    def publish() -> dict[str, Any]:
+        prerequisites["host_local_acp_attempt_cleanup_requested"] = True
+        prerequisites["host_local_acp_attempt_cleanup_raw_logs_read"] = False
+        prerequisites["host_local_acp_attempt_cleanup_raw_command_recorded"] = False
+        prerequisites["host_local_acp_attempt_cleanup_status"] = str(
+            cleanup.get("status") or "unknown"
+        )
+        for source, target in (
+            ("match_count", "host_local_acp_attempt_cleanup_match_count"),
+            ("term_sent_count", "host_local_acp_attempt_cleanup_term_sent_count"),
+            ("kill_sent_count", "host_local_acp_attempt_cleanup_kill_sent_count"),
+            ("alive_after_count", "host_local_acp_attempt_cleanup_alive_after_count"),
+        ):
+            value = cleanup.get(source)
+            if isinstance(value, int):
+                prerequisites[target] = value
+        return cleanup
+
+    if os.name != "posix":
+        cleanup["status"] = "unsupported_platform"
+        return publish()
+
+    if (
+        prerequisites.get("host_local_acp_launch") is not True
+        and prerequisites.get("agent_execution_mode") != "host_local_acp"
+    ):
+        cleanup["status"] = "not_applicable_no_host_local_acp"
+        return publish()
+
+    identifiers = [
+        str(value).strip()
+        for value in (plan.get("job_name"), plan.get("rollout_name"))
+        if str(value or "").strip()
+    ]
+    if not identifiers:
+        cleanup["status"] = "missing_run_identifiers"
+        return publish()
+
+    try:
+        proc = subprocess.run(
+            ["ps", "-eo", "pid=,ppid=,command="],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        cleanup["status"] = "process_table_unavailable"
+        return publish()
+    if proc.returncode != 0:
+        cleanup["status"] = "process_table_unavailable"
+        return publish()
+
+    entries: dict[int, tuple[int, str]] = {}
+    children: dict[int, set[int]] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split(maxsplit=2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        command = parts[2]
+        entries[pid] = (ppid, command)
+        children.setdefault(ppid, set()).add(pid)
+
+    host_local_markers = (
+        "skillsbench_local_acp_relay.py",
+        "scripts/skillsbench_local_acp_relay.py",
+        "skillsbench_host_codex_goal_worker.py",
+        "scripts/skillsbench_host_codex_goal_worker.py",
+        "skillsbench_remote_command_file_bridge",
+        "remote_command_file_bridge",
+        "json_file_bridge",
+    )
+    protected_pids = {os.getpid(), os.getppid()}
+    root_matches = {
+        pid
+        for pid, (_ppid, command) in entries.items()
+        if pid not in protected_pids
+        and any(identifier in command for identifier in identifiers)
+        and any(marker in command for marker in host_local_markers)
+    }
+    to_terminate = set(root_matches)
+    stack = list(root_matches)
+    while stack:
+        parent = stack.pop()
+        for child in children.get(parent, set()):
+            if child not in to_terminate and child not in protected_pids:
+                to_terminate.add(child)
+                stack.append(child)
+
+    cleanup["match_count"] = len(to_terminate)
+    if not to_terminate:
+        cleanup["status"] = "no_matching_processes"
+        return publish()
+
+    def is_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+
+    term_sent = 0
+    for pid in sorted(to_terminate, reverse=True):
+        try:
+            os.kill(pid, signal.SIGTERM)
+            term_sent += 1
+        except (ProcessLookupError, PermissionError):
+            continue
+    cleanup["term_sent_count"] = term_sent
+
+    deadline = time.monotonic() + max(0.0, grace_seconds)
+    alive = {pid for pid in to_terminate if is_alive(pid)}
+    while alive and time.monotonic() < deadline:
+        time.sleep(0.1)
+        alive = {pid for pid in alive if is_alive(pid)}
+
+    kill_sent = 0
+    if alive:
+        for pid in sorted(alive, reverse=True):
+            try:
+                os.kill(pid, signal.SIGKILL)
+                kill_sent += 1
+            except (ProcessLookupError, PermissionError):
                 continue
         cleanup["kill_sent_count"] = kill_sent
         time.sleep(0.1)
@@ -3199,10 +4390,24 @@ def _apply_agent_message_only_no_tool_calls_attribution(
     bridge_request_count = counters.get(
         "remote_command_file_bridge_agent_request_count"
     )
+    bridge_task_facing_count = counters.get(
+        "remote_command_file_bridge_agent_task_facing_operation_count"
+    )
+    bridge_progress_status = str(
+        counters.get("host_local_acp_bridge_progress_status") or ""
+    )
     if (
-        isinstance(bridge_request_count, int)
-        and not isinstance(bridge_request_count, bool)
-        and bridge_request_count > 0
+        (
+            isinstance(bridge_request_count, int)
+            and not isinstance(bridge_request_count, bool)
+            and bridge_request_count > 0
+        )
+        or (
+            isinstance(bridge_task_facing_count, int)
+            and not isinstance(bridge_task_facing_count, bool)
+            and bridge_task_facing_count > 0
+        )
+        or bridge_progress_status.startswith("bridge_")
     ):
         return False
 
@@ -3406,6 +4611,228 @@ def _goal_start_subcommand_count(
     )
 
 
+_GOAL_START_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
+_GOAL_START_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
+
+
+def _goal_start_safe_todo_id(value: Any) -> str:
+    text = _case_timeline_safe_string(value, limit=100)
+    return text if _GOAL_START_TODO_ID_RE.match(text) else ""
+
+
+def _goal_start_safe_goal_id(value: Any) -> str:
+    text = _case_timeline_safe_string(value, limit=140)
+    return text if _GOAL_START_GOAL_ID_RE.match(text) else ""
+
+
+def _goal_start_public_text_list(value: Any, *, limit: int = 8) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        text = _case_timeline_safe_string(item, limit=180)
+        if text:
+            result.append(text)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _goal_start_public_todo_id_list(value: Any, *, limit: int = 16) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        todo_id = _goal_start_safe_todo_id(item)
+        if todo_id and todo_id not in result:
+            result.append(todo_id)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _goal_start_public_command_records(*values: Any) -> list[dict[str, str]]:
+    records: list[dict[str, str]] = []
+    allowed_subcommands = {
+        "quota should-run",
+        "todo claim",
+        "todo update",
+        "todo complete",
+        "refresh-state",
+        "quota spend-slot",
+        "status",
+        "diagnose",
+    }
+    for value in values:
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            subcommand = _case_timeline_safe_string(
+                item.get("subcommand"),
+                limit=80,
+            )
+            if subcommand not in allowed_subcommands:
+                continue
+            record: dict[str, str] = {"subcommand": subcommand}
+            todo_id = _goal_start_safe_todo_id(item.get("todo_id"))
+            if todo_id:
+                record["todo_id"] = todo_id
+            goal_id = _goal_start_safe_goal_id(item.get("goal_id"))
+            if goal_id:
+                record["goal_id"] = goal_id
+            records.append(record)
+            if len(records) >= 128:
+                return records
+    return records
+
+
+def _goal_start_planned_todo_packet(
+    counters: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    ids = (
+        _goal_start_public_todo_id_list(counters.get("planned_todo_ids"))
+        or _goal_start_public_todo_id_list(
+            runner_prerequisites.get("planned_todo_ids")
+        )
+    )
+    texts = (
+        _goal_start_public_text_list(counters.get("planned_todo_texts_public_safe"))
+        or _goal_start_public_text_list(
+            runner_prerequisites.get("planned_todo_texts_public_safe")
+        )
+    )
+    if not ids and (
+        counters.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_product_mode") is True
+        or runner_prerequisites.get("goal_start_plan_required") is True
+    ):
+        ids = list(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_IDS)
+    if not texts and ids:
+        texts = list(BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS)
+    return ids[:8], texts[:8]
+
+
+def _build_goal_start_todo_snapshot(
+    *,
+    counters: dict[str, Any],
+    runner_prerequisites: dict[str, Any],
+    selected_p0_todo_id: str,
+    agent_claim_count: int,
+    agent_update_count: int,
+    agent_complete_count: int,
+    selected_todo_claimed: bool,
+    selected_todo_updated_before_solver: bool,
+) -> dict[str, Any]:
+    planned_ids, planned_texts = _goal_start_planned_todo_packet(
+        counters,
+        runner_prerequisites,
+    )
+    if not selected_p0_todo_id and planned_ids:
+        selected_p0_todo_id = planned_ids[0]
+    records = _goal_start_public_command_records(
+        counters.get("remote_command_file_bridge_agent_successful_loopx_command_records"),
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ),
+    )
+    counts_by_todo: dict[str, dict[str, int]] = {}
+    complete_without_todo_id = 0
+    for record in records:
+        subcommand = record.get("subcommand", "")
+        if subcommand not in {"todo claim", "todo update", "todo complete"}:
+            continue
+        todo_id = _goal_start_safe_todo_id(record.get("todo_id"))
+        if not todo_id:
+            if subcommand == "todo complete":
+                complete_without_todo_id += 1
+            continue
+        counts = counts_by_todo.setdefault(
+            todo_id,
+            {"claim": 0, "update": 0, "complete": 0},
+        )
+        counts[subcommand.split()[1]] += 1
+
+    inferred_identity = False
+    if not records and selected_p0_todo_id:
+        selected_counts = counts_by_todo.setdefault(
+            selected_p0_todo_id,
+            {"claim": 0, "update": 0, "complete": 0},
+        )
+        if agent_claim_count > 0 or selected_todo_claimed:
+            selected_counts["claim"] = max(selected_counts["claim"], agent_claim_count)
+        if agent_update_count > 0 or selected_todo_updated_before_solver:
+            selected_counts["update"] = max(
+                selected_counts["update"],
+                agent_update_count,
+            )
+        if agent_complete_count > 0:
+            selected_counts["complete"] = max(
+                selected_counts["complete"],
+                agent_complete_count,
+            )
+            inferred_identity = True
+
+    completed_ids = sorted(
+        todo_id
+        for todo_id, counts in counts_by_todo.items()
+        if counts.get("complete", 0) > 0
+    )
+    selected_counts = counts_by_todo.get(
+        selected_p0_todo_id,
+        {"claim": 0, "update": 0, "complete": 0},
+    )
+    selected_complete_count = max(0, selected_counts.get("complete", 0))
+    selected_duplicate_complete_count = max(0, selected_complete_count - 1)
+    non_selected_complete_count = sum(
+        max(0, counts.get("complete", 0))
+        for todo_id, counts in counts_by_todo.items()
+        if todo_id != selected_p0_todo_id
+    )
+
+    planned_todos: list[dict[str, Any]] = []
+    for index, todo_id in enumerate(planned_ids):
+        counts = counts_by_todo.get(todo_id, {"claim": 0, "update": 0, "complete": 0})
+        complete_count = max(0, counts.get("complete", 0))
+        if complete_count > 0:
+            status = "done_observed"
+        elif todo_id == selected_p0_todo_id:
+            status = "open_or_in_progress_observed"
+        else:
+            status = "open_or_deferred_observed"
+        item: dict[str, Any] = {
+            "todo_id": todo_id,
+            "role": "selected_p0" if todo_id == selected_p0_todo_id else "supporting",
+            "status": status,
+            "claim_count": max(0, counts.get("claim", 0)),
+            "update_count": max(0, counts.get("update", 0)),
+            "complete_count": complete_count,
+        }
+        if index < len(planned_texts):
+            item["text_public_safe"] = planned_texts[index]
+        planned_todos.append(item)
+
+    return {
+        "schema_version": "skillsbench_goal_start_todo_snapshot_v0",
+        "raw_material_recorded": False,
+        "planned_todos": planned_todos,
+        "planned_todo_ids": planned_ids,
+        "planned_todo_texts_public_safe": planned_texts,
+        "selected_p0_todo_id": selected_p0_todo_id,
+        "completed_todo_ids": completed_ids[:8],
+        "completed_todo_id_count": len(completed_ids),
+        "selected_todo_complete_count": selected_complete_count,
+        "selected_todo_duplicate_complete_count": selected_duplicate_complete_count,
+        "non_selected_todo_complete_count": non_selected_complete_count,
+        "todo_complete_without_todo_id_count": complete_without_todo_id,
+        "todo_identity_attribution": (
+            "inferred_from_counts" if inferred_identity else "command_record_observed"
+        ),
+    }
+
+
 def _build_goal_start_product_mode_control_score(
     compact: dict[str, Any],
     plan: dict[str, Any],
@@ -3468,11 +4895,21 @@ def _build_goal_start_product_mode_control_score(
         or runner_prerequisites.get("selected_p0_todo_id"),
         limit=100,
     )
+    planned_todo_ids, planned_todo_texts = _goal_start_planned_todo_packet(
+        counters,
+        runner_prerequisites,
+    )
+    if not selected_p0_todo_id and planned_todo_ids:
+        selected_p0_todo_id = planned_todo_ids[0]
     planned_todo_count = _case_timeline_max_int(counters.get("planned_todo_count"))
+    if planned_todo_ids:
+        planned_todo_count = max(planned_todo_count, len(planned_todo_ids))
     expected_todo_count = _case_timeline_max_int(
         runner_prerequisites.get("goal_start_planned_todo_count_expected")
     )
     planned_p0_count = _case_timeline_max_int(counters.get("planned_p0_count"))
+    if selected_p0_todo_id:
+        planned_p0_count = max(planned_p0_count, 1)
     closeout_spend_count = _case_timeline_max_int(
         counters.get("remote_command_file_bridge_agent_quota_spend_slot_count"),
         runner_prerequisites.get(
@@ -3534,6 +4971,38 @@ def _build_goal_start_product_mode_control_score(
     selected_todo_completed_before_spend = bool(
         counters.get("selected_todo_completed_before_spend") is True
         or (agent_complete_count > 0 and selected_todo_spend_observed)
+    )
+    todo_snapshot = _build_goal_start_todo_snapshot(
+        counters=counters,
+        runner_prerequisites=runner_prerequisites,
+        selected_p0_todo_id=selected_p0_todo_id,
+        agent_claim_count=agent_claim_count,
+        agent_update_count=agent_update_count,
+        agent_complete_count=agent_complete_count,
+        selected_todo_claimed=selected_todo_claimed,
+        selected_todo_updated_before_solver=selected_todo_updated_before_solver,
+    )
+    selected_todo_complete_count = _case_timeline_max_int(
+        todo_snapshot.get("selected_todo_complete_count")
+    )
+    selected_todo_duplicate_complete_count = _case_timeline_max_int(
+        todo_snapshot.get("selected_todo_duplicate_complete_count")
+    )
+    non_selected_todo_complete_count = _case_timeline_max_int(
+        todo_snapshot.get("non_selected_todo_complete_count")
+    )
+    todo_complete_without_todo_id_count = _case_timeline_max_int(
+        todo_snapshot.get("todo_complete_without_todo_id_count")
+    )
+    completed_todo_id_count = _case_timeline_max_int(
+        todo_snapshot.get("completed_todo_id_count")
+    )
+    selected_todo_completed_observed = bool(
+        selected_todo_complete_count > 0 or agent_complete_count > 0
+    )
+    quota_spend_missing_after_repeated_complete = bool(
+        selected_todo_duplicate_complete_count > 0
+        and not selected_todo_spend_observed
     )
     last_decision = _case_timeline_safe_string(counters.get("last_decision"), limit=100)
     premature_done_signal_count = _case_timeline_max_int(
@@ -3619,18 +5088,32 @@ def _build_goal_start_product_mode_control_score(
         "selected_todo_claimed": selected_todo_claimed,
         "selected_todo_updated_before_solver": selected_todo_updated_before_solver,
         "selected_todo_completed_before_spend": selected_todo_completed_before_spend,
+        "selected_todo_completed_observed": selected_todo_completed_observed,
         "selected_todo_spend_observed": selected_todo_spend_observed,
         "non_selected_todos_preserved_open_or_deferred": (
             counters.get("non_selected_todos_preserved_open_or_deferred") is True
+        ),
+        "quota_spend_missing_after_repeated_complete": (
+            quota_spend_missing_after_repeated_complete
         ),
         "premature_done_signal_count": premature_done_signal_count,
         "premature_done_stop_reason": premature_done_stop_reason,
         "agent_todo_claim_count": agent_claim_count,
         "agent_todo_update_count": agent_update_count,
         "agent_todo_complete_count": agent_complete_count,
+        "agent_todo_complete_unique_todo_count": completed_todo_id_count,
+        "selected_todo_complete_count": selected_todo_complete_count,
+        "selected_todo_duplicate_complete_count": (
+            selected_todo_duplicate_complete_count
+        ),
+        "non_selected_todo_complete_count": non_selected_todo_complete_count,
+        "todo_complete_without_todo_id_count": todo_complete_without_todo_id_count,
         "agent_quota_spend_slot_count": max(closeout_spend_count, agent_spend_count),
         "driver_todo_claim_count": driver_claim_count,
         "driver_todo_update_count": driver_update_count,
+        "planned_todo_ids": planned_todo_ids,
+        "planned_todo_texts_public_safe": planned_todo_texts,
+        "goal_start_todo_snapshot": todo_snapshot,
         "component_results": component_results,
     }
 
@@ -3731,8 +5214,31 @@ def _build_case_event_timeline(
             selected_todo_completed_before_spend=goal_start_control_score.get(
                 "selected_todo_completed_before_spend"
             ),
+            selected_todo_completed_observed=goal_start_control_score.get(
+                "selected_todo_completed_observed"
+            ),
             selected_todo_spend_observed=goal_start_control_score.get(
                 "selected_todo_spend_observed"
+            ),
+            selected_todo_complete_count=goal_start_control_score.get(
+                "selected_todo_complete_count"
+            ),
+            selected_todo_duplicate_complete_count=goal_start_control_score.get(
+                "selected_todo_duplicate_complete_count"
+            ),
+            agent_todo_complete_unique_todo_count=goal_start_control_score.get(
+                "agent_todo_complete_unique_todo_count"
+            ),
+            non_selected_todo_complete_count=goal_start_control_score.get(
+                "non_selected_todo_complete_count"
+            ),
+            todo_complete_without_todo_id_count=goal_start_control_score.get(
+                "todo_complete_without_todo_id_count"
+            ),
+            quota_spend_missing_after_repeated_complete=(
+                goal_start_control_score.get(
+                    "quota_spend_missing_after_repeated_complete"
+                )
             ),
             non_selected_todos_preserved_open_or_deferred=(
                 goal_start_control_score.get(
@@ -3866,8 +5372,17 @@ def _build_case_event_timeline(
         trajectory_event_count=trajectory_event_count,
         trajectory_round_count=trajectory_round_count,
         trajectory_tool_call_count=trajectory_tool_call_count,
+        acp_protocol_tool_call_count=trajectory_tool_call_count,
         agent_bridge_request_count=agent_request_count,
         agent_bridge_task_facing_operation_count=task_facing_count,
+        host_local_acp_bridge_progress_status=(
+            counters.get("host_local_acp_bridge_progress_status")
+            or runner_prerequisites.get("host_local_acp_bridge_progress_status")
+        ),
+        host_local_acp_bridge_progress_signal_source=(
+            counters.get("host_local_acp_bridge_progress_signal_source")
+            or runner_prerequisites.get("host_local_acp_bridge_progress_signal_source")
+        ),
         agent_operation_trace_status=(
             counters.get("remote_command_file_bridge_agent_operation_trace_status")
             or runner_prerequisites.get(
@@ -3884,6 +5399,11 @@ def _build_case_event_timeline(
     controller_status = "not_observed"
     if counters.get("controller_official_success_observed") is True:
         controller_status = "official_success_observed"
+    elif (
+        counters.get("product_mode_host_local_idle_no_task_output_progress_stop")
+        is True
+    ):
+        controller_status = "host_local_idle_no_task_output_progress_stop"
     elif (
         counters.get("product_mode_no_open_todo_below_passing_reward_stop")
         is True
@@ -3916,6 +5436,14 @@ def _build_case_event_timeline(
             counters.get("controller_max_rounds_budget"),
             compact.get("controller_max_rounds_budget"),
         ),
+        host_local_idle_no_task_output_progress_streak=_case_timeline_max_int(
+            counters.get("product_mode_host_local_idle_no_task_output_progress_streak")
+        ),
+        host_local_idle_no_task_output_progress_streak_threshold=_case_timeline_max_int(
+            counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_streak_threshold"
+            )
+        ),
         final_round=round_reward_trace.get("final_round"),
         best_round_reward=round_reward_trace.get("best_round_reward"),
         last_decision=(
@@ -3928,8 +5456,15 @@ def _build_case_event_timeline(
         or counters.get("benchflow_user_loop_recovery_exception_type")
     )
     runner_failure_class = runner_failure.get("failure_class")
-    if recovery_exception:
+    official_status_for_recovery = _case_timeline_safe_string(
+        compact.get("official_score_status")
+    )
+    if recovery_exception and official_status_for_recovery == "completed":
+        recovery_status = "runner_recovery_after_official_score"
+    elif recovery_exception:
         recovery_status = "user_loop_recovery_triggered"
+    elif runner_failure_class and official_status_for_recovery == "completed":
+        recovery_status = "runner_failure_after_official_score"
     elif runner_failure_class:
         recovery_status = "runner_failure_recorded"
     else:
@@ -4043,17 +5578,46 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
+        "verifier_uv_bootstrap_pip_fallback_patch_applied",
+        "benchmark_egress_proxy_verifier_env_patch_required",
+        "benchmark_egress_proxy_verifier_env_patch_applied",
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded",
         "verifier_bootstrap_risk_preflight_blocked",
+        "verifier_bootstrap_fail_fast_defaulted",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in (
+        "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
+        "verifier_uv_bootstrap_version",
+        "verifier_uv_bootstrap_mirror_host",
+    ):
+        raw = value.get(field)
+        if isinstance(raw, str) and raw:
+            compact[field] = raw[:180]
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
+    key_count = value.get("benchmark_egress_proxy_verifier_env_key_count")
+    if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
+        compact["benchmark_egress_proxy_verifier_env_key_count"] = key_count
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -4091,8 +5655,18 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
     except OSError:
         dockerfile_text = ""
+    verifier = prepared_task / "verifier" / "test.sh"
+    try:
+        verifier_text = (
+            verifier.read_text(encoding="utf-8", errors="replace")
+            if verifier.exists()
+            else ""
+        )
+    except OSError:
+        verifier_text = ""
+    uv_versions = _verifier_uv_bootstrap_versions(verifier_text)
     include_task_skills = bool(plan.get("include_task_skills"))
-    return {
+    discovered = {
         "schema_version": "skillsbench_task_staging_v0",
         "staged": True,
         "include_task_skills": include_task_skills,
@@ -4100,6 +5674,9 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             DOCKER_APP_SKILLS_MOUNT_BEGIN in dockerfile_text
         ),
         "apt_retry_patch_applied": DOCKER_APT_RETRY_BEGIN in dockerfile_text,
+        "dockerfile_pip_bootstrap_patch_applied": (
+            DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text
+        ),
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
         ),
@@ -4109,6 +5686,41 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         ),
         "original_task_mutated": False,
     }
+    if VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in verifier_text:
+        discovered.update(
+            {
+                "verifier_uv_bootstrap_risk_detected": True,
+                "verifier_uv_bootstrap_mirror_patch_required": True,
+                "verifier_uv_bootstrap_mirror_patch_applied": True,
+                "verifier_uv_bootstrap_pip_fallback_patch_applied": (
+                    "python3 -m pip install" in verifier_text
+                    and "uv==${loopx_uv_version}" in verifier_text
+                ),
+                "verifier_uv_bootstrap_mirror_host": (
+                    DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+                ),
+            }
+        )
+        if uv_versions:
+            discovered["verifier_uv_bootstrap_version"] = uv_versions[0]
+    if VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN in verifier_text:
+        discovered.update(
+            {
+                "benchmark_egress_proxy_verifier_env_patch_required": True,
+                "benchmark_egress_proxy_verifier_env_patch_applied": True,
+                "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+            }
+        )
+    if DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text:
+        discovered.update(
+            {
+                "dockerfile_pip_install_risk_detected": True,
+                "dockerfile_pip_bootstrap_patch_required": True,
+                "dockerfile_pip_bootstrap_patch_applied": True,
+                "dockerfile_pip_index_host": DEFAULT_DOCKER_PIP_INDEX_HOST,
+            }
+        )
+    return discovered
 
 
 def _effective_public_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
@@ -4148,6 +5760,8 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
         "verifier_present",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
@@ -4158,10 +5772,19 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    for field in ("nearest_canonical_task_ids", "verifier_bootstrap_risk_categories"):
+    for field in ("verifier_uv_bootstrap_version",):
+        raw = value.get(field)
+        if isinstance(raw, str) and raw:
+            compact[field] = raw[:180]
+    for field in (
+        "nearest_canonical_task_ids",
+        "verifier_bootstrap_risk_categories",
+        "bootstrap_light_blocking_fields",
+    ):
         raw_items = value.get(field)
         if isinstance(raw_items, list):
             compact[field] = [
@@ -4333,6 +5956,23 @@ def build_compose_setup_diagnostic(
         )
         is True
         or task_staging.get("apt_retry_patch_required") is True,
+        "verifier_uv_bootstrap_risk_detected": setup_preflight.get(
+            "verifier_uv_bootstrap_risk_detected"
+        )
+        is True
+        or task_staging.get("verifier_uv_bootstrap_risk_detected") is True,
+        "verifier_uv_bootstrap_mirror_patch_required": task_staging.get(
+            "verifier_uv_bootstrap_mirror_patch_required"
+        )
+        is True,
+        "verifier_uv_bootstrap_mirror_patch_applied": task_staging.get(
+            "verifier_uv_bootstrap_mirror_patch_applied"
+        )
+        is True,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": task_staging.get(
+            "verifier_uv_bootstrap_pip_fallback_patch_applied"
+        )
+        is True,
         "staged_task_prepared": task_staging.get("staged") is True,
         "task_skills_removed": task_staging.get("task_skills_removed") is True,
         "codex_acp_runtime_tools_patch_applied": task_staging.get(
@@ -4501,9 +6141,30 @@ def patch_dockerfile_app_skills_mount(dockerfile: Path) -> bool:
     )
     if re.search(r"^\s*FROM\s+scratch(?:\s|$)", text, flags=re.IGNORECASE | re.MULTILINE):
         return False
+    keep_file = dockerfile.parent / DOCKER_APP_SKILLS_MOUNT_KEEP_FILE
+    if not keep_file.exists():
+        _write_text_atomic(keep_file, "LoopX SkillsBench app skills mount marker.\n")
+    dockerignore = dockerfile.parent / ".dockerignore"
+    if dockerignore.exists():
+        dockerignore_text = _strip_marker_block(
+            dockerignore.read_text(encoding="utf-8", errors="replace"),
+            DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN,
+            DOCKER_APP_SKILLS_DOCKERIGNORE_END,
+        ).rstrip()
+        dockerignore_block = (
+            f"{DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN}\n"
+            f"!{DOCKER_APP_SKILLS_MOUNT_KEEP_FILE}\n"
+            f"{DOCKER_APP_SKILLS_DOCKERIGNORE_END}"
+        )
+        _write_text_atomic(
+            dockerignore,
+            (dockerignore_text + "\n\n" if dockerignore_text else "")
+            + dockerignore_block
+            + "\n",
+        )
     block = (
         f"{DOCKER_APP_SKILLS_MOUNT_BEGIN}\n"
-        "RUN mkdir -p /app /app/skills\n"
+        f"COPY {DOCKER_APP_SKILLS_MOUNT_KEEP_FILE} /app/skills/.loopx_keep\n"
         f"{DOCKER_APP_SKILLS_MOUNT_END}"
     )
     patched_lines: list[str] = []
@@ -4532,6 +6193,22 @@ def dockerfile_needs_apt_retry_patch(dockerfile: Path) -> bool:
     return bool(re.search(r"\bapt(?:-get)?\s+update\b", text, flags=re.IGNORECASE))
 
 
+def dockerfile_needs_pip_bootstrap_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    if not re.search(r"^\s*FROM\s+", text, flags=re.IGNORECASE | re.MULTILINE):
+        return False
+    return bool(
+        re.search(
+            r"(?:^|[;&|(\s])(?:python3?|python)\s+-m\s+pip\s+install\b|"
+            r"(?:^|[;&|(\s])pip3?\s+install\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     text = str(value or "").strip()
     cleaned = []
@@ -4543,6 +6220,131 @@ def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     while "--" in label:
         label = label.replace("--", "-")
     return label[:limit]
+
+
+SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS = (
+    "apt_setup_risk_detected",
+    "apt_retry_patch_required",
+    "dockerfile_pip_install_risk_detected",
+    "dockerfile_pip_bootstrap_patch_required",
+    "verifier_bootstrap_risk_detected",
+    "verifier_uv_bootstrap_risk_detected",
+    "verifier_external_download_risk_detected",
+    "verifier_package_install_risk_detected",
+)
+
+
+def skillsbench_bootstrap_light_blocking_fields(
+    preflight: dict[str, Any],
+) -> list[str]:
+    if preflight.get("canonical_task_present") is False:
+        return ["canonical_task_present"]
+    return [
+        field
+        for field in SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS
+        if preflight.get(field) is True
+    ]
+
+
+def _setup_preflight_public_blocking_fields(preflight: dict[str, Any]) -> list[str]:
+    raw_fields = preflight.get("bootstrap_light_blocking_fields")
+    if isinstance(raw_fields, list):
+        return [
+            field
+            for field in raw_fields
+            if isinstance(field, str)
+            and field
+            in (
+                *SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS,
+                "canonical_task_present",
+            )
+        ]
+    return skillsbench_bootstrap_light_blocking_fields(preflight)
+
+
+def _bootstrap_light_blocker_kind(blocking_fields: list[str]) -> str:
+    fields = set(blocking_fields)
+    if "canonical_task_present" in fields:
+        return "task_source"
+    if fields & {
+        "apt_setup_risk_detected",
+        "apt_retry_patch_required",
+    }:
+        return "apt"
+    if fields & {
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+    }:
+        return "dockerfile_package"
+    if fields & {
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
+    }:
+        return "verifier"
+    return "setup"
+
+
+def _bootstrap_light_preflight_block_required(
+    args: argparse.Namespace,
+    *,
+    blocker_kind: str,
+) -> bool:
+    if getattr(args, "reduce_only", False):
+        return False
+    fail_fast_required = _formal_app_server_goal_bootstrap_light_fail_fast_required(
+        args
+    )
+    if blocker_kind in {"apt", "dockerfile_package"}:
+        return bool(args.fail_fast_on_apt_risk or fail_fast_required)
+    if blocker_kind == "verifier":
+        return bool(args.fail_fast_on_verifier_bootstrap_risk or fail_fast_required)
+    return False
+
+
+def _mark_bootstrap_light_preflight_blocked(
+    *,
+    staging: dict[str, Any],
+    setup_preflight: dict[str, Any],
+    blocking_fields: list[str],
+    args: argparse.Namespace,
+) -> str:
+    blocker_kind = _bootstrap_light_blocker_kind(blocking_fields)
+    staging["bootstrap_light_preflight_blocked"] = True
+    staging["bootstrap_light_blocker_kind"] = blocker_kind
+    staging["bootstrap_light_fail_fast_defaulted"] = bool(
+        getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+    )
+    staging["bootstrap_light_blocking_field_count"] = len(blocking_fields)
+    if blocker_kind == "task_source":
+        staging["task_source_preflight_blocked"] = True
+    if blocker_kind in {"apt", "dockerfile_package"}:
+        staging["apt_setup_risk_detected"] = bool(
+            setup_preflight.get("apt_setup_risk_detected")
+        )
+        staging["apt_retry_patch_required"] = bool(
+            setup_preflight.get("apt_retry_patch_required")
+        )
+        staging["dockerfile_pip_install_risk_detected"] = bool(
+            setup_preflight.get("dockerfile_pip_install_risk_detected")
+        )
+        staging["dockerfile_pip_bootstrap_patch_required"] = bool(
+            setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
+        )
+        if blocker_kind == "apt":
+            staging["apt_risk_preflight_blocked"] = True
+        else:
+            staging["dockerfile_package_bootstrap_risk_preflight_blocked"] = True
+    if blocker_kind == "verifier":
+        staging["verifier_bootstrap_risk_detected"] = bool(
+            setup_preflight.get("verifier_bootstrap_risk_detected")
+        )
+        staging["verifier_bootstrap_risk_preflight_blocked"] = True
+        staging["verifier_bootstrap_fail_fast_defaulted"] = bool(
+            getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+        )
+    return blocker_kind
 
 
 def skillsbench_task_setup_preflight(
@@ -4567,12 +6369,16 @@ def skillsbench_task_setup_preflight(
         "alternate_source_supported_by_runner": False,
         "apt_setup_risk_detected": False,
         "apt_retry_patch_required": False,
+        "dockerfile_pip_install_risk_detected": False,
+        "dockerfile_pip_bootstrap_patch_required": False,
         "verifier_present": False,
         "verifier_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_external_download_risk_detected": False,
         "verifier_package_install_risk_detected": False,
         "verifier_bootstrap_risk_categories": [],
+        "bootstrap_light_candidate_eligible": False,
+        "bootstrap_light_blocking_fields": [],
     }
     skillsbench_root = expanded_task_path.parent.parent
     canonical_task_exists = expanded_task_path.is_dir()
@@ -4609,9 +6415,13 @@ def skillsbench_task_setup_preflight(
                 ),
             }
         )
+        preflight["bootstrap_light_blocking_fields"] = (
+            skillsbench_bootstrap_light_blocking_fields(preflight)
+        )
         return preflight
     if sandbox != "docker":
         preflight["status"] = "not_applicable"
+        preflight["bootstrap_light_candidate_eligible"] = True
         return preflight
 
     dockerfile = expanded_task_path / "environment" / "Dockerfile"
@@ -4619,31 +6429,46 @@ def skillsbench_task_setup_preflight(
     preflight["dockerfile_present"] = dockerfile_exists
     if not dockerfile_exists:
         preflight["status"] = "no_dockerfile"
+        preflight["bootstrap_light_candidate_eligible"] = True
         return preflight
 
     apt_risk = dockerfile_needs_apt_retry_patch(dockerfile)
+    pip_risk = dockerfile_needs_pip_bootstrap_patch(dockerfile)
     verifier_risk = skillsbench_verifier_bootstrap_risk(expanded_task_path)
     preflight.update(verifier_risk)
     verifier_bootstrap_risk = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
     )
-    if apt_risk and verifier_bootstrap_risk:
+    if (apt_risk or pip_risk) and verifier_bootstrap_risk:
         setup_status = "setup_bootstrap_risk_detected"
-    elif apt_risk:
-        setup_status = "apt_risk_detected"
+    elif apt_risk or pip_risk:
+        setup_status = "dockerfile_package_bootstrap_risk_detected"
     elif verifier_bootstrap_risk:
         setup_status = "verifier_bootstrap_risk_detected"
     else:
         setup_status = "ok"
+    risk_fields = skillsbench_bootstrap_light_blocking_fields(
+        {
+            **preflight,
+            "apt_setup_risk_detected": apt_risk,
+            "apt_retry_patch_required": apt_risk,
+            "dockerfile_pip_install_risk_detected": pip_risk,
+            "dockerfile_pip_bootstrap_patch_required": pip_risk,
+        }
+    )
     preflight.update(
         {
             "status": setup_status,
             "apt_setup_risk_detected": apt_risk,
             "apt_retry_patch_required": apt_risk,
+            "dockerfile_pip_install_risk_detected": pip_risk,
+            "dockerfile_pip_bootstrap_patch_required": pip_risk,
+            "bootstrap_light_candidate_eligible": not risk_fields,
+            "bootstrap_light_blocking_fields": risk_fields,
             "selection_recommendation": (
                 "route_to_setup_repair_or_use_fail_fast_guard"
-                if apt_risk or verifier_bootstrap_risk
-                else "eligible_for_full_pair"
+                if risk_fields
+                else "eligible_for_bootstrap_light_full_pair"
             ),
         }
     )
@@ -4676,6 +6501,9 @@ def skillsbench_verifier_bootstrap_risk(task_path: Path) -> dict[str, Any]:
     except OSError:
         return result
 
+    uv_versions = _verifier_uv_bootstrap_versions(text)
+    if uv_versions:
+        result["verifier_uv_bootstrap_version"] = uv_versions[0]
     categories: list[str] = []
     uv_bootstrap_pattern = (
         r"astral\.sh/uv|"
@@ -4698,6 +6526,198 @@ def skillsbench_verifier_bootstrap_risk(task_path: Path) -> dict[str, Any]:
     result["verifier_bootstrap_risk_categories"] = sorted(set(categories))
     result["verifier_bootstrap_risk_detected"] = bool(categories)
     return result
+
+
+def _verifier_uv_bootstrap_versions(text: str) -> list[str]:
+    versions: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(
+        r"https?://astral\.sh/uv/(?P<version>[0-9A-Za-z][0-9A-Za-z._+-]*)/install\.sh",
+        text,
+    ):
+        version = match.group("version")
+        if version and version not in seen:
+            versions.append(version)
+            seen.add(version)
+    return versions
+
+
+def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
+    """Point staged uv installer bootstrap at a reachable public mirror.
+
+    The patch is applied only to the copied prepared task. It does not alter
+    scoring assertions, task instructions, or verifier command order; it only
+    supplies uv's installer with the tarball URL that the official installer
+    would otherwise derive from a GitHub release URL.
+    """
+
+    metadata: dict[str, Any] = {
+        "verifier_uv_bootstrap_risk_detected": False,
+        "verifier_uv_bootstrap_mirror_patch_required": False,
+        "verifier_uv_bootstrap_mirror_patch_applied": False,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+    }
+    if not verifier.exists():
+        return metadata
+    try:
+        original = verifier.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return metadata
+    text = _strip_marker_block(
+        original,
+        VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
+        VERIFIER_UV_BOOTSTRAP_MIRROR_END,
+    )
+    versions = _verifier_uv_bootstrap_versions(text)
+    if not versions:
+        return metadata
+
+    version = versions[0]
+    block = (
+        f"{VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
+        "# Prefer the PyPI uv wheel for verifier bootstrap; the official uv\n"
+        "# installer release tarball remains as a bounded fallback.\n"
+        f"loopx_uv_release_mirror={shlex.quote(DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE)}\n"
+        f"loopx_uv_version={shlex.quote(version)}\n"
+        "if ! command -v uvx >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then\n"
+        "  loopx_pip_break_system_packages=''\n"
+        "  if python3 -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then\n"
+        "    loopx_pip_break_system_packages='--break-system-packages'\n"
+        "  fi\n"
+        "  python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
+        "    --no-cache-dir --timeout 120 --retries 5 \\\n"
+        f"    --index-url {shlex.quote(DEFAULT_DOCKER_PIP_INDEX_URL)} \\\n"
+        f"    --extra-index-url {shlex.quote(DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL)} \\\n"
+        "    \"uv==${loopx_uv_version}\" || true\n"
+        "  unset loopx_pip_break_system_packages\n"
+        "fi\n"
+        "if [ -z \"${INSTALLER_DOWNLOAD_URL:-}\" ]; then\n"
+        "  export INSTALLER_DOWNLOAD_URL=\"${loopx_uv_release_mirror}/${loopx_uv_version}\"\n"
+        "fi\n"
+        "loopx_uv_installer_timeout_sec=${LOOPX_SKILLSBENCH_UV_INSTALL_TIMEOUT_SEC:-180}\n"
+        f"{VERIFIER_UV_BOOTSTRAP_MIRROR_END}"
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        if (
+            not inserted
+            and "astral.sh/uv/" in line
+            and "install.sh" in line
+        ):
+            patched_lines.extend(block.splitlines())
+            inserted = True
+            if "curl" in line and "|" in line:
+                fallback_line = shlex.quote(line)
+                patched_lines.extend(
+                    [
+                        "if ! command -v uvx >/dev/null 2>&1; then",
+                        "  if command -v timeout >/dev/null 2>&1; then",
+                        f"    timeout \"${{loopx_uv_installer_timeout_sec}}\" sh -c {fallback_line}",
+                        "  else",
+                        f"    sh -c {fallback_line}",
+                        "  fi",
+                        "fi",
+                    ]
+                )
+                continue
+        patched_lines.append(line)
+    if not inserted:
+        patched_lines.extend(block.splitlines())
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(verifier, patched)
+    metadata.update(
+        {
+            "verifier_uv_bootstrap_risk_detected": True,
+            "verifier_uv_bootstrap_mirror_patch_required": True,
+            "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_uv_bootstrap_pip_fallback_patch_applied": True,
+            "verifier_uv_bootstrap_version": version,
+            "verifier_uv_bootstrap_mirror_host": (
+                DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+            ),
+        }
+    )
+    return metadata
+
+
+def _verifier_benchmark_egress_proxy_exports(
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if not isinstance(proxy_env, Mapping):
+        return {}
+    proxy_url = str(proxy_env.get("LOOPX_SKILLSBENCH_EGRESS_PROXY") or "").strip()
+    if not proxy_url:
+        for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS:
+            proxy_url = str(proxy_env.get(key) or "").strip()
+            if proxy_url:
+                break
+    if not proxy_url:
+        return {}
+    exports = {
+        key: proxy_url
+        for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS
+    }
+    no_proxy = str(proxy_env.get("NO_PROXY") or proxy_env.get("no_proxy") or "").strip()
+    if no_proxy:
+        exports["NO_PROXY"] = no_proxy
+        exports["no_proxy"] = no_proxy
+    return exports
+
+
+def patch_verifier_benchmark_egress_proxy_env(
+    verifier: Path,
+    *,
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    """Forward the private benchmark egress proxy into staged verifier scripts."""
+
+    exports = _verifier_benchmark_egress_proxy_exports(proxy_env)
+    metadata: dict[str, Any] = {
+        "benchmark_egress_proxy_verifier_env_patch_required": bool(exports),
+        "benchmark_egress_proxy_verifier_env_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_key_count": len(exports),
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+    }
+    if not verifier.exists() or not exports:
+        return metadata
+    try:
+        original = verifier.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return metadata
+    text = _strip_marker_block(
+        original,
+        VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        VERIFIER_BENCHMARK_EGRESS_PROXY_END,
+    )
+    block_lines = [
+        VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        "# Forward the runtime benchmark egress proxy into verifier bootstrap commands.",
+        "# The concrete proxy is staged only in the private prepared task copy.",
+        "loopx_restore_xtrace=''",
+        "case \"$-\" in *x*) loopx_restore_xtrace=1; set +x;; esac",
+    ]
+    for key in sorted(exports):
+        block_lines.append(f"export {key}={shlex.quote(exports[key])}")
+    block_lines.extend(
+        [
+            "[ -z \"${loopx_restore_xtrace}\" ] || set -x",
+            "unset loopx_restore_xtrace",
+            VERIFIER_BENCHMARK_EGRESS_PROXY_END,
+        ]
+    )
+    block = "\n".join(block_lines)
+    lines = text.splitlines()
+    insert_at = 0
+    if lines and lines[0].startswith("#!"):
+        insert_at = 1
+    patched_lines = [*lines[:insert_at], block, *lines[insert_at:]]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(verifier, patched)
+    metadata["benchmark_egress_proxy_verifier_env_patch_applied"] = True
+    return metadata
 
 
 def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
@@ -4735,6 +6755,45 @@ def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
         patched_lines = [*block.splitlines(), "", *text.splitlines()]
     patched = "\n".join(patched_lines).rstrip() + "\n"
     if patched == dockerfile.read_text(encoding="utf-8"):
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
+    """Add public-safe pip retry/index defaults to staged Dockerfiles."""
+
+    if not dockerfile_needs_pip_bootstrap_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8")
+    text = _strip_marker_block(
+        original,
+        DOCKER_PIP_BOOTSTRAP_BEGIN,
+        DOCKER_PIP_BOOTSTRAP_END,
+    )
+    block = (
+        f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
+        f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={DEFAULT_DOCKER_PIP_INDEX_URL}\n"
+        f"ARG LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL={DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL}\n"
+        "ENV PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL} \\\n"
+        "    PIP_EXTRA_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL} \\\n"
+        "    PIP_DEFAULT_TIMEOUT=120 \\\n"
+        "    PIP_RETRIES=10 \\\n"
+        "    PIP_DISABLE_PIP_VERSION_CHECK=1\n"
+        f"{DOCKER_PIP_BOOTSTRAP_END}"
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        patched_lines.append(line)
+        stripped = line.strip()
+        if stripped.upper().startswith("FROM ") and " scratch" not in stripped.lower():
+            patched_lines.extend(["", *block.splitlines(), ""])
+            inserted = True
+    if not inserted:
+        patched_lines = [*block.splitlines(), "", *text.splitlines()]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched == original:
         return False
     _write_text_atomic(dockerfile, patched)
     return True
@@ -4816,6 +6875,7 @@ def stage_task_for_sandbox(
     job_name: str,
     sandbox: str,
     include_task_skills: bool = True,
+    benchmark_egress_proxy_env: Mapping[str, str] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
@@ -4828,7 +6888,18 @@ def stage_task_for_sandbox(
         "staged": False,
         "app_skills_mount_patch_applied": False,
         "apt_retry_patch_applied": False,
+        "dockerfile_pip_install_risk_detected": False,
+        "dockerfile_pip_bootstrap_patch_required": False,
+        "dockerfile_pip_bootstrap_patch_applied": False,
         "codex_acp_runtime_tools_patch_applied": False,
+        "verifier_uv_bootstrap_risk_detected": False,
+        "verifier_uv_bootstrap_mirror_patch_required": False,
+        "verifier_uv_bootstrap_mirror_patch_applied": False,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_patch_required": False,
+        "benchmark_egress_proxy_verifier_env_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_key_count": 0,
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
         "task_skills_removed": False,
         "resource_cap_patch": {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -4849,17 +6920,56 @@ def stage_task_for_sandbox(
     needs_apt_retry_patch = dockerfile_needs_apt_retry_patch(
         task_path / "environment" / "Dockerfile"
     )
+    needs_pip_bootstrap_patch = dockerfile_needs_pip_bootstrap_patch(
+        task_path / "environment" / "Dockerfile"
+    )
+    verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
+    needs_verifier_uv_mirror_patch = bool(
+        verifier_risk.get("verifier_uv_bootstrap_risk_detected")
+        and verifier_risk.get("verifier_uv_bootstrap_version")
+    )
+    verifier_proxy_exports = _verifier_benchmark_egress_proxy_exports(
+        benchmark_egress_proxy_env
+    )
+    needs_verifier_proxy_env_patch = bool(
+        verifier_proxy_exports and (task_path / "verifier" / "test.sh").exists()
+    )
     needs_runtime_tools_patch = (task_path / "environment" / "Dockerfile").exists()
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
-    metadata["verifier_bootstrap_risk_detected"] = False
+    metadata["dockerfile_pip_install_risk_detected"] = needs_pip_bootstrap_patch
+    metadata["dockerfile_pip_bootstrap_patch_required"] = needs_pip_bootstrap_patch
+    if needs_pip_bootstrap_patch:
+        metadata["dockerfile_pip_index_host"] = DEFAULT_DOCKER_PIP_INDEX_HOST
+    metadata["verifier_bootstrap_risk_detected"] = bool(
+        verifier_risk.get("verifier_bootstrap_risk_detected")
+    )
+    metadata["verifier_uv_bootstrap_risk_detected"] = bool(
+        verifier_risk.get("verifier_uv_bootstrap_risk_detected")
+    )
+    metadata["verifier_uv_bootstrap_mirror_patch_required"] = (
+        needs_verifier_uv_mirror_patch
+    )
+    metadata["benchmark_egress_proxy_verifier_env_patch_required"] = (
+        needs_verifier_proxy_env_patch
+    )
+    metadata["benchmark_egress_proxy_verifier_env_key_count"] = len(
+        verifier_proxy_exports
+    )
+    if isinstance(verifier_risk.get("verifier_uv_bootstrap_version"), str):
+        metadata["verifier_uv_bootstrap_version"] = verifier_risk[
+            "verifier_uv_bootstrap_version"
+        ]
     metadata["verifier_bootstrap_risk_preflight_blocked"] = False
     if (
         not has_task_skills
         and not needs_resource_cap
         and not needs_apt_retry_patch
+        and not needs_pip_bootstrap_patch
         and not needs_runtime_tools_patch
+        and not needs_verifier_uv_mirror_patch
+        and not needs_verifier_proxy_env_patch
     ):
         metadata["resource_cap_patch"] = {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -4891,8 +7001,18 @@ def stage_task_for_sandbox(
     apt_retry_patched = patch_dockerfile_apt_retry(
         staged_path / "environment" / "Dockerfile"
     )
+    pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
+        staged_path / "environment" / "Dockerfile"
+    )
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
+    )
+    uv_mirror_metadata = patch_verifier_uv_bootstrap_mirror(
+        staged_path / "verifier" / "test.sh"
+    )
+    verifier_proxy_metadata = patch_verifier_benchmark_egress_proxy_env(
+        staged_path / "verifier" / "test.sh",
+        proxy_env=benchmark_egress_proxy_env,
     )
     resource_cap_patch = patch_task_cpu_cap_for_local_docker(
         staged_path / "task.toml",
@@ -4904,6 +7024,10 @@ def stage_task_for_sandbox(
             "staged_task_path": str(staged_path),
             "app_skills_mount_patch_applied": patched,
             "apt_retry_patch_applied": apt_retry_patched,
+            "dockerfile_pip_bootstrap_patch_applied": pip_bootstrap_patched,
+            "dockerfile_pip_index_host": (
+                DEFAULT_DOCKER_PIP_INDEX_HOST if pip_bootstrap_patched else ""
+            ),
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
             "app_skills_mount_target": "/app/skills",
             "original_task_mutated": False,
@@ -4911,6 +7035,15 @@ def stage_task_for_sandbox(
             "resource_cap_patch": resource_cap_patch,
         }
     )
+    for key, value in uv_mirror_metadata.items():
+        if (
+            key == "verifier_uv_bootstrap_risk_detected"
+            and value is False
+            and metadata.get(key) is True
+        ):
+            continue
+        metadata[key] = value
+    metadata.update(verifier_proxy_metadata)
     return staged_path, metadata
 
 
@@ -4939,8 +7072,6 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         rollout_suffix = "codex_acp_blind_loop"
     elif route == "codex-app-server-goal-baseline":
         rollout_suffix = "codex_app_server_goal"
-    elif route == "automation-loop-treatment":
-        rollout_suffix = "loopx_reward_feedback_ablation"
     else:
         rollout_suffix = route_slug
     rollout_name = args.rollout_name or f"{task_id}__{rollout_suffix}"
@@ -4963,6 +7094,16 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     loopx_source_mount = _loopx_source_mount_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     is_app_server_goal_route = route == "codex-app-server-goal-baseline"
+    codex_api_egress_preflight = _public_codex_api_egress_contract(
+        args,
+        status=(
+            "pending"
+            if _codex_api_egress_preflight_required(args)
+            else "not_required"
+        ),
+        ready=not _codex_api_egress_preflight_required(args),
+    )
+    benchmark_egress_proxy = _public_benchmark_egress_proxy_contract(args)
     remote_command_file_bridge_materialized = bool(
         args.remote_command_file_bridge_ready
         or args.remote_command_file_bridge_probe
@@ -5068,12 +7209,55 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "max_rounds": args.max_rounds,
+        "independent_goal_retry": {
+            "schema_version": "skillsbench_independent_goal_retry_config_v0",
+            "enabled": bool(int(getattr(args, "independent_goal_retries", 1) or 1) > 1),
+            "attempt_budget": max(
+                1, int(getattr(args, "independent_goal_retries", 1) or 1)
+            ),
+            "route_supported": route == "codex-app-server-goal-baseline",
+            "fresh_goal_thread_per_attempt": True,
+            "stop_policy": (
+                "stop_after_first_official_reward_1_or_first_terminal_"
+                "official_nonpassing_or_retry_budget"
+            ),
+            "official_reward_feedback_forwarded_to_agent": False,
+            "verifier_output_forwarded_to_agent": False,
+            "raw_task_text_read_into_public_state": False,
+            "raw_trajectory_read_into_public_state": False,
+            "raw_verifier_output_read_into_public_state": False,
+        },
         "treatment_prompt_style": args.treatment_prompt_style,
         "outer_timeout_sec": args.outer_timeout_sec,
         "sandbox_setup_timeout_sec": args.sandbox_setup_timeout,
         "agent_idle_timeout_sec": args.agent_idle_timeout,
+        "local_codex_task_output_quiet_timeout_sec": (
+            _effective_local_codex_task_output_quiet_timeout_sec(args)
+        ),
         "include_task_skills": bool(args.include_task_skills),
         "host_local_acp_launch": bool(args.host_local_acp_launch),
+        "bootstrap_light_candidate_required": bool(
+            _formal_app_server_goal_bootstrap_light_guard_required(args)
+        ),
+        "bootstrap_light_fail_fast_required": bool(
+            _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        ),
+        "allow_staged_bootstrap_repair_run": bool(
+            getattr(args, "allow_staged_bootstrap_repair_run", False)
+        ),
+        "fail_fast_on_apt_risk": bool(args.fail_fast_on_apt_risk),
+        "apt_risk_fail_fast_defaulted": bool(
+            getattr(args, "apt_risk_fail_fast_defaulted", False)
+        ),
+        "fail_fast_on_verifier_bootstrap_risk": bool(
+            args.fail_fast_on_verifier_bootstrap_risk
+        ),
+        "verifier_bootstrap_fail_fast_defaulted": bool(
+            getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+        ),
+        "bootstrap_light_fail_fast_defaulted": bool(
+            getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+        ),
         "remote_command_file_bridge_ready": bool(
             remote_command_file_bridge_materialized
         ),
@@ -5098,8 +7282,17 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else ""
         ),
         "ledger_path": str(Path(args.ledger_path).expanduser()),
+        "global_ledger_path": str(Path(args.global_ledger_path).expanduser()),
+        "ledger_scope": _ledger_scope_label(
+            Path(args.ledger_path).expanduser(),
+            Path(args.global_ledger_path).expanduser(),
+        ),
+        "global_ledger_sync_enabled": not bool(args.skip_global_ledger_sync),
+        "ledger_inherit_enabled": not bool(args.skip_ledger_inherit),
         "run_permission_policy": run_permission_policy,
         "task_setup_preflight": setup_preflight,
+        "codex_api_egress_preflight": codex_api_egress_preflight,
+        "benchmark_egress_proxy": benchmark_egress_proxy,
         "task_staging": {
             "schema_version": "skillsbench_task_staging_v0",
             "staged": False,
@@ -5110,9 +7303,44 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "apt_retry_patch_required": bool(
                 setup_preflight.get("apt_retry_patch_required")
             ),
+            "dockerfile_pip_install_risk_detected": bool(
+                setup_preflight.get("dockerfile_pip_install_risk_detected")
+            ),
+            "dockerfile_pip_bootstrap_patch_required": bool(
+                setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
+            ),
+            "dockerfile_pip_bootstrap_patch_applied": False,
+            "dockerfile_pip_index_host": (
+                DEFAULT_DOCKER_PIP_INDEX_HOST
+                if setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
+                else ""
+            ),
+            "dockerfile_package_bootstrap_risk_preflight_blocked": False,
             "apt_risk_preflight_blocked": False,
+            "bootstrap_light_preflight_blocked": False,
+            "bootstrap_light_fail_fast_defaulted": bool(
+                getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+            ),
             "verifier_bootstrap_risk_detected": bool(
                 setup_preflight.get("verifier_bootstrap_risk_detected")
+            ),
+            "verifier_uv_bootstrap_risk_detected": bool(
+                setup_preflight.get("verifier_uv_bootstrap_risk_detected")
+            ),
+            "verifier_uv_bootstrap_mirror_patch_required": bool(
+                setup_preflight.get("verifier_uv_bootstrap_risk_detected")
+                and setup_preflight.get("verifier_uv_bootstrap_version")
+            ),
+            "verifier_uv_bootstrap_mirror_patch_applied": False,
+            "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+            "benchmark_egress_proxy_verifier_env_patch_required": False,
+            "benchmark_egress_proxy_verifier_env_patch_applied": False,
+            "benchmark_egress_proxy_verifier_env_key_count": 0,
+            "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+            "verifier_uv_bootstrap_version": (
+                str(setup_preflight.get("verifier_uv_bootstrap_version"))
+                if setup_preflight.get("verifier_uv_bootstrap_version")
+                else ""
             ),
             "verifier_bootstrap_risk_preflight_blocked": False,
         },
@@ -5167,6 +7395,81 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "host_local_acp_launch_status": (
                 "pending" if args.host_local_acp_launch else "not_requested"
             ),
+            "codex_api_egress_preflight_required": bool(
+                codex_api_egress_preflight.get("required")
+            ),
+            "codex_api_egress_preflight_ready": bool(
+                codex_api_egress_preflight.get("ready")
+            ),
+            "codex_api_egress_preflight_status": str(
+                codex_api_egress_preflight.get("status") or ""
+            ),
+            "codex_api_egress_preflight_error_kind": str(
+                codex_api_egress_preflight.get("error_kind") or ""
+            ),
+            "codex_api_egress_mode_requested": str(
+                codex_api_egress_preflight.get("requested_mode") or ""
+            ),
+            "codex_api_egress_mode_resolved": str(
+                codex_api_egress_preflight.get("resolved_mode") or ""
+            ),
+            "codex_api_reverse_tunnel_required": bool(
+                codex_api_egress_preflight.get("reverse_tunnel_required")
+            ),
+            "codex_api_reverse_tunnel_proxy_configured": bool(
+                codex_api_egress_preflight.get("proxy_configured")
+            ),
+            "codex_api_reverse_tunnel_proxy_source": str(
+                codex_api_egress_preflight.get("proxy_source") or ""
+            ),
+            "codex_api_reverse_tunnel_proxy_scheme": str(
+                codex_api_egress_preflight.get("proxy_scheme") or ""
+            ),
+            "codex_api_reverse_tunnel_proxy_endpoint_kind": str(
+                codex_api_egress_preflight.get("proxy_endpoint_kind") or ""
+            ),
+            "codex_api_reverse_tunnel_proxy_endpoint_port": int(
+                codex_api_egress_preflight.get("proxy_endpoint_port") or 0
+            ),
+            "codex_api_reverse_tunnel_proxy_url_recorded": False,
+            "benchmark_egress_proxy_ready": bool(
+                benchmark_egress_proxy.get("ready")
+            ),
+            "benchmark_egress_proxy_configured": bool(
+                benchmark_egress_proxy.get("proxy_configured")
+            ),
+            "benchmark_egress_proxy_required": bool(
+                benchmark_egress_proxy.get("proxy_required")
+            ),
+            "benchmark_egress_proxy_status": str(
+                benchmark_egress_proxy.get("status") or ""
+            ),
+            "benchmark_egress_proxy_error_kind": str(
+                benchmark_egress_proxy.get("error_kind") or ""
+            ),
+            "benchmark_egress_proxy_mode_requested": str(
+                benchmark_egress_proxy.get("requested_mode") or ""
+            ),
+            "benchmark_egress_proxy_source": str(
+                benchmark_egress_proxy.get("proxy_source") or ""
+            ),
+            "benchmark_egress_proxy_env_key": str(
+                benchmark_egress_proxy.get("proxy_env_key") or ""
+            ),
+            "benchmark_egress_proxy_scheme": str(
+                benchmark_egress_proxy.get("proxy_scheme") or ""
+            ),
+            "benchmark_egress_proxy_endpoint_kind": str(
+                benchmark_egress_proxy.get("proxy_endpoint_kind") or ""
+            ),
+            "benchmark_egress_proxy_endpoint_port": int(
+                benchmark_egress_proxy.get("proxy_endpoint_port") or 0
+            ),
+            "benchmark_egress_proxy_url_recorded": False,
+            "benchmark_egress_proxy_agent_env_injected": False,
+            "benchmark_egress_proxy_docker_config_injected": False,
+            "benchmark_egress_proxy_docker_config_path_recorded": False,
+            "benchmark_egress_proxy_docker_config_raw_proxy_recorded": False,
             "loopx_workflow_lifecycle_checkpoint": bool(
                 _is_loopx_product_mode_route(args.route)
                 and args.host_local_acp_launch
@@ -5187,6 +7490,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "goal_start_selected_p0_lifecycle_required": (
                 _is_goal_start_product_mode_route(args.route)
             ),
+            "verifier_failure_feedback_todo_route": False,
+            "verifier_failure_feedback_forwarded_to_agent": False,
+            "verifier_failure_todo_required": False,
             "host_local_acp_codex_exec_preflight_requested": bool(
                 _host_local_acp_codex_exec_preflight_should_run(args)
             ),
@@ -5331,7 +7637,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "benchflow_final_verifier_timeout_enabled": (
                 int(args.final_verifier_timeout_sec or 0) > 0
             ),
+            "benchflow_final_verifier_timeout_sec": int(
+                args.final_verifier_timeout_sec or 0
+            ),
             "benchflow_final_verifier_timeout_raw_command_recorded": False,
+            "benchflow_verifier_prep_timeout_sec": int(
+                args.verifier_prep_timeout_sec or 0
+            ),
         },
         "public_boundary": {
             "leaderboard_upload": False,
@@ -5346,6 +7658,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         launch_plan["app_server_goal_worker_contract"] = (
             app_server_goal_worker_contract
         )
+    launch_plan["runner_config"] = _public_runner_config(launch_plan)
     return launch_plan
 
 
@@ -5370,6 +7683,183 @@ def _public_runner_output_capture(plan: dict[str, Any]) -> dict[str, Any] | None
     }
 
 
+def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
+    """Return stable public runner knobs needed for posthoc attribution."""
+
+    config: dict[str, Any] = {
+        "schema_version": "skillsbench_runner_config_v0",
+        "raw_command_recorded": False,
+        "raw_env_recorded": False,
+    }
+    string_fields = (
+        "benchmark_id",
+        "task_id",
+        "route",
+        "agent",
+        "model",
+        "sandbox",
+        "run_group_id",
+        "job_name",
+        "rollout_name",
+        "treatment_prompt_style",
+        "ledger_path",
+        "global_ledger_path",
+        "ledger_scope",
+    )
+    for field in string_fields:
+        value = plan.get(field)
+        if isinstance(value, str) and value:
+            config[field] = value[:180]
+    int_fields = (
+        "max_rounds",
+        "outer_timeout_sec",
+        "sandbox_setup_timeout_sec",
+        "agent_idle_timeout_sec",
+        "build_stall_timeout_sec",
+        "local_codex_task_output_quiet_timeout_sec",
+    )
+    for field in int_fields:
+        value = plan.get(field)
+        if isinstance(value, int) and not isinstance(value, bool):
+            config[field] = value
+    for field in (
+        "include_task_skills",
+        "host_local_acp_launch",
+        "bootstrap_light_candidate_required",
+        "bootstrap_light_fail_fast_required",
+        "allow_staged_bootstrap_repair_run",
+        "fail_fast_on_apt_risk",
+        "apt_risk_fail_fast_defaulted",
+        "fail_fast_on_verifier_bootstrap_risk",
+        "verifier_bootstrap_fail_fast_defaulted",
+        "bootstrap_light_fail_fast_defaulted",
+        "global_ledger_sync_enabled",
+        "ledger_inherit_enabled",
+    ):
+        value = plan.get(field)
+        if isinstance(value, bool):
+            config[field] = value
+    prerequisites = plan.get("runner_prerequisites")
+    if isinstance(prerequisites, dict):
+        policy = prerequisites.get("benchflow_intermediate_soft_verify_policy")
+        if isinstance(policy, str) and policy:
+            config["product_mode_soft_verify_policy"] = policy[:80]
+        for source, target in (
+            (
+                "benchflow_intermediate_soft_verify_timeout_sec",
+                "soft_verifier_timeout_sec",
+            ),
+            ("benchflow_final_verifier_timeout_sec", "final_verifier_timeout_sec"),
+            ("benchflow_verifier_prep_timeout_sec", "verifier_prep_timeout_sec"),
+            (
+                "benchflow_agent_timeout_host_local_acp_exec_timeout_sec",
+                "local_codex_exec_timeout_sec",
+            ),
+            (
+                "benchflow_agent_timeout_host_local_acp_task_output_quiet_timeout_sec",
+                "local_codex_task_output_quiet_timeout_sec",
+            ),
+        ):
+            value = prerequisites.get(source)
+            if isinstance(value, int) and not isinstance(value, bool):
+                config[target] = value
+        for field in (
+            "codex_api_egress_preflight_required",
+            "codex_api_egress_preflight_ready",
+            "codex_api_reverse_tunnel_required",
+            "codex_api_reverse_tunnel_proxy_configured",
+            "codex_api_reverse_tunnel_proxy_url_recorded",
+            "benchmark_egress_proxy_ready",
+            "benchmark_egress_proxy_configured",
+            "benchmark_egress_proxy_required",
+            "benchmark_egress_proxy_url_recorded",
+            "benchmark_egress_proxy_agent_env_injected",
+            "benchmark_egress_proxy_docker_config_injected",
+            "benchmark_egress_proxy_docker_config_path_recorded",
+            "benchmark_egress_proxy_docker_config_raw_proxy_recorded",
+        ):
+            value = prerequisites.get(field)
+            if isinstance(value, bool):
+                config[field] = value
+        for field in (
+            "codex_api_egress_preflight_status",
+            "codex_api_egress_preflight_error_kind",
+            "codex_api_egress_mode_requested",
+            "codex_api_egress_mode_resolved",
+            "codex_api_reverse_tunnel_proxy_source",
+            "codex_api_reverse_tunnel_proxy_scheme",
+            "codex_api_reverse_tunnel_proxy_endpoint_kind",
+            "benchmark_egress_proxy_status",
+            "benchmark_egress_proxy_error_kind",
+            "benchmark_egress_proxy_mode_requested",
+            "benchmark_egress_proxy_source",
+            "benchmark_egress_proxy_env_key",
+            "benchmark_egress_proxy_scheme",
+            "benchmark_egress_proxy_endpoint_kind",
+        ):
+            value = prerequisites.get(field)
+            if isinstance(value, str) and value:
+                config[field] = value[:80]
+        value = prerequisites.get("codex_api_reverse_tunnel_proxy_endpoint_port")
+        if isinstance(value, int) and not isinstance(value, bool):
+            config["codex_api_reverse_tunnel_proxy_endpoint_port"] = value
+        value = prerequisites.get("benchmark_egress_proxy_endpoint_port")
+        if isinstance(value, int) and not isinstance(value, bool):
+            config["benchmark_egress_proxy_endpoint_port"] = value
+    return config
+
+
+def _runner_config_public_path(plan: dict[str, Any]) -> Path | None:
+    jobs_dir = str(plan.get("jobs_dir") or "")
+    job_name = str(plan.get("job_name") or "")
+    if not jobs_dir or not job_name:
+        return None
+    return Path(jobs_dir).expanduser() / job_name / RUNNER_CONFIG_PUBLIC_FILENAME
+
+
+def _rollout_config_json_path(plan: dict[str, Any]) -> Path | None:
+    result_json = str(plan.get("result_json") or "")
+    if not result_json:
+        return None
+    return Path(result_json).expanduser().parent / "config.json"
+
+
+def _write_public_runner_config(plan: dict[str, Any]) -> Path | None:
+    config = _public_runner_config(plan)
+    if not config:
+        return None
+    plan["runner_config"] = config
+    path = _runner_config_public_path(plan)
+    if path is not None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(config, indent=2, sort_keys=True, default=_json_default)
+            + "\n",
+            encoding="utf-8",
+        )
+    rollout_config_path = _rollout_config_json_path(plan)
+    if rollout_config_path is not None:
+        payload: dict[str, Any] = {}
+        if rollout_config_path.exists():
+            try:
+                loaded = json.loads(rollout_config_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                loaded = {}
+            if isinstance(loaded, dict):
+                payload = loaded
+        payload["loopx_runner_config"] = config
+        payload["loopx_runner_config_public"] = True
+        payload["loopx_runner_config_raw_command_recorded"] = False
+        payload["loopx_runner_config_raw_env_recorded"] = False
+        rollout_config_path.parent.mkdir(parents=True, exist_ok=True)
+        rollout_config_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, default=_json_default)
+            + "\n",
+            encoding="utf-8",
+        )
+    return path
+
+
 async def run_benchflow_case_with_private_output(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -5391,7 +7881,8 @@ async def run_benchflow_case_with_private_output(
         stream.flush()
         try:
             with redirect_stdout(stream), redirect_stderr(stream):
-                result = await run_benchflow_case(args, plan)
+                with _benchmark_egress_proxy_env_applied(args):
+                    result = await run_benchflow_case(args, plan)
         finally:
             stream.write(
                 f"[{datetime.now().isoformat(timespec='seconds')}] "
@@ -5753,6 +8244,12 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         ),
         "declared_done_requires_no_remaining_goals": loopx_product_mode,
         "goal_start_product_mode": goal_start_product_mode,
+        "verifier_failure_feedback_todo_route": False,
+        "verifier_failure_feedback_forwarded_to_agent": False,
+        "verifier_failure_todo_required": False,
+        "verifier_failure_feedback_todo_prompt_count": 0,
+        "verifier_failure_feedback_todo_round": None,
+        "official_feedback_forwarded_count": 0,
         "goal_start_plan_observed": False,
         "planned_todo_count": 0,
         "planned_p0_count": 0,
@@ -5838,10 +8335,15 @@ def _merge_app_server_goal_worker_trace_summary(
     lifecycle_trace_count = 0
     prompt_received_count = 0
     ok_count = 0
+    failure_trace_count = 0
+    failure_categories: list[str] = []
+    first_blockers: list[str] = []
     goal_get_count = 0
     turn_start_count = 0
     turn_completed_count = 0
     assistant_message_count = 0
+    first_action_count = 0
+    effective_action_count = 0
     raw_material_recorded = False
     for path in files:
         try:
@@ -5863,6 +8365,29 @@ def _merge_app_server_goal_worker_trace_summary(
                 prompt_received_count += 1
         if payload.get("ok") is True:
             ok_count += 1
+        worker_contract = (
+            payload.get("worker_contract")
+            if isinstance(payload.get("worker_contract"), dict)
+            else {}
+        )
+        first_blocker = worker_contract.get("first_blocker")
+        if isinstance(first_blocker, str) and first_blocker:
+            safe_blocker = first_blocker[:120]
+            if safe_blocker not in first_blockers:
+                first_blockers.append(safe_blocker)
+        trace_kind = str(payload.get("trace_kind") or "")
+        worker_process = (
+            payload.get("worker_process")
+            if isinstance(payload.get("worker_process"), dict)
+            else {}
+        )
+        if payload.get("ok") is not True and trace_kind != "relay_lifecycle":
+            failure_trace_count += 1
+            category = worker_process.get("failure_category") or first_blocker
+            if isinstance(category, str) and category:
+                safe_category = category[:120]
+                if safe_category not in failure_categories:
+                    failure_categories.append(safe_category)
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
         if turn.get("goal_get_present") is True:
             goal_get_count += 1
@@ -5872,6 +8397,10 @@ def _merge_app_server_goal_worker_trace_summary(
             turn_completed_count += 1
         if turn.get("assistant_message_present") is True:
             assistant_message_count += 1
+        if turn.get("first_action_observed") is True:
+            first_action_count += 1
+        if turn.get("effective_action_observed") is True:
+            effective_action_count += 1
         boundary = (
             payload.get("boundary")
             if isinstance(payload.get("boundary"), dict)
@@ -5897,11 +8426,24 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_lifecycle_trace_count"] = lifecycle_trace_count
     trace["native_goal_worker_prompt_received_count"] = prompt_received_count
     trace["native_goal_worker_ok_count"] = ok_count
+    trace["native_goal_worker_failure_trace_count"] = failure_trace_count
+    trace["native_goal_worker_failure_categories"] = failure_categories
+    trace["native_goal_worker_failure_category"] = (
+        failure_categories[0] if failure_categories else ""
+    )
+    trace["native_goal_worker_first_blockers"] = first_blockers
+    trace["native_goal_worker_first_blocker"] = (
+        first_blockers[0] if first_blockers else ""
+    )
     trace["native_goal_worker_goal_get_count"] = goal_get_count
     trace["native_goal_worker_turn_start_count"] = turn_start_count
     trace["native_goal_worker_turn_completed_observed_count"] = turn_completed_count
     trace["native_goal_worker_assistant_message_present_count"] = (
         assistant_message_count
+    )
+    trace["native_goal_worker_first_action_observed_count"] = first_action_count
+    trace["native_goal_worker_effective_action_observed_count"] = (
+        effective_action_count
     )
     trace["native_goal_worker_public_trace_read"] = worker_trace_count > 0
     trace["native_goal_worker_raw_material_recorded"] = raw_material_recorded
@@ -5917,7 +8459,11 @@ def _merge_host_local_acp_relay_trace_summary(
         return
     raw_trace_dir = plan.get("host_local_acp_relay_trace_dir")
     if not isinstance(raw_trace_dir, str) or not raw_trace_dir.strip():
-        return
+        if plan.get("route") != "codex-app-server-goal-baseline":
+            return
+        raw_trace_dir = plan.get("app_server_goal_worker_trace_dir")
+        if not isinstance(raw_trace_dir, str) or not raw_trace_dir.strip():
+            return
     trace_dir = Path(raw_trace_dir)
     files = sorted(trace_dir.glob("*.compact.json")) if trace_dir.exists() else []
     solver_trace_count = 0
@@ -5939,6 +8485,7 @@ def _merge_host_local_acp_relay_trace_summary(
     agent_bridge_operation_counts: dict[str, int] = {}
     agent_bridge_loopx_subcommand_counts: dict[str, int] = {}
     agent_bridge_successful_loopx_subcommand_counts: dict[str, int] = {}
+    agent_bridge_successful_loopx_command_records: list[dict[str, str]] = []
     agent_bridge_returncode_counts: dict[str, int] = {}
     agent_bridge_failure_category_counts: dict[str, int] = {}
     driver_lifecycle_trace_count = 0
@@ -6071,6 +8618,15 @@ def _merge_host_local_acp_relay_trace_summary(
                     target_counts[safe_key] = (
                         target_counts.get(safe_key, 0) + max(0, value)
                     )
+            agent_bridge_successful_loopx_command_records.extend(
+                _goal_start_public_command_records(
+                    agent_ops.get("successful_loopx_cli_command_records")
+                )
+            )
+            if len(agent_bridge_successful_loopx_command_records) > 128:
+                agent_bridge_successful_loopx_command_records = (
+                    agent_bridge_successful_loopx_command_records[:128]
+                )
         elif trace_kind == "remote_command_file_bridge_driver_lifecycle_checkpoint":
             checkpoint = (
                 payload.get("remote_command_file_bridge_driver_lifecycle_checkpoint")
@@ -6221,6 +8777,26 @@ def _merge_host_local_acp_relay_trace_summary(
             prerequisites.get("remote_command_file_bridge_agent_operation_trace_status")
             or "not_required"
         )
+    if agent_bridge_task_facing_success_count > 0:
+        host_local_acp_bridge_progress_status = (
+            "bridge_task_facing_success_observed"
+        )
+    elif agent_bridge_task_facing_operation_count > 0:
+        host_local_acp_bridge_progress_status = (
+            "bridge_task_facing_operation_observed_without_success"
+        )
+    elif agent_bridge_request_count > 0:
+        host_local_acp_bridge_progress_status = (
+            "bridge_agent_request_observed_no_task_facing"
+        )
+    elif host_local_acp_codex_exec_failure_category == "codex_exec_bridge_idle_timeout":
+        host_local_acp_bridge_progress_status = (
+            "codex_exec_bridge_idle_timeout_no_bridge_progress"
+        )
+    elif agent_trace_required:
+        host_local_acp_bridge_progress_status = "agent_operation_trace_missing"
+    else:
+        host_local_acp_bridge_progress_status = "not_required"
     trace["remote_command_file_bridge_agent_command_configured"] = (
         prerequisites.get("remote_command_file_bridge_agent_command_configured") is True
     )
@@ -6236,6 +8812,12 @@ def _merge_host_local_acp_relay_trace_summary(
     )
     trace["remote_command_file_bridge_agent_operation_trace_status"] = (
         agent_trace_status
+    )
+    trace["host_local_acp_bridge_progress_status"] = (
+        host_local_acp_bridge_progress_status
+    )
+    trace["host_local_acp_bridge_progress_signal_source"] = (
+        "remote_command_file_bridge_agent_operations"
     )
     trace["remote_command_file_bridge_agent_request_count"] = (
         agent_bridge_request_count
@@ -6276,6 +8858,9 @@ def _merge_host_local_acp_relay_trace_summary(
     trace[
         "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
     ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
+    trace[
+        "remote_command_file_bridge_agent_successful_loopx_command_records"
+    ] = agent_bridge_successful_loopx_command_records
     trace["remote_command_file_bridge_agent_returncode_counts"] = dict(
         sorted(agent_bridge_returncode_counts.items())
     )
@@ -6391,6 +8976,12 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites["remote_command_file_bridge_agent_operation_trace_status"] = (
         agent_trace_status
     )
+    prerequisites["host_local_acp_bridge_progress_status"] = (
+        host_local_acp_bridge_progress_status
+    )
+    prerequisites["host_local_acp_bridge_progress_signal_source"] = (
+        "remote_command_file_bridge_agent_operations"
+    )
     prerequisites["remote_command_file_bridge_agent_request_count"] = (
         agent_bridge_request_count
     )
@@ -6430,6 +9021,9 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites[
         "remote_command_file_bridge_agent_successful_loopx_subcommand_counts"
     ] = dict(sorted(agent_bridge_successful_loopx_subcommand_counts.items()))
+    prerequisites[
+        "remote_command_file_bridge_agent_successful_loopx_command_records"
+    ] = agent_bridge_successful_loopx_command_records
     prerequisites["remote_command_file_bridge_agent_returncode_counts"] = dict(
         sorted(agent_bridge_returncode_counts.items())
     )
@@ -6884,6 +9478,18 @@ def _record_product_mode_no_open_todo_below_passing_reward(
     return True
 
 
+def _product_mode_no_open_todo_below_passing_reward_applicable(
+    trace: dict[str, Any],
+    *,
+    reward: float | None,
+) -> bool:
+    if not isinstance(reward, (int, float)) or isinstance(reward, bool):
+        return False
+    if reward >= 1.0:
+        return False
+    return _product_mode_agent_bridge_closeout_observed(trace)
+
+
 def _product_mode_depth_gate_satisfied(trace: dict[str, Any]) -> bool:
     def count(*fields: str) -> int:
         values = [
@@ -7010,6 +9616,121 @@ def _product_mode_agent_bridge_closeout_observed(trace: dict[str, Any]) -> bool:
     )
 
 
+def _product_mode_host_local_idle_no_task_output_progress_applicable(
+    trace: dict[str, Any],
+    round_result: Any | None,
+    *,
+    reward: float | None,
+) -> bool:
+    if isinstance(reward, (int, float)) and not isinstance(reward, bool) and reward >= 1.0:
+        return False
+    if _product_mode_agent_bridge_closeout_observed(trace):
+        return False
+    if trace.get("host_local_acp_codex_exec_failure_category") != (
+        "codex_exec_bridge_idle_timeout"
+    ):
+        return False
+    failure_trace_count = _trace_max_int(
+        trace,
+        "host_local_acp_codex_exec_failure_trace_count",
+    )
+    if failure_trace_count <= 0:
+        return False
+    last_counted = _trace_max_int(
+        trace,
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count",
+    )
+    if failure_trace_count <= last_counted:
+        return False
+    tool_call_count = (
+        _round_result_tool_call_count(round_result)
+        if round_result is not None
+        else None
+    )
+    return bool(
+        (isinstance(tool_call_count, int) and tool_call_count == 0)
+        or _trace_max_int(
+            trace,
+            "remote_command_file_bridge_agent_task_facing_operation_count",
+            "remote_command_file_bridge_agent_request_count",
+        )
+        > 0
+    )
+
+
+def _record_product_mode_host_local_idle_no_task_output_progress(
+    trace: dict[str, Any],
+    *,
+    agent_round: int,
+    reward: float | None,
+    round_result: Any | None,
+) -> bool:
+    current = trace.get("product_mode_host_local_idle_no_task_output_progress_streak")
+    if not isinstance(current, int) or isinstance(current, bool):
+        current = 0
+    streak = current + 1
+    threshold = PRODUCT_MODE_HOST_LOCAL_IDLE_NO_PROGRESS_STREAK_THRESHOLD
+    trace["product_mode_host_local_idle_no_task_output_progress"] = True
+    trace["product_mode_host_local_idle_no_task_output_progress_round"] = agent_round
+    trace["product_mode_host_local_idle_no_task_output_progress_streak"] = streak
+    trace["product_mode_host_local_idle_no_task_output_progress_streak_threshold"] = (
+        threshold
+    )
+    trace["product_mode_host_local_idle_no_task_output_progress_category"] = (
+        "codex_exec_bridge_idle_timeout"
+    )
+    trace[
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count"
+    ] = _trace_max_int(trace, "host_local_acp_codex_exec_failure_trace_count")
+    tool_call_count = (
+        _round_result_tool_call_count(round_result)
+        if round_result is not None
+        else None
+    )
+    trace["product_mode_host_local_idle_no_task_output_progress_acp_tool_calls"] = (
+        tool_call_count if isinstance(tool_call_count, int) else 0
+    )
+    trace[
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops"
+    ] = _trace_max_int(
+        trace,
+        "remote_command_file_bridge_agent_task_facing_operation_count",
+    )
+    trace[
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes"
+    ] = _trace_max_int(
+        trace,
+        "remote_command_file_bridge_agent_task_facing_success_count",
+    )
+    if reward is None:
+        trace["product_mode_host_local_idle_no_task_output_progress_score_status"] = (
+            "missing"
+        )
+    else:
+        trace["product_mode_host_local_idle_no_task_output_progress_score"] = reward
+        trace["product_mode_host_local_idle_no_task_output_progress_score_status"] = (
+            "observed_below_passing"
+        )
+    if streak < threshold:
+        return False
+    trace["product_mode_host_local_idle_no_task_output_progress_stop"] = True
+    trace["product_mode_host_local_idle_no_task_output_progress_stop_round"] = (
+        agent_round
+    )
+    trace["product_mode_host_local_idle_no_task_output_progress_policy"] = (
+        "stop_after_two_host_local_idle_rounds_without_task_output_or_closeout"
+    )
+    stop_count = trace.get(
+        "product_mode_host_local_idle_no_task_output_progress_stop_count"
+    )
+    if not isinstance(stop_count, int) or isinstance(stop_count, bool):
+        stop_count = 0
+    trace["product_mode_host_local_idle_no_task_output_progress_stop_count"] = (
+        stop_count + 1
+    )
+    return True
+
+
 def _product_mode_solver_activity_observed(
     trace: dict[str, Any],
     round_result: Any | None,
@@ -7112,6 +9833,24 @@ def _sync_relay_closeout_counts_into_compact(
         )
     ):
         product_contract["closeout_satisfied"] = True
+    elif (
+        product_contract.get("agent_bridge_todo_closeout_count", 0) > 1
+        and product_contract.get("agent_bridge_refresh_state_count", 0) > 0
+        and product_contract.get("agent_bridge_quota_spend_slot_count", 0) <= 0
+    ):
+        product_contract["quota_spend_missing_after_repeated_complete"] = True
+        product_contract["missing_reason"] = (
+            "quota_spend_missing_after_repeated_todo_closeout"
+        )
+    command_records = _goal_start_public_command_records(
+        runner_prerequisites.get(
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        )
+    )
+    if command_records:
+        interaction_counters[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
 
 
 def _record_product_mode_depth_gate_gap(
@@ -7273,79 +10012,6 @@ def _merge_acp_trajectory_summary(
     trace["private_agent_trajectory_summary_recorded"] = False
 
 
-def _build_controller_user(max_output_chars: int, trace: dict[str, Any]):
-    from benchflow.sandbox.user import BaseUser, RoundResult
-
-    class GoalHarnessAutomationUser(BaseUser):
-        """Private scheduler-side user for one SkillsBench task."""
-
-        async def run(
-            self,
-            round: int,
-            instruction: str,
-            round_result: RoundResult | None = None,
-        ) -> str | None:
-            _inc_counter(trace, "heartbeat_count")
-            trace["max_round_observed"] = max(int(trace.get("max_round_observed", -1)), round)
-            if round == 0:
-                _inc_counter(trace, "controller_action_decisions")
-                _inc_counter(trace, "initial_prompt_count")
-                trace["last_decision"] = "send_initial_controller_prompt"
-                return (
-                    "LoopX automation-loop round 1. "
-                    "You are running inside the official SkillsBench sandbox. "
-                    "Solve the benchmark task using ordinary Codex agent behavior; "
-                    "do not invoke /goal mode, external LoopX CLI, upload, "
-                    "submit, or ask the human for routine execution choices. "
-                    "Inspect the workspace, implement the fix, and run local "
-                    "validation before finishing.\n\n"
-                    "--- TASK INSTRUCTION ---\n"
-                    f"{instruction}"
-                )
-
-            reward = _record_round_reward(
-                trace,
-                agent_round=round,
-                round_result=round_result,
-            )
-            if reward is not None and reward >= 1.0:
-                _inc_counter(trace, "controller_action_decisions")
-                _inc_counter(trace, "stop_decision_count")
-                trace["last_decision"] = "stop_after_official_reward_pass"
-                return None
-
-            verifier_error = (
-                round_result.verifier_error if round_result else None
-            ) or "none"
-            if round_result and (round_result.verifier_error or round_result.verifier_output):
-                _inc_counter(trace, "verifier_feedback_observation_count")
-            verifier_tail = _tail(
-                round_result.verifier_output if round_result else None,
-                limit=max_output_chars,
-            )
-            feedback = [
-                f"previous_reward={reward if reward is not None else 'missing'}",
-                f"previous_verifier_error={verifier_error}",
-                f"previous_tool_calls={round_result.n_tool_calls if round_result else 0}",
-            ]
-            if verifier_tail:
-                feedback.append("private_verifier_output_tail:\n" + verifier_tail)
-            _inc_counter(trace, "controller_action_decisions")
-            _inc_counter(trace, "followup_prompt_count")
-            trace["last_decision"] = "send_followup_after_failed_reward"
-            return (
-                f"LoopX automation-loop follow-up round {round + 1}. "
-                "The previous attempt did not pass the verifier. Continue in the "
-                "same workspace, read /app/instruction.md if needed, inspect the "
-                "failure, make the smallest correct fix, and rerun validation. "
-                "Do not ask the human unless protected material or credentials are "
-                "required.\n\n"
-                + "\n".join(feedback)
-            )
-
-    return GoalHarnessAutomationUser()
-
-
 def _build_blind_loop_user(
     *,
     route: str,
@@ -7453,7 +10119,6 @@ def _build_codex_goal_mode_baseline_user():
 
     return CodexGoalModeBaselineUser()
 
-
 def _build_product_mode_user(
     *,
     route: str,
@@ -7497,8 +10162,38 @@ def _build_product_mode_user(
         )
     )
 
+    feedback_policy_clause = (
+        "No official reward, pass/fail status, verifier error, verifier output, "
+        "or verifier tail will be shown during this run.\n\n"
+    )
+
+    def goal_start_loop_alignment_contract() -> str:
+        if not goal_start_product_mode:
+            return ""
+        return (
+            "Goal-start loop alignment: this benchmark treatment models "
+            "headless `/loopx goal-start`, not a bare benchmark prompt and not "
+            "a live-user chat. The case-local `quota should-run` guard carries "
+            "the same machine loop fields as `heartbeat-prompt` and Codex CLI "
+            "TUI `/goal`: read `interaction_contract`, `workspace_guard`, "
+            "`goal_boundary`, `execution_obligation`, and `scheduler_hint` "
+            "before choosing work. In this benchmark route there is no human "
+            "available for routine next-step decisions, so do not ask or wait "
+            "for the user when the task can proceed. `scheduler_hint` is only "
+            "scheduling/final-check/self-stop policy and never authorizes quota "
+            "spend. Proceed with the task-facing work available to the official "
+            "runner instead of projecting permission boundaries. Only record a "
+            "blocker when the sandbox bridge, task workspace, or required "
+            "tooling is technically unavailable. Do not turn ordinary benchmark "
+            "routing, verifier failure, or uncertainty into a user gate. If "
+            "delivery is possible, continue with one bounded task-facing "
+            "segment, validate it, write back the selected P0 todo, and spend "
+            "exactly once only after the validated closeout sequence. "
+        )
+
     def treatment_state_contract() -> str:
         goal_start_clause = ""
+        goal_start_alignment = goal_start_loop_alignment_contract()
         if goal_start_product_mode:
             planned_count = (
                 planned_todo_count
@@ -7508,7 +10203,7 @@ def _build_product_mode_user(
                 else 3
             )
             goal_start_clause = (
-                "This route simulates `/loopx <task objective>` goal start: "
+                "This route models `/loopx goal-start <task objective>`: "
                 f"a compact ranked {planned_count}-todo plan must exist before "
                 "todo writes, "
                 f"with selected runnable P0 todo `{selected_p0_todo_id}` entering "
@@ -7526,6 +10221,7 @@ def _build_product_mode_user(
                 "and `refresh-state` checkpoint through the sandbox bridge "
                 "before this prompt. "
                 f"{goal_start_clause}"
+                f"{goal_start_alignment}"
                 "Do not repeat that setup checkpoint as "
                 "your first action. The benchmark task remains the primary "
                 "objective; LoopX commands track control-plane state and do "
@@ -7556,6 +10252,7 @@ def _build_product_mode_user(
             "the scored sandbox, then wait for the scheduler to send the task "
             "packet. "
             f"{goal_start_clause}"
+            f"{goal_start_alignment}"
             "Before reading, planning, solving, or answering the task, your first "
             "agent action must be a shell/tool call that sends the case-local "
             "LoopX CLI commands through the available sandbox bridge; a prose-only "
@@ -7648,15 +10345,15 @@ def _build_product_mode_user(
         return (
             "LoopX product-mode treatment round 1. "
             "You are running inside the official SkillsBench sandbox transport, "
-            "but this local Codex process is outside the scored sandbox. No "
-            "official reward, pass/fail status, verifier error, verifier output, "
-            "or verifier tail will be shown during this run.\n\n"
+            "but this local Codex process is outside the scored sandbox. "
+            f"{feedback_policy_clause}"
             "--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
             "The canonical workflow lifecycle driver has already executed the "
             "case-local quota/todo/update/refresh checkpoint through the sandbox "
-            "bridge before this prompt. This route simulates `/loopx <task "
-            "objective>` goal start: a compact ranked todo plan and selected P0 "
+            "bridge before this prompt. This route models `/loopx goal-start "
+            "<task objective>`: a compact ranked todo plan and selected P0 "
             "todo have already been seeded in the case-local LoopX state. "
+            f"{goal_start_loop_alignment_contract()}"
             "Do not repeat setup lifecycle, do not solve from prose, and do not "
             "declare done in this bootstrap round. Your only job in this round "
             "is to prove task-facing sandbox access: copy and run the bridge "
@@ -7665,7 +10362,22 @@ def _build_product_mode_user(
             "instruction will be sent after that bridge action is observed."
         )
 
-    def solver_activity_prompt(round_number: int) -> str:
+    def solver_activity_prompt(
+        round_number: int,
+        *,
+        task_instruction: str | None = None,
+    ) -> str:
+        task_clause = ""
+        if task_instruction:
+            task_clause = (
+                "\n\n--- TASK INSTRUCTION ---\n"
+                f"{task_instruction}\n\n"
+                "The task above remains the primary objective for this turn. "
+                "Do not spend the turn only proving bridge access or repeating "
+                "status; use the bridge to finish the task-facing work, and if "
+                "the task names a scored output path, write or validate that "
+                "path before closeout."
+            )
         return (
             f"Mandatory product-mode solver checkpoint before round {round_number} "
             "continues. The previous round produced enough LoopX lifecycle "
@@ -7685,11 +10397,43 @@ def _build_product_mode_user(
             "changes, and continue solving. If local evidence shows the "
             "selected P0 is complete, run this exact case-local closeout "
             "sequence from `/app`:\n\n"
+            f"{goal_start_loop_alignment_contract()}"
             f"{closeout_commands(round_number)}"
+            f"{task_clause}\n\n"
             "Do not answer with prose only, and only end with "
             f"{DECLARED_DONE_MARKER} after meaningful local task work or "
             "validation and the corresponding LoopX closeout/spend evidence "
             "has been recorded."
+        )
+
+    def host_local_idle_no_progress_prompt(
+        round_number: int,
+        *,
+        task_instruction: str | None = None,
+    ) -> str:
+        task_clause = ""
+        if task_instruction:
+            task_clause = (
+                "\n\n--- TASK INSTRUCTION ---\n"
+                f"{task_instruction}\n\n"
+            )
+        return (
+            f"Mandatory host-local bridge recovery checkpoint before round "
+            f"{round_number}. The previous host-local Codex exec turn idled "
+            "after bridge activity and did not produce scored task output or "
+            "case closeout. This is not official reward or verifier feedback. "
+            "Do not wait for another local Codex process and do not answer with "
+            "status-only prose. Use the existing sandbox command/file bridge "
+            "now for one concrete task-facing action from `/app`: inspect the "
+            "task workspace, write or validate the scored output path if the "
+            "task names one, or record a compact blocker in the selected P0 "
+            "todo. If local task evidence proves completion, run the exact "
+            "case-local closeout sequence (`todo complete`, `refresh-state`, "
+            "`quota spend-slot --source adapter --execute`) before declaring "
+            "done.\n\n"
+            f"{goal_start_loop_alignment_contract()}"
+            f"{closeout_commands(round_number)}"
+            f"{task_clause}"
         )
 
     def final_closeout_prompt(round_number: int) -> str:
@@ -7704,6 +10448,7 @@ def _build_product_mode_user(
             "new broad exploration loop. If local task-facing validation "
             "indicates the selected P0 is complete, run this exact case-local "
             "closeout sequence from `/app` now:\n\n"
+            f"{goal_start_loop_alignment_contract()}"
             f"{closeout_commands(round_number)}"
             "If local validation does not support closeout, perform one "
             "focused task-facing validation or repair operation from `/app`, "
@@ -7830,9 +10575,14 @@ def _build_product_mode_user(
             return (
                 f"Scheduled product-mode continuation round {scheduled_round} of "
                 f"{max_rounds}. This is part of the fixed autonomous budget and "
-                "is not evidence that the official verifier passed or failed. "
-                "You are not being shown official reward, pass/fail status, "
-                "verifier error, or verifier output. "
+                "is not by itself evidence that the official verifier passed or "
+                "failed. "
+                + (
+                    "You are not being shown official reward, pass/fail status, "
+                    "verifier error, or verifier output. "
+                )
+                +
+                f"{goal_start_loop_alignment_contract()}"
                 f"{done_clause}"
                 f"{self._persistent_constraint_clause} {mode_clause} Keep scope "
                 "narrow, validate locally, and if there are no remaining goals, "
@@ -7899,7 +10649,8 @@ def _build_product_mode_user(
                                 "status-only prose. Use the available sandbox "
                                 "command/file bridge now to inspect or modify the task "
                                 "workspace, then update the selected LoopX todo with "
-                                "public-safe evidence before any done/closeout claim."
+                                "public-safe evidence before any done/closeout claim. "
+                                f"{goal_start_loop_alignment_contract()}"
                             )
                         if no_tool_calls:
                             _record_product_mode_no_tool_call_lifecycle_abort(
@@ -7939,6 +10690,50 @@ def _build_product_mode_user(
                         )
                         return self._scheduled_continuation_prompt(
                             scheduled_round=round + 1,
+                            task_instruction=instruction,
+                        )
+                    if (
+                        self._task_instruction_sent
+                        and product_mode_entry_lifecycle_gate_satisfied()
+                        and _product_mode_host_local_idle_no_task_output_progress_applicable(
+                            trace,
+                            round_result,
+                            reward=(
+                                float(reward)
+                                if isinstance(reward, (int, float))
+                                and not isinstance(reward, bool)
+                                else None
+                            ),
+                        )
+                    ):
+                        host_idle_stop = (
+                            _record_product_mode_host_local_idle_no_task_output_progress(
+                                trace,
+                                agent_round=round,
+                                reward=(
+                                    float(reward)
+                                    if isinstance(reward, (int, float))
+                                    and not isinstance(reward, bool)
+                                    else None
+                                ),
+                                round_result=round_result,
+                            )
+                        )
+                        _inc_counter(trace, "controller_action_decisions")
+                        if host_idle_stop or round >= max_rounds:
+                            _inc_counter(trace, "stop_decision_count")
+                            trace["last_decision"] = (
+                                "stop_after_product_mode_host_local_idle_no_"
+                                "task_output_progress"
+                            )
+                            return None
+                        _inc_counter(trace, "followup_prompt_count")
+                        trace["last_decision"] = (
+                            "send_product_mode_host_local_idle_no_task_output_"
+                            "progress_recovery"
+                        )
+                        return host_local_idle_no_progress_prompt(
+                            round + 1,
                             task_instruction=instruction,
                         )
                 if _round_result_declared_done(round_result):
@@ -8007,7 +10802,10 @@ def _build_product_mode_user(
                             trace["last_decision"] = (
                                 "send_product_mode_solver_activity_continuation"
                             )
-                            return solver_activity_prompt(round + 1)
+                            return solver_activity_prompt(
+                                round + 1,
+                                task_instruction=instruction,
+                            )
                     if treatment:
                         _record_declared_done(
                             trace,
@@ -8076,6 +10874,36 @@ def _build_product_mode_user(
                     _record_declared_done(trace, agent_round=round, reward=reward)
                     trace["last_decision"] = "stop_after_agent_declared_done"
                     return None
+            observed_reward = (
+                float(reward)
+                if isinstance(reward, (int, float)) and not isinstance(reward, bool)
+                else None
+            )
+            if (
+                treatment
+                and round_result is not None
+                and self._task_instruction_sent
+                and product_mode_entry_lifecycle_gate_satisfied()
+                and _product_mode_no_open_todo_below_passing_reward_applicable(
+                    trace,
+                    reward=observed_reward,
+                )
+            ):
+                no_open_todo_stop = (
+                    _record_product_mode_no_open_todo_below_passing_reward(
+                        trace,
+                        agent_round=round,
+                        reward=observed_reward,
+                    )
+                )
+                if no_open_todo_stop:
+                    _inc_counter(trace, "controller_action_decisions")
+                    _inc_counter(trace, "stop_decision_count")
+                    trace["last_decision"] = (
+                        "stop_after_product_mode_two_no_open_todo_rounds_"
+                        "without_passing_reward"
+                    )
+                    return None
             if reward is not None and reward >= 1.0:
                 _inc_counter(trace, "controller_action_decisions")
                 if final_closeout_checkpoint_needed(
@@ -8135,7 +10963,10 @@ def _build_product_mode_user(
                 trace["last_decision"] = (
                     "send_product_mode_solver_activity_continuation"
                 )
-                return solver_activity_prompt(round + 1)
+                return solver_activity_prompt(
+                    round + 1,
+                    task_instruction=instruction,
+                )
             if round == 0:
                 _inc_counter(trace, "controller_action_decisions")
                 _inc_counter(trace, "initial_prompt_count")
@@ -8175,10 +11006,8 @@ def _build_product_mode_user(
                     return (
                         prefix
                         + "You are running inside the official SkillsBench sandbox. "
-                        + "No official reward, pass/fail status, verifier error, "
-                        "verifier output, or verifier tail will be shown during this "
-                        "run.\n\n"
-                        "--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
+                        + feedback_policy_clause
+                        + "--- LOOPX PRODUCT-MODE CONTROL PLANE ---\n"
                         f"{control_clause}"
                         "For this treatment, LoopX lifecycle evidence is a "
                         "hard product-mode requirement: "
@@ -8297,6 +11126,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         job_name=str(plan["job_name"]),
         sandbox=args.sandbox,
         include_task_skills=bool(args.include_task_skills),
+        benchmark_egress_proxy_env=_benchmark_egress_proxy_env(args),
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
@@ -8321,6 +11151,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     prerequisites["benchflow_rollout_planes_module_available"] = (
         benchflow_rollout_planes_module is not None
     )
+    connect_as_return_arity = _benchflow_connect_as_unpack_arity(Rollout.connect_as)
+    if connect_as_return_arity is not None:
+        prerequisites["host_local_acp_connect_as_unpack_return_arity"] = (
+            connect_as_return_arity
+        )
     prerequisites["benchflow_run_stage"] = "runtime_prepare"
 
     host_local_acp_command = _host_local_acp_launch_command(args, plan)
@@ -8401,7 +11236,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             )
             prerequisites.setdefault("host_local_acp_sandbox_bridge_configured", False)
             prerequisites.setdefault("host_local_acp_sandbox_bridge_path_recorded", False)
-        target_env = _host_local_acp_target_env(agent_env)
+        target_env = _host_local_acp_target_env(agent_env, args=args)
         prerequisites["host_local_acp_target_env_forwarded"] = bool(target_env)
         prerequisites["host_local_acp_target_env_key_count"] = len(target_env)
         prerequisites["host_local_acp_target_env_keys"] = sorted(target_env)
@@ -8440,7 +11275,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
                 controller_trace["last_decision"] = (
                     "host_app_server_goal_worker_connected"
                 )
-            return_arity = _benchflow_connect_acp_return_arity(
+            return_arity = connect_as_return_arity or _benchflow_connect_acp_return_arity(
                 original_runtime_connect_acp
             )
             prerequisites["host_local_acp_connect_return_arity"] = return_arity
@@ -8464,6 +11299,14 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             with contextlib.suppress(Exception):
                 await client.close()
             raise
+
+    async def connect_host_local_acp_method(
+        self: Any,
+        *call_args: Any,
+        **call_kwargs: Any,
+    ) -> tuple[Any, ...]:
+        del self
+        return await connect_host_local_acp(*call_args, **call_kwargs)
 
     async def ensure_codex_acp_runtime_deps(env: Any) -> None:
         bootstrap = await env.exec(
@@ -8559,6 +11402,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             "goal_start_product_mode",
             "goal_start_plan_observed",
             "planned_todo_count",
+            "planned_todo_ids",
+            "planned_todo_texts_public_safe",
             "planned_p0_count",
             "planner_before_todo_write",
             "same_priority_order_preserved",
@@ -8679,9 +11524,12 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         if benchflow_rollout_planes_module is not None
         else _MISSING
     )
-    rollout_planes_class = (
-        getattr(benchflow_rollout_planes_module, "DefaultRolloutPlanes", None)
-        if benchflow_rollout_planes_module is not None
+    rollout_planes_class = _benchflow_rollout_planes_class(
+        benchflow_rollout_planes_module
+    )
+    original_rollout_planes_class_connect_acp = (
+        getattr(rollout_planes_class, "connect_acp", None)
+        if rollout_planes_class is not None
         else None
     )
     original_create_environment = (
@@ -8925,6 +11773,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             prerequisites["benchflow_agent_timeout_host_local_acp_exec_timeout_sec"] = (
                 _effective_local_codex_exec_timeout_sec(args)
             )
+            prerequisites[
+                "benchflow_agent_timeout_host_local_acp_task_output_quiet_timeout_sec"
+            ] = _effective_local_codex_task_output_quiet_timeout_sec(args)
             prerequisites["benchflow_agent_timeout_host_local_acp_margin_sec"] = (
                 HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
             )
@@ -8967,13 +11818,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             case_loopx_source_path=_loopx_case_source_path_for_container(args),
             goal_start_product_mode=_is_goal_start_product_mode_route(args.route),
         )
-    if args.route == "automation-loop-treatment":
-        controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
-        controller_user = _build_controller_user(
-            args.max_verifier_output_chars,
-            controller_trace,
-        )
-    elif args.route in {
+    if args.route in {
         CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
         LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
         LOOPX_PROMPT_POLLING_TEST_ROUTE,
@@ -9034,6 +11879,14 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     if runtime_mounts:
         agent_env["PATH"] = BENCHFLOW_AGENT_RUNTIME_CONTAINER_PATH
         agent_env["CODEX_ACP_RUNTIME_HOME"] = BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET
+    benchmark_proxy_env = _benchmark_egress_proxy_env(args)
+    if benchmark_proxy_env:
+        agent_env.update(benchmark_proxy_env)
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        prerequisites["benchmark_egress_proxy_agent_env_injected"] = True
+        prerequisites["benchmark_egress_proxy_docker_config_injected"] = True
+        prerequisites["benchmark_egress_proxy_docker_config_path_recorded"] = False
+        prerequisites["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] = False
 
     rollout_config_kwargs = {
         "task_path": effective_task_path,
@@ -9148,6 +12001,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             and original_rollout_planes_connect_acp is not _MISSING
         ):
             benchflow_rollout_planes_module.connect_acp = connect_host_local_acp
+        if (
+            rollout_planes_class is not None
+            and original_rollout_planes_class_connect_acp is not None
+        ):
+            rollout_planes_class.connect_acp = connect_host_local_acp_method
     try:
         await run_benchflow_with_setup_stall_watchdog()
         result_path = discover_benchflow_result_path(plan)
@@ -9182,6 +12040,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             benchflow_rollout_planes_module.connect_acp = (
                 original_rollout_planes_connect_acp
             )
+        if (
+            rollout_planes_class is not None
+            and original_rollout_planes_class_connect_acp is not None
+        ):
+            rollout_planes_class.connect_acp = original_rollout_planes_class_connect_acp
         _merge_acp_trajectory_summary(plan, controller_trace)
         _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
         _merge_host_local_acp_relay_trace_summary(plan, controller_trace)
@@ -9326,6 +12189,9 @@ def reduce_result(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
+    runner_config = _public_runner_config(plan)
+    if runner_config:
+        compact["runner_config"] = runner_config
     goal_start_control_score = _build_goal_start_product_mode_control_score(
         compact,
         plan,
@@ -9358,6 +12224,7 @@ def reduce_official_result_after_runner_exception(
         return None
 
     compact = reduce_result(args, result_path, plan)
+    _write_public_runner_config(plan)
     _write_public_runner_prerequisites(plan)
     compact["runner_return_status"] = (
         "official_result_recovered_after_runner_exception"
@@ -9395,6 +12262,610 @@ def reduce_official_result_after_runner_exception(
     }
 
 
+def _nonbool_int(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 0
+
+
+def _nonbool_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _runner_failure_trace_score_attribution(
+    *,
+    reward: float,
+    passed: bool,
+) -> str:
+    if passed:
+        return "none"
+    if reward == 0:
+        return "official_score_zero_case_failure"
+    return "official_verifier_solution_failure"
+
+
+def _product_mode_lifecycle_contract_from_controller_counters(
+    counters: dict[str, Any],
+) -> dict[str, Any]:
+    required = bool(
+        counters.get("product_mode") is True
+        or counters.get("goal_start_product_mode") is True
+    )
+    driver_read_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_loopx_state_read_count")
+    )
+    driver_write_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_loopx_state_write_count")
+    )
+    driver_checkpoint_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_driver_lifecycle_checkpoint_count")
+    )
+    agent_read_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_loopx_state_read_count")
+    )
+    agent_write_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_loopx_state_write_count")
+    )
+    todo_closeout_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_todo_closeout_count")
+    )
+    refresh_state_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_refresh_state_count")
+    )
+    quota_spend_count = _nonbool_int(
+        counters.get("remote_command_file_bridge_agent_quota_spend_slot_count")
+    )
+    closeout_satisfied = bool(
+        todo_closeout_count > 0
+        and refresh_state_count > 0
+        and quota_spend_count > 0
+    )
+    quota_spend_missing_after_repeated_complete = bool(
+        todo_closeout_count > 1
+        and refresh_state_count > 0
+        and quota_spend_count <= 0
+    )
+    operation_trace_status = str(
+        counters.get("remote_command_file_bridge_agent_operation_trace_status")
+        or ""
+    )[:120]
+    operation_trace_satisfied = bool(
+        counters.get("remote_command_file_bridge_agent_operation_trace_satisfied")
+        is True
+        or _nonbool_int(
+            counters.get("remote_command_file_bridge_agent_task_facing_operation_count")
+        )
+        > 0
+    )
+    operation_trace_missing = bool(required and not operation_trace_satisfied)
+    state_read_count = max(driver_read_count, agent_read_count)
+    state_write_count = max(driver_write_count, agent_write_count)
+    orchestrated_driver_satisfied = bool(
+        driver_read_count > 0 and driver_write_count > 0
+    )
+    satisfied = bool(
+        not required
+        or (
+            not operation_trace_missing
+            and state_read_count > 0
+            and state_write_count > 0
+            and closeout_satisfied
+        )
+    )
+    missing_reason = ""
+    if required and not satisfied:
+        if operation_trace_missing:
+            missing_reason = "remote_command_file_bridge_agent_operation_trace_missing"
+        elif state_read_count <= 0 or state_write_count <= 0:
+            missing_reason = "missing_case_local_loopx_state_read_or_write"
+        elif not closeout_satisfied:
+            if quota_spend_missing_after_repeated_complete:
+                missing_reason = "quota_spend_missing_after_repeated_todo_closeout"
+            else:
+                missing_reason = "missing_case_local_loopx_closeout"
+
+    contract: dict[str, Any] = {
+        "schema_version": "skillsbench_product_mode_lifecycle_contract_v0",
+        "required": required,
+        "satisfied": satisfied,
+        "countable_treatment": satisfied,
+        "state_read_count": state_read_count,
+        "state_write_count": state_write_count,
+        "checkpoint_required": required,
+        "checkpoint_count": driver_checkpoint_count,
+        "closeout_required": required,
+        "closeout_satisfied": closeout_satisfied,
+        "quota_spend_missing_after_repeated_complete": (
+            quota_spend_missing_after_repeated_complete
+        ),
+        "agent_operation_trace_required": required,
+        "agent_operation_trace_satisfied": operation_trace_satisfied,
+        "agent_operation_trace_status": operation_trace_status,
+        "agent_operation_trace_missing": operation_trace_missing,
+        "orchestrated_driver_lifecycle_satisfied": orchestrated_driver_satisfied,
+        "orchestrated_driver_counts_as_product_mode": orchestrated_driver_satisfied,
+        "agent_bridge_state_read_count": agent_read_count,
+        "agent_bridge_state_write_count": agent_write_count,
+        "agent_bridge_todo_closeout_count": todo_closeout_count,
+        "agent_bridge_refresh_state_count": refresh_state_count,
+        "agent_bridge_quota_spend_slot_count": quota_spend_count,
+        "driver_lifecycle_state_read_count": driver_read_count,
+        "driver_lifecycle_state_write_count": driver_write_count,
+        "checkpoint_round": _nonbool_int(
+            counters.get("product_mode_lifecycle_checkpoint_round")
+        ),
+        "missing_reason": missing_reason,
+    }
+    execution_style = counters.get(
+        "remote_command_file_bridge_driver_lifecycle_execution_style"
+    )
+    if isinstance(execution_style, str) and execution_style:
+        contract["execution_style"] = execution_style
+    return contract
+
+
+def _recover_runner_failure_score_from_controller_trace(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> bool:
+    controller_trace = _read_controller_trace(plan)
+    if not isinstance(controller_trace, dict):
+        return False
+
+    from loopx.benchmark_adapters.skillsbench import (
+        _round_reward_trace_stats,
+        _skillsbench_controller_trace_counters,
+    )
+    from loopx.benchmark_core import (
+        BenchmarkFailureClass,
+        build_benchmark_attempt_accounting,
+        canonical_lifecycle,
+    )
+
+    counters = _skillsbench_controller_trace_counters(controller_trace)
+    records = counters.get("round_rewards")
+    if not isinstance(records, list):
+        return False
+    stats = _round_reward_trace_stats(records)
+    final_reward = _nonbool_float(stats.get("final_round_reward"))
+    if final_reward is None:
+        return False
+    passed = stats.get("final_round_passed") is True or final_reward >= 1.0
+    attribution = _runner_failure_trace_score_attribution(
+        reward=final_reward,
+        passed=passed,
+    )
+    round_reward_trace: dict[str, Any] = {
+        "schema_version": "benchmark_round_reward_trace_v0",
+        "source": "loopx_controller_trace",
+        "round_index_origin": "agent_round_1_is_first_completed_agent_attempt",
+        "records": records,
+        "first_success_round": counters.get("first_success_round"),
+        "success_observed": counters.get("official_success_observed") is True,
+        "max_rounds_budget": counters.get("max_rounds_budget", 0),
+        "official_feedback_returned_to_agent": (
+            counters.get("official_feedback_forwarded") is True
+        ),
+        "official_feedback_blinded": (
+            _nonbool_int(counters.get("official_feedback_blinded_count")) > 0
+        ),
+        "reward_feedback_forwarded": counters.get("official_feedback_forwarded")
+        is True,
+        "agent_declared_done": counters.get("agent_declared_done") is True,
+        "declared_done_requires_no_remaining_goals": (
+            counters.get("declared_done_requires_no_remaining_goals") is True
+        ),
+        "agent_declared_no_remaining_goals": (
+            counters.get("agent_declared_no_remaining_goals") is True
+        ),
+        "product_mode_no_open_todo_below_passing_reward_stop": (
+            counters.get("product_mode_no_open_todo_below_passing_reward_stop")
+            is True
+        ),
+        "official_score_policy": (
+            "final_observed_controller_trace_reward_after_runner_interruption"
+        ),
+        "official_score_recovered_from_controller_trace": True,
+        "official_score_recovered_round": stats.get("final_round"),
+    }
+    for source_key in (
+        "product_mode_no_open_todo_below_passing_reward_streak",
+        "product_mode_no_open_todo_below_passing_reward_streak_threshold",
+        "product_mode_no_open_todo_below_passing_reward_round",
+        "product_mode_no_open_todo_below_passing_reward_stop_round",
+        "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+    ):
+        value = counters.get(source_key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            round_reward_trace[source_key] = value
+    score_status = counters.get(
+        "product_mode_no_open_todo_below_passing_reward_score_status"
+    )
+    if isinstance(score_status, str) and score_status:
+        round_reward_trace[
+            "product_mode_no_open_todo_below_passing_reward_score_status"
+        ] = score_status
+    no_open_todo_score = _nonbool_float(
+        counters.get("product_mode_no_open_todo_below_passing_reward_score")
+    )
+    if no_open_todo_score is not None:
+        round_reward_trace[
+            "product_mode_no_open_todo_below_passing_reward_score"
+        ] = no_open_todo_score
+    round_reward_trace.update(stats)
+
+    interaction_counters = compact.get("interaction_counters")
+    if not isinstance(interaction_counters, dict):
+        interaction_counters = {
+            "schema_version": "skillsbench_interaction_counters_v0",
+        }
+    interaction_counters.update(counters)
+    for raw_key, compact_key in (
+        ("initial_prompt_count", "controller_initial_prompt_count"),
+        ("followup_prompt_count", "controller_followup_prompt_count"),
+        ("stop_decision_count", "controller_stop_decision_count"),
+        ("max_rounds_budget", "controller_max_rounds_budget"),
+    ):
+        value = counters.get(raw_key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            interaction_counters[compact_key] = value
+    if counters.get("official_success_observed") is True:
+        interaction_counters["controller_official_success_observed"] = True
+    compact["interaction_counters"] = interaction_counters
+    compact["product_mode"] = bool(
+        compact.get("product_mode") is True or counters.get("product_mode") is True
+    )
+    if counters.get("goal_start_product_mode") is True:
+        compact["goal_start_product_mode"] = True
+    compact["round_reward_trace"] = round_reward_trace
+    compact["runner_return_status"] = (
+        "interrupted_after_controller_reward_observation"
+    )
+    compact["official_score_status"] = "completed"
+    compact["official_score"] = final_reward
+    compact["official_task_score"] = {
+        "kind": "skillsbench_verifier_reward_recovered_from_controller_trace",
+        "value": final_reward,
+        "passed": passed,
+    }
+    compact["official_score_source"] = (
+        "loopx_controller_trace_every_round_verifier_reward"
+    )
+    compact["score_failure_attribution"] = attribution
+    compact["first_blocker"] = attribution
+    compact["repeat_blocked_by"] = attribution
+    stale_missing_score_labels = {
+        "skillsbench_runner_interrupted_before_official_result",
+        "skillsbench_result_json_missing_after_runner_exit",
+        "official_score_missing",
+        "skillsbench_runner_failed_before_agent_install",
+        "skillsbench_runner_setup_error",
+    }
+    labels = [
+        label
+        for label in compact.get("failure_attribution_labels", [])
+        if isinstance(label, str) and label and label not in stale_missing_score_labels
+    ]
+    for label in (
+        attribution,
+        "skillsbench_runner_interrupted_after_controller_reward_observation",
+    ):
+        if label != "none" and label not in labels:
+            labels.append(label)
+    compact["failure_attribution_labels"] = labels
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["failure_class"] = (
+            "skillsbench_runner_interrupted_after_controller_reward_observation"
+        )
+        runner_failure["score_recovered_from_controller_trace"] = True
+    compact["product_mode_lifecycle_contract"] = (
+        _product_mode_lifecycle_contract_from_controller_counters(counters)
+    )
+    compact["attempt_accounting"] = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(
+            process_started=True,
+            runner_accepted_args=True,
+            job_root_materialized=True,
+            trial_started=True,
+            worker_started=True,
+            result_written=True,
+            verifier_scored=True,
+        ),
+        failure_label=attribution,
+        failure_class=(
+            BenchmarkFailureClass.NONE
+            if passed
+            else BenchmarkFailureClass.SOLVER_FAILED
+        ),
+        official_score_attempted=True,
+    )
+    progress = compact.get("progress")
+    if isinstance(progress, dict):
+        progress.update(
+            {
+                "n_completed_trials": 1,
+                "n_errored_trials": 0,
+                "n_running_trials": 0,
+                "n_pending_trials": 0,
+            }
+        )
+    validation = compact.get("validation")
+    if not isinstance(validation, dict):
+        validation = {}
+    validation.update(
+        {
+            "official_verifier_status": "completed",
+            "official_verifier_validation_present": True,
+            "official_case_success": passed,
+            "controller_trace_read": True,
+            "controller_trace_score_recovered": True,
+            "runner_failure_after_controller_reward_observation": True,
+        }
+    )
+    compact["validation"] = validation
+    return True
+
+
+def _read_verifier_reward_artifact(path: Path) -> float | None:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not text:
+        return None
+    first_token = text.split()[0]
+    try:
+        value = float(first_token)
+    except ValueError:
+        return None
+    if value != value:
+        return None
+    return value
+
+
+def _read_verifier_ctrf_summary(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        return None
+    compact: dict[str, Any] = {
+        "schema_version": "skillsbench_verifier_ctrf_summary_v0",
+        "raw_output_recorded": False,
+    }
+    for field in (
+        "tests",
+        "passed",
+        "failed",
+        "pending",
+        "skipped",
+        "other",
+        "suites",
+    ):
+        value = summary.get(field)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            compact[field] = value
+    for field in ("start", "stop"):
+        value = summary.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            compact[field] = float(value)
+    return compact
+
+
+def _discover_verifier_reward_artifact(plan: dict[str, Any]) -> dict[str, Any] | None:
+    result_path = Path(str(plan.get("result_json") or "")).expanduser()
+    jobs_dir = Path(str(plan.get("jobs_dir") or "")).expanduser()
+    job_name = str(plan.get("job_name") or "")
+    job_root = jobs_dir / job_name
+    rollout_name = str(plan.get("rollout_name") or "")
+    task_id = str(plan.get("task_id") or "")
+    expected = result_path.parent / "verifier" / "reward.txt"
+    candidates: list[Path] = []
+    if expected.exists():
+        candidates.append(expected)
+    if job_root.exists():
+        for path in job_root.rglob("verifier/reward.txt"):
+            if path.is_file() and path not in candidates:
+                candidates.append(path)
+    ranked: list[tuple[int, float, Path, list[str]]] = []
+    for candidate in candidates:
+        score = 0
+        reasons: list[str] = []
+        rollout_dir = candidate.parent.parent
+        if candidate == expected:
+            score += 100
+            reasons.append("planned_rollout_verifier_reward_path")
+        if rollout_name and rollout_dir.name == rollout_name:
+            score += 80
+            reasons.append("parent_matches_requested_rollout")
+        elif task_id and rollout_dir.name.startswith(f"{task_id}__"):
+            score += 20
+            reasons.append("parent_matches_task_rollout_prefix")
+        reward = _read_verifier_reward_artifact(candidate)
+        if reward is not None:
+            score += 50
+            reasons.append("reward_txt_parseable")
+        try:
+            mtime = candidate.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        if score > 0:
+            ranked.append((score, mtime, candidate, reasons))
+    discovery: dict[str, Any] = {
+        "schema_version": "skillsbench_verifier_reward_artifact_discovery_v0",
+        "selection_policy": "planned_reward_path_then_job_root_scan",
+        "candidate_count": len(candidates),
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+    }
+    if not ranked:
+        discovery["status"] = "missing"
+        plan["verifier_reward_artifact_discovery"] = discovery
+        return None
+    ranked.sort(key=lambda item: (item[0], item[1], str(item[2])), reverse=True)
+    top_score, _mtime, selected, reasons = ranked[0]
+    reward = _read_verifier_reward_artifact(selected)
+    if reward is None:
+        discovery["status"] = "unparseable"
+        plan["verifier_reward_artifact_discovery"] = discovery
+        return None
+    tied_top_count = sum(1 for score, _mtime, _path, _reasons in ranked if score == top_score)
+    discovery.update(
+        {
+            "status": "found",
+            "matched_candidate_count": len(ranked),
+            "top_score_candidate_count": tied_top_count,
+            "selected_relative_to_job": _safe_relative_to(selected, job_root),
+            "selection_reasons": reasons,
+            "reward_present": True,
+        }
+    )
+    ctrf_summary = _read_verifier_ctrf_summary(selected.parent / "ctrf.json")
+    if ctrf_summary:
+        discovery["ctrf_summary_present"] = True
+    plan["verifier_reward_artifact_discovery"] = discovery
+    return {
+        "reward_path": selected,
+        "reward": reward,
+        "passed": reward >= 1.0,
+        "discovery": discovery,
+        "ctrf_summary": ctrf_summary,
+    }
+
+
+def _recover_runner_failure_score_from_verifier_artifact(
+    compact: dict[str, Any],
+    plan: dict[str, Any],
+) -> bool:
+    artifact = _discover_verifier_reward_artifact(plan)
+    if artifact is None:
+        return False
+
+    from loopx.benchmark_core import (
+        BenchmarkFailureClass,
+        build_benchmark_attempt_accounting,
+        canonical_lifecycle,
+    )
+
+    reward = float(artifact["reward"])
+    passed = bool(artifact["passed"])
+    attribution = _runner_failure_trace_score_attribution(
+        reward=reward,
+        passed=passed,
+    )
+    compact["runner_return_status"] = "interrupted_after_verifier_reward_artifact"
+    compact["official_score_status"] = "completed"
+    compact["official_score"] = reward
+    compact["official_task_score"] = {
+        "kind": "skillsbench_verifier_reward_recovered_from_verifier_artifact",
+        "value": reward,
+        "passed": passed,
+    }
+    compact["official_score_source"] = (
+        "official_skillsbench_rollout_verifier_reward_txt_after_runner_interruption"
+    )
+    compact["score_failure_attribution"] = attribution
+    compact["first_blocker"] = attribution
+    compact["repeat_blocked_by"] = attribution
+    compact["verifier_reward_artifact_recovery"] = {
+        "schema_version": "skillsbench_verifier_reward_artifact_recovery_v0",
+        "status": "official_score_recovered_from_verifier_reward_artifact",
+        "official_result_json_materialized": False,
+        "reward_present": True,
+        "reward": reward,
+        "passed": passed,
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+    }
+    discovery = artifact.get("discovery")
+    if isinstance(discovery, dict):
+        compact["verifier_reward_artifact_discovery"] = discovery
+    ctrf_summary = artifact.get("ctrf_summary")
+    if isinstance(ctrf_summary, dict):
+        compact["verifier_ctrf_summary"] = ctrf_summary
+    stale_missing_score_labels = {
+        "skillsbench_runner_interrupted_before_official_result",
+        "skillsbench_result_json_missing_after_runner_exit",
+        "official_score_missing",
+        "skillsbench_runner_failed_before_agent_install",
+        "skillsbench_runner_setup_error",
+    }
+    labels = [
+        label
+        for label in compact.get("failure_attribution_labels", [])
+        if isinstance(label, str) and label and label not in stale_missing_score_labels
+    ]
+    for label in (
+        attribution,
+        "skillsbench_runner_interrupted_after_verifier_reward_artifact",
+    ):
+        if label != "none" and label not in labels:
+            labels.append(label)
+    compact["failure_attribution_labels"] = labels
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["failure_class"] = (
+            "skillsbench_runner_interrupted_after_verifier_reward_artifact"
+        )
+        runner_failure["score_recovered_from_verifier_artifact"] = True
+    compact["attempt_accounting"] = build_benchmark_attempt_accounting(
+        lifecycle=canonical_lifecycle(
+            process_started=True,
+            runner_accepted_args=True,
+            job_root_materialized=True,
+            trial_started=True,
+            worker_started=True,
+            result_written=False,
+            verifier_scored=True,
+        ),
+        failure_label=attribution,
+        failure_class=(
+            BenchmarkFailureClass.NONE
+            if passed
+            else BenchmarkFailureClass.SOLVER_FAILED
+        ),
+        official_score_attempted=True,
+    )
+    progress = compact.get("progress")
+    if isinstance(progress, dict):
+        progress.update(
+            {
+                "n_completed_trials": 1,
+                "n_errored_trials": 0,
+                "n_running_trials": 0,
+                "n_pending_trials": 0,
+            }
+        )
+    validation = compact.get("validation")
+    if not isinstance(validation, dict):
+        validation = {}
+    validation.update(
+        {
+            "official_verifier_status": "passed" if passed else "completed",
+            "official_verifier_validation_present": True,
+            "official_case_success": passed,
+            "verifier_reward_artifact_recovered": True,
+            "official_result_json_materialized": False,
+            "raw_verifier_output_read": False,
+        }
+    )
+    compact["validation"] = validation
+    return True
+
+
 def build_runner_failure_compact(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -9422,6 +12893,7 @@ def build_runner_failure_compact(
         exc,
         cleanup_if_missing=True,
     )
+    _write_public_runner_config(plan)
     _write_public_runner_prerequisites(plan)
 
     exception_type, attribution, labels = skillsbench_runner_error_attribution(
@@ -9546,6 +13018,12 @@ def build_runner_failure_compact(
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         reduced["runner_output_capture"] = runner_output_capture
+    runner_config = _public_runner_config(plan)
+    if runner_config:
+        reduced["runner_config"] = runner_config
+    recovered = _recover_runner_failure_score_from_controller_trace(reduced, plan)
+    if not recovered:
+        _recover_runner_failure_score_from_verifier_artifact(reduced, plan)
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
     reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
     return reduced
@@ -9572,12 +13050,19 @@ def update_ledger(
         if args.route == LOOPX_PRODUCT_MODE_ROUTE
         else "raw Codex autonomous max5 baseline"
         if args.route == "raw-codex-autonomous-max5"
-        else "LoopX reward-feedback ablation"
-        if args.route == "automation-loop-treatment"
         else "Codex ACP baseline"
     )
-    return update_benchmark_run_ledger(
-        ledger_path=Path(args.ledger_path).expanduser(),
+    primary_ledger_path = _expanded_path(args.ledger_path)
+    global_ledger_path = _expanded_path(args.global_ledger_path)
+    dry_run = not args.update_ledger
+    ledger_inheritance = _inherit_global_ledger_snapshot(
+        primary_path=primary_ledger_path,
+        global_path=global_ledger_path,
+        dry_run=dry_run,
+        enabled=not bool(args.skip_ledger_inherit),
+    )
+    primary_update = update_benchmark_run_ledger(
+        ledger_path=primary_ledger_path,
         benchmark_run=compact,
         compact_artifact_ref=compact_path,
         run_group_id=args.run_group_id,
@@ -9586,8 +13071,34 @@ def update_ledger(
             "no raw task/log/trajectory read into public state"
         ),
         cwd=REPO_ROOT,
-        dry_run=not args.update_ledger,
+        dry_run=dry_run,
     )
+    global_update: dict[str, Any] | None = None
+    if (
+        not args.skip_global_ledger_sync
+        and not _same_ledger_path(primary_ledger_path, global_ledger_path)
+    ):
+        global_update = update_benchmark_run_ledger(
+            ledger_path=global_ledger_path,
+            benchmark_run=compact,
+            compact_artifact_ref=compact_path,
+            run_group_id=args.run_group_id,
+            notes=(
+                f"official SkillsBench BenchFlow {note_route}; compact result only; "
+                "no raw task/log/trajectory read into public state"
+            ),
+            cwd=REPO_ROOT,
+            dry_run=dry_run,
+        )
+
+    result = dict(primary_update)
+    result["ledger_scope"] = _ledger_scope_label(primary_ledger_path, global_ledger_path)
+    result["primary_ledger_update"] = primary_update
+    result["global_ledger_path"] = str(global_ledger_path)
+    result["global_ledger_sync_enabled"] = not bool(args.skip_global_ledger_sync)
+    result["global_ledger_update"] = global_update
+    result["global_ledger_inheritance"] = ledger_inheritance
+    return result
 
 
 def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, Any]:
@@ -9604,7 +13115,6 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, An
         "loopx-product-mode": "skillsbench_loopx_product_mode_result_v0",
         "loopx-goal-start-product-mode": "skillsbench_loopx_goal_start_product_mode_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
-        "automation-loop-treatment": "skillsbench_reward_feedback_ablation_result_v0",
         "codex-app-server-goal-baseline": "skillsbench_codex_app_server_goal_baseline_result_v0",
         "codex-goal-mode-baseline": "skillsbench_codex_goal_mode_baseline_result_v0",
     }
@@ -9675,6 +13185,9 @@ def _build_runner_exception_closeout_payload(
         return recovered_payload, 0
 
     closeout_recorded = False
+    recovered_after_runner_exception = False
+    official_task_score = None
+    score_failure_attribution = None
     try:
         compact = build_runner_failure_compact(args, plan, exc)
         compact_path = Path(plan["compact_benchmark_run_json"])
@@ -9687,17 +13200,25 @@ def _build_runner_exception_closeout_payload(
         ledger_update = update_ledger(args, compact, compact_path=compact_path)
         history_append = append_history(args, compact_path)
         closeout_recorded = True
+        recovered_after_runner_exception = (
+            compact.get("official_score_status") == "completed"
+        )
+        official_task_score = compact.get("official_task_score")
+        score_failure_attribution = compact.get("score_failure_attribution")
     except Exception:
         compact_path = None
         ledger_update = None
         history_append = None
     payload = {
-        "ok": False,
+        "ok": recovered_after_runner_exception,
         "error_type": type(exc).__name__,
         "error_recorded": closeout_recorded,
         "compact_closeout_recorded": closeout_recorded,
+        "recovered_after_runner_exception": recovered_after_runner_exception,
         "task_id": args.task_id,
         "compact_benchmark_run_json": str(compact_path) if compact_path else None,
+        "official_task_score": official_task_score,
+        "score_failure_attribution": score_failure_attribution,
         "ledger_update": ledger_update,
         "history_append": history_append,
     }
@@ -9705,8 +13226,27 @@ def _build_runner_exception_closeout_payload(
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    raw_argv = list(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", default="react-performance-debugging")
+    parser.add_argument(
+        "--task-ids",
+        default=None,
+        help=(
+            "Comma- or whitespace-separated SkillsBench task ids to run as a "
+            "batch. When set, this replaces --task-id for the main runner path."
+        ),
+    )
+    parser.add_argument(
+        "--parallel-cases",
+        type=int,
+        default=1,
+        help=(
+            "Maximum number of SkillsBench cases to run concurrently when "
+            "--task-ids contains more than one task. Defaults to serial single "
+            "case behavior."
+        ),
+    )
     parser.add_argument("--dataset", default="skillsbench@1.1")
     parser.add_argument(
         "--route",
@@ -9728,8 +13268,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "codex-goal-mode-baseline sends one /goal-prefixed prompt request "
             "with no reward follow-up, but native goal-mode invocation remains "
             "unconfirmed without CLI slash-command/goal-state evidence and is "
-            "blocked by default except for --plan-only or explicit experiments; "
-            "automation-loop-treatment is a reward-feedback ablation."
+            "blocked by default except for --plan-only or explicit experiments. "
+            "Routes that return official verifier feedback to the agent are "
+            "unsupported because they leak oracle signal into the loop."
         ),
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)
@@ -9761,6 +13302,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             f"Defaults to {DEFAULT_MAX_ROUNDS}; blind-loop and product-mode "
             "routes still stop early once official reward reaches 1.0, without "
             "forwarding that reward to the agent."
+        ),
+    )
+    parser.add_argument(
+        "--independent-goal-retries",
+        type=int,
+        default=1,
+        help=(
+            "Run the same codex-app-server-goal-baseline case as multiple "
+            "independent native Goal attempts. Each attempt gets a fresh "
+            "job/rollout/thread; official verifier reward is observed only by "
+            "the runner to decide whether to stop before the retry budget, and "
+            "is never forwarded to the worker."
         ),
     )
     parser.add_argument(
@@ -9882,6 +13435,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
     )
     parser.add_argument("--ledger-path", default=str(DEFAULT_LEDGER))
+    parser.add_argument(
+        "--global-ledger-path",
+        default=str(DEFAULT_LEDGER),
+        help=(
+            "Canonical benchmark_run_ledger_v0 JSON. When --ledger-path points "
+            "to a run-group/local ledger, the runner inherits this ledger first "
+            "and syncs the new row back here unless --skip-global-ledger-sync is set."
+        ),
+    )
+    parser.add_argument(
+        "--skip-global-ledger-sync",
+        action="store_true",
+        help="Do not upsert run-group/local ledger rows back into --global-ledger-path.",
+    )
+    parser.add_argument(
+        "--skip-ledger-inherit",
+        action="store_true",
+        help="Do not initialize a missing run-group/local ledger from --global-ledger-path.",
+    )
     parser.add_argument("--goal-id", default=DEFAULT_GOAL_ID)
     parser.add_argument("--registry", default=str(REPO_ROOT / ".loopx/registry.json"))
     parser.add_argument("--runtime-root", default=str(REPO_ROOT / ".local"))
@@ -9923,16 +13495,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--local-codex-exec-timeout-sec",
         type=int,
-        default=DEFAULT_TIMEOUT_SEC,
-        help="Per-prompt timeout for local Codex exec in host-local ACP launch mode.",
+        default=None,
+        help=(
+            "Per-prompt timeout for local Codex exec in host-local ACP launch "
+            "mode. Omit to use the host-local bridge idle timeout plus a small "
+            "agent timeout margin, except codex-app-server-goal-baseline which "
+            "uses the longer of the default exec timeout and --outer-timeout-sec."
+        ),
     )
     parser.add_argument(
         "--local-codex-first-action-timeout-sec",
         type=int,
-        default=0,
+        default=None,
         help=(
             "Optional watchdog for the first sandbox bridge operation from a "
-            "host-local Codex turn. 0 disables the watchdog."
+            "host-local Codex turn. Omit to use the app-server Goal default "
+            f"({DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC}s) for "
+            "codex-app-server-goal-baseline; 0 disables the watchdog."
         ),
     )
     parser.add_argument(
@@ -9941,7 +13520,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Optional watchdog after the most recent sandbox bridge operation "
-            "from a host-local Codex turn. Omit to inherit --agent-idle-timeout; "
+            "from a host-local Codex turn. Omit to use the host-local default "
+            f"({DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC}s); 0 disables "
+            "the watchdog."
+        ),
+    )
+    parser.add_argument(
+        "--local-codex-task-output-quiet-timeout-sec",
+        type=int,
+        default=None,
+        help=(
+            "Optional watchdog after a successful task-facing file write and no "
+            "inflight bridge operation. Omit to use the host-local default "
+            f"({DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC}s); "
             "0 disables the watchdog."
         ),
     )
@@ -10015,6 +13606,70 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "This keeps Codex auth/model/state local; remote execution still "
             "requires a separate command/file bridge visible to the local Codex "
             "worker."
+        ),
+    )
+    parser.add_argument(
+        "--codex-api-reverse-tunnel-proxy",
+        default=os.environ.get("LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY", ""),
+        help=(
+            "HTTP proxy URL for a reverse tunnel that lets a remote host-side "
+            "Codex app-server reach the Codex backend. The URL is forwarded "
+            "only to the private worker environment and is never written to "
+            "public compact artifacts; public artifacts record only a redacted "
+            "proxy source/scheme/port summary."
+        ),
+    )
+    parser.add_argument(
+        "--codex-api-egress-mode",
+        choices=CODEX_API_EGRESS_MODE_CHOICES,
+        default=os.environ.get("LOOPX_CODEX_API_EGRESS_MODE", "auto"),
+        help=(
+            "How native app-server goal workers reach the Codex backend. "
+            "For formal host-local app-server benchmark runs, auto resolves "
+            "to reverse-tunnel so the runner fails fast unless a checked HTTP "
+            "CONNECT reverse tunnel proxy is configured. direct is intended "
+            "only for explicit local debugging."
+        ),
+    )
+    parser.add_argument(
+        "--codex-api-egress-preflight-timeout-sec",
+        type=float,
+        default=DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC,
+        help=(
+            "Timeout for the native app-server Codex API egress preflight. "
+            "For remote benchmark hosts, configure a reverse tunnel proxy "
+            "before running formal codex-app-server-goal-baseline cases."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy",
+        default="",
+        help=(
+            "Optional HTTP proxy URL for benchmark setup/verifier egress. "
+            "Omit the flag and set LOOPX_SKILLSBENCH_EGRESS_PROXY in the "
+            "private runtime environment for default benchmark runs. The URL "
+            "is applied only to private subprocess/worker environments; public "
+            "artifacts record only source/scheme/kind/port summaries."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy-mode",
+        choices=BENCHMARK_EGRESS_PROXY_MODE_CHOICES,
+        default=os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY_MODE", "auto"),
+        help=(
+            "Benchmark setup/verifier proxy policy. auto uses "
+            "LOOPX_SKILLSBENCH_EGRESS_PROXY when present, off disables proxy "
+            "injection, and require fails before a run unless a valid private "
+            "HTTP CONNECT proxy is configured."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy-preflight-timeout-sec",
+        type=float,
+        default=DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC,
+        help=(
+            "Timeout for the benchmark setup/verifier egress proxy preflight. "
+            "The probe records no raw proxy URL or raw response output."
         ),
     )
     parser.add_argument(
@@ -10142,7 +13797,66 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "setup-preflight failure instead of spending a full case attempt."
         ),
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--allow-staged-bootstrap-repair-run",
+        action="store_true",
+        help=(
+            "For formal reverse-tunnel app-server Goal runs, allow the runner "
+            "to stage an isolated task copy and apply existing public-safe "
+            "Dockerfile/verifier bootstrap repairs instead of treating those "
+            "repairable setup risks as automatic preflight blockers. Explicit "
+            "--fail-fast-on-* flags still block."
+        ),
+    )
+    apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
+    verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
+    args = parser.parse_args(raw_argv)
+    args.apt_risk_fail_fast_defaulted = False
+    args.verifier_bootstrap_fail_fast_defaulted = False
+    args.bootstrap_light_fail_fast_defaulted = False
+    if (
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        and not args.fail_fast_on_apt_risk
+    ):
+        args.fail_fast_on_apt_risk = True
+        args.apt_risk_fail_fast_defaulted = not apt_fail_fast_explicit
+    if (
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        and not args.fail_fast_on_verifier_bootstrap_risk
+    ):
+        args.fail_fast_on_verifier_bootstrap_risk = True
+        args.verifier_bootstrap_fail_fast_defaulted = not verifier_fail_fast_explicit
+    args.bootstrap_light_fail_fast_defaulted = bool(
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        and (
+            args.apt_risk_fail_fast_defaulted
+            or args.verifier_bootstrap_fail_fast_defaulted
+        )
+    )
+    if args.parallel_cases < 1:
+        parser.error("--parallel-cases must be >= 1")
+    batch_task_ids = _split_task_ids_arg(args.task_ids)
+    if args.task_ids is not None and not batch_task_ids:
+        parser.error("--task-ids must contain at least one task id")
+    if len(set(batch_task_ids)) != len(batch_task_ids):
+        parser.error("--task-ids must not contain duplicate task ids")
+    if args.task_ids is not None and len(batch_task_ids) == 1:
+        args.task_id = batch_task_ids[0]
+    if args.independent_goal_retries < 1:
+        parser.error("--independent-goal-retries must be >= 1")
+    if args.independent_goal_retries > 1:
+        if args.route != "codex-app-server-goal-baseline":
+            parser.error(
+                "--independent-goal-retries currently applies only to "
+                "codex-app-server-goal-baseline"
+            )
+        if args.reduce_only:
+            parser.error("--independent-goal-retries is not compatible with --reduce-only")
+        if len(batch_task_ids) > 1:
+            parser.error(
+                "--independent-goal-retries is not compatible with multi-case "
+                "--task-ids; retry one case at a time"
+            )
     if (
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and not args.plan_only
@@ -10201,29 +13915,51 @@ async def async_main(
         if isinstance(plan.get("task_setup_preflight"), dict)
         else {}
     )
+    bootstrap_light_blocking_fields = _setup_preflight_public_blocking_fields(
+        setup_preflight
+    )
+    bootstrap_light_blocker_kind = _bootstrap_light_blocker_kind(
+        bootstrap_light_blocking_fields
+    )
     if (
-        args.fail_fast_on_apt_risk
-        and not args.reduce_only
-        and setup_preflight.get("apt_setup_risk_detected") is True
+        _bootstrap_light_preflight_block_required(
+            args,
+            blocker_kind=bootstrap_light_blocker_kind,
+        )
+        and bootstrap_light_blocker_kind in {"apt", "dockerfile_package"}
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
-            staging["apt_setup_risk_detected"] = True
-            staging["apt_retry_patch_required"] = True
-            staging["apt_risk_preflight_blocked"] = True
+            bootstrap_light_blocker_kind = _mark_bootstrap_light_preflight_blocked(
+                staging=staging,
+                setup_preflight=setup_preflight,
+                blocking_fields=bootstrap_light_blocking_fields,
+                args=args,
+            )
+        if bootstrap_light_blocker_kind == "apt":
+            raise SkillsBenchSetupPreflightBlocked(
+                "skillsbench apt setup risk preflight blocked: "
+                "apt-based Docker setup risk detected before full case run"
+            )
         raise SkillsBenchSetupPreflightBlocked(
-            "skillsbench apt setup risk preflight blocked: "
-            "apt-based Docker setup risk detected before full case run"
+            "skillsbench dockerfile package bootstrap risk preflight blocked: "
+            "Dockerfile package bootstrap risk detected before full case run"
         )
     if (
-        args.fail_fast_on_verifier_bootstrap_risk
-        and not args.reduce_only
-        and setup_preflight.get("verifier_bootstrap_risk_detected") is True
+        _bootstrap_light_preflight_block_required(
+            args,
+            blocker_kind=bootstrap_light_blocker_kind,
+        )
+        and bootstrap_light_blocker_kind == "verifier"
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
-            staging["verifier_bootstrap_risk_detected"] = True
-            staging["verifier_bootstrap_risk_preflight_blocked"] = True
+            _mark_bootstrap_light_preflight_blocked(
+                staging=staging,
+                setup_preflight=setup_preflight,
+                blocking_fields=bootstrap_light_blocking_fields,
+                args=args,
+            )
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench verifier bootstrap risk preflight blocked: "
             "verifier dependency bootstrap risk detected before full case run"
@@ -10234,11 +13970,35 @@ async def async_main(
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
+            if _formal_app_server_goal_bootstrap_light_guard_required(args):
+                _mark_bootstrap_light_preflight_blocked(
+                    staging=staging,
+                    setup_preflight=setup_preflight,
+                    blocking_fields=bootstrap_light_blocking_fields,
+                    args=args,
+                )
             staging["task_source_preflight_blocked"] = True
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench task source preflight blocked: "
             "task missing from canonical tasks source before full case run"
         )
+
+    if (
+        _codex_api_egress_preflight_required(args)
+        and not args.reduce_only
+    ):
+        try:
+            _run_codex_api_egress_preflight(args, plan)
+        finally:
+            _write_public_runner_config(plan)
+            _write_public_runner_prerequisites(plan)
+
+    if not args.reduce_only:
+        try:
+            _run_benchmark_egress_proxy_preflight(args, plan)
+        finally:
+            _write_public_runner_config(plan)
+            _write_public_runner_prerequisites(plan)
 
     if (
         _host_local_acp_codex_exec_preflight_should_run(args)
@@ -10247,6 +14007,8 @@ async def async_main(
     ):
         _run_host_local_acp_codex_exec_preflight(args, plan)
 
+    if not args.reduce_only:
+        _write_public_runner_config(plan)
     ensure_benchflow_runtime(args)
     if args.reduce_only:
         _hydrate_reduce_only_public_runner_prerequisites(plan)
@@ -10263,6 +14025,7 @@ async def async_main(
             run_benchflow_case_with_private_output(args, plan),
             timeout=args.outer_timeout_sec,
         )
+        _write_public_runner_config(plan)
         _write_public_runner_prerequisites(plan)
     compact = reduce_result(args, result_path, plan)
     compact_path = Path(plan["compact_benchmark_run_json"])
@@ -10285,6 +14048,490 @@ async def async_main(
         "ledger_update": ledger_update,
         "history_append": history_append,
     }
+
+
+def _batch_task_ids(args: argparse.Namespace) -> list[str]:
+    return _split_task_ids_arg(getattr(args, "task_ids", None)) or [
+        str(args.task_id)
+    ]
+
+
+def _clone_args_for_batch_case(
+    args: argparse.Namespace,
+    *,
+    task_id: str,
+    index: int,
+    total: int,
+    run_group_id: str,
+) -> argparse.Namespace:
+    case_args = argparse.Namespace(**vars(args))
+    case_args.task_id = task_id
+    case_args.task_ids = None
+    case_args.run_group_id = run_group_id
+    if total > 1:
+        suffix = _safe_batch_suffix(task_id, index)
+        if args.job_name:
+            case_args.job_name = f"{args.job_name}-{suffix}"
+        if args.rollout_name:
+            case_args.rollout_name = f"{args.rollout_name}-{suffix}"
+    return case_args
+
+
+def _batch_case_args_to_cli(case_args: argparse.Namespace) -> list[str]:
+    cli: list[str] = []
+    for key, value in sorted(vars(case_args).items()):
+        if key == "task_ids":
+            continue
+        if key in BATCH_CASE_INTERNAL_ARG_KEYS:
+            continue
+        if (
+            key == "fail_fast_on_apt_risk"
+            and getattr(case_args, "apt_risk_fail_fast_defaulted", False)
+        ):
+            continue
+        if (
+            key == "fail_fast_on_verifier_bootstrap_risk"
+            and getattr(case_args, "verifier_bootstrap_fail_fast_defaulted", False)
+        ):
+            continue
+        option = "--" + key.replace("_", "-")
+        if key == "parallel_cases":
+            value = 1
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            if value:
+                cli.append(option)
+            continue
+        cli.extend([option, str(value)])
+    return cli
+
+
+def _parallel_batch_requires_subprocess_isolation(parallel_cases: int) -> bool:
+    return parallel_cases > 1
+
+
+BATCH_CASE_INTERNAL_ARG_KEYS = frozenset(
+    {
+        "apt_risk_fail_fast_defaulted",
+        "bootstrap_light_fail_fast_defaulted",
+        "verifier_bootstrap_fail_fast_defaulted",
+    }
+)
+
+
+def _load_json_object_from_mixed_text(text: str) -> tuple[dict[str, Any], bool]:
+    stripped = text.strip()
+    if not stripped:
+        raise ValueError("empty child payload")
+    try:
+        payload = json.loads(stripped)
+        if isinstance(payload, dict):
+            return payload, False
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(stripped):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(stripped[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload, True
+    raise ValueError("child payload did not contain a JSON object")
+
+
+def _extract_batch_case_subprocess_payload(
+    *,
+    case_args: argparse.Namespace,
+    returncode: int,
+    stdout: bytes,
+    stderr: bytes,
+) -> dict[str, Any]:
+    streams = [
+        ("stdout", stdout.decode("utf-8", errors="replace")),
+        ("stderr", stderr.decode("utf-8", errors="replace")),
+    ]
+    if stdout and stderr:
+        streams.append(
+            (
+                "combined",
+                (
+                    stdout.decode("utf-8", errors="replace")
+                    + "\n"
+                    + stderr.decode("utf-8", errors="replace")
+                ),
+            )
+        )
+    last_exc: Exception | None = None
+    try:
+        payload: dict[str, Any] | None = None
+        mixed_output = False
+        payload_source = ""
+        for payload_source, text in streams:
+            try:
+                payload, mixed_output = _load_json_object_from_mixed_text(text)
+                break
+            except Exception as exc:
+                last_exc = exc
+        if payload is None:
+            raise last_exc or ValueError("child payload missing")
+        payload["batch_case_subprocess_payload_source"] = payload_source
+        payload["batch_case_subprocess_payload_mixed_output"] = mixed_output
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "task_id": str(case_args.task_id),
+            "run_group_id": str(case_args.run_group_id or ""),
+            "route": str(case_args.route),
+            "error_type": "SkillsBenchBatchCaseSubprocessPayloadError",
+            "error_class": type(exc).__name__,
+            "payload_error_class": (
+                type(last_exc).__name__ if last_exc is not None else type(exc).__name__
+            ),
+            "child_returncode": int(returncode),
+            "child_stdout_bytes": len(stdout),
+            "child_stderr_bytes": len(stderr),
+            "raw_stdout_recorded": False,
+            "raw_stderr_recorded": False,
+            "compact_closeout_recorded": False,
+        }
+    payload["batch_case_subprocess"] = True
+    payload["runner_returncode"] = int(returncode)
+    return payload
+
+
+async def _run_batch_case_subprocess(
+    case_args: argparse.Namespace,
+) -> dict[str, Any]:
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        *_batch_case_args_to_cli(case_args),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    return _extract_batch_case_subprocess_payload(
+        case_args=case_args,
+        returncode=int(proc.returncode or 0),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+async def async_batch_main(
+    args: argparse.Namespace,
+    *,
+    task_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    selected_task_ids = list(task_ids or _batch_task_ids(args))
+    run_group_id = str(
+        args.run_group_id
+        or f"skillsbench-batch-{args.route}-{_now_stamp()}"
+    )
+    parallel_cases = min(max(1, int(args.parallel_cases or 1)), len(selected_task_ids))
+    semaphore = asyncio.Semaphore(parallel_cases)
+    isolate_case_processes = _parallel_batch_requires_subprocess_isolation(
+        parallel_cases
+    )
+
+    async def run_one(index: int, task_id: str) -> dict[str, Any]:
+        case_args = _clone_args_for_batch_case(
+            args,
+            task_id=task_id,
+            index=index,
+            total=len(selected_task_ids),
+            run_group_id=run_group_id,
+        )
+        case_plan = build_plan(case_args)
+        async with semaphore:
+            try:
+                if isolate_case_processes:
+                    return await _run_batch_case_subprocess(case_args)
+                payload = await async_main(case_args, plan=case_plan)
+                payload["runner_returncode"] = 0
+                return payload
+            except Exception as exc:
+                payload, returncode = _build_runner_exception_closeout_payload(
+                    case_args,
+                    case_plan,
+                    exc,
+                )
+                payload["runner_returncode"] = returncode
+                return payload
+
+    results = await asyncio.gather(
+        *(run_one(index, task_id) for index, task_id in enumerate(selected_task_ids))
+    )
+    returncode = max(int(result.get("runner_returncode") or 0) for result in results)
+    return {
+        "ok": all(result.get("ok") is True for result in results),
+        "batch": True,
+        "task_count": len(selected_task_ids),
+        "parallel_cases": parallel_cases,
+        "case_process_isolation": isolate_case_processes,
+        "run_group_id": run_group_id,
+        "results": results,
+        "runner_returncode": returncode,
+    }
+
+
+def _independent_goal_retry_enabled(args: argparse.Namespace) -> bool:
+    return int(getattr(args, "independent_goal_retries", 1) or 1) > 1
+
+
+def _safe_retry_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
+    return slug or "retry"
+
+
+def _clone_args_for_independent_goal_retry(
+    args: argparse.Namespace,
+    *,
+    attempt_index: int,
+    run_group_id: str,
+    base_job_name: str,
+) -> argparse.Namespace:
+    attempt_number = attempt_index + 1
+    attempt_args = argparse.Namespace(**vars(args))
+    attempt_args.independent_goal_retries = 1
+    attempt_args.task_ids = None
+    attempt_args.parallel_cases = 1
+    attempt_args.run_group_id = run_group_id
+    attempt_args.job_name = f"{base_job_name}-attempt-{attempt_number:02d}"
+    route_slug = _safe_retry_slug(str(args.route).replace("-", "_"))
+    attempt_args.rollout_name = (
+        f"{args.task_id}__{route_slug}_independent_attempt_{attempt_number:02d}"
+    )
+    return attempt_args
+
+
+def _official_reward_from_payload(payload: dict[str, Any]) -> float | None:
+    official_task_score = payload.get("official_task_score")
+    if isinstance(official_task_score, dict):
+        value = official_task_score.get("value")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    value = payload.get("official_score")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _official_success_from_payload(payload: dict[str, Any]) -> bool:
+    official_task_score = payload.get("official_task_score")
+    if isinstance(official_task_score, dict):
+        if official_task_score.get("passed") is True:
+            return True
+    reward = _official_reward_from_payload(payload)
+    return bool(reward is not None and reward >= 1.0)
+
+
+def _terminal_official_nonpassing_from_payload(payload: dict[str, Any]) -> bool:
+    reward = _official_reward_from_payload(payload)
+    if reward is None or _official_success_from_payload(payload):
+        return False
+    return (
+        str(payload.get("score_failure_attribution") or "")
+        in TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS
+    )
+
+
+def _independent_goal_retry_attempt_summary(
+    payload: dict[str, Any],
+    *,
+    attempt_index: int,
+) -> dict[str, Any]:
+    launch_plan = payload.get("launch_plan")
+    if not isinstance(launch_plan, dict):
+        launch_plan = {}
+    official_reward = _official_reward_from_payload(payload)
+    official_success = _official_success_from_payload(payload)
+    terminal_official_nonpassing = _terminal_official_nonpassing_from_payload(payload)
+    summary: dict[str, Any] = {
+        "schema_version": "skillsbench_independent_goal_retry_attempt_v0",
+        "attempt_index": attempt_index,
+        "attempt_number": attempt_index + 1,
+        "ok": payload.get("ok") is True,
+        "runner_returncode": int(payload.get("runner_returncode") or 0),
+        "official_success": official_success,
+        "official_reward": official_reward,
+        "terminal_official_nonpassing": terminal_official_nonpassing,
+        "score_failure_attribution": str(
+            payload.get("score_failure_attribution") or ""
+        ),
+        "raw_stdout_recorded": False,
+        "raw_stderr_recorded": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+    }
+    for key in (
+        "task_id",
+        "route",
+        "run_group_id",
+        "job_name",
+        "rollout_name",
+        "compact_benchmark_run_json",
+        "result_json",
+    ):
+        value = payload.get(key) or launch_plan.get(key)
+        if value:
+            summary[key] = str(value)
+    if not summary.get("compact_benchmark_run_json") and launch_plan.get(
+        "compact_benchmark_run_json"
+    ):
+        summary["compact_benchmark_run_json"] = str(
+            launch_plan.get("compact_benchmark_run_json")
+        )
+    if not summary.get("result_json") and launch_plan.get("result_json"):
+        summary["result_json"] = str(launch_plan.get("result_json"))
+    cleanup = payload.get("host_local_acp_attempt_cleanup")
+    if isinstance(cleanup, dict):
+        summary["host_local_acp_attempt_cleanup"] = {
+            "schema_version": str(
+                cleanup.get("schema_version")
+                or "skillsbench_host_local_acp_attempt_cleanup_v0"
+            )[:120],
+            "requested": cleanup.get("requested") is True,
+            "raw_logs_read": cleanup.get("raw_logs_read") is True,
+            "raw_command_recorded": cleanup.get("raw_command_recorded") is True,
+            "status": str(cleanup.get("status") or "unknown")[:120],
+            "match_count": int(cleanup.get("match_count") or 0),
+            "term_sent_count": int(cleanup.get("term_sent_count") or 0),
+            "kill_sent_count": int(cleanup.get("kill_sent_count") or 0),
+            "alive_after_count": int(cleanup.get("alive_after_count") or 0),
+        }
+    return summary
+
+
+async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[str, Any]:
+    attempt_budget = max(1, int(getattr(args, "independent_goal_retries", 1) or 1))
+    run_group_id = str(
+        args.run_group_id
+        or f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+    )
+    base_job_name = _safe_retry_slug(
+        str(
+            args.job_name
+            or f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+        )
+    )
+    jobs_dir = Path(args.jobs_dir).expanduser()
+    attempts: list[dict[str, Any]] = []
+    success_observed = False
+    first_success_attempt: int | None = None
+    terminal_official_nonpassing_observed = False
+    first_terminal_official_nonpassing_attempt: int | None = None
+
+    for attempt_index in range(attempt_budget):
+        attempt_args = _clone_args_for_independent_goal_retry(
+            args,
+            attempt_index=attempt_index,
+            run_group_id=run_group_id,
+            base_job_name=base_job_name,
+        )
+        attempt_plan = build_plan(attempt_args)
+        attempt_cleanup: dict[str, Any] | None = None
+        try:
+            payload = await async_main(attempt_args, plan=attempt_plan)
+            payload["runner_returncode"] = 0
+        except Exception as exc:
+            attempt_cleanup = cleanup_host_local_acp_attempt_children(attempt_plan)
+            payload, returncode = _build_runner_exception_closeout_payload(
+                attempt_args,
+                attempt_plan,
+                exc,
+            )
+            payload["runner_returncode"] = returncode
+        else:
+            attempt_cleanup = cleanup_host_local_acp_attempt_children(attempt_plan)
+            _write_public_runner_prerequisites(attempt_plan)
+        payload.setdefault("launch_plan", attempt_plan)
+        if attempt_cleanup is not None:
+            payload["host_local_acp_attempt_cleanup"] = attempt_cleanup
+        attempt_summary = _independent_goal_retry_attempt_summary(
+            payload,
+            attempt_index=attempt_index,
+        )
+        attempts.append(attempt_summary)
+        if attempt_summary.get("official_success") is True:
+            success_observed = True
+            first_success_attempt = attempt_index + 1
+            break
+        if attempt_summary.get("terminal_official_nonpassing") is True:
+            terminal_official_nonpassing_observed = True
+            first_terminal_official_nonpassing_attempt = attempt_index + 1
+            break
+
+    if success_observed:
+        stop_reason = "stop_after_first_official_reward_1_without_feedback"
+    elif terminal_official_nonpassing_observed:
+        stop_reason = "stop_after_first_terminal_official_nonpassing_verifier_result"
+    else:
+        stop_reason = "stop_after_independent_goal_retry_budget"
+    observed_rewards = [
+        float(attempt["official_reward"])
+        for attempt in attempts
+        if isinstance(attempt.get("official_reward"), (int, float))
+        and not isinstance(attempt.get("official_reward"), bool)
+    ]
+    best_official_reward = max(observed_rewards) if observed_rewards else None
+    final_official_reward = observed_rewards[-1] if observed_rewards else None
+    retry_summary = {
+        "schema_version": "skillsbench_independent_goal_retry_summary_v0",
+        "ok": success_observed,
+        "independent_goal_retry": True,
+        "task_id": str(args.task_id),
+        "route": str(args.route),
+        "run_group_id": run_group_id,
+        "attempt_budget": attempt_budget,
+        "attempts_started": len(attempts),
+        "attempts_completed": len(attempts),
+        "success_observed": success_observed,
+        "first_success_attempt": first_success_attempt,
+        "terminal_official_nonpassing_observed": (
+            terminal_official_nonpassing_observed
+        ),
+        "first_terminal_official_nonpassing_attempt": (
+            first_terminal_official_nonpassing_attempt
+        ),
+        "best_official_reward": best_official_reward,
+        "final_official_reward": final_official_reward,
+        "official_task_score": {
+            "kind": "skillsbench_independent_goal_retry_best_reward",
+            "value": best_official_reward,
+            "passed": success_observed,
+        },
+        "stop_reason": stop_reason,
+        "fresh_goal_thread_per_attempt": True,
+        "official_reward_feedback_forwarded_to_agent": False,
+        "verifier_output_forwarded_to_agent": False,
+        "reward_feedback_forwarded": False,
+        "raw_task_text_read_into_public_state": False,
+        "raw_trajectory_read_into_public_state": False,
+        "raw_verifier_output_read_into_public_state": False,
+        "attempts": attempts,
+        "runner_returncode": 0 if success_observed else max(
+            int(attempt.get("runner_returncode") or 0) for attempt in attempts
+        ),
+    }
+    summary_path = jobs_dir / base_job_name / "independent_goal_retry_summary.public.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(retry_summary, indent=2, sort_keys=True, default=_json_default)
+        + "\n",
+        encoding="utf-8",
+    )
+    retry_summary["retry_summary_json"] = str(summary_path)
+    return retry_summary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -10530,11 +14777,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
         return 0
+    task_ids = _batch_task_ids(args)
+    batch_mode = len(task_ids) > 1
+    independent_retry_mode = _independent_goal_retry_enabled(args) and not args.plan_only
     if args.run_group_id is None:
         args.run_group_id = (
-            f"skillsbench-{args.task_id}-{args.route}-{_now_stamp()}"
+            f"skillsbench-batch-{args.route}-{_now_stamp()}"
+            if batch_mode
+            else f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+            if independent_retry_mode
+            else f"skillsbench-{args.task_id}-{args.route}-{_now_stamp()}"
         )
-    plan = build_plan(args)
+    plan = None if batch_mode or independent_retry_mode else build_plan(args)
     previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
     def _closeout_sigterm_handler(signum: int, frame: Any) -> None:
@@ -10544,8 +14798,43 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGTERM, _closeout_sigterm_handler)
     try:
-        payload = asyncio.run(async_main(args, plan=plan))
+        if batch_mode:
+            payload = asyncio.run(async_batch_main(args, task_ids=task_ids))
+        elif independent_retry_mode:
+            payload = asyncio.run(async_independent_goal_retry_main(args))
+        else:
+            payload = asyncio.run(async_main(args, plan=plan))
     except (KeyboardInterrupt, SkillsBenchRunnerInterrupted) as exc:
+        if plan is None:
+            if independent_retry_mode:
+                payload = {
+                    "ok": False,
+                    "independent_goal_retry": True,
+                    "task_id": str(args.task_id),
+                    "route": str(args.route),
+                    "attempt_budget": int(args.independent_goal_retries),
+                    "run_group_id": args.run_group_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "compact_closeout_recorded": False,
+                }
+                print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+                return 1
+            payload = {
+                "ok": False,
+                "batch": True,
+                "task_count": len(task_ids),
+                "parallel_cases": min(
+                    max(1, int(args.parallel_cases or 1)),
+                    len(task_ids),
+                ),
+                "run_group_id": args.run_group_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "compact_closeout_recorded": False,
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+            return 1
         payload, returncode = _build_runner_exception_closeout_payload(
             args, plan, exc
         )
@@ -10557,6 +14846,36 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True), file=output_stream)
         return returncode
     except Exception as exc:
+        if plan is None:
+            if independent_retry_mode:
+                payload = {
+                    "ok": False,
+                    "independent_goal_retry": True,
+                    "task_id": str(args.task_id),
+                    "route": str(args.route),
+                    "attempt_budget": int(args.independent_goal_retries),
+                    "run_group_id": args.run_group_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "compact_closeout_recorded": False,
+                }
+                print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+                return 1
+            payload = {
+                "ok": False,
+                "batch": True,
+                "task_count": len(task_ids),
+                "parallel_cases": min(
+                    max(1, int(args.parallel_cases or 1)),
+                    len(task_ids),
+                ),
+                "run_group_id": args.run_group_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "compact_closeout_recorded": False,
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+            return 1
         payload, returncode = _build_runner_exception_closeout_payload(
             args, plan, exc
         )
@@ -10570,7 +14889,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         signal.signal(signal.SIGTERM, previous_sigterm_handler)
     print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
-    return 0
+    return int(payload.get("runner_returncode") or 0)
 
 
 if __name__ == "__main__":

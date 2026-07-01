@@ -17,16 +17,17 @@ not only an apology or a one-off explanation.
    ```bash
    git status --short --branch
    loopx --format json diagnose --goal-id <goal-id>
-   loopx --format json status --limit 20
+   loopx --format json status --goal-id <goal-id> --limit 20
    loopx --format json quota should-run --goal-id <goal-id> [--agent-id <agent-id>]
    loopx --format json history --goal-id <goal-id> --limit 5
    ```
 
-   `status` is intentionally a registry/dashboard view rather than a
-   goal-filtered command; use `diagnose --goal-id` for the goal-specific agent
-   evidence packet. Also inspect the project-local registry and the
-   registry-declared active state file when relevant. Use the shared global
-   registry for heartbeat/quota truth.
+   `status` defaults to the registry/dashboard view, but accepts `--goal-id`
+   when the repair needs one goal-focused projection. Use
+   `diagnose --goal-id` for the richer goal-specific agent reasoning packet.
+   Also inspect the project-local registry and the registry-declared active
+   state file when relevant. Use the shared global registry for heartbeat/quota
+   truth.
 3. **Classify the failure.** Read
    `references/repair-patterns.md` and match the symptoms to a known pattern.
    If no pattern fits, add one after the fix.

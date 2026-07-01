@@ -696,6 +696,39 @@ def _compact_numeric_map(value: Any, *, keys: tuple[str, ...] | None = None) -> 
     return compact
 
 
+def _compact_loopx_command_records(value: Any, *, limit: int = 128) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    allowed_subcommands = {
+        "quota should-run",
+        "todo claim",
+        "todo update",
+        "todo complete",
+        "refresh-state",
+        "quota spend-slot",
+        "status",
+        "diagnose",
+    }
+    records: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        subcommand = public_safe_compact_text(item.get("subcommand"), limit=80)
+        if subcommand not in allowed_subcommands:
+            continue
+        record: dict[str, str] = {"subcommand": subcommand}
+        todo_id = public_safe_compact_text(item.get("todo_id"), limit=100)
+        if todo_id and re.match(r"^todo_[A-Za-z0-9_-]{6,80}$", todo_id):
+            record["todo_id"] = todo_id
+        goal_id = public_safe_compact_text(item.get("goal_id"), limit=140)
+        if goal_id and re.match(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$", goal_id):
+            record["goal_id"] = goal_id
+        records.append(record)
+        if len(records) >= limit:
+            break
+    return records
+
+
 def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -714,6 +747,8 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
         for field in (
             "execution_style",
             "agent_operation_trace_status",
+            "host_local_acp_bridge_progress_status",
+            "host_local_acp_bridge_progress_signal_source",
             "last_decision",
             "recovery_stage",
             "recovery_exception_type",
@@ -729,6 +764,8 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "initialized_before_agent",
             "consumed_by_solver",
             "official_score_passed",
+            "selected_todo_completed_observed",
+            "quota_spend_missing_after_repeated_complete",
         ):
             if isinstance(raw_event.get(field), bool):
                 event[field] = raw_event[field]
@@ -742,6 +779,7 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "trajectory_event_count",
             "trajectory_round_count",
             "trajectory_tool_call_count",
+            "acp_protocol_tool_call_count",
             "agent_bridge_request_count",
             "agent_bridge_task_facing_operation_count",
             "action_decision_count",
@@ -749,6 +787,8 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "followup_prompt_count",
             "stop_decision_count",
             "max_rounds_budget",
+            "host_local_idle_no_task_output_progress_streak",
+            "host_local_idle_no_task_output_progress_streak_threshold",
             "final_round",
             "recovery_delta_events",
             "recovery_delta_tool_calls",
@@ -757,6 +797,11 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
             "todo_closeout_count",
             "refresh_state_count",
             "quota_spend_slot_count",
+            "selected_todo_complete_count",
+            "selected_todo_duplicate_complete_count",
+            "agent_todo_complete_unique_todo_count",
+            "non_selected_todo_complete_count",
+            "todo_complete_without_todo_id_count",
         ):
             raw = raw_event.get(field)
             if isinstance(raw, int) and not isinstance(raw, bool):
@@ -783,6 +828,132 @@ def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
         "event_count": len(events),
         "events": events[:12],
     }
+    return compact
+
+
+def _compact_goal_start_todo_snapshot(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
+    if schema:
+        compact["schema_version"] = schema
+    for field in ("raw_material_recorded",):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "completed_todo_id_count",
+        "selected_todo_complete_count",
+        "selected_todo_duplicate_complete_count",
+        "non_selected_todo_complete_count",
+        "todo_complete_without_todo_id_count",
+    ):
+        raw = value.get(field)
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            compact[field] = max(0, raw)
+    for field in ("selected_p0_todo_id", "todo_identity_attribution"):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
+    if planned_ids:
+        compact["planned_todo_ids"] = planned_ids
+    completed_ids = public_safe_compact_list(value.get("completed_todo_ids"), limit=8)
+    if completed_ids:
+        compact["completed_todo_ids"] = completed_ids
+    planned_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_texts:
+        compact["planned_todo_texts_public_safe"] = planned_texts
+    planned_todos: list[dict[str, Any]] = []
+    source_todos = value.get("planned_todos")
+    if isinstance(source_todos, list):
+        for item in source_todos[:8]:
+            if not isinstance(item, dict):
+                continue
+            todo: dict[str, Any] = {}
+            for field in ("todo_id", "role", "status", "text_public_safe"):
+                text = public_safe_compact_text(item.get(field), limit=180)
+                if text:
+                    todo[field] = text
+            for field in ("claim_count", "update_count", "complete_count"):
+                raw = item.get(field)
+                if isinstance(raw, int) and not isinstance(raw, bool):
+                    todo[field] = max(0, raw)
+            if todo:
+                planned_todos.append(todo)
+    if planned_todos:
+        compact["planned_todos"] = planned_todos
+    return compact
+
+
+def _compact_goal_start_product_mode_control_score(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
+    if schema:
+        compact["schema_version"] = schema
+    for field in (
+        "required",
+        "satisfied",
+        "raw_material_recorded",
+        "goal_start_plan_observed",
+        "planner_before_todo_write",
+        "same_priority_order_preserved",
+        "selected_todo_claimed",
+        "selected_todo_updated_before_solver",
+        "selected_todo_completed_before_spend",
+        "selected_todo_completed_observed",
+        "selected_todo_spend_observed",
+        "non_selected_todos_preserved_open_or_deferred",
+        "quota_spend_missing_after_repeated_complete",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "component_count",
+        "satisfied_component_count",
+        "planned_todo_count",
+        "planned_todo_count_expected",
+        "planned_p0_count",
+        "premature_done_signal_count",
+        "agent_todo_claim_count",
+        "agent_todo_update_count",
+        "agent_todo_complete_count",
+        "agent_todo_complete_unique_todo_count",
+        "selected_todo_complete_count",
+        "selected_todo_duplicate_complete_count",
+        "non_selected_todo_complete_count",
+        "todo_complete_without_todo_id_count",
+        "agent_quota_spend_slot_count",
+        "driver_todo_claim_count",
+        "driver_todo_update_count",
+    ):
+        raw = value.get(field)
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            compact[field] = max(0, raw)
+    score = value.get("score")
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        compact["score"] = float(score)
+    for field in ("selected_p0_todo_id", "premature_done_stop_reason"):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    planned_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
+    if planned_ids:
+        compact["planned_todo_ids"] = planned_ids
+    planned_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_texts:
+        compact["planned_todo_texts_public_safe"] = planned_texts
+    snapshot = _compact_goal_start_todo_snapshot(value.get("goal_start_todo_snapshot"))
+    if snapshot:
+        compact["goal_start_todo_snapshot"] = snapshot
     return compact
 
 
@@ -836,6 +1007,11 @@ def build_skillsbench_post_run_debug_gate(
     runner_failure = (
         run.get("runner_failure")
         if isinstance(run.get("runner_failure"), dict)
+        else {}
+    )
+    verifier_artifact_recovery = (
+        run.get("verifier_reward_artifact_recovery")
+        if isinstance(run.get("verifier_reward_artifact_recovery"), dict)
         else {}
     )
     events = _benchmark_case_timeline_events_by_name(timeline)
@@ -909,6 +1085,13 @@ def build_skillsbench_post_run_debug_gate(
         "user_loop_recovery_triggered",
         "runner_failure_recorded",
     }
+    verifier_artifact_success = bool(
+        verifier_artifact_recovery.get("passed") is True
+        and (
+            verifier_artifact_recovery.get("status")
+            == "official_score_recovered_from_verifier_reward_artifact"
+        )
+    )
     lifecycle_required = lifecycle.get("required") is True or product_mode_required
     lifecycle_state_read_count = _benchmark_positive_int(
         lifecycle.get("state_read_count")
@@ -932,11 +1115,18 @@ def build_skillsbench_post_run_debug_gate(
         lifecycle_satisfied is True or timeline_lifecycle_satisfied
     )
     case_closeout_complete = bool(
-        not missing_fields
-        and (not lifecycle_required or effective_lifecycle_satisfied)
-        and official_status not in {"unknown", ""}
-        and not agent_operation_trace_missing
-        and not (official_status == "missing" and runner_recovery_blocked)
+        (
+            not missing_fields
+            and official_passed is True
+            and verifier_artifact_success
+        )
+        or (
+            not missing_fields
+            and (not lifecycle_required or effective_lifecycle_satisfied)
+            and official_status not in {"unknown", ""}
+            and not agent_operation_trace_missing
+            and not (official_status == "missing" and runner_recovery_blocked)
+        )
     )
 
     first_blocker = "none"
@@ -944,8 +1134,12 @@ def build_skillsbench_post_run_debug_gate(
     if missing_fields:
         attribution_layer = "incomplete_public_debug_packet"
         first_blocker = missing_fields[0]
-    elif lifecycle_required and (
+    elif (
+        lifecycle_required
+        and not verifier_artifact_success
+        and (
         not effective_lifecycle_satisfied or agent_operation_trace_missing
+        )
     ):
         attribution_layer = "loopx_lifecycle"
         first_blocker = public_safe_compact_text(
@@ -1024,6 +1218,7 @@ def build_skillsbench_post_run_debug_gate(
         "raw_material_recorded": False,
         "missing_field_count": len(missing_fields),
         "missing_fields": missing_fields[:MAX_BENCHMARK_RUN_LIST_ITEMS],
+        "verifier_artifact_recovery_authoritative": verifier_artifact_success,
         "scorer_verifier": {
             "official_score_status": official_status,
             "official_score_passed": (
@@ -1068,9 +1263,53 @@ def build_skillsbench_post_run_debug_gate(
                 in {"passed", "satisfied", "not_required"}
             ),
             "task_facing_activity_status": activity_status,
+            "host_local_acp_bridge_progress_status": (
+                public_safe_compact_text(
+                    activity_event.get("host_local_acp_bridge_progress_status"),
+                    limit=140,
+                )
+                or public_safe_compact_text(
+                    counters.get("host_local_acp_bridge_progress_status"),
+                    limit=140,
+                )
+                or "unknown"
+            ),
+            "host_local_acp_bridge_progress_signal_source": (
+                public_safe_compact_text(
+                    activity_event.get("host_local_acp_bridge_progress_signal_source"),
+                    limit=140,
+                )
+                or public_safe_compact_text(
+                    counters.get("host_local_acp_bridge_progress_signal_source"),
+                    limit=140,
+                )
+                or "unknown"
+            ),
+            "acp_protocol_tool_call_count": _benchmark_positive_int(
+                activity_event.get("acp_protocol_tool_call_count")
+            )
+            or _benchmark_positive_int(counters.get("private_trajectory_tool_call_count")),
+            "agent_bridge_task_facing_operation_count": _benchmark_positive_int(
+                activity_event.get("agent_bridge_task_facing_operation_count")
+            )
+            or _benchmark_positive_int(
+                counters.get("remote_command_file_bridge_agent_task_facing_operation_count")
+            ),
             "open_todo_count_public": _benchmark_positive_int(
                 counters.get("open_todo_count")
             ),
+            "host_local_idle_no_task_output_progress_streak": _benchmark_positive_int(
+                counters.get("product_mode_host_local_idle_no_task_output_progress_streak")
+            ),
+            "host_local_idle_no_task_output_progress_streak_threshold": _benchmark_positive_int(
+                counters.get(
+                    "product_mode_host_local_idle_no_task_output_progress_streak_threshold"
+                )
+            ),
+            "host_local_idle_no_task_output_progress_stop": counters.get(
+                "product_mode_host_local_idle_no_task_output_progress_stop"
+            )
+            is True,
             "no_open_todo_below_passing_reward_streak": _benchmark_positive_int(
                 counters.get(
                     "product_mode_no_open_todo_below_passing_reward_streak"
@@ -1163,13 +1402,18 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "curated_skills_visible",
         "product_mode",
         "goal_start_product_mode",
+        "verifier_failure_feedback_todo_route",
+        "verifier_failure_feedback_forwarded_to_agent",
+        "verifier_failure_todo_required",
         "goal_start_plan_observed",
         "planner_before_todo_write",
         "same_priority_order_preserved",
         "selected_todo_claimed",
         "selected_todo_updated_before_solver",
         "selected_todo_completed_before_spend",
+        "selected_todo_completed_observed",
         "non_selected_todos_preserved_open_or_deferred",
+        "quota_spend_missing_after_repeated_complete",
         "blind_loop",
         "case_goal_state_packet_present",
         "case_goal_state_init_required",
@@ -1180,6 +1424,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_solver_activity_gap",
         "product_mode_declared_done_below_passing_reward",
         "product_mode_no_open_todo_below_passing_reward_stop",
+        "product_mode_host_local_idle_no_task_output_progress",
+        "product_mode_host_local_idle_no_task_output_progress_stop",
         "product_mode_final_closeout_superseded_by_official_success",
         "product_mode_no_tool_call_lifecycle_abort",
         "agent_declared_done",
@@ -1240,12 +1486,19 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "declared_done_round",
         "planned_todo_count",
         "planned_p0_count",
+        "agent_todo_complete_unique_todo_count",
+        "selected_todo_complete_count",
+        "selected_todo_duplicate_complete_count",
+        "non_selected_todo_complete_count",
+        "todo_complete_without_todo_id_count",
         "product_mode_lifecycle_checkpoint_count",
         "product_mode_lifecycle_checkpoint_round",
         "product_mode_solver_activity_gap_count",
         "product_mode_solver_activity_gap_round",
         "product_mode_declared_done_below_passing_reward_count",
         "product_mode_declared_done_below_passing_reward_round",
+        "verifier_failure_feedback_todo_prompt_count",
+        "verifier_failure_feedback_todo_round",
         "open_todo_count",
         "product_mode_no_open_todo_below_passing_reward_streak",
         "product_mode_no_open_todo_below_passing_reward_streak_threshold",
@@ -1253,11 +1506,21 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_no_open_todo_below_passing_reward_stop_count",
         "product_mode_no_open_todo_below_passing_reward_stop_round",
         "product_mode_no_open_todo_below_passing_reward_open_todo_count_public",
+        "product_mode_host_local_idle_no_task_output_progress_streak",
+        "product_mode_host_local_idle_no_task_output_progress_streak_threshold",
+        "product_mode_host_local_idle_no_task_output_progress_round",
+        "product_mode_host_local_idle_no_task_output_progress_stop_count",
+        "product_mode_host_local_idle_no_task_output_progress_stop_round",
+        "product_mode_host_local_idle_no_task_output_progress_last_failure_trace_count",
+        "product_mode_host_local_idle_no_task_output_progress_acp_tool_calls",
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_ops",
+        "product_mode_host_local_idle_no_task_output_progress_bridge_task_successes",
         "product_mode_final_closeout_superseded_round",
         "product_mode_no_tool_call_lifecycle_abort_count",
         "product_mode_no_tool_call_lifecycle_abort_round",
         "controller_verifier_feedback_observation_count",
         "controller_official_feedback_blinded_count",
+        "controller_official_feedback_forwarded_count",
         "controller_max_rounds_budget",
         "benchflow_user_loop_recovery_round",
         "benchflow_user_loop_recovery_delta_events",
@@ -1313,6 +1576,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -1327,6 +1592,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_agent_refresh_state_count",
         "remote_command_file_bridge_agent_quota_spend_slot_count",
         "remote_command_file_bridge_agent_task_facing_operation_count",
+        "remote_command_file_bridge_agent_task_facing_success_count",
+        "remote_command_file_bridge_agent_task_facing_failure_count",
         "remote_command_file_bridge_driver_lifecycle_trace_count",
         "remote_command_file_bridge_driver_lifecycle_checkpoint_count",
         "remote_command_file_bridge_driver_lifecycle_request_count",
@@ -1342,6 +1609,7 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     for field in (
         "product_mode_declared_done_below_passing_reward_score",
         "product_mode_no_open_todo_below_passing_reward_score",
+        "product_mode_host_local_idle_no_task_output_progress_score",
     ):
         raw = value.get(field)
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
@@ -1358,6 +1626,9 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "product_mode_solver_activity_missing_reason",
         "product_mode_declared_done_below_passing_reward_score_status",
         "product_mode_no_open_todo_below_passing_reward_score_status",
+        "product_mode_host_local_idle_no_task_output_progress_score_status",
+        "product_mode_host_local_idle_no_task_output_progress_category",
+        "product_mode_host_local_idle_no_task_output_progress_policy",
         "product_mode_declared_done_policy",
         "product_mode_final_closeout_superseded_reason",
         "controller_budget_cutoff_reason",
@@ -1371,6 +1642,8 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_consumption_decision",
         "remote_command_file_bridge_driver_lifecycle_execution_style",
         "host_local_acp_codex_exec_failure_category",
+        "host_local_acp_bridge_progress_status",
+        "host_local_acp_bridge_progress_signal_source",
         "last_decision",
         "worker_submit_eligible_mismatch_reason",
         "worker_bridge_writeback_loss_reason",
@@ -1409,6 +1682,25 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
     )
     if selected_p0_todo_id:
         compact["selected_p0_todo_id"] = selected_p0_todo_id
+    planned_todo_ids = public_safe_compact_list(
+        value.get("planned_todo_ids"),
+        limit=8,
+    )
+    if planned_todo_ids:
+        compact["planned_todo_ids"] = planned_todo_ids
+    planned_todo_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_todo_texts:
+        compact["planned_todo_texts_public_safe"] = planned_todo_texts
+    command_records = _compact_loopx_command_records(
+        value.get("remote_command_file_bridge_agent_successful_loopx_command_records")
+    )
+    if command_records:
+        compact[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
     raw_loopx_cli_calls = value.get("loopx_cli_calls")
     if isinstance(raw_loopx_cli_calls, dict):
         calls = _compact_numeric_map(raw_loopx_cli_calls)
@@ -1474,6 +1766,7 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
         "agent_operation_trace_missing",
         "orchestrated_driver_lifecycle_satisfied",
         "orchestrated_driver_counts_as_product_mode",
+        "quota_spend_missing_after_repeated_complete",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -1505,6 +1798,45 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
     if execution_style:
         compact["execution_style"] = execution_style
     _normalize_product_mode_lifecycle_contract(compact)
+    return compact
+
+
+def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    schema = public_safe_compact_text(value.get("schema_version"), limit=100)
+    if schema:
+        compact["schema_version"] = schema
+    for field in ("required", "countable_baseline"):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in (
+        "trace_count",
+        "ok_count",
+        "goal_get_count",
+        "turn_start_count",
+        "assistant_message_present_count",
+        "first_action_observed_count",
+        "effective_action_observed_count",
+        "failure_trace_count",
+        "bridge_task_facing_operation_count",
+        "bridge_task_facing_success_count",
+    ):
+        field_value = value.get(field)
+        if isinstance(field_value, int) and not isinstance(field_value, bool):
+            compact[field] = field_value
+    for field in (
+        "countability_source",
+        "trace_status",
+        "failure_category",
+        "first_blocker",
+        "failure_label",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
     return compact
 
 
@@ -1912,6 +2244,13 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
         "benchflow_intermediate_soft_verify_orphan_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
+        "codex_api_egress_preflight_status",
+        "codex_api_egress_preflight_error_kind",
+        "codex_api_egress_mode_requested",
+        "codex_api_egress_mode_resolved",
+        "codex_api_reverse_tunnel_proxy_source",
+        "codex_api_reverse_tunnel_proxy_scheme",
+        "codex_api_reverse_tunnel_proxy_endpoint_kind",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
         "remote_command_file_bridge_driver_lifecycle_execution_style",
@@ -1971,6 +2310,9 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "goal_start_product_mode",
         "goal_start_plan_required",
         "goal_start_selected_p0_lifecycle_required",
+        "verifier_failure_feedback_todo_route",
+        "verifier_failure_feedback_forwarded_to_agent",
+        "verifier_failure_todo_required",
         "benchflow_verifier_prep_timeout_override_enabled",
         "benchflow_verifier_prep_timeout_raw_command_recorded",
         "benchflow_final_verifier_timeout_enabled",
@@ -1987,6 +2329,11 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_raw_logs_read",
         "benchflow_setup_stall_before_agent_lifecycle",
         "benchflow_agent_install_started",
+        "codex_api_egress_preflight_required",
+        "codex_api_egress_preflight_ready",
+        "codex_api_reverse_tunnel_required",
+        "codex_api_reverse_tunnel_proxy_configured",
+        "codex_api_reverse_tunnel_proxy_url_recorded",
         "benchflow_setup_stall_task_cancel_requested",
         "benchflow_setup_stall_task_cancel_acknowledged",
         "benchflow_setup_stall_task_cancel_timeout",
@@ -2024,6 +2371,7 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_verify_prep_timeout_override_count",
         "benchflow_soft_verify_prep_timeout_override_count",
         "benchflow_setup_stall_timeout_sec",
+        "codex_api_reverse_tunnel_proxy_endpoint_port",
         "benchflow_setup_stall_cleanup_match_count",
         "benchflow_setup_stall_cleanup_term_sent_count",
         "benchflow_setup_stall_cleanup_kill_sent_count",
@@ -2064,6 +2412,22 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
         calls = _compact_numeric_map(value.get(field))
         if calls:
             compact[field] = calls
+    planned_todo_ids = public_safe_compact_list(value.get("planned_todo_ids"), limit=8)
+    if planned_todo_ids:
+        compact["planned_todo_ids"] = planned_todo_ids
+    planned_todo_texts = public_safe_compact_list(
+        value.get("planned_todo_texts_public_safe"),
+        limit=8,
+    )
+    if planned_todo_texts:
+        compact["planned_todo_texts_public_safe"] = planned_todo_texts
+    command_records = _compact_loopx_command_records(
+        value.get("remote_command_file_bridge_agent_successful_loopx_command_records")
+    )
+    if command_records:
+        compact[
+            "remote_command_file_bridge_agent_successful_loopx_command_records"
+        ] = command_records
     return compact
 
 
@@ -2081,10 +2445,20 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
         "verifier_bootstrap_risk_preflight_blocked",
+        "verifier_bootstrap_fail_fast_defaulted",
         "app_skills_mount_patch_applied",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
@@ -2092,6 +2466,18 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    for field in (
+        "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
+        "verifier_uv_bootstrap_version",
+        "verifier_uv_bootstrap_mirror_host",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=180)
+        if text:
+            compact[field] = text
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
 
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
@@ -2135,6 +2521,8 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
         "verifier_present",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
@@ -2145,9 +2533,16 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
+    text = public_safe_compact_text(
+        value.get("verifier_uv_bootstrap_version"),
+        limit=180,
+    )
+    if text:
+        compact["verifier_uv_bootstrap_version"] = text
     nearest_task_ids = public_safe_compact_list(
         value.get("nearest_canonical_task_ids"),
         limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
@@ -2160,6 +2555,12 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
     )
     if verifier_risk_categories:
         compact["verifier_bootstrap_risk_categories"] = verifier_risk_categories
+    bootstrap_light_blocking_fields = public_safe_compact_list(
+        value.get("bootstrap_light_blocking_fields"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if bootstrap_light_blocking_fields:
+        compact["bootstrap_light_blocking_fields"] = bootstrap_light_blocking_fields
     return compact
 
 
@@ -2195,6 +2596,9 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "runner_launch_preflight_passed",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_mirror_patch_required",
+        "verifier_uv_bootstrap_mirror_patch_applied",
         "staged_task_prepared",
         "task_skills_removed",
         "codex_acp_runtime_tools_patch_applied",
@@ -2224,6 +2628,41 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     )
     if patterns:
         compact["fingerprint_matched_patterns"] = patterns
+    return compact
+
+
+def _compact_benchmark_result_discovery(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "status",
+        "selection_policy",
+        "tie_breaker",
+        "selected_relative_to_root",
+        "selected_relative_to_job",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=180)
+        if text:
+            compact[field] = text
+    for field in (
+        "candidate_count",
+        "matched_candidate_count",
+        "top_score_candidate_count",
+    ):
+        if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    for field in ("raw_logs_read", "raw_task_text_read", "raw_trajectory_read"):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+    reasons = public_safe_compact_list(
+        value.get("selection_reasons"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if reasons:
+        compact["selection_reasons"] = reasons
     return compact
 
 
@@ -3278,6 +3717,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -3372,6 +3813,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+    result_discovery = _compact_benchmark_result_discovery(
+        source.get("result_discovery")
+    )
+    if result_discovery:
+        compact["result_discovery"] = result_discovery
     task_setup_preflight = _compact_benchmark_task_setup_preflight(
         source.get("task_setup_preflight")
     )
@@ -3526,6 +3972,36 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
                     compact_recovery[field] = user_loop_recovery[field]
             if compact_recovery:
                 compact_runner_failure["user_loop_recovery"] = compact_recovery
+        native_goal_worker = runner_failure.get("native_goal_worker")
+        if isinstance(native_goal_worker, dict):
+            compact_native_worker: dict[str, Any] = {}
+            for field in (
+                "schema_version",
+                "trace_status",
+                "failure_label",
+                "failure_category",
+                "first_blocker",
+            ):
+                value = public_safe_compact_text(
+                    native_goal_worker.get(field),
+                    limit=140,
+                )
+                if value:
+                    compact_native_worker[field] = value
+            for field in (
+                "trace_count",
+            ):
+                value = native_goal_worker.get(field)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    compact_native_worker[field] = value
+            for field in (
+                "raw_transcript_recorded",
+                "raw_assistant_message_recorded",
+            ):
+                if isinstance(native_goal_worker.get(field), bool):
+                    compact_native_worker[field] = native_goal_worker[field]
+            if compact_native_worker:
+                compact_runner_failure["native_goal_worker"] = compact_native_worker
         if compact_runner_failure:
             compact["runner_failure"] = compact_runner_failure
 
@@ -3597,6 +4073,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if interaction_counters:
         compact["interaction_counters"] = interaction_counters
 
+    goal_start_control_score = _compact_goal_start_product_mode_control_score(
+        source.get("goal_start_product_mode_control_score")
+    )
+    if goal_start_control_score:
+        compact["goal_start_product_mode_control_score"] = goal_start_control_score
+
     round_reward_trace = _compact_benchmark_round_reward_trace(
         source.get("round_reward_trace")
     )
@@ -3621,6 +4103,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     if product_mode_lifecycle_contract:
         compact["product_mode_lifecycle_contract"] = product_mode_lifecycle_contract
         _repair_product_mode_lifecycle_missing_attribution(compact)
+
+    native_goal_worker_contract = _compact_native_goal_worker_contract(
+        source.get("native_goal_worker_contract")
+    )
+    if native_goal_worker_contract:
+        compact["native_goal_worker_contract"] = native_goal_worker_contract
 
     case_event_timeline = _compact_benchmark_case_event_timeline(
         source.get("case_event_timeline")
@@ -3728,6 +4216,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "case_success_claim_kind",
             "official_verifier_status",
             "native_goal_worker_trace_status",
+            "native_goal_worker_failure_category",
+            "native_goal_worker_first_blocker",
         ):
             text = public_safe_compact_text(validation.get(field), limit=140)
             if text:
@@ -3736,6 +4226,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "native_goal_worker_trace_count",
             "native_goal_worker_lifecycle_trace_count",
             "native_goal_worker_prompt_received_count",
+            "native_goal_worker_first_action_observed_count",
+            "native_goal_worker_effective_action_observed_count",
         ):
             value = validation.get(field)
             if isinstance(value, int) and not isinstance(value, bool):
@@ -3818,6 +4310,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "native_goal_worker_trace_dir_present",
             "native_goal_worker_public_trace_read",
             "native_goal_worker_trace_observed",
+            "native_goal_worker_countable_baseline",
             "runner_failure_compact_recorded",
             "no_raw_logs_read",
             "no_raw_task_text_read",
@@ -5531,6 +6024,7 @@ def compact_todo_group(
     role: str | None = None,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any] | None:
     if not items:
         return None
@@ -5661,7 +6155,7 @@ def compact_todo_group(
             for item in projected_deferred_items
             if item.get("resume_ready") is True
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
-        "items": budgeted_items[:MAX_STATUS_TODOS_PER_ROLE],
+        "items": budgeted_items if item_limit is None else budgeted_items[:item_limit],
     }
     handoff_gates = build_todo_handoff_gate_states(items)
     if handoff_gates:
@@ -5721,6 +6215,7 @@ def parse_active_state_todos(
     state_path: Path | None = None,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any]:
     role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
@@ -5771,6 +6266,7 @@ def parse_active_state_todos(
         role="user",
         preferred_todo_ids=preferred_todo_ids,
         rollout_events=rollout_events,
+        item_limit=item_limit,
     )
     agent = compact_todo_group(
         items["agent"],
@@ -5778,6 +6274,7 @@ def parse_active_state_todos(
         role="agent",
         preferred_todo_ids=preferred_todo_ids,
         rollout_events=rollout_events,
+        item_limit=item_limit,
     )
     if user:
         result["user_todos"] = user
@@ -5811,6 +6308,7 @@ def active_state_event_projection_fields(
     state_path: Path,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any]:
     goal_id = str(goal.get("id") or "").strip()
     for event_log_path in state_event_log_candidates(goal, state_path=state_path):
@@ -5828,6 +6326,7 @@ def active_state_event_projection_fields(
                 state_path=state_path,
                 preferred_todo_ids=preferred_todo_ids,
                 rollout_events=rollout_events,
+                item_limit=item_limit,
             )
         except (OSError, StateEventError) as exc:
             return {
@@ -8793,6 +9292,7 @@ def build_attention_queue(
     global_registry: dict[str, Any],
     runtime_root: Path | None = None,
     include_task_graph: bool = False,
+    goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
     health_items: list[dict[str, Any]] = []
     history_items: list[dict[str, Any]] = []
@@ -9006,6 +9506,14 @@ def build_attention_queue(
         if finding.get("severity") not in {"high", "action"}:
             continue
         goal_id = str(finding.get("goal_id") or "global-registry")
+        if goal_id_filter:
+            finding_goal_ids = [
+                str(item)
+                for item in (finding.get("goal_ids") or [])
+                if str(item or "").strip()
+            ]
+            if goal_id != goal_id_filter and goal_id_filter not in finding_goal_ids:
+                continue
         live_items = live_quota_items_by_goal.get(goal_id, [])
         if finding.get("kind") in SOURCE_REGISTRY_SHADOW_FINDINGS and live_items:
             for item in live_items:
@@ -9039,6 +9547,9 @@ def build_attention_queue(
         "watching_monitor": sum(1 for item in items if item["waiting_on"] == MONITOR_SIGNAL_WAITING_ON),
         "items": items,
     }
+    if goal_id_filter:
+        queue["goal_filter"] = goal_id_filter
+        queue["goal_filter_applied"] = True
     if backlog_candidates:
         queue["autonomous_backlog_candidates"] = backlog_candidates
     if monitor_candidates:
@@ -9428,6 +9939,7 @@ def build_promotion_readiness_summary(
     history: dict[str, Any],
     *,
     runtime_root: Path | None = None,
+    goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
     latest: dict[str, Any] | None = None
     latest_at: datetime | None = None
@@ -9448,7 +9960,10 @@ def build_promotion_readiness_summary(
             latest = run
 
     if latest is None and runtime_root is not None:
-        full_scan_latest = latest_promotion_readiness_event(runtime_root)
+        full_scan_latest = latest_promotion_readiness_event(
+            runtime_root,
+            goal_id=goal_id_filter,
+        )
         if full_scan_latest.get("available"):
             latest = full_scan_latest
             source = "run_history_full_scan"
@@ -9868,9 +10383,11 @@ def collect_status(
     scan_roots: list[Path],
     limit: int,
     include_task_graph: bool = False,
+    goal_id: str | None = None,
 ) -> dict[str, Any]:
     display_limit = max(0, limit)
     control_plane_limit = max(display_limit, STATUS_CONTROL_PLANE_CONTEXT_LIMIT)
+    goal_filter = str(goal_id or "").strip() or None
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
     global_registry = collect_global_registry_health(
@@ -9882,7 +10399,7 @@ def collect_status(
     history = collect_history(
         registry_path=registry_path,
         runtime_root=runtime_root,
-        goal_id=None,
+        goal_id=goal_filter,
         limit=control_plane_limit,
         include_runtime_goals=include_runtime_goals,
     )
@@ -9898,12 +10415,14 @@ def collect_status(
         global_registry=global_registry,
         runtime_root=runtime_root,
         include_task_graph=include_task_graph,
+        goal_id_filter=goal_filter,
     )
     run_history = build_run_history(history, display_limit=display_limit)
     event_ledger_summary = build_event_ledger_summary(history)
     promotion_readiness_summary = build_promotion_readiness_summary(
         history,
         runtime_root=runtime_root,
+        goal_id_filter=goal_filter,
     )
     promotion_gate = build_promotion_gate(
         registry_path=registry_path,
@@ -9924,6 +10443,7 @@ def collect_status(
         "goal_count": history.get("goal_count"),
         "run_count": history.get("run_count"),
         "status_contract": build_status_contract(),
+        "goal_filter": goal_filter,
         "contract": {
             "ok": contract.get("ok"),
             "summary": contract.get("summary"),
@@ -9966,6 +10486,8 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             f"minimum_dashboard_schema_version={status_contract.get('minimum_dashboard_schema_version')}, "
             f"producer={status_contract.get('producer')}"
         )
+    if payload.get("goal_filter"):
+        lines.append(f"- goal_filter: `{payload.get('goal_filter')}`")
 
     contract = payload.get("contract") if isinstance(payload.get("contract"), dict) else {}
     summary = contract.get("summary") if isinstance(contract.get("summary"), dict) else {}

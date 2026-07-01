@@ -72,20 +72,38 @@ assert(
     "experimental_only_not_first_screen_without_owner_review",
   "auto-research board first-screen policy",
 );
+const autoResearchClaimBoundary = autoResearchBoard.claim_boundary;
+assert(
+  autoResearchClaimBoundary.schema_version === "auto_research_public_claim_boundary_v0",
+  "auto-research board claim-boundary schema",
+);
+assert(autoResearchClaimBoundary.live_claim_scope === "dev_only", "auto-research board dev-only claim scope");
+assert(autoResearchClaimBoundary.holdout_claim_allowed === false, "auto-research board blocks holdout claims");
+assert(autoResearchClaimBoundary.promotion_claim_allowed === false, "auto-research board blocks promotion claims");
+assert(autoResearchClaimBoundary.first_screen_claim_allowed === false, "auto-research board blocks first-screen claims");
 assert(autoResearchBoard.lane_contract.topology === "decentralized", "auto-research decentralized topology");
 assert(autoResearchBoard.value_metrics.length >= 4, "auto-research board must expose user-value metrics");
 assert(
-  autoResearchBoard.evidence_graph.best_holdout_metric > autoResearchBoard.evidence_graph.metric.baseline,
-  "auto-research board must surface held-out improvement",
+  autoResearchBoard.evidence_graph.best_holdout_metric === null,
+  "auto-research board must not surface unauthorized held-out improvement",
 );
 assert(
-  autoResearchBoard.decision_candidates.promotion_candidates.length >= 1,
-  "auto-research board promotion candidate",
+  autoResearchBoard.decision_candidates.promotion_candidates.length === 0,
+  "auto-research board must not expose unauthorized promotion candidates",
 );
 assert(
   autoResearchBoard.decision_candidates.retirement_candidates.length >= 1,
   "auto-research board retirement candidate",
 );
+for (const staleClaim of [
+  "Held-out speedup",
+  "4.0x -> 4.5x",
+  "The promotion candidate improves",
+  "promote_after_boundary_scan",
+  "A reproducible speedup that survived the protected holdout gate.",
+]) {
+  excludes(autoResearchBoardSource, staleClaim, `auto-research stale held-out/promotion claim ${staleClaim}`);
+}
 assert(autoResearchBoard.user_gates.length >= 4, "auto-research board user gates");
 for (const gateId of [
   "first_screen_review_gate",

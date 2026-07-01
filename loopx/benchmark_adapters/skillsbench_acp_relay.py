@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
 import selectors
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -29,6 +31,20 @@ from loopx.benchmark_case_state import (
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
+
+
+SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
+SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
+
+
+def _safe_loopx_todo_id(value: object) -> str:
+    text = str(value or "")
+    return text if SAFE_LOOPX_TODO_ID_RE.match(text) else ""
+
+
+def _safe_loopx_goal_id(value: object) -> str:
+    text = str(value or "")
+    return text if SAFE_LOOPX_GOAL_ID_RE.match(text) else ""
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +80,15 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
+
+
+@contextlib.contextmanager
+def _temporary_directory_ignore_cleanup_errors(*, prefix: str):
+    path = tempfile.mkdtemp(prefix=prefix)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def _prompt_requires_bridge_first_action(prompt: str) -> bool:
@@ -189,6 +214,90 @@ def _bridge_summary_has_inflight_operation(path: Path | None) -> bool:
     return starts > completions
 
 
+def _bridge_summary_has_meaningful_agent_progress(
+    path: Path | None,
+    *,
+    allow_loopx_closeout: bool,
+) -> bool:
+    """Return true once the worker has done task work or a real closeout action."""
+
+    if path is None or not path.exists():
+        return False
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    closeout_subcommands = {
+        ("todo", "complete"),
+        ("todo", "update"),
+        ("refresh-state",),
+        ("quota", "spend-slot"),
+    }
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        phase = str(record.get("record_phase") or "").strip().lower()
+        if phase == "complete" and _bridge_operation_record_interrupted(record):
+            continue
+        if record.get("task_facing_operation") is True:
+            return True
+        if allow_loopx_closeout and record.get("loopx_state_write") is True:
+            subcommands = record.get("loopx_subcommands")
+            if isinstance(subcommands, list):
+                key = tuple(str(item) for item in subcommands[:2])
+                if key in closeout_subcommands:
+                    return True
+    return False
+
+
+def _bridge_summary_has_successful_task_file_write(path: Path | None) -> bool:
+    """Return true after the worker successfully writes task-facing files."""
+
+    return _bridge_summary_has_successful_task_operation(path, operation="write_file")
+
+
+def _bridge_summary_has_successful_task_operation(
+    path: Path | None,
+    *,
+    operation: str | None = None,
+) -> bool:
+    """Return true after a successful task-facing bridge operation.
+
+    Some agents create scored outputs via an ``exec`` command rather than the
+    bridge ``write_file`` operation. Treat that as sufficient task-output
+    progress for the quiet closeout watchdog; the verifier remains the source
+    of truth for whether the side effect is correct.
+    """
+
+    if path is None or not path.exists():
+        return False
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        phase = str(record.get("record_phase") or "").strip().lower()
+        if phase != "complete" or _bridge_operation_record_interrupted(record):
+            continue
+        if operation is not None and record.get("operation") != operation:
+            continue
+        if record.get("task_facing_operation") is not True:
+            continue
+        if record.get("success") is True or record.get("returncode") == 0:
+            return True
+    return False
+
+
 def _bridge_operation_record_interrupted(record: dict[str, Any]) -> bool:
     rc = record.get("returncode")
     if isinstance(rc, int) and not isinstance(rc, bool) and rc < 0:
@@ -198,6 +307,25 @@ def _bridge_operation_record_interrupted(record: dict[str, Any]) -> bool:
         "bridge_operation_interrupted",
         "bridge_controller_interrupted",
     }
+
+
+def _prompt_requires_meaningful_bridge_progress(prompt: str, *, route: str) -> bool:
+    text = prompt or ""
+    if "Private bridge command:" not in text:
+        return False
+    if route == "codex-app-server-goal-baseline":
+        return True
+    lowered = text.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "--- task instruction ---",
+            "mandatory product-mode solver checkpoint",
+            "mandatory host-local bridge recovery checkpoint",
+            "must start with either a task-facing sandbox bridge operation",
+            "task-facing validation or repair operation",
+        )
+    )
 
 
 def _codex_exec_failure_category(
@@ -228,9 +356,20 @@ def _codex_exec_failure_category(
             "invalid",
             "does not exist",
             "unavailable",
+            "not supported",
         )
     ):
         return "codex_model_unavailable"
+    if "codex/responses" in text and any(
+        token in text
+        for token in (
+            "failed to connect to websocket",
+            "stream disconnected before completion",
+            "error sending request",
+            "connection refused",
+        )
+    ):
+        return "codex_responses_stream_unavailable"
     if any(
         token in text
         for token in (
@@ -262,6 +401,8 @@ def _codex_exec_failure_category(
         return "codex_usage_limit"
     if "codex_exec_first_action_timeout" in text:
         return "codex_exec_first_action_timeout"
+    if "codex_exec_task_output_quiet_timeout" in text:
+        return "codex_exec_task_output_quiet_timeout"
     if "codex_exec_bridge_idle_timeout" in text:
         return "codex_exec_bridge_idle_timeout"
     if "unexpected argument" in text or "unrecognized option" in text:
@@ -291,8 +432,38 @@ def _codex_exec_failure_category(
 
 RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES = {
     "codex_exec_first_action_timeout",
+    "codex_exec_task_output_quiet_timeout",
     "codex_exec_bridge_idle_timeout",
 }
+
+
+def _prompt_with_app_server_closeout_instruction(prompt_text: str) -> str:
+    """Ask native Goal workers to end promptly after scored output exists."""
+
+    return (
+        prompt_text.rstrip()
+        + "\n\n"
+        + "Native Codex Goal worker closeout contract:\n"
+        + "- Solve the task using only the available benchmark workspace or the "
+        + "private bridge packet above.\n"
+        + "- SkillsBench scores relative task output file names from `/root`. "
+        + "If the task asks for `report.json`, `answer.json`, or another "
+        + "relative output file, write and self-check `/root/<name>`; an "
+        + "`/app/<name>` working copy alone is not a scored output.\n"
+        + "- Before writing the final scored output for optimization, "
+        + "scheduling, allocation, routing, planning, or data-processing "
+        + "tasks, run a task-derived quality self-check using only visible "
+        + "task instructions and workspace data: validate hard constraints, "
+        + "compute or estimate the visible objective when the task defines "
+        + "one, compare at least one simple alternative or repair pass when "
+        + "feasible, and only then write the final `/root` output. Do not "
+        + "use official verifier/reward/pass-fail output, hidden tests, "
+        + "gold answers, or external benchmark feedback for this self-check.\n"
+        + "- After the task-required scored output file is written, immediately "
+        + "end the turn with one short confirmation.\n"
+        + "- Do not keep optimizing, narrating, or rechecking after the scored "
+        + "output exists unless the task explicitly requires more work.\n"
+    )
 
 
 def _recoverable_codex_turn_failure_message(category: str) -> str:
@@ -339,12 +510,16 @@ class CodexExecConfig:
     app_server_goal_worker: bool = False
     dataset: str = "skillsbench-v1.1"
     task_id: str = "llm-prefix-cache-replay"
+    run_group_id: str = ""
+    job_name: str = ""
+    rollout_name: str = ""
     approval_policy: str = "never"
     response_timeout_sec: float = 30.0
     worker_script: str | None = None
     stream_heartbeat_interval_sec: float = 120.0
     first_action_timeout_sec: float = 0.0
     bridge_idle_timeout_sec: float = 0.0
+    task_output_quiet_timeout_sec: float = 0.0
     reasoning_effort: str | None = "high"
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
@@ -605,6 +780,24 @@ class SkillsBenchLocalAcpRelay:
                             time.monotonic()
                             + max(1.0, self._config.first_action_timeout_sec)
                         )
+                    meaningful_progress_deadline = 0.0
+                    meaningful_progress_seen = False
+                    meaningful_progress_required = (
+                        bridge_summary_path is not None
+                        and self._config.first_action_timeout_sec > 0
+                        and _prompt_requires_meaningful_bridge_progress(
+                            prompt_for_codex,
+                            route=self._config.route,
+                        )
+                    )
+                    allow_loopx_closeout_progress = self._config.route.startswith(
+                        "loopx-"
+                    )
+                    if meaningful_progress_required:
+                        meaningful_progress_deadline = (
+                            time.monotonic()
+                            + max(1.0, self._config.first_action_timeout_sec)
+                        )
                     first_action_seen = not bool(first_action_deadline)
                     bridge_idle_timeout_sec = max(
                         0.0,
@@ -636,6 +829,15 @@ class SkillsBenchLocalAcpRelay:
                                 and current_bridge_summary_size > 0
                             ):
                                 first_action_seen = True
+                            if not meaningful_progress_seen:
+                                meaningful_progress_seen = (
+                                    _bridge_summary_has_meaningful_agent_progress(
+                                        bridge_summary_path,
+                                        allow_loopx_closeout=(
+                                            allow_loopx_closeout_progress
+                                        ),
+                                    )
+                                )
                         if (
                             not first_action_seen
                             and first_action_deadline
@@ -648,6 +850,33 @@ class SkillsBenchLocalAcpRelay:
                                 )
                             self._publish_codex_exec_failure_trace(
                                 stage="first_action_timeout",
+                                returncode=124,
+                                stdout_text="",
+                                stderr_text="codex_exec_first_action_timeout\n",
+                                final_message_present=output_path.exists(),
+                                final_message_bytes=(
+                                    output_path.stat().st_size
+                                    if output_path.exists()
+                                    else 0
+                                ),
+                                failure_category="codex_exec_first_action_timeout",
+                            )
+                            return _recoverable_codex_turn_failure_message(
+                                "codex_exec_first_action_timeout"
+                            )
+                        if (
+                            meaningful_progress_required
+                            and not meaningful_progress_seen
+                            and meaningful_progress_deadline
+                            and now >= meaningful_progress_deadline
+                        ):
+                            self._terminate_codex_process(proc)
+                            if bridge_summary_path is not None:
+                                self._publish_remote_bridge_agent_operations_trace(
+                                    bridge_summary_path=bridge_summary_path,
+                                )
+                            self._publish_codex_exec_failure_trace(
+                                stage="meaningful_bridge_progress_timeout",
                                 returncode=124,
                                 stdout_text="",
                                 stderr_text="codex_exec_first_action_timeout\n",
@@ -1251,6 +1480,32 @@ def loopx_subcommands(command: str) -> list[str]:
                 break
     return out
 
+SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{{6,80}}$")
+SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{{0,120}}$")
+
+def loopx_public_fields(command: str) -> dict[str, str]:
+    try:
+        tokens = shlex.split(command or "")
+    except ValueError:
+        tokens = (command or "").split()
+    fields: dict[str, str] = {{}}
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        name = token
+        value = ""
+        if token.startswith("--") and "=" in token:
+            name, value = token.split("=", 1)
+        elif token in {{"--goal-id", "--todo-id"}} and i + 1 < len(tokens):
+            value = tokens[i + 1]
+            i += 1
+        if name == "--todo-id" and SAFE_LOOPX_TODO_ID_RE.match(value or ""):
+            fields["loopx_todo_id"] = value
+        elif name == "--goal-id" and SAFE_LOOPX_GOAL_ID_RE.match(value or ""):
+            fields["loopx_goal_id"] = value
+        i += 1
+    return fields
+
 raw = sys.stdin.read()
 record: dict[str, object] = {{
     "schema_version": "skillsbench_remote_bridge_agent_operation_v0",
@@ -1287,12 +1542,15 @@ bridge_probe_operation = bool(
     )
 )
 subcommands: list[str] = []
+loopx_fields: dict[str, str] = {{}}
 if isinstance(payload, dict) and payload.get("operation") == "exec":
     command_text = payload.get("command")
     if isinstance(command_text, str):
         subcommands = loopx_subcommands(command_text)
+        loopx_fields = loopx_public_fields(command_text)
 record["loopx_cli_call"] = bool(subcommands)
 record["loopx_subcommands"] = subcommands[:2]
+record.update(loopx_fields)
 record["loopx_state_read"] = subcommands[:2] in (["quota", "should-run"], ["status"], ["diagnose"])
 record["loopx_state_write"] = bool(subcommands and (
     subcommands[0] in {{"todo", "refresh-state"}}
@@ -1365,6 +1623,7 @@ raise SystemExit(proc.returncode)
         operation_counts: dict[str, int] = {}
         loopx_subcommand_counts: dict[str, int] = {}
         successful_loopx_subcommand_counts: dict[str, int] = {}
+        successful_loopx_command_records: list[dict[str, object]] = []
         returncode_counts: dict[str, int] = {}
         failure_category_counts: dict[str, int] = {}
         request_count = 0
@@ -1495,6 +1754,17 @@ raise SystemExit(proc.returncode)
                             successful_loopx_subcommand_counts[key] = (
                                 successful_loopx_subcommand_counts.get(key, 0) + 1
                             )
+                            command_record: dict[str, object] = {
+                                "subcommand": key,
+                            }
+                            todo_id = _safe_loopx_todo_id(record.get("loopx_todo_id"))
+                            if todo_id:
+                                command_record["todo_id"] = todo_id
+                            goal_id = _safe_loopx_goal_id(record.get("loopx_goal_id"))
+                            if goal_id:
+                                command_record["goal_id"] = goal_id
+                            if len(successful_loopx_command_records) < 128:
+                                successful_loopx_command_records.append(command_record)
                 raw_material_recorded = raw_material_recorded or any(
                     record.get(field) is True
                     for field in (
@@ -1533,6 +1803,9 @@ raise SystemExit(proc.returncode)
                 ),
                 "successful_loopx_cli_subcommand_counts": dict(
                     sorted(successful_loopx_subcommand_counts.items())
+                ),
+                "successful_loopx_cli_command_records": (
+                    successful_loopx_command_records
                 ),
                 "loopx_state_read_count": state_read_count,
                 "loopx_state_write_count": state_write_count,
@@ -1717,12 +1990,54 @@ raise SystemExit(proc.returncode)
     ) -> str:
         cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
         self._publish_worker_lifecycle_trace("prompt_received")
-        with tempfile.TemporaryDirectory(prefix="gh-skillsbench-goal-worker-") as tmp:
+        with _temporary_directory_ignore_cleanup_errors(
+            prefix="gh-skillsbench-goal-worker-"
+        ) as tmp:
             tmp_path = Path(tmp)
             prompt_path = tmp_path / "prompt.txt"
             output_json = tmp_path / "worker.compact.json"
             response_path = tmp_path / "response.txt"
-            prompt_path.write_text(prompt_text, encoding="utf-8")
+            prompt_for_worker = prompt_text
+            bridge_server_proc: subprocess.Popen[str] | None = None
+            bridge_summary_path: Path | None = None
+            if self._config.remote_command_file_bridge_command:
+                if _is_bridge_action_preflight_prompt(prompt_text):
+                    bridge_probe = self._reverse_channel_json_preflight_probe()
+                else:
+                    bridge_probe = self._consume_remote_bridge_for_solver()
+                self._publish_remote_bridge_consumption_trace(bridge_probe)
+                if bridge_probe.get("ready") is not True:
+                    raise RuntimeError("remote command/file bridge probe failed")
+                local_cwd = tmp_path / "local-codex-cwd"
+                local_cwd.mkdir(parents=True, exist_ok=True)
+                cwd = str(local_cwd)
+                bridge_summary_path = tmp_path / "remote-bridge-agent-ops.jsonl"
+                agent_bridge_command = (
+                    self._config.remote_command_file_bridge_agent_command
+                    or self._config.remote_command_file_bridge_command
+                    or ""
+                )
+                agent_bridge_command, bridge_server_proc = (
+                    self._start_json_file_bridge_server(
+                        tmp_path=tmp_path,
+                        local_cwd=local_cwd,
+                        bridge_command=agent_bridge_command,
+                    )
+                )
+                instrumented_bridge = self._write_instrumented_bridge_wrapper(
+                    tmp_path=tmp_path,
+                    summary_path=bridge_summary_path,
+                    bridge_command=agent_bridge_command,
+                )
+                prompt_for_worker = self._prompt_with_remote_bridge_packet(
+                    prompt_text,
+                    bridge_probe=bridge_probe,
+                    bridge_command_for_agent=str(instrumented_bridge),
+                )
+            prompt_for_worker = _prompt_with_app_server_closeout_instruction(
+                prompt_for_worker
+            )
+            prompt_path.write_text(prompt_for_worker, encoding="utf-8")
             worker_script = (
                 Path(self._config.worker_script).expanduser()
                 if self._config.worker_script
@@ -1730,6 +2045,7 @@ raise SystemExit(proc.returncode)
                 / "scripts"
                 / "skillsbench_host_codex_goal_worker.py"
             )
+            worker_first_action_timeout_sec = self._config.first_action_timeout_sec
             cmd = [
                 sys.executable,
                 str(worker_script),
@@ -1737,6 +2053,12 @@ raise SystemExit(proc.returncode)
                 self._config.dataset,
                 "--task-id",
                 self._config.task_id,
+                "--run-group-id",
+                self._config.run_group_id,
+                "--job-name",
+                self._config.job_name,
+                "--rollout-name",
+                self._config.rollout_name,
                 "--codex-bin",
                 self._config.codex_bin,
                 "--sandbox",
@@ -1755,6 +2077,8 @@ raise SystemExit(proc.returncode)
                 str(self._config.response_timeout_sec),
                 "--turn-timeout-sec",
                 str(self._config.timeout_sec),
+                "--first-action-timeout-sec",
+                str(worker_first_action_timeout_sec),
                 "--reasoning-effort",
                 str(self._config.reasoning_effort or "high"),
                 "--runner-integration-ready",
@@ -1769,6 +2093,7 @@ raise SystemExit(proc.returncode)
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    start_new_session=True,
                 )
                 self._write_worker_heartbeat(
                     stdout,
@@ -1780,11 +2105,180 @@ raise SystemExit(proc.returncode)
                     time.monotonic()
                     + max(1.0, self._config.stream_heartbeat_interval_sec)
                 )
+                bridge_activity_seen = False
+                last_bridge_summary_size = 0
+                last_bridge_activity_at = time.monotonic()
+                bridge_idle_timeout_sec = max(
+                    0.0,
+                    float(self._config.bridge_idle_timeout_sec or 0.0),
+                )
+                task_output_quiet_timeout_sec = max(
+                    0.0,
+                    float(self._config.task_output_quiet_timeout_sec or 0.0),
+                )
+                bridge_first_action_deadline = 0.0
+                if (
+                    bridge_summary_path is not None
+                    and self._config.first_action_timeout_sec > 0
+                ):
+                    bridge_first_action_deadline = (
+                        time.monotonic()
+                        + max(1.0, self._config.first_action_timeout_sec)
+                    )
+                meaningful_progress_deadline = 0.0
+                meaningful_progress_seen = False
+                progress_route = self._config.route
+                if self._config.app_server_goal_worker and progress_route == "unknown":
+                    progress_route = "codex-app-server-goal-baseline"
+                meaningful_progress_required = (
+                    bridge_summary_path is not None
+                    and self._config.first_action_timeout_sec > 0
+                    and _prompt_requires_meaningful_bridge_progress(
+                        prompt_for_worker,
+                        route=progress_route,
+                    )
+                )
+                allow_loopx_closeout_progress = progress_route.startswith("loopx-")
+                if meaningful_progress_required:
+                    meaningful_progress_deadline = (
+                        time.monotonic()
+                        + max(1.0, self._config.first_action_timeout_sec)
+                    )
+                task_output_progress_seen = False
                 while proc.poll() is None:
                     now = time.monotonic()
-                    if now >= deadline:
-                        proc.kill()
+                    if bridge_summary_path is not None:
+                        try:
+                            current_bridge_summary_size = (
+                                bridge_summary_path.stat().st_size
+                            )
+                        except OSError:
+                            current_bridge_summary_size = 0
+                        if current_bridge_summary_size > last_bridge_summary_size:
+                            last_bridge_summary_size = current_bridge_summary_size
+                            last_bridge_activity_at = now
+                            bridge_activity_seen = True
+                        if not meaningful_progress_seen:
+                            meaningful_progress_seen = (
+                                _bridge_summary_has_meaningful_agent_progress(
+                                    bridge_summary_path,
+                                    allow_loopx_closeout=allow_loopx_closeout_progress,
+                                )
+                            )
+                        if (
+                            not task_output_progress_seen
+                            and task_output_quiet_timeout_sec > 0
+                        ):
+                            task_output_progress_seen = (
+                                _bridge_summary_has_successful_task_operation(
+                                    bridge_summary_path
+                                )
+                            )
+                    if (
+                        not bridge_activity_seen
+                        and bridge_summary_path is not None
+                        and bridge_first_action_deadline
+                        and now >= bridge_first_action_deadline
+                    ):
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        if not self._publish_worker_trace(output_json):
+                            self._publish_worker_failure_trace(
+                                stage="first_action_timeout",
+                                returncode=proc.returncode,
+                                stdout_text=stdout_text,
+                                stderr_text="codex_exec_first_action_timeout\n",
+                            )
+                        self._terminate_bridge_server_process(bridge_server_proc)
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_first_action_timeout"
+                        )
+                    if (
+                        meaningful_progress_required
+                        and not meaningful_progress_seen
+                        and bridge_summary_path is not None
+                        and meaningful_progress_deadline
+                        and now >= meaningful_progress_deadline
+                    ):
+                        self._terminate_codex_process(proc, grace_sec=2)
+                        stdout_text, stderr_text = proc.communicate(timeout=2)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        if not self._publish_worker_trace(output_json):
+                            self._publish_worker_failure_trace(
+                                stage="meaningful_bridge_progress_timeout",
+                                returncode=proc.returncode,
+                                stdout_text=stdout_text,
+                                stderr_text="codex_exec_first_action_timeout\n",
+                            )
+                        self._terminate_bridge_server_process(bridge_server_proc)
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_first_action_timeout"
+                        )
+                    if (
+                        task_output_progress_seen
+                        and bridge_summary_path is not None
+                        and task_output_quiet_timeout_sec > 0
+                        and not _bridge_summary_has_inflight_operation(
+                            bridge_summary_path
+                        )
+                        and now - last_bridge_activity_at
+                        >= task_output_quiet_timeout_sec
+                    ):
+                        self._terminate_codex_process(proc, grace_sec=2)
+                        stdout_text, stderr_text = proc.communicate(timeout=2)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        if not self._publish_worker_trace(output_json):
+                            self._publish_worker_failure_trace(
+                                stage="task_output_quiet_timeout",
+                                returncode=proc.returncode,
+                                stdout_text=stdout_text,
+                                stderr_text=(
+                                    "codex_exec_task_output_quiet_timeout\n"
+                                ),
+                            )
+                        self._terminate_bridge_server_process(bridge_server_proc)
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_task_output_quiet_timeout"
+                        )
+                    if (
+                        bridge_activity_seen
+                        and bridge_summary_path is not None
+                        and bridge_idle_timeout_sec > 0
+                        and not _bridge_summary_has_inflight_operation(
+                            bridge_summary_path
+                        )
+                        and now - last_bridge_activity_at >= bridge_idle_timeout_sec
+                    ):
+                        self._terminate_codex_process(proc, grace_sec=2)
+                        stdout_text, stderr_text = proc.communicate(timeout=2)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        if not self._publish_worker_trace(output_json):
+                            self._publish_worker_failure_trace(
+                                stage="bridge_idle_timeout",
+                                returncode=proc.returncode,
+                                stdout_text=stdout_text,
+                                stderr_text=stderr_text,
+                            )
+                        self._terminate_bridge_server_process(bridge_server_proc)
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_bridge_idle_timeout"
+                        )
+                    if now >= deadline:
+                        self._terminate_codex_process(proc, grace_sec=2)
+                        stdout_text, stderr_text = proc.communicate(timeout=2)
+                        if bridge_summary_path is not None:
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
                         if not self._publish_worker_trace(output_json):
                             self._publish_worker_failure_trace(
                                 stage="timeout",
@@ -1792,6 +2286,7 @@ raise SystemExit(proc.returncode)
                                 stdout_text=stdout_text,
                                 stderr_text=stderr_text,
                             )
+                        self._terminate_bridge_server_process(bridge_server_proc)
                         raise TimeoutError
                     if now >= next_heartbeat:
                         self._write_worker_heartbeat(
@@ -1805,6 +2300,11 @@ raise SystemExit(proc.returncode)
                     time.sleep(0.2)
                 stdout_text, stderr_text = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired as exc:
+                self._terminate_codex_process(proc, grace_sec=2)
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
                 if not self._publish_worker_trace(output_json):
                     self._publish_worker_failure_trace(
                         stage="communicate_timeout",
@@ -1812,8 +2312,17 @@ raise SystemExit(proc.returncode)
                         stdout_text="",
                         stderr_text="",
                     )
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise TimeoutError from exc
+            except BaseException:
+                self._terminate_codex_process(proc, grace_sec=2)
+                self._terminate_bridge_server_process(bridge_server_proc)
+                raise
             if proc.returncode != 0:
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
                 if not self._publish_worker_trace(output_json):
                     self._publish_worker_failure_trace(
                         stage="worker_exit_nonzero_before_public_trace",
@@ -1821,9 +2330,14 @@ raise SystemExit(proc.returncode)
                         stdout_text=stdout_text,
                         stderr_text=stderr_text,
                     )
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise RuntimeError("host app-server goal worker failed")
             trace_required = bool(self._config.worker_public_trace_dir)
             trace_published = self._publish_worker_trace(output_json)
+            if bridge_summary_path is not None:
+                self._publish_remote_bridge_agent_operations_trace(
+                    bridge_summary_path=bridge_summary_path,
+                )
             if trace_required and not trace_published:
                 self._publish_worker_failure_trace(
                     stage="worker_exit_zero_before_public_trace",
@@ -1831,11 +2345,14 @@ raise SystemExit(proc.returncode)
                     stdout_text=stdout_text,
                     stderr_text=stderr_text,
                 )
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise RuntimeError("host app-server goal worker public trace missing")
             try:
                 response = response_path.read_text(encoding="utf-8").strip()
             except OSError as exc:
+                self._terminate_bridge_server_process(bridge_server_proc)
                 raise RuntimeError("host app-server goal worker response missing") from exc
+            self._terminate_bridge_server_process(bridge_server_proc)
             return response or "host app-server goal worker returned an empty final message"
 
     def _publish_worker_trace(self, output_json: Path) -> bool:
@@ -1907,8 +2424,18 @@ raise SystemExit(proc.returncode)
                     "assistant_message_chars",
                     "completion_hard_gate",
                     "completion_source_of_truth",
+                    "first_action_timeout_sec",
+                    "first_action_observed",
+                    "effective_action_observed",
                     "raw_transcript_recorded",
                     "raw_assistant_message_recorded",
+                ),
+            ),
+            "worker_result": compact_dict(
+                payload,
+                (
+                    "ok",
+                    "error_type",
                 ),
             ),
             "private_response_text": compact_dict(
@@ -1947,6 +2474,10 @@ raise SystemExit(proc.returncode)
         )
         if not safe_stage:
             safe_stage = "worker_failed_before_public_trace"
+        failure_category = _codex_exec_failure_category(
+            returncode=returncode,
+            stderr_text=stderr_text,
+        )
         trace = {
             "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
             "ok": False,
@@ -1957,6 +2488,7 @@ raise SystemExit(proc.returncode)
             "worker_process": {
                 "schema_version": "skillsbench_host_worker_process_failure_v0",
                 "stage": safe_stage,
+                "failure_category": failure_category,
                 "returncode": returncode
                 if isinstance(returncode, int) and not isinstance(returncode, bool)
                 else None,

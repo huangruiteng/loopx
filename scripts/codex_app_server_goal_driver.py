@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import subprocess
 import threading
@@ -23,6 +24,10 @@ class CodexAppServerGoalTurn:
     process: subprocess.Popen[str]
     thread_id: str
     turn_id: str
+    work_dir: Path | None = None
+    turn_id_source: str = ""
+    turn_start_response_turn_id_present: bool = False
+    turn_event_stream_turn_id_present: bool = False
     next_request_id: int = 6
     goal_status: str = ""
     turn_status: str = ""
@@ -31,12 +36,18 @@ class CodexAppServerGoalTurn:
     agent_message_delta_count: int = 0
     agent_message_item_count: int = 0
     item_completed_count: int = 0
+    non_user_item_completed_count: int = 0
+    user_message_item_count: int = 0
+    session_event_count: int = 0
+    session_log_observed: bool = False
+    session_task_complete_observed: bool = False
     notifications: list[str] = field(default_factory=list)
     _responses: "queue.Queue[dict[str, Any] | Exception] | None" = field(
         default=None,
         repr=False,
     )
     _assistant_message_parts: list[str] = field(default_factory=list, repr=False)
+    _session_offsets: dict[str, int] = field(default_factory=dict, repr=False)
 
     def terminate(self, *, timeout_sec: float = 2.0) -> None:
         self.process.terminate()
@@ -62,6 +73,57 @@ def _reader_thread(
         out.put(EOFError("codex app-server stream closed"))
 
 
+def _process_descendant_pids(root_pid: int) -> set[int]:
+    proc_root = Path("/proc")
+    if not proc_root.exists():
+        return {root_pid}
+    children: dict[int, list[int]] = {}
+    for stat_path in proc_root.glob("[0-9]*/stat"):
+        try:
+            text = stat_path.read_text(errors="ignore")
+            pid = int(stat_path.parent.name)
+            # /proc/<pid>/stat has a comm field in parentheses; ppid follows it.
+            after_comm = text.rsplit(")", 1)[1].strip().split()
+            ppid = int(after_comm[1])
+        except Exception:
+            continue
+        children.setdefault(ppid, []).append(pid)
+    seen: set[int] = set()
+    stack = [root_pid]
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        stack.extend(children.get(pid, []))
+    return seen
+
+
+def _codex_session_jsonl_paths(turn: CodexAppServerGoalTurn) -> list[Path]:
+    paths: list[Path] = []
+    if turn.work_dir is not None:
+        try:
+            paths.extend(turn.work_dir.glob("rollout-*.jsonl"))
+        except OSError:
+            pass
+    proc = turn.process
+    proc_root = Path("/proc")
+    if not proc_root.exists() or proc.pid is None:
+        return sorted(set(paths))
+    for pid in sorted(_process_descendant_pids(int(proc.pid))):
+        fd_dir = proc_root / str(pid) / "fd"
+        if not fd_dir.exists():
+            continue
+        for fd in fd_dir.iterdir():
+            try:
+                target = Path(os.readlink(fd))
+            except OSError:
+                continue
+            if target.suffix == ".jsonl" and target.name.startswith("rollout-"):
+                paths.append(target)
+    return sorted(set(paths))
+
+
 def _send_json(proc: subprocess.Popen[str], message: dict[str, Any]) -> None:
     if proc.stdin is None:
         raise CodexAppServerGoalDriverError("codex app-server stdin is closed")
@@ -76,6 +138,7 @@ def _wait_for_response(
     *,
     notifications: list[str],
     timeout_sec: float,
+    side_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_sec
     while time.monotonic() < deadline:
@@ -87,10 +150,6 @@ def _wait_for_response(
             raise CodexAppServerGoalDriverError("codex app-server exited before response")
         if isinstance(msg, Exception):
             raise CodexAppServerGoalDriverError(str(msg))
-        method = msg.get("method")
-        if method:
-            notifications.append(str(method))
-            continue
         if msg.get("id") == request_id:
             if msg.get("error"):
                 raise CodexAppServerGoalDriverError(
@@ -98,6 +157,12 @@ def _wait_for_response(
                 )
             result = msg.get("result")
             return result if isinstance(result, dict) else {}
+        event_name = _message_event_name(msg)
+        if event_name:
+            notifications.append(event_name)
+            if side_events is not None:
+                side_events.append(msg)
+            continue
     raise CodexAppServerGoalDriverError(
         f"timed out waiting for app-server response id={request_id}"
     )
@@ -142,6 +207,45 @@ def _notification_thread_id(params: dict[str, Any]) -> str:
     return str(params.get("threadId") or "")
 
 
+def _message_event_name(msg: dict[str, Any]) -> str:
+    method = str(msg.get("method") or "")
+    if method:
+        return method
+    msg_type = str(msg.get("type") or "")
+    payload = msg.get("payload") if isinstance(msg.get("payload"), dict) else {}
+    payload_type = str(
+        payload.get("type") or payload.get("event") or payload.get("kind") or ""
+    )
+    if msg_type and payload_type:
+        return f"{msg_type}:{payload_type}"
+    return msg_type
+
+
+def _message_event_payload(msg: dict[str, Any]) -> dict[str, Any]:
+    params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
+    if params:
+        return params
+    payload = msg.get("payload") if isinstance(msg.get("payload"), dict) else {}
+    return payload
+
+
+def _event_stream_turn_id(messages: list[dict[str, Any]]) -> str:
+    for preferred_method in ("turn/started", "item/started", "item/agentMessage/delta"):
+        for msg in messages:
+            if _message_event_name(msg) != preferred_method:
+                continue
+            params = _message_event_payload(msg)
+            turn_id = _notification_turn_id(params)
+            if turn_id:
+                return turn_id
+    for msg in messages:
+        params = _message_event_payload(msg)
+        turn_id = _notification_turn_id(params)
+        if turn_id:
+            return turn_id
+    return ""
+
+
 def _item_text(item: Any) -> str:
     if not isinstance(item, dict):
         return ""
@@ -165,6 +269,17 @@ def _item_text(item: Any) -> str:
     return ""
 
 
+def _event_payload_text(payload: dict[str, Any]) -> str:
+    text = _item_text(payload)
+    if text:
+        return text
+    for key in ("text", "message", "content"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
 def _record_turn_event(
     turn: CodexAppServerGoalTurn,
     msg: dict[str, Any] | Exception,
@@ -184,10 +299,11 @@ def _record_turn_event(
         turn.notifications.append("stream/error")
         return False
     method = str(msg.get("method") or "")
-    if method:
-        turn.notifications.append(method)
-    params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
-    if not method:
+    event_name = _message_event_name(msg)
+    if event_name:
+        turn.notifications.append(event_name)
+    params = _message_event_payload(msg)
+    if not event_name:
         return False
     msg_turn_id = _notification_turn_id(params)
     msg_thread_id = _notification_thread_id(params)
@@ -201,11 +317,45 @@ def _record_turn_event(
             turn._assistant_message_parts.append(delta)
             turn.agent_message_delta_count += 1
         return False
+    if event_name == "event_msg:agent_message":
+        item_text = _event_payload_text(params)
+        if item_text:
+            turn._assistant_message_parts.append(item_text)
+        turn.agent_message_item_count += 1
+        turn.non_user_item_completed_count += 1
+        return False
+    if event_name == "response_item:message":
+        role = str(params.get("role") or "")
+        item_text = _event_payload_text(params)
+        if role == "user":
+            turn.user_message_item_count += 1
+            return False
+        if item_text:
+            turn._assistant_message_parts.append(item_text)
+        turn.agent_message_item_count += 1
+        turn.non_user_item_completed_count += 1
+        return False
+    if event_name in {"response_item:function_call", "response_item:function_call_output"}:
+        turn.non_user_item_completed_count += 1
+        return False
+    if event_name == "response_item:reasoning":
+        return False
+    if event_name == "event_msg:task_started":
+        turn.turn_status = "inProgress"
+        return False
+    if method == "turn/started":
+        turn.turn_status = _extract_turn_status(params) or turn.turn_status
+        return False
     if method == "item/completed":
         turn.item_completed_count += 1
         item = params.get("item")
+        item_type = str(item.get("type") or "") if isinstance(item, dict) else ""
+        if item_type == "userMessage":
+            turn.user_message_item_count += 1
+            return False
+        turn.non_user_item_completed_count += 1
         item_text = _item_text(item)
-        if item_text:
+        if item_type == "agentMessage" and item_text:
             turn.agent_message_item_count += 1
             if not turn._assistant_message_parts:
                 turn._assistant_message_parts.append(item_text)
@@ -215,12 +365,58 @@ def _record_turn_event(
         turn.turn_status = _extract_turn_status(params) or turn.turn_status
         turn.assistant_message = "".join(turn._assistant_message_parts)
         return True
+    if event_name in {
+        "event_msg:task_complete",
+        "event_msg:task_completed",
+        "event_msg:turn_completed",
+    }:
+        turn.turn_completed_observed = True
+        turn.turn_status = _extract_turn_status(params) or "completed"
+        turn.assistant_message = "".join(turn._assistant_message_parts)
+        return True
     if method == "error":
         message = params.get("message") if isinstance(params, dict) else ""
         if raise_on_error:
             raise CodexAppServerGoalDriverError(str(message or "app-server error"))
         turn.notifications.append("turn/error")
     return False
+
+
+def _observe_codex_session_events(turn: CodexAppServerGoalTurn) -> bool:
+    observed_completion = False
+    for path in _codex_session_jsonl_paths(turn):
+        try:
+            current_size = path.stat().st_size
+        except OSError:
+            continue
+        key = str(path)
+        offset = int(turn._session_offsets.get(key, 0) or 0)
+        if offset > current_size:
+            offset = 0
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore") as handle:
+                handle.seek(offset)
+                for line in handle:
+                    if not line.strip():
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except Exception:
+                        continue
+                    turn.session_log_observed = True
+                    turn.session_event_count += 1
+                    if _message_event_name(msg) in {
+                        "event_msg:task_complete",
+                        "event_msg:task_completed",
+                        "event_msg:turn_completed",
+                    }:
+                        turn.session_task_complete_observed = True
+                    if _record_turn_event(turn, msg, raise_on_error=False):
+                        observed_completion = True
+                turn._session_offsets[key] = handle.tell()
+        except OSError:
+            continue
+    return observed_completion or bool(turn.turn_completed_observed)
 
 
 def observe_codex_app_server_goal_turn(
@@ -233,6 +429,8 @@ def observe_codex_app_server_goal_turn(
     """Drain app-server turn events without making completion a success gate."""
     if turn._responses is None:
         return bool(turn.turn_completed_observed)
+    if _observe_codex_session_events(turn):
+        return True
     deadline = time.monotonic() + max(0.0, timeout_sec)
     while True:
         wait = 0.0
@@ -241,10 +439,14 @@ def observe_codex_app_server_goal_turn(
         try:
             msg = turn._responses.get(timeout=wait) if wait else turn._responses.get_nowait()
         except queue.Empty:
+            if _observe_codex_session_events(turn):
+                return True
             if not until_completed or time.monotonic() >= deadline:
                 return bool(turn.turn_completed_observed)
             continue
         if _record_turn_event(turn, msg, raise_on_error=raise_on_error):
+            return True
+        if _observe_codex_session_events(turn):
             return True
         if not until_completed and timeout_sec <= 0:
             continue
@@ -395,14 +597,18 @@ def start_codex_app_server_goal_turn(
             "params": turn_params,
         }
         _send_json(proc, turn_start)
+        turn_start_side_events: list[dict[str, Any]] = []
         turn_result = _wait_for_response(
             proc,
             responses,
             5,
             notifications=notifications,
             timeout_sec=response_timeout_sec,
+            side_events=turn_start_side_events,
         )
-        turn_id = _extract_turn_id(turn_result)
+        response_turn_id = _extract_turn_id(turn_result)
+        event_stream_turn_id = _event_stream_turn_id(turn_start_side_events)
+        turn_id = event_stream_turn_id or response_turn_id
         if not turn_id:
             raise CodexAppServerGoalDriverError("turn/start did not return turn id")
 
@@ -410,12 +616,18 @@ def start_codex_app_server_goal_turn(
             process=proc,
             thread_id=thread_id,
             turn_id=turn_id,
+            work_dir=work_dir,
+            turn_id_source="event_stream" if event_stream_turn_id else "turn_start_response",
+            turn_start_response_turn_id_present=bool(response_turn_id),
+            turn_event_stream_turn_id_present=bool(event_stream_turn_id),
             next_request_id=6,
             goal_status=goal_status,
             turn_status=_extract_turn_status(turn_result),
             notifications=notifications,
             _responses=responses,
         )
+        for event in turn_start_side_events:
+            _record_turn_event(turn, event, raise_on_error=False)
         if wait_for_completion:
             _wait_for_turn_completion(
                 turn,
@@ -490,15 +702,19 @@ def start_codex_app_server_goal_followup_turn(
         "params": turn_params,
     }
     _send_json(turn.process, turn_start)
+    turn_start_side_events: list[dict[str, Any]] = []
     turn_result = _wait_for_response(
         turn.process,
         turn._responses,
         request_id,
         notifications=notifications,
         timeout_sec=response_timeout_sec,
+        side_events=turn_start_side_events,
     )
     request_id += 1
-    turn_id = _extract_turn_id(turn_result)
+    response_turn_id = _extract_turn_id(turn_result)
+    event_stream_turn_id = _event_stream_turn_id(turn_start_side_events)
+    turn_id = event_stream_turn_id or response_turn_id
     if not turn_id:
         raise CodexAppServerGoalDriverError("turn/start did not return turn id")
 
@@ -506,12 +722,18 @@ def start_codex_app_server_goal_followup_turn(
         process=turn.process,
         thread_id=turn.thread_id,
         turn_id=turn_id,
+        work_dir=work_dir,
+        turn_id_source="event_stream" if event_stream_turn_id else "turn_start_response",
+        turn_start_response_turn_id_present=bool(response_turn_id),
+        turn_event_stream_turn_id_present=bool(event_stream_turn_id),
         next_request_id=request_id,
         goal_status=goal_status,
         turn_status=_extract_turn_status(turn_result),
         notifications=notifications,
         _responses=turn._responses,
     )
+    for event in turn_start_side_events:
+        _record_turn_event(followup, event, raise_on_error=False)
     if wait_for_completion:
         _wait_for_turn_completion(
             followup,
@@ -528,11 +750,23 @@ def compact_turn_metadata(turn: CodexAppServerGoalTurn) -> dict[str, Any]:
         "goal_get_present": bool(turn.goal_status),
         "goal_status": turn.goal_status,
         "turn_id_present": bool(turn.turn_id),
+        "turn_id_source": turn.turn_id_source,
+        "turn_start_response_turn_id_present": bool(
+            turn.turn_start_response_turn_id_present
+        ),
+        "turn_event_stream_turn_id_present": bool(
+            turn.turn_event_stream_turn_id_present
+        ),
         "turn_status": turn.turn_status,
         "turn_completed_observed": bool(turn.turn_completed_observed),
         "agent_message_delta_count": int(turn.agent_message_delta_count),
         "agent_message_item_count": int(turn.agent_message_item_count),
         "item_completed_count": int(turn.item_completed_count),
+        "non_user_item_completed_count": int(turn.non_user_item_completed_count),
+        "user_message_item_count": int(turn.user_message_item_count),
+        "session_log_observed": bool(turn.session_log_observed),
+        "session_event_count": int(turn.session_event_count),
+        "session_task_complete_observed": bool(turn.session_task_complete_observed),
         "assistant_message_present": bool(assistant_message),
         "assistant_message_chars": len(assistant_message),
         "assistant_message_sha256": sha256(assistant_message.encode()).hexdigest()

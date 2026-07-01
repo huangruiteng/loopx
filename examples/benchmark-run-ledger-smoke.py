@@ -20,6 +20,7 @@ from loopx.benchmark_ledger import (  # noqa: E402
     BENCHMARK_RUN_LEDGER_SCHEMA_VERSION,
     build_benchmark_run_ledger_entry,
     load_benchmark_run_ledger,
+    merge_benchmark_run_ledgers,
     render_benchmark_run_ledger_markdown,
     update_benchmark_run_ledger,
 )
@@ -1673,6 +1674,207 @@ def test_cli_post_launch_json_updates_run_ledger() -> None:
         assert (root / "visible-ledger.md").exists(), "CLI should render markdown"
 
 
+def test_cli_run_ledger_archive_hides_old_skillsbench_rows_from_current_view() -> None:
+    old_run = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "case_id": "legacy-case",
+        "mode": "codex_app_server_goal_baseline",
+        "route": "old-route",
+        "official_task_score": {
+            "kind": "skillsbench_reward",
+            "value": 0.0,
+            "passed": False,
+        },
+        "score_failure_attribution": "official_verifier_solution_failure",
+    }
+    current_run = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "case_id": "current-case",
+        "mode": "codex_app_server_goal_baseline",
+        "route": "reverse-tunnel-app-server-goal",
+        "official_task_score": {
+            "kind": "skillsbench_reward",
+            "value": 1.0,
+            "passed": True,
+        },
+        "score_failure_attribution": "none",
+    }
+    with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-archive-cli-") as tmp:
+        root = Path(tmp)
+        registry_path, runtime = write_registry(root)
+        ledger_path = root / "visible-ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=old_run,
+            run_group_id="skillsbench-goal-baseline-30case-legacy",
+            cwd=root,
+        )
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=current_run,
+            run_group_id="skillsbench-revtunnel-appgoal-batch3-current",
+            cwd=root,
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry_path),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "benchmark",
+                "run-ledger-archive",
+                "--run-ledger-path",
+                str(ledger_path),
+                "--benchmark-id",
+                "skillsbench@1.1",
+                "--archive-all-matching-benchmark",
+                "--keep-run-group-contains",
+                "skillsbench-revtunnel-appgoal-batch3",
+                "--reason",
+                "Archive obsolete SkillsBench experiments outside the current reverse-tunnel app-server Goal route.",
+                "--execute",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        payload = json.loads(result.stdout)
+        assert payload["ok"] is True, payload
+        archive = payload["archive"]
+        assert archive["matched_run_count"] == 1, archive
+        assert archive["newly_archived_run_count"] == 1, archive
+        assert archive["kept_run_count"] == 1, archive
+
+        ledger = load_benchmark_run_ledger(ledger_path)
+        cases = ledger["benchmarks"]["skillsbench@1.1"]["cases"]
+        legacy = cases["legacy-case"]
+        current = cases["current-case"]
+        assert legacy["runs"][0]["archive_state"] == "archived", legacy
+        assert legacy["latest_decision"]["decision"] == "archived_only", legacy
+        assert current["active_run_count"] == 1, current
+        rendered = (root / "visible-ledger.md").read_text()
+        assert "| `skillsbench@1.1` | `current-case` |" in rendered, rendered
+        assert "| `skillsbench@1.1` | `legacy-case` |" not in rendered, rendered
+        assert "## Archived Run Summary" in rendered, rendered
+        assert "| `skillsbench@1.1` | `1` | `1` |" in rendered, rendered
+
+
+def test_ledger_artifact_refs_do_not_record_private_local_paths() -> None:
+    compact = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "terminal-bench@2.0",
+        "job_name": "terminal_bench_2_0_private_ref_fixture_codex_goal_mode_baseline",
+        "mode": "codex_goal_mode_baseline",
+        "official_task_score": {
+            "kind": "harbor_verifier_reward",
+            "value": 1.0,
+            "passed": True,
+        },
+    }
+    with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-private-ref-") as tmp:
+        root = Path(tmp)
+        private_root = root / ".local" / "private-benchmark-jobs" / "job-a"
+        private_root.mkdir(parents=True)
+        ledger_path = root / "ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            result_ref=private_root / "result.json",
+            compact_artifact_ref=private_root / "benchmark_run.compact.json",
+            run_group_id="private-ref-ledger-smoke",
+            cwd=root,
+        )
+        serialized = ledger_path.read_text()
+        rendered = (root / "ledger.md").read_text()
+        assert ".local/private-benchmark-jobs" not in serialized, serialized
+        assert ".local/private-benchmark-jobs" not in rendered, rendered
+        assert "result.json" not in serialized, serialized
+        assert "benchmark_run.compact.json" in serialized, serialized
+        assert "`benchmark_run.compact.json`" in rendered, rendered
+
+
+def test_ledger_merge_combines_run_group_ledgers_without_source_paths() -> None:
+    def skillsbench_compact(case_id: str, *, score: float, run_id: str) -> dict[str, Any]:
+        return {
+            "schema_version": "benchmark_run_v0",
+            "run_id": run_id,
+            "benchmark_id": "skillsbench@1.1",
+            "case_id": case_id,
+            "case_ids": [case_id],
+            "mode": "skillsbench_codex_app_server_goal_baseline",
+            "arm_id": "codex_app_server_goal_baseline",
+            "route": "codex-app-server-goal-baseline",
+            "official_task_score": {
+                "kind": "skillsbench_reward",
+                "value": score,
+                "passed": score >= 1.0,
+            },
+            "score_failure_attribution": (
+                "none" if score >= 1.0 else "official_verifier_solution_failure"
+            ),
+            "round_reward_trace": {
+                "records": [{"agent_round": 1, "reward": score, "passed": score >= 1.0}],
+                "first_success_round": 1 if score >= 1.0 else None,
+                "success_observed": score >= 1.0,
+                "max_rounds_budget": 10,
+                "official_feedback_blinded": True,
+                "reward_feedback_forwarded": False,
+            },
+        }
+
+    with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-merge-") as tmp:
+        root = Path(tmp)
+        source_a = root / "batch-a" / "benchmark-run-ledger.json"
+        source_b = root / "batch-b" / "benchmark-run-ledger.json"
+        target = root / "current" / "benchmark-run-ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=source_a,
+            benchmark_run=skillsbench_compact("alpha-case", score=1.0, run_id="run-alpha"),
+            run_group_id="skillsbench-revtunnel-appgoal-batch5-alpha",
+        )
+        update_benchmark_run_ledger(
+            ledger_path=source_b,
+            benchmark_run=skillsbench_compact("beta-case", score=0.0, run_id="run-beta"),
+            run_group_id="skillsbench-revtunnel-appgoal-batch5-beta",
+        )
+        dry_run = merge_benchmark_run_ledgers(
+            target_ledger_path=target,
+            source_ledger_paths=[source_a, source_b],
+            benchmark_ids=["skillsbench@1.1"],
+            run_group_contains=["batch5"],
+            dry_run=True,
+        )
+        assert dry_run["merge"]["updated"] is False, dry_run
+        assert target.exists() is False, "dry-run must not write the target ledger"
+
+        merged = merge_benchmark_run_ledgers(
+            target_ledger_path=target,
+            source_ledger_paths=[source_a, source_b, source_a],
+            benchmark_ids=["skillsbench@1.1"],
+            run_group_contains=["batch5"],
+            dry_run=False,
+        )
+        assert merged["merge"]["source_ledger_count"] == 2, merged
+        assert merged["merge"]["merged_run_count"] == 2, merged
+        assert merged["merge"]["new_run_id_count"] == 2, merged
+        assert merged["merge"]["source_paths_recorded"] is False, merged
+        serialized_merge = json.dumps(merged, sort_keys=True)
+        assert "source-run-ledger" not in serialized_merge, serialized_merge
+
+        ledger = load_benchmark_run_ledger(target)
+        cases = ledger["benchmarks"]["skillsbench@1.1"]["cases"]
+        assert set(cases) == {"alpha-case", "beta-case"}, cases
+        assert (root / "current" / "benchmark-run-ledger.md").exists()
+
+
 if __name__ == "__main__":
     test_ledger_entry_upsert_from_compact_run()
     test_ledger_classifies_compact_trial_exception_failure()
@@ -1693,4 +1895,7 @@ if __name__ == "__main__":
     test_cli_compact_run_json_updates_run_ledger()
     test_cli_run_ledger_check_reports_and_clears_history_drift()
     test_cli_post_launch_json_updates_run_ledger()
+    test_cli_run_ledger_archive_hides_old_skillsbench_rows_from_current_view()
+    test_ledger_artifact_refs_do_not_record_private_local_paths()
+    test_ledger_merge_combines_run_group_ledgers_without_source_paths()
     print("benchmark-run-ledger-smoke: ok")

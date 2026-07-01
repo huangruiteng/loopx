@@ -132,6 +132,10 @@ def _compact_handoff_gate(
         "resume_when",
         "no_followup",
         "superseded_by",
+        "route_continuation_replan_required",
+        "route_continuation_reason",
+        "route_id",
+        "route_key",
     ):
         value = gate.get(key)
         if value is not None:

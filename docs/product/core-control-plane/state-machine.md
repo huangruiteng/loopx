@@ -18,12 +18,14 @@ stateDiagram-v2
   QuotaCheck --> ExternalEvidenceWait: external handle pending
   QuotaCheck --> MonitorQuiet: monitor not due or unchanged
   QuotaCheck --> AgentScopeWait: current agent has no scoped candidate
+  QuotaCheck --> SuccessorReplan: cleared gate lacks successor/no-follow-up
   QuotaCheck --> FocusWait: outcome floor or fresh-evidence floor
   QuotaCheck --> Repair: projection, boundary, workspace, or capability drift
   QuotaCheck --> ThrottledPaused: quota exhausted or paused
 
   BoundedDelivery --> WritebackSpend: artifact / blocker / evidence validated
   ScopedGateFallback --> WritebackSpend: fallback validated
+  SuccessorReplan --> WritebackSpend: successor / supersede / no-follow-up recorded
   FocusWait --> WritebackSpend: recovery evidence validated
   Repair --> WritebackSpend: repair delta validated
 
@@ -50,6 +52,7 @@ stateDiagram-v2
 | `QuotaCheck` | External evidence is pending or a launched handle must be observed. | `ExternalEvidenceWait` | Terminal evidence, compact observation, or blocker. |
 | `QuotaCheck` | Monitor-only work is not due or unchanged. | `MonitorQuiet` | At most one no-spend monitor-poll event when contracted. |
 | `QuotaCheck` | Current agent has no scoped candidate or waits on another owner. | `AgentScopeWait` | No spend; wait for todo lifecycle, reassignment, or unblock event. |
+| `QuotaCheck` | A deferred or handoff gate has cleared, but no runnable successor, supersede link, or no-follow-up rationale is projected. | `SuccessorReplan` | Reopen, supersede, create successor todo, or record no-follow-up rationale; do not run ordinary delivery yet. |
 | `QuotaCheck` | Outcome floor or fresh-evidence floor blocks ordinary delivery. | `FocusWait` | Recovery evidence or blocker. |
 | `QuotaCheck` | Source/projection/boundary/workspace/capability is inconsistent. | `Repair` | Repair delta, blocker, or concrete gate. |
 | `QuotaCheck` | Quota exhausted or explicitly paused. | `ThrottledPaused` | None until quota/pause changes. |
@@ -97,6 +100,12 @@ stateDiagram-v2
 `Running` is derived from quota and run history. It should not become a new
 mandatory persistent todo status unless the event stream explicitly models it.
 
+For handoff gates, `blocks_agent=<agent-id>` makes the todo lifecycle part of
+the routing machine. A non-terminal handoff keeps the blocked agent in
+`AgentScopeWait`; a done handoff with a concrete successor can route normally;
+a done handoff without successor/no-follow-up enters `SuccessorReplan` before
+ordinary delivery is allowed.
+
 ## Projection Sink Submachine
 
 ```mermaid
@@ -124,7 +133,8 @@ state-changing actions return through LoopX write APIs.
 | `QuotaCheck -> Repair` | IP-005 State Projection Gap; IP-021 Per-Todo Capability Gate |
 | `QuotaCheck -> FocusWait` | IP-007 Outcome Floor Recovery |
 | `QuotaCheck -> MonitorQuiet` | IP-008 Monitor Quiet Skip |
-| `QuotaCheck -> AgentScopeWait` | IP-026 Agent-Scoped No-Candidate Gap; IP-029 Handoff Todo Gate State |
+| `QuotaCheck -> AgentScopeWait` | IP-026 Agent-Scoped No-Candidate Gap; IP-029 Handoff Todo Gate State for still-blocking handoffs |
+| `QuotaCheck -> SuccessorReplan` | IP-027 Deferred Gate Resume; IP-029 Handoff Todo Gate State for cleared handoffs without a successor |
 
 If a new interaction pattern cannot point to a state-machine edge, it is
 probably a product note, a UI variant, or a private incident label rather than

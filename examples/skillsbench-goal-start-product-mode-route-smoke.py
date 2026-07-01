@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
 import subprocess
 import sys
 import tempfile
@@ -96,6 +97,20 @@ def _assert_adapter_route_contract_surface() -> None:
     assert (
         reduced_counters["non_selected_todos_preserved_open_or_deferred"] is True
     ), reduced_counters
+
+    feedback_route = "loopx-goal-start-verifier-feedback-todo"
+    try:
+        skillsbench_route_contract(feedback_route)
+    except ValueError as exc:
+        assert "unsupported SkillsBench route" in str(exc)
+    else:
+        raise AssertionError("verifier-feedback todo route must stay unsupported")
+    try:
+        build_skillsbench_benchmark_run(route=feedback_route)
+    except ValueError as exc:
+        assert "unsupported SkillsBench route" in str(exc)
+    else:
+        raise AssertionError("verifier-feedback todo skeleton must stay unsupported")
 
 
 def _assert_control_score_surface() -> None:
@@ -234,7 +249,10 @@ def _assert_control_score_surface() -> None:
 def _assert_host_local_acp_return_arity_compat() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from scripts.skillsbench_automation_loop import (
+        _benchflow_connect_as_unpack_arity,
         _benchflow_connect_acp_return_arity,
+        _benchflow_rollout_planes_class,
+        _tuple_annotation_arity,
     )
 
     async def current_benchflow_shape() -> tuple[object, object, str]:
@@ -249,6 +267,95 @@ def _assert_host_local_acp_return_arity_compat() -> None:
     assert _benchflow_connect_acp_return_arity(current_benchflow_shape) == 3
     assert _benchflow_connect_acp_return_arity(legacy_adapter_shape) == 4
     assert _benchflow_connect_acp_return_arity(unannotated_shape) == 3
+    assert _tuple_annotation_arity("tuple[object, ...]") is None
+
+    async def connect_as_shape():
+        (
+            self._acp_client,
+            self._session,
+            self._session_adapter,
+            self._agent_name,
+        ) = await self._planes.connect_acp()
+
+    assert _benchflow_connect_as_unpack_arity(connect_as_shape) == 4
+
+    class FactoryOnlyPlanes:
+        async def connect_acp(self):
+            raise AssertionError("signature-only helper should not call target")
+
+    class FactoryOnlyModule:
+        @staticmethod
+        def default_rollout_planes():
+            return FactoryOnlyPlanes()
+
+    assert _benchflow_rollout_planes_class(FactoryOnlyModule) is FactoryOnlyPlanes
+
+
+def _assert_app_server_goal_baseline_bridge_contract() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.benchmark_adapters.skillsbench_acp_relay import (
+        _prompt_with_app_server_closeout_instruction,
+    )
+    from scripts.skillsbench_automation_loop import (
+        _host_local_acp_launch_command,
+    )
+
+    args = Namespace(
+        local_acp_relay_command="",
+        route="codex-app-server-goal-baseline",
+        app_server_reasoning_effort="high",
+        app_server_acp_heartbeat_interval_sec=120.0,
+        dataset="skillsbench@1.1",
+        task_id="3d-scan-calc",
+        local_codex_bin="codex",
+        local_codex_sandbox="workspace-write",
+        local_codex_first_action_timeout_sec=0,
+        local_codex_bridge_idle_timeout_sec=3600,
+        local_codex_exec_timeout_sec=3600,
+        agent_idle_timeout=3600,
+        model="gpt-5.5",
+        host_local_acp_launch=True,
+        remote_command_file_bridge_solver_command="python bridge.py",
+        remote_command_file_bridge_ready=True,
+        remote_command_file_bridge_probe=False,
+        remote_command_file_bridge_probe_timeout_sec=10,
+        remote_command_file_bridge_agent_command="",
+    )
+    command = _host_local_acp_launch_command(
+        args,
+        {"app_server_goal_worker_trace_dir": "/tmp/worker-traces"},
+    )
+    assert "--app-server-goal-worker" in command, command
+    assert "--remote-command-file-bridge-command" in command, command
+    bridge_index = command.index("--remote-command-file-bridge-command")
+    assert command[bridge_index + 1] == "python bridge.py", command
+    assert "--worker-public-trace-dir" in command, command
+
+    prompt = _prompt_with_app_server_closeout_instruction("Write /root/answer.json.")
+    assert "Native Codex Goal worker closeout contract" in prompt, prompt
+    assert "immediately end the turn" in prompt, prompt
+    assert "scored output file" in prompt, prompt
+    assert "relative task output file names from `/root`" in prompt, prompt
+    assert "`/root/<name>`" in prompt, prompt
+    assert "`/app/<name>` working copy alone is not a scored output" in prompt, prompt
+    assert "Before writing the final scored output" in prompt, prompt
+    assert "task-derived quality self-check" in prompt, prompt
+    assert "visible task instructions and workspace data" in prompt, prompt
+    assert "official verifier/reward/pass-fail output" in prompt, prompt
+    assert "hidden tests" in prompt, prompt
+    assert prompt.index("Before writing the final scored output") < prompt.index(
+        "After the task-required scored output file"
+    ), prompt
+
+
+def _assert_verifier_feedback_routes_disabled() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    import scripts.skillsbench_automation_loop as runner
+
+    assert not hasattr(runner, "_build_verifier_failure_feedback_todo_prompt")
+    assert not hasattr(runner, "_record_verifier_failure_feedback_todo_prompt")
+    assert "loopx-goal-start-verifier-feedback-todo" not in runner.SUPPORTED_ROUTES
+    assert "automation-loop-treatment" not in runner.SUPPORTED_ROUTES
 
 
 def main() -> int:
@@ -281,9 +388,28 @@ def main() -> int:
     assert prerequisites["benchflow_intermediate_soft_verify_policy"] == "every-round"
     assert plan["public_boundary"]["public_raw_prompt"] is False, plan
     assert plan["public_boundary"]["public_raw_trajectory"] is False, plan
+    feedback_result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+            "--route",
+            "loopx-goal-start-verifier-feedback-todo",
+            "--task-id",
+            "planning-granularity",
+            "--plan-only",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert feedback_result.returncode != 0, feedback_result
+    assert "invalid choice" in feedback_result.stderr, feedback_result.stderr
     _assert_adapter_route_contract_surface()
     _assert_control_score_surface()
     _assert_host_local_acp_return_arity_compat()
+    _assert_app_server_goal_baseline_bridge_contract()
+    _assert_verifier_feedback_routes_disabled()
     print("skillsbench-goal-start-product-mode-route-smoke ok")
     return 0
 

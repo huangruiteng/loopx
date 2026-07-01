@@ -15,6 +15,7 @@ release_id="${LOOPX_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 release_dir="$releases_dir/$release_id"
 release_tmp="$release_dir.tmp.$$"
 legacy_line=""
+installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 warn_stale_promotion_readiness() {
   local python_bin="${LOOPX_PYTHON:-python3}"
@@ -107,10 +108,23 @@ copy_path "$repo_root/scripts" "$release_tmp/scripts"
 copy_path "$repo_root/skills" "$release_tmp/skills"
 copy_path "$repo_root/docs" "$release_tmp/docs"
 copy_path "$repo_root/examples" "$release_tmp/examples"
+copy_path "$repo_root/apps" "$release_tmp/apps"
+copy_path "$repo_root/.github" "$release_tmp/.github"
 copy_path "$repo_root/README.md" "$release_tmp/README.md"
+copy_path "$repo_root/LICENSE" "$release_tmp/LICENSE"
 copy_path "$repo_root/pyproject.toml" "$release_tmp/pyproject.toml"
 find "$release_tmp" -name __pycache__ -type d -prune -exec rm -rf {} +
 find "$release_tmp" -name '*.pyc' -type f -delete
+if [[ -d "$release_tmp/apps" ]]; then
+  find "$release_tmp/apps" \
+    \( -name node_modules -o -name .next -o -name dist -o -name build -o -name coverage \) \
+    -type d -prune -exec rm -rf {} +
+fi
+PYTHONPATH="$release_tmp${PYTHONPATH:+:$PYTHONPATH}" "${LOOPX_PYTHON:-python3}" -m loopx.release_manifest \
+  "$release_tmp" \
+  --release-id "$release_id" \
+  --source-root "$repo_root" \
+  --installed-at "$installed_at"
 chmod +x "$release_tmp/scripts/loopx"
 if [[ -e "$release_dir" ]]; then
   rm -rf "$release_tmp"

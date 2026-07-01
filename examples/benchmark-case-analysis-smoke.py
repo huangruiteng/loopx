@@ -1305,12 +1305,13 @@ def test_case_analysis_markdown() -> None:
     assert "native_goal_mode_requested" in text, text
     assert "native_goal_mode_invoked" in text, text
     assert "ACP prompt text" in text and "not sufficient confirmation" in text, text
-    assert "private verifier output tail can leak" in text, text
+    assert "verifier-output tails leak oracle/verifier diagnostics" in text, text
+    assert "official reward, pass/fail status, verifier error, verifier output" in text, text
     assert "reward-feedback ablation" in text, text
     assert "codex-acp-blind-loop-baseline" in text, text
     assert "loopx-blind-loop-treatment" in text, text
     assert "official_feedback_blinded=true" in text, text
-    assert "two controller decisions" in text, text
+    assert "two heartbeat/controller decisions" in text, text
     assert "not explained by interaction count alone" in text, text
     assert "protocol v10" in text and "paired_no_score_uplift" in text, text
     assert "max-5 rerun" in text and "1:0,2:0,3:0,4:0,5:0" in text, text

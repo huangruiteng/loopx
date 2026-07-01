@@ -1374,6 +1374,17 @@ next benchmark-family blocker. Prefer per-command tunnels or short-lived
 operator-managed proxy sessions for benchmark slices; long-running unattended
 network bridges should have an explicit owner and cleanup rule.
 
+For SkillsBench setup/verifier egress on a cloud host, prefer the runner's
+runtime-only proxy switch over editing task files or committing host details.
+Set `LOOPX_SKILLSBENCH_EGRESS_PROXY` in the private remote shell environment
+before launching `scripts/skillsbench_automation_loop.py`; the runner forwards
+standard proxy variables only to the private BenchFlow subprocess and agent
+environment, runs a bounded HTTP CONNECT preflight, and records only
+source/scheme/endpoint-kind/port plus `proxy_url_recorded=false` in public
+artifacts. Use `--benchmark-egress-proxy-mode require` when the run must fail
+fast without that private proxy, and `--benchmark-egress-proxy-mode off` only
+for explicit no-proxy debugging.
+
 Keep upstream benchmark sources clean:
 
 - Use upstream `main` or a pinned upstream commit for official runner code.

@@ -64,6 +64,27 @@ Success looks like this:
 - `loopx status` shows the goal and who should act next;
 - local runtime state is ignored, not committed.
 
+## Local State Backup
+
+Before risky migrations, local scheduler changes, or release-install repair,
+preview the state archive:
+
+```bash
+loopx backup-state --project .
+```
+
+Write the archive only when the preview looks right:
+
+```bash
+loopx backup-state --project . --execute
+```
+
+The backup is written under `~/.codex/loopx/backups` by default and captures the
+shared LoopX runtime root, this project's `.loopx`, `.codex/goals`, and
+`.local/goals` state, Codex App automations, and installed `loopx-*` skills
+when present. Treat the archive and manifest as private local recovery
+material; do not commit them or publish their contents.
+
 ## Codex CLI TUI Setup
 
 For Codex CLI users, the product target is: start in the Codex TUI, send one
@@ -322,6 +343,10 @@ The reusable skills have intentionally narrow jobs:
 | `loopx-pr-review` | Running `/loopx-pr-review`, preserving the `loopx pr-review` packet, and guiding per-PR five-block reviews. | Approving, commenting on, merging, self-merging, or admin-bypassing a PR. |
 | `loopx-doc-registry` | Registering durable project material and redacted authority-source metadata. | Copying raw doc bodies, internal URLs, or private comments into public repo docs. |
 | `loopx-self-repair` | Repairing surprising control-plane behavior, stale projection, tiny turns, or contradictory guard payloads. | Lowering gates, guessing around missing authority, or committing private runtime state. |
+
+Auto-research role guidance is worker-local: the visible worker launcher owns
+the `loopx-auto-research` playbook after it has projected a role profile,
+quota packet, and frontier item. It is not installed as a global LoopX skill.
 
 Keep three layers separate:
 

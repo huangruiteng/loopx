@@ -19,7 +19,6 @@ BLIND_LOOP_DEFAULT_MAX_ROUNDS = 5
 CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE = "codex-acp-blind-loop-baseline"
 LOOPX_BLIND_LOOP_TREATMENT_ROUTE = "loopx-blind-loop-treatment"
 LOOPX_PROMPT_POLLING_TEST_ROUTE = "loopx-prompt-polling-test"
-AUTOMATION_LOOP_TREATMENT_ROUTE = "automation-loop-treatment"
 RAW_CODEX_AUTONOMOUS_MAX5_ROUTE = "raw-codex-autonomous-max5"
 LOOPX_PRODUCT_MODE_ROUTE = "loopx-product-mode"
 LOOPX_GOAL_START_PRODUCT_MODE_ROUTE = "loopx-goal-start-product-mode"
@@ -99,7 +98,7 @@ def build_benchmark_loop_contract(
         if isinstance(max_rounds, int) and not isinstance(max_rounds, bool) and max_rounds > 0
         else BLIND_LOOP_DEFAULT_MAX_ROUNDS
     )
-    feedback_forwarded = route == AUTOMATION_LOOP_TREATMENT_ROUTE
+    feedback_forwarded = False
     blind_loop = route in BLIND_LOOP_ROUTES
     product_mode = route in PRODUCT_MODE_ROUTES
     resolved_protocol = protocol_id or (
@@ -168,9 +167,11 @@ def build_product_mode_main_table_comparison_contract(
     treatment_contract = build_benchmark_loop_contract(
         route=treatment_route,
         max_rounds=budget,
-        protocol_id=PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
-        if treatment_route in LOOPX_PRODUCT_MODE_TREATMENT_ROUTES
-        else None,
+        protocol_id=(
+            PRODUCT_MODE_MAX5_NO_FEEDBACK_PROTOCOL_ID
+            if treatment_route in {LOOPX_PRODUCT_MODE_ROUTE, LOOPX_GOAL_START_PRODUCT_MODE_ROUTE}
+            else None
+        ),
     )
     treatment_arm_id = (
         "loopx_goal_start_product_mode"

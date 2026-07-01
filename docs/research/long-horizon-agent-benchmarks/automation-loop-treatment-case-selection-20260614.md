@@ -5,6 +5,11 @@ It uses compact LoopX ledger summaries plus public SkillsBench metadata
 only. It does not read raw task prompts, hidden tests, trajectories, raw logs,
 credentials, Docker logs, or local private run contents.
 
+Deprecation note: the reward-feedback automation-loop route described here is
+historical boundary evidence only. It forwards official verifier-derived
+signals into the loop and is no longer a supported SkillsBench route,
+experiment plan, or fair LoopX treatment candidate.
+
 ## Treatment Definition
 
 The first real treatment route is no longer "Codex goal mode plus LoopX
@@ -83,10 +88,11 @@ Implemented adapter boundary:
 
 - `loopx benchmark run skillsbench` builds a no-run
   `benchmark_run_v0` skeleton for route planning and dry-run inspection.
-- Supported routes are `codex-goal-mode-baseline`,
-  `automation-loop-treatment`, and `curated-skills-baseline`.
-- The automation-loop treatment route means outer LoopX heartbeat
-  automation plus ordinary/non-goal-mode Codex CLI inside the case.
+- Supported routes are now no-feedback baselines and product-mode LoopX routes;
+  reward-feedback routes such as `automation-loop-treatment` are deprecated.
+- The current LoopX treatment route means product-mode LoopX state/todos plus
+  ordinary/non-goal-mode Codex execution inside the case, with no official
+  reward/pass/fail/verifier feedback returned during execution.
 - `benchmark_run_ledger_v0` infers `loopx_automation_loop_treatment`
   and `curated_skills_baseline` arms from compact run modes.
 - The smoke `examples/skillsbench-benchmark-run-smoke.py` verifies that

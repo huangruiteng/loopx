@@ -248,8 +248,16 @@ def _extract_private_bridge_command(prompt: str) -> str | None:
 def _rewrite_private_bridge_command(prompt: str, replacement: str | None) -> str:
     if not replacement:
         return prompt
+    original = _extract_private_bridge_command(prompt)
+    if original:
+        return prompt.replace(original, replacement)
     pattern = r"(Private bridge command:\n)([^\n]+)"
-    return re.sub(pattern, r"\1" + replacement, prompt, count=1)
+    return re.sub(
+        pattern,
+        lambda match: f"{match.group(1)}{replacement}",
+        prompt,
+        count=1,
+    )
 
 
 def _prompt_requires_bridge_first_action(prompt: str) -> bool:

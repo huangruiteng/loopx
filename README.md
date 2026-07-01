@@ -1,16 +1,28 @@
-# LoopX
+<div align="center">
 
-<img align="right" src="docs/assets/loopx-logo.png" alt="LoopX loop engineering logo" width="148">
+<img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="480">
 
 **Loop engineering for long-running AI agents.**
 
-**Manage long-running agents like digital workers.**
+<sub>Manage Codex, Claude Code, Cursor, and other agent runtimes like
+reviewable digital workers: goals, gates, todos, quota, evidence, and handoff
+state in one local control plane.</sub>
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Local first](https://img.shields.io/badge/control--plane-local--first-brightgreen.svg)](docs/public-private-boundary.md)
+[![Loop Agents](https://img.shields.io/badge/status-loop%20agents%20early-orange.svg)](docs/product/release-readiness.md)
 
 **把会干活的 Agent，接成可管理、可复盘、可持续改进的数字员工。**
 
-LoopX is a local control plane for loop engineering. It helps Codex,
-Claude Code, Cursor, and other agent runtimes keep working on goals that span
-hours, days, handoffs, and changing human feedback.
+</div>
+
+---
+
+LoopX is a local control plane for agent loops that last longer than one chat
+turn. It does not replace Codex, Claude Code, Cursor, or another runtime; it
+keeps the shared state those runtimes need to continue safely across hours,
+days, handoffs, blocked lanes, and changing human feedback.
 
 Use it when an agent is already useful for one session, but the work is too
 long, too gated, or too easy to lose across restarts. LoopX turns that agent
@@ -19,37 +31,51 @@ next actions, evidence, cost, and handoff state. The agent still needs a CLI,
 goal mode, automation hook, or loop scheduler; LoopX supplies the control
 plane, not hidden autonomy.
 
+[Quick Start](#quick-start) · [How It Works](#how-it-works) · [See It In Action](#see-it-in-action) ·
+[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) · [Architecture](docs/architecture.md) ·
+[简体中文](README.zh-CN.md)
+
+<details>
+<summary>More docs and project links</summary>
+
+[Capability Surface](#capability-surface) · [Getting Started](docs/guides/getting-started.md) ·
+[Showcases](docs/showcases/README.md) · [Release Readiness](docs/product/release-readiness.md) ·
+[Update Notes](docs/update-notes/README.md) · [Community](#community--feedback) ·
+[Product Vision](docs/product/vision.md) · [Dashboard](apps/dashboard/README.md)
+
+</details>
+
+> Keep the loop moving. Keep the judgment human.
+
+## How It Works
+
 Under the hood, LoopX keeps goals, gates, todos, claims, scopes, evidence, run
 history, quota, and human decisions in one compact layer. Product surfaces fold
 those mechanics into five questions a user can act on: what is the goal, what
 is next, what needs human judgment, what evidence changed, and whether the loop
 can be handed back to the agent.
 
-LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
-不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
-
-[What Is It](#what-is-it) · [Who Should Try It](#who-should-try-it) · [Quick Start](#quick-start) · [See It In Action](#see-it-in-action) ·
-[Capability Surface](#capability-surface) ·
-[Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
-[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
-[Release Readiness](docs/product/release-readiness.md) ·
-[Update Notes](docs/update-notes/README.md) ·
-[Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
-[Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
-
-> Keep the loop moving. Keep the judgment human.
-
-## What Is It?
-
-LoopX does not replace Codex, Claude Code, Cursor, or another agent
-runtime. It sits above them as a loop-engineering control plane: the runtime
-executes bounded agent loops, while LoopX preserves the dynamic goal state those
-loops need to keep working without losing the plot.
-
 Short answer: LoopX is not another executor. Codex goal, Codex App
 automation, CLI scripts, cron jobs, or a human-visible TUI can trigger the next
 executor loop; LoopX keeps the goal, gate, evidence, quota, and handoff contract
 stable across those turns.
+
+```text
+goal / issue / project
+   │
+   ▼
+LoopX state: objective + gates + todos + scope + evidence + quota
+   │
+   ├─ human judgment needed? ── yes ─▶ ask / wait with a concrete user todo
+   │
+   ├─ safe fallback available? ──────▶ run a bounded agent slice
+   │
+   ▼
+Codex / Claude Code / Cursor / shell agent executes one loop
+   │
+   ▼
+write evidence + handoff + next todo ─▶ quota decides the next tick
+```
 
 | Layer | Role |
 | --- | --- |
@@ -67,6 +93,9 @@ turns, and off-hours without turning the project into a pile of hidden scripts
 and stale prompts. The technical contract underneath that promise is explicit:
 agent identity, todo ownership, scope, capability gates, quota, evidence
 writeback, and public/private boundaries stay visible to the next turn.
+
+LoopX 把一次静态 goal 变成能持续流转的动态 loop：该等人的地方明确等人，
+不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
 ![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
@@ -97,42 +126,80 @@ Requirements: Python 3.11+, `curl`, `tar`, macOS or Linux shell. Git is only
 needed for contributor clone/canary workflows. The Python package has no
 runtime dependencies outside the standard library.
 
-The easiest start is agent-first: ask the agent you already use to install,
-connect, diagnose, and show the next safe action before doing longer work.
+Start agent-first: paste one setup message for the surface you already use,
+then start real work with `/loopx <complex task>`.
+
+Choose your surface:
+
+- **Codex App**: best for a long-running agent that can wake up, re-check gates,
+  and keep moving. Paste the setup message below, then ask
+  `/loopx <complex task>`.
+- **Codex CLI**: best when the visible TUI should stay primary while LoopX keeps
+  the state. Run `codex`, paste the setup message, then ask
+  `/loopx <complex task>`.
+- **Claude Code**: best when Claude Code's native `/loop` should drive each tick.
+  Install the opt-in adapter, run `/loopx <task>`, then `/loop`.
+- **Manual shell / other agents**: best when you want LoopX state without a
+  supported runtime bridge. Install from the no-clone installer, then run
+  `loopx doctor` and `loopx bootstrap`.
 
 ### Codex App
 
-Best when you want LoopX to keep working through Codex App heartbeats. Paste
-this in the current project thread:
+Best when you want a long-running or decentralized multi-agent workflow without
+hand-writing scheduler prompts. Paste this in the current project thread:
 
 ```text
 Connect the current project to LoopX.
 Do not clone the LoopX repository for ordinary use. If `loopx` is not on PATH,
 install or repair it with the official no-clone installer:
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 
 Then run `loopx doctor`. Work only from the current project root: if LoopX state
 already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
-and `.local/` are ignored. After the project is connected, set or refresh this
-thread's heartbeat automation to start at 3 minutes using the task body from
-`loopx heartbeat-prompt --thin`, then follow `quota should-run.scheduler_hint`
-for backoff and loop self-stop. Then stop and report the goal id, current user
-gate, top agent todo, and next safe action.
+and `.local/` are ignored. If this is Codex App, set the heartbeat automation to start at 3 minutes.
+Automatically refresh it from the LoopX generated task body; do not ask me to
+manually run `heartbeat-prompt`. Then stop and report the project connection
+status, current user gate, top agent todo, and next safe action.
 ```
 
-The generated heartbeat body is the recurring Codex App work surface:
+Then start a real E2E exploration in normal language:
 
-```bash
-loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+```text
+/loopx Explore an LLM semantic rerank slice for a recommendation or search
+system: build an offline eval set, implement a minimal candidate -> semantic
+feature -> rerank -> eval path, add trace/cache/fallback/cost guardrails,
+compare baseline vs treatment, and stop for production traffic, private data,
+credentials, or AB/canary gates.
 ```
 
-The 3-minute interval is only the bootstrap cadence. On long waits,
-`quota should-run` returns `scheduler_hint`: Codex App automations should back
-off toward the recommended interval, while Codex CLI TUI and Claude Code loops
-should run a final quota/replan check after the unchanged-poll limit and then
-exit/stop if the guard is still unchanged instead of polling forever.
+LoopX will plan before writing state, then create ordered P0/P1/P2 todos that
+make the algorithm, infra, validation, and human gates visible.
+
+<details>
+<summary>Example visible todos</summary>
+
+```text
+[P0] Build the offline eval set: samples, labels, baseline, metrics, leakage check.
+[P0] Implement the vertical slice: candidate input -> semantic feature -> rerank -> eval.
+[P0] Add infra guardrails: trace schema, cache/fallback, rate limit, latency/cost budget.
+[P0] Ask before production traffic, private data, credentials, or AB/canary decisions.
+[P1] Compare baseline vs treatment with effect, cost, latency, and failure cases.
+[P2] Write the promotion handoff: canary evidence, rollback plan, and next experiment.
+```
+
+</details>
+
+After that, each tick reads `quota should-run`: if a user gate blocks the chosen
+path, the agent asks a concrete question; if a safe fallback exists, it keeps
+working; if nothing material changed, it backs off or quiet-stops instead of
+spending compute forever. The agent may use `heartbeat-prompt --thin`
+internally to wire Codex App, but users do not need to run that command in the
+recommended path. After the 3-minute bootstrap cadence, Codex App cadence
+should follow `quota should-run.scheduler_hint` for backoff and reset-to-initial
+updates.
 
 ### Codex CLI
 
@@ -151,22 +218,23 @@ Connect this repo to LoopX from this visible Codex CLI TUI. Do not clone the
 LoopX repository for ordinary use. If `loopx` is not on PATH, install or repair
 it with the official no-clone installer:
 curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 
 Then run `loopx doctor`. Work only from this project root: if LoopX state
 already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
-execution. After the project is connected, generate the thin heartbeat prompt
-and set the current Codex CLI goal to `/goal <thin task_body>`. Then stop and
-report the goal id, current user gate, top agent todo, and next safe action.
+execution. Then stop and report the project connection status, current user
+gate, top agent todo, and next safe action. After that I will start work with
+`/loopx <complex task>`.
 ```
 
-That one message is the install, connect, heartbeat setup, and status check.
-The first useful TUI response should show the current goal, any concrete user
-gate, top todos, and next safe action. Hidden `codex exec` is not the default
-bootstrap path. Details for generated messages, later same-TUI automation, and
-proof capture live in [Getting Started](docs/guides/getting-started.md).
+That one message is the install, connect, and status check. The first useful
+TUI response should show the current goal, any concrete user gate, top todos,
+and next safe action. Hidden `codex exec` is not the default bootstrap path.
+Details for generated messages, later same-TUI automation, and proof capture
+live in [Getting Started](docs/guides/getting-started.md).
 
 A successful connection looks like this:
 
@@ -211,6 +279,26 @@ loopx bootstrap \
   --goal-doc GOAL.md
 ```
 
+### Advanced: Dynamic Workflow Scripts
+
+For teams that already have their own agent runner, custom workflow runtime,
+tool harness, or multi-agent scheduler, LoopX can be used as the control-plane
+API inside that workflow. Your script or supervisor owns the executor loop;
+LoopX owns the state contract:
+
+```text
+loopx quota should-run      # should any agent act now?
+loopx todo claim/update     # who owns this slice, and what changed?
+loopx refresh-state         # what evidence or blocker should the next turn see?
+loopx quota spend-slot      # account for a completed automatic slice
+```
+
+This is the shape used by advanced showcases such as
+[dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
+your agents can orchestrate external tools, devices, domain-specific runners,
+or side agents, while LoopX keeps goals, gates, todos, evidence, quota, and
+handoff state reviewable.
+
 Clone-based install is only for contributors who want the live canary wrapper:
 
 ```bash
@@ -234,29 +322,35 @@ points:
   a reproducible synthetic demo where a human gate stays visible while safe
   fallback work continues.
 - [LoopX self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md)
-  and the [hardware-agent workflow](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
-  public-safe evidence that one control plane can coordinate primary and side
-  agents without hiding ownership or scope.
+  and [dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
+  public-safe evidence that one control plane can coordinate primary agents,
+  side agents, and external tools without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental notes below.
 
-### Experimental: Today Value Path
+### Experimental: Long-Running Agent App Paths
 
 This is not replacing the first screen. It is an experimental entry point for
 users who already understand the control-plane idea and want to pick one useful
-LoopX capability today:
+LoopX capability today. Each path uses the same goal, todo, quota, evidence,
+and review contract, so users can feel the capability lift without learning a
+new control plane every time:
 
-| Capability / path | Expected output | User value metric |
-| --- | --- | --- |
-| PR review/comment -> fix loop | Branch-ready fix packet with repro, smoke result, and remaining review owner. | Fewer dropped review threads; faster path from comment to validated patch. |
-| Overnight PR-sized refactor | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged commits without turning the next morning into a giant diff audit. |
-| P0 blocked -> safe fallback | Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary inside an active goal. | Less idle agent time while preserving human judgment on the blocked path. |
+| App path | Start with | Expected output | User-visible lift |
+| --- | --- | --- | --- |
+| Issue / PR fix loop | `/loopx Fix <github-issue-or-pr-url>`<br>`loopx issue-fix workflow-plan` | Branch-ready fix packet with repro, smoke result, remaining review owner, and PR-review-ready evidence. | Review comments and issues become a closed loop instead of reminders humans must shepherd by hand. |
+| PR-sized refactor loop | `/loopx <refactor goal>`<br>`loopx canary plan` | Reviewable slice list, validation notes, successor todo, and merge boundary. | More merged changes without turning the next morning into a giant diff audit. |
+| Research or experiment loop | `loopx auto-research`<br>`loopx ml-experiment preview --format json` | Hypothesis, source/evidence packet, replay or experiment boundary, and next validated question. | Research becomes a resumable long-horizon loop, not just a one-off report. |
+| Multi-agent work routing | `/loopx <goal text>`<br>`loopx quota should-run`<br>`loopx todo claim` | Claimed agent lanes with scope, lease, next action, quota decision, and handoff state. | Multiple agents can work in parallel without hiding ownership or stepping on the same todo. |
+| Knowledge / workflow connector | `loopx connect`<br>`loopx lark-kanban`<br>`loopx value-connectors` | LoopX state projected into docs, boards, GitHub, or domain workflows while LoopX remains the source of truth. | Existing work surfaces become agent-aware without copying private state into public artifacts. |
+| P0 blocked -> safe fallback | `loopx quota should-run`<br>`loopx todo claim` | Kernel projection of the exact user gate, safe fallback todo, quota decision, and evidence boundary inside an active goal. | Less idle agent time while preserving human judgment on the blocked path. |
+| Candidate: Claude implements + Codex reviews | `/loopx <implementation goal>`<br>`loopx todo claim`<br>`loopx review-packet` | Role-scoped implementer todo, reviewer verdict, verifier command, evidence packet, and next handoff in one LoopX goal. | A [two-agent demo](docs/product/cross-runtime-impl-review-demo.md) can show collaboration without making either runtime the source of truth. |
+| Candidate: PR conflict resolution | `/loopx Resolve merge conflicts for <github-pr-url>` | Conflict patch, semantic risk note, focused validation, and review handoff before merge. | Less mechanical conflict work after high-throughput agent branches, with humans still judging risky merges. |
 
-Start the goal normally with `/loopx <goal text>`. The PR review and refactor
-paths can be requested directly in plain language; the P0 safe-fallback path is
-a repository kernel behavior that appears when an active goal has a concrete
-blocking user gate and safe P1/P2 work remains.
+Start the goal normally with `/loopx <goal text>`. The commands above are short
+entry points, not separate state systems: each adapter still writes into the
+same LoopX control-plane contract.
 
 ## User Mental Model
 
@@ -424,6 +518,27 @@ loopx quota should-run --goal-id your-project-goal
 loopx heartbeat-prompt --thin --goal-id your-project-goal
 loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
 ```
+
+The `next_automatic_turn` reported by `quota plan` is only an advisory
+scheduling hint: it chooses the highest-compute eligible goal, while
+operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked
+goals stay out of the eligible lane.
+
+For stalled control-plane repair, `control_plane.self_repair.enabled=true` lets
+`quota should-run` return a bounded `decision=self_repair` contract; missing
+policy defaults off. When the payload includes a `gate_prompt` or
+`operator_question`, the target heartbeat should proactively ask that concrete
+user/controller gate and do not call the turn "no new user action" while they
+remain open. Even after a bounded safe-bypass step, its report still has to
+list existing open user todos. When `notify_user_on_open_todo=true`, skip
+delivery work and quota spend for that blocker-push turn.
+
+When `should_run=false` but `safe_bypass_allowed=true`, the heartbeat may still
+do one bounded read-only steering or analysis step. See
+`docs/quota-allocation.md` for the full allocation contract. After an automatic
+turn actually spends delivery compute, append one spend event. Do not append
+spend for quiet `should_run=false` skips, preflight failures, or pure dry-run
+previews.
 
 Three rules matter in daily use:
 

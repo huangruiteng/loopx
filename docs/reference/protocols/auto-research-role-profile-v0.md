@@ -5,7 +5,7 @@ who it is before it loads any role-specific playbook. It bridges three existing
 surfaces:
 
 - the shared LoopX control plane, which grants identity and authority;
-- role-aware skills, which define how to act inside a phase;
+- worker-local role playbooks, which define how to act inside a phase;
 - repository or workspace `AGENTS.md`, which defines long-lived local rules.
 
 The contract exists because Arbor and LoopX use skills differently. Arbor can
@@ -19,12 +19,12 @@ state rather than something inferred from a skill name or pane title.
 | Surface | Owns | Does not own |
 | --- | --- | --- |
 | LoopX control plane | `agent_id`, `role_id`, claim, capability token, phase, write boundary, gate state, and stop condition. | The detailed reasoning checklist for an implementation phase. |
-| Role-aware skill | Commands, checklists, artifact schema reminders, review prompts, and phase-specific failure modes. | Authority to write, promote, merge, publish, or bypass gates. |
+| Worker-local role playbook | Commands, checklists, artifact schema reminders, review prompts, and phase-specific failure modes. | Authority to write, promote, merge, publish, or bypass gates. |
 | `AGENTS.md` | Repository-local and workspace-local rules such as private boundary, PR hygiene, first-screen review, protected paths, and local launch policy. | Dynamic role assignment or current frontier selection. |
 | Host launcher | Visible panes, environment variables, attach/stop controls, and takeover affordances. | Research truth, promotion decisions, or hidden scheduling authority. |
 
-This split keeps skills useful without letting them become a second source of
-identity. A worker can load the same `loopx-auto-research` skill in different
+This split keeps playbooks useful without letting them become a second source of
+identity. A worker can load the same `loopx-auto-research` playbook in different
 roles, but the profile tells it which section applies and which writes are
 allowed.
 
@@ -113,16 +113,15 @@ records still name the role that produced each transition.
 | `research_curator` | Research curator | `contract_ready`, `promotion_gate` | `research_contract_v0`, owner gate todos, protected-boundary notes. | The next step would select a winner, run an experiment, or publish unsupported evidence. |
 | `hypothesis_mapper` | Hypothesis mapper | `hypothesis_proposed`, `retired` | `research_hypothesis_v0`, successor todos, no-follow-up rationale. | Novelty requires the same source that inspired the idea, or negative evidence would be hidden. |
 | `evidence_runner` | Evidence runner | `frontier_selected`, `attempt_running` | Branch refs, dev eval evidence, retry packets. | Protected scope changes, promotion decisions, or private/raw artifacts are needed. |
-| `evidence_verifier` | Evidence verifier | `evidence_recorded`, `evaluated`, `promotion_gate` | Evaluation summary, promotion/retirement candidates, gate todos. | Evidence is dev-only but would be presented as promoted, or held-out data is missing when required. |
+| `evidence_verifier` | Evidence verifier | `evidence_recorded`, `evaluated`, `promotion_gate` | Held-out validation evidence, evaluation summary, promotion/retirement candidates, gate todos. | Evidence is dev-only but would be presented as promoted, or held-out data is missing when required. |
 
 Future roles such as gate steward, synthesis narrator, and frontier janitor are
 split candidates, not required v0 panes. They should be introduced only when
 evidence from the demo shows that a transition duty needs a separate owner.
 
-## Skill Strategy
+## Worker-Local Playbook Strategy
 
-Start with one installed `loopx-auto-research` skill that contains role
-sections:
+Use one worker-local `loopx-auto-research` playbook that contains role sections:
 
 - `Research curator`
 - `Hypothesis mapper`
@@ -130,14 +129,15 @@ sections:
 - `Evidence verifier`
 - `Visible takeover and stop controls`
 
-This keeps trigger routing simple while the protocol settles. Split into
-role-specific skills only after a visible run shows repeated confusion that a
-single role-routed skill cannot prevent. The split decision should cite evidence
+This keeps each visible worker aligned without exposing auto-research as a
+global LoopX skill for ordinary project agents. Split into role-specific
+worker playbooks only after a visible run shows repeated confusion that a single
+role-routed playbook cannot prevent. The split decision should cite evidence
 such as wrong section loading, unauthorized writes, hidden negative evidence, or
 missed stop conditions.
 
-The skill body should not invent current work. Its first command should tell
-the agent to read the profile and run the quota/frontier command named by the
+The playbook body should not invent current work. Its first command should tell
+the worker to read the profile and run the quota/frontier command named by the
 profile. This mirrors Arbor's useful "load a checklist at the exact phase"
 behavior while preserving LoopX's decentralized identity model.
 

@@ -22,6 +22,7 @@ TASK_ID = "mini_control_plane_repair_v0"
 
 SIMULATOR_SETTINGS = [
     "deterministic_scripted_user",
+    "rubric_derived_user_simulator",
     "same_family_simulator_agent",
     "stronger_simulator_weaker_agent",
     "weaker_simulator_stronger_agent",
@@ -44,6 +45,7 @@ ALLOWED_VISIBILITY = [
     "worker_visible_validation_output",
     "public_safe_artifact_manifest",
     "compact_run_summary",
+    "generated_task_design_rubric_summary",
 ]
 
 FORBIDDEN_VISIBILITY = [
@@ -55,6 +57,9 @@ FORBIDDEN_VISIBILITY = [
     "raw_transcript_material",
     "raw_runner_logs",
     "local_host_paths",
+    "official_verifier_reward",
+    "official_verifier_pass_fail",
+    "official_verifier_error_or_output",
     "benchmark_forbidden_state",
 ]
 
@@ -65,6 +70,7 @@ ALLOWED_INTERVENTIONS = [
     "strategy_redirection",
     "continue_or_stop_after_failed_validation",
     "validation_triage",
+    "rubric_gap_check",
     "process_drift_correction",
     "evidence_request",
     "handoff_quality_check",
@@ -91,6 +97,7 @@ NO_ORACLE_AUDIT_KEYS = [
     "answer_key_seen",
     "private_material_seen",
     "raw_forbidden_logs_seen",
+    "official_verifier_signal_seen",
     "direct_patch_supplied",
     "tool_executed_for_worker",
     "benchmark_scoring_or_resource_changed",
@@ -156,6 +163,30 @@ def overlay_plan() -> dict[str, Any]:
             "allowed": ALLOWED_VISIBILITY,
             "forbidden": FORBIDDEN_VISIBILITY,
         },
+        "rubric_generation_policy": {
+            "policy_id": "task_design_public_rubric_no_oracle",
+            "generated_before_worker_start": True,
+            "allowed_sources": [
+                "public_task_statement",
+                "benchmark_visible_worker_context",
+                "public_safe_loopx_state_summary",
+            ],
+            "forbidden_sources": [
+                "official_verifier_reward",
+                "official_verifier_pass_fail",
+                "official_verifier_error_or_output",
+                "hidden_tests",
+                "expected_solutions",
+                "benchmark_answer_keys",
+            ],
+            "rubric_may_cover": [
+                "deliverable_shape",
+                "visible_constraints",
+                "validation_plan",
+                "evidence_quality",
+                "process_drift",
+            ],
+        },
         "intervention_budget": {
             "max_turns": 4,
             "max_proactive_turns": 2,
@@ -210,6 +241,7 @@ def scripted_run_row(plan: dict[str, Any]) -> dict[str, Any]:
                 "elapsed_seconds_since_previous_proactive": 900,
                 "visible_evidence_basis": [
                     "public_task_statement",
+                    "generated_task_design_rubric_summary",
                     "worker_visible_validation_output",
                     "compact_run_summary",
                 ],
@@ -254,6 +286,12 @@ def scripted_run_row(plan: dict[str, Any]) -> dict[str, Any]:
             "min_elapsed_seconds_between_proactive_satisfied": True,
         },
         "side_effect_audit_passed": True,
+        "rubric_audit": {
+            "policy_id": plan["rubric_generation_policy"]["policy_id"],
+            "generated_before_worker_start": True,
+            "official_verifier_signal_seen": False,
+            "hidden_solution_material_seen": False,
+        },
     }
 
 
@@ -270,11 +308,14 @@ def assert_doc_contract() -> None:
         "Comparison Modes",
         "Active User Injection",
         "Simulator Matrix",
+        "Rubric-Derived Simulator",
         "Visibility Limits",
         "Intervention Budget",
         "Failure Taxonomy",
         "deterministic_scripted_user",
+        "rubric_derived_user_simulator",
         "active_user_instruction",
+        "rubric_gap_check",
         "strategy_redirection",
         "frequency-budget audit",
         "same_family_simulator_agent",
@@ -321,6 +362,10 @@ def assert_plan_contract(plan: dict[str, Any]) -> None:
     assert active["official_score_claim_allowed"] is False, plan
     assert set(plan["visibility_policy"]["allowed"]) == set(ALLOWED_VISIBILITY), plan
     assert set(plan["visibility_policy"]["forbidden"]) == set(FORBIDDEN_VISIBILITY), plan
+    rubric_policy = plan["rubric_generation_policy"]
+    assert rubric_policy["generated_before_worker_start"] is True, plan
+    assert "official_verifier_reward" in rubric_policy["forbidden_sources"], plan
+    assert "hidden_tests" in rubric_policy["forbidden_sources"], plan
     assert set(plan["intervention_budget"]["allowed_channels"]) == set(INTERVENTION_CHANNELS), plan
     assert plan["intervention_budget"]["max_proactive_turns"] < plan["intervention_budget"]["max_turns"], plan
     assert plan["intervention_budget"]["min_worker_events_between_proactive"] >= 1, plan
@@ -342,6 +387,8 @@ def assert_run_contract(plan: dict[str, Any], row: dict[str, Any]) -> None:
     assert row["simulator_induced_error_count"] == 0, row
     assert row["side_effect_audit_passed"] is True, row
     assert row["trace_publicness"] == "public_contract_fixture", row
+    assert row["rubric_audit"]["official_verifier_signal_seen"] is False, row
+    assert row["rubric_audit"]["hidden_solution_material_seen"] is False, row
     proactive_interventions = [item for item in row["interventions"] if item["proactive"]]
     assert len(proactive_interventions) == row["frequency_budget_audit"]["proactive_interventions"], row
     assert len(proactive_interventions) <= plan["intervention_budget"]["max_proactive_turns"], row

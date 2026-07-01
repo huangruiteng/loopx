@@ -381,13 +381,129 @@ def filtered_todo_summary(
     *,
     role: str,
     status: str | None = None,
+    todo_id: str | None = None,
 ) -> dict[str, Any]:
     items = list((summary or {}).get("items") or [])
     normalized_status = normalize_todo_status(status)
     if normalized_status:
         items = [item for item in items if todo_item_status(item) == normalized_status]
+    normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
+    if normalized_todo_id:
+        items = [
+            item
+            for item in items
+            if normalize_todo_id(item.get("todo_id")) == normalized_todo_id
+        ]
     source_section = str((summary or {}).get("source_section") or TODO_SECTION_HEADINGS[role])
-    return compact_todo_group(items, source_section=source_section, role=role) or empty_todo_summary(role=role)
+    return (
+        compact_todo_group(
+            items,
+            source_section=source_section,
+            role=role,
+            item_limit=None,
+        )
+        or empty_todo_summary(role=role)
+    )
+
+
+def todo_item_relations(item: dict[str, Any]) -> dict[str, Any]:
+    relations: dict[str, Any] = {}
+    for key in (
+        "claimed_by",
+        "blocks_agent",
+        "global_gate",
+        "unblocks_todo_id",
+        "superseded_by",
+        "resume_when",
+        "resume_condition",
+        "resume_ready",
+        "decision_scope",
+        "required_decision_scopes",
+        "required_write_scopes",
+        "required_capabilities",
+        "target_capabilities",
+        "task_class",
+        "action_kind",
+        "target_key",
+        "cadence",
+        "next_due_at",
+        "expires_at",
+    ):
+        value = item.get(key)
+        if value is not None and value != []:
+            relations[key] = value
+    return relations
+
+
+def _summary_items(fields: dict[str, Any], role: str) -> list[dict[str, Any]]:
+    summary = fields.get(f"{role}_todos") if isinstance(fields, dict) else None
+    if not isinstance(summary, dict):
+        return []
+    return [item for item in summary.get("items") or [] if isinstance(item, dict)]
+
+
+def _merge_todo_projection_fields(
+    *,
+    markdown_fields: dict[str, Any],
+    event_fields: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    merged: dict[str, Any] = {}
+    overlay: dict[str, Any] = {
+        "schema_version": "todo_list_projection_overlay_v0",
+        "base": "markdown_active_state",
+        "overlay": "event_projection",
+        "markdown_only_todo_ids": [],
+        "event_only_todo_ids": [],
+        "overlaid_todo_ids": [],
+    }
+    for role in ("user", "agent"):
+        markdown_items = _summary_items(markdown_fields, role)
+        event_items = _summary_items(event_fields, role)
+        if not markdown_items and not event_items:
+            continue
+        by_id: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for item in markdown_items:
+            todo_id = normalize_todo_id(item.get("todo_id")) or build_todo_id(
+                role=role,
+                source_section=item.get("source_section"),
+                index=item.get("index"),
+                text=item.get("text"),
+            )
+            if todo_id not in by_id:
+                order.append(todo_id)
+            by_id[todo_id] = dict(item)
+        markdown_ids = set(order)
+        event_ids: set[str] = set()
+        for item in event_items:
+            todo_id = normalize_todo_id(item.get("todo_id")) or build_todo_id(
+                role=role,
+                source_section=item.get("source_section"),
+                index=item.get("index"),
+                text=item.get("text"),
+            )
+            event_ids.add(todo_id)
+            if todo_id not in by_id:
+                order.append(todo_id)
+                overlay["event_only_todo_ids"].append(todo_id)
+            else:
+                overlay["overlaid_todo_ids"].append(todo_id)
+            by_id[todo_id] = dict(item)
+        overlay["markdown_only_todo_ids"].extend(sorted(markdown_ids - event_ids))
+        source_section = str(
+            (markdown_fields.get(f"{role}_todos") or {}).get("source_section")
+            or (event_fields.get(f"{role}_todos") or {}).get("source_section")
+            or TODO_SECTION_HEADINGS[role]
+        )
+        summary = compact_todo_group(
+            [by_id[todo_id] for todo_id in order],
+            source_section=source_section,
+            role=role,
+            item_limit=None,
+        )
+        if summary:
+            merged[f"{role}_todos"] = summary
+    return merged, overlay
 
 
 def list_goal_todos(
@@ -396,9 +512,13 @@ def list_goal_todos(
     goal_id: str,
     role: str | None = None,
     status: str | None = None,
+    todo_id: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
 ) -> dict[str, Any]:
+    normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
+    if todo_id and not normalized_todo_id:
+        raise ValueError("todo_id must use the public token shape todo_<letters-digits-underscore-hyphen>")
     registry = load_registry(registry_path)
     goal, resolved_project, resolved_state_file = resolve_goal_state(
         registry=registry,
@@ -414,19 +534,32 @@ def list_goal_todos(
     projection_fields = active_state_event_projection_fields(
         goal,
         state_path=resolved_state_file,
+        item_limit=None,
     )
     projection_has_todos = bool(
         projection_fields.get("user_todos") or projection_fields.get("agent_todos")
     )
-    if projection_has_todos:
+    markdown_fields = parse_active_state_todos(
+        resolved_state_file.read_text(encoding="utf-8"),
+        goal=goal,
+        state_path=resolved_state_file,
+        item_limit=None,
+    )
+    markdown_has_todos = bool(
+        markdown_fields.get("user_todos") or markdown_fields.get("agent_todos")
+    )
+    projection_overlay: dict[str, Any] | None = None
+    if projection_has_todos and markdown_has_todos:
+        fields, projection_overlay = _merge_todo_projection_fields(
+            markdown_fields=markdown_fields,
+            event_fields=projection_fields,
+        )
+        source = "event_projection_with_markdown_overlay"
+    elif projection_has_todos:
         fields = projection_fields
         source = "event_projection"
     else:
-        fields = parse_active_state_todos(
-            resolved_state_file.read_text(encoding="utf-8"),
-            goal=goal,
-            state_path=resolved_state_file,
-        )
+        fields = markdown_fields
         source = "markdown_active_state"
 
     roles = [role] if role else ["user", "agent"]
@@ -438,10 +571,12 @@ def list_goal_todos(
             fields.get(key) if isinstance(fields, dict) else None,
             role=item_role,
             status=status,
+            todo_id=normalized_todo_id,
         )
         summaries[key] = summary
         todos.extend(summary.get("items") or [])
 
+    matched_todo = todos[0] if len(todos) == 1 else None
     payload: dict[str, Any] = {
         "ok": True,
         "dry_run": True,
@@ -456,9 +591,22 @@ def list_goal_todos(
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
     }
+    if normalized_todo_id:
+        payload["todo_id_filter"] = normalized_todo_id
+        payload["matched"] = bool(todos)
+        payload["todo"] = matched_todo
+        payload["relations"] = todo_item_relations(matched_todo) if matched_todo else {}
+        if len(todos) > 1:
+            payload["ambiguous"] = True
+        if not todos:
+            payload["not_found"] = True
     payload.update(summaries)
     if source == "event_projection" and projection_fields.get("state_event_projection"):
         payload["state_event_projection"] = projection_fields["state_event_projection"]
+    if source == "event_projection_with_markdown_overlay":
+        if projection_fields.get("state_event_projection"):
+            payload["state_event_projection"] = projection_fields["state_event_projection"]
+        payload["projection_overlay"] = projection_overlay
     if projection_fields.get("state_event_projection_warning"):
         payload["state_event_projection_warning"] = projection_fields["state_event_projection_warning"]
     return payload

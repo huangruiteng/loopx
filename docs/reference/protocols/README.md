@@ -34,3 +34,4 @@ Current contracts:
 - [value_connector_plan_v0](value-connector-plan-v0.md)
 - [openviking_session_memory_adapter_v0](openviking-session-memory-adapter-v0.md)
 - [local_agent_launch_plan_v0](local-agent-launch-plan-v0.md)
+- [multi_agent_visible_launcher_v0](multi-agent-visible-launcher-v0.md)

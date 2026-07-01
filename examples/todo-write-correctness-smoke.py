@@ -12,6 +12,13 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.local_state_write_correctness import (  # noqa: E402
+    shadow_validate_local_state_write_correctness_packet,
+)
+
 GOAL_ID = "todo-write-correctness-goal"
 AGENT_ID = "codex-product-capability"
 TODO_TEXT = "Preview a todo write correctness packet before mutating state."
@@ -187,6 +194,51 @@ def main() -> int:
             todo_id=add_dry_run["todo_id"],
             claimed_by=AGENT_ID,
         )
+        clean_shadow = shadow_validate_local_state_write_correctness_packet(
+            add_packet,
+            current_state_text=state_file.read_text(encoding="utf-8"),
+            observed_lease_ref=add_packet["write_intent"]["lease_ref"],
+        )
+        assert clean_shadow["apply_result"]["status"] == "preview_only", clean_shadow
+        assert clean_shadow["apply_result"]["conflict"] is None, clean_shadow
+
+        revision_conflict = shadow_validate_local_state_write_correctness_packet(
+            add_packet,
+            current_state_text=(
+                state_file.read_text(encoding="utf-8")
+                + "\n<!-- concurrent change -->\n"
+            ),
+        )
+        assert (
+            revision_conflict["apply_result"]["status"] == "revision_conflict"
+        ), revision_conflict
+        revision_conflict_detail = revision_conflict["apply_result"]["conflict"]
+        assert revision_conflict_detail["kind"] == "revision_conflict", revision_conflict
+        assert revision_conflict_detail["expected_revision"] == add_packet["write_intent"][
+            "expected_revision"
+        ], revision_conflict
+        assert revision_conflict_detail["current_revision"] != add_packet["write_intent"][
+            "expected_revision"
+        ], revision_conflict
+        assert state_file.read_text(encoding="utf-8") == original
+
+        foreign_lease = dict(add_packet["write_intent"]["lease_ref"])
+        foreign_lease["claimed_by"] = "codex-main-control"
+        foreign_lease["lease_id"] = f"lease_{add_dry_run['todo_id']}_codex_main_control"
+        lease_conflict = shadow_validate_local_state_write_correctness_packet(
+            add_packet,
+            current_state_text=state_file.read_text(encoding="utf-8"),
+            observed_lease_ref=foreign_lease,
+        )
+        assert lease_conflict["apply_result"]["status"] == "lease_conflict", lease_conflict
+        lease_conflict_detail = lease_conflict["apply_result"]["conflict"]
+        assert lease_conflict_detail["kind"] == "lease_conflict", lease_conflict
+        assert lease_conflict_detail["expected_lease_ref"] == add_packet["write_intent"][
+            "lease_ref"
+        ], lease_conflict
+        assert lease_conflict_detail["observed_lease_ref"] == foreign_lease, lease_conflict
+        assert state_file.read_text(encoding="utf-8") == original
+
         repeat_packet = add_dry_run_repeat["local_state_write_correctness"]
         assert (
             add_packet["write_intent"]["idempotency_key"]

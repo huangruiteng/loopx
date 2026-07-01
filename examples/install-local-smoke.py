@@ -19,6 +19,32 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.doctor import add_promotion_readiness_freshness, build_install_freshness  # noqa: E402
+from loopx.release_manifest import build_release_manifest, load_release_manifest  # noqa: E402
+
+
+def git_output(args: list[str]) -> str | None:
+    result = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def source_git_commit(root: Path = REPO_ROOT) -> str:
+    if root == REPO_ROOT:
+        commit = git_output(["rev-parse", "HEAD"])
+        if commit:
+            return commit
+    release_manifest = load_release_manifest(root)
+    manifest = release_manifest.get("manifest") if isinstance(release_manifest, dict) else None
+    source = manifest.get("source") if isinstance(manifest, dict) else None
+    commit = source.get("git_commit") if isinstance(source, dict) else None
+    assert isinstance(commit, str) and commit, release_manifest
+    return commit
 
 
 def run_install(env: dict[str, str], release_id: str) -> subprocess.CompletedProcess[str]:
@@ -57,6 +83,48 @@ def write_promotion_readiness(
     return readiness_record
 
 
+def assert_release_snapshot_source_fallback(root: Path) -> None:
+    source_root = root / "source-snapshot"
+    release_root = root / "nested-release"
+    source_root.mkdir()
+    release_root.mkdir()
+    source_manifest = {
+        "schema_version": "loopx_release_manifest_v0",
+        "release_id": "fixture-source",
+        "source": {
+            "kind": "github_archive",
+            "repo": "huangruiteng/loopx",
+            "ref": "main",
+            "git_commit": "abc123def4567890abc123def4567890abc123de",
+            "git_ref": "main",
+            "git_dirty": False,
+            "archive_url": "https://example.com/loopx.tar.gz",
+            "archive_sha256": "f" * 64,
+        },
+        "package": {"name": "loopx", "version": "0.1.2"},
+        "skills": {"digest": "fixture", "items": {}},
+    }
+    (source_root / "release.json").write_text(
+        json.dumps(source_manifest, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    nested_manifest = build_release_manifest(
+        release_root=release_root,
+        release_id="fixture-nested",
+        source_root=source_root,
+        installed_at="2026-01-01T00:00:00Z",
+    )
+    assert nested_manifest["source"]["git_commit"] == source_manifest["source"]["git_commit"], nested_manifest
+    assert nested_manifest["source"]["git_ref"] == source_manifest["source"]["git_ref"], nested_manifest
+    assert nested_manifest["source"]["git_dirty"] is False, nested_manifest
+    assert nested_manifest["source"]["kind"] == "github_archive", nested_manifest
+    assert nested_manifest["source"]["repo"] == source_manifest["source"]["repo"], nested_manifest
+    assert nested_manifest["source"]["ref"] == source_manifest["source"]["ref"], nested_manifest
+    assert nested_manifest["source"]["archive_url"] == source_manifest["source"]["archive_url"], nested_manifest
+    assert nested_manifest["source"]["archive_sha256"] == source_manifest["source"]["archive_sha256"], nested_manifest
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-install-smoke-") as tmp:
         root = Path(tmp)
@@ -84,6 +152,7 @@ def main() -> int:
         (bin_dir / "goal-harness-canary").symlink_to(legacy_canary)
         codex_home = home / ".codex"
         profile = home / ".zshrc"
+        assert_release_snapshot_source_fallback(root)
         env = {
             **os.environ,
             "HOME": str(home),
@@ -94,6 +163,7 @@ def main() -> int:
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
         }
+        source_commit = source_git_commit()
 
         install = run_install(env, "install-smoke-initial")
         assert "loopx installed locally" in install.stdout, install.stdout
@@ -125,6 +195,26 @@ def main() -> int:
         assert wrapper.resolve().name == "loopx", wrapper.resolve()
         release_root = wrapper.resolve().parents[1]
         assert (release_root / "loopx" / "cli.py").is_file(), release_root
+        dashboard_page = release_root / "apps" / "dashboard" / "src" / "views" / "dashboard-page.tsx"
+        action_packet = release_root / "apps" / "dashboard" / "src" / "data" / "action-packet.ts"
+        dashboard_node_modules = release_root / "apps" / "dashboard" / "node_modules"
+        assert dashboard_page.is_file(), dashboard_page
+        assert action_packet.is_file(), action_packet
+        assert not dashboard_node_modules.exists(), dashboard_node_modules
+        assert (release_root / ".github" / "workflows" / "update-notes.yml").is_file(), release_root
+        assert (release_root / "LICENSE").is_file(), release_root
+        release_manifest_path = release_root / "release.json"
+        assert release_manifest_path.is_file(), release_manifest_path
+        release_manifest = json.loads(release_manifest_path.read_text(encoding="utf-8"))
+        assert release_manifest["schema_version"] == "loopx_release_manifest_v0", release_manifest
+        assert release_manifest["release_id"] == "install-smoke-initial", release_manifest
+        assert release_manifest["package"]["name"] == "loopx", release_manifest
+        assert release_manifest["package"]["version"], release_manifest
+        assert release_manifest["source"]["kind"] == "local_checkout", release_manifest
+        assert release_manifest["source"]["git_commit"] == source_commit, release_manifest
+        assert isinstance(release_manifest["source"]["git_dirty"], bool), release_manifest
+        assert release_manifest["skills"]["digest"], release_manifest
+        assert release_manifest["skills"]["items"]["loopx-project"]["sha256"], release_manifest
         canary_wrapper = bin_dir / "loopx-canary"
         assert canary_wrapper.is_symlink(), canary_wrapper
         assert not (bin_dir / "goal-harness-canary").exists()
@@ -179,6 +269,8 @@ def main() -> int:
             "Do not use this skill to approve",
         ):
             assert phrase in pr_review_text, phrase
+        auto_research_skill = codex_home / "skills" / "loopx-auto-research" / "SKILL.md"
+        assert not auto_research_skill.exists(), auto_research_skill
         doc_registry_skill = codex_home / "skills" / "loopx-doc-registry" / "SKILL.md"
         doc_registry_text = " ".join(doc_registry_skill.read_text(encoding="utf-8").split())
         for phrase in (
@@ -193,15 +285,14 @@ def main() -> int:
         for phrase in (
             "Build a compact evidence packet",
             "loopx --format json diagnose --goal-id <goal-id>",
-            "loopx --format json status --limit 20",
-            "intentionally a registry/dashboard view rather than a goal-filtered command",
+            "loopx --format json status --goal-id <goal-id> --limit 20",
+            "status` defaults to the registry/dashboard view, but accepts `--goal-id`",
             "registry-declared active state file",
             "references/repair-patterns.md",
             "Repair at the lowest durable layer",
             "Do not solve contradictory payloads by guessing",
         ):
             assert phrase in self_repair_text, phrase
-        assert "status --goal-id <goal-id>" not in self_repair_text, self_repair_text
         self_repair_patterns = (
             codex_home
             / "skills"
@@ -237,6 +328,13 @@ def main() -> int:
         assert freshness["status"] == "unknown", freshness
         assert freshness["requires_upgrade"] is False, freshness
         assert freshness["current_version"], freshness
+        assert freshness["release_manifest_available"] is True, freshness
+        assert freshness["release_manifest_path"] == str(release_manifest_path), freshness
+        assert freshness["manifest_source_kind"] == "local_checkout", freshness
+        assert freshness["manifest_source_git_commit"] == source_commit, freshness
+        assert freshness["manifest_source_git_commit_short"] == source_commit[:12], freshness
+        assert freshness["manifest_source_revision"] == source_commit, freshness
+        assert freshness["manifest_skills_digest"] == release_manifest["skills"]["digest"], freshness
         assert "install-from-github.sh" in freshness["upgrade_command"], freshness
         assert "loopx doctor" in freshness["upgrade_command"], freshness
         assert doctor_payload["upgrade_hint"] == freshness, doctor_payload
@@ -245,9 +343,18 @@ def main() -> int:
         assert doctor_payload["path"]["loopx_canary"] == str(canary_wrapper), doctor_payload
         assert doctor_payload["path"]["loopx_canary_realpath"] == str(canary_wrapper.resolve()), doctor_payload
         assert doctor_payload["package"]["release_root"] == str(release_root), doctor_payload
+        assert doctor_payload["package"]["release_manifest_path"] == str(release_manifest_path), doctor_payload
+        assert doctor_payload["release_manifest"]["available"] is True, doctor_payload
+        assert doctor_payload["release_manifest"]["path"] == str(release_manifest_path), doctor_payload
+        assert doctor_payload["release_manifest"]["manifest"]["source"]["kind"] == "local_checkout", doctor_payload
+        assert (
+            doctor_payload["release_manifest"]["manifest"]["source"]["git_commit"] == source_commit
+        ), doctor_payload
+        assert doctor_payload["release_manifest"]["manifest"]["skills"]["digest"] == release_manifest["skills"]["digest"], doctor_payload
         assert doctor_payload["skill"]["path"] == str(skill), doctor_payload
         assert doctor_payload["skill"]["exists"] is True, doctor_payload
         assert doctor_payload["skill"]["delivery_hints"] is True, doctor_payload
+        assert "loopx-auto-research" not in doctor_payload["skills"], doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["exists"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-project"]["required_phrases"] is True, doctor_payload
         assert doctor_payload["skills"]["loopx-pr-review"]["exists"] is True, doctor_payload
@@ -260,6 +367,8 @@ def main() -> int:
         assert provenance["default_release"]["root"] == str(release_root), provenance
         assert provenance["default_release"]["release_id"] == release_root.name, provenance
         assert provenance["default_release"]["is_release_snapshot"] is True, provenance
+        assert provenance["default_release"]["release_manifest_available"] is True, provenance
+        assert provenance["default_release"]["release_manifest_path"] == str(release_manifest_path), provenance
         assert provenance["live_canary"]["root"] == str(REPO_ROOT), provenance
         assert provenance["live_canary"]["separate_from_default"] is True, provenance
         assert provenance["current_invocation"]["source"] == "release_snapshot", provenance
@@ -305,6 +414,10 @@ def main() -> int:
         assert "## Install Freshness" in doctor_markdown, doctor_markdown
         assert "schema_version: `loopx_install_freshness_v0`" in doctor_markdown, doctor_markdown
         assert "status: `unknown`" in doctor_markdown, doctor_markdown
+        assert "release_manifest_available: `True`" in doctor_markdown, doctor_markdown
+        assert f"manifest_source_git_commit: `{source_commit[:12]}`" in doctor_markdown, doctor_markdown
+        assert "manifest_source: `local_checkout` @ `n/a`" not in doctor_markdown, doctor_markdown
+        assert "manifest_skills_digest:" in doctor_markdown, doctor_markdown
         assert "install-from-github.sh" in doctor_markdown, doctor_markdown
         assert "latest_promotion_readiness: available=`True`" in doctor_markdown, doctor_markdown
         assert "freshness=`fresh`" in doctor_markdown, doctor_markdown
@@ -354,6 +467,47 @@ def main() -> int:
         )
         assert fresh_install["status"] == "fresh", fresh_install
         assert fresh_install["requires_upgrade"] is False, fresh_install
+
+        commit_mismatch_install = build_install_freshness(
+            command_path=wrapper,
+            release_root=root / "releases" / "20260108T000000Z",
+            repo_root=REPO_ROOT,
+            skills={
+                "loopx-project": {"exists": True, "required_phrases": True},
+                "loopx-pr-review": {"exists": True, "required_phrases": True},
+                "loopx-doc-registry": {"exists": True, "required_phrases": True},
+                "loopx-self-repair": {"exists": True, "required_phrases": True},
+            },
+            release_manifest={
+                "available": True,
+                "path": str(root / "release.json"),
+                "reason": None,
+                "manifest": {
+                    "package": {"version": "0.1.2"},
+                    "source": {
+                        "kind": "local_checkout",
+                        "git_commit": "a" * 40,
+                        "git_ref": "main",
+                        "git_dirty": False,
+                    },
+                    "skills": {"digest": "fixture-skills-digest"},
+                },
+            },
+            comparison_source={
+                "label": "loopx-canary",
+                "root": str(REPO_ROOT),
+                "git_commit": "b" * 40,
+                "git_ref": "main",
+                "git_dirty": False,
+            },
+            now=datetime(2026, 1, 8, 1, tzinfo=timezone.utc),
+        )
+        assert commit_mismatch_install["status"] == "stale", commit_mismatch_install
+        assert commit_mismatch_install["requires_upgrade"] is True, commit_mismatch_install
+        assert commit_mismatch_install["release_age_hours"] == 1.0, commit_mismatch_install
+        assert commit_mismatch_install["manifest_source_matches_comparison"] is False, commit_mismatch_install
+        assert commit_mismatch_install["comparison_source_git_commit_short"] == "b" * 12, commit_mismatch_install
+        assert "differs from loopx-canary commit" in commit_mismatch_install["reason"], commit_mismatch_install
 
         cli = subprocess.run(
             [
