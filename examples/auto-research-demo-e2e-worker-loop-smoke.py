@@ -50,6 +50,8 @@ def main() -> int:
     assert "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH`" in bootstrap_source
     assert "Do not run `--help`" in bootstrap_source
     assert "worker-turn preview/execute as the human-facing polling command" in bootstrap_source
+    assert "rewrites accidental visible `--format json` to markdown" in bootstrap_source
+    assert "$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json" in bootstrap_source
 
     worker_markdown = render_auto_research_markdown(
         {

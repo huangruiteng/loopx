@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -13,7 +14,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from loopx.visible_multi_agent_launcher import execute_visible_multi_agent_launcher  # noqa: E402
+from loopx.visible_multi_agent_launcher import (  # noqa: E402
+    _SCOPED_LOOPX_WRAPPER_PY,
+    execute_visible_multi_agent_launcher,
+)
 
 
 def write_executable(path: Path, content: str) -> None:
@@ -39,6 +43,9 @@ def main() -> int:
     assert not leaked_defs, leaked_defs
     assert "demo_local_wrapper" not in launcher_source
     assert "loopx_cli_scope=scoped_loopx_wrapper" in launcher_source
+    assert "LOOPX_PANE_LOOPX_JSON" in launcher_source
+    assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
+    assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in launcher_source
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -49,10 +56,25 @@ def main() -> int:
         workspace = temp / "workspace"
         tmux_log = temp / "tmux.jsonl"
         worker_skill = temp / "worker" / "SKILL.md"
+        wrapper_arg_log = temp / "wrapper-args.jsonl"
         worker_skill.parent.mkdir(parents=True)
         worker_skill.write_text("# Worker-local playbook\n", encoding="utf-8")
         registry.write_text(json.dumps({"common_runtime_root": str(runtime_root)}), encoding="utf-8")
-        write_executable(fake_bin / "loopx", "#!/usr/bin/env sh\nexit 0\n")
+        write_executable(
+            fake_bin / "loopx",
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json, os, sys",
+                    "path = os.environ.get('WRAPPER_ARG_LOG')",
+                    "if path:",
+                    "    with open(path, 'a', encoding='utf-8') as f:",
+                    "        f.write(json.dumps(sys.argv[1:]) + '\\n')",
+                    "print('fake-loopx ' + ' '.join(sys.argv[1:]))",
+                    "",
+                ]
+            ),
+        )
         write_executable(fake_bin / "codex", "#!/usr/bin/env sh\nexit 0\n")
         write_executable(
             fake_bin / "tmux",
@@ -85,7 +107,43 @@ def main() -> int:
         original_path = os.environ.get("PATH", "")
         os.environ["PATH"] = f"{fake_bin}{os.pathsep}{original_path}"
         os.environ["FAKE_TMUX_LOG"] = str(tmux_log)
+        os.environ["WRAPPER_ARG_LOG"] = str(wrapper_arg_log)
         try:
+            scoped_env = dict(os.environ)
+            scoped_env.update(
+                {
+                    "LOOPX_PROJECT": str(workspace),
+                    "LOOPX_REAL_CLI": str(fake_bin / "loopx"),
+                    "LOOPX_REGISTRY": str(registry),
+                    "LOOPX_RUNTIME_ROOT": str(runtime_root),
+                }
+            )
+            workspace.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                [sys.executable, "-c", _SCOPED_LOOPX_WRAPPER_PY],
+                env=scoped_env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            human = subprocess.run(
+                [str(workspace / ".local/bin/loopx"), "--format", "json", "status"],
+                env=scoped_env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            machine = subprocess.run(
+                [str(workspace / ".local/bin/loopx-json"), "--format", "json", "status"],
+                env=scoped_env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in human.stdout, human.stdout
+            assert "--format markdown status" in human.stdout, human.stdout
+            assert "--format json status" in machine.stdout, machine.stdout
+
             try:
                 execute_visible_multi_agent_launcher(
                     payload={
@@ -149,6 +207,7 @@ def main() -> int:
         finally:
             os.environ["PATH"] = original_path
             os.environ.pop("FAKE_TMUX_LOG", None)
+            os.environ.pop("WRAPPER_ARG_LOG", None)
 
         assert chosen == "tmux", launch
         assert workspace_mode == "explicit_workspace", launch

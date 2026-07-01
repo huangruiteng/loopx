@@ -105,18 +105,67 @@ else:
                 emit(key, evidence_graph.get(key))
 """
 
-_SCOPED_LOOPX_WRAPPER_PY = (
-    "import os,shlex; "
-    "from pathlib import Path; "
-    "project=Path(os.environ['LOOPX_PROJECT']); "
-    "real=os.environ['LOOPX_REAL_CLI']; "
-    "registry=os.environ['LOOPX_REGISTRY']; "
-    "runtime=os.environ['LOOPX_RUNTIME_ROOT']; "
-    "target=project/'.local'/'bin'/'loopx'; "
-    "target.write_text('#!/usr/bin/env sh\\nexec ' + shlex.quote(real) + "
-    "' --registry ' + shlex.quote(registry) + "
-    "' --runtime-root ' + shlex.quote(runtime) + ' \"$@\"\\n', encoding='utf-8')"
+_SCOPED_LOOPX_WRAPPER_PY = r"""
+import os
+from pathlib import Path
+
+project = Path(os.environ["LOOPX_PROJECT"])
+real = os.environ["LOOPX_REAL_CLI"]
+registry = os.environ["LOOPX_REGISTRY"]
+runtime = os.environ["LOOPX_RUNTIME_ROOT"]
+bin_dir = project / ".local" / "bin"
+bin_dir.mkdir(parents=True, exist_ok=True)
+
+json_target = bin_dir / "loopx-json"
+json_target.write_text(
+    "#!/usr/bin/env python3\n"
+    "import os, sys\n"
+    f"real = {real!r}\n"
+    f"registry = {registry!r}\n"
+    f"runtime = {runtime!r}\n"
+    "os.execv(real, [real, '--registry', registry, '--runtime-root', runtime] + sys.argv[1:])\n",
+    encoding="utf-8",
 )
+json_target.chmod(0o700)
+
+human_target = bin_dir / "loopx"
+human_target.write_text(
+    "#!/usr/bin/env python3\n"
+    "import os, sys\n"
+    f"real = {real!r}\n"
+    f"registry = {registry!r}\n"
+    f"runtime = {runtime!r}\n"
+    "args = sys.argv[1:]\n"
+    "force = os.environ.get('LOOPX_VISIBLE_FORCE_MARKDOWN', '1') != '0'\n"
+    "machine_json = os.environ.get('LOOPX_MACHINE_JSON') == '1'\n"
+    "changed = False\n"
+    "if force and not machine_json:\n"
+    "    rewritten = []\n"
+    "    index = 0\n"
+    "    while index < len(args):\n"
+    "        arg = args[index]\n"
+    "        if arg == '--format' and index + 1 < len(args):\n"
+    "            rewritten.append(arg)\n"
+    "            value = args[index + 1]\n"
+    "            if value == 'json':\n"
+    "                value = 'markdown'\n"
+    "                changed = True\n"
+    "            rewritten.append(value)\n"
+    "            index += 2\n"
+    "            continue\n"
+    "        if arg == '--format=json':\n"
+    "            arg = '--format=markdown'\n"
+    "            changed = True\n"
+    "        rewritten.append(arg)\n"
+    "        index += 1\n"
+    "    args = rewritten\n"
+    "if changed:\n"
+    "    print('\\n[LoopX human view]\\nformat=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON\\n', flush=True)\n"
+    "os.execv(real, [real, '--registry', registry, '--runtime-root', runtime] + args)\n",
+    encoding="utf-8",
+)
+human_target.chmod(0o700)
+"""
 
 
 def _q(value: object) -> str:
@@ -165,7 +214,7 @@ def build_visible_frontier_command(
     return (
         'cd "$LOOPX_PROJECT"; '
         f"printf '\\n%s\\n' {_q(frontier_label)}; "
-        f"FRONTIER_PACKET=\"$({frontier_command} 2>&1)\"; "
+        f"FRONTIER_PACKET=\"$(LOOPX_MACHINE_JSON=1; export LOOPX_MACHINE_JSON; {frontier_command} 2>&1)\"; "
         "FRONTIER_STATUS=$?; "
         'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/frontier.public.json"; '
         f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} frontier \"$FRONTIER_ARTIFACT\" || true; "
@@ -219,7 +268,10 @@ def build_visible_lane_command(
         'mkdir -p "$LOOPX_PROJECT/.local/bin"; '
         f"python3 -c {_q(_SCOPED_LOOPX_WRAPPER_PY)}; "
         'chmod +x "$LOOPX_PROJECT/.local/bin/loopx"; '
+        'chmod +x "$LOOPX_PROJECT/.local/bin/loopx-json"; '
         'export LOOPX_PANE_LOOPX="$LOOPX_PROJECT/.local/bin/loopx"; '
+        'export LOOPX_PANE_LOOPX_JSON="$LOOPX_PROJECT/.local/bin/loopx-json"; '
+        'export LOOPX_VISIBLE_FORCE_MARKDOWN="${LOOPX_VISIBLE_FORCE_MARKDOWN:-1}"; '
         'export PATH="$LOOPX_PROJECT/.local/bin:$PATH"; '
     )
     visible_summary = (
@@ -262,7 +314,7 @@ def build_visible_lane_command(
         f"{role_profile_command}"
         f"{poll_header}"
         "printf '\\n[LoopX quota guard]\\nattempt=%s/%s\\n' \"$POLL_INDEX\" \"$POLL_ATTEMPTS\"; "
-        f"QUOTA_PACKET=\"$({quota_command} 2>&1)\"; "
+        f"QUOTA_PACKET=\"$(LOOPX_MACHINE_JSON=1; export LOOPX_MACHINE_JSON; {quota_command} 2>&1)\"; "
         "QUOTA_STATUS=$?; "
         'VISIBLE_ARTIFACT_PREFIX="${LOOPX_LANE_ID:-${LOOPX_ROLE_ID:-lane}}"; '
         'QUOTA_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.quota.public.json"; '
@@ -290,7 +342,7 @@ def build_visible_lane_command(
         f"{keep_visible}; "
         "fi; "
         f"printf '\\n{frontier_label}\\n'; "
-        f"FRONTIER_PACKET=\"$({frontier_command} 2>&1)\"; "
+        f"FRONTIER_PACKET=\"$(LOOPX_MACHINE_JSON=1; export LOOPX_MACHINE_JSON; {frontier_command} 2>&1)\"; "
         "FRONTIER_STATUS=$?; "
         'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.frontier.public.json"; '
         f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} frontier \"$FRONTIER_ARTIFACT\" || true; "

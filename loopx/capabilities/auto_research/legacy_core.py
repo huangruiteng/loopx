@@ -957,7 +957,7 @@ def _auto_research_codex_bootstrap_prompt(
         "   `\"$LOOPX_PANE_LOOPX\" auto-research worker-loop --format markdown --goal-id \"$LOOPX_GOAL_ID\" $LOOPX_WORKER_LOOP_AGENT_ARGS --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
         "6. Stop after the selected command reports executed/completed turns and no runnable frontier.",
         "7. For evidence-runner, additionally require appended evidence and live_evidence.written=true.",
-        "8. Do not run `--help` or full quota/status dumps on the first screen; if deep debugging is needed, redirect machine details to a local artifact and print a short summary.",
+        "8. Do not run `--help` or full quota/status dumps on the first screen; if deep debugging is needed, use `$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json` and print a short summary.",
     ]
     return "\n".join(
         [
@@ -965,9 +965,9 @@ def _auto_research_codex_bootstrap_prompt(
             "Use the pane-local LoopX wrapper for quota/status/frontier, then follow this compact role prompt.",
             "The worker-local loopx-auto-research playbook is available at `$LOOPX_WORKER_SKILL_PATH` for ambiguous cases, but do not print or cat it in the visible pane.",
             "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH` or `$LOOPX_ROLE_PROFILE_JSON`; the visible role summary above is the human-facing profile.",
-            "Use only the pane-local LoopX wrapper: `$LOOPX_PANE_LOOPX`. Do not call bare `loopx` or an absolute LoopX binary; those can hit the wrong registry and make this demo goal look missing.",
-            "The wrapper has this demo's registry/runtime baked in. If `$LOOPX_PANE_LOOPX` is unset or not executable, stop and report that blocker instead of falling back.",
-            "Visible panes are for human observation: run worker-turn and worker-loop with `--format markdown`. Use `--format json` only when redirecting to an artifact file and printing a compact summary.",
+            "Use only the pane-local human LoopX wrapper: `$LOOPX_PANE_LOOPX`. Do not call bare `loopx` or an absolute LoopX binary; those can hit the wrong registry and make this demo goal look missing.",
+            "The human wrapper has this demo's registry/runtime baked in and rewrites accidental visible `--format json` to markdown. If `$LOOPX_PANE_LOOPX` is unset or not executable, stop and report that blocker instead of falling back.",
+            "Visible panes are for human observation: run worker-turn and worker-loop with `--format markdown`. If machine JSON is needed, use `$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json` and print only a compact summary.",
             "This pane is a visible LoopX polling turn: use worker-turn preview/execute as the human-facing polling command; it re-reads quota and frontier internally.",
             "Avoid `--help` probes and full quota/status dumps in the visible pane unless you are explaining a blocker.",
             "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the printed frontier explicitly asks for it.",
