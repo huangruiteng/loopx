@@ -480,6 +480,202 @@ def _size_bucket(value: str) -> str:
     return "5000_plus"
 
 
+def _remote_failure_cleanup_public_contract(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "requested": bool(args.remote_failure_cleanup_pattern),
+        "attempted": False,
+        "trigger": "not_run",
+        "include_docker": bool(args.remote_failure_cleanup_include_docker),
+        "raw_pattern_recorded": False,
+        "raw_output_recorded": False,
+    }
+
+
+def _remote_failure_cleanup_command(args: argparse.Namespace) -> str:
+    code = r'''
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+
+pattern = sys.argv[1]
+include_docker = sys.argv[2] == "1"
+self_pid = os.getpid()
+self_pgid = os.getpgrp()
+parent_pid = os.getppid()
+ancestors = {parent_pid}
+cursor = parent_pid
+while cursor > 1:
+    try:
+        with open(f"/proc/{cursor}/stat", "r", encoding="utf-8", errors="replace") as handle:
+            parts = handle.read().split()
+        cursor = int(parts[3])
+    except Exception:
+        break
+    ancestors.add(cursor)
+
+
+def matching_pids():
+    matches = []
+    for name in os.listdir("/proc"):
+        if not name.isdigit():
+            continue
+        pid = int(name)
+        if pid == self_pid or pid in ancestors:
+            continue
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as handle:
+                raw = handle.read()
+        except OSError:
+            continue
+        command = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
+        if pattern not in command:
+            continue
+        try:
+            if os.getpgid(pid) == self_pgid:
+                continue
+        except OSError:
+            pass
+        matches.append(pid)
+    return sorted(set(matches))
+
+
+term_targets = matching_pids()
+term_sent = 0
+for pid in term_targets:
+    try:
+        os.kill(pid, signal.SIGTERM)
+        term_sent += 1
+    except OSError:
+        pass
+
+time.sleep(1.0)
+kill_targets = matching_pids()
+kill_sent = 0
+for pid in kill_targets:
+    try:
+        os.kill(pid, signal.SIGKILL)
+        kill_sent += 1
+    except OSError:
+        pass
+
+alive_after = matching_pids()
+docker_status = "not_requested"
+docker_matched = 0
+docker_removed = 0
+if include_docker:
+    docker_status = "ok"
+    try:
+        ps = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        names = [
+            line.strip()
+            for line in (ps.stdout or "").splitlines()
+            if line.strip() and pattern in line.strip()
+        ]
+        docker_matched = len(names)
+        for name in names:
+            rm = subprocess.run(
+                ["docker", "rm", "-f", name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if rm.returncode == 0:
+                docker_removed += 1
+    except FileNotFoundError:
+        docker_status = "docker_unavailable"
+    except Exception:
+        docker_status = "docker_cleanup_failed"
+
+print(json.dumps({
+    "matched_count": len(term_targets),
+    "term_sent_count": term_sent,
+    "kill_sent_count": kill_sent,
+    "alive_after_count": len(alive_after),
+    "docker_status": docker_status,
+    "docker_matched_count": docker_matched,
+    "docker_removed_count": docker_removed,
+}, sort_keys=True))
+'''
+    include_docker = "1" if args.remote_failure_cleanup_include_docker else "0"
+    return (
+        "# LOOPX_REMOTE_FAILURE_CLEANUP\n"
+        + "python3 - "
+        + shlex.quote(args.remote_failure_cleanup_pattern)
+        + " "
+        + include_docker
+        + " <<'PY'\n"
+        + code.strip()
+        + "\nPY"
+    )
+
+
+def _run_remote_failure_cleanup(
+    args: argparse.Namespace,
+    *,
+    trigger: str,
+) -> dict[str, Any]:
+    payload = _remote_failure_cleanup_public_contract(args)
+    payload["trigger"] = trigger
+    if not args.remote_failure_cleanup_pattern:
+        return payload
+    payload["attempted"] = True
+    try:
+        proc = _run_remote_shell_command(
+            args,
+            _remote_failure_cleanup_command(args),
+            timeout_sec=args.remote_failure_cleanup_timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        payload["first_blocker"] = "remote_failure_cleanup_timeout"
+        return payload
+    except OSError:
+        payload["first_blocker"] = "remote_failure_cleanup_launch_failed"
+        return payload
+
+    stdout_text = proc.stdout or ""
+    stderr_text = proc.stderr or ""
+    payload["exit_code"] = proc.returncode
+    payload["stdout_size_bucket"] = _size_bucket(stdout_text)
+    payload["stderr_size_bucket"] = _size_bucket(stderr_text)
+    if proc.returncode != 0:
+        payload["first_blocker"] = "remote_failure_cleanup_exit_nonzero"
+        return payload
+    try:
+        parsed = json.loads(stdout_text.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError):
+        payload["first_blocker"] = "remote_failure_cleanup_result_missing"
+        return payload
+    if not isinstance(parsed, dict):
+        payload["first_blocker"] = "remote_failure_cleanup_result_invalid"
+        return payload
+    for key in (
+        "matched_count",
+        "term_sent_count",
+        "kill_sent_count",
+        "alive_after_count",
+        "docker_matched_count",
+        "docker_removed_count",
+    ):
+        try:
+            payload[key] = int(parsed.get(key, 0))
+        except (TypeError, ValueError):
+            payload[key] = 0
+    payload["docker_status"] = str(parsed.get("docker_status", "unknown"))[:80]
+    return payload
+
+
 def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     started_at = time.time()
     payload: dict[str, Any] = {
@@ -497,6 +693,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "private_log_written": False,
         "remote_forward": _forward_public_contract(args.remote_forward),
         "json_bridge": _json_bridge_public_contract(args),
+        "remote_failure_cleanup": _remote_failure_cleanup_public_contract(args),
     }
 
     tunnel_proc: subprocess.Popen[Any] | None = None
@@ -633,6 +830,10 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         payload["ok"] = proc.returncode == 0
         if proc.returncode != 0:
             payload["first_blocker"] = "remote_command_exit_nonzero"
+            payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
+                args,
+                trigger="remote_command_exit_nonzero",
+            )
         return finish(0 if proc.returncode == 0 else proc.returncode or 1)
     except subprocess.TimeoutExpired as exc:
         stdout_text = exc.stdout if isinstance(exc.stdout, str) else ""
@@ -646,6 +847,10 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             stderr_text=stderr_text,
         )
         payload["first_blocker"] = "remote_command_timeout"
+        payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
+            args,
+            trigger="remote_command_timeout",
+        )
         return finish(124)
 
 
@@ -669,6 +874,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tunnel-ready-timeout-sec", type=float, default=30.0)
     parser.add_argument("--keepalive-interval-sec", type=int, default=20)
     parser.add_argument("--run-timeout-sec", type=float, default=7200.0)
+    parser.add_argument(
+        "--remote-failure-cleanup-pattern",
+        default="",
+        help=(
+            "Private remote process/container name substring to clean up after "
+            "a nonzero or timed-out remote command. Public output records "
+            "counts only, never the pattern."
+        ),
+    )
+    parser.add_argument(
+        "--remote-failure-cleanup-include-docker",
+        action="store_true",
+        help=(
+            "Also remove running Docker containers whose names contain the "
+            "private cleanup pattern. Public output records counts only."
+        ),
+    )
+    parser.add_argument(
+        "--remote-failure-cleanup-timeout-sec",
+        type=float,
+        default=60.0,
+        help="Timeout for the private remote failure cleanup command.",
+    )
     parser.add_argument(
         "--cleanup-stale-local-forward",
         action="store_true",

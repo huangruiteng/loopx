@@ -44,8 +44,16 @@ if "LOOPX_REVERSE_TUNNEL_PROBE" in remote_command:
     print("HTTP/1.1 200 Connection Established")
     sys.exit(0)
 
+if "LOOPX_REMOTE_FAILURE_CLEANUP" in remote_command:
+    print('{{"alive_after_count": 0, "docker_matched_count": 1, "docker_removed_count": 1, "docker_status": "ok", "kill_sent_count": 0, "matched_count": 2, "term_sent_count": 2}}')
+    sys.exit(0)
+
 if "cat >" in remote_command:
     sys.stdin.read()
+
+if "fail-skillsbench" in remote_command:
+    print("private failure detail")
+    sys.exit(42)
 
 print('{{"ok": true, "source": "fake_remote_command"}}')
 sys.exit(0)
@@ -113,6 +121,81 @@ def test_supervisor_holds_tunnel_and_redacts_private_command() -> None:
         assert opaque_destination not in public_text
         assert opaque_command not in public_text
         assert opaque_command in ssh_log.read_text(encoding="utf-8")
+        assert private_log.exists()
+
+
+def test_supervisor_cleans_remote_failure_without_public_pattern() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-tunnel-cleanup-") as tmp:
+        root = Path(tmp)
+        fake_ssh = root / "ssh"
+        ssh_log = root / "ssh.log"
+        public_output = root / "public.json"
+        private_log = root / "private.log"
+        _fake_ssh(fake_ssh, ssh_log)
+
+        opaque_destination = "opaque-benchmark-host.example"
+        opaque_cleanup_pattern = "redacted-cleanup-token-example"
+        opaque_command = (
+            "cd /opaque/workdir && fail-skillsbench --run-group "
+            + opaque_cleanup_pattern
+        )
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--ssh-bin",
+                str(fake_ssh),
+                "--ssh-destination",
+                opaque_destination,
+                "--remote-forward",
+                "127.0.0.1:18180:127.0.0.1:18180",
+                "--remote-command",
+                opaque_command,
+                "--remote-failure-cleanup-pattern",
+                opaque_cleanup_pattern,
+                "--remote-failure-cleanup-include-docker",
+                "--remote-failure-cleanup-timeout-sec",
+                "5",
+                "--public-output-path",
+                str(public_output),
+                "--private-log-path",
+                str(private_log),
+                "--tunnel-ready-timeout-sec",
+                "5",
+                "--probe-interval-sec",
+                "0.1",
+                "--run-timeout-sec",
+                "5",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert proc.returncode == 42, proc.stderr or proc.stdout
+        payload = json.loads(proc.stdout)
+        assert payload["ok"] is False, payload
+        assert payload["first_blocker"] == "remote_command_exit_nonzero", payload
+        assert payload["remote_command_exit_code"] == 42, payload
+        cleanup = payload["remote_failure_cleanup"]
+        assert cleanup["requested"] is True, cleanup
+        assert cleanup["attempted"] is True, cleanup
+        assert cleanup["trigger"] == "remote_command_exit_nonzero", cleanup
+        assert cleanup["exit_code"] == 0, cleanup
+        assert cleanup["matched_count"] == 2, cleanup
+        assert cleanup["term_sent_count"] == 2, cleanup
+        assert cleanup["alive_after_count"] == 0, cleanup
+        assert cleanup["docker_status"] == "ok", cleanup
+        assert cleanup["docker_matched_count"] == 1, cleanup
+        assert cleanup["docker_removed_count"] == 1, cleanup
+        assert cleanup["raw_pattern_recorded"] is False, cleanup
+        assert cleanup["raw_output_recorded"] is False, cleanup
+        public_text = json.dumps(payload, sort_keys=True)
+        assert opaque_destination not in public_text
+        assert opaque_command not in public_text
+        assert opaque_cleanup_pattern not in public_text
+        assert "LOOPX_REMOTE_FAILURE_CLEANUP" in ssh_log.read_text(encoding="utf-8")
         assert private_log.exists()
 
 
@@ -205,5 +288,6 @@ def test_supervisor_holds_json_bridge_and_materializes_remote_client() -> None:
 
 if __name__ == "__main__":
     test_supervisor_holds_tunnel_and_redacts_private_command()
+    test_supervisor_cleans_remote_failure_without_public_pattern()
     test_supervisor_holds_json_bridge_and_materializes_remote_client()
     print("skillsbench-reverse-tunnel-supervisor smoke ok")
