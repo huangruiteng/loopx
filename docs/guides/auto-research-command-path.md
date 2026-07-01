@@ -108,8 +108,9 @@ loopx --registry "$LOOPX_REGISTRY" \
 To start tmux panes but stay in the current shell, use `--no-attach`. Visible
 panes default to human-readable LoopX output. The pane-local `$LOOPX_PANE_LOOPX`
 wrapper rewrites accidental visible JSON requests to markdown, and
-`$LOOPX_PANE_LOOPX_JSON` is reserved for redirected or piped machine artifacts;
-it refuses to dump raw JSON directly into a visible terminal.
+`$LOOPX_PANE_LOOPX_JSON` is reserved for redirected machine artifacts; it refuses
+to dump raw JSON directly into a visible terminal or a Codex-visible pipe unless
+the launcher explicitly sets `LOOPX_MACHINE_JSON=1`.
 
 Expected minimal E2E result:
 
