@@ -57,6 +57,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "product-entry-workflows",
         "cross-runtime-impl-review-demo",
         "host-command-entry",
+        "runtime-connector-catalog",
         "frontstage-rollout",
         "auto-research-demo",
         "catalog-canary-contract",
@@ -319,6 +320,33 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert all(check["tier"] == "default" for check in host_command_profile["checks"])
     assert host_command_profile["deep_checks_available"] is False, host_command_profile
     assert host_command_profile["deep_checks_included"] is False, host_command_profile
+
+    runtime_connector_payload = build_catalog_canary_plan(
+        changed_files=["docs/runtime-connector-catalog.md"],
+        surfaces=[
+            "runtime connector catalog codex app heartbeat codex cli tui "
+            "claude code loop worker bridge scheduler_hint scoped identity"
+        ],
+        max_checks_per_profile=4,
+    )
+    runtime_connector_profiles = {
+        profile["id"]: profile for profile in runtime_connector_payload["domain_profiles"]
+    }
+    assert "runtime-connector-catalog" in runtime_connector_profiles, runtime_connector_payload
+    runtime_connector_profile = runtime_connector_profiles["runtime-connector-catalog"]
+    runtime_connector_commands = [
+        check["command"] for check in runtime_connector_profile["checks"]
+    ]
+    assert "python3 examples/heartbeat-prompt-smoke.py" in runtime_connector_commands
+    assert (
+        "python3 examples/codex-cli-tui-bootstrap-smoke-bundle-smoke.py"
+        in runtime_connector_commands
+    )
+    assert "python3 examples/claude-goalmode-lifecycle-smoke.py" in runtime_connector_commands
+    assert "python3 examples/worker-bridge-install-contract-smoke.py" in runtime_connector_commands
+    assert all(check["tier"] == "default" for check in runtime_connector_profile["checks"])
+    assert runtime_connector_profile["deep_checks_available"] is True, runtime_connector_profile
+    assert runtime_connector_profile["deep_checks_included"] is False, runtime_connector_profile
 
     auto_research_payload = build_catalog_canary_plan(
         changed_files=["loopx/capabilities/auto_research/core.py"],
