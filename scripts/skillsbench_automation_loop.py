@@ -2145,6 +2145,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_stage",
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
         "benchflow_intermediate_soft_verify_orphan_cleanup_status",
+        "host_local_acp_attempt_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
@@ -2265,6 +2266,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
         "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
+        "host_local_acp_attempt_cleanup_requested",
+        "host_local_acp_attempt_cleanup_raw_logs_read",
+        "host_local_acp_attempt_cleanup_raw_command_recorded",
         "goal_start_product_mode",
         "goal_start_plan_required",
         "goal_start_selected_p0_lifecycle_required",
@@ -2325,6 +2329,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_orphan_cleanup_term_sent_count",
         "benchflow_intermediate_soft_verify_orphan_cleanup_kill_sent_count",
         "benchflow_intermediate_soft_verify_orphan_cleanup_alive_after_count",
+        "host_local_acp_attempt_cleanup_match_count",
+        "host_local_acp_attempt_cleanup_term_sent_count",
+        "host_local_acp_attempt_cleanup_kill_sent_count",
+        "host_local_acp_attempt_cleanup_alive_after_count",
         "benchflow_verifier_prep_timeout_sec",
         "benchflow_final_verifier_timeout_sec",
         "benchflow_final_verifier_timeout_override_count",
@@ -2635,6 +2643,171 @@ def cleanup_benchflow_setup_stall_children(
             except ProcessLookupError:
                 continue
             except PermissionError:
+                continue
+        cleanup["kill_sent_count"] = kill_sent
+        time.sleep(0.1)
+        alive = {pid for pid in alive if is_alive(pid)}
+    cleanup["alive_after_count"] = len(alive)
+    if alive:
+        cleanup["status"] = "cleanup_incomplete"
+    elif kill_sent:
+        cleanup["status"] = "killed"
+    else:
+        cleanup["status"] = "terminated"
+    return publish()
+
+
+def cleanup_host_local_acp_attempt_children(
+    plan: dict[str, Any],
+    *,
+    grace_seconds: float = 3.0,
+) -> dict[str, Any]:
+    """Terminate host-local ACP/app-server worker processes scoped to one attempt."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    cleanup: dict[str, Any] = {
+        "schema_version": "skillsbench_host_local_acp_attempt_cleanup_v0",
+        "requested": True,
+        "raw_logs_read": False,
+        "raw_command_recorded": False,
+        "status": "not_attempted",
+        "match_count": 0,
+        "term_sent_count": 0,
+        "kill_sent_count": 0,
+        "alive_after_count": 0,
+    }
+
+    def publish() -> dict[str, Any]:
+        prerequisites["host_local_acp_attempt_cleanup_requested"] = True
+        prerequisites["host_local_acp_attempt_cleanup_raw_logs_read"] = False
+        prerequisites["host_local_acp_attempt_cleanup_raw_command_recorded"] = False
+        prerequisites["host_local_acp_attempt_cleanup_status"] = str(
+            cleanup.get("status") or "unknown"
+        )
+        for source, target in (
+            ("match_count", "host_local_acp_attempt_cleanup_match_count"),
+            ("term_sent_count", "host_local_acp_attempt_cleanup_term_sent_count"),
+            ("kill_sent_count", "host_local_acp_attempt_cleanup_kill_sent_count"),
+            ("alive_after_count", "host_local_acp_attempt_cleanup_alive_after_count"),
+        ):
+            value = cleanup.get(source)
+            if isinstance(value, int):
+                prerequisites[target] = value
+        return cleanup
+
+    if os.name != "posix":
+        cleanup["status"] = "unsupported_platform"
+        return publish()
+
+    if (
+        prerequisites.get("host_local_acp_launch") is not True
+        and prerequisites.get("agent_execution_mode") != "host_local_acp"
+    ):
+        cleanup["status"] = "not_applicable_no_host_local_acp"
+        return publish()
+
+    identifiers = [
+        str(value).strip()
+        for value in (plan.get("job_name"), plan.get("rollout_name"))
+        if str(value or "").strip()
+    ]
+    if not identifiers:
+        cleanup["status"] = "missing_run_identifiers"
+        return publish()
+
+    try:
+        proc = subprocess.run(
+            ["ps", "-eo", "pid=,ppid=,command="],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        cleanup["status"] = "process_table_unavailable"
+        return publish()
+    if proc.returncode != 0:
+        cleanup["status"] = "process_table_unavailable"
+        return publish()
+
+    entries: dict[int, tuple[int, str]] = {}
+    children: dict[int, set[int]] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split(maxsplit=2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        command = parts[2]
+        entries[pid] = (ppid, command)
+        children.setdefault(ppid, set()).add(pid)
+
+    host_local_markers = (
+        "skillsbench_local_acp_relay.py",
+        "scripts/skillsbench_local_acp_relay.py",
+        "skillsbench_host_codex_goal_worker.py",
+        "scripts/skillsbench_host_codex_goal_worker.py",
+        "skillsbench_remote_command_file_bridge",
+        "remote_command_file_bridge",
+        "json_file_bridge",
+    )
+    protected_pids = {os.getpid(), os.getppid()}
+    root_matches = {
+        pid
+        for pid, (_ppid, command) in entries.items()
+        if pid not in protected_pids
+        and any(identifier in command for identifier in identifiers)
+        and any(marker in command for marker in host_local_markers)
+    }
+    to_terminate = set(root_matches)
+    stack = list(root_matches)
+    while stack:
+        parent = stack.pop()
+        for child in children.get(parent, set()):
+            if child not in to_terminate and child not in protected_pids:
+                to_terminate.add(child)
+                stack.append(child)
+
+    cleanup["match_count"] = len(to_terminate)
+    if not to_terminate:
+        cleanup["status"] = "no_matching_processes"
+        return publish()
+
+    def is_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+
+    term_sent = 0
+    for pid in sorted(to_terminate, reverse=True):
+        try:
+            os.kill(pid, signal.SIGTERM)
+            term_sent += 1
+        except (ProcessLookupError, PermissionError):
+            continue
+    cleanup["term_sent_count"] = term_sent
+
+    deadline = time.monotonic() + max(0.0, grace_seconds)
+    alive = {pid for pid in to_terminate if is_alive(pid)}
+    while alive and time.monotonic() < deadline:
+        time.sleep(0.1)
+        alive = {pid for pid in alive if is_alive(pid)}
+
+    kill_sent = 0
+    if alive:
+        for pid in sorted(alive, reverse=True):
+            try:
+                os.kill(pid, signal.SIGKILL)
+                kill_sent += 1
+            except (ProcessLookupError, PermissionError):
                 continue
         cleanup["kill_sent_count"] = kill_sent
         time.sleep(0.1)
@@ -13439,6 +13612,22 @@ def _independent_goal_retry_attempt_summary(
         )
     if not summary.get("result_json") and launch_plan.get("result_json"):
         summary["result_json"] = str(launch_plan.get("result_json"))
+    cleanup = payload.get("host_local_acp_attempt_cleanup")
+    if isinstance(cleanup, dict):
+        summary["host_local_acp_attempt_cleanup"] = {
+            "schema_version": str(
+                cleanup.get("schema_version")
+                or "skillsbench_host_local_acp_attempt_cleanup_v0"
+            )[:120],
+            "requested": cleanup.get("requested") is True,
+            "raw_logs_read": cleanup.get("raw_logs_read") is True,
+            "raw_command_recorded": cleanup.get("raw_command_recorded") is True,
+            "status": str(cleanup.get("status") or "unknown")[:120],
+            "match_count": int(cleanup.get("match_count") or 0),
+            "term_sent_count": int(cleanup.get("term_sent_count") or 0),
+            "kill_sent_count": int(cleanup.get("kill_sent_count") or 0),
+            "alive_after_count": int(cleanup.get("alive_after_count") or 0),
+        }
     return summary
 
 
@@ -13467,16 +13656,24 @@ async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[st
             base_job_name=base_job_name,
         )
         attempt_plan = build_plan(attempt_args)
+        attempt_cleanup: dict[str, Any] | None = None
         try:
             payload = await async_main(attempt_args, plan=attempt_plan)
             payload["runner_returncode"] = 0
         except Exception as exc:
+            attempt_cleanup = cleanup_host_local_acp_attempt_children(attempt_plan)
             payload, returncode = _build_runner_exception_closeout_payload(
                 attempt_args,
                 attempt_plan,
                 exc,
             )
             payload["runner_returncode"] = returncode
+        else:
+            attempt_cleanup = cleanup_host_local_acp_attempt_children(attempt_plan)
+            _write_public_runner_prerequisites(attempt_plan)
+        payload.setdefault("launch_plan", attempt_plan)
+        if attempt_cleanup is not None:
+            payload["host_local_acp_attempt_cleanup"] = attempt_cleanup
         attempt_summary = _independent_goal_retry_attempt_summary(
             payload,
             attempt_index=attempt_index,

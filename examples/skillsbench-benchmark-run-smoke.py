@@ -109,6 +109,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_compose_setup_diagnostic,
     build_plan,
     cleanup_benchflow_setup_stall_children,
+    cleanup_host_local_acp_attempt_children,
     cleanup_benchflow_soft_verify_timeout_children,
     install_benchflow_user_loop_final_verify_recovery,
     install_benchflow_verifier_prep_timeout_override,
@@ -11222,6 +11223,177 @@ def test_skillsbench_setup_stall_cleanup_targets_current_job_only() -> None:
         assert job_name not in json.dumps(cleanup, sort_keys=True)
 
 
+def test_skillsbench_host_local_attempt_cleanup_targets_current_attempt_only() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-host-acp-cleanup-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-bike-rebalance-cleanup-fixture-attempt-01",
+                "--host-local-acp-launch",
+            ]
+        )
+        plan = build_plan(args)
+        job_name = plan["job_name"]
+        rollout_name = plan["rollout_name"]
+        ps_stdout = "\n".join(
+            [
+                (
+                    "201 1 python scripts/skillsbench_local_acp_relay.py "
+                    f"--worker-public-trace-dir /tmp/{job_name}/trace "
+                    f"--project-name {rollout_name}"
+                ),
+                (
+                    "202 201 python scripts/skillsbench_host_codex_goal_worker.py "
+                    "--turn-timeout-sec 3600"
+                ),
+                "203 202 codex app-server --listen 127.0.0.1:0",
+                (
+                    "204 1 python scripts/skillsbench_local_acp_relay.py "
+                    "--worker-public-trace-dir /tmp/unrelated/trace "
+                    "--project-name unrelated"
+                ),
+            ]
+        )
+        alive = {201, 202, 203, 204}
+        sent: list[tuple[int, int]] = []
+        original_run = skillsbench_loop.subprocess.run
+        original_kill = skillsbench_loop.os.kill
+        original_sleep = skillsbench_loop.time.sleep
+
+        def fake_run(*_args: Any, **_kwargs: Any) -> Any:
+            return types.SimpleNamespace(returncode=0, stdout=ps_stdout, stderr="")
+
+        def fake_kill(pid: int, sig: int) -> None:
+            if sig == 0:
+                if pid in alive:
+                    return
+                raise ProcessLookupError(pid)
+            sent.append((pid, sig))
+            if sig == skillsbench_loop.signal.SIGTERM:
+                alive.discard(pid)
+
+        try:
+            skillsbench_loop.subprocess.run = fake_run
+            skillsbench_loop.os.kill = fake_kill
+            skillsbench_loop.time.sleep = lambda _seconds: None
+            cleanup = cleanup_host_local_acp_attempt_children(
+                plan,
+                grace_seconds=0,
+            )
+        finally:
+            skillsbench_loop.subprocess.run = original_run
+            skillsbench_loop.os.kill = original_kill
+            skillsbench_loop.time.sleep = original_sleep
+
+        assert cleanup["status"] == "terminated", cleanup
+        assert cleanup["match_count"] == 3, cleanup
+        assert set(sent) == {
+            (201, skillsbench_loop.signal.SIGTERM),
+            (202, skillsbench_loop.signal.SIGTERM),
+            (203, skillsbench_loop.signal.SIGTERM),
+        }, sent
+        assert 204 in alive, alive
+        prereqs = plan["runner_prerequisites"]
+        assert_prerequisites_include(
+            prereqs,
+            {
+                "host_local_acp_attempt_cleanup_requested": True,
+                "host_local_acp_attempt_cleanup_raw_logs_read": False,
+                "host_local_acp_attempt_cleanup_raw_command_recorded": False,
+                "host_local_acp_attempt_cleanup_status": "terminated",
+                "host_local_acp_attempt_cleanup_match_count": 3,
+                "host_local_acp_attempt_cleanup_term_sent_count": 3,
+                "host_local_acp_attempt_cleanup_kill_sent_count": 0,
+                "host_local_acp_attempt_cleanup_alive_after_count": 0,
+            },
+        )
+        assert job_name not in json.dumps(cleanup, sort_keys=True)
+        assert rollout_name not in json.dumps(cleanup, sort_keys=True)
+
+
+def test_independent_goal_retry_records_attempt_cleanup_after_exception() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-retry-cleanup-summary-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-bike-rebalance-independent-cleanup",
+                "--independent-goal-retries",
+                "2",
+                "--host-local-acp-launch",
+            ]
+        )
+        cleanup_calls: list[str] = []
+        original_async_main = skillsbench_loop.async_main
+        original_cleanup = skillsbench_loop.cleanup_host_local_acp_attempt_children
+
+        async def fake_async_main(
+            _args: Any,
+            *,
+            plan: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            raise RuntimeError("fixture runner exception")
+
+        def fake_cleanup(plan_arg: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+            cleanup_calls.append(str(plan_arg.get("job_name") or ""))
+            prereqs = plan_arg.setdefault("runner_prerequisites", {})
+            prereqs.update(
+                {
+                    "host_local_acp_attempt_cleanup_requested": True,
+                    "host_local_acp_attempt_cleanup_raw_logs_read": False,
+                    "host_local_acp_attempt_cleanup_raw_command_recorded": False,
+                    "host_local_acp_attempt_cleanup_status": "no_matching_processes",
+                    "host_local_acp_attempt_cleanup_match_count": 0,
+                    "host_local_acp_attempt_cleanup_term_sent_count": 0,
+                    "host_local_acp_attempt_cleanup_kill_sent_count": 0,
+                    "host_local_acp_attempt_cleanup_alive_after_count": 0,
+                }
+            )
+            return {
+                "schema_version": "skillsbench_host_local_acp_attempt_cleanup_v0",
+                "requested": True,
+                "raw_logs_read": False,
+                "raw_command_recorded": False,
+                "status": "no_matching_processes",
+                "match_count": 0,
+                "term_sent_count": 0,
+                "kill_sent_count": 0,
+                "alive_after_count": 0,
+            }
+
+        try:
+            skillsbench_loop.async_main = fake_async_main
+            skillsbench_loop.cleanup_host_local_acp_attempt_children = fake_cleanup
+            summary = asyncio.run(skillsbench_loop.async_independent_goal_retry_main(args))
+        finally:
+            skillsbench_loop.async_main = original_async_main
+            skillsbench_loop.cleanup_host_local_acp_attempt_children = original_cleanup
+
+        assert summary["success_observed"] is False, summary
+        assert summary["attempts_started"] == 2, summary
+        assert len(cleanup_calls) == 2, cleanup_calls
+        for attempt in summary["attempts"]:
+            cleanup = attempt["host_local_acp_attempt_cleanup"]
+            assert cleanup["requested"] is True, cleanup
+            assert cleanup["raw_logs_read"] is False, cleanup
+            assert cleanup["raw_command_recorded"] is False, cleanup
+            assert cleanup["status"] == "no_matching_processes", cleanup
+        summary_text = json.dumps(summary, sort_keys=True)
+        assert "fixture runner exception" not in summary_text
+        assert "/private/" not in summary_text
+
+
 def test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-missing-result-main-") as tmp:
         jobs_dir = Path(tmp) / "jobs"
@@ -12905,6 +13077,8 @@ if __name__ == "__main__":
     test_skillsbench_intermediate_soft_verifier_phase_timeout_bounds_hung_exec()
     test_skillsbench_final_verifier_phase_timeout_bounds_hung_exec()
     test_skillsbench_intermediate_soft_verifier_return_cleans_orphan_processes()
+    test_skillsbench_host_local_attempt_cleanup_targets_current_attempt_only()
+    test_independent_goal_retry_records_attempt_cleanup_after_exception()
     test_skillsbench_local_driver_a2a_contract_keeps_codex_local()
     test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
     test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake()

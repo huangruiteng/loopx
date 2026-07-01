@@ -2084,6 +2084,7 @@ raise SystemExit(proc.returncode)
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    start_new_session=True,
                 )
                 self._write_worker_heartbeat(
                     stdout,
@@ -2170,7 +2171,7 @@ raise SystemExit(proc.returncode)
                         and bridge_first_action_deadline
                         and now >= bridge_first_action_deadline
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2193,7 +2194,7 @@ raise SystemExit(proc.returncode)
                         and meaningful_progress_deadline
                         and now >= meaningful_progress_deadline
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2219,7 +2220,7 @@ raise SystemExit(proc.returncode)
                         and now - last_bridge_activity_at
                         >= task_output_quiet_timeout_sec
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2246,7 +2247,7 @@ raise SystemExit(proc.returncode)
                         )
                         and now - last_bridge_activity_at >= bridge_idle_timeout_sec
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2263,7 +2264,7 @@ raise SystemExit(proc.returncode)
                             "codex_exec_bridge_idle_timeout"
                         )
                     if now >= deadline:
-                        proc.kill()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         if bridge_summary_path is not None:
                             self._publish_remote_bridge_agent_operations_trace(
@@ -2290,6 +2291,7 @@ raise SystemExit(proc.returncode)
                     time.sleep(0.2)
                 stdout_text, stderr_text = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired as exc:
+                self._terminate_codex_process(proc, grace_sec=2)
                 if bridge_summary_path is not None:
                     self._publish_remote_bridge_agent_operations_trace(
                         bridge_summary_path=bridge_summary_path,
@@ -2303,6 +2305,10 @@ raise SystemExit(proc.returncode)
                     )
                 self._terminate_bridge_server_process(bridge_server_proc)
                 raise TimeoutError from exc
+            except BaseException:
+                self._terminate_codex_process(proc, grace_sec=2)
+                self._terminate_bridge_server_process(bridge_server_proc)
+                raise
             if proc.returncode != 0:
                 if bridge_summary_path is not None:
                     self._publish_remote_bridge_agent_operations_trace(
