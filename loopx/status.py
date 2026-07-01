@@ -7,6 +7,9 @@ from pathlib import Path
 import re
 from typing import Any
 
+from .benchmark_adapters.skillsbench_signals import (
+    build_skillsbench_solution_quality_signals,
+)
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .contract import check_contract
 from .delivery_batch_scale import (
@@ -1205,6 +1208,7 @@ def build_skillsbench_post_run_debug_gate(
         run.get("failure_attribution_labels"),
         limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
     )
+    solution_quality = build_skillsbench_solution_quality_signals(run)
     gate: dict[str, Any] = {
         "schema_version": "skillsbench_post_run_debug_gate_v0",
         "source": "compact_public_signals",
@@ -1373,6 +1377,8 @@ def build_skillsbench_post_run_debug_gate(
             "verifier_output_tail_public": False,
         },
     }
+    if solution_quality:
+        gate["solution_quality"] = solution_quality
     if labels:
         gate["failure_attribution_labels"] = labels
     if runner_failure:
@@ -4456,6 +4462,10 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
                 compact_validation[field] = validation[field]
         compact["validation"] = compact_validation
         _apply_skillsbench_pre_agent_setup_compact_projection(compact)
+
+    solution_quality = build_skillsbench_solution_quality_signals(compact)
+    if solution_quality:
+        compact["solution_quality_signals"] = solution_quality
 
     post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
     if post_run_debug_gate:

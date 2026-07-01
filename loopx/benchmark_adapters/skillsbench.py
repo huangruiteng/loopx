@@ -19,6 +19,7 @@ from ..benchmark_core import (
     canonical_lifecycle,
 )
 from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
+from .skillsbench_signals import build_skillsbench_solution_quality_signals
 
 
 SKILLSBENCH_DEFAULT_DATASET = "skillsbench@1.1"
@@ -5677,6 +5678,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             benchmark_run["runner_failure_fingerprint"] = runner_failure_fingerprint
     if partial_trajectory and not host_local_acp_codex_exec_failure_present:
         benchmark_run["failure_attribution_labels"].append("partial_trajectory")
+    benchmark_run["solution_quality_signals"] = (
+        build_skillsbench_solution_quality_signals(benchmark_run)
+    )
     return benchmark_run
 
 

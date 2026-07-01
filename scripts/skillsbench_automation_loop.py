@@ -8478,6 +8478,8 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "schema_version": "skillsbench_runner_config_v0",
         "raw_command_recorded": False,
         "raw_env_recorded": False,
+        "ledger_path_recorded": False,
+        "global_ledger_path_recorded": False,
     }
     string_fields = (
         "benchmark_id",
@@ -8490,8 +8492,6 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "job_name",
         "rollout_name",
         "treatment_prompt_style",
-        "ledger_path",
-        "global_ledger_path",
         "ledger_scope",
     )
     for field in string_fields:
@@ -12994,7 +12994,11 @@ def reduce_result(
     if goal_start_control_score:
         compact["goal_start_product_mode_control_score"] = goal_start_control_score
     compact["case_event_timeline"] = _build_case_event_timeline(compact, plan)
-    compact["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(compact)
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
+    compact["post_run_debug_gate"] = post_run_debug_gate
+    solution_quality = post_run_debug_gate.get("solution_quality")
+    if isinstance(solution_quality, dict):
+        compact["solution_quality_signals"] = solution_quality
     return compact
 
 
@@ -13821,7 +13825,11 @@ def build_runner_failure_compact(
     if not recovered:
         _recover_runner_failure_score_from_verifier_artifact(reduced, plan)
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
-    reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(reduced)
+    reduced["post_run_debug_gate"] = post_run_debug_gate
+    solution_quality = post_run_debug_gate.get("solution_quality")
+    if isinstance(solution_quality, dict):
+        reduced["solution_quality_signals"] = solution_quality
     return reduced
 
 

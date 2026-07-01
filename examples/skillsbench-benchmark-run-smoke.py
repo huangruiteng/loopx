@@ -9023,6 +9023,54 @@ def test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout() -
     assert "official_verifier_solution_failure" in labels, compact
     assert "skillsbench_product_mode_lifecycle_missing" not in labels, compact
     assert "skillsbench_product_mode_uncountable_treatment" not in labels, compact
+    solution_quality = compact["solution_quality_signals"]
+    assert solution_quality["outcome_class"] == "official_zero", compact
+    assert "official_zero_after_public_worker_activity" in solution_quality[
+        "solution_action_labels"
+    ], compact
+    assert solution_quality["rubric_miss_label_status"] == (
+        "not_available_from_compact_public_signals"
+    ), compact
+    assert compact["post_run_debug_gate"]["solution_quality"]["outcome_class"] == (
+        "official_zero"
+    ), compact
+
+
+def test_skillsbench_solution_quality_labels_partial_nonpass() -> None:
+    compact = compact_benchmark_run(
+        {
+            "schema_version": "benchmark_run_v0",
+            "source_runner": "official_skillsbench_benchflow_result",
+            "benchmark_id": "skillsbench",
+            "case_id": "sample-partial-task",
+            "case_ids": ["sample-partial-task"],
+            "mode": "single",
+            "official_score": 0.5,
+            "official_task_score": {
+                "kind": "skillsbench_verifier_reward",
+                "value": 0.5,
+                "passed": False,
+            },
+            "score_failure_attribution": "official_score_partial_case_failure",
+            "failure_attribution_labels": ["partial_trajectory"],
+        }
+    )
+    assert compact is not None
+    solution_quality = compact["solution_quality_signals"]
+    assert solution_quality["outcome_class"] == "partial_nonpass", compact
+    assert "partial_nonpass_official_score" in solution_quality[
+        "solution_action_labels"
+    ], compact
+    assert "partial_trajectory_public_label_present" in solution_quality[
+        "solution_action_labels"
+    ], compact
+    assert solution_quality["rubric_miss_labels"] == [], compact
+    assert solution_quality["rubric_miss_label_status"] == (
+        "not_available_from_compact_public_signals"
+    ), compact
+    assert compact["post_run_debug_gate"]["solution_quality"]["outcome_class"] == (
+        "partial_nonpass"
+    ), compact
 
 
 def test_skillsbench_agent_bridge_closeout_requires_successful_commands() -> None:
@@ -11596,6 +11644,18 @@ def test_skillsbench_runner_failure_recovers_zero_score_from_controller_trace() 
             "completed_nonpassing"
         ), gate
         assert gate["scorer_verifier"]["official_score_value"] == 0.0, gate
+        solution_quality = compact["solution_quality_signals"]
+        assert solution_quality["outcome_class"] == "official_zero", compact
+        assert "official_zero_after_public_worker_activity" in solution_quality[
+            "solution_action_labels"
+        ], compact
+        assert "runner_recovery_noise_recorded" in solution_quality[
+            "solution_action_labels"
+        ], compact
+        assert gate["solution_quality"]["outcome_class"] == "official_zero", gate
+        assert "runner_recovery_noise_recorded" in gate["solution_quality"][
+            "solution_action_labels"
+        ], gate
         assert compact["runner_failure"]["failure_class"] == (
             "skillsbench_runner_interrupted_after_controller_reward_observation"
         ), compact
@@ -14173,6 +14233,7 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
     test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout()
+    test_skillsbench_solution_quality_labels_partial_nonpass()
     test_skillsbench_agent_bridge_closeout_requires_successful_commands()
     test_skillsbench_product_mode_recompact_prefers_corroborated_solver_gap()
     test_skillsbench_product_mode_solver_activity_gap_is_compacted()
