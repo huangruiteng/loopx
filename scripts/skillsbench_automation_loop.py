@@ -490,8 +490,12 @@ DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN = (
 DOCKER_NETWORK_DOWNLOAD_RETRY_END = (
     "# END LOOPX_SKILLSBENCH_NETWORK_DOWNLOAD_RETRY"
 )
+DOCKER_MAVEN_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_MAVEN_MIRROR"
+DOCKER_MAVEN_MIRROR_END = "# END LOOPX_SKILLSBENCH_MAVEN_MIRROR"
 DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_BASE = "https://mirrors.huaweicloud.com/apache"
 DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST = "mirrors.huaweicloud.com"
+DEFAULT_DOCKER_MAVEN_MIRROR_URL = "https://repo.huaweicloud.com/repository/maven"
+DEFAULT_DOCKER_MAVEN_MIRROR_HOST = "repo.huaweicloud.com"
 VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
 )
@@ -5676,6 +5680,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_apache_archive_mirror_patch_required",
         "dockerfile_apache_archive_mirror_patch_applied",
         "dockerfile_apache_archive_raw_url_recorded",
+        "dockerfile_maven_mirror_patch_required",
+        "dockerfile_maven_mirror_patch_applied",
+        "dockerfile_maven_mirror_raw_url_recorded",
         "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
@@ -5704,6 +5711,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
         "dockerfile_apache_archive_mirror_host",
+        "dockerfile_maven_mirror_host",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -5797,6 +5805,15 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             else ""
         ),
         "dockerfile_apache_archive_raw_url_recorded": False,
+        "dockerfile_maven_mirror_patch_applied": (
+            DOCKER_MAVEN_MIRROR_BEGIN in dockerfile_text
+        ),
+        "dockerfile_maven_mirror_host": (
+            DEFAULT_DOCKER_MAVEN_MIRROR_HOST
+            if DOCKER_MAVEN_MIRROR_BEGIN in dockerfile_text
+            else ""
+        ),
+        "dockerfile_maven_mirror_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
         ),
@@ -6528,6 +6545,77 @@ def patch_dockerfile_apache_archive_mirror(dockerfile: Path) -> bool:
     if patched == original:
         return False
     _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def _insert_dockerfile_block_after_first_from(text: str, block: str) -> str:
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        patched_lines.append(line)
+        if not inserted and _is_dockerfile_from_instruction(line.strip()):
+            patched_lines.extend(["", *block.splitlines(), ""])
+            inserted = True
+    if not inserted:
+        return "\n".join([*block.splitlines(), "", *text.splitlines()])
+    return "\n".join(patched_lines)
+
+
+def dockerfile_needs_maven_mirror_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(re.search(r"\bmvn\s+", text))
+
+
+def patch_dockerfile_maven_mirror(dockerfile: Path) -> bool:
+    """Route staged Docker build Maven downloads through a public mirror."""
+
+    if not dockerfile_needs_maven_mirror_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_MAVEN_MIRROR_BEGIN,
+        DOCKER_MAVEN_MIRROR_END,
+    )
+    settings_block = (
+        f"{DOCKER_MAVEN_MIRROR_BEGIN}\n"
+        "RUN mkdir -p /etc/maven && cat > /etc/maven/settings.xml "
+        "<<'LOOPX_MAVEN_SETTINGS_EOF'\n"
+        "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\" "
+        "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+        "xsi:schemaLocation=\"http://maven.apache.org/SETTINGS/1.0.0 "
+        "https://maven.apache.org/xsd/settings-1.0.0.xsd\">\n"
+        "  <mirrors>\n"
+        "    <mirror>\n"
+        "      <id>loopx-public-maven-mirror</id>\n"
+        "      <mirrorOf>*</mirrorOf>\n"
+        "      <url>"
+        f"{DEFAULT_DOCKER_MAVEN_MIRROR_URL}"
+        "</url>\n"
+        "    </mirror>\n"
+        "  </mirrors>\n"
+        "</settings>\n"
+        "LOOPX_MAVEN_SETTINGS_EOF\n"
+        f"{DOCKER_MAVEN_MIRROR_END}"
+    )
+    if DOCKER_NETWORK_DOWNLOAD_RETRY_END in text:
+        text = text.replace(
+            DOCKER_NETWORK_DOWNLOAD_RETRY_END,
+            f"{DOCKER_NETWORK_DOWNLOAD_RETRY_END}\n\n{settings_block}",
+            1,
+        )
+    else:
+        text = _insert_dockerfile_block_after_first_from(text, settings_block)
+    text = re.sub(
+        r"\bmvn(?!\s+(?:--settings|-s)\b)",
+        "mvn --settings /etc/maven/settings.xml",
+        text,
+    )
+    if text == original:
+        return False
+    _write_text_atomic(dockerfile, text.rstrip() + "\n")
     return True
 
 
@@ -7458,6 +7546,10 @@ def stage_task_for_sandbox(
         "dockerfile_apache_archive_mirror_patch_applied": False,
         "dockerfile_apache_archive_mirror_host": "",
         "dockerfile_apache_archive_raw_url_recorded": False,
+        "dockerfile_maven_mirror_patch_required": False,
+        "dockerfile_maven_mirror_patch_applied": False,
+        "dockerfile_maven_mirror_host": "",
+        "dockerfile_maven_mirror_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": False,
         "empty_skills_build_context_required": False,
         "empty_skills_build_context_created": False,
@@ -7514,6 +7606,9 @@ def stage_task_for_sandbox(
             task_path / "environment" / "Dockerfile"
         )
     )
+    needs_maven_mirror_patch = dockerfile_needs_maven_mirror_patch(
+        task_path / "environment" / "Dockerfile"
+    )
     verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
     needs_verifier_uv_mirror_patch = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
@@ -7553,6 +7648,9 @@ def stage_task_for_sandbox(
         metadata["dockerfile_apache_archive_mirror_host"] = (
             DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
         )
+    metadata["dockerfile_maven_mirror_patch_required"] = needs_maven_mirror_patch
+    if needs_maven_mirror_patch:
+        metadata["dockerfile_maven_mirror_host"] = DEFAULT_DOCKER_MAVEN_MIRROR_HOST
     metadata["verifier_bootstrap_risk_detected"] = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
     )
@@ -7589,6 +7687,7 @@ def stage_task_for_sandbox(
         and not needs_wget_gpg_key_retry_patch
         and not needs_network_download_retry_patch
         and not needs_apache_archive_mirror_patch
+        and not needs_maven_mirror_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
         and not needs_verifier_proxy_env_patch
@@ -7653,6 +7752,9 @@ def stage_task_for_sandbox(
     network_download_retry_patched = patch_dockerfile_network_download_retry(
         staged_path / "environment" / "Dockerfile"
     )
+    maven_mirror_patched = patch_dockerfile_maven_mirror(
+        staged_path / "environment" / "Dockerfile"
+    )
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
     )
@@ -7697,6 +7799,11 @@ def stage_task_for_sandbox(
                 else ""
             ),
             "dockerfile_apache_archive_raw_url_recorded": False,
+            "dockerfile_maven_mirror_patch_applied": maven_mirror_patched,
+            "dockerfile_maven_mirror_host": (
+                DEFAULT_DOCKER_MAVEN_MIRROR_HOST if maven_mirror_patched else ""
+            ),
+            "dockerfile_maven_mirror_raw_url_recorded": False,
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
             "empty_skills_build_context_required": empty_skills_context_required,
             "empty_skills_build_context_created": empty_skills_context_created,

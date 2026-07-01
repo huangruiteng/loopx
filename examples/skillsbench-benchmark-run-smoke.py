@@ -71,6 +71,8 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
     DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
     DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST,
+    DEFAULT_DOCKER_MAVEN_MIRROR_HOST,
+    DEFAULT_DOCKER_MAVEN_MIRROR_URL,
     DEFAULT_DOCKER_PIP_INDEX_HOST,
     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST,
     DECLARED_DONE_MARKER,
@@ -81,6 +83,8 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
     DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN,
     DOCKER_GCR_MIRROR_BEGIN,
+    DOCKER_MAVEN_MIRROR_BEGIN,
+    DOCKER_MAVEN_MIRROR_END,
     DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN,
     DOCKER_PIP_BOOTSTRAP_BEGIN,
     DOCKER_HOST_CPU_ENV,
@@ -5989,6 +5993,15 @@ def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
         assert metadata["dockerfile_apache_archive_raw_url_recorded"] is False, (
             metadata
         )
+        assert metadata["dockerfile_maven_mirror_patch_required"] is True, metadata
+        assert metadata["dockerfile_maven_mirror_patch_applied"] is True, metadata
+        assert (
+            metadata["dockerfile_maven_mirror_host"]
+            == DEFAULT_DOCKER_MAVEN_MIRROR_HOST
+        ), metadata
+        assert metadata["dockerfile_maven_mirror_raw_url_recorded"] is False, (
+            metadata
+        )
         assert dockerfile.read_text(encoding="utf-8") == original_text
         staged_text = (staged_path / "environment" / "Dockerfile").read_text(
             encoding="utf-8"
@@ -6001,6 +6014,11 @@ def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
             "https://mirrors.huaweicloud.com/apache/druid/0.20.0/"
             "apache-druid-0.20.0-bin.tar.gz"
         ) in staged_text, staged_text
+        assert "# BEGIN LOOPX_SKILLSBENCH_MAVEN_MIRROR" in staged_text, staged_text
+        assert DEFAULT_DOCKER_MAVEN_MIRROR_URL in staged_text, staged_text
+        assert "mvn --settings /etc/maven/settings.xml dependency:resolve" in (
+            staged_text
+        ), staged_text
         assert (
             "wget --tries=5 --timeout=120 --read-timeout=120 "
             "--retry-connrefused "
@@ -7232,6 +7250,10 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
                 DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
             ),
             "dockerfile_apache_archive_raw_url_recorded": False,
+            "dockerfile_maven_mirror_patch_required": True,
+            "dockerfile_maven_mirror_patch_applied": True,
+            "dockerfile_maven_mirror_host": DEFAULT_DOCKER_MAVEN_MIRROR_HOST,
+            "dockerfile_maven_mirror_raw_url_recorded": False,
             "task_skills_removed": False,
             "original_task_mutated": False,
             "resource_cap_patch": {
@@ -7269,6 +7291,10 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
                 DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
             ),
             "dockerfile_apache_archive_raw_url_recorded": False,
+            "dockerfile_maven_mirror_patch_required": True,
+            "dockerfile_maven_mirror_patch_applied": True,
+            "dockerfile_maven_mirror_host": DEFAULT_DOCKER_MAVEN_MIRROR_HOST,
+            "dockerfile_maven_mirror_raw_url_recorded": False,
             "task_skills_removed": False,
             "original_task_mutated": False,
             "resource_cap_patch": {
@@ -7299,6 +7325,7 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
         assert (
             entry_staging["dockerfile_apache_archive_mirror_patch_applied"] is True
         ), update
+        assert entry_staging["dockerfile_maven_mirror_patch_applied"] is True, update
         assert "staged_task_path" not in json.dumps(update, sort_keys=True), update
 
 
@@ -7335,6 +7362,9 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
             f"{DOCKER_APT_RETRY_BEGIN}\n"
             "RUN true\n"
             "# END LOOPX_SKILLSBENCH_APT_RETRY\n"
+            f"{DOCKER_MAVEN_MIRROR_BEGIN}\n"
+            "RUN mkdir -p /etc/maven\n"
+            f"{DOCKER_MAVEN_MIRROR_END}\n"
             "RUN wget https://mirrors.huaweicloud.com/apache/druid/0.20.0/"
             "apache-druid-0.20.0-bin.tar.gz\n",
             encoding="utf-8",
@@ -7367,6 +7397,12 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
         ] is True, compact
         assert compact["task_staging"]["dockerfile_apache_archive_mirror_host"] == (
             DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+        ), compact
+        assert compact["task_staging"][
+            "dockerfile_maven_mirror_patch_applied"
+        ] is True, compact
+        assert compact["task_staging"]["dockerfile_maven_mirror_host"] == (
+            DEFAULT_DOCKER_MAVEN_MIRROR_HOST
         ), compact
         assert compact["task_staging"]["task_skills_removed"] is True, compact
         compact_text = json.dumps(compact, sort_keys=True)

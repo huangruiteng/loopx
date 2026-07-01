@@ -154,6 +154,9 @@ def _compact_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_apache_archive_mirror_patch_required",
         "dockerfile_apache_archive_mirror_patch_applied",
         "dockerfile_apache_archive_raw_url_recorded",
+        "dockerfile_maven_mirror_patch_required",
+        "dockerfile_maven_mirror_patch_applied",
+        "dockerfile_maven_mirror_raw_url_recorded",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
@@ -166,6 +169,7 @@ def _compact_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
         "dockerfile_apache_archive_mirror_host",
+        "dockerfile_maven_mirror_host",
     ):
         text = _compact_text(value.get(field), limit=140)
         if text:

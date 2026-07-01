@@ -2460,6 +2460,9 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_apache_archive_mirror_patch_required",
         "dockerfile_apache_archive_mirror_patch_applied",
         "dockerfile_apache_archive_raw_url_recorded",
+        "dockerfile_maven_mirror_patch_required",
+        "dockerfile_maven_mirror_patch_applied",
+        "dockerfile_maven_mirror_raw_url_recorded",
         "verifier_bootstrap_risk_preflight_blocked",
         "verifier_bootstrap_fail_fast_defaulted",
         "app_skills_mount_patch_applied",
@@ -2475,6 +2478,7 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
         "dockerfile_apache_archive_mirror_host",
+        "dockerfile_maven_mirror_host",
     ):
         text = public_safe_compact_text(value.get(field), limit=180)
         if text:
