@@ -877,6 +877,29 @@ def test_skillsbench_recovered_reward_closeout_fields_survive_current_aggregate(
             "verifier_reward_artifact_recovered": True,
             "official_result_json_materialized": False,
         },
+        "solution_quality_signals": {
+            "schema_version": "skillsbench_solution_quality_signals_v0",
+            "source": "compact_public_signals",
+            "outcome_class": "official_zero",
+            "solution_action_labels": [
+                "official_zero_after_public_worker_activity",
+                "runner_recovery_noise_recorded",
+            ],
+            "rubric_miss_labels": [],
+            "rubric_miss_label_status": "not_available_from_compact_public_signals",
+            "worker_activity": {
+                "task_facing_activity_observed": True,
+                "worker_turn_or_bridge_observed": True,
+                "tool_call_count": 3,
+                "bridge_task_facing_operation_count": 4,
+                "bridge_task_facing_success_count": 4,
+            },
+            "public_limits": [
+                "task_text_not_recorded",
+                "trajectory_not_recorded",
+                "verifier_output_not_recorded",
+            ],
+        },
         "attempt_accounting": {
             "lifecycle_phase": "worker_started",
             "failure_label": "official_score_zero_case_failure",
@@ -912,6 +935,11 @@ def test_skillsbench_recovered_reward_closeout_fields_survive_current_aggregate(
         assert entry["verifier_reward_artifact_recovery_status"] == (
             "official_score_recovered_from_verifier_reward_artifact"
         ), entry
+        solution_quality = entry["solution_quality_signals"]
+        assert solution_quality["outcome_class"] == "official_zero", solution_quality
+        assert solution_quality["worker_activity"][
+            "bridge_task_facing_operation_count"
+        ] == 4, solution_quality
 
         aggregate = build_benchmark_run_ledger_current_aggregate(
             load_benchmark_run_ledger(ledger_path),
@@ -926,6 +954,9 @@ def test_skillsbench_recovered_reward_closeout_fields_survive_current_aggregate(
         assert summary["runner_score_recovered_from_verifier_artifact"] is True, summary
         assert summary["verifier_reward_artifact_recovered"] is True, summary
         assert summary["official_result_json_materialized"] is False, summary
+        assert summary["solution_quality_signals"]["worker_activity"][
+            "bridge_task_facing_success_count"
+        ] == 4, summary
 
 
 def test_skillsbench_product_mode_pair_review_is_ledgered() -> None:
@@ -1554,6 +1585,8 @@ def test_cli_compact_run_json_updates_run_ledger() -> None:
         ledger = load_benchmark_run_ledger(ledger_path)
         case = ledger["benchmarks"]["terminal-bench@2.0"]["cases"]["timeout-fixture"]
         assert len(case["runs"]) == 1, case
+        refs = case["runs"][0]["artifact_refs"]
+        assert refs == {"compact_artifact_ref": "compact-run.json"}, refs
         assert case["latest_decision"]["decision"] == (
             "baseline_failed_treatment_candidate"
         ), case
