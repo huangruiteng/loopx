@@ -233,6 +233,68 @@ def main() -> int:
         assert live_payload["lane_evidence"]["holdout_metric"] == 4.5, live_payload
         assert_public_safe(live_payload)
 
+        handoff_packet = json.loads(evidence_path.read_text(encoding="utf-8"))
+        handoff_packet["hypothesis"]["claimed_by"] = "codex-main-control"
+        handoff_path = workspace / "handoff-evidence.public.json"
+        handoff_path.write_text(
+            json.dumps(handoff_packet, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        wrong_handoff_agent = run_cli(
+            [
+                "auto-research",
+                "capture-live-evidence",
+                "--packet",
+                str(handoff_path),
+                "--append-result",
+                str(append_path),
+                "--agent-id",
+                "codex-main-control",
+                "--lane-count",
+                "3",
+                "--visible-lanes-accepted",
+                "--execute",
+            ],
+            registry=registry,
+            runtime_root=runtime_root,
+            cwd=workspace,
+            check=False,
+        )
+        assert wrong_handoff_agent.returncode == 1, wrong_handoff_agent.stdout
+        wrong_payload = json.loads(wrong_handoff_agent.stdout)
+        assert "evidence event agent_id" in wrong_payload["error"], wrong_payload
+        assert_public_safe(wrong_payload)
+
+        handoff_live_path = workspace / "handoff-live-codex-e2e-evidence.public.json"
+        handoff_capture = run_cli(
+            [
+                "auto-research",
+                "capture-live-evidence",
+                "--packet",
+                str(handoff_path),
+                "--append-result",
+                str(append_path),
+                "--agent-id",
+                AGENT_ID,
+                "--lane-count",
+                "3",
+                "--visible-lanes-accepted",
+                "--output",
+                str(handoff_live_path),
+                "--execute",
+            ],
+            registry=registry,
+            runtime_root=runtime_root,
+            cwd=workspace,
+        )
+        handoff_live_payload = json.loads(handoff_capture.stdout)
+        assert handoff_live_path.is_file(), handoff_live_payload
+        assert handoff_live_payload["agent_id"] == AGENT_ID, handoff_live_payload
+        assert handoff_live_payload["lane_evidence"]["dev_metric"] == 4.0, handoff_live_payload
+        assert handoff_live_payload["lane_evidence"]["holdout_metric"] == 4.5, handoff_live_payload
+        assert_public_safe(handoff_live_payload)
+
         claimed = run_cli(
             [
                 "auto-research",

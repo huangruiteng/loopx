@@ -95,6 +95,17 @@ def _metric_by_split(packet: dict[str, object], split: str) -> object:
     return None
 
 
+def _evidence_event_agent_ids(packet: dict[str, object]) -> list[str]:
+    agent_ids = []
+    for event in packet.get("evidence_events") or []:
+        if not isinstance(event, dict):
+            continue
+        agent_id = str(event.get("agent_id") or "").strip()
+        if agent_id:
+            agent_ids.append(agent_id)
+    return sorted(set(agent_ids))
+
+
 def build_live_codex_e2e_evidence_from_packet(
     *,
     packet: dict[str, object],
@@ -112,8 +123,9 @@ def build_live_codex_e2e_evidence_from_packet(
     goal_id = summary["goal_id"]
     if append_result.get("goal_id") != goal_id:
         raise ValueError("append result goal_id must match the evidence packet")
-    if str(agent_id) != str(packet["hypothesis"]["claimed_by"]):
-        raise ValueError("agent_id must match the packet hypothesis claimed_by field")
+    event_agent_ids = _evidence_event_agent_ids(packet)
+    if event_agent_ids != [str(agent_id)]:
+        raise ValueError("agent_id must match every packet evidence event agent_id")
     if not isinstance(lane_count, int) or lane_count <= 0:
         raise ValueError("lane_count must be a positive integer")
     if not visible_lanes_accepted:
