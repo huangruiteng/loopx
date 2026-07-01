@@ -183,7 +183,11 @@ def main() -> int:
                     assert "stopped_before_frontier" not in capture, (lane, capture)
                     assert "quota_wait_timeout" not in capture, (lane, capture)
                     assert "frontier_wait_timeout" not in capture, (lane, capture)
-                    assert f"Goal: {visible_payload['goal_id']}" in capture, (lane, capture)
+                    assert '"schema_version"' not in capture, (lane, capture)
+                    assert "role_profile_path=" not in capture, (lane, capture)
+                    assert "[Codex bootstrap prompt]" not in capture, (lane, capture)
+                    assert "codex_output=streaming_below" in capture, (lane, capture)
+                    assert f"goal={visible_payload['goal_id']}" in capture, (lane, capture)
                 assert_public_safe(visible_payload)
             finally:
                 subprocess.run(

@@ -41,6 +41,70 @@ _FRONTIER_READY_PY = (
     "sys.exit(0 if ok else 43)"
 )
 
+_HUMAN_VIEW_PACKET_PY = r"""
+import json
+import sys
+from pathlib import Path
+
+kind = sys.argv[1] if len(sys.argv) > 1 else "packet"
+artifact = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+raw = sys.stdin.read()
+if artifact is not None:
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text(raw, encoding="utf-8")
+
+
+def emit(key, value):
+    if value is None or value == "":
+        return
+    text = str(value).replace("\n", " ").strip()
+    if len(text) > 220:
+        text = text[:217] + "..."
+    print(f"{key}={text}")
+
+
+emit(f"{kind}_artifact", artifact.name if artifact is not None else None)
+try:
+    payload = json.loads(raw)
+except Exception:
+    emit(f"{kind}_status", "not_json")
+    emit(f"{kind}_summary", " ".join(raw.strip().splitlines()[:3]))
+    raise SystemExit(0)
+
+if kind == "quota":
+    interaction = payload.get("interaction_contract") or {}
+    user_channel = interaction.get("user_channel") or {}
+    agent_channel = interaction.get("agent_channel") or {}
+    emit("quota_decision", payload.get("decision") or payload.get("state") or payload.get("effective_action"))
+    emit("should_run", payload.get("should_run"))
+    emit("user_action_required", user_channel.get("action_required"))
+    emit("delivery_allowed", agent_channel.get("delivery_allowed", payload.get("normal_delivery_allowed")))
+    emit("reason", user_channel.get("reason") or payload.get("reason"))
+    emit("next_action", agent_channel.get("primary_action") or payload.get("recommended_action"))
+else:
+    frontier = payload.get("frontier") or payload.get("agent_scope_frontier") or payload
+    selected = frontier.get("selected") or frontier.get("selected_todo") or payload.get("selected") or {}
+    emit("frontier_goal", frontier.get("goal_id") or payload.get("goal_id"))
+    emit("frontier_agent", frontier.get("agent_id") or payload.get("agent_id"))
+    if selected:
+        emit("selected_todo", selected.get("todo_id") or selected.get("id"))
+        emit("selected_title", selected.get("title") or selected.get("text"))
+        emit("selected_status", selected.get("status"))
+        emit("claimed_by", selected.get("claimed_by"))
+        emit("allowed_action", selected.get("allowed_action") or selected.get("action_kind") or selected.get("mechanism_family"))
+    else:
+        emit("selected_todo", "none")
+    for key in ("runnable", "blocked", "promotion_candidates", "retirement_candidates"):
+        value = frontier.get(key)
+        if isinstance(value, list):
+            emit(f"{key}_count", len(value))
+    evidence_graph = payload.get("evidence_graph") or frontier.get("evidence_graph") or {}
+    if isinstance(evidence_graph, dict):
+        for key in ("hypothesis_count", "evidence_event_count", "positive_event_count", "negative_evidence_count"):
+            if key in evidence_graph:
+                emit(key, evidence_graph.get(key))
+"""
+
 _SCOPED_LOOPX_WRAPPER_PY = (
     "import os,shlex; "
     "from pathlib import Path; "
@@ -72,16 +136,41 @@ def runtime_shell_command(
     project: Path,
     registry: Path,
     runtime_root: Path,
+    visible_session: str | None = None,
     errexit: bool = True,
 ) -> str:
-    return "; ".join(
+    parts = [
+        "set -euo pipefail" if errexit else "set -uo pipefail",
+        f"export LOOPX_PROJECT={_q(project)}",
+        f"export LOOPX_REGISTRY={_q(registry)}",
+        f"export LOOPX_RUNTIME_ROOT={_q(runtime_root)}",
+    ]
+    if visible_session is not None:
+        parts.append(f"export LOOPX_VISIBLE_SESSION={_q(visible_session)}")
+    parts.extend(
         [
-            "set -euo pipefail" if errexit else "set -uo pipefail",
-            f"export LOOPX_PROJECT={_q(project)}",
-            f"export LOOPX_REGISTRY={_q(registry)}",
-            f"export LOOPX_RUNTIME_ROOT={_q(runtime_root)}",
+            'export LOOPX_VISIBLE_ARTIFACT_DIR="${LOOPX_VISIBLE_ARTIFACT_DIR:-$LOOPX_RUNTIME_ROOT/visible-launcher-artifacts/${LOOPX_VISIBLE_SESSION:-default}}"',
+            'mkdir -p "$LOOPX_VISIBLE_ARTIFACT_DIR"',
             command,
         ]
+    )
+    return "; ".join(parts)
+
+
+def build_visible_frontier_command(
+    frontier_command: str,
+    *,
+    frontier_label: str = "[LoopX frontier]",
+) -> str:
+    return (
+        'cd "$LOOPX_PROJECT"; '
+        f"printf '\\n%s\\n' {_q(frontier_label)}; "
+        f"FRONTIER_PACKET=\"$({frontier_command} 2>&1)\"; "
+        "FRONTIER_STATUS=$?; "
+        'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/frontier.public.json"; '
+        f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} frontier \"$FRONTIER_ARTIFACT\" || true; "
+        'printf "\\n[frontier window ready]\\nexit=%s\\nartifact=%s\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT"; '
+        "exec /bin/sh -i"
     )
 
 
@@ -175,7 +264,9 @@ def build_visible_lane_command(
         "printf '\\n[LoopX quota guard]\\nattempt=%s/%s\\n' \"$POLL_INDEX\" \"$POLL_ATTEMPTS\"; "
         f"QUOTA_PACKET=\"$({quota_command} 2>&1)\"; "
         "QUOTA_STATUS=$?; "
-        "printf '%s\\n' \"$QUOTA_PACKET\"; "
+        'VISIBLE_ARTIFACT_PREFIX="${LOOPX_LANE_ID:-${LOOPX_ROLE_ID:-lane}}"; '
+        'QUOTA_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.quota.public.json"; '
+        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} quota \"$QUOTA_ARTIFACT\" || true; "
         "if [ \"$QUOTA_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX blocked reason]\\n'; "
         "printf 'quota_command_failed exit=%s\\n' \"$QUOTA_STATUS\"; "
@@ -201,7 +292,8 @@ def build_visible_lane_command(
         f"printf '\\n{frontier_label}\\n'; "
         f"FRONTIER_PACKET=\"$({frontier_command} 2>&1)\"; "
         "FRONTIER_STATUS=$?; "
-        "printf '%s\\n' \"$FRONTIER_PACKET\"; "
+        'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.frontier.public.json"; '
+        f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} frontier \"$FRONTIER_ARTIFACT\" || true; "
         "if [ \"$FRONTIER_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX blocked reason]\\n'; "
         "printf 'frontier_command_failed exit=%s\\n' \"$FRONTIER_STATUS\"; "
@@ -226,10 +318,16 @@ def build_visible_lane_command(
         "break; "
         "done; "
         "printf '\\n[bootstrap-or-stop]\\ncontinuing_to_visible_bootstrap\\n'; "
-        "printf '\\n[Codex bootstrap prompt]\\n'; "
         f"BOOTSTRAP_PROMPT=\"$({bootstrap_command} 2>&1)\"; "
         "BOOTSTRAP_STATUS=$?; "
-        "printf '%s\\n' \"$BOOTSTRAP_PROMPT\"; "
+        'BOOTSTRAP_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.bootstrap-prompt.public.txt"; '
+        'printf "%s\\n" "$BOOTSTRAP_PROMPT" > "$BOOTSTRAP_ARTIFACT"; '
+        "printf '\\n[Codex bootstrap]\\n'; "
+        "printf 'bootstrap_prompt_artifact=%s\\n' \"$VISIBLE_ARTIFACT_PREFIX.bootstrap-prompt.public.txt\"; "
+        'if [ -n "${LOOPX_GOAL_ID:-}" ]; then printf "goal=%s\\n" "$LOOPX_GOAL_ID"; fi; '
+        'if [ -n "${LOOPX_AGENT_ID:-}" ]; then printf "agent=%s\\n" "$LOOPX_AGENT_ID"; fi; '
+        'if [ -n "${LOOPX_LANE_ID:-}" ]; then printf "lane=%s\\n" "$LOOPX_LANE_ID"; fi; '
+        "printf 'codex_output=streaming_below\\n'; "
         "if [ \"$BOOTSTRAP_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX blocked reason]\\n'; "
         "printf 'bootstrap_command_failed exit=%s\\n' \"$BOOTSTRAP_STATUS\"; "
@@ -263,18 +361,15 @@ def build_visible_multi_agent_payload(
     attach_command = f"{_q(tmux_bin)} attach -t {_q(session)}"
     stop_command = f"{_q(tmux_bin)} kill-session -t {_q(session)}"
     first_frontier = str(frontier_command or lane_list[0].get("frontier") or "")
-    frontier_launcher = (
-        'cd "$LOOPX_PROJECT"; '
-        + first_frontier
-        + '; FRONTIER_STATUS=$?; '
-        + 'printf "\\n[frontier window ready]\\nexit=%s\\n" "$FRONTIER_STATUS"; '
-        + 'exec /bin/sh -i'
-    )
+    frontier_launcher = build_visible_frontier_command(first_frontier)
     start_script = [
         "set -uo pipefail",
         ": ${LOOPX_PROJECT:?set LOOPX_PROJECT to the repo root before running}",
         ": ${LOOPX_REGISTRY:?set LOOPX_REGISTRY to the LoopX registry path before running}",
         ": ${LOOPX_RUNTIME_ROOT:?set LOOPX_RUNTIME_ROOT to the LoopX runtime root before running}",
+        f"export LOOPX_VISIBLE_SESSION={_q(session)}",
+        'export LOOPX_VISIBLE_ARTIFACT_DIR="${LOOPX_VISIBLE_ARTIFACT_DIR:-$LOOPX_RUNTIME_ROOT/visible-launcher-artifacts/$LOOPX_VISIBLE_SESSION}"',
+        'mkdir -p "$LOOPX_VISIBLE_ARTIFACT_DIR"',
         (
             f"{_q(tmux_bin)} new-session -d -s {_q(session)} -n frontier "
             f"bash -lc {_q(frontier_launcher)}"
@@ -489,6 +584,7 @@ def _launch_with_tmux(
             "LOOPX_PROJECT": str(project),
             "LOOPX_REGISTRY": str(registry),
             "LOOPX_RUNTIME_ROOT": str(runtime_root),
+            "LOOPX_VISIBLE_SESSION": session,
         }
     )
     exists = subprocess.run(
@@ -508,13 +604,11 @@ def _launch_with_tmux(
     script_dir = runtime_root / "visible-launcher" / _script_slug(session)
     first_frontier = str(lanes[0].get("frontier") or "")
     frontier_command = runtime_shell_command(
-        f'cd "$LOOPX_PROJECT"; {first_frontier}; '
-        'FRONTIER_STATUS=$?; '
-        'printf "\\n[frontier window ready]\\nexit=%s\\n" "$FRONTIER_STATUS"; '
-        'exec /bin/sh -i',
+        build_visible_frontier_command(first_frontier),
         project=project,
         registry=registry,
         runtime_root=runtime_root,
+        visible_session=session,
         errexit=False,
     )
     frontier_script = _write_tmux_script(
@@ -545,6 +639,7 @@ def _launch_with_tmux(
                 project=lane_project,
                 registry=registry,
                 runtime_root=runtime_root,
+                visible_session=session,
                 errexit=False,
             ),
         )

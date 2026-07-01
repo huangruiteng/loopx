@@ -1065,6 +1065,7 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         f"export LOOPX_AGENT_ID={_shell_arg(str(role_profile['agent_id']))}; "
         f"export LOOPX_LANE_ID={_shell_arg(str(role_profile['lane_id']))}; "
         f"export LOOPX_ROLE_ID={_shell_arg(str(role_profile['role_id']))}; "
+        f"export LOOPX_ROLE_DISPLAY_NAME={_shell_arg(str(role_profile['display_name']))}; "
         f"export LOOPX_ROLE_PHASE={_shell_arg(str(role_profile['phase']))}; "
         f"export LOOPX_ROLE_PROFILE_REF={_shell_arg(str(role_profile['schema_version']))}; "
         f"export LOOPX_REQUIRED_SKILL={_shell_arg(str(role_profile['required_skill']))}; "
@@ -1079,9 +1080,13 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         'export LOOPX_ROLE_PROFILE_PATH="$LOOPX_ROLE_PROFILE_DIR/$LOOPX_LANE_ID.public.json"; '
         'printf "%s\\n" "$LOOPX_ROLE_PROFILE_JSON" > "$LOOPX_ROLE_PROFILE_PATH"; '
         "printf '\\n[LoopX role profile]\\n'; "
-        "printf 'role_profile_path=%s\\n' \"$LOOPX_ROLE_PROFILE_PATH\"; "
-        "printf '%s\\n' \"$LOOPX_ROLE_PROFILE_JSON\"; "
-        "printf 'worker_skill_path=%s\\n' \"$LOOPX_WORKER_SKILL_PATH\"; "
+        "printf 'role=%s\\n' \"$LOOPX_ROLE_DISPLAY_NAME\"; "
+        "printf 'lane_id=%s\\n' \"$LOOPX_LANE_ID\"; "
+        "printf 'agent_id=%s\\n' \"$LOOPX_AGENT_ID\"; "
+        "printf 'phase=%s\\n' \"$LOOPX_ROLE_PHASE\"; "
+        "printf 'required_skill=%s\\n' \"$LOOPX_REQUIRED_SKILL\"; "
+        "printf 'role_profile_artifact=%s.public.json\\n' \"$LOOPX_LANE_ID\"; "
+        "printf 'worker_skill=%s (local)\\n' \"$LOOPX_REQUIRED_SKILL\"; "
     )
 
 
