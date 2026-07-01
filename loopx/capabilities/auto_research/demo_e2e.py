@@ -6,7 +6,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from .kernel import run_builtin_lightweight_demo
@@ -28,6 +28,8 @@ from .live_evidence import (
     build_live_codex_claim_from_evidence,
     load_live_codex_e2e_evidence,
 )
+from .rollout_append import append_auto_research_rollout_events
+from .worker_loop import run_auto_research_worker_loop
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
@@ -37,6 +39,13 @@ from ...status import collect_status
 
 AppendEvidence = Callable[[str], dict[str, object]]
 VisibleLauncher = Callable[..., dict[str, object]]
+
+DEFAULT_WORKER_LOOP_AGENT_SPECS = [
+    "codex-product-capability:research-curator:research_curator",
+    "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
+    "codex-main-control:evidence-runner:evidence_runner",
+    "codex-value-explorer:evidence-verifier:evidence_verifier",
+]
 
 
 def _safe_ref_fragment(value: object, *, fallback: str) -> str:
@@ -385,6 +394,7 @@ def _command_text(
     goal_id: str,
     agent_id: str,
     execute: bool,
+    run_worker_loop: bool = False,
     launch_visible: bool = False,
     live_evidence: bool = False,
     tracking_goal_id: str | None = None,
@@ -404,6 +414,8 @@ def _command_text(
         parts.extend(["--tracking-goal-id", shlex.quote(tracking_goal_id)])
     if execute:
         parts.append("--execute")
+    if run_worker_loop:
+        parts.append("--run-worker-loop")
     if launch_visible:
         parts.append("--launch-visible")
     if live_evidence:
@@ -439,6 +451,11 @@ def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
         if isinstance(payload.get("protected_eval_result"), dict)
         else {}
     )
+    tonight = (
+        payload.get("tonight_experience")
+        if isinstance(payload.get("tonight_experience"), dict)
+        else {}
+    )
     research_loop = (
         payload.get("research_loop")
         if isinstance(payload.get("research_loop"), dict)
@@ -466,6 +483,28 @@ def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
             "next_required": (
                 "separate held-out live evidence or owner-approved claim authority "
                 "is required before holdout or promotion claims"
+            ),
+        }
+
+    if tonight.get("ready") and tonight.get("positive_result"):
+        return {
+            "schema_version": "auto_research_demo_claim_summary_v0",
+            "status": "loopx_worker_loop_positive",
+            "claim_basis": "loopx_worker_loop_public_evidence",
+            "live_worker_claim_allowed": False,
+            "live_worker_authored": False,
+            "kernel_precheck_passed": bool(protected_eval.get("executed")),
+            "can_claim": ["one_command_loopx_worker_loop_positive_result"],
+            "cannot_claim": [
+                "visible_codex_tui_authored_result",
+                "automatic_promotion_success",
+            ],
+            "dev_metric": tonight.get("dev_metric"),
+            "holdout_metric": tonight.get("holdout_metric"),
+            "holdout_metric_redacted": False,
+            "next_required": (
+                "launch visible Codex panes or pass compact live evidence before claiming "
+                "Codex TUI workers authored the same result"
             ),
         }
 
@@ -627,9 +666,16 @@ def run_auto_research_demo_e2e(
     append_evidence: AppendEvidence,
     visible_launcher: VisibleLauncher | None = None,
     goal_surface_mode: str = "explicit_goal",
+    agent_specs: Sequence[str] | None = None,
+    run_worker_loop: bool = False,
+    worker_loop_rounds: int = 2,
 ) -> dict[str, object]:
     if launch_visible and not execute:
         raise ValueError("--launch-visible requires --execute")
+    if run_worker_loop and not execute:
+        raise ValueError("--run-worker-loop requires --execute")
+    if worker_loop_rounds < 1:
+        raise ValueError("--worker-loop-rounds must be >= 1")
     if launch_visible and visible_launcher is None:
         raise ValueError("--launch-visible requires a visible launcher callback")
     if live_evidence_path and not execute:
@@ -639,22 +685,38 @@ def run_auto_research_demo_e2e(
     if tracking_goal == goal_id:
         tracking_goal = ""
     reuses_default_internal_goal = goal_id == AUTO_RESEARCH_DEFAULT_GOAL_ID
+    effective_agent_specs = list(agent_specs or [])
+    if run_worker_loop and not effective_agent_specs:
+        effective_agent_specs = list(DEFAULT_WORKER_LOOP_AGENT_SPECS)
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,
+        agent_specs=effective_agent_specs,
         session_name=session_name,
         cli_bin=cli_bin,
         codex_bin=codex_bin,
         tmux_bin=tmux_bin,
         reasoning_effort=reasoning_effort,
     )
+    execution_kind = (
+        "loopx_worker_loop_plus_minimal_kernel"
+        if execute and run_worker_loop
+        else "minimal_research_kernel"
+        if execute
+        else "minimal_research_preview"
+    )
+    result_source = (
+        "loopx_worker_loop_with_protected_eval"
+        if execute and run_worker_loop
+        else "deterministic_protected_eval_kernel"
+        if execute
+        else "deterministic_protected_eval_preview"
+    )
     payload: dict[str, object] = {
         "ok": True,
         "schema_version": AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION,
         "mode": "execute" if execute else "dry_run",
-        "execution_kind": "minimal_research_kernel" if execute else "minimal_research_preview",
-        "result_source": "deterministic_protected_eval_kernel"
-        if execute
-        else "deterministic_protected_eval_preview",
+        "execution_kind": execution_kind,
+        "result_source": result_source,
         "goal_id": goal_id,
         "tracking_goal_id": tracking_goal or None,
         "route_contract": {
@@ -692,6 +754,14 @@ def run_auto_research_demo_e2e(
                 agent_id=agent_id,
                 execute=True,
                 launch_visible=True,
+                tracking_goal_id=tracking_goal or None,
+            ),
+            "real_worker_loop": _command_text(
+                cli_bin=cli_bin,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                execute=True,
+                run_worker_loop=True,
                 tracking_goal_id=tracking_goal or None,
             ),
             "live_codex_claim_from_evidence": _command_text(
@@ -757,6 +827,26 @@ def run_auto_research_demo_e2e(
         tmp_obj = tempfile.TemporaryDirectory(prefix="loopx-auto-research-demo-e2e.")
         demo_root = Path(tmp_obj.name)
     try:
+        visible_control: dict[str, object] | None = None
+        visible_registry_path: Path | None = None
+        visible_runtime_root_arg: str | None = None
+
+        def ensure_visible_control_plane() -> tuple[dict[str, object], Path, str | None]:
+            nonlocal visible_control, visible_registry_path, visible_runtime_root_arg
+            if visible_control is None or visible_registry_path is None:
+                (
+                    visible_control,
+                    visible_registry_path,
+                    visible_runtime_root_arg,
+                ) = _seed_visible_demo_control_plane(
+                    demo_root=demo_root,
+                    goal_id=goal_id,
+                    objective=objective,
+                    supervisor=supervisor,
+                )
+                payload["visible_control_plane"] = visible_control
+            return visible_control, visible_registry_path, visible_runtime_root_arg
+
         quickstart = build_auto_research_quickstart(
             agent_id=agent_id,
             goal_id=goal_id,
@@ -862,18 +952,91 @@ def run_auto_research_demo_e2e(
                 "workspace_retained": keep_workspace or launch_visible,
             }
         )
+        if run_worker_loop:
+            visible_control, visible_registry_path, visible_runtime_root_arg = ensure_visible_control_plane()
+            worker_agent_ids = [
+                str(lane.get("agent_id") or "").strip()
+                for lane in supervisor.get("lanes") or []
+                if isinstance(lane, dict) and str(lane.get("agent_id") or "").strip()
+            ]
+
+            def append_worker_evidence(packet_path: str) -> dict[str, object]:
+                return append_auto_research_rollout_events(
+                    packet_path=packet_path,
+                    registry_path=visible_registry_path,
+                    runtime_root_arg=visible_runtime_root_arg,
+                    dry_run=False,
+                )
+
+            worker_loop = run_auto_research_worker_loop(
+                registry_path=visible_registry_path,
+                runtime_root_arg=visible_runtime_root_arg,
+                goal_id=goal_id,
+                agent_ids=worker_agent_ids,
+                objective=objective,
+                workspace=demo_root / "visible-control-plane",
+                output_dir=output_dir,
+                execute=True,
+                append_evidence=append_worker_evidence,
+                lane_count=len(worker_agent_ids),
+                visible_lanes_accepted=True,
+                complete_selected_todo=True,
+                max_rounds=worker_loop_rounds,
+            )
+            payload["worker_loop"] = worker_loop
+            turns = worker_loop.get("turns") if isinstance(worker_loop.get("turns"), list) else []
+            dev_metric = next(
+                (turn.get("dev_metric") for turn in turns if isinstance(turn, dict) and turn.get("dev_metric") is not None),
+                None,
+            )
+            holdout_metric = next(
+                (
+                    turn.get("holdout_metric")
+                    for turn in turns
+                    if isinstance(turn, dict) and turn.get("holdout_metric") is not None
+                ),
+                None,
+            )
+            payload["tonight_experience"] = {
+                "schema_version": "auto_research_tonight_experience_v0",
+                "ready": bool(worker_loop.get("executed_turn_count")),
+                "one_command": payload["commands"]["real_worker_loop"],
+                "goal_id": goal_id,
+                "goal_surface_mode": goal_surface_mode,
+                "coordination_pattern": "decentralized_state_a2a",
+                "workflow_model": "state_projected_frontier_not_dynamic_workflow",
+                "driver_role": "polling_driver_only",
+                "leader_agent_required": False,
+                "worker_loop_round_count": worker_loop.get("round_count"),
+                "executed_turn_count": worker_loop.get("executed_turn_count"),
+                "completed_turn_count": worker_loop.get("completed_turn_count"),
+                "selected_actions": worker_loop.get("selected_actions"),
+                "dev_metric": dev_metric,
+                "holdout_metric": holdout_metric,
+                "positive_result": dev_metric is not None and holdout_metric is not None,
+                "state_surfaces": [
+                    "demo-local LoopX registry",
+                    "quota/frontier selection",
+                    "todo completion",
+                    "rollout event log",
+                ],
+                "worker_contract": (
+                    "Each role reads the shared LoopX state surface, accepts only its projected "
+                    "frontier item, writes public-safe evidence, and completes the selected todo."
+                ),
+                "public_boundary": {
+                    "raw_logs_recorded": False,
+                    "private_artifacts_recorded": False,
+                    "absolute_paths_recorded": False,
+                    "visible_codex_lane_authored": False,
+                },
+            }
         if launch_visible and visible_launcher is not None:
             (
                 visible_control,
                 visible_registry_path,
                 visible_runtime_root_arg,
-            ) = _seed_visible_demo_control_plane(
-                demo_root=demo_root,
-                goal_id=goal_id,
-                objective=objective,
-                supervisor=supervisor,
-            )
-            payload["visible_control_plane"] = visible_control
+            ) = ensure_visible_control_plane()
             visible_payload = visible_launcher(
                 dict(supervisor),
                 visible_registry_path,
