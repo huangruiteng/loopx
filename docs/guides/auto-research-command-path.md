@@ -48,27 +48,26 @@ surface:
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-e2e \
-  --goal-id loopx-auto-research-knn \
   --agent-id codex-side-bypass \
   --reasoning-effort high \
   --execute \
-  --launch-visible \
   --launcher tmux \
-  --workspace ./loopx-auto-research-demo \
-  --create-workspace \
-  --attach
+  --workspace . \
+  --create-workspace
 ```
 
-That command is the user-facing UX for a multi-round visible demo. Generic
-launcher internals stay inside LoopX; the operator does not need to know the
-module or implementation path.
+That command is the user-facing UX for a multi-round visible demo. It creates a
+fresh isolated demo goal by default, runs the LoopX worker-loop, launches the
+visible tmux lanes, and attaches to the session. Generic launcher internals stay
+inside LoopX; the operator does not need to know the module or implementation
+path.
 
 When this demo is being advanced from a broader productization goal such as
-`loopx-meta`, do not change `--goal-id` to that meta goal. Keep
-`--goal-id loopx-auto-research-knn` so the visible lanes read the positive
-auto-research frontier. Add `--tracking-goal-id loopx-meta` only when the
-caller needs metadata that says which parent goal is tracking the product work;
-tracking metadata never drives the visible lane frontier.
+`loopx-meta`, do not change `--goal-id` to that meta goal. Omit `--goal-id` for
+an isolated demo goal, or pass a purpose-built research frontier goal when you
+want visible lanes to read an existing target. Add `--tracking-goal-id loopx-meta`
+only when the caller needs metadata that says which parent goal is tracking the
+product work; tracking metadata never drives the visible lane frontier.
 
 If you want to inspect before opening visible Codex lanes, start with the
 read-only dry-run. It tells the operator which command will run the
@@ -78,7 +77,6 @@ multi-round positive path:
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-e2e \
-  --goal-id loopx-auto-research-knn \
   --agent-id codex-side-bypass \
   --reasoning-effort high
 ```
@@ -89,11 +87,25 @@ When the dry-run looks right, run the multi-round positive path:
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-e2e \
-  --goal-id loopx-auto-research-knn \
   --agent-id codex-side-bypass \
   --reasoning-effort high \
   --execute
 ```
+
+That command opens and attaches to tmux by default. For JSON-only automation,
+make the headless path explicit:
+
+```bash
+loopx --registry "$LOOPX_REGISTRY" \
+  --runtime-root "$LOOPX_RUNTIME_ROOT" \
+  --format json auto-research demo-e2e \
+  --agent-id codex-side-bypass \
+  --reasoning-effort high \
+  --execute \
+  --headless
+```
+
+To start tmux panes but stay in the current shell, use `--no-attach`.
 
 Expected minimal E2E result:
 
@@ -122,7 +134,7 @@ Truth boundary:
   `one_command_loopx_worker_loop_positive_result`;
 - `claim_summary.cannot_claim` includes
   `visible_codex_tui_authored_result`;
-- `--launch-visible` proves visible panes can start, but pane startup alone is
+- the default visible launch proves panes can start, but pane startup alone is
   not a live Codex research result.
 
 To claim a live Codex lane-authored E2E result, first let the visible lane that
@@ -147,10 +159,10 @@ Then pass that compact evidence packet back to the E2E readback command:
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-e2e \
-  --goal-id loopx-auto-research-knn \
   --agent-id codex-side-bypass \
   --reasoning-effort high \
   --execute \
+  --headless \
   --live-evidence ./live-codex-e2e-evidence.public.json
 ```
 
@@ -170,14 +182,13 @@ To project a live holdout or promotion claim, the compact
 evidence must carry explicit public-safe `claim_authority`, such as
 `separate_heldout_live_evidence` or `owner_approval`.
 
-For a full visible demo after an explicit multi-round run, add the visible lane
-launcher:
+For an explicit visible demo command, `--launch-visible --attach` is still
+accepted, but it is equivalent to the default `--execute` behavior:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-e2e \
-  --goal-id loopx-auto-research-knn \
   --agent-id codex-side-bypass \
   --reasoning-effort high \
   --execute \

@@ -242,6 +242,7 @@ def main() -> int:
                 "--agent-id",
                 AGENT_ID,
                 "--execute",
+                "--headless",
                 "--live-evidence",
                 str(live_path),
             ],

@@ -65,6 +65,7 @@ def main() -> int:
                 "--demo-run-id",
                 "worker-loop-smoke",
                 "--execute",
+                "--headless",
             ],
             cwd=workspace,
             env=env,
@@ -107,6 +108,9 @@ def main() -> int:
         assert tonight["dev_metric"] == 4.0, tonight
         assert tonight["holdout_metric"] == 4.5, tonight
         assert "--run-worker-loop" not in tonight["one_command"], tonight
+        assert "--headless" not in tonight["one_command"], tonight
+        assert "--headless" in payload["commands"]["headless_worker_loop"], payload
+        assert "--no-attach" in payload["commands"]["start_visible_lanes_without_attach"], payload
         claim = payload["claim_summary"]
         assert claim["status"] == "loopx_worker_loop_positive", claim
         assert claim["can_claim"] == ["one_command_loopx_worker_loop_positive_result"], claim

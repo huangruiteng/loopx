@@ -367,6 +367,9 @@ def _command_text(
     execute: bool,
     run_worker_loop: bool = False,
     launch_visible: bool = False,
+    headless: bool = False,
+    attach: bool = False,
+    no_attach: bool = False,
     live_evidence: bool = False,
     tracking_goal_id: str | None = None,
 ) -> str:
@@ -385,8 +388,14 @@ def _command_text(
         parts.extend(["--tracking-goal-id", shlex.quote(tracking_goal_id)])
     if execute:
         parts.append("--execute")
+    if headless:
+        parts.append("--headless")
     if launch_visible:
         parts.append("--launch-visible")
+    if attach:
+        parts.append("--attach")
+    if no_attach:
+        parts.append("--no-attach")
     if live_evidence:
         parts.extend(["--live-evidence", "<public-safe-live-evidence.json>"])
     return " ".join(parts)
@@ -590,6 +599,24 @@ def run_auto_research_demo_e2e(
                 run_worker_loop=True,
                 tracking_goal_id=tracking_goal or None,
             ),
+            "headless_worker_loop": _command_text(
+                cli_bin=cli_bin,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                execute=True,
+                run_worker_loop=True,
+                headless=True,
+                tracking_goal_id=tracking_goal or None,
+            ),
+            "start_visible_lanes_without_attach": _command_text(
+                cli_bin=cli_bin,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                execute=True,
+                run_worker_loop=True,
+                no_attach=True,
+                tracking_goal_id=tracking_goal or None,
+            ),
             "one_command_worker_loop_with_visible_lanes": _command_text(
                 cli_bin=cli_bin,
                 goal_id=goal_id,
@@ -597,6 +624,7 @@ def run_auto_research_demo_e2e(
                 execute=True,
                 run_worker_loop=True,
                 launch_visible=True,
+                attach=True,
                 tracking_goal_id=tracking_goal or None,
             ),
             "live_codex_claim_from_evidence": _command_text(
