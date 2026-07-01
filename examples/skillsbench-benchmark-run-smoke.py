@@ -5791,6 +5791,39 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
         assert 'Acquire::Retries "5";' in staged_text, staged_text
 
 
+def test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-nonroot-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "fix-build-google-auto"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM example.invalid/nonroot-base:latest\n"
+            "RUN apt-get update && apt-get install -y curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="fix-build-google-auto-baseline",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["apt_retry_patch_required"] is True, metadata
+        assert metadata["apt_retry_patch_applied"] is True, metadata
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_APT_RETRY_BEGIN in staged_text, staged_text
+        assert "if mkdir -p /etc/apt/apt.conf.d 2>/dev/null" in staged_text
+        assert "[ -w /etc/apt/apt.conf.d ]" in staged_text
+        assert "apt config directory is not writable" in staged_text
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+
+
 def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-pip-stage-") as tmp:
         root = Path(tmp)
