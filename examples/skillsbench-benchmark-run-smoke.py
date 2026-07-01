@@ -211,6 +211,109 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
         assert proxy_url not in json.dumps(config, sort_keys=True), config
 
 
+def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-proxy-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        proxy_url = "http://benchmark-proxy.internal:18080"
+        previous = os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY")
+        os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
+        try:
+            args = parse_args(
+                [
+                    "--task-id",
+                    "citation-check",
+                    "--route",
+                    "codex-app-server-goal-baseline",
+                    "--host-local-acp-launch",
+                    "--remote-command-file-bridge-ready",
+                    "--skillsbench-root",
+                    str(skillsbench_root),
+                    "--jobs-dir",
+                    str(root / "jobs"),
+                ]
+            )
+            plan = build_plan(args)
+            egress = plan["benchmark_egress_proxy"]
+            assert egress["proxy_configured"] is True, egress
+            assert egress["proxy_source"] == "env", egress
+            assert egress["proxy_env_key"] == "LOOPX_SKILLSBENCH_EGRESS_PROXY", egress
+            assert egress["proxy_scheme"] == "http", egress
+            assert egress["proxy_endpoint_kind"] == "public_or_unknown", egress
+            assert egress["proxy_endpoint_port"] == 18080, egress
+            assert egress["proxy_url_recorded"] is False, egress
+            assert egress["raw_proxy_url_recorded"] is False, egress
+            assert proxy_url not in json.dumps(plan, sort_keys=True), plan
+
+            private_env = skillsbench_loop._benchmark_egress_proxy_env(args)
+            for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+                assert private_env[key] == proxy_url, private_env
+
+            target_env = skillsbench_loop._host_local_acp_target_env({}, args=args)
+            for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+                assert target_env[key] == proxy_url, target_env
+            assert target_env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] == proxy_url
+            assert "127.0.0.1" in target_env["NO_PROXY"], target_env
+
+            config = plan["runner_config"]
+            assert config["benchmark_egress_proxy_configured"] is True, config
+            assert config["benchmark_egress_proxy_endpoint_kind"] == "public_or_unknown", config
+            assert config["benchmark_egress_proxy_endpoint_port"] == 18080, config
+            assert config["benchmark_egress_proxy_url_recorded"] is False, config
+            assert proxy_url not in json.dumps(config, sort_keys=True), config
+        finally:
+            if previous is None:
+                os.environ.pop("LOOPX_SKILLSBENCH_EGRESS_PROXY", None)
+            else:
+                os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = previous
+
+
+def test_benchmark_egress_proxy_require_mode_blocks_without_proxy() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-require-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        previous = os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY")
+        os.environ.pop("LOOPX_SKILLSBENCH_EGRESS_PROXY", None)
+        try:
+            args = parse_args(
+                [
+                    "--task-id",
+                    "citation-check",
+                    "--benchmark-egress-proxy-mode",
+                    "require",
+                    "--skillsbench-root",
+                    str(skillsbench_root),
+                    "--jobs-dir",
+                    str(root / "jobs"),
+                ]
+            )
+            plan = build_plan(args)
+            try:
+                skillsbench_loop._run_benchmark_egress_proxy_preflight(args, plan)
+            except skillsbench_loop.SkillsBenchSetupPreflightBlocked:
+                pass
+            else:  # pragma: no cover - assertion path for script-style smoke
+                raise AssertionError("require mode without proxy should block preflight")
+
+            egress = plan["benchmark_egress_proxy"]
+            assert egress["status"] == "missing_required_proxy", egress
+            assert egress["ready"] is False, egress
+            assert egress["proxy_configured"] is False, egress
+            assert egress["proxy_url_recorded"] is False, egress
+            assert egress["raw_proxy_url_recorded"] is False, egress
+        finally:
+            if previous is not None:
+                os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = previous
+
+
 def test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-codex-api-proxy-scheme-") as tmp:
         root = Path(tmp)

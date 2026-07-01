@@ -173,6 +173,8 @@ HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
     "GOAL_HARNESS_REMOTE_BENCH_ROOT",
+    "LOOPX_SKILLSBENCH_EGRESS_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_PROXY",
     "HTTP_PROXY",
     "HTTPS_PROXY",
     "ALL_PROXY",
@@ -260,6 +262,22 @@ CODEX_API_EGRESS_TEST_HOST = "chatgpt.com"
 CODEX_API_EGRESS_TEST_PORT = 443
 CODEX_API_EGRESS_MODE_CHOICES = ("auto", "reverse-tunnel", "direct")
 DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC = 8.0
+BENCHMARK_EGRESS_PROXY_ENV_KEYS = (
+    "LOOPX_SKILLSBENCH_EGRESS_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_PROXY",
+)
+BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+)
+BENCHMARK_EGRESS_PROXY_MODE_CHOICES = ("auto", "off", "require")
+BENCHMARK_EGRESS_TEST_HOST = "pypi.org"
+BENCHMARK_EGRESS_TEST_PORT = 443
+DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC = 8.0
 _MISSING = object()
 SUPPORTED_ROUTES = (
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -1312,6 +1330,39 @@ def _codex_api_reverse_tunnel_proxy(args: argparse.Namespace | None) -> tuple[st
     return "", ""
 
 
+def _benchmark_egress_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
+    explicit = ""
+    if args is not None:
+        explicit = str(getattr(args, "benchmark_egress_proxy", "") or "")
+    if explicit:
+        return _normalized_proxy_url(explicit), "cli"
+    for key in BENCHMARK_EGRESS_PROXY_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            return _normalized_proxy_url(value), f"env:{key}"
+    return "", ""
+
+
+def _normalized_proxy_url(proxy_url: str) -> str:
+    raw = str(proxy_url or "").strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        return raw
+    return f"http://{raw}"
+
+
+def _benchmark_egress_proxy_requested_mode(
+    args: argparse.Namespace | None,
+) -> str:
+    requested = ""
+    if args is not None:
+        requested = str(getattr(args, "benchmark_egress_proxy_mode", "") or "")
+    if requested in BENCHMARK_EGRESS_PROXY_MODE_CHOICES:
+        return requested
+    return "auto"
+
+
 def _proxy_host_kind(host: str) -> str:
     normalized = host.strip("[]").lower()
     if normalized in {"localhost", "127.0.0.1", "::1"}:
@@ -1324,6 +1375,13 @@ def _proxy_host_kind(host: str) -> str:
         except (IndexError, ValueError):
             second_octet = -1
         if 16 <= second_octet <= 31:
+            return "private"
+    if normalized.startswith("100."):
+        try:
+            second_octet = int(normalized.split(".", 2)[1])
+        except (IndexError, ValueError):
+            second_octet = -1
+        if 64 <= second_octet <= 127:
             return "private"
     return "public_or_unknown"
 
@@ -1383,13 +1441,15 @@ def _probe_http_connect_proxy(
     host: str,
     port: int,
     timeout_sec: float,
+    target_host: str = CODEX_API_EGRESS_TEST_HOST,
+    target_port: int = CODEX_API_EGRESS_TEST_PORT,
 ) -> str:
     with socket.create_connection((host, port), timeout=timeout_sec) as sock:
         sock.settimeout(timeout_sec)
         request = (
-            f"CONNECT {CODEX_API_EGRESS_TEST_HOST}:{CODEX_API_EGRESS_TEST_PORT} "
+            f"CONNECT {target_host}:{target_port} "
             "HTTP/1.1\r\n"
-            f"Host: {CODEX_API_EGRESS_TEST_HOST}:{CODEX_API_EGRESS_TEST_PORT}\r\n"
+            f"Host: {target_host}:{target_port}\r\n"
             "Proxy-Connection: close\r\n\r\n"
         )
         sock.sendall(request.encode("ascii"))
@@ -1522,6 +1582,204 @@ def _sync_codex_api_egress_contract(
     target["codex_api_reverse_tunnel_proxy_url_recorded"] = False
 
 
+def _public_benchmark_egress_proxy_contract(
+    args: argparse.Namespace,
+    *,
+    status: str = "pending",
+    ready: bool = False,
+    error_kind: str = "",
+) -> dict[str, Any]:
+    proxy_mode = _benchmark_egress_proxy_requested_mode(args)
+    proxy_url = ""
+    proxy_source = ""
+    if proxy_mode != "off":
+        proxy_url, proxy_source = _benchmark_egress_proxy(args)
+    scheme = ""
+    host = ""
+    port = 0
+    parse_error = ""
+    if proxy_url:
+        try:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+        except Exception as exc:
+            parse_error = type(exc).__name__
+    configured = bool(proxy_url)
+    if status == "pending":
+        if proxy_mode == "off":
+            status = "disabled"
+            ready = True
+        elif not configured and proxy_mode == "auto":
+            status = "not_configured"
+            ready = True
+        elif not configured:
+            status = "missing_required_proxy"
+            ready = False
+    return {
+        "schema_version": "skillsbench_benchmark_egress_proxy_v0",
+        "requested_mode": proxy_mode,
+        "ready": bool(ready),
+        "status": status,
+        "error_kind": error_kind or parse_error,
+        "proxy_configured": configured,
+        "proxy_required": proxy_mode == "require",
+        "proxy_source": (
+            proxy_source.split(":", 1)[0] if proxy_source else ""
+        ),
+        "proxy_env_key": (
+            proxy_source.split(":", 1)[1]
+            if proxy_source.startswith("env:")
+            else ""
+        ),
+        "proxy_scheme": scheme[:20],
+        "proxy_endpoint_kind": _proxy_host_kind(host) if host else "",
+        "proxy_endpoint_port": port,
+        "proxy_url_recorded": False,
+        "raw_proxy_url_recorded": False,
+        "raw_probe_output_recorded": False,
+        "test_host": BENCHMARK_EGRESS_TEST_HOST,
+        "test_host_public_only": True,
+    }
+
+
+def _run_benchmark_egress_proxy_preflight(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    proxy_mode = _benchmark_egress_proxy_requested_mode(args)
+    proxy_url, _source = _benchmark_egress_proxy(args)
+    timeout_sec = max(
+        1.0,
+        float(
+            getattr(
+                args,
+                "benchmark_egress_proxy_preflight_timeout_sec",
+                DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC,
+            )
+            or DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC
+        ),
+    )
+    status = "pending"
+    ready = False
+    error_kind = ""
+    try:
+        if proxy_mode == "off":
+            status = "disabled"
+            ready = True
+        elif not proxy_url:
+            status = (
+                "not_configured"
+                if proxy_mode == "auto"
+                else "missing_required_proxy"
+            )
+            ready = proxy_mode == "auto"
+        else:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+            if not host or not port:
+                raise ValueError("proxy endpoint missing host or port")
+            if scheme != "http":
+                status = "unsupported_proxy_scheme"
+                ready = False
+            else:
+                status = _probe_http_connect_proxy(
+                    host=host,
+                    port=port,
+                    timeout_sec=timeout_sec,
+                    target_host=BENCHMARK_EGRESS_TEST_HOST,
+                    target_port=BENCHMARK_EGRESS_TEST_PORT,
+                )
+                ready = status == "http_connect_ready"
+    except Exception as exc:
+        status = "failed"
+        ready = False
+        error_kind = type(exc).__name__
+    contract = _public_benchmark_egress_proxy_contract(
+        args,
+        status=status,
+        ready=ready,
+        error_kind=error_kind,
+    )
+    plan["benchmark_egress_proxy"] = contract
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    if isinstance(prerequisites, dict):
+        _sync_benchmark_egress_proxy_contract(prerequisites, contract)
+    if not ready:
+        raise SkillsBenchSetupPreflightBlocked(
+            "benchmark egress proxy preflight blocked: configure a valid "
+            "private proxy in LOOPX_SKILLSBENCH_EGRESS_PROXY or run with "
+            "--benchmark-egress-proxy-mode off for explicit no-proxy runs"
+        )
+    return contract
+
+
+def _sync_benchmark_egress_proxy_contract(
+    target: dict[str, Any],
+    contract: dict[str, Any],
+) -> None:
+    target["benchmark_egress_proxy_ready"] = bool(contract.get("ready"))
+    target["benchmark_egress_proxy_configured"] = bool(
+        contract.get("proxy_configured")
+    )
+    target["benchmark_egress_proxy_required"] = bool(contract.get("proxy_required"))
+    target["benchmark_egress_proxy_url_recorded"] = False
+    target["benchmark_egress_proxy_status"] = str(contract.get("status") or "")
+    target["benchmark_egress_proxy_error_kind"] = str(
+        contract.get("error_kind") or ""
+    )
+    target["benchmark_egress_proxy_mode_requested"] = str(
+        contract.get("requested_mode") or ""
+    )
+    target["benchmark_egress_proxy_source"] = str(
+        contract.get("proxy_source") or ""
+    )
+    target["benchmark_egress_proxy_env_key"] = str(
+        contract.get("proxy_env_key") or ""
+    )
+    target["benchmark_egress_proxy_scheme"] = str(
+        contract.get("proxy_scheme") or ""
+    )
+    target["benchmark_egress_proxy_endpoint_kind"] = str(
+        contract.get("proxy_endpoint_kind") or ""
+    )
+    port = contract.get("proxy_endpoint_port")
+    target["benchmark_egress_proxy_endpoint_port"] = (
+        int(port) if isinstance(port, int) and not isinstance(port, bool) else 0
+    )
+
+
+def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, str]:
+    if args is None or _benchmark_egress_proxy_requested_mode(args) == "off":
+        return {}
+    proxy_url, _source = _benchmark_egress_proxy(args)
+    if not proxy_url:
+        return {}
+    env = {key: proxy_url for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS}
+    env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
+    env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
+    env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
+    return env
+
+
+@contextlib.contextmanager
+def _benchmark_egress_proxy_env_applied(
+    args: argparse.Namespace,
+) -> Any:
+    proxy_env = _benchmark_egress_proxy_env(args)
+    if not proxy_env:
+        yield
+        return
+    keys = set(proxy_env)
+    previous = {key: os.environ.get(key) for key in keys}
+    try:
+        os.environ.update(proxy_env)
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def _host_local_acp_target_env(
     agent_env: object,
     *,
@@ -1541,6 +1799,8 @@ def _host_local_acp_target_env(
             target_env[key] = proxy_url
         target_env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
         target_env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
+    for key, value in _benchmark_egress_proxy_env(args).items():
+        target_env.setdefault(key, value)
     return target_env
 
 
@@ -2230,6 +2490,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_api_reverse_tunnel_proxy_source",
         "codex_api_reverse_tunnel_proxy_scheme",
         "codex_api_reverse_tunnel_proxy_endpoint_kind",
+        "benchmark_egress_proxy_status",
+        "benchmark_egress_proxy_error_kind",
+        "benchmark_egress_proxy_mode_requested",
+        "benchmark_egress_proxy_source",
+        "benchmark_egress_proxy_env_key",
+        "benchmark_egress_proxy_scheme",
+        "benchmark_egress_proxy_endpoint_kind",
         "host_local_acp_proxy_endpoint_status",
         "host_local_acp_proxy_endpoint_env_key",
         "host_local_acp_proxy_endpoint_scheme",
@@ -2261,6 +2528,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_api_reverse_tunnel_required",
         "codex_api_reverse_tunnel_proxy_configured",
         "codex_api_reverse_tunnel_proxy_url_recorded",
+        "benchmark_egress_proxy_ready",
+        "benchmark_egress_proxy_configured",
+        "benchmark_egress_proxy_required",
+        "benchmark_egress_proxy_url_recorded",
+        "benchmark_egress_proxy_agent_env_injected",
         "host_local_acp_codex_exec_preflight_response_marker_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_required",
         "host_local_acp_codex_exec_preflight_bridge_action_observed",
@@ -2451,6 +2723,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count",
         "host_local_acp_codex_exec_failure_trace_count",
         "codex_api_reverse_tunnel_proxy_endpoint_port",
+        "benchmark_egress_proxy_endpoint_port",
         "host_local_acp_proxy_endpoint_loopback_port",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
@@ -6578,6 +6851,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         ready=not _codex_api_egress_preflight_required(args),
     )
+    benchmark_egress_proxy = _public_benchmark_egress_proxy_contract(args)
     remote_command_file_bridge_materialized = bool(
         args.remote_command_file_bridge_ready
         or args.remote_command_file_bridge_probe
@@ -6766,6 +7040,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "run_permission_policy": run_permission_policy,
         "task_setup_preflight": setup_preflight,
         "codex_api_egress_preflight": codex_api_egress_preflight,
+        "benchmark_egress_proxy": benchmark_egress_proxy,
         "task_staging": {
             "schema_version": "skillsbench_task_staging_v0",
             "staged": False,
@@ -6900,6 +7175,41 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 codex_api_egress_preflight.get("proxy_endpoint_port") or 0
             ),
             "codex_api_reverse_tunnel_proxy_url_recorded": False,
+            "benchmark_egress_proxy_ready": bool(
+                benchmark_egress_proxy.get("ready")
+            ),
+            "benchmark_egress_proxy_configured": bool(
+                benchmark_egress_proxy.get("proxy_configured")
+            ),
+            "benchmark_egress_proxy_required": bool(
+                benchmark_egress_proxy.get("proxy_required")
+            ),
+            "benchmark_egress_proxy_status": str(
+                benchmark_egress_proxy.get("status") or ""
+            ),
+            "benchmark_egress_proxy_error_kind": str(
+                benchmark_egress_proxy.get("error_kind") or ""
+            ),
+            "benchmark_egress_proxy_mode_requested": str(
+                benchmark_egress_proxy.get("requested_mode") or ""
+            ),
+            "benchmark_egress_proxy_source": str(
+                benchmark_egress_proxy.get("proxy_source") or ""
+            ),
+            "benchmark_egress_proxy_env_key": str(
+                benchmark_egress_proxy.get("proxy_env_key") or ""
+            ),
+            "benchmark_egress_proxy_scheme": str(
+                benchmark_egress_proxy.get("proxy_scheme") or ""
+            ),
+            "benchmark_egress_proxy_endpoint_kind": str(
+                benchmark_egress_proxy.get("proxy_endpoint_kind") or ""
+            ),
+            "benchmark_egress_proxy_endpoint_port": int(
+                benchmark_egress_proxy.get("proxy_endpoint_port") or 0
+            ),
+            "benchmark_egress_proxy_url_recorded": False,
+            "benchmark_egress_proxy_agent_env_injected": False,
             "loopx_workflow_lifecycle_checkpoint": bool(
                 _is_loopx_product_mode_route(args.route)
                 and args.host_local_acp_launch
@@ -7199,6 +7509,11 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "codex_api_reverse_tunnel_required",
             "codex_api_reverse_tunnel_proxy_configured",
             "codex_api_reverse_tunnel_proxy_url_recorded",
+            "benchmark_egress_proxy_ready",
+            "benchmark_egress_proxy_configured",
+            "benchmark_egress_proxy_required",
+            "benchmark_egress_proxy_url_recorded",
+            "benchmark_egress_proxy_agent_env_injected",
         ):
             value = prerequisites.get(field)
             if isinstance(value, bool):
@@ -7211,6 +7526,13 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "codex_api_reverse_tunnel_proxy_source",
             "codex_api_reverse_tunnel_proxy_scheme",
             "codex_api_reverse_tunnel_proxy_endpoint_kind",
+            "benchmark_egress_proxy_status",
+            "benchmark_egress_proxy_error_kind",
+            "benchmark_egress_proxy_mode_requested",
+            "benchmark_egress_proxy_source",
+            "benchmark_egress_proxy_env_key",
+            "benchmark_egress_proxy_scheme",
+            "benchmark_egress_proxy_endpoint_kind",
         ):
             value = prerequisites.get(field)
             if isinstance(value, str) and value:
@@ -7218,6 +7540,9 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         value = prerequisites.get("codex_api_reverse_tunnel_proxy_endpoint_port")
         if isinstance(value, int) and not isinstance(value, bool):
             config["codex_api_reverse_tunnel_proxy_endpoint_port"] = value
+        value = prerequisites.get("benchmark_egress_proxy_endpoint_port")
+        if isinstance(value, int) and not isinstance(value, bool):
+            config["benchmark_egress_proxy_endpoint_port"] = value
     return config
 
 
@@ -7293,7 +7618,8 @@ async def run_benchflow_case_with_private_output(
         stream.flush()
         try:
             with redirect_stdout(stream), redirect_stderr(stream):
-                result = await run_benchflow_case(args, plan)
+                with _benchmark_egress_proxy_env_applied(args):
+                    result = await run_benchflow_case(args, plan)
         finally:
             stream.write(
                 f"[{datetime.now().isoformat(timespec='seconds')}] "
@@ -11289,6 +11615,11 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     if runtime_mounts:
         agent_env["PATH"] = BENCHFLOW_AGENT_RUNTIME_CONTAINER_PATH
         agent_env["CODEX_ACP_RUNTIME_HOME"] = BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET
+    benchmark_proxy_env = _benchmark_egress_proxy_env(args)
+    if benchmark_proxy_env:
+        agent_env.update(benchmark_proxy_env)
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        prerequisites["benchmark_egress_proxy_agent_env_injected"] = True
 
     rollout_config_kwargs = {
         "task_path": effective_task_path,
@@ -13044,6 +13375,37 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--benchmark-egress-proxy",
+        default="",
+        help=(
+            "Optional HTTP proxy URL for benchmark setup/verifier egress. "
+            "Omit the flag and set LOOPX_SKILLSBENCH_EGRESS_PROXY in the "
+            "private runtime environment for default benchmark runs. The URL "
+            "is applied only to private subprocess/worker environments; public "
+            "artifacts record only source/scheme/kind/port summaries."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy-mode",
+        choices=BENCHMARK_EGRESS_PROXY_MODE_CHOICES,
+        default=os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY_MODE", "auto"),
+        help=(
+            "Benchmark setup/verifier proxy policy. auto uses "
+            "LOOPX_SKILLSBENCH_EGRESS_PROXY when present, off disables proxy "
+            "injection, and require fails before a run unless a valid private "
+            "HTTP CONNECT proxy is configured."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy-preflight-timeout-sec",
+        type=float,
+        default=DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC,
+        help=(
+            "Timeout for the benchmark setup/verifier egress proxy preflight. "
+            "The probe records no raw proxy URL or raw response output."
+        ),
+    )
+    parser.add_argument(
         "--host-local-acp-codex-exec-preflight",
         action="store_true",
         help=(
@@ -13360,6 +13722,13 @@ async def async_main(
     ):
         try:
             _run_codex_api_egress_preflight(args, plan)
+        finally:
+            _write_public_runner_config(plan)
+            _write_public_runner_prerequisites(plan)
+
+    if not args.reduce_only:
+        try:
+            _run_benchmark_egress_proxy_preflight(args, plan)
         finally:
             _write_public_runner_config(plan)
             _write_public_runner_prerequisites(plan)
