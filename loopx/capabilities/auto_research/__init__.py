@@ -56,6 +56,12 @@ from .kernel import (
     run_builtin_lightweight_demo,
     run_lightweight_auto_research,
 )
+from .worker_runtime import (
+    AUTO_RESEARCH_WORKER_FRONTIER_SCHEMA_VERSION,
+    AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+    load_auto_research_worker_frontier,
+    run_auto_research_worker_turn,
+)
 
 __all__ = [
     "AUTO_RESEARCH_DEFAULT_GOAL_ID",
@@ -110,4 +116,8 @@ __all__ = [
     "lightweight_hypothesis",
     "run_builtin_lightweight_demo",
     "run_lightweight_auto_research",
+    "AUTO_RESEARCH_WORKER_FRONTIER_SCHEMA_VERSION",
+    "AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION",
+    "load_auto_research_worker_frontier",
+    "run_auto_research_worker_turn",
 ]
