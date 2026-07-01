@@ -196,6 +196,7 @@ def main() -> int:
         release_root = wrapper.resolve().parents[1]
         assert (release_root / "loopx" / "cli.py").is_file(), release_root
         assert (release_root / ".github" / "workflows" / "update-notes.yml").is_file(), release_root
+        assert (release_root / "LICENSE").is_file(), release_root
         release_manifest_path = release_root / "release.json"
         assert release_manifest_path.is_file(), release_manifest_path
         release_manifest = json.loads(release_manifest_path.read_text(encoding="utf-8"))
