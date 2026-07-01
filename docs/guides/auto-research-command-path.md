@@ -105,7 +105,11 @@ loopx --registry "$LOOPX_REGISTRY" \
   --headless
 ```
 
-To start tmux panes but stay in the current shell, use `--no-attach`.
+To start tmux panes but stay in the current shell, use `--no-attach`. Visible
+panes default to human-readable LoopX output. The pane-local `$LOOPX_PANE_LOOPX`
+wrapper rewrites accidental visible JSON requests to markdown, and
+`$LOOPX_PANE_LOOPX_JSON` is reserved for redirected or piped machine artifacts;
+it refuses to dump raw JSON directly into a visible terminal.
 
 Expected minimal E2E result:
 
@@ -270,6 +274,9 @@ lanes, including a separate evidence-verifier lane.
 The visible panes should do work through the same CLI path a heartbeat worker
 uses: each turn re-reads quota, frontier, todo projection, and rollout evidence
 before writing anything.
+The user-facing terminal should show the role, selected todo, action, blocker,
+and Codex CLI stream; raw JSON belongs in `.public.json` artifacts, not on the
+first visible screen.
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import os
+import pty
+import select
 import subprocess
 import sys
 import tempfile
@@ -23,6 +25,45 @@ from loopx.visible_multi_agent_launcher import (  # noqa: E402
 def write_executable(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
+
+
+def run_with_pty(command: list[str], *, env: dict[str, str]) -> tuple[int, str]:
+    master, slave = pty.openpty()
+    try:
+        proc = subprocess.Popen(
+            command,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=slave,
+            stderr=slave,
+            close_fds=True,
+        )
+        os.close(slave)
+        chunks: list[bytes] = []
+        while True:
+            ready, _, _ = select.select([master], [], [], 0.2)
+            if master in ready:
+                try:
+                    data = os.read(master, 4096)
+                except OSError:
+                    data = b""
+                if data:
+                    chunks.append(data)
+            if proc.poll() is not None:
+                while True:
+                    try:
+                        data = os.read(master, 4096)
+                    except OSError:
+                        break
+                    if not data:
+                        break
+                    chunks.append(data)
+                return proc.returncode or 0, b"".join(chunks).decode(errors="replace")
+    finally:
+        try:
+            os.close(master)
+        except OSError:
+            pass
 
 
 def main() -> int:
@@ -46,6 +87,8 @@ def main() -> int:
     assert "LOOPX_PANE_LOOPX_JSON" in launcher_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
     assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in launcher_source
+    assert "LoopX machine JSON hidden" in launcher_source
+    assert "LOOPX_ALLOW_TTY_JSON" in launcher_source
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -140,9 +183,16 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
+            tty_status, tty_output = run_with_pty(
+                [str(workspace / ".local/bin/loopx-json"), "--format", "json", "status"],
+                env=scoped_env,
+            )
             assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in human.stdout, human.stdout
             assert "--format markdown status" in human.stdout, human.stdout
             assert "--format json status" in machine.stdout, machine.stdout
+            assert tty_status == 2, tty_output
+            assert "LoopX machine JSON hidden" in tty_output, tty_output
+            assert "fake-loopx" not in tty_output, tty_output
 
             try:
                 execute_visible_multi_agent_launcher(

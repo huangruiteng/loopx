@@ -123,6 +123,11 @@ json_target.write_text(
     f"real = {real!r}\n"
     f"registry = {registry!r}\n"
     f"runtime = {runtime!r}\n"
+    "if sys.stdout.isatty() and os.environ.get('LOOPX_ALLOW_TTY_JSON') != '1' and os.environ.get('LOOPX_MACHINE_JSON') != '1':\n"
+    "    print('\\n[LoopX machine JSON hidden]\\nraw JSON is not printed in visible panes.\\n')\n"
+    "    print('Use $LOOPX_PANE_LOOPX for human-readable output, or redirect machine JSON:')\n"
+    "    print('  $LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json')\n"
+    "    raise SystemExit(2)\n"
     "os.execv(real, [real, '--registry', registry, '--runtime-root', runtime] + sys.argv[1:])\n",
     encoding="utf-8",
 )
