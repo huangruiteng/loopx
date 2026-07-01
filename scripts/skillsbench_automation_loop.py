@@ -470,6 +470,14 @@ DOCKER_CODEX_ACP_RUNTIME_TOOLS_END = (
 )
 DOCKER_PIP_BOOTSTRAP_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
 DOCKER_PIP_BOOTSTRAP_END = "# END LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
+DOCKER_GCR_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_GCR_MIRROR"
+DOCKER_GCR_MIRROR_END = "# END LOOPX_SKILLSBENCH_GCR_MIRROR"
+DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_ELAN_TOOLCHAIN_RETRY"
+)
+DOCKER_ELAN_TOOLCHAIN_RETRY_END = (
+    "# END LOOPX_SKILLSBENCH_ELAN_TOOLCHAIN_RETRY"
+)
 VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
 )
@@ -5641,6 +5649,14 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_pip_install_risk_detected",
         "dockerfile_pip_bootstrap_patch_required",
         "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_gcr_mirror_configured",
+        "dockerfile_gcr_mirror_patch_required",
+        "dockerfile_gcr_mirror_patch_applied",
+        "dockerfile_gcr_mirror_raw_prefix_recorded",
+        "dockerfile_elan_toolchain_retry_patch_required",
+        "dockerfile_elan_toolchain_retry_patch_applied",
+        "dockerfile_wget_gpg_key_retry_patch_required",
+        "dockerfile_wget_gpg_key_retry_patch_applied",
         "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
@@ -5736,6 +5752,18 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "apt_retry_patch_applied": DOCKER_APT_RETRY_BEGIN in dockerfile_text,
         "dockerfile_pip_bootstrap_patch_applied": (
             DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text
+        ),
+        "dockerfile_gcr_mirror_patch_applied": (
+            DOCKER_GCR_MIRROR_BEGIN in dockerfile_text
+        ),
+        "dockerfile_gcr_mirror_raw_prefix_recorded": False,
+        "dockerfile_elan_toolchain_retry_patch_applied": (
+            DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN in dockerfile_text
+        ),
+        "dockerfile_wget_gpg_key_retry_patch_applied": (
+            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30"
+            in dockerfile_text
+            and "| gpg --dearmor" in dockerfile_text
         ),
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
@@ -6267,6 +6295,171 @@ def dockerfile_needs_pip_bootstrap_patch(dockerfile: Path) -> bool:
             flags=re.IGNORECASE,
         )
     )
+
+
+def _normalized_docker_gcr_mirror_prefix(mirror_prefix: str | None) -> str:
+    prefix = str(mirror_prefix or "").strip().rstrip("/")
+    if not prefix or "://" in prefix or re.search(r"\s", prefix):
+        return ""
+    return prefix
+
+
+def dockerfile_references_gcr_oss_fuzz_base(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    pattern = re.compile(
+        r"^\s*FROM(?:\s+--platform=[^\s]+)?\s+gcr\.io/oss-fuzz-base/",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    return bool(pattern.search(text))
+
+
+def dockerfile_needs_gcr_mirror_rewrite(
+    dockerfile: Path,
+    *,
+    mirror_prefix: str | None,
+) -> bool:
+    if not _normalized_docker_gcr_mirror_prefix(mirror_prefix):
+        return False
+    return dockerfile_references_gcr_oss_fuzz_base(dockerfile)
+
+
+def patch_dockerfile_gcr_mirror(
+    dockerfile: Path,
+    *,
+    mirror_prefix: str | None,
+) -> bool:
+    """Rewrite staged GCR oss-fuzz base image refs to a configured mirror."""
+
+    prefix = _normalized_docker_gcr_mirror_prefix(mirror_prefix)
+    if not prefix or not dockerfile.exists():
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_GCR_MIRROR_BEGIN,
+        DOCKER_GCR_MIRROR_END,
+    )
+    pattern = re.compile(
+        r"^(?P<lead>\s*FROM(?:\s+--platform=[^\s]+)?\s+)"
+        r"(?P<image>gcr\.io/oss-fuzz-base/[^\s]+)"
+        r"(?P<tail>.*)$",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        return (
+            f"{match.group('lead')}{prefix}/{match.group('image')}"
+            f"{match.group('tail')}"
+        )
+
+    rewritten, count = pattern.subn(replace, text)
+    if count == 0:
+        return False
+    block = (
+        f"{DOCKER_GCR_MIRROR_BEGIN}\n"
+        "# Staged-only public base-image mirror rewrite; raw mirror prefix is\n"
+        "# provided by private benchmark runtime configuration.\n"
+        f"{DOCKER_GCR_MIRROR_END}"
+    )
+    patched = f"{block}\n{rewritten}".rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def dockerfile_needs_elan_toolchain_retry_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(
+        re.search(
+            r"\belan\s+toolchain\s+install\s+\$\(cat\s+[^)]+lean-toolchain\)",
+            text,
+        )
+    )
+
+
+def patch_dockerfile_elan_toolchain_retry(dockerfile: Path) -> bool:
+    """Add bounded retry around staged Lean toolchain downloads."""
+
+    if not dockerfile_needs_elan_toolchain_retry_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN,
+        DOCKER_ELAN_TOOLCHAIN_RETRY_END,
+    )
+    pattern = re.compile(
+        r"RUN\s+elan\s+toolchain\s+install\s+\$\(cat\s+"
+        r"(?P<toolchain>[^)]+lean-toolchain)\)\s*&&\s*\\?\s*"
+        r"(?:\n\s*)?elan\s+default\s+\$\(cat\s+(?P=toolchain)\)",
+        flags=re.MULTILINE,
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        toolchain = match.group("toolchain").strip()
+        return (
+            f"{DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN}\n"
+            "RUN set -eux; \\\n"
+            f"    loopx_lean_toolchain=\"$(cat {toolchain})\"; \\\n"
+            "    for loopx_attempt in 1 2 3 4 5; do \\\n"
+            "      elan toolchain install \"${loopx_lean_toolchain}\" && break; \\\n"
+            "      if [ \"${loopx_attempt}\" = \"5\" ]; then exit 1; fi; \\\n"
+            "      sleep 10; \\\n"
+            "    done; \\\n"
+            "    elan default \"${loopx_lean_toolchain}\"\n"
+            f"{DOCKER_ELAN_TOOLCHAIN_RETRY_END}"
+        )
+
+    patched, count = pattern.subn(replace, text, count=1)
+    if count == 0:
+        return False
+    patched = patched.rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def dockerfile_needs_wget_gpg_key_retry_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(
+        re.search(
+            r"\bwget\s+(?:-qO\s+-|-q\s+-O\s+-|-O\s+-\s+-q)\s+"
+            r"https?://[^\s|]+\s*\|\s*gpg\s+--dearmor",
+            text,
+        )
+    )
+
+
+def patch_dockerfile_wget_gpg_key_retry(dockerfile: Path) -> bool:
+    """Use curl retry semantics for staged public key download pipelines."""
+
+    if not dockerfile_needs_wget_gpg_key_retry_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    pattern = re.compile(
+        r"\bwget\s+(?:-qO\s+-|-q\s+-O\s+-|-O\s+-\s+-q)\s+"
+        r"(?P<url>https?://[^\s|]+)\s*\|\s*gpg\s+--dearmor",
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        return (
+            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
+            f"{match.group('url')} | gpg --dearmor"
+        )
+
+    patched, count = pattern.subn(replace, original)
+    if count == 0 or patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
 
 
 def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
@@ -6969,6 +7162,7 @@ def stage_task_for_sandbox(
     sandbox: str,
     include_task_skills: bool = True,
     benchmark_egress_proxy_env: Mapping[str, str] | None = None,
+    docker_gcr_mirror_prefix: str = "",
 ) -> tuple[Path, dict[str, Any]]:
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
@@ -6984,6 +7178,16 @@ def stage_task_for_sandbox(
         "dockerfile_pip_install_risk_detected": False,
         "dockerfile_pip_bootstrap_patch_required": False,
         "dockerfile_pip_bootstrap_patch_applied": False,
+        "dockerfile_gcr_mirror_configured": bool(
+            _normalized_docker_gcr_mirror_prefix(docker_gcr_mirror_prefix)
+        ),
+        "dockerfile_gcr_mirror_patch_required": False,
+        "dockerfile_gcr_mirror_patch_applied": False,
+        "dockerfile_gcr_mirror_raw_prefix_recorded": False,
+        "dockerfile_elan_toolchain_retry_patch_required": False,
+        "dockerfile_elan_toolchain_retry_patch_applied": False,
+        "dockerfile_wget_gpg_key_retry_patch_required": False,
+        "dockerfile_wget_gpg_key_retry_patch_applied": False,
         "codex_acp_runtime_tools_patch_applied": False,
         "empty_skills_build_context_required": False,
         "empty_skills_build_context_created": False,
@@ -7018,6 +7222,16 @@ def stage_task_for_sandbox(
     needs_pip_bootstrap_patch = dockerfile_needs_pip_bootstrap_patch(
         task_path / "environment" / "Dockerfile"
     )
+    needs_gcr_mirror_patch = dockerfile_needs_gcr_mirror_rewrite(
+        task_path / "environment" / "Dockerfile",
+        mirror_prefix=docker_gcr_mirror_prefix,
+    )
+    needs_elan_toolchain_retry_patch = dockerfile_needs_elan_toolchain_retry_patch(
+        task_path / "environment" / "Dockerfile"
+    )
+    needs_wget_gpg_key_retry_patch = dockerfile_needs_wget_gpg_key_retry_patch(
+        task_path / "environment" / "Dockerfile"
+    )
     verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
     needs_verifier_uv_mirror_patch = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
@@ -7037,6 +7251,13 @@ def stage_task_for_sandbox(
     metadata["dockerfile_pip_bootstrap_patch_required"] = needs_pip_bootstrap_patch
     if needs_pip_bootstrap_patch:
         metadata["dockerfile_pip_index_host"] = DEFAULT_DOCKER_PIP_INDEX_HOST
+    metadata["dockerfile_gcr_mirror_patch_required"] = needs_gcr_mirror_patch
+    metadata["dockerfile_elan_toolchain_retry_patch_required"] = (
+        needs_elan_toolchain_retry_patch
+    )
+    metadata["dockerfile_wget_gpg_key_retry_patch_required"] = (
+        needs_wget_gpg_key_retry_patch
+    )
     metadata["verifier_bootstrap_risk_detected"] = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
     )
@@ -7062,6 +7283,9 @@ def stage_task_for_sandbox(
         and not needs_resource_cap
         and not needs_apt_retry_patch
         and not needs_pip_bootstrap_patch
+        and not needs_gcr_mirror_patch
+        and not needs_elan_toolchain_retry_patch
+        and not needs_wget_gpg_key_retry_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
         and not needs_verifier_proxy_env_patch
@@ -7105,6 +7329,16 @@ def stage_task_for_sandbox(
     pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
         staged_path / "environment" / "Dockerfile"
     )
+    gcr_mirror_patched = patch_dockerfile_gcr_mirror(
+        staged_path / "environment" / "Dockerfile",
+        mirror_prefix=docker_gcr_mirror_prefix,
+    )
+    elan_toolchain_retry_patched = patch_dockerfile_elan_toolchain_retry(
+        staged_path / "environment" / "Dockerfile"
+    )
+    wget_gpg_key_retry_patched = patch_dockerfile_wget_gpg_key_retry(
+        staged_path / "environment" / "Dockerfile"
+    )
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
     )
@@ -7128,6 +7362,14 @@ def stage_task_for_sandbox(
             "dockerfile_pip_bootstrap_patch_applied": pip_bootstrap_patched,
             "dockerfile_pip_index_host": (
                 DEFAULT_DOCKER_PIP_INDEX_HOST if pip_bootstrap_patched else ""
+            ),
+            "dockerfile_gcr_mirror_patch_applied": gcr_mirror_patched,
+            "dockerfile_gcr_mirror_raw_prefix_recorded": False,
+            "dockerfile_elan_toolchain_retry_patch_applied": (
+                elan_toolchain_retry_patched
+            ),
+            "dockerfile_wget_gpg_key_retry_patch_applied": (
+                wget_gpg_key_retry_patched
             ),
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
             "empty_skills_build_context_required": empty_skills_context_required,
@@ -11242,6 +11484,7 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         sandbox=args.sandbox,
         include_task_skills=bool(args.include_task_skills),
         benchmark_egress_proxy_env=_benchmark_egress_proxy_env(args),
+        docker_gcr_mirror_prefix=args.docker_gcr_mirror_prefix,
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
@@ -13797,6 +14040,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Timeout for the benchmark setup/verifier egress proxy preflight. "
             "The probe records no raw proxy URL or raw response output."
+        ),
+    )
+    parser.add_argument(
+        "--docker-gcr-mirror-prefix",
+        default=os.environ.get("LOOPX_SKILLSBENCH_GCR_MIRROR_PREFIX", ""),
+        help=(
+            "Optional private runtime registry prefix used only for staged "
+            "Dockerfile FROM rewrites of gcr.io/oss-fuzz-base images. Public "
+            "artifacts record only booleans and never the raw prefix."
         ),
     )
     parser.add_argument(

@@ -77,6 +77,8 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_KEEP_FILE,
+    DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN,
+    DOCKER_GCR_MIRROR_BEGIN,
     DOCKER_PIP_BOOTSTRAP_BEGIN,
     DOCKER_HOST_CPU_ENV,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
@@ -5822,6 +5824,122 @@ def test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe() -> None:
         assert "[ -w /etc/apt/apt.conf.d ]" in staged_text
         assert "apt config directory is not writable" in staged_text
         assert dockerfile.read_text(encoding="utf-8") == original_text
+
+
+def test_skillsbench_docker_task_staging_rewrites_gcr_oss_fuzz_base() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-gcr-mirror-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "setup-fuzzing-py"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM gcr.io/oss-fuzz-base/base-builder-python:latest\n"
+            "RUN true\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        mirror_prefix = "mirror.example.invalid/cache"
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="setup-fuzzing-py-goal",
+            sandbox="docker",
+            include_task_skills=False,
+            docker_gcr_mirror_prefix=mirror_prefix,
+        )
+
+        assert metadata["dockerfile_gcr_mirror_configured"] is True, metadata
+        assert metadata["dockerfile_gcr_mirror_patch_required"] is True, metadata
+        assert metadata["dockerfile_gcr_mirror_patch_applied"] is True, metadata
+        assert metadata["dockerfile_gcr_mirror_raw_prefix_recorded"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        assert mirror_prefix not in json.dumps(metadata, sort_keys=True), metadata
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_GCR_MIRROR_BEGIN in staged_text, staged_text
+        assert (
+            "FROM mirror.example.invalid/cache/gcr.io/oss-fuzz-base/"
+            "base-builder-python:latest"
+        ) in staged_text, staged_text
+
+
+def test_skillsbench_docker_task_staging_hardens_elan_toolchain_install() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-elan-retry-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "lean4-proof"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n"
+            "RUN elan toolchain install $(cat /app/workspace/lean-toolchain) && \\\n"
+            "    elan default $(cat /app/workspace/lean-toolchain)\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="lean4-proof-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_elan_toolchain_retry_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["dockerfile_elan_toolchain_retry_patch_applied"] is True, (
+            metadata
+        )
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN in staged_text, staged_text
+        assert "for loopx_attempt in 1 2 3 4 5" in staged_text, staged_text
+        assert "elan toolchain install \"${loopx_lean_toolchain}\"" in staged_text
+        assert "elan default \"${loopx_lean_toolchain}\"" in staged_text
+
+
+def test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-wget-gpg-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "software-dependency-audit"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM python:3.12-slim\n"
+            "RUN wget -qO - https://example.invalid/public.key | "
+            "gpg --dearmor -o /usr/share/keyrings/example.gpg\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="software-dependency-audit-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_wget_gpg_key_retry_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["dockerfile_wget_gpg_key_retry_patch_applied"] is True, (
+            metadata
+        )
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert "wget -qO -" not in staged_text, staged_text
+        assert (
+            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
+            "https://example.invalid/public.key | gpg --dearmor"
+        ) in staged_text, staged_text
 
 
 def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
@@ -13802,6 +13920,10 @@ if __name__ == "__main__":
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
+    test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe()
+    test_skillsbench_docker_task_staging_rewrites_gcr_oss_fuzz_base()
+    test_skillsbench_docker_task_staging_hardens_elan_toolchain_install()
+    test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download()
     test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults()
     test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror()
     test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap()
