@@ -129,6 +129,10 @@ def main() -> int:
             assert "codex-cli-bootstrap-message" not in bootstrap, lane
             assert "generic LoopX heartbeat worker" in bootstrap, lane
             assert "loopx-auto-research" in bootstrap, lane
+            assert "Minimal live worker-turn path" in bootstrap, lane
+            assert "auto-research worker-turn" in bootstrap, lane
+            assert "--complete-selected-todo" in bootstrap, lane
+            assert "$LOOPX_PANE_LOOPX" in bootstrap, lane
             assert "append-result.public.json" in bootstrap, lane
             assert "capture-live-evidence" in bootstrap, lane
             assert "live-codex-e2e-evidence.public.json" in bootstrap, lane

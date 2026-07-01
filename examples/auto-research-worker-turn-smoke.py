@@ -17,12 +17,21 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e  # noqa: E402
+from loopx.capabilities.auto_research.demo_e2e import _seed_visible_demo_control_plane  # noqa: E402
+from loopx.capabilities.auto_research import build_auto_research_demo_supervisor_plan  # noqa: E402
 
 
 GOAL_ID = "loopx-auto-research-knn"
 CURATOR_AGENT_ID = "codex-product-capability"
 MAPPER_AGENT_ID = "codex-side-bypass"
 EVIDENCE_AGENT_ID = "codex-main-control"
+VERIFIER_AGENT_ID = "codex-value-explorer"
+FOUR_LANES = [
+    "codex-product-capability:research-curator:research_curator",
+    "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
+    "codex-main-control:evidence-runner:evidence_runner",
+    "codex-value-explorer:evidence-verifier:evidence_verifier",
+]
 
 
 def assert_public_safe(payload: Any) -> None:
@@ -254,6 +263,45 @@ def main() -> int:
         assert_public_safe(mapper_executed)
         assert_public_safe(executed)
         assert_public_safe(payload["visible_launch"])
+
+        supervisor = build_auto_research_demo_supervisor_plan(
+            goal_id=GOAL_ID,
+            agent_specs=FOUR_LANES,
+            reasoning_effort="high",
+        )
+        four_lane_root = temp / "four-lane-queue"
+        _summary, four_registry, four_runtime_root = _seed_visible_demo_control_plane(
+            demo_root=four_lane_root,
+            goal_id=GOAL_ID,
+            objective="Prove every visible auto-research role can run one LoopX-selected worker turn.",
+            supervisor=supervisor,
+        )
+        four_workspace = four_lane_root / "visible-control-plane"
+        for agent in [CURATOR_AGENT_ID, MAPPER_AGENT_ID, EVIDENCE_AGENT_ID]:
+            run_worker_turn(
+                registry=four_registry,
+                runtime_root=four_runtime_root,
+                workspace=four_workspace,
+                agent_id=agent,
+                execute=True,
+                complete=True,
+            )
+        verifier = run_worker_turn(
+            registry=four_registry,
+            runtime_root=four_runtime_root,
+            workspace=four_workspace,
+            agent_id=VERIFIER_AGENT_ID,
+            execute=True,
+            complete=True,
+        )
+        assert verifier["schema_version"] == "auto_research_worker_turn_v0", verifier
+        assert verifier["mode"] == "execute", verifier
+        assert verifier["selected_action"] == "classify_evidence", verifier
+        assert verifier["artifact"]["kind"] == "evaluation_summary", verifier
+        assert verifier["artifact_status"] == "evaluation_summary_written", verifier
+        assert verifier["completion"]["status"] == "done", verifier
+        assert verifier["promotion_decision_made"] is False, verifier
+        assert_public_safe(verifier)
 
     print("auto-research-worker-turn-smoke ok")
     return 0

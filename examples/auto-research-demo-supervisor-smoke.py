@@ -109,6 +109,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "You are a visible LoopX auto-research lane" in lane["bootstrap_message"], lane
         assert "Do not run loopx bootstrap-command-pack" in lane["bootstrap_message"], lane
         assert "codex-cli-bootstrap-message" not in lane["bootstrap_message"], lane
+        assert "Minimal live worker-turn path" in lane["bootstrap_message"], lane
+        assert "auto-research worker-turn" in lane["bootstrap_message"], lane
+        assert "--complete-selected-todo" in lane["bootstrap_message"], lane
+        assert "$LOOPX_PANE_LOOPX" in lane["bootstrap_message"], lane
         assert "[LoopX role profile]" in lane["visible_launch_command"], lane
         assert "[LoopX visible acceptance]" in lane["visible_launch_command"], lane
         assert "LOOPX_GOAL_ID" in lane["visible_launch_command"], lane
@@ -130,6 +134,14 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert lane["lane_timeline"][0]["command_ref"] == "role_profile", lane
         assert lane["lane_timeline"][1]["command_ref"] == "quota_guard", lane
         assert "operator is attached" in lane["lane_timeline"][-1]["continue_when"], lane
+    expected_action_hints = {
+        "research_curator": "`write_research_contract`",
+        "hypothesis_mapper": "`propose_hypothesis`",
+        "evidence_runner": "`run_dev_eval` or `write_evidence`",
+        "evidence_verifier": "`classify_evidence` or `write_evaluation_summary`",
+    }
+    for lane in lanes:
+        assert expected_action_hints[lane["role_id"]] in lane["bootstrap_message"], lane
 
     start_script = "\n".join(payload["commands"]["start_script"])
     assert "tmux new-session" in start_script, start_script

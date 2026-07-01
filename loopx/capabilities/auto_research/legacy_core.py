@@ -936,18 +936,24 @@ def _auto_research_codex_bootstrap_prompt(
     stop_conditions = _compact_prompt_list(role_profile.get("stop_conditions"))
     effort = _compact_public_token(reasoning_effort, field="bootstrap.reasoning_effort")
     goal = _compact_public_token(goal_id, field="bootstrap.goal_id")
-    role_specific_steps: list[str] = []
-    if role_id == "evidence_runner":
-        role_specific_steps = [
-            "",
-            "Evidence runner minimal live demo path:",
-            "1. Confirm the selected frontier action is `run_dev_eval` or `write_evidence` for this agent.",
-            "2. Preview the real LoopX-selected worker turn:",
-            "   `loopx --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\"`",
-            "3. Execute the same worker turn only when the preview selected this lane:",
-            "   `loopx --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\" --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --execute`",
-            "4. Complete only the selected todo after worker-turn reports executed=true, appended evidence, and live_evidence.written=true.",
-        ]
+    expected_actions_by_role = {
+        "research_curator": "`write_research_contract`",
+        "hypothesis_mapper": "`propose_hypothesis`",
+        "evidence_runner": "`run_dev_eval` or `write_evidence`",
+        "evidence_verifier": "`classify_evidence` or `write_evaluation_summary`",
+    }
+    expected_actions = expected_actions_by_role.get(role_id, "one allowed action from this role profile")
+    role_specific_steps: list[str] = [
+        "",
+        "Minimal live worker-turn path:",
+        f"1. Confirm the selected frontier action matches this role ({expected_actions}).",
+        "2. Preview the real LoopX-selected worker turn:",
+        "   `\"$LOOPX_PANE_LOOPX\" --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\"`",
+        "3. Execute the same worker turn only when the preview selected this lane:",
+        "   `\"$LOOPX_PANE_LOOPX\" --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\" --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
+        "4. Stop after worker-turn reports executed=true and completion.status=done.",
+        "5. For evidence-runner, additionally require appended evidence and live_evidence.written=true.",
+    ]
     return "\n".join(
         [
             "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",

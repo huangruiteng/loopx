@@ -15,6 +15,8 @@ from .core import (
     RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
     build_auto_research_quickstart,
     build_live_auto_research_projection,
+    build_research_decision_candidates,
+    build_research_evidence_graph_from_rollout_events,
     load_auto_research_evidence_packet_inputs,
     validate_research_hypothesis,
 )
@@ -37,6 +39,8 @@ SUPPORTED_WORKER_ACTIONS = {
     "propose_hypothesis",
     "run_dev_eval",
     "write_evidence",
+    "classify_evidence",
+    "write_evaluation_summary",
 }
 
 AppendEvidence = Callable[[str], dict[str, object]]
@@ -167,6 +171,59 @@ def _write_hypothesis_artifact(
             "mechanism_family": hypothesis["mechanism_family"],
         },
         "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+        },
+    }
+    _write_json(output_path, artifact)
+    return artifact
+
+
+def _write_evaluation_summary_artifact(
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    output_path: Path,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+) -> dict[str, object]:
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+    rollout_events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
+    graph = build_research_evidence_graph_from_rollout_events(
+        goal_id=goal_id,
+        rollout_events=rollout_events,
+    )
+    decisions = build_research_decision_candidates(graph)
+    artifact = {
+        "ok": True,
+        "schema_version": "auto_research_worker_evaluation_summary_v0",
+        "goal_id": goal_id,
+        "todo_id": todo_id,
+        "agent_id": agent_id,
+        "evidence_graph_summary": {
+            "event_count": graph.get("event_count"),
+            "hypothesis_count": graph.get("hypothesis_count"),
+            "best_dev_metric": graph.get("best_dev_metric"),
+            "best_holdout_metric": graph.get("best_holdout_metric"),
+            "holdout_improved": graph.get("holdout_improved"),
+            "negative_evidence_count": graph.get("negative_evidence_count"),
+        },
+        "decision_summary": {
+            "dev_promotion_candidate_count": len(decisions.get("dev_promotion_candidates") or []),
+            "validated_promotion_candidate_count": len(decisions.get("validated_promotion_candidates") or []),
+            "promotion_candidate_count": len(decisions.get("promotion_candidates") or []),
+            "retirement_candidate_count": len(decisions.get("retirement_candidates") or []),
+        },
+        "summary": {
+            "status": "evaluation_summary_written",
+            "claim_allowed": bool(decisions.get("validated_promotion_candidates")),
+            "promotion_decision_made": False,
+        },
+        "public_boundary": {
+            "source": "loopx_rollout_event_log",
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
             "absolute_paths_recorded": False,
@@ -358,6 +415,7 @@ def run_auto_research_worker_turn(
     run_dir = workspace / evidence_dir / _slug(agent_id, default="agent") / _slug(todo_id, default="todo")
     contract_artifact_path = run_dir / "research-contract.public.json"
     hypothesis_artifact_path = run_dir / "hypothesis.public.json"
+    evaluation_summary_path = run_dir / "evaluation-summary.public.json"
     dev_result_path = run_dir / "dev-result.public.json"
     evidence_packet_path = run_dir / "evidence.public.json"
     append_result_path = run_dir / "append-result.public.json"
@@ -437,6 +495,51 @@ def run_auto_research_worker_turn(
             "artifact": _artifact_summary("research_hypothesis", filename="hypothesis.public.json"),
             "artifact_status": artifact["summary"]["status"],
             "hypothesis_id": artifact["summary"]["hypothesis_id"],
+            "completion": completion,
+            "frontier": frontier_packet,
+            "public_boundary": {
+                "raw_logs_recorded": False,
+                "private_artifacts_recorded": False,
+                "absolute_paths_recorded": False,
+                "credentials_recorded": False,
+            },
+        }
+
+    if action in {"classify_evidence", "write_evaluation_summary"}:
+        artifact = _write_evaluation_summary_artifact(
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            output_path=evaluation_summary_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+        )
+        completion = (
+            _complete_selected_todo(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                todo_id=todo_id,
+                agent_id=agent_id,
+                action=action,
+                execute=True,
+            )
+            if complete_selected_todo
+            else {"requested": False}
+        )
+        return {
+            "ok": True,
+            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+            "mode": "execute",
+            "goal_id": goal_id,
+            "agent_id": agent_id,
+            "selected_todo_id": todo_id,
+            "selected_action": action,
+            "executed": True,
+            "pack_mode": pack_mode,
+            "artifact": _artifact_summary("evaluation_summary", filename="evaluation-summary.public.json"),
+            "artifact_status": artifact["summary"]["status"],
+            "claim_allowed": artifact["summary"]["claim_allowed"],
+            "promotion_decision_made": artifact["summary"]["promotion_decision_made"],
             "completion": completion,
             "frontier": frontier_packet,
             "public_boundary": {
