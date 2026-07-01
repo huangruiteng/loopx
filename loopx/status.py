@@ -6024,6 +6024,7 @@ def compact_todo_group(
     role: str | None = None,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any] | None:
     if not items:
         return None
@@ -6154,7 +6155,7 @@ def compact_todo_group(
             for item in projected_deferred_items
             if item.get("resume_ready") is True
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
-        "items": budgeted_items[:MAX_STATUS_TODOS_PER_ROLE],
+        "items": budgeted_items if item_limit is None else budgeted_items[:item_limit],
     }
     handoff_gates = build_todo_handoff_gate_states(items)
     if handoff_gates:
@@ -6214,6 +6215,7 @@ def parse_active_state_todos(
     state_path: Path | None = None,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any]:
     role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
@@ -6264,6 +6266,7 @@ def parse_active_state_todos(
         role="user",
         preferred_todo_ids=preferred_todo_ids,
         rollout_events=rollout_events,
+        item_limit=item_limit,
     )
     agent = compact_todo_group(
         items["agent"],
@@ -6271,6 +6274,7 @@ def parse_active_state_todos(
         role="agent",
         preferred_todo_ids=preferred_todo_ids,
         rollout_events=rollout_events,
+        item_limit=item_limit,
     )
     if user:
         result["user_todos"] = user
@@ -6304,6 +6308,7 @@ def active_state_event_projection_fields(
     state_path: Path,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any]:
     goal_id = str(goal.get("id") or "").strip()
     for event_log_path in state_event_log_candidates(goal, state_path=state_path):
@@ -6321,6 +6326,7 @@ def active_state_event_projection_fields(
                 state_path=state_path,
                 preferred_todo_ids=preferred_todo_ids,
                 rollout_events=rollout_events,
+                item_limit=item_limit,
             )
         except (OSError, StateEventError) as exc:
             return {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test `loopx todo list` event projection preference and Markdown fallback."""
+"""Smoke-test `loopx todo list` event projection with Markdown late-todo overlay."""
 
 from __future__ import annotations
 
@@ -153,13 +153,20 @@ def main() -> int:
         projected = run_cli(registry_path, "todo", "list", "--goal-id", GOAL_ID, "--role", "agent")
         assert projected["ok"] is True, projected
         assert projected["read_only"] is True, projected
-        assert projected["source"] == "event_projection", projected
-        assert projected["todo_count"] == 2, projected
+        assert projected["source"] == "event_projection_with_markdown_overlay", projected
+        assert projected["todo_count"] == 3, projected
         assert [item["todo_id"] for item in projected["todos"]] == [
+            "todo_event_open",
+            "todo_markdown",
+            "todo_event_done",
+        ], projected
+        assert projected["projection_overlay"]["markdown_only_todo_ids"] == [
+            "todo_markdown"
+        ], projected
+        assert projected["projection_overlay"]["event_only_todo_ids"] == [
             "todo_event_open",
             "todo_event_done",
         ], projected
-        assert "todo_markdown" not in json.dumps(projected, sort_keys=True), projected
         assert projected["state_event_projection"]["source_event_count"] == 3, projected
 
         done_only = run_cli(
@@ -173,7 +180,7 @@ def main() -> int:
             "--status",
             "done",
         )
-        assert done_only["source"] == "event_projection", done_only
+        assert done_only["source"] == "event_projection_with_markdown_overlay", done_only
         assert done_only["todo_count"] == 1, done_only
         assert done_only["todos"][0]["todo_id"] == "todo_event_done", done_only
 
