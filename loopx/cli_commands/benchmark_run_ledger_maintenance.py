@@ -490,6 +490,14 @@ def register_benchmark_run_ledger_maintenance_commands(
         help="Text file with one canonical case id per line.",
     )
     benchmark_run_ledger_aggregate_parser.add_argument(
+        "--canonical-case-root",
+        help=(
+            "Directory whose immediate child directories are canonical case ids. "
+            "Use this for benchmark task roots so sanity/preflight tasks outside "
+            "the canonical root do not enter the denominator."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
         "--output-json",
         help="Optional output JSON path for the aggregate.",
     )
@@ -733,6 +741,17 @@ def handle_benchmark_run_ledger_maintenance_command(
                     .read_text(encoding="utf-8")
                     .splitlines()
                     if line.strip()
+                )
+            if args.canonical_case_root:
+                canonical_root = Path(args.canonical_case_root).expanduser()
+                if not canonical_root.is_dir():
+                    raise ValueError(
+                        f"--canonical-case-root is not a directory: {canonical_root}"
+                    )
+                canonical_case_ids.extend(
+                    child.name
+                    for child in sorted(canonical_root.iterdir(), key=lambda item: item.name)
+                    if child.is_dir() and child.name
                 )
             merged_ledger = load_benchmark_run_ledger(args.run_ledger_path)
             source_ledger_count = 0

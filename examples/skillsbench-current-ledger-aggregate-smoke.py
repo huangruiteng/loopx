@@ -127,6 +127,15 @@ def make_ledger(path: Path) -> None:
             failure_class="skillsbench_compose_setup_blocked_before_agent_rounds",
             failure_scope="score_missing",
         ),
+        run_entry(
+            run_id="sanity-task-preflight",
+            case_id="hello-world",
+            recorded_at="2026-07-02T01:50:00+08:00",
+            score=None,
+            score_status="missing",
+            failure_class="skillsbench_task_source_preflight_blocked",
+            failure_scope="score_missing",
+        ),
     ):
         ledger = upsert_benchmark_run_ledger_entry(ledger, entry)
     write_json(path, ledger)
@@ -166,6 +175,7 @@ def test_current_aggregate_prefers_countable_results() -> None:
             aggregate["case_best"]["manufacturing-codebook-normalization"]["run_id"]
             == "manufacturing-official-zero"
         ), aggregate["case_best"]["manufacturing-codebook-normalization"]
+        assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
 
 
 def test_current_aggregate_cli_writes_public_safe_json() -> None:
@@ -173,15 +183,19 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
         root = Path(tmp)
         ledger_path = root / "benchmark-run-ledger.json"
         output_path = root / "current-aggregate-status.json"
-        canonical_path = root / "canonical-task-ids.txt"
+        canonical_root = root / "skillsbench" / "tasks"
         make_ledger(ledger_path)
-        canonical_path.write_text(
-            "latex-formula-extraction\n"
-            "manufacturing-codebook-normalization\n"
-            "lab-unit-harmonization\n"
-            "fix-druid-loophole-cve\n"
-            "never-run-case\n",
-            encoding="utf-8",
+        for case_id in [
+            "latex-formula-extraction",
+            "manufacturing-codebook-normalization",
+            "lab-unit-harmonization",
+            "fix-druid-loophole-cve",
+            "never-run-case",
+        ]:
+            (canonical_root / case_id).mkdir(parents=True, exist_ok=True)
+        (root / "skillsbench" / "experiments" / "sanity-tasks" / "hello-world").mkdir(
+            parents=True,
+            exist_ok=True,
         )
         result = subprocess.run(
             [
@@ -196,8 +210,8 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
                 str(ledger_path),
                 "--benchmark-id",
                 BENCHMARK_ID,
-                "--canonical-case-ids-file",
-                str(canonical_path),
+                "--canonical-case-root",
+                str(canonical_root),
                 "--output-json",
                 str(output_path),
                 "--execute",
@@ -211,8 +225,10 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
         assert payload["ok"] is True, payload
         assert output_path.exists(), payload
         aggregate = json.loads(output_path.read_text(encoding="utf-8"))
+        assert aggregate["canonical_total"] == 5, aggregate
         assert aggregate["case_best"]["latex-formula-extraction"]["bucket"] == "official_zero"
         assert aggregate["case_best"]["fix-druid-loophole-cve"]["bucket"] == "setup_runner_infra"
+        assert "hello-world" not in aggregate["case_best"]
         assert aggregate["selection_policy"]["source_paths_recorded"] is False
         assert ".local" not in output_path.read_text(encoding="utf-8")
 
