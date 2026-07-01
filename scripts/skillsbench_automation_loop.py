@@ -1744,6 +1744,9 @@ def _sync_benchmark_egress_proxy_contract(
     target["benchmark_egress_proxy_endpoint_port"] = (
         int(port) if isinstance(port, int) and not isinstance(port, bool) else 0
     )
+    target.setdefault("benchmark_egress_proxy_docker_config_injected", False)
+    target.setdefault("benchmark_egress_proxy_docker_config_path_recorded", False)
+    target.setdefault("benchmark_egress_proxy_docker_config_raw_proxy_recorded", False)
 
 
 def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, str]:
@@ -1759,6 +1762,39 @@ def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, st
     return env
 
 
+def _docker_config_payload_with_proxy(
+    *,
+    proxy_url: str,
+    no_proxy: str,
+) -> dict[str, Any]:
+    """Return a Docker client config that forwards proxies without mutating home."""
+
+    docker_config_dir = os.environ.get("DOCKER_CONFIG")
+    source_config = (
+        Path(docker_config_dir).expanduser() / "config.json"
+        if docker_config_dir
+        else Path.home() / ".docker" / "config.json"
+    )
+    payload: dict[str, Any] = {}
+    if source_config.exists():
+        try:
+            loaded = json.loads(source_config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            loaded = {}
+        if isinstance(loaded, dict):
+            payload = loaded
+    proxies = payload.setdefault("proxies", {})
+    if not isinstance(proxies, dict):
+        proxies = {}
+        payload["proxies"] = proxies
+    proxies["default"] = {
+        "httpProxy": proxy_url,
+        "httpsProxy": proxy_url,
+        "noProxy": no_proxy,
+    }
+    return payload
+
+
 @contextlib.contextmanager
 def _benchmark_egress_proxy_env_applied(
     args: argparse.Namespace,
@@ -1767,10 +1803,28 @@ def _benchmark_egress_proxy_env_applied(
     if not proxy_env:
         yield
         return
-    keys = set(proxy_env)
+    docker_config_tmp: tempfile.TemporaryDirectory[str] | None = None
+    docker_config_env: dict[str, str] = {}
+    proxy_url = proxy_env.get("LOOPX_SKILLSBENCH_EGRESS_PROXY", "")
+    if proxy_url:
+        docker_config_tmp = tempfile.TemporaryDirectory(
+            prefix="loopx-skillsbench-docker-proxy-"
+        )
+        docker_config_path = Path(docker_config_tmp.name) / "config.json"
+        docker_config_payload = _docker_config_payload_with_proxy(
+            proxy_url=proxy_url,
+            no_proxy=proxy_env.get("NO_PROXY", "localhost,127.0.0.1,::1"),
+        )
+        docker_config_path.write_text(
+            json.dumps(docker_config_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        docker_config_env["DOCKER_CONFIG"] = docker_config_tmp.name
+    keys = set(proxy_env) | set(docker_config_env)
     previous = {key: os.environ.get(key) for key in keys}
     try:
         os.environ.update(proxy_env)
+        os.environ.update(docker_config_env)
         yield
     finally:
         for key, value in previous.items():
@@ -1778,6 +1832,8 @@ def _benchmark_egress_proxy_env_applied(
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+        if docker_config_tmp is not None:
+            docker_config_tmp.cleanup()
 
 
 def _host_local_acp_target_env(
@@ -2533,6 +2589,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchmark_egress_proxy_required",
         "benchmark_egress_proxy_url_recorded",
         "benchmark_egress_proxy_agent_env_injected",
+        "benchmark_egress_proxy_docker_config_injected",
+        "benchmark_egress_proxy_docker_config_path_recorded",
+        "benchmark_egress_proxy_docker_config_raw_proxy_recorded",
         "host_local_acp_codex_exec_preflight_response_marker_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_required",
         "host_local_acp_codex_exec_preflight_bridge_action_observed",
@@ -7210,6 +7269,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "benchmark_egress_proxy_url_recorded": False,
             "benchmark_egress_proxy_agent_env_injected": False,
+            "benchmark_egress_proxy_docker_config_injected": False,
+            "benchmark_egress_proxy_docker_config_path_recorded": False,
+            "benchmark_egress_proxy_docker_config_raw_proxy_recorded": False,
             "loopx_workflow_lifecycle_checkpoint": bool(
                 _is_loopx_product_mode_route(args.route)
                 and args.host_local_acp_launch
@@ -7514,6 +7576,9 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "benchmark_egress_proxy_required",
             "benchmark_egress_proxy_url_recorded",
             "benchmark_egress_proxy_agent_env_injected",
+            "benchmark_egress_proxy_docker_config_injected",
+            "benchmark_egress_proxy_docker_config_path_recorded",
+            "benchmark_egress_proxy_docker_config_raw_proxy_recorded",
         ):
             value = prerequisites.get(field)
             if isinstance(value, bool):
@@ -11620,6 +11685,9 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         agent_env.update(benchmark_proxy_env)
         prerequisites = plan.setdefault("runner_prerequisites", {})
         prerequisites["benchmark_egress_proxy_agent_env_injected"] = True
+        prerequisites["benchmark_egress_proxy_docker_config_injected"] = True
+        prerequisites["benchmark_egress_proxy_docker_config_path_recorded"] = False
+        prerequisites["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] = False
 
     rollout_config_kwargs = {
         "task_path": effective_task_path,
