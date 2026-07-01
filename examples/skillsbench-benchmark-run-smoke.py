@@ -5795,6 +5795,9 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert metadata["verifier_uv_bootstrap_mirror_patch_applied"] is True, (
             metadata
         )
+        assert metadata[
+            "verifier_uv_bootstrap_pip_fallback_patch_applied"
+        ] is True, metadata
         assert metadata["verifier_uv_bootstrap_version"] == "0.9.7", metadata
         assert metadata["verifier_uv_bootstrap_mirror_host"] == (
             DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
@@ -5805,10 +5808,20 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         )
         assert VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in staged_verifier, staged_verifier
         assert "INSTALLER_DOWNLOAD_URL" in staged_verifier, staged_verifier
+        assert "python3 -m pip install" in staged_verifier, staged_verifier
+        assert "--break-system-packages" in staged_verifier, staged_verifier
+        assert "uv==${loopx_uv_version}" in staged_verifier, staged_verifier
+        assert "loopx_uv_installer_timeout_sec" in staged_verifier, staged_verifier
+        assert "timeout \"${loopx_uv_installer_timeout_sec}\" sh -c" in (
+            staged_verifier
+        )
         assert "releases.astral.sh/github/uv/releases/download" in staged_verifier, (
             staged_verifier
         )
         assert "uv-${loopx_uv_target}.tar.gz" not in staged_verifier, staged_verifier
+        assert "if ! command -v uvx >/dev/null 2>&1; then" in staged_verifier, (
+            staged_verifier
+        )
         assert staged_verifier.index("INSTALLER_DOWNLOAD_URL") < staged_verifier.index(
             "astral.sh/uv/0.9.7/install.sh"
         ), staged_verifier

@@ -5582,6 +5582,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "verifier_uv_bootstrap_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
+        "verifier_uv_bootstrap_pip_fallback_patch_applied",
         "benchmark_egress_proxy_verifier_env_patch_required",
         "benchmark_egress_proxy_verifier_env_patch_applied",
         "benchmark_egress_proxy_verifier_env_raw_proxy_recorded",
@@ -5682,6 +5683,10 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
                 "verifier_uv_bootstrap_risk_detected": True,
                 "verifier_uv_bootstrap_mirror_patch_required": True,
                 "verifier_uv_bootstrap_mirror_patch_applied": True,
+                "verifier_uv_bootstrap_pip_fallback_patch_applied": (
+                    "python3 -m pip install" in verifier_text
+                    and "uv==${loopx_uv_version}" in verifier_text
+                ),
                 "verifier_uv_bootstrap_mirror_host": (
                     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
                 ),
@@ -5953,6 +5958,10 @@ def build_compose_setup_diagnostic(
         is True,
         "verifier_uv_bootstrap_mirror_patch_applied": task_staging.get(
             "verifier_uv_bootstrap_mirror_patch_applied"
+        )
+        is True,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": task_staging.get(
+            "verifier_uv_bootstrap_pip_fallback_patch_applied"
         )
         is True,
         "staged_task_prepared": task_staging.get("staged") is True,
@@ -6537,6 +6546,7 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
     }
     if not verifier.exists():
         return metadata
@@ -6556,13 +6566,26 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
     version = versions[0]
     block = (
         f"{VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
-        "# Use a public mirror for uv release tarballs when GitHub release\n"
-        "# downloads stall behind the benchmark runner network path.\n"
+        "# Prefer the PyPI uv wheel for verifier bootstrap; the official uv\n"
+        "# installer release tarball remains as a bounded fallback.\n"
         f"loopx_uv_release_mirror={shlex.quote(DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE)}\n"
         f"loopx_uv_version={shlex.quote(version)}\n"
+        "if ! command -v uvx >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then\n"
+        "  loopx_pip_break_system_packages=''\n"
+        "  if python3 -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then\n"
+        "    loopx_pip_break_system_packages='--break-system-packages'\n"
+        "  fi\n"
+        "  python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
+        "    --no-cache-dir --timeout 120 --retries 5 \\\n"
+        f"    --index-url {shlex.quote(DEFAULT_DOCKER_PIP_INDEX_URL)} \\\n"
+        f"    --extra-index-url {shlex.quote(DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL)} \\\n"
+        "    \"uv==${loopx_uv_version}\" || true\n"
+        "  unset loopx_pip_break_system_packages\n"
+        "fi\n"
         "if [ -z \"${INSTALLER_DOWNLOAD_URL:-}\" ]; then\n"
         "  export INSTALLER_DOWNLOAD_URL=\"${loopx_uv_release_mirror}/${loopx_uv_version}\"\n"
         "fi\n"
+        "loopx_uv_installer_timeout_sec=${LOOPX_SKILLSBENCH_UV_INSTALL_TIMEOUT_SEC:-180}\n"
         f"{VERIFIER_UV_BOOTSTRAP_MIRROR_END}"
     )
     patched_lines: list[str] = []
@@ -6575,6 +6598,20 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
         ):
             patched_lines.extend(block.splitlines())
             inserted = True
+            if "curl" in line and "|" in line:
+                fallback_line = shlex.quote(line)
+                patched_lines.extend(
+                    [
+                        "if ! command -v uvx >/dev/null 2>&1; then",
+                        "  if command -v timeout >/dev/null 2>&1; then",
+                        f"    timeout \"${{loopx_uv_installer_timeout_sec}}\" sh -c {fallback_line}",
+                        "  else",
+                        f"    sh -c {fallback_line}",
+                        "  fi",
+                        "fi",
+                    ]
+                )
+                continue
         patched_lines.append(line)
     if not inserted:
         patched_lines.extend(block.splitlines())
@@ -6586,6 +6623,7 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
             "verifier_uv_bootstrap_risk_detected": True,
             "verifier_uv_bootstrap_mirror_patch_required": True,
             "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_uv_bootstrap_pip_fallback_patch_applied": True,
             "verifier_uv_bootstrap_version": version,
             "verifier_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
@@ -6848,6 +6886,7 @@ def stage_task_for_sandbox(
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
         "benchmark_egress_proxy_verifier_env_patch_required": False,
         "benchmark_egress_proxy_verifier_env_patch_applied": False,
         "benchmark_egress_proxy_verifier_env_key_count": 0,
@@ -7284,6 +7323,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 and setup_preflight.get("verifier_uv_bootstrap_version")
             ),
             "verifier_uv_bootstrap_mirror_patch_applied": False,
+            "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
             "benchmark_egress_proxy_verifier_env_patch_required": False,
             "benchmark_egress_proxy_verifier_env_patch_applied": False,
             "benchmark_egress_proxy_verifier_env_key_count": 0,
