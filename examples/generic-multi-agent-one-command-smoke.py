@@ -298,8 +298,14 @@ def main() -> int:
             if entry["argv"][:1] == ["new-window"]
         ]
         assert len(new_window_commands) == 2, log_entries
-        assert all("reasoning_effort=high" in command for command in new_window_commands), new_window_commands
-        assert all("model_reasoning_effort=high" in command for command in new_window_commands), new_window_commands
+        new_window_payloads = []
+        for command in new_window_commands:
+            command_path = Path(command)
+            new_window_payloads.append(
+                command_path.read_text(encoding="utf-8") if command_path.is_file() else command
+            )
+        assert all("reasoning_effort=high" in command for command in new_window_payloads), new_window_payloads
+        assert all("model_reasoning_effort=high" in command for command in new_window_payloads), new_window_payloads
 
     smoke_source = Path(__file__).read_text(encoding="utf-8").lower()
     domain_marker = "auto" + "-research"

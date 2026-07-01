@@ -84,12 +84,12 @@ def assert_e2e_payload(
     assert payload["agent_id"] == AGENT_ID, payload
     assert payload["reasoning_effort"] == "high", payload
     assert payload["execution_kind"] in {
-        "multiround_research_kernel",
-        "multiround_research_preview",
+        "minimal_research_kernel",
+        "minimal_research_preview",
     }, payload
     assert payload["result_source"] in {
-        "lightweight_multiround_kernel",
-        "lightweight_multiround_kernel_preview",
+        "deterministic_protected_eval_kernel",
+        "deterministic_protected_eval_preview",
     }, payload
     live = payload["live_codex_e2e"]
     assert live["executed"] is False, payload
@@ -119,14 +119,20 @@ def assert_e2e_payload(
         assert loop["holdout_metric"] == 4.5, payload
         assert loop["dev_gain_over_baseline"] == 3.0, payload
         assert loop["holdout_gain_over_baseline"] == 3.5, payload
-        assert [item["role"] for item in loop["worker_rounds"]] == [
-            "hypothesis_mapper",
-            "evidence_runner",
-            "evidence_verifier",
+        assert loop["live_codex_lane_authored"] is False, payload
+        trace = loop["kernel_event_trace"]
+        assert len(trace) == 3, payload
+        assert [item["split"] for item in trace] == ["dev", "dev", "holdout"], payload
+        assert trace[-1]["hypothesis_id"] == "hyp_partial_selection", payload
+        assert trace[-1]["gain_over_baseline"] == 3.5, payload
+        assert {item["result_source"] for item in trace} == {"knn_pack_protected_eval"}, payload
+        assert loop["state_transitions"] == [
+            "seed_quickstart_pack",
+            "run_protected_eval_dev_holdout",
+            "write_public_safe_evidence_packet",
+            "append_evidence_to_loopx_state",
+            "read_board_and_acceptance_projection",
         ], payload
-        assert {item["loopx_contract"] for item in loop["worker_rounds"]} == {
-            "role_profile_quota_frontier_cli_writeback"
-        }, payload
         assert protected_eval["result_source"] == "generated_quickstart_pack_protected_eval", payload
         assert protected_eval["status"] == "supported", payload
         assert protected_eval["dev_metric"] == 4.0, payload
@@ -157,10 +163,11 @@ def assert_e2e_payload(
         assert payload["acceptance"]["claim_boundary"]["live_claim_scope"] == "dev_only", payload
         assert payload["acceptance"]["claim_boundary"]["promotion_claim_allowed"] is False, payload
     else:
-        assert loop["result_source"] == "lightweight_multiround_kernel_preview", payload
-        assert "two dev rounds plus holdout" in loop["expected_rounds"], payload
-        assert protected_eval["result_source"] == "lightweight_multiround_kernel_preview", payload
-        assert protected_eval["expected_positive_result"] == "dev=4.0x holdout=4.5x after --execute", payload
+        assert loop["result_source"] == "deterministic_protected_eval_preview", payload
+        assert "append public-safe evidence" in loop["expected_steps"], payload
+        assert loop["live_codex_lane_authored"] is False, payload
+        assert protected_eval["result_source"] == "deterministic_protected_eval_preview", payload
+        assert protected_eval["expected_positive_result"] == "dev/holdout metrics are produced only after --execute", payload
     assert_public_safe(payload)
 
 
@@ -381,12 +388,13 @@ def main() -> int:
             registry=registry,
             runtime_root=runtime_root,
         ).stdout
-        assert "# LoopX Auto Research Multi-Round Demo" in markdown, markdown
-        assert "execution_kind: `multiround_research_preview`" in markdown, markdown
+        assert "# LoopX Auto Research Minimal E2E Demo" in markdown, markdown
+        assert "execution_kind: `minimal_research_preview`" in markdown, markdown
         assert "research_loop_executed: `False`" in markdown, markdown
-        assert "research_loop_source: `lightweight_multiround_kernel_preview`" in markdown, markdown
+        assert "research_loop_source: `deterministic_protected_eval_preview`" in markdown, markdown
         assert "research_loop_dev_rounds:" in markdown, markdown
         assert "research_loop_evidence_events:" in markdown, markdown
+        assert "research_loop_live_codex_lane_authored: `False`" in markdown, markdown
         assert "frontier_goal_id: `loopx-auto-research-knn`" in markdown, markdown
         assert "tracking_goal_drives_frontier: `False`" in markdown, markdown
         assert "live_codex_e2e_claim_allowed: `False`" in markdown, markdown

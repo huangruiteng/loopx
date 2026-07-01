@@ -3487,7 +3487,7 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             else {}
         )
         lines = [
-            "# LoopX Auto Research Multi-Round Demo",
+            "# LoopX Auto Research Minimal E2E Demo",
             "",
             f"- schema: `{payload.get('schema_version')}`",
             f"- mode: `{payload.get('mode')}`",
@@ -3507,6 +3507,8 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- research_loop_selected_hypothesis: `{research_loop.get('selected_hypothesis_id')}`",
             f"- research_loop_dev_gain: `{research_loop.get('dev_gain_over_baseline')}`",
             f"- research_loop_holdout_gain: `{research_loop.get('holdout_gain_over_baseline')}`",
+            f"- research_loop_live_codex_lane_authored: `{research_loop.get('live_codex_lane_authored')}`",
+            f"- research_loop_kernel_events: `{len(research_loop.get('kernel_event_trace') or [])}`",
             f"- protected_eval_executed: `{protected_eval.get('executed')}`",
             f"- protected_eval_source: `{protected_eval.get('result_source')}`",
             f"- protected_eval_status: `{protected_eval.get('status')}`",

@@ -187,11 +187,13 @@ def main() -> int:
         assert route["tracking_goal_id"] == TRACKING_GOAL_ID, payload
         assert route["tracking_goal_drives_frontier"] is False, payload
         assert route["dedicated_positive_demo_frontier"] is True, payload
-        assert payload["execution_kind"] == "multiround_research_kernel", payload
-        assert payload["result_source"] == "lightweight_multiround_kernel", payload
+        assert payload["execution_kind"] == "minimal_research_kernel", payload
+        assert payload["result_source"] == "deterministic_protected_eval_kernel", payload
         assert payload["reasoning_effort"] == "high", payload
         assert payload["research_loop"]["dev_round_count"] == 2, payload
         assert payload["research_loop"]["evidence_event_count"] == 3, payload
+        assert payload["research_loop"]["live_codex_lane_authored"] is False, payload
+        assert len(payload["research_loop"]["kernel_event_trace"]) == 3, payload
         assert payload["research_loop"]["dev_gain_over_baseline"] == 3.0, payload
         assert payload["research_loop"]["holdout_gain_over_baseline"] == 3.5, payload
         assert payload["protected_eval_result"]["dev_metric"] == 4.0, payload

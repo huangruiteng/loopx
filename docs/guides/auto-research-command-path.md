@@ -95,12 +95,15 @@ loopx --registry "$LOOPX_REGISTRY" \
   --execute
 ```
 
-Expected multi-round result:
+Expected minimal E2E result:
 
-- `execution_kind` is `multiround_research_kernel`;
-- `result_source` is `lightweight_multiround_kernel`;
+- `execution_kind` is `minimal_research_kernel`;
+- `result_source` is `deterministic_protected_eval_kernel`;
 - `research_loop.dev_round_count` is `2`;
 - `research_loop.evidence_event_count` is `3`;
+- `research_loop.live_codex_lane_authored` is `false`;
+- `research_loop.kernel_event_trace` contains the actual protected-eval
+  dev/dev/holdout events, not synthetic worker panels;
 - `research_loop.selected_hypothesis_id` is `hyp_partial_selection`;
 - `research_loop.dev_gain_over_baseline` is `3.0`;
 - `research_loop.holdout_gain_over_baseline` is `3.5`;

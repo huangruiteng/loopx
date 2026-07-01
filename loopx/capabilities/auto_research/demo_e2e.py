@@ -427,6 +427,39 @@ def _live_codex_truth_boundary(*, launch_visible: bool) -> dict[str, object]:
     }
 
 
+def _metric_gain(metric: object, *, baseline: float = 1.0) -> float | None:
+    if metric is None:
+        return None
+    try:
+        return float(metric) - baseline
+    except (TypeError, ValueError):
+        return None
+
+
+def _compact_kernel_event_trace(research_loop: dict[str, object]) -> list[dict[str, object]]:
+    """Expose the deterministic kernel as evaluated events, not pretend workers."""
+
+    events = research_loop.get("evidence") if isinstance(research_loop.get("evidence"), list) else []
+    trace: list[dict[str, object]] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        metric = event.get("metric")
+        trace.append(
+            {
+                "split": event.get("split"),
+                "hypothesis_id": event.get("hypothesis_id"),
+                "candidate_key": event.get("candidate_key"),
+                "status": event.get("status"),
+                "metric": metric,
+                "gain_over_baseline": _metric_gain(metric),
+                "result_source": event.get("result_source"),
+                "protected_scope_clean": event.get("protected_scope_clean"),
+            }
+        )
+    return trace
+
+
 def run_auto_research_demo_e2e(
     *,
     agent_id: str,
@@ -470,8 +503,10 @@ def run_auto_research_demo_e2e(
         "ok": True,
         "schema_version": AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION,
         "mode": "execute" if execute else "dry_run",
-        "execution_kind": "multiround_research_kernel" if execute else "multiround_research_preview",
-        "result_source": "lightweight_multiround_kernel" if execute else "lightweight_multiround_kernel_preview",
+        "execution_kind": "minimal_research_kernel" if execute else "minimal_research_preview",
+        "result_source": "deterministic_protected_eval_kernel"
+        if execute
+        else "deterministic_protected_eval_preview",
         "goal_id": goal_id,
         "tracking_goal_id": tracking_goal or None,
         "route_contract": {
@@ -548,14 +583,14 @@ def run_auto_research_demo_e2e(
         }
         payload["protected_eval_result"] = {
             "executed": False,
-            "result_source": "lightweight_multiround_kernel_preview",
-            "expected_positive_result": "dev=4.0x holdout=4.5x after --execute",
+            "result_source": "deterministic_protected_eval_preview",
+            "expected_positive_result": "dev/holdout metrics are produced only after --execute",
         }
         payload["research_loop"] = {
             "executed": False,
-            "result_source": "lightweight_multiround_kernel_preview",
-            "expected_rounds": "two dev rounds plus holdout for the selected candidate after --execute",
-            "expected_gain": "selected candidate improves from baseline 1.0x to dev=4.0x and holdout=4.5x",
+            "result_source": "deterministic_protected_eval_preview",
+            "expected_steps": "seed quickstart pack, run protected eval, append public-safe evidence, read board",
+            "live_codex_lane_authored": False,
         }
         return payload
 
@@ -646,28 +681,14 @@ def run_auto_research_demo_e2e(
                         if research_loop.get("holdout_metric") is not None
                         else None
                     ),
-                    "worker_rounds": [
-                        {
-                            "round": 1,
-                            "role": "hypothesis_mapper",
-                            "transition": "seed_baseline_candidate",
-                            "hypothesis_id": "hyp_full_sort",
-                            "loopx_contract": "role_profile_quota_frontier_cli_writeback",
-                        },
-                        {
-                            "round": 2,
-                            "role": "evidence_runner",
-                            "transition": "try_positive_candidate",
-                            "hypothesis_id": "hyp_partial_selection",
-                            "loopx_contract": "role_profile_quota_frontier_cli_writeback",
-                        },
-                        {
-                            "round": 3,
-                            "role": "evidence_verifier",
-                            "transition": "holdout_validate_selected_candidate",
-                            "hypothesis_id": research_loop.get("selected_hypothesis_id"),
-                            "loopx_contract": "role_profile_quota_frontier_cli_writeback",
-                        },
+                    "live_codex_lane_authored": False,
+                    "kernel_event_trace": _compact_kernel_event_trace(research_loop),
+                    "state_transitions": [
+                        "seed_quickstart_pack",
+                        "run_protected_eval_dev_holdout",
+                        "write_public_safe_evidence_packet",
+                        "append_evidence_to_loopx_state",
+                        "read_board_and_acceptance_projection",
                     ],
                     "public_boundary": research_loop.get("public_boundary"),
                 },
