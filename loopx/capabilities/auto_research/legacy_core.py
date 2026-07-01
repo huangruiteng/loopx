@@ -947,12 +947,14 @@ def _auto_research_codex_bootstrap_prompt(
         "",
         "Minimal live worker-turn path:",
         f"1. Confirm the selected frontier action matches this role ({expected_actions}).",
-        "2. Preview the real LoopX-selected worker turn:",
+        "2. Single-pane preview:",
         "   `\"$LOOPX_PANE_LOOPX\" --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\"`",
-        "3. Execute the same worker turn only when the preview selected this lane:",
+        "3. Single-pane execute, only when the preview selected this lane:",
         "   `\"$LOOPX_PANE_LOOPX\" --format json auto-research worker-turn --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\" --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
-        "4. Stop after worker-turn reports executed=true and completion.status=done.",
-        "5. For evidence-runner, additionally require appended evidence and live_evidence.written=true.",
+        "4. Local multi-lane driver, when this pane is acting as the visible supervisor:",
+        "   `\"$LOOPX_PANE_LOOPX\" --format json auto-research worker-loop --goal-id \"$LOOPX_GOAL_ID\" $LOOPX_WORKER_LOOP_AGENT_ARGS --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
+        "5. Stop after the selected command reports executed/completed turns and no runnable frontier.",
+        "6. For evidence-runner, additionally require appended evidence and live_evidence.written=true.",
     ]
     return "\n".join(
         [
@@ -1056,6 +1058,7 @@ def _role_profile_for_lane(*, goal_id: str, lane: dict[str, str]) -> dict[str, A
 def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
     profile_json = json.dumps(role_profile, sort_keys=True, separators=(",", ":"))
     lane_count = str(role_profile.get("visible_lane_count") or "")
+    worker_loop_agent_args = str(role_profile.get("worker_loop_agent_args") or "")
     return (
         f"export LOOPX_GOAL_ID={_shell_arg(str(role_profile['goal_id']))}; "
         f"export LOOPX_AGENT_ID={_shell_arg(str(role_profile['agent_id']))}; "
@@ -1065,6 +1068,7 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         f"export LOOPX_ROLE_PROFILE_REF={_shell_arg(str(role_profile['schema_version']))}; "
         f"export LOOPX_REQUIRED_SKILL={_shell_arg(str(role_profile['required_skill']))}; "
         f"export LOOPX_VISIBLE_LANE_COUNT={_shell_arg(lane_count)}; "
+        f"export LOOPX_WORKER_LOOP_AGENT_ARGS={_shell_arg(worker_loop_agent_args)}; "
         'export LOOPX_WORKER_SKILL_ROOT="$LOOPX_PROJECT/.codex/skills"; '
         'export LOOPX_WORKER_SKILL_PATH="$LOOPX_WORKER_SKILL_ROOT/$LOOPX_REQUIRED_SKILL/SKILL.md"; '
         f"LOOPX_ROLE_PROFILE_JSON={_shell_arg(profile_json)}; "
@@ -1151,6 +1155,9 @@ def build_auto_research_demo_supervisor_plan(
     effort = _compact_public_token(reasoning_effort, field="reasoning_effort")
     uses_default_lanes = agent_specs is None
     lanes = _demo_lane_specs(agent_specs)
+    worker_loop_agent_args = " ".join(
+        f"--agent-id {lane['agent_id']}" for lane in lanes
+    )
     default_lane_ids = [
         lane_id
         for _agent_id, lane_id, _role_id, _responsibility in AUTO_RESEARCH_DEMO_DEFAULT_LANES
@@ -1163,6 +1170,7 @@ def build_auto_research_demo_supervisor_plan(
         role_id = lane["role_id"]
         role_profile = _role_profile_for_lane(goal_id=goal, lane=lane)
         role_profile["visible_lane_count"] = len(lanes)
+        role_profile["worker_loop_agent_args"] = worker_loop_agent_args
         quota_command = _env_quota_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
         frontier_command = _env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=agent_id)
         bootstrap_command = _env_auto_research_bootstrap_command(
