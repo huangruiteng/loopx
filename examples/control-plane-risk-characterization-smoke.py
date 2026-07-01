@@ -169,6 +169,13 @@ def assert_agent_lane_delivery() -> None:
     assert lane["todo_id"] == "todo_characterize", lane
     assert lane["selected_by"] == "current_agent_claimed_todo", lane
     assert lane["preserves_goal_next_action"] is True, lane
+    selected = quota["selected_todo"]
+    assert selected["schema_version"] == "selected_todo_v0", selected
+    assert selected["source"] == "agent_lane_next_action", selected
+    assert selected["todo_source"] == "agent_todo_summary.first_executable_items", selected
+    assert selected["todo_id"] == lane["todo_id"], selected
+    assert selected["selected_by"] == lane["selected_by"], selected
+    assert selected["agent_id"] == AGENT_ID, selected
 
     packet = build_review_packet(payload, goal_id=GOAL_ID)
     assert packet["ok"] is True, packet

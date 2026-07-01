@@ -2817,6 +2817,40 @@ def _agent_lane_next_action(
     return None
 
 
+def _selected_todo_alias_from_agent_lane(
+    agent_lane_next_action: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_lane_next_action, dict):
+        return None
+    todo_id = normalize_todo_id(agent_lane_next_action.get("todo_id"))
+    if not todo_id:
+        return None
+    alias = {
+        key: agent_lane_next_action.get(key)
+        for key in (
+            "todo_id",
+            "index",
+            "role",
+            "status",
+            "priority",
+            "title",
+            "text",
+            "task_class",
+            "action_kind",
+            "claimed_by",
+            "agent_id",
+            "selected_by",
+            "confidence",
+        )
+        if agent_lane_next_action.get(key) is not None
+    }
+    alias["schema_version"] = "selected_todo_v0"
+    alias["source"] = "agent_lane_next_action"
+    if agent_lane_next_action.get("source") is not None:
+        alias["todo_source"] = agent_lane_next_action.get("source")
+    return alias
+
+
 def _count_advancement_items(items: Any, *, claimed_by: str | None = None) -> int:
     if not isinstance(items, list):
         return 0
@@ -7037,6 +7071,9 @@ def build_quota_should_run(
             payload["agent_identity"] = agent_identity
         if agent_lane_next_action:
             payload["agent_lane_next_action"] = agent_lane_next_action
+            selected_todo_alias = _selected_todo_alias_from_agent_lane(agent_lane_next_action)
+            if selected_todo_alias:
+                payload["selected_todo"] = selected_todo_alias
         if agent_lane_frontier_hint:
             payload["agent_lane_frontier_hint"] = agent_lane_frontier_hint
         if agent_scope_frontier:
