@@ -95,6 +95,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _build_product_mode_user,
     _copy_loopx_source_subset,
     _host_local_acp_launch_command,
+    _effective_local_codex_first_action_timeout_sec,
     _first_bridge_failure_category,
     _host_local_acp_codex_exec_preflight_bridge_success_observed,
     _loopx_case_init_failure_blocker,
@@ -9381,6 +9382,58 @@ def test_app_server_goal_worker_skips_plain_codex_exec_preflight() -> None:
         ), prereqs
 
 
+def test_app_server_goal_first_action_timeout_respects_agent_idle_timeout() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-server-timeout-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "energy-ac-optimal-power-flow",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--host-local-acp-launch",
+                "--agent-idle-timeout",
+                "900",
+                "--outer-timeout-sec",
+                "3600",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-app-server-timeout-fixture",
+            ]
+        )
+        assert _effective_local_codex_first_action_timeout_sec(args) == 900
+        command = _host_local_acp_launch_command(args, build_plan(args))
+        assert int(command[command.index("--timeout-sec") + 1]) >= 3600
+        assert command[command.index("--first-action-timeout-sec") + 1] == "900"
+
+        explicit_args = parse_args(
+            [
+                "--task-id",
+                "energy-ac-optimal-power-flow",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--host-local-acp-launch",
+                "--agent-idle-timeout",
+                "900",
+                "--local-codex-first-action-timeout-sec",
+                "1200",
+                "--jobs-dir",
+                str(Path(tmp) / "explicit-jobs"),
+                "--job-name",
+                "skillsbench-app-server-explicit-timeout-fixture",
+            ]
+        )
+        assert _effective_local_codex_first_action_timeout_sec(explicit_args) == 1200
+        explicit_command = _host_local_acp_launch_command(
+            explicit_args,
+            build_plan(explicit_args),
+        )
+        assert (
+            explicit_command[explicit_command.index("--first-action-timeout-sec") + 1]
+            == "1200"
+        )
+
+
 def test_goal_start_host_exec_failure_overrides_zero_score_recovery() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-goal-start-host-failure-") as tmp:
         args = parse_args(
@@ -13581,6 +13634,7 @@ if __name__ == "__main__":
     test_product_mode_host_local_idle_no_output_progress_requires_new_trace()
     test_goal_start_host_local_defers_codex_exec_preflight_until_bridge_command()
     test_app_server_goal_worker_skips_plain_codex_exec_preflight()
+    test_app_server_goal_first_action_timeout_respects_agent_idle_timeout()
     test_goal_start_host_exec_failure_overrides_zero_score_recovery()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()
     test_skillsbench_declared_done_missing_reward_status_is_compacted()

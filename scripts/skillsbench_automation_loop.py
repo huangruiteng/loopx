@@ -1259,6 +1259,9 @@ def _effective_local_codex_first_action_timeout_sec(args: argparse.Namespace) ->
         bool(getattr(args, "host_local_acp_launch", False))
         and getattr(args, "route", "") == "codex-app-server-goal-baseline"
     ):
+        idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+        if idle_timeout > 0:
+            return min(idle_timeout, DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC)
         return DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC
     return 0
 
