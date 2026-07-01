@@ -472,6 +472,12 @@ DOCKER_PIP_BOOTSTRAP_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
 DOCKER_PIP_BOOTSTRAP_END = "# END LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
 DOCKER_GCR_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_GCR_MIRROR"
 DOCKER_GCR_MIRROR_END = "# END LOOPX_SKILLSBENCH_GCR_MIRROR"
+DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_DOCKER_BENCHMARK_EGRESS_PROXY"
+)
+DOCKER_BENCHMARK_EGRESS_PROXY_END = (
+    "# END LOOPX_SKILLSBENCH_DOCKER_BENCHMARK_EGRESS_PROXY"
+)
 DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_ELAN_TOOLCHAIN_RETRY"
 )
@@ -5779,6 +5785,9 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
         ),
+        "benchmark_egress_proxy_dockerfile_env_patch_applied": (
+            DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN in dockerfile_text
+        ),
         "task_skills_removed": (
             not include_task_skills
             and not (prepared_task / "environment" / "skills").exists()
@@ -7082,6 +7091,77 @@ def patch_verifier_benchmark_egress_proxy_env(
     return metadata
 
 
+def patch_dockerfile_benchmark_egress_proxy_env(
+    dockerfile: Path,
+    *,
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    """Forward the private benchmark egress proxy into staged Docker builds."""
+
+    exports = _verifier_benchmark_egress_proxy_exports(proxy_env)
+    proxy_url = str(exports.get("HTTPS_PROXY") or exports.get("HTTP_PROXY") or "")
+    no_proxy = str(exports.get("NO_PROXY") or exports.get("no_proxy") or "")
+    metadata: dict[str, Any] = {
+        "benchmark_egress_proxy_dockerfile_env_patch_required": bool(proxy_url),
+        "benchmark_egress_proxy_dockerfile_env_patch_applied": False,
+        "benchmark_egress_proxy_dockerfile_env_key_count": len(exports),
+        "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded": False,
+    }
+    if not dockerfile.exists() or not proxy_url:
+        return metadata
+    try:
+        original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return metadata
+    text = _strip_marker_block(
+        original,
+        DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        DOCKER_BENCHMARK_EGRESS_PROXY_END,
+    )
+    block = "\n".join(
+        [
+            DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
+            "# Forward the runtime benchmark egress proxy into Docker build steps.",
+            "# The concrete proxy is staged only in the private prepared task copy.",
+            f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY={proxy_url}",
+            f"ARG LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY={no_proxy}",
+            "ENV HTTPS_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    HTTP_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    ALL_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    https_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    http_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    all_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    NO_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY} \\",
+            "    no_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY}",
+            DOCKER_BENCHMARK_EGRESS_PROXY_END,
+        ]
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    heredoc_delimiter: str | None = None
+    for line in text.splitlines():
+        patched_lines.append(line)
+        if heredoc_delimiter is not None:
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = _dockerfile_heredoc_delimiter(line)
+        stripped = line.strip()
+        if (
+            _is_dockerfile_from_instruction(stripped)
+            and " scratch" not in stripped.lower()
+        ):
+            patched_lines.extend(["", block, ""])
+            inserted = True
+    if not inserted:
+        return metadata
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(dockerfile, patched)
+    metadata["benchmark_egress_proxy_dockerfile_env_patch_applied"] = True
+    return metadata
+
+
 def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
     """Add public-safe apt retry/no-cache defaults to staged Dockerfiles."""
 
@@ -7340,6 +7420,10 @@ def stage_task_for_sandbox(
         "benchmark_egress_proxy_verifier_env_patch_applied": False,
         "benchmark_egress_proxy_verifier_env_key_count": 0,
         "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+        "benchmark_egress_proxy_dockerfile_env_patch_required": False,
+        "benchmark_egress_proxy_dockerfile_env_patch_applied": False,
+        "benchmark_egress_proxy_dockerfile_env_key_count": 0,
+        "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded": False,
         "task_skills_removed": False,
         "resource_cap_patch": {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -7387,6 +7471,9 @@ def stage_task_for_sandbox(
     needs_verifier_proxy_env_patch = bool(
         verifier_proxy_exports and (task_path / "verifier" / "test.sh").exists()
     )
+    needs_dockerfile_proxy_env_patch = bool(
+        verifier_proxy_exports and (task_path / "environment" / "Dockerfile").exists()
+    )
     needs_runtime_tools_patch = (task_path / "environment" / "Dockerfile").exists()
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
@@ -7420,6 +7507,12 @@ def stage_task_for_sandbox(
     metadata["benchmark_egress_proxy_verifier_env_key_count"] = len(
         verifier_proxy_exports
     )
+    metadata["benchmark_egress_proxy_dockerfile_env_patch_required"] = (
+        needs_dockerfile_proxy_env_patch
+    )
+    metadata["benchmark_egress_proxy_dockerfile_env_key_count"] = len(
+        verifier_proxy_exports
+    )
     if isinstance(verifier_risk.get("verifier_uv_bootstrap_version"), str):
         metadata["verifier_uv_bootstrap_version"] = verifier_risk[
             "verifier_uv_bootstrap_version"
@@ -7437,6 +7530,7 @@ def stage_task_for_sandbox(
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
         and not needs_verifier_proxy_env_patch
+        and not needs_dockerfile_proxy_env_patch
     ):
         metadata["resource_cap_patch"] = {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -7470,6 +7564,10 @@ def stage_task_for_sandbox(
     )
     patched = patch_dockerfile_app_skills_mount(
         staged_path / "environment" / "Dockerfile"
+    )
+    dockerfile_proxy_metadata = patch_dockerfile_benchmark_egress_proxy_env(
+        staged_path / "environment" / "Dockerfile",
+        proxy_env=benchmark_egress_proxy_env,
     )
     apt_retry_patched = patch_dockerfile_apt_retry(
         staged_path / "environment" / "Dockerfile"
@@ -7542,6 +7640,7 @@ def stage_task_for_sandbox(
         ):
             continue
         metadata[key] = value
+    metadata.update(dockerfile_proxy_metadata)
     metadata.update(verifier_proxy_metadata)
     return staged_path, metadata
 

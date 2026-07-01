@@ -77,6 +77,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_KEEP_FILE,
+    DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
     DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN,
     DOCKER_GCR_MIRROR_BEGIN,
     DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN,
@@ -6199,7 +6200,16 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
         verifier = task / "verifier" / "test.sh"
         dockerfile.parent.mkdir(parents=True)
         verifier.parent.mkdir(parents=True)
-        dockerfile.write_text("FROM python:3.12-slim\n", encoding="utf-8")
+        original_dockerfile = (
+            "FROM python:3.12-slim AS builder\n"
+            "RUN wget https://example.invalid/model.tar.gz\n"
+            "FROM python:3.12-slim\n"
+            "RUN python3 - <<'PY'\n"
+            "from urllib.request import urlopen\n"
+            "urlopen('https://example.invalid/data.json')\n"
+            "PY\n"
+        )
+        dockerfile.write_text(original_dockerfile, encoding="utf-8")
         original_verifier = (
             "#!/bin/sh\n"
             "set -x\n"
@@ -6240,7 +6250,17 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
         assert metadata[
             "benchmark_egress_proxy_verifier_env_raw_proxy_recorded"
         ] is False, metadata
+        assert metadata[
+            "benchmark_egress_proxy_dockerfile_env_patch_required"
+        ] is True, metadata
+        assert metadata[
+            "benchmark_egress_proxy_dockerfile_env_patch_applied"
+        ] is True, metadata
+        assert metadata[
+            "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded"
+        ] is False, metadata
         assert proxy_url not in json.dumps(metadata, sort_keys=True), metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_dockerfile
         assert verifier.read_text(encoding="utf-8") == original_verifier
 
         staged_verifier = (staged_path / "verifier" / "test.sh").read_text(
@@ -6259,6 +6279,28 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
         ), staged_verifier
         assert "case \"$-\" in *x*) loopx_restore_xtrace=1; set +x;; esac" in (
             staged_verifier
+        )
+        staged_dockerfile = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert staged_dockerfile.count(DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN) == 2, (
+            staged_dockerfile
+        )
+        assert f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY={proxy_url}" in (
+            staged_dockerfile
+        ), staged_dockerfile
+        assert (
+            "ARG LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY="
+            "localhost,127.0.0.1,::1,hifis-storage.desy.de"
+        ) in staged_dockerfile, staged_dockerfile
+        assert "ENV HTTPS_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY}" in (
+            staged_dockerfile
+        ), staged_dockerfile
+        heredoc_start = staged_dockerfile.index("RUN python3 - <<'PY'")
+        heredoc_end = staged_dockerfile.index("\nPY\n", heredoc_start)
+        heredoc_body = staged_dockerfile[heredoc_start:heredoc_end]
+        assert DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN not in heredoc_body, (
+            staged_dockerfile
         )
 
 
