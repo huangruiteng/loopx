@@ -66,6 +66,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--dataset", default="skillsbench-v1.1")
     parser.add_argument("--task-id", default="llm-prefix-cache-replay")
+    parser.add_argument("--run-group-id", default="")
+    parser.add_argument("--job-name", default="")
+    parser.add_argument("--rollout-name", default="")
     parser.add_argument("--approval-policy", default="never")
     parser.add_argument(
         "--reasoning-effort",
@@ -185,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
             app_server_goal_worker=args.app_server_goal_worker,
             dataset=args.dataset,
             task_id=args.task_id,
+            run_group_id=args.run_group_id,
+            job_name=args.job_name,
+            rollout_name=args.rollout_name,
             approval_policy=args.approval_policy,
             reasoning_effort=args.reasoning_effort,
             response_timeout_sec=args.response_timeout_sec,

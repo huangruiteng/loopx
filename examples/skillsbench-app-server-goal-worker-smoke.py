@@ -13,6 +13,7 @@ import time
 from argparse import Namespace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -679,6 +680,102 @@ def test_independent_goal_retry_stops_after_first_terminal_nonpassing_score() ->
         saved = json.loads(summary_path.read_text(encoding="utf-8"))
         assert saved["first_success_attempt"] is None, saved
         assert saved["terminal_official_nonpassing_observed"] is True, saved
+
+
+def test_app_server_retry_relay_command_carries_attempt_scope() -> None:
+    runner = _load_runner_module()
+    with tempfile.TemporaryDirectory(prefix="skillsbench-retry-scope-") as tmp:
+        public_trace_dir = str(Path(tmp) / "public-traces")
+        args = runner.parse_args(
+            [
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                ROUTE,
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--run-group-id",
+                "retry-group",
+                "--job-name",
+                "retry-job-attempt-01",
+                "--rollout-name",
+                "bike-rebalance__codex_app_server_goal_independent_attempt_01",
+                "--plan-only",
+            ]
+        )
+    plan = {
+        "run_group_id": "retry-group",
+        "job_name": "retry-job-attempt-01",
+        "rollout_name": "bike-rebalance__codex_app_server_goal_independent_attempt_01",
+        "app_server_goal_worker_trace_dir": public_trace_dir,
+    }
+    command = runner._host_local_acp_launch_command(args, plan)
+    assert "--run-group-id" in command, command
+    assert command[command.index("--run-group-id") + 1] == "retry-group", command
+    assert "--job-name" in command, command
+    assert command[command.index("--job-name") + 1] == "retry-job-attempt-01", command
+    assert "--rollout-name" in command, command
+    assert (
+        command[command.index("--rollout-name") + 1]
+        == "bike-rebalance__codex_app_server_goal_independent_attempt_01"
+    ), command
+
+
+def test_host_local_attempt_cleanup_matches_scoped_relay_subtree() -> None:
+    runner = _load_runner_module()
+
+    class FakePs:
+        returncode = 0
+        stdout = "\n".join(
+            [
+                "100 1 python scripts/skillsbench_local_acp_relay.py "
+                "--job-name retry-job-attempt-01 "
+                "--rollout-name bike-rebalance__codex_app_server_goal_independent_attempt_01",
+                "101 100 python scripts/skillsbench_host_codex_goal_worker.py "
+                "--task-id bike-rebalance",
+                "102 1 python scripts/skillsbench_local_acp_relay.py "
+                "--job-name other-job --rollout-name other-rollout",
+            ]
+        )
+        stderr = ""
+
+    alive = {100, 101}
+    signals: list[tuple[int, int]] = []
+
+    def fake_run(*_args: Any, **_kwargs: Any) -> FakePs:
+        return FakePs()
+
+    def fake_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if pid in alive:
+                return
+            raise ProcessLookupError
+        signals.append((pid, sig))
+        alive.discard(pid)
+
+    plan = {
+        "job_name": "retry-job-attempt-01",
+        "rollout_name": "bike-rebalance__codex_app_server_goal_independent_attempt_01",
+        "runner_prerequisites": {
+            "host_local_acp_launch": True,
+        },
+    }
+    with patch.object(runner.subprocess, "run", fake_run), patch.object(
+        runner.os,
+        "kill",
+        fake_kill,
+    ):
+        cleanup = runner.cleanup_host_local_acp_attempt_children(
+            plan,
+            grace_seconds=0,
+        )
+    assert cleanup["match_count"] == 2, cleanup
+    assert cleanup["term_sent_count"] == 2, cleanup
+    assert cleanup["alive_after_count"] == 0, cleanup
+    assert cleanup["status"] == "terminated", cleanup
+    assert (102, runner.signal.SIGTERM) not in signals, signals
 
 
 def test_host_worker_contract_only_cli() -> None:
@@ -2188,6 +2285,8 @@ if __name__ == "__main__":
     test_launcher_plan_only_records_independent_retry_config()
     test_independent_goal_retry_stops_after_first_success()
     test_independent_goal_retry_stops_after_first_terminal_nonpassing_score()
+    test_app_server_retry_relay_command_carries_attempt_scope()
+    test_host_local_attempt_cleanup_matches_scoped_relay_subtree()
     test_full_run_fails_closed_until_bridge_is_materialized()
     test_full_run_with_bridge_ready_requires_host_acp_launch()
     test_launcher_patches_rollout_planes_connect_acp()

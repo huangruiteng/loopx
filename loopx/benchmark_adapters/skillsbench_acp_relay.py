@@ -510,6 +510,9 @@ class CodexExecConfig:
     app_server_goal_worker: bool = False
     dataset: str = "skillsbench-v1.1"
     task_id: str = "llm-prefix-cache-replay"
+    run_group_id: str = ""
+    job_name: str = ""
+    rollout_name: str = ""
     approval_policy: str = "never"
     response_timeout_sec: float = 30.0
     worker_script: str | None = None
@@ -2050,6 +2053,12 @@ raise SystemExit(proc.returncode)
                 self._config.dataset,
                 "--task-id",
                 self._config.task_id,
+                "--run-group-id",
+                self._config.run_group_id,
+                "--job-name",
+                self._config.job_name,
+                "--rollout-name",
+                self._config.rollout_name,
                 "--codex-bin",
                 self._config.codex_bin,
                 "--sandbox",

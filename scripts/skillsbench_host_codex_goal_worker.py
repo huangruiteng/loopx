@@ -252,6 +252,9 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         "route": "codex-app-server-goal-baseline",
         "benchmark_id": args.dataset,
         "task_id": args.task_id,
+        "run_group_id": args.run_group_id,
+        "job_name": args.job_name,
+        "rollout_name": args.rollout_name,
         "loopx_mode": args.loopx_mode,
         "loopx_access_packet_mode": args.loopx_access_packet_mode,
         "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
@@ -284,6 +287,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", default=SKILLSBENCH_DEFAULT_DATASET)
     parser.add_argument("--task-id", default=SKILLSBENCH_DEFAULT_TASK)
+    parser.add_argument("--run-group-id", default="")
+    parser.add_argument("--job-name", default="")
+    parser.add_argument("--rollout-name", default="")
     parser.add_argument("--model", default=SKILLSBENCH_DEFAULT_MODEL)
     parser.add_argument(
         "--reasoning-effort",
