@@ -99,6 +99,8 @@ Expected minimal E2E result:
 
 - `execution_kind` is `minimal_research_kernel`;
 - `result_source` is `deterministic_protected_eval_kernel`;
+- `claim_summary.status` is `kernel_precheck_only`;
+- `claim_summary.live_worker_claim_allowed` is `false`;
 - `research_loop.dev_round_count` is `2`;
 - `research_loop.evidence_event_count` is `3`;
 - `research_loop.live_codex_lane_authored` is `false`;
@@ -127,6 +129,10 @@ Truth boundary:
 - `live_codex_e2e.executed` is `false`;
 - `live_codex_e2e.claim_allowed` is `false`;
 - `live_codex_e2e.evidence_source` is `not_collected_from_codex_lane_output`;
+- `claim_summary.can_claim` is limited to
+  `protected_eval_kernel_positive_precheck`;
+- `claim_summary.cannot_claim` includes
+  `visible_codex_workers_authored_result`;
 - `acceptance.ready_for_real_launch` does not mean live Codex lanes already
   produced the positive k-NN evidence;
 - `--launch-visible` proves visible panes can start, but pane startup alone is
@@ -171,7 +177,9 @@ With a valid compact live evidence packet, `live_codex_e2e.claim_allowed`
 means only that a live lane-authored dev claim may be projected. Holdout and
 promotion claims stay blocked by default: `holdout_claim_allowed=false`,
 `promotion_claim_allowed=false`, and the live `holdout_metric` is redacted from
-the claim projection. To project a live holdout or promotion claim, the compact
+the claim projection. The companion `claim_summary` switches to
+`live_worker_dev_evidence_ready`, with `claim_basis=live_codex_lane_output`.
+To project a live holdout or promotion claim, the compact
 evidence must carry explicit public-safe `claim_authority`, such as
 `separate_heldout_live_evidence` or `owner_approval`.
 

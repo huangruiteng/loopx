@@ -427,6 +427,81 @@ def _live_codex_truth_boundary(*, launch_visible: bool) -> dict[str, object]:
     }
 
 
+def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
+    """Keep user-facing claims anchored to live evidence, not kernel replay."""
+
+    live = payload.get("live_codex_e2e") if isinstance(payload.get("live_codex_e2e"), dict) else {}
+    protected_eval = (
+        payload.get("protected_eval_result")
+        if isinstance(payload.get("protected_eval_result"), dict)
+        else {}
+    )
+    research_loop = (
+        payload.get("research_loop")
+        if isinstance(payload.get("research_loop"), dict)
+        else {}
+    )
+    live_claim_allowed = bool(live.get("claim_allowed"))
+    if live_claim_allowed:
+        cannot_claim: list[str] = []
+        if not live.get("holdout_claim_allowed"):
+            cannot_claim.append("live_holdout_metric_or_claim")
+        if not live.get("promotion_claim_allowed"):
+            cannot_claim.append("automatic_promotion_success")
+        return {
+            "schema_version": "auto_research_demo_claim_summary_v0",
+            "status": "live_worker_dev_evidence_ready",
+            "claim_basis": "live_codex_lane_output",
+            "live_worker_claim_allowed": True,
+            "live_worker_authored": True,
+            "kernel_precheck_passed": bool(protected_eval.get("executed")),
+            "can_claim": ["visible_worker_live_dev_evidence_supported"],
+            "cannot_claim": cannot_claim,
+            "dev_metric": live.get("dev_metric"),
+            "holdout_metric": live.get("holdout_metric"),
+            "holdout_metric_redacted": bool(live.get("holdout_metric_redacted")),
+            "next_required": (
+                "separate held-out live evidence or owner-approved claim authority "
+                "is required before holdout or promotion claims"
+            ),
+        }
+
+    kernel_precheck_passed = (
+        bool(protected_eval.get("executed"))
+        and protected_eval.get("status") == "supported"
+        and bool(research_loop.get("executed"))
+    )
+    return {
+        "schema_version": "auto_research_demo_claim_summary_v0",
+        "status": "kernel_precheck_only" if kernel_precheck_passed else "preview_only",
+        "claim_basis": (
+            "deterministic_protected_eval_kernel"
+            if kernel_precheck_passed
+            else "dry_run_preview"
+        ),
+        "live_worker_claim_allowed": False,
+        "live_worker_authored": False,
+        "kernel_precheck_passed": kernel_precheck_passed,
+        "can_claim": (
+            ["protected_eval_kernel_positive_precheck"]
+            if kernel_precheck_passed
+            else ["one_command_preview_available"]
+        ),
+        "cannot_claim": [
+            "visible_codex_workers_authored_result",
+            "live_holdout_metric_or_claim",
+            "automatic_promotion_success",
+        ],
+        "dev_metric": protected_eval.get("dev_metric") if kernel_precheck_passed else None,
+        "holdout_metric": None,
+        "holdout_metric_redacted": bool(kernel_precheck_passed),
+        "next_required": (
+            "capture compact public-safe live lane evidence and pass it with --live-evidence "
+            "before claiming visible-worker E2E success"
+        ),
+    }
+
+
 def _metric_gain(metric: object, *, baseline: float = 1.0) -> float | None:
     if metric is None:
         return None
@@ -660,6 +735,7 @@ def run_auto_research_demo_e2e(
             "expected_steps": "seed quickstart pack, run protected eval, append public-safe evidence, read board",
             "live_codex_lane_authored": False,
         }
+        payload["claim_summary"] = _demo_claim_summary(payload)
         return payload
 
     tmp_obj: tempfile.TemporaryDirectory[str] | None = None
@@ -818,6 +894,7 @@ def run_auto_research_demo_e2e(
                 agent_id=agent_id,
             )
             payload["live_codex_e2e"] = build_live_codex_claim_from_evidence(live_evidence)
+        payload["claim_summary"] = _demo_claim_summary(payload)
         return payload
     finally:
         if tmp_obj is not None:

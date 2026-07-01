@@ -146,6 +146,11 @@ def main() -> int:
         assert no_live_payload["live_codex_e2e"]["evidence_source"] == (
             "not_collected_from_codex_lane_output"
         ), no_live_payload
+        assert no_live_payload["claim_summary"]["status"] == "kernel_precheck_only", no_live_payload
+        assert no_live_payload["claim_summary"]["live_worker_claim_allowed"] is False, no_live_payload
+        assert no_live_payload["claim_summary"]["claim_basis"] == (
+            "deterministic_protected_eval_kernel"
+        ), no_live_payload
         assert_public_board_claim_boundary(no_live_payload)
 
         evidence = temp / "live-evidence.public.json"
@@ -186,6 +191,7 @@ def main() -> int:
         )
         claimed_payload = json.loads(claimed.stdout)
         live = claimed_payload["live_codex_e2e"]
+        claim_summary = claimed_payload["claim_summary"]
         protected_eval = claimed_payload["protected_eval_result"]
         research_loop = claimed_payload["research_loop"]
         assert claimed_payload["ok"] is True, claimed_payload
@@ -219,6 +225,12 @@ def main() -> int:
         assert live["public_boundary"]["absolute_paths_recorded"] is False, claimed_payload
         assert live["public_boundary"]["credentials_recorded"] is False, claimed_payload
         assert live["public_boundary"]["local_workspace_path_redacted"] is True, claimed_payload
+        assert claim_summary["status"] == "live_worker_dev_evidence_ready", claimed_payload
+        assert claim_summary["claim_basis"] == "live_codex_lane_output", claimed_payload
+        assert claim_summary["live_worker_claim_allowed"] is True, claimed_payload
+        assert claim_summary["dev_metric"] == 4.0, claimed_payload
+        assert claim_summary["holdout_metric"] is None, claimed_payload
+        assert claim_summary["holdout_metric_redacted"] is True, claimed_payload
         assert_public_board_claim_boundary(claimed_payload)
         assert_public_safe(claimed_payload)
 
@@ -243,6 +255,7 @@ def main() -> int:
         )
         authorized_payload = json.loads(authorized.stdout)
         authorized_live = authorized_payload["live_codex_e2e"]
+        authorized_summary = authorized_payload["claim_summary"]
         assert authorized_live["claim_scope"] == "promotion_claim_authorized", authorized_payload
         assert authorized_live["holdout_claim_allowed"] is True, authorized_payload
         assert authorized_live["promotion_claim_allowed"] is True, authorized_payload
@@ -252,6 +265,10 @@ def main() -> int:
         assert authorized_live["holdout_metric_redacted"] is False, authorized_payload
         assert authorized_live["holdout_claim_blocked_reason"] is None, authorized_payload
         assert authorized_live["promotion_claim_blocked_reason"] is None, authorized_payload
+        assert authorized_summary["live_worker_claim_allowed"] is True, authorized_payload
+        assert authorized_summary["holdout_metric"] == 4.5, authorized_payload
+        assert authorized_summary["holdout_metric_redacted"] is False, authorized_payload
+        assert authorized_summary["cannot_claim"] == [], authorized_payload
         assert_public_safe(authorized_payload)
 
     print("auto-research-live-codex-claim-boundary-smoke ok")

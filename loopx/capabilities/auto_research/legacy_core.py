@@ -3494,6 +3494,11 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             if isinstance(payload.get("live_codex_e2e"), dict)
             else {}
         )
+        claim_summary = (
+            payload.get("claim_summary")
+            if isinstance(payload.get("claim_summary"), dict)
+            else {}
+        )
         board_claim_boundary = (
             board.get("claim_boundary")
             if isinstance(board.get("claim_boundary"), dict)
@@ -3506,6 +3511,10 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- mode: `{payload.get('mode')}`",
             f"- execution_kind: `{payload.get('execution_kind')}`",
             f"- result_source: `{payload.get('result_source')}`",
+            f"- claim_summary_status: `{claim_summary.get('status')}`",
+            f"- claim_summary_basis: `{claim_summary.get('claim_basis')}`",
+            f"- claim_summary_live_worker_claim_allowed: `{claim_summary.get('live_worker_claim_allowed')}`",
+            f"- claim_summary_kernel_precheck_passed: `{claim_summary.get('kernel_precheck_passed')}`",
             f"- goal_id: `{payload.get('goal_id')}`",
             f"- tracking_goal_id: `{payload.get('tracking_goal_id')}`",
             f"- frontier_goal_id: `{route.get('frontier_goal_id')}`",

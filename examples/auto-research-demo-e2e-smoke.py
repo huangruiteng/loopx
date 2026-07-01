@@ -91,6 +91,10 @@ def assert_e2e_payload(
         "deterministic_protected_eval_kernel",
         "deterministic_protected_eval_preview",
     }, payload
+    claim_summary = payload["claim_summary"]
+    assert claim_summary["schema_version"] == "auto_research_demo_claim_summary_v0", payload
+    assert claim_summary["live_worker_claim_allowed"] is False, payload
+    assert claim_summary["live_worker_authored"] is False, payload
     live = payload["live_codex_e2e"]
     assert live["executed"] is False, payload
     assert live["claim_allowed"] is False, payload
@@ -108,6 +112,14 @@ def assert_e2e_payload(
     assert protected_eval["executed"] is executed, payload
     assert loop["executed"] is executed, payload
     if executed:
+        assert claim_summary["status"] == "kernel_precheck_only", payload
+        assert claim_summary["claim_basis"] == "deterministic_protected_eval_kernel", payload
+        assert claim_summary["kernel_precheck_passed"] is True, payload
+        assert claim_summary["can_claim"] == ["protected_eval_kernel_positive_precheck"], payload
+        assert "visible_codex_workers_authored_result" in claim_summary["cannot_claim"], payload
+        assert claim_summary["dev_metric"] == 4.0, payload
+        assert claim_summary["holdout_metric"] is None, payload
+        assert claim_summary["holdout_metric_redacted"] is True, payload
         assert loop["result_source"] == "knn_pack_protected_eval", payload
         assert loop["candidate_count"] == 2, payload
         assert loop["dev_round_count"] == 2, payload
@@ -184,6 +196,10 @@ def assert_e2e_payload(
         assert payload["acceptance"]["claim_boundary"]["live_claim_scope"] == "dev_only", payload
         assert payload["acceptance"]["claim_boundary"]["promotion_claim_allowed"] is False, payload
     else:
+        assert claim_summary["status"] == "preview_only", payload
+        assert claim_summary["claim_basis"] == "dry_run_preview", payload
+        assert claim_summary["kernel_precheck_passed"] is False, payload
+        assert claim_summary["can_claim"] == ["one_command_preview_available"], payload
         assert loop["result_source"] == "deterministic_protected_eval_preview", payload
         assert "append public-safe evidence" in loop["expected_steps"], payload
         assert loop["live_codex_lane_authored"] is False, payload
@@ -411,6 +427,9 @@ def main() -> int:
         ).stdout
         assert "# LoopX Auto Research Minimal E2E Demo" in markdown, markdown
         assert "execution_kind: `minimal_research_preview`" in markdown, markdown
+        assert "claim_summary_status: `preview_only`" in markdown, markdown
+        assert "claim_summary_live_worker_claim_allowed: `False`" in markdown, markdown
+        assert "claim_summary_kernel_precheck_passed: `False`" in markdown, markdown
         assert "research_loop_executed: `False`" in markdown, markdown
         assert "research_loop_source: `deterministic_protected_eval_preview`" in markdown, markdown
         assert "research_loop_dev_rounds:" in markdown, markdown
@@ -470,12 +489,19 @@ def main() -> int:
         assert "`4.0`" in guide, guide
         assert "protected_eval_result.holdout_metric" in guide, guide
         assert "`4.5`" in guide, guide
+        assert "claim_summary.status" in guide, guide
+        assert "kernel_precheck_only" in guide, guide
+        assert "claim_summary.live_worker_claim_allowed" in guide, guide
+        assert "protected_eval_kernel_positive_precheck" in guide, guide
+        assert "visible_codex_workers_authored_result" in guide, guide
         assert "acceptance.ready_for_real_launch" in guide, guide
         assert "live_codex_e2e.executed" in guide, guide
         assert "live_codex_e2e.claim_allowed" in guide, guide
         assert "not_collected_from_codex_lane_output" in guide, guide
         assert "capture-live-evidence" in guide, guide
         assert "--live-evidence" in guide, guide
+        assert "live_worker_dev_evidence_ready" in guide, guide
+        assert "claim_basis=live_codex_lane_output" in guide, guide
         assert "raw logs" in guide, guide
         assert "private artifacts" in guide, guide
         assert "credentials" in guide, guide
