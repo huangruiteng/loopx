@@ -221,8 +221,19 @@ def main() -> int:
         assert launch["session_name"] == SESSION, launch
         assert launch["workspace_mode"] == "explicit_workspace", launch
         assert launch["started_lane_count"] == 3, launch
-        assert len(launch["worker_skill_materialization"]) == 3, launch
-        assert all(item["materialized"] for item in launch["worker_skill_materialization"]), launch
+        worker_skills = launch["worker_skill_materialization"]
+        assert len(worker_skills) == 3, launch
+        assert all(item["skill"] == "loopx-auto-research" for item in worker_skills), launch
+        assert all(item["materialized"] for item in worker_skills), launch
+        assert all(not item.get("missing_source") for item in worker_skills), launch
+        assert all(
+            item["destination"] == ".codex/skills/loopx-auto-research/SKILL.md"
+            for item in worker_skills
+        ), launch
+        worker_skill_path = workspace / ".codex/skills/loopx-auto-research/SKILL.md"
+        worker_skill_text = worker_skill_path.read_text(encoding="utf-8")
+        assert "name: loopx-auto-research" in worker_skill_text, worker_skill_text
+        assert "worker-local role playbook" in worker_skill_text, worker_skill_text
         assert launch["visible_acceptance"]["accepted"] is True, launch
         assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload
         assert workspace.is_dir(), workspace
@@ -265,6 +276,10 @@ def main() -> int:
         assert f"--goal-id {GOAL_ID}" in script_text, script_text
         assert f"--goal-id {TRACKING_GOAL_ID}" not in script_text, script_text
         assert "LOOPX_VISIBLE_LANE_COUNT=3" in script_text, script_text
+        assert "LOOPX_REQUIRED_SKILL=loopx-auto-research" in script_text, script_text
+        assert "LOOPX_WORKER_SKILL_PATH" in script_text, script_text
+        assert "worker_skill_path=%s" in script_text, script_text
+        assert "model_reasoning_effort=high" in script_text, script_text
         assert "append-result.public.json" in script_text, script_text
         assert "capture-live-evidence" in script_text, script_text
         assert any(entry[:1] == ["list-windows"] for entry in log_entries), log_entries

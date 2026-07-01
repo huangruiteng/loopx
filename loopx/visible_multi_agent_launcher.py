@@ -350,6 +350,16 @@ def _materialize_worker_skills(
     return results
 
 
+def _worker_skill_materialization_errors(items: list[dict[str, object]]) -> list[str]:
+    errors: list[str] = []
+    for item in items:
+        if item.get("missing_source"):
+            errors.append(f"{item.get('skill')}: missing {item.get('source')}")
+        elif item and not item.get("materialized"):
+            errors.append(f"{item.get('skill')}: not materialized")
+    return errors
+
+
 def _lane_workspace(lane: dict[str, object], *, default_project: Path) -> Path:
     raw = lane.get("workspace") or lane.get("project")
     if not raw:
@@ -405,6 +415,12 @@ def execute_visible_multi_agent_launcher(
         project=project,
         source_root=cwd,
     )
+    worker_skill_errors = _worker_skill_materialization_errors(worker_skills)
+    if worker_skill_errors:
+        raise ValueError(
+            "worker-local skill materialization failed: "
+            + "; ".join(worker_skill_errors)
+        )
     result = _launch_with_tmux(
         payload=payload,
         project=project,

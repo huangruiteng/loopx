@@ -80,6 +80,39 @@ def main() -> int:
         os.environ["PATH"] = f"{fake_bin}{os.pathsep}{original_path}"
         os.environ["FAKE_TMUX_LOG"] = str(tmux_log)
         try:
+            try:
+                execute_visible_multi_agent_launcher(
+                    payload={
+                        "session_name": "loopx-visible-launcher-missing-skill-smoke",
+                        "lanes": [
+                            {
+                                "lane_id": "reviewer",
+                                "visible_launch_command": "true",
+                                "role_profile": {
+                                    "required_skill": "loopx-auto-research",
+                                    "worker_skill_source": "worker/MISSING.md",
+                                },
+                            },
+                        ],
+                    },
+                    registry=registry,
+                    runtime_root=runtime_root,
+                    requested_launcher="tmux",
+                    tmux_bin="tmux",
+                    cli_bin="loopx",
+                    codex_bin="codex",
+                    attach=False,
+                    replace_existing=False,
+                    workspace=str(temp / "missing-skill-workspace"),
+                    create_workspace=True,
+                    cwd=temp,
+                )
+                raise AssertionError("missing worker-local skill source should fail closed")
+            except ValueError as exc:
+                assert "worker-local skill materialization failed" in str(exc), exc
+                assert "worker/MISSING.md" in str(exc), exc
+            assert not tmux_log.exists(), tmux_log
+
             launch, chosen, workspace_mode = execute_visible_multi_agent_launcher(
                 payload={
                     "session_name": "loopx-visible-launcher-smoke",
