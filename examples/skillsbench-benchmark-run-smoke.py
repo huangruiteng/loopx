@@ -6017,6 +6017,42 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
         )
 
 
+def test_skillsbench_docker_task_staging_keeps_empty_skills_build_context() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-empty-skills-context-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "radar-vital-signs"
+        dockerfile = task / "environment" / "Dockerfile"
+        skills_dir = task / "environment" / "skills"
+        dockerfile.parent.mkdir(parents=True)
+        skills_dir.mkdir(parents=True)
+        dockerfile.write_text(
+            "FROM python:3.11-slim\nCOPY skills /root/.codex/skills\n",
+            encoding="utf-8",
+        )
+        (skills_dir / "private_task_skill.md").write_text(
+            "task-local skill content should not be copied when disabled\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="radar-vital-signs-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        staged_skills_dir = staged_path / "environment" / "skills"
+        assert metadata["task_skills_removed"] is True, metadata
+        assert metadata["empty_skills_build_context_required"] is True, metadata
+        assert metadata["empty_skills_build_context_created"] is True, metadata
+        assert staged_skills_dir.is_dir(), metadata
+        assert (staged_skills_dir / ".loopx_keep").exists(), metadata
+        assert not (staged_skills_dir / "private_task_skill.md").exists(), metadata
+        assert not skills_dir.joinpath(".loopx_keep").exists()
+
+
 def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-apt-preflight-") as tmp:
         root = Path(tmp)

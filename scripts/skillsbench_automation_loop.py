@@ -6928,6 +6928,35 @@ def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
     return True
 
 
+def dockerfile_references_skills_build_context(dockerfile: Path) -> bool:
+    """Return whether the Dockerfile copies the local ``skills`` build context."""
+
+    if not dockerfile.exists():
+        return False
+    try:
+        text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    pattern = re.compile(r"^\s*(?:COPY|ADD)\b[^\n]*\bskills(?:\s|$)", re.MULTILINE)
+    return bool(pattern.search(text))
+
+
+def ensure_empty_skills_build_context(dockerfile: Path) -> bool:
+    """Create an empty ``skills`` context when staging removed task skills."""
+
+    if not dockerfile_references_skills_build_context(dockerfile):
+        return False
+    skills_dir = dockerfile.parent / "skills"
+    if skills_dir.exists():
+        return False
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    (skills_dir / ".loopx_keep").write_text(
+        "empty SkillsBench build context created by LoopX staging\n",
+        encoding="utf-8",
+    )
+    return True
+
+
 def stage_task_for_sandbox(
     *,
     task_path: Path,
@@ -6952,6 +6981,8 @@ def stage_task_for_sandbox(
         "dockerfile_pip_bootstrap_patch_required": False,
         "dockerfile_pip_bootstrap_patch_applied": False,
         "codex_acp_runtime_tools_patch_applied": False,
+        "empty_skills_build_context_required": False,
+        "empty_skills_build_context_created": False,
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
@@ -7055,6 +7086,12 @@ def stage_task_for_sandbox(
     if not include_task_skills and staged_skills_dir.exists():
         shutil.rmtree(staged_skills_dir)
         task_skills_removed = True
+    empty_skills_context_required = dockerfile_references_skills_build_context(
+        staged_path / "environment" / "Dockerfile"
+    )
+    empty_skills_context_created = ensure_empty_skills_build_context(
+        staged_path / "environment" / "Dockerfile"
+    )
     patched = patch_dockerfile_app_skills_mount(
         staged_path / "environment" / "Dockerfile"
     )
@@ -7089,6 +7126,8 @@ def stage_task_for_sandbox(
                 DEFAULT_DOCKER_PIP_INDEX_HOST if pip_bootstrap_patched else ""
             ),
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
+            "empty_skills_build_context_required": empty_skills_context_required,
+            "empty_skills_build_context_created": empty_skills_context_created,
             "app_skills_mount_target": "/app/skills",
             "original_task_mutated": False,
             "task_skills_removed": task_skills_removed,
