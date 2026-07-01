@@ -15,6 +15,9 @@ from .benchmark_core import (
 
 
 BENCHMARK_RUN_LEDGER_SCHEMA_VERSION = "benchmark_run_ledger_v0"
+BENCHMARK_RUN_LEDGER_CURRENT_AGGREGATE_SCHEMA_VERSION = (
+    "benchmark_run_ledger_current_aggregate_v0"
+)
 BENCHMARK_RUN_LEDGER_DEFAULT_PATH = Path(
     "docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json"
 )
@@ -2833,6 +2836,193 @@ def _iter_ledger_runs(ledger: dict[str, Any]) -> list[dict[str, Any]]:
                 if isinstance(run, dict):
                     runs.append(run)
     return runs
+
+
+def _ledger_score_value(run: dict[str, Any]) -> float | None:
+    value = run.get("official_score")
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _current_aggregate_bucket(run: dict[str, Any] | None) -> str:
+    if not isinstance(run, dict):
+        return "missing"
+    score = _ledger_score_value(run)
+    if score is not None:
+        if score >= 1.0:
+            return "pass"
+        if score > 0.0:
+            return "partial"
+        return "official_zero"
+    labels = set(_compact_list(run.get("failure_labels"), limit=16))
+    failure_class = _compact_text(run.get("failure_class"), limit=120)
+    failure_scope = _compact_text(run.get("failure_scope"), limit=120)
+    score_status = _compact_text(run.get("score_status"), limit=120)
+    if (
+        "verifier_no_reward" in labels
+        or "verifier_reward_missing" in labels
+        or "reward_missing" in failure_class
+        or "verifier_no_reward" in failure_class
+    ):
+        return "verifier_no_reward"
+    if (
+        failure_scope == "runner_or_setup"
+        or failure_scope == "score_missing"
+        or "infrastructure" in failure_class
+        or "setup" in failure_class
+        or "runner" in failure_class
+        or any("infra" in label or "setup" in label for label in labels)
+    ):
+        return "setup_runner_infra"
+    if score_status == "missing":
+        return "missing"
+    return "missing"
+
+
+_CURRENT_AGGREGATE_BUCKET_RANK = {
+    "missing": 0,
+    "setup_runner_infra": 1,
+    "verifier_no_reward": 2,
+    "official_zero": 3,
+    "partial": 4,
+    "pass": 5,
+}
+
+
+def _current_aggregate_run_sort_key(run: dict[str, Any]) -> tuple[Any, ...]:
+    bucket = _current_aggregate_bucket(run)
+    score = _ledger_score_value(run)
+    score_rank = score if score is not None else -1.0
+    return (
+        _CURRENT_AGGREGATE_BUCKET_RANK.get(bucket, 0),
+        score_rank,
+        _compact_text(run.get("recorded_at"), limit=80),
+        _compact_text(run.get("run_group_id"), limit=160),
+        _compact_text(run.get("run_id"), limit=80),
+    )
+
+
+def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(run, dict):
+        return {"bucket": "missing"}
+    keys = (
+        "run_id",
+        "recorded_at",
+        "benchmark_id",
+        "case_id",
+        "run_group_id",
+        "arm_id",
+        "route",
+        "status",
+        "score_status",
+        "official_score",
+        "official_passed",
+        "failure_class",
+        "failure_scope",
+        "repair_class",
+        "repair_priority",
+    )
+    summary = {key: run[key] for key in keys if key in run}
+    summary["bucket"] = _current_aggregate_bucket(run)
+    return summary
+
+
+def build_benchmark_run_ledger_current_aggregate(
+    ledger: dict[str, Any],
+    *,
+    benchmark_id: str = "skillsbench@1.1",
+    canonical_case_ids: list[str] | None = None,
+    source_ledger_count: int = 1,
+) -> dict[str, Any]:
+    """Build a current-case aggregate, preferring countable results over missing rows."""
+
+    normalized = _normalize_benchmark_run_ledger(dict(ledger))
+    benchmark = (
+        normalized.get("benchmarks", {}).get(benchmark_id)
+        if isinstance(normalized.get("benchmarks"), dict)
+        else None
+    )
+    cases = benchmark.get("cases") if isinstance(benchmark, dict) else {}
+    if not isinstance(cases, dict):
+        cases = {}
+    canonical_ids = [
+        _compact_text(case_id, limit=160)
+        for case_id in (canonical_case_ids or sorted(cases))
+        if _compact_text(case_id, limit=160)
+    ]
+    if not canonical_case_ids:
+        canonical_ids = sorted(cases)
+    distribution = {
+        "missing": 0,
+        "setup_runner_infra": 0,
+        "verifier_no_reward": 0,
+        "official_zero": 0,
+        "partial": 0,
+        "pass": 0,
+    }
+    cases_by_bucket = {bucket: [] for bucket in distribution}
+    case_best: dict[str, dict[str, Any]] = {}
+    deduped_run_ids: set[str] = set()
+    for case in cases.values():
+        if not isinstance(case, dict):
+            continue
+        for run in _active_ledger_runs(
+            [item for item in case.get("runs", []) if isinstance(item, dict)]
+        ):
+            run_id = _compact_text(run.get("run_id"), limit=80)
+            if run_id:
+                deduped_run_ids.add(run_id)
+    for case_id in canonical_ids:
+        case = cases.get(case_id)
+        runs = []
+        if isinstance(case, dict):
+            runs = _active_ledger_runs(
+                [item for item in case.get("runs", []) if isinstance(item, dict)]
+            )
+        best = max(runs, key=_current_aggregate_run_sort_key) if runs else None
+        summary = _current_aggregate_run_summary(best)
+        bucket = summary["bucket"]
+        distribution[bucket] = distribution.get(bucket, 0) + 1
+        cases_by_bucket.setdefault(bucket, []).append(case_id)
+        case_best[case_id] = summary
+    return {
+        "schema_version": BENCHMARK_RUN_LEDGER_CURRENT_AGGREGATE_SCHEMA_VERSION,
+        "benchmark_id": benchmark_id,
+        "canonical_total": len(canonical_ids),
+        "canonical_covered": sum(
+            count for bucket, count in distribution.items() if bucket != "missing"
+        ),
+        "distribution": distribution,
+        "cases_by_bucket": {
+            bucket: sorted(case_ids) for bucket, case_ids in cases_by_bucket.items()
+        },
+        "case_best": case_best,
+        "deduped_run_count": len(deduped_run_ids),
+        "source_ledger_files": source_ledger_count,
+        "selection_policy": {
+            "schema_version": "benchmark_run_ledger_current_selection_policy_v0",
+            "rule": "prefer_countable_official_result_over_missing_or_infra_rows",
+            "bucket_precedence": [
+                "pass",
+                "partial",
+                "official_zero",
+                "verifier_no_reward",
+                "setup_runner_infra",
+                "missing",
+            ],
+            "raw_logs_recorded": False,
+            "raw_task_text_recorded": False,
+            "source_paths_recorded": False,
+        },
+    }
 
 
 def merge_benchmark_run_ledgers(
