@@ -89,6 +89,8 @@ def main() -> int:
     assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in launcher_source
     assert "LoopX machine JSON hidden" in launcher_source
     assert "LOOPX_ALLOW_TTY_JSON" in launcher_source
+    assert "stat.S_ISREG" in launcher_source
+    assert "LOOPX_MACHINE_JSON=1 explicitly" in launcher_source
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -176,9 +178,26 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
-            machine = subprocess.run(
+            visible_pipe = subprocess.run(
                 [str(workspace / ".local/bin/loopx-json"), "--format", "json", "status"],
                 env=scoped_env,
+                capture_output=True,
+                text=True,
+            )
+            machine_artifact = workspace / ".local" / "reviewer" / "status.public.json"
+            machine_artifact.parent.mkdir(parents=True, exist_ok=True)
+            with machine_artifact.open("w", encoding="utf-8") as handle:
+                subprocess.run(
+                    [str(workspace / ".local/bin/loopx-json"), "--format", "json", "status"],
+                    env=scoped_env,
+                    stdout=handle,
+                    stderr=subprocess.STDOUT,
+                    check=True,
+                    text=True,
+                )
+            explicit_machine = subprocess.run(
+                [str(workspace / ".local/bin/loopx-json"), "--format", "json", "status"],
+                env={**scoped_env, "LOOPX_MACHINE_JSON": "1"},
                 check=True,
                 capture_output=True,
                 text=True,
@@ -189,7 +208,11 @@ def main() -> int:
             )
             assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in human.stdout, human.stdout
             assert "--format markdown status" in human.stdout, human.stdout
-            assert "--format json status" in machine.stdout, machine.stdout
+            assert visible_pipe.returncode == 2, visible_pipe.stdout
+            assert "LoopX machine JSON hidden" in visible_pipe.stdout, visible_pipe.stdout
+            assert "fake-loopx" not in visible_pipe.stdout, visible_pipe.stdout
+            assert "--format json status" in machine_artifact.read_text(encoding="utf-8")
+            assert "--format json status" in explicit_machine.stdout, explicit_machine.stdout
             assert tty_status == 2, tty_output
             assert "LoopX machine JSON hidden" in tty_output, tty_output
             assert "fake-loopx" not in tty_output, tty_output

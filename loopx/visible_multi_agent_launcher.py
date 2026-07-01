@@ -119,14 +119,18 @@ bin_dir.mkdir(parents=True, exist_ok=True)
 json_target = bin_dir / "loopx-json"
 json_target.write_text(
     "#!/usr/bin/env python3\n"
-    "import os, sys\n"
+    "import os, stat, sys\n"
     f"real = {real!r}\n"
     f"registry = {registry!r}\n"
     f"runtime = {runtime!r}\n"
-    "if sys.stdout.isatty() and os.environ.get('LOOPX_ALLOW_TTY_JSON') != '1' and os.environ.get('LOOPX_MACHINE_JSON') != '1':\n"
+    "explicit = os.environ.get('LOOPX_MACHINE_JSON') == '1' or os.environ.get('LOOPX_ALLOW_TTY_JSON') == '1' or os.environ.get('LOOPX_ALLOW_VISIBLE_JSON') == '1'\n"
+    "stdout_mode = os.fstat(sys.stdout.fileno()).st_mode\n"
+    "stdout_is_file = stat.S_ISREG(stdout_mode)\n"
+    "if not explicit and not stdout_is_file:\n"
     "    print('\\n[LoopX machine JSON hidden]\\nraw JSON is not printed in visible panes.\\n')\n"
     "    print('Use $LOOPX_PANE_LOOPX for human-readable output, or redirect machine JSON:')\n"
     "    print('  $LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json')\n"
+    "    print('Internal launcher pipes must set LOOPX_MACHINE_JSON=1 explicitly.')\n"
     "    raise SystemExit(2)\n"
     "os.execv(real, [real, '--registry', registry, '--runtime-root', runtime] + sys.argv[1:])\n",
     encoding="utf-8",
