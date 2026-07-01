@@ -938,6 +938,10 @@ def handle_auto_research_command(
                         create_workspace=args.create_workspace,
                     )
 
+            run_hidden_worker_loop = bool(
+                args.execute
+                and (args.headless or (args.run_worker_loop and not launch_visible))
+            )
             payload = run_auto_research_demo_e2e(
                 agent_id=args.agent_id,
                 goal_id=goal_id,
@@ -947,7 +951,7 @@ def handle_auto_research_command(
                 objective=args.objective,
                 output_dir=args.output_dir,
                 execute=args.execute,
-                run_worker_loop=args.execute,
+                run_worker_loop=run_hidden_worker_loop,
                 worker_loop_rounds=args.worker_loop_rounds,
                 launch_visible=launch_visible,
                 keep_workspace=args.keep_workspace,

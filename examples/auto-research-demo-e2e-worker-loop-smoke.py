@@ -164,10 +164,26 @@ def main() -> int:
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert launch["attach_requested"] is False, visible_payload
+                acceptance = launch["visible_acceptance"]
+                assert acceptance["accepted"] is True, visible_payload
+                assert all(not item["blocked_before_bootstrap"] for item in acceptance["pane_checks"]), acceptance
                 skill_items = launch["worker_skill_materialization"]
                 assert skill_items, visible_payload
                 assert {item["source_resolution"] for item in skill_items} == {"package_root"}, skill_items
                 assert all(item["materialized"] is True for item in skill_items), skill_items
+                for lane in launch["started_lanes"]:
+                    capture = subprocess.run(
+                        ["tmux", "capture-pane", "-pt", f"{session_name}:{lane}", "-S", "-300"],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    ).stdout
+                    assert "continuing_to_visible_bootstrap" in capture, (lane, capture)
+                    assert "state_projection_gap" not in capture, (lane, capture)
+                    assert "stopped_before_frontier" not in capture, (lane, capture)
+                    assert "quota_wait_timeout" not in capture, (lane, capture)
+                    assert "frontier_wait_timeout" not in capture, (lane, capture)
+                    assert f"Goal: {visible_payload['goal_id']}" in capture, (lane, capture)
                 assert_public_safe(visible_payload)
             finally:
                 subprocess.run(

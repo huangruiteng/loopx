@@ -474,6 +474,33 @@ def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
             ),
         }
 
+    visible_launch = (
+        payload.get("visible_launch")
+        if isinstance(payload.get("visible_launch"), dict)
+        else {}
+    )
+    if payload.get("mode") == "execute" and visible_launch:
+        return {
+            "schema_version": "auto_research_demo_claim_summary_v0",
+            "status": "visible_worker_queue_started",
+            "claim_basis": "demo_local_loopx_queue_and_visible_codex_panes",
+            "live_worker_claim_allowed": False,
+            "live_worker_authored": False,
+            "can_claim": ["visible_role_todo_flow_started"],
+            "cannot_claim": [
+                "visible_codex_workers_completed_result",
+                "live_holdout_metric_or_claim",
+                "automatic_promotion_success",
+            ],
+            "dev_metric": None,
+            "holdout_metric": None,
+            "holdout_metric_redacted": False,
+            "next_required": (
+                "let the visible Codex panes run the printed worker-turn commands; "
+                "then pass compact live evidence before claiming a completed live result"
+            ),
+        }
+
     return {
         "schema_version": "auto_research_demo_claim_summary_v0",
         "status": "preview_only",
@@ -536,7 +563,7 @@ def run_auto_research_demo_e2e(
         tracking_goal = ""
     reuses_default_internal_goal = goal_id == AUTO_RESEARCH_DEFAULT_GOAL_ID
     effective_agent_specs = list(agent_specs or [])
-    if run_worker_loop and not effective_agent_specs:
+    if (run_worker_loop or launch_visible) and not effective_agent_specs:
         effective_agent_specs = list(DEFAULT_WORKER_LOOP_AGENT_SPECS)
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,

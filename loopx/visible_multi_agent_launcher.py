@@ -628,6 +628,15 @@ def _tmux_acceptance(
                 text=True,
                 env=env,
             ).stdout
+            failure_markers = [
+                "stopped_before_frontier",
+                "stopped_before_bootstrap",
+                "stopped_before_codex",
+                "quota_wait_timeout",
+                "frontier_wait_timeout",
+                "frontier_not_ready",
+            ]
+            blocked_before_bootstrap = any(marker in capture for marker in failure_markers)
             ok = (
                 lane in surviving
                 and ("[LoopX role profile]" in capture or "role_profile=printed" in capture)
@@ -635,11 +644,13 @@ def _tmux_acceptance(
                 and any(marker in capture for marker in frontier_markers)
                 and ("[bootstrap-or-stop]" in capture or "bootstrap_or_stop=printed" in capture)
                 and "loopx_agent_handshake=role_profile_quota_frontier_bootstrap" in capture
+                and not blocked_before_bootstrap
             )
             pane_checks.append(
                 {
                     "lane_id": lane,
                     "accepted": ok,
+                    "blocked_before_bootstrap": blocked_before_bootstrap,
                 }
             )
         accepted = list_result.returncode == 0 and len(surviving) == len(expected_lanes) and all(
