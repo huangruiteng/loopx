@@ -196,6 +196,17 @@ def main() -> int:
         assert len(payload["research_loop"]["kernel_event_trace"]) == 3, payload
         assert payload["research_loop"]["dev_gain_over_baseline"] == 3.0, payload
         assert payload["research_loop"]["holdout_gain_over_baseline"] == 3.5, payload
+        gain_acceptance = payload["multiround_gain_acceptance"]
+        assert gain_acceptance["round_count"] == 2, payload
+        assert gain_acceptance["hypotheses_attempted"] == [
+            "hyp_full_sort",
+            "hyp_partial_selection",
+        ], payload
+        assert gain_acceptance["evidence_events_appended"] == 3, payload
+        assert gain_acceptance["final_gain_over_seed"] == 3.5, payload
+        assert gain_acceptance["better_than_seed"] is True, payload
+        assert "partial-selection hypothesis beats the seed" in gain_acceptance["why_better"], payload
+        assert gain_acceptance["live_codex_lane_authored"] is False, payload
         assert payload["protected_eval_result"]["dev_metric"] == 4.0, payload
         assert payload["protected_eval_result"]["holdout_metric"] == 4.5, payload
         assert (

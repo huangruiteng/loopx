@@ -133,6 +133,27 @@ def assert_e2e_payload(
             "append_evidence_to_loopx_state",
             "read_board_and_acceptance_projection",
         ], payload
+        gain_acceptance = payload["multiround_gain_acceptance"]
+        assert gain_acceptance["schema_version"] == "auto_research_multiround_gain_acceptance_v0", payload
+        assert gain_acceptance["round_count"] == 2, payload
+        assert gain_acceptance["hypotheses_attempted"] == [
+            "hyp_full_sort",
+            "hyp_partial_selection",
+        ], payload
+        assert gain_acceptance["evidence_event_count"] == 3, payload
+        assert gain_acceptance["evidence_events_appended"] == 3, payload
+        assert gain_acceptance["seed_hypothesis_id"] == "hyp_full_sort", payload
+        assert gain_acceptance["selected_hypothesis_id"] == "hyp_partial_selection", payload
+        assert gain_acceptance["seed_dev_metric"] == 1.0, payload
+        assert gain_acceptance["selected_dev_metric"] == 4.0, payload
+        assert gain_acceptance["selected_holdout_metric"] == 4.5, payload
+        assert gain_acceptance["dev_gain_over_baseline"] == 3.0, payload
+        assert gain_acceptance["holdout_gain_over_baseline"] == 3.5, payload
+        assert gain_acceptance["final_gain_over_seed"] == 3.5, payload
+        assert gain_acceptance["better_than_seed"] is True, payload
+        assert "partial-selection hypothesis beats the seed" in gain_acceptance["why_better"], payload
+        assert gain_acceptance["live_codex_lane_authored"] is False, payload
+        assert gain_acceptance["public_boundary"]["raw_logs_recorded"] is False, payload
         assert protected_eval["result_source"] == "generated_quickstart_pack_protected_eval", payload
         assert protected_eval["status"] == "supported", payload
         assert protected_eval["dev_metric"] == 4.0, payload
@@ -395,6 +416,12 @@ def main() -> int:
         assert "research_loop_dev_rounds:" in markdown, markdown
         assert "research_loop_evidence_events:" in markdown, markdown
         assert "research_loop_live_codex_lane_authored: `False`" in markdown, markdown
+        assert "multiround_gain_rounds:" in markdown, markdown
+        assert "multiround_gain_hypotheses:" in markdown, markdown
+        assert "multiround_gain_appended_events:" in markdown, markdown
+        assert "multiround_gain_final_delta:" in markdown, markdown
+        assert "multiround_gain_better_than_seed:" in markdown, markdown
+        assert "multiround_gain_why_better:" in markdown, markdown
         assert "frontier_goal_id: `loopx-auto-research-knn`" in markdown, markdown
         assert "tracking_goal_drives_frontier: `False`" in markdown, markdown
         assert "live_codex_e2e_claim_allowed: `False`" in markdown, markdown
@@ -434,6 +461,11 @@ def main() -> int:
         assert "research_loop.evidence_event_count" in guide, guide
         assert "research_loop.dev_gain_over_baseline" in guide, guide
         assert "research_loop.holdout_gain_over_baseline" in guide, guide
+        assert "multiround_gain_acceptance.round_count" in guide, guide
+        assert "multiround_gain_acceptance.hypotheses_attempted" in guide, guide
+        assert "multiround_gain_acceptance.evidence_events_appended" in guide, guide
+        assert "multiround_gain_acceptance.final_gain_over_seed" in guide, guide
+        assert "multiround_gain_acceptance.why_better" in guide, guide
         assert "protected_eval_result.dev_metric" in guide, guide
         assert "`4.0`" in guide, guide
         assert "protected_eval_result.holdout_metric" in guide, guide

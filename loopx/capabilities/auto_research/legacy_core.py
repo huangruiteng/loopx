@@ -3473,6 +3473,11 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
         append = payload.get("append") if isinstance(payload.get("append"), dict) else {}
         board = payload.get("board") if isinstance(payload.get("board"), dict) else {}
         acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), dict) else {}
+        gain_acceptance = (
+            payload.get("multiround_gain_acceptance")
+            if isinstance(payload.get("multiround_gain_acceptance"), dict)
+            else {}
+        )
         supervisor = payload.get("supervisor") if isinstance(payload.get("supervisor"), dict) else {}
         commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
         route = payload.get("route_contract") if isinstance(payload.get("route_contract"), dict) else {}
@@ -3509,6 +3514,12 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- research_loop_holdout_gain: `{research_loop.get('holdout_gain_over_baseline')}`",
             f"- research_loop_live_codex_lane_authored: `{research_loop.get('live_codex_lane_authored')}`",
             f"- research_loop_kernel_events: `{len(research_loop.get('kernel_event_trace') or [])}`",
+            f"- multiround_gain_rounds: `{gain_acceptance.get('round_count')}`",
+            f"- multiround_gain_hypotheses: `{gain_acceptance.get('hypotheses_attempted')}`",
+            f"- multiround_gain_appended_events: `{gain_acceptance.get('evidence_events_appended')}`",
+            f"- multiround_gain_final_delta: `{gain_acceptance.get('final_gain_over_seed')}`",
+            f"- multiround_gain_better_than_seed: `{gain_acceptance.get('better_than_seed')}`",
+            f"- multiround_gain_why_better: `{gain_acceptance.get('why_better')}`",
             f"- protected_eval_executed: `{protected_eval.get('executed')}`",
             f"- protected_eval_source: `{protected_eval.get('result_source')}`",
             f"- protected_eval_status: `{protected_eval.get('status')}`",

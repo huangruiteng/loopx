@@ -107,6 +107,13 @@ Expected minimal E2E result:
 - `research_loop.selected_hypothesis_id` is `hyp_partial_selection`;
 - `research_loop.dev_gain_over_baseline` is `3.0`;
 - `research_loop.holdout_gain_over_baseline` is `3.5`;
+- `multiround_gain_acceptance.round_count` is `2`;
+- `multiround_gain_acceptance.hypotheses_attempted` lists the seed
+  full-sort hypothesis and the selected partial-selection hypothesis;
+- `multiround_gain_acceptance.evidence_events_appended` is `3`;
+- `multiround_gain_acceptance.final_gain_over_seed` is `3.5`;
+- `multiround_gain_acceptance.why_better` explains why the final result beats
+  the seed/baseline without reading raw logs;
 - `protected_eval_result.dev_metric` is `4.0`;
 - `protected_eval_result.holdout_metric` is `4.5`;
 - dev and holdout exactness are both `true`;

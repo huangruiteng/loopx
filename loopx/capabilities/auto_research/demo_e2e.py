@@ -460,6 +460,74 @@ def _compact_kernel_event_trace(research_loop: dict[str, object]) -> list[dict[s
     return trace
 
 
+def _compact_multiround_gain_acceptance(
+    research_loop: dict[str, object],
+    *,
+    append_payload: dict[str, object],
+) -> dict[str, object]:
+    trace = _compact_kernel_event_trace(research_loop)
+    dev_events = [event for event in trace if event.get("split") == "dev"]
+    attempted = []
+    for event in dev_events:
+        hypothesis_id = event.get("hypothesis_id")
+        if hypothesis_id and hypothesis_id not in attempted:
+            attempted.append(hypothesis_id)
+    seed_event = dev_events[0] if dev_events else {}
+    selected_id = research_loop.get("selected_hypothesis_id")
+    selected_dev = next(
+        (event for event in dev_events if event.get("hypothesis_id") == selected_id),
+        {},
+    )
+    holdout_event = next(
+        (
+            event
+            for event in trace
+            if event.get("split") == "holdout"
+            and event.get("hypothesis_id") == selected_id
+        ),
+        {},
+    )
+    seed_metric = seed_event.get("metric")
+    final_metric = holdout_event.get("metric") or selected_dev.get("metric")
+    better_than_seed = (
+        final_metric is not None
+        and seed_metric is not None
+        and float(final_metric) > float(seed_metric)
+    )
+    return {
+        "schema_version": "auto_research_multiround_gain_acceptance_v0",
+        "result_source": research_loop.get("result_source"),
+        "live_codex_lane_authored": False,
+        "round_count": research_loop.get("dev_round_count"),
+        "hypotheses_attempted": attempted,
+        "evidence_event_count": research_loop.get("evidence_event_count"),
+        "evidence_events_appended": append_payload.get("appended_count"),
+        "selected_hypothesis_id": selected_id,
+        "seed_hypothesis_id": seed_event.get("hypothesis_id"),
+        "seed_dev_metric": seed_metric,
+        "selected_dev_metric": selected_dev.get("metric"),
+        "selected_holdout_metric": holdout_event.get("metric"),
+        "dev_gain_over_baseline": _metric_gain(research_loop.get("dev_metric")),
+        "holdout_gain_over_baseline": _metric_gain(research_loop.get("holdout_metric")),
+        "final_gain_over_seed": (
+            float(final_metric) - float(seed_metric)
+            if final_metric is not None and seed_metric is not None
+            else None
+        ),
+        "better_than_seed": better_than_seed,
+        "why_better": (
+            "The selected partial-selection hypothesis beats the seed full-sort candidate "
+            "on dev and keeps the gain on holdout."
+        ),
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "live_codex_lane_authored": False,
+        },
+    }
+
+
 def run_auto_research_demo_e2e(
     *,
     agent_id: str,
@@ -692,6 +760,10 @@ def run_auto_research_demo_e2e(
                     ],
                     "public_boundary": research_loop.get("public_boundary"),
                 },
+                "multiround_gain_acceptance": _compact_multiround_gain_acceptance(
+                    research_loop,
+                    append_payload=append_payload,
+                ),
                 "append": {
                     "appended_count": append_payload.get("appended_count"),
                     "skipped_existing_count": append_payload.get("skipped_existing_count"),
