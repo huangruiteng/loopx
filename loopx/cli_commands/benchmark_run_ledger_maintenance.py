@@ -10,9 +10,11 @@ from pathlib import Path
 from ..benchmark_ledger import (
     BENCHMARK_RUN_LEDGER_DEFAULT_PATH,
     archive_benchmark_run_ledger_runs,
+    build_benchmark_run_ledger_current_aggregate,
     check_benchmark_run_ledger_drift,
     load_benchmark_run_ledger,
     merge_benchmark_run_ledgers,
+    upsert_benchmark_run_ledger_entry,
     update_benchmark_run_ledger,
 )
 from ..history import collect_history, load_registry
@@ -31,6 +33,7 @@ OutputFormat = Callable[[argparse.Namespace], str]
 
 BENCHMARK_RUN_LEDGER_MAINTENANCE_COMMANDS = {
     "run-ledger-archive",
+    "run-ledger-aggregate",
     "run-ledger-check",
     "run-ledger-merge",
     "run-ledger-upsert",
@@ -47,6 +50,22 @@ def _compact_benchmark_run_input(
         if isinstance(compact, dict):
             return compact_benchmark_run(compact), "harbor_job_result_reducer_v0"
     return compact_benchmark_run(payload), "benchmark_run_v0"
+
+
+def _iter_loaded_ledger_runs(ledger: dict[str, object]) -> list[dict[str, object]]:
+    runs: list[dict[str, object]] = []
+    benchmarks = ledger.get("benchmarks") if isinstance(ledger.get("benchmarks"), dict) else {}
+    for benchmark in benchmarks.values():
+        if not isinstance(benchmark, dict):
+            continue
+        cases = benchmark.get("cases") if isinstance(benchmark.get("cases"), dict) else {}
+        for case in cases.values():
+            if not isinstance(case, dict):
+                continue
+            for run in case.get("runs") or []:
+                if isinstance(run, dict):
+                    runs.append(run)
+    return runs
 
 
 def render_benchmark_run_ledger_upsert_markdown(payload: dict[str, object]) -> str:
@@ -216,6 +235,31 @@ def render_benchmark_run_ledger_merge_markdown(payload: dict[str, object]) -> st
     ]
     if merge.get("skipped_by_reason"):
         lines.append(f"- skipped_by_reason: `{merge.get('skipped_by_reason')}`")
+    if payload.get("error"):
+        lines.append(f"- error: {payload.get('error')}")
+    return "\n".join(lines) + "\n"
+
+
+def render_benchmark_run_ledger_aggregate_markdown(payload: dict[str, object]) -> str:
+    aggregate = payload.get("aggregate") if isinstance(payload.get("aggregate"), dict) else {}
+    distribution = (
+        aggregate.get("distribution")
+        if isinstance(aggregate.get("distribution"), dict)
+        else {}
+    )
+    lines = [
+        "# Benchmark Run Ledger Current Aggregate",
+        "",
+        f"- ok: `{payload.get('ok')}`",
+        f"- dry_run: `{payload.get('dry_run')}`",
+        f"- updated: `{payload.get('updated')}`",
+        f"- benchmark: `{aggregate.get('benchmark_id')}`",
+        f"- canonical_covered: `{aggregate.get('canonical_covered')}` / `{aggregate.get('canonical_total')}`",
+        f"- distribution: `{distribution}`",
+        f"- deduped_run_count: `{aggregate.get('deduped_run_count')}`",
+        f"- source_ledger_files: `{aggregate.get('source_ledger_files')}`",
+        f"- output_json: `{payload.get('output_json')}`",
+    ]
     if payload.get("error"):
         lines.append(f"- error: {payload.get('error')}")
     return "\n".join(lines) + "\n"
@@ -401,6 +445,63 @@ def register_benchmark_run_ledger_maintenance_commands(
         "--execute",
         action="store_true",
         help="Write the merged benchmark run ledger.",
+    )
+
+    benchmark_run_ledger_aggregate_parser = benchmark_subparsers.add_parser(
+        "run-ledger-aggregate",
+        help=(
+            "Build a current-case aggregate from benchmark_run_ledger_v0 rows. "
+            "Countable official results outrank later missing or infra rows."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--run-ledger-path",
+        default=str(BENCHMARK_RUN_LEDGER_DEFAULT_PATH),
+        help="Primary benchmark_run_ledger_v0 JSON.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--source-run-ledger-path",
+        action="append",
+        default=[],
+        help="Additional source benchmark_run_ledger_v0 JSON. May be passed multiple times.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--source-run-ledger-glob",
+        action="append",
+        default=[],
+        help=(
+            "Glob for additional source benchmark_run_ledger_v0 JSON files. "
+            "Matched paths are counted but not recorded in output."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--benchmark-id",
+        default="skillsbench@1.1",
+        help="Benchmark id to aggregate.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--canonical-case-id",
+        action="append",
+        default=[],
+        help="Canonical case id. May be passed multiple times.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--canonical-case-ids-file",
+        help="Text file with one canonical case id per line.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--output-json",
+        help="Optional output JSON path for the aggregate.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview aggregate without writing. This is the default.",
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Write --output-json.",
     )
 
     benchmark_run_ledger_check_parser = benchmark_subparsers.add_parser(
@@ -607,6 +708,110 @@ def handle_benchmark_run_ledger_maintenance_command(
             payload,
             output_format(args),
             render_benchmark_run_ledger_merge_markdown,
+        )
+        return 0 if payload.get("ok") else 1
+
+    if args.benchmark_command == "run-ledger-aggregate":
+        try:
+            if args.dry_run and args.execute:
+                raise ValueError(
+                    "benchmark run-ledger-aggregate accepts either --dry-run or --execute, not both"
+                )
+            source_paths = [Path(args.run_ledger_path).expanduser()]
+            source_paths.extend(Path(value).expanduser() for value in args.source_run_ledger_path)
+            for pattern in args.source_run_ledger_glob or []:
+                source_paths.extend(
+                    Path(value).expanduser()
+                    for value in glob.glob(str(Path(pattern).expanduser()), recursive=True)
+                )
+            canonical_case_ids = list(args.canonical_case_id or [])
+            if args.canonical_case_ids_file:
+                canonical_case_ids.extend(
+                    line.strip()
+                    for line in Path(args.canonical_case_ids_file)
+                    .expanduser()
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                    if line.strip()
+                )
+            merged_ledger = load_benchmark_run_ledger(args.run_ledger_path)
+            source_ledger_count = 0
+            source_run_count = 0
+            considered_run_count = 0
+            unique_source_paths = []
+            seen_sources = set()
+            for source_path in source_paths:
+                source_key = str(source_path.resolve(strict=False))
+                if source_key in seen_sources:
+                    continue
+                seen_sources.add(source_key)
+                unique_source_paths.append(source_path)
+                if not source_path.exists():
+                    continue
+                source_ledger_count += 1
+                source_ledger = load_benchmark_run_ledger(source_path)
+                for run in _iter_loaded_ledger_runs(source_ledger):
+                    source_run_count += 1
+                    if run.get("benchmark_id") != args.benchmark_id:
+                        continue
+                    considered_run_count += 1
+                    merged_ledger = upsert_benchmark_run_ledger_entry(
+                        merged_ledger,
+                        dict(run),
+                    )
+            aggregate = build_benchmark_run_ledger_current_aggregate(
+                merged_ledger,
+                benchmark_id=args.benchmark_id,
+                canonical_case_ids=canonical_case_ids or None,
+                source_ledger_count=source_ledger_count,
+            )
+            output_json = Path(args.output_json).expanduser() if args.output_json else None
+            if args.execute:
+                if output_json is None:
+                    raise ValueError("--execute requires --output-json")
+                output_json.parent.mkdir(parents=True, exist_ok=True)
+                output_json.write_text(
+                    json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True)
+                    + "\n",
+                    encoding="utf-8",
+                )
+            payload = {
+                "ok": True,
+                "dry_run": not bool(args.execute),
+                "updated": bool(args.execute),
+                "output_json": str(output_json) if output_json else None,
+                "aggregate": aggregate,
+                "merge_preview": {
+                    "schema_version": "benchmark_run_ledger_aggregate_source_merge_v0",
+                    "source_ledger_count": source_ledger_count,
+                    "source_run_count": source_run_count,
+                    "considered_run_count": considered_run_count,
+                    "source_paths_recorded": False,
+                    "unique_source_path_count": len(unique_source_paths),
+                },
+                "read_boundary": {
+                    "compact_only": True,
+                    "raw_logs_read": False,
+                    "task_text_read": False,
+                    "trajectory_read": False,
+                    "docker_invoked": False,
+                    "model_api_invoked": False,
+                    "upload_invoked": False,
+                },
+            }
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "dry_run": not bool(getattr(args, "execute", False)),
+                "updated": False,
+                "output_json": getattr(args, "output_json", None),
+                "aggregate": {"ok": False},
+                "error": str(exc),
+            }
+        print_payload(
+            payload,
+            output_format(args),
+            render_benchmark_run_ledger_aggregate_markdown,
         )
         return 0 if payload.get("ok") else 1
 
