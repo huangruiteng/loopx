@@ -259,11 +259,29 @@ def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
             assert target_env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] == proxy_url
             assert "127.0.0.1" in target_env["NO_PROXY"], target_env
 
+            previous_docker_config = os.environ.get("DOCKER_CONFIG")
+            with skillsbench_loop._benchmark_egress_proxy_env_applied(args):
+                docker_config_dir = Path(os.environ["DOCKER_CONFIG"])
+                docker_config_path = docker_config_dir / "config.json"
+                docker_config = json.loads(docker_config_path.read_text(encoding="utf-8"))
+                docker_proxy = docker_config["proxies"]["default"]
+                assert docker_proxy["httpProxy"] == proxy_url, docker_proxy
+                assert docker_proxy["httpsProxy"] == proxy_url, docker_proxy
+                assert "127.0.0.1" in docker_proxy["noProxy"], docker_proxy
+            if previous_docker_config is None:
+                assert "DOCKER_CONFIG" not in os.environ
+            else:
+                assert os.environ["DOCKER_CONFIG"] == previous_docker_config
+            assert not docker_config_dir.exists(), docker_config_dir
+
             config = plan["runner_config"]
             assert config["benchmark_egress_proxy_configured"] is True, config
             assert config["benchmark_egress_proxy_endpoint_kind"] == "public_or_unknown", config
             assert config["benchmark_egress_proxy_endpoint_port"] == 18080, config
             assert config["benchmark_egress_proxy_url_recorded"] is False, config
+            assert config["benchmark_egress_proxy_docker_config_injected"] is False, config
+            assert config["benchmark_egress_proxy_docker_config_path_recorded"] is False, config
+            assert config["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] is False, config
             assert proxy_url not in json.dumps(config, sort_keys=True), config
         finally:
             if previous is None:
