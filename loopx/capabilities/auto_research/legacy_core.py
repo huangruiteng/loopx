@@ -170,6 +170,7 @@ AUTO_RESEARCH_ROLE_PROFILE_TEMPLATES: dict[str, dict[str, Any]] = {
         "phase": "evaluated",
         "skill_section": "Evidence verifier",
         "allowed_actions": [
+            "run_holdout_eval",
             "classify_evidence",
             "write_evaluation_summary",
             "open_promotion_gate",
@@ -940,7 +941,7 @@ def _auto_research_codex_bootstrap_prompt(
         "research_curator": "`write_research_contract`",
         "hypothesis_mapper": "`propose_hypothesis`",
         "evidence_runner": "`run_dev_eval` or `write_evidence`",
-        "evidence_verifier": "`classify_evidence` or `write_evaluation_summary`",
+        "evidence_verifier": "`run_holdout_eval`, `classify_evidence`, or `write_evaluation_summary`",
     }
     expected_actions = expected_actions_by_role.get(role_id, "one allowed action from this role profile")
     role_specific_steps: list[str] = [
@@ -2980,6 +2981,8 @@ def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[s
         default="unknown_source",
     )
     promotion_candidates: list[dict[str, Any]] = []
+    dev_promotion_candidates: list[dict[str, Any]] = []
+    validated_promotion_candidates: list[dict[str, Any]] = []
     retirement_candidates: list[dict[str, Any]] = []
     for raw_node in graph.get("nodes") or []:
         if not isinstance(raw_node, dict):
@@ -3019,19 +3022,24 @@ def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[s
         if status in {"supported", "promoted"} or dev_improved:
             requires = ["boundary_scan"]
             requires.append("promotion_decision" if holdout_improved else "holdout_eval")
-            promotion_candidates.append(
-                {
-                    "hypothesis_id": hypothesis_id,
-                    "todo_id": todo_id,
-                    "status": status,
-                    "dev_metric": dev_metric,
-                    "holdout_metric": holdout_metric,
-                    "evidence_event_count": evidence_count,
-                    "requires": requires,
-                    "source_kind": source_kind,
-                }
-            )
+            candidate = {
+                "hypothesis_id": hypothesis_id,
+                "todo_id": todo_id,
+                "status": status,
+                "dev_metric": dev_metric,
+                "holdout_metric": holdout_metric,
+                "evidence_event_count": evidence_count,
+                "requires": requires,
+                "source_kind": source_kind,
+            }
+            promotion_candidates.append(candidate)
+            if holdout_improved:
+                validated_promotion_candidates.append(candidate)
+            else:
+                dev_promotion_candidates.append(candidate)
     return {
+        "dev_promotion_candidates": dev_promotion_candidates,
+        "validated_promotion_candidates": validated_promotion_candidates,
         "promotion_candidates": promotion_candidates,
         "retirement_candidates": retirement_candidates,
     }

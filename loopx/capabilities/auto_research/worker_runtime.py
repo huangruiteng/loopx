@@ -38,6 +38,7 @@ SUPPORTED_WORKER_ACTIONS = {
     "write_research_contract",
     "propose_hypothesis",
     "run_dev_eval",
+    "run_holdout_eval",
     "write_evidence",
     "classify_evidence",
     "write_evaluation_summary",
@@ -233,6 +234,32 @@ def _write_evaluation_summary_artifact(
     return artifact
 
 
+def _select_holdout_candidate(graph: dict[str, object]) -> dict[str, object]:
+    metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
+    direction = str(metric.get("direction") or "maximize")
+    candidates: list[dict[str, object]] = []
+    for item in graph.get("nodes") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("best_holdout_metric") is not None:
+            continue
+        if int(item.get("negative_evidence_count") or 0) > 0:
+            continue
+        if item.get("best_dev_metric") is None:
+            continue
+        if not item.get("dev_improved"):
+            continue
+        candidates.append(item)
+    if not candidates:
+        raise ValueError("no dev-supported auto-research hypothesis is ready for holdout validation")
+    reverse = direction != "minimize"
+    return sorted(
+        candidates,
+        key=lambda item: float(item.get("best_dev_metric") or 0.0),
+        reverse=reverse,
+    )[0]
+
+
 def _complete_selected_todo(
     *,
     registry_path: Path,
@@ -402,7 +429,7 @@ def run_auto_research_worker_turn(
             "completion": {"requested": complete_selected_todo, "executed": False},
             "frontier": frontier_packet,
         }
-    if action in {"run_dev_eval", "write_evidence"} and append_evidence is None:
+    if action in {"run_dev_eval", "run_holdout_eval", "write_evidence"} and append_evidence is None:
         raise ValueError("execute requires an append_evidence callback")
 
     pack_dir, pack_mode = _ensure_quickstart_pack(
@@ -417,6 +444,7 @@ def run_auto_research_worker_turn(
     hypothesis_artifact_path = run_dir / "hypothesis.public.json"
     evaluation_summary_path = run_dir / "evaluation-summary.public.json"
     dev_result_path = run_dir / "dev-result.public.json"
+    holdout_result_path = run_dir / "holdout-result.public.json"
     evidence_packet_path = run_dir / "evidence.public.json"
     append_result_path = run_dir / "append-result.public.json"
     live_evidence_path = run_dir / live_evidence_output
@@ -540,6 +568,102 @@ def run_auto_research_worker_turn(
             "artifact_status": artifact["summary"]["status"],
             "claim_allowed": artifact["summary"]["claim_allowed"],
             "promotion_decision_made": artifact["summary"]["promotion_decision_made"],
+            "completion": completion,
+            "frontier": frontier_packet,
+            "public_boundary": {
+                "raw_logs_recorded": False,
+                "private_artifacts_recorded": False,
+                "absolute_paths_recorded": False,
+                "credentials_recorded": False,
+            },
+        }
+
+    if action == "run_holdout_eval":
+        registry = load_registry(registry_path)
+        runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+        rollout_events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
+        graph = build_research_evidence_graph_from_rollout_events(
+            goal_id=goal_id,
+            rollout_events=rollout_events,
+        )
+        candidate = _select_holdout_candidate(graph)
+        holdout_result = _run_protected_eval(
+            pack_dir=pack_dir,
+            split="holdout",
+            output_path=holdout_result_path,
+        )
+        packet = load_auto_research_evidence_packet_inputs(
+            contract_path=pack_dir / "research_contract.json",
+            eval_result_paths=[holdout_result_path],
+            hypothesis_id=str(candidate["hypothesis_id"]),
+            todo_id=str(candidate["todo_id"]),
+            agent_id=agent_id,
+            claimed_by=str(candidate.get("claimed_by") or agent_id),
+            mechanism_family="partial_selection",
+            hypothesis="Use exact partial selection to avoid full distance sorting.",
+            parent_hypothesis_id=str(candidate.get("parent_hypothesis_id") or "") or None,
+            grounding_refs=[
+                str(ref)
+                for ref in candidate.get("grounding_refs") or ["quickstart:knn_exact_pack"]
+                if str(ref).strip()
+            ],
+            novelty_audit_ref=str(candidate.get("novelty_audit_ref") or "") or None,
+            attempt_start=int(candidate.get("evidence_event_count") or 1) + 1,
+        )
+        _write_json(evidence_packet_path, packet)
+        append_result = append_evidence(str(evidence_packet_path))
+        _write_json(append_result_path, append_result)
+        summary_artifact = _write_evaluation_summary_artifact(
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            output_path=evaluation_summary_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+        )
+        completion = (
+            _complete_selected_todo(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                todo_id=todo_id,
+                agent_id=agent_id,
+                action=action,
+                execute=True,
+            )
+            if complete_selected_todo
+            else {"requested": False}
+        )
+        return {
+            "ok": True,
+            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+            "mode": "execute",
+            "goal_id": goal_id,
+            "agent_id": agent_id,
+            "selected_todo_id": todo_id,
+            "selected_action": action,
+            "executed": True,
+            "pack_mode": pack_mode,
+            "validated_hypothesis_id": candidate["hypothesis_id"],
+            "holdout_metric": (holdout_result.get("metric") or {}).get("value")
+            if isinstance(holdout_result.get("metric"), dict)
+            else None,
+            "packet_status": packet["summary"]["status"],
+            "append": {
+                "schema_version": append_result.get("schema_version"),
+                "goal_id": append_result.get("goal_id"),
+                "appended_count": append_result.get("appended_count"),
+                "counts_by_kind": append_result.get("counts_by_kind"),
+            },
+            "evaluation_summary": {
+                "claim_allowed": summary_artifact["summary"]["claim_allowed"],
+                "best_dev_metric": summary_artifact["evidence_graph_summary"]["best_dev_metric"],
+                "best_holdout_metric": summary_artifact["evidence_graph_summary"]["best_holdout_metric"],
+                "validated_promotion_candidate_count": summary_artifact["decision_summary"][
+                    "validated_promotion_candidate_count"
+                ],
+            },
+            "artifact": _artifact_summary("holdout_validation", filename="evaluation-summary.public.json"),
+            "artifact_status": "holdout_evidence_appended",
             "completion": completion,
             "frontier": frontier_packet,
             "public_boundary": {

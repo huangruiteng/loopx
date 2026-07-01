@@ -180,6 +180,9 @@ def _seed_visible_demo_control_plane(
             "run_dev_eval": (
                 "Run the selected quickstart hypothesis on the dev split, write public-safe evidence, append it, and capture live evidence."
             ),
+            "run_holdout_eval": (
+                "Run held-out validation for the dev-supported hypothesis, append public-safe evidence, and summarize promotion readiness."
+            ),
             "write_evaluation_summary": (
                 "Verify the evidence packet and open the next validation or promotion gate."
             ),

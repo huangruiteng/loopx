@@ -15,6 +15,9 @@ def _compact_turn(turn: dict[str, object], *, round_index: int) -> dict[str, obj
     completion = turn.get("completion") if isinstance(turn.get("completion"), dict) else {}
     append = turn.get("append") if isinstance(turn.get("append"), dict) else {}
     live_evidence = turn.get("live_evidence") if isinstance(turn.get("live_evidence"), dict) else {}
+    evaluation_summary = (
+        turn.get("evaluation_summary") if isinstance(turn.get("evaluation_summary"), dict) else {}
+    )
     return {
         "round": round_index,
         "agent_id": turn.get("agent_id"),
@@ -25,6 +28,9 @@ def _compact_turn(turn: dict[str, object], *, round_index: int) -> dict[str, obj
         "completion_status": completion.get("status"),
         "appended_count": append.get("appended_count"),
         "dev_metric": turn.get("dev_metric"),
+        "holdout_metric": turn.get("holdout_metric"),
+        "claim_allowed": evaluation_summary.get("claim_allowed"),
+        "best_holdout_metric": evaluation_summary.get("best_holdout_metric"),
         "live_evidence_written": bool(live_evidence.get("written")),
     }
 
