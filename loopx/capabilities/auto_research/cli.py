@@ -553,9 +553,15 @@ def register_auto_research_commands(
         "--launch-visible",
         action="store_true",
         help=(
-            "With --execute, also launch the visible multi-lane supervisor. "
+            "With --execute, explicitly launch the visible multi-lane supervisor. "
+            "This is the default unless --headless is set. "
             "Visible panes alone do not make the multi-round kernel a live Codex E2E result."
         ),
+    )
+    demo_e2e_parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="With --execute, skip visible tmux/Codex panes and return JSON only.",
     )
     demo_e2e_parser.add_argument(
         "--live-evidence",
@@ -591,7 +597,12 @@ def register_auto_research_commands(
     demo_e2e_parser.add_argument(
         "--attach",
         action="store_true",
-        help="After --launch-visible with tmux, attach to the session.",
+        help="After visible launch with tmux, attach to the session. This is the default for --execute unless --no-attach is set.",
+    )
+    demo_e2e_parser.add_argument(
+        "--no-attach",
+        action="store_true",
+        help="With the default visible --execute launch, start tmux in the background instead of attaching.",
     )
     demo_e2e_parser.add_argument(
         "--replace-existing",
@@ -883,6 +894,8 @@ def handle_auto_research_command(
                     create_workspace=args.create_workspace,
                 )
         elif args.auto_research_command == "demo-e2e":
+            if args.headless and args.launch_visible:
+                raise ValueError("--headless cannot be combined with --launch-visible")
             goal_id, goal_surface_mode = _resolve_demo_goal_surface(
                 goal_id=args.goal_id,
                 demo_run_id=args.demo_run_id,
@@ -897,8 +910,13 @@ def handle_auto_research_command(
                     dry_run=False,
                 )
 
-            visible_launcher: Callable[[dict[str, object], Path, str | None], dict[str, object]] | None = None
-            if args.launch_visible:
+            visible_launcher: Callable[[dict[str, object], Path, str | None, Path], dict[str, object]] | None = None
+            auto_visible_launch = bool(args.execute and not args.headless)
+            launch_visible = bool(args.launch_visible or auto_visible_launch)
+            attach_visible = bool(args.attach or (auto_visible_launch and not args.no_attach))
+            if args.no_attach and args.attach:
+                raise ValueError("--attach cannot be combined with --no-attach")
+            if launch_visible:
                 def visible_launcher(
                     supervisor: dict[str, object],
                     visible_registry_path: Path,
@@ -914,7 +932,7 @@ def handle_auto_research_command(
                         tmux_bin=args.tmux_bin,
                         cli_bin=args.cli_bin,
                         codex_bin=args.codex_bin,
-                        attach=args.attach,
+                        attach=attach_visible,
                         replace_existing=args.replace_existing,
                         workspace=workspace,
                         create_workspace=args.create_workspace,
@@ -931,7 +949,7 @@ def handle_auto_research_command(
                 execute=args.execute,
                 run_worker_loop=args.execute,
                 worker_loop_rounds=args.worker_loop_rounds,
-                launch_visible=args.launch_visible,
+                launch_visible=launch_visible,
                 keep_workspace=args.keep_workspace,
                 registry_path=registry_path,
                 runtime_root_arg=runtime_root_arg,

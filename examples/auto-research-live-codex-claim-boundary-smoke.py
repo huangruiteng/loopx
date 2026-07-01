@@ -73,6 +73,7 @@ def base_demo_args() -> list[str]:
         AGENT_ID,
         "--reasoning-effort",
         "high",
+        "--headless",
     ]
 
 
