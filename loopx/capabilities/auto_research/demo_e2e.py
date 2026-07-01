@@ -4,12 +4,10 @@ import json
 import re
 import shlex
 import subprocess
-import sys
 import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from .kernel import run_builtin_lightweight_demo
 from .legacy_core import (
     AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION,
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
@@ -22,7 +20,6 @@ from .legacy_core import (
     build_research_artifact_packet,
     build_research_decision_candidates,
     build_research_evidence_graph_from_rollout_events,
-    load_auto_research_evidence_packet_inputs,
 )
 from .live_evidence import (
     build_live_codex_claim_from_evidence,
@@ -324,32 +321,6 @@ def _live_board_and_acceptance(
     return board, acceptance
 
 
-def _run_protected_eval(
-    *,
-    pack_dir: Path,
-    split: str,
-) -> dict[str, object]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(pack_dir / "protected_eval.py"),
-            "--solution",
-            str(pack_dir / "solution_candidate.py"),
-            "--split",
-            split,
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    payload = json.loads(result.stdout)
-    (pack_dir / f"{split}-result.public.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return payload
-
-
 def _compact_board(board: dict[str, object]) -> dict[str, object]:
     decisions = board.get("decision_candidates") if isinstance(board.get("decision_candidates"), dict) else {}
     binding = board.get("projection_binding") if isinstance(board.get("projection_binding"), dict) else {}
@@ -414,8 +385,6 @@ def _command_text(
         parts.extend(["--tracking-goal-id", shlex.quote(tracking_goal_id)])
     if execute:
         parts.append("--execute")
-    if run_worker_loop:
-        parts.append("--run-worker-loop")
     if launch_visible:
         parts.append("--launch-visible")
     if live_evidence:
@@ -431,7 +400,7 @@ def _live_codex_truth_boundary(*, launch_visible: bool) -> dict[str, object]:
         "visible_lanes_accepted": False,
         "evidence_source": "not_collected_from_codex_lane_output",
         "reason": (
-            "demo-e2e validates the lightweight multi-round research kernel and optional visible launcher; "
+            "demo-e2e validates the LoopX worker-loop state/A2A path and optional visible launcher; "
             "it does not prove a live Codex multi-agent research result."
         ),
         "required_for_live_claim": [
@@ -443,22 +412,12 @@ def _live_codex_truth_boundary(*, launch_visible: bool) -> dict[str, object]:
 
 
 def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
-    """Keep user-facing claims anchored to live evidence, not kernel replay."""
+    """Keep user-facing claims anchored to worker-loop or live evidence."""
 
     live = payload.get("live_codex_e2e") if isinstance(payload.get("live_codex_e2e"), dict) else {}
-    protected_eval = (
-        payload.get("protected_eval_result")
-        if isinstance(payload.get("protected_eval_result"), dict)
-        else {}
-    )
     tonight = (
         payload.get("tonight_experience")
         if isinstance(payload.get("tonight_experience"), dict)
-        else {}
-    )
-    research_loop = (
-        payload.get("research_loop")
-        if isinstance(payload.get("research_loop"), dict)
         else {}
     )
     live_claim_allowed = bool(live.get("claim_allowed"))
@@ -474,7 +433,6 @@ def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
             "claim_basis": "live_codex_lane_output",
             "live_worker_claim_allowed": True,
             "live_worker_authored": True,
-            "kernel_precheck_passed": bool(protected_eval.get("executed")),
             "can_claim": ["visible_worker_live_dev_evidence_supported"],
             "cannot_claim": cannot_claim,
             "dev_metric": live.get("dev_metric"),
@@ -493,7 +451,6 @@ def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
             "claim_basis": "loopx_worker_loop_public_evidence",
             "live_worker_claim_allowed": False,
             "live_worker_authored": False,
-            "kernel_precheck_passed": bool(protected_eval.get("executed")),
             "can_claim": ["one_command_loopx_worker_loop_positive_result"],
             "cannot_claim": [
                 "visible_codex_tui_authored_result",
@@ -508,140 +465,24 @@ def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
             ),
         }
 
-    kernel_precheck_passed = (
-        bool(protected_eval.get("executed"))
-        and protected_eval.get("status") == "supported"
-        and bool(research_loop.get("executed"))
-    )
     return {
         "schema_version": "auto_research_demo_claim_summary_v0",
-        "status": "kernel_precheck_only" if kernel_precheck_passed else "preview_only",
-        "claim_basis": (
-            "deterministic_protected_eval_kernel"
-            if kernel_precheck_passed
-            else "dry_run_preview"
-        ),
+        "status": "preview_only",
+        "claim_basis": "dry_run_preview",
         "live_worker_claim_allowed": False,
         "live_worker_authored": False,
-        "kernel_precheck_passed": kernel_precheck_passed,
-        "can_claim": (
-            ["protected_eval_kernel_positive_precheck"]
-            if kernel_precheck_passed
-            else ["one_command_preview_available"]
-        ),
+        "can_claim": ["one_command_preview_available"],
         "cannot_claim": [
             "visible_codex_workers_authored_result",
             "live_holdout_metric_or_claim",
             "automatic_promotion_success",
         ],
-        "dev_metric": protected_eval.get("dev_metric") if kernel_precheck_passed else None,
+        "dev_metric": None,
         "holdout_metric": None,
-        "holdout_metric_redacted": bool(kernel_precheck_passed),
+        "holdout_metric_redacted": False,
         "next_required": (
-            "capture compact public-safe live lane evidence and pass it with --live-evidence "
-            "before claiming visible-worker E2E success"
+            "run --execute to seed a demo-local LoopX queue and execute the worker-loop"
         ),
-    }
-
-
-def _metric_gain(metric: object, *, baseline: float = 1.0) -> float | None:
-    if metric is None:
-        return None
-    try:
-        return float(metric) - baseline
-    except (TypeError, ValueError):
-        return None
-
-
-def _compact_kernel_event_trace(research_loop: dict[str, object]) -> list[dict[str, object]]:
-    """Expose the deterministic kernel as evaluated events, not pretend workers."""
-
-    events = research_loop.get("evidence") if isinstance(research_loop.get("evidence"), list) else []
-    trace: list[dict[str, object]] = []
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        metric = event.get("metric")
-        trace.append(
-            {
-                "split": event.get("split"),
-                "hypothesis_id": event.get("hypothesis_id"),
-                "candidate_key": event.get("candidate_key"),
-                "status": event.get("status"),
-                "metric": metric,
-                "gain_over_baseline": _metric_gain(metric),
-                "result_source": event.get("result_source"),
-                "protected_scope_clean": event.get("protected_scope_clean"),
-            }
-        )
-    return trace
-
-
-def _compact_multiround_gain_acceptance(
-    research_loop: dict[str, object],
-    *,
-    append_payload: dict[str, object],
-) -> dict[str, object]:
-    trace = _compact_kernel_event_trace(research_loop)
-    dev_events = [event for event in trace if event.get("split") == "dev"]
-    attempted = []
-    for event in dev_events:
-        hypothesis_id = event.get("hypothesis_id")
-        if hypothesis_id and hypothesis_id not in attempted:
-            attempted.append(hypothesis_id)
-    seed_event = dev_events[0] if dev_events else {}
-    selected_id = research_loop.get("selected_hypothesis_id")
-    selected_dev = next(
-        (event for event in dev_events if event.get("hypothesis_id") == selected_id),
-        {},
-    )
-    holdout_event = next(
-        (
-            event
-            for event in trace
-            if event.get("split") == "holdout"
-            and event.get("hypothesis_id") == selected_id
-        ),
-        {},
-    )
-    seed_metric = seed_event.get("metric")
-    final_metric = holdout_event.get("metric") or selected_dev.get("metric")
-    better_than_seed = (
-        final_metric is not None
-        and seed_metric is not None
-        and float(final_metric) > float(seed_metric)
-    )
-    return {
-        "schema_version": "auto_research_multiround_gain_acceptance_v0",
-        "result_source": research_loop.get("result_source"),
-        "live_codex_lane_authored": False,
-        "round_count": research_loop.get("dev_round_count"),
-        "hypotheses_attempted": attempted,
-        "evidence_event_count": research_loop.get("evidence_event_count"),
-        "evidence_events_appended": append_payload.get("appended_count"),
-        "selected_hypothesis_id": selected_id,
-        "seed_hypothesis_id": seed_event.get("hypothesis_id"),
-        "seed_dev_metric": seed_metric,
-        "selected_dev_metric": selected_dev.get("metric"),
-        "selected_holdout_metric": holdout_event.get("metric"),
-        "dev_gain_over_baseline": _metric_gain(research_loop.get("dev_metric")),
-        "holdout_gain_over_baseline": _metric_gain(research_loop.get("holdout_metric")),
-        "final_gain_over_seed": (
-            float(final_metric) - float(seed_metric)
-            if final_metric is not None and seed_metric is not None
-            else None
-        ),
-        "better_than_seed": better_than_seed,
-        "why_better": (
-            "The selected partial-selection hypothesis beats the seed full-sort candidate "
-            "on dev and keeps the gain on holdout."
-        ),
-        "public_boundary": {
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "absolute_paths_recorded": False,
-            "live_codex_lane_authored": False,
-        },
     }
 
 
@@ -698,18 +539,18 @@ def run_auto_research_demo_e2e(
         reasoning_effort=reasoning_effort,
     )
     execution_kind = (
-        "loopx_worker_loop_plus_minimal_kernel"
+        "loopx_worker_loop"
         if execute and run_worker_loop
-        else "minimal_research_kernel"
-        if execute
-        else "minimal_research_preview"
+        else "visible_worker_launch"
+        if execute and launch_visible
+        else "worker_loop_preview"
     )
     result_source = (
-        "loopx_worker_loop_with_protected_eval"
+        "loopx_worker_loop_public_evidence"
         if execute and run_worker_loop
-        else "deterministic_protected_eval_kernel"
-        if execute
-        else "deterministic_protected_eval_preview"
+        else "visible_worker_launcher"
+        if execute and launch_visible
+        else "dry_run_preview"
     )
     payload: dict[str, object] = {
         "ok": True,
@@ -741,27 +582,21 @@ def run_auto_research_demo_e2e(
         "agent_id": agent_id,
         "reasoning_effort": reasoning_effort,
         "commands": {
-            "multiround_kernel": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                tracking_goal_id=tracking_goal or None,
-            ),
-            "multiround_kernel_with_visible_lanes": _command_text(
-                cli_bin=cli_bin,
-                goal_id=goal_id,
-                agent_id=agent_id,
-                execute=True,
-                launch_visible=True,
-                tracking_goal_id=tracking_goal or None,
-            ),
-            "real_worker_loop": _command_text(
+            "one_command_worker_loop": _command_text(
                 cli_bin=cli_bin,
                 goal_id=goal_id,
                 agent_id=agent_id,
                 execute=True,
                 run_worker_loop=True,
+                tracking_goal_id=tracking_goal or None,
+            ),
+            "one_command_worker_loop_with_visible_lanes": _command_text(
+                cli_bin=cli_bin,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                execute=True,
+                run_worker_loop=True,
+                launch_visible=True,
                 tracking_goal_id=tracking_goal or None,
             ),
             "live_codex_claim_from_evidence": _command_text(
@@ -806,16 +641,15 @@ def run_auto_research_demo_e2e(
             "template": quickstart.get("template"),
             "next_commands": quickstart.get("next_commands"),
         }
-        payload["protected_eval_result"] = {
+        payload["worker_loop_preview"] = {
             "executed": False,
-            "result_source": "deterministic_protected_eval_preview",
-            "expected_positive_result": "dev/holdout metrics are produced only after --execute",
-        }
-        payload["research_loop"] = {
-            "executed": False,
-            "result_source": "deterministic_protected_eval_preview",
-            "expected_steps": "seed quickstart pack, run protected eval, append public-safe evidence, read board",
-            "live_codex_lane_authored": False,
+            "result_source": "dry_run_preview",
+            "expected_steps": (
+                "seed a demo-local LoopX queue, let role-compatible workers claim "
+                "frontier todos, write public-safe evidence, append rollout events, "
+                "and read board/acceptance from state"
+            ),
+            "coordination_pattern": "decentralized_state_a2a",
         }
         payload["claim_summary"] = _demo_claim_summary(payload)
         return payload
@@ -847,113 +681,8 @@ def run_auto_research_demo_e2e(
                 payload["visible_control_plane"] = visible_control
             return visible_control, visible_registry_path, visible_runtime_root_arg
 
-        quickstart = build_auto_research_quickstart(
-            agent_id=agent_id,
-            goal_id=goal_id,
-            objective=objective,
-            output_dir=output_dir,
-            execute=True,
-            cwd=demo_root,
-        )
-        pack_dir = demo_root / str(quickstart["pack_dir"])
-        dev = _run_protected_eval(pack_dir=pack_dir, split="dev")
-        holdout = _run_protected_eval(pack_dir=pack_dir, split="holdout")
-        evidence = load_auto_research_evidence_packet_inputs(
-            contract_path=str(pack_dir / "research_contract.json"),
-            eval_result_paths=[
-                str(pack_dir / "dev-result.public.json"),
-                str(pack_dir / "holdout-result.public.json"),
-            ],
-            hypothesis_id="hyp_quickstart_partial_selection",
-            todo_id="todo_auto_research_quickstart_001",
-            agent_id=agent_id,
-            claimed_by=agent_id,
-            mechanism_family="partial_selection",
-            hypothesis="Use exact partial selection to avoid full distance sorting.",
-            parent_hypothesis_id=None,
-            grounding_refs=["quickstart:knn_exact_pack"],
-            novelty_audit_ref=None,
-            branch_ref=None,
-            attempt_start=1,
-        )
-        evidence_path = pack_dir / "evidence.public.json"
-        evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        append_payload = append_evidence(str(evidence_path))
-        research_loop = run_builtin_lightweight_demo(goal_id=goal_id)
-        board, acceptance = _live_board_and_acceptance(
-            goal_id=goal_id,
-            agent_id=agent_id,
-            objective=objective,
-            supervisor=supervisor,
-            registry_path=registry_path,
-            runtime_root_arg=runtime_root_arg,
-        )
-        payload.update(
-            {
-                "quickstart": {
-                    "schema_version": quickstart.get("schema_version"),
-                    "mode": quickstart.get("mode"),
-                    "template": quickstart.get("template"),
-                },
-                "protected_eval_result": {
-                    "executed": True,
-                    "result_source": "generated_quickstart_pack_protected_eval",
-                    "status": evidence.get("summary", {}).get("status"),
-                    "dev_metric": (dev.get("metric") or {}).get("value"),
-                    "holdout_metric": (holdout.get("metric") or {}).get("value"),
-                    "dev_exact": bool(dev.get("exact")),
-                    "holdout_exact": bool(holdout.get("exact")),
-                    "protected_scope_clean": bool(evidence.get("summary", {}).get("protected_scope_clean")),
-                },
-                "research_loop": {
-                    "executed": True,
-                    "result_source": research_loop.get("result_source"),
-                    "schema_version": research_loop.get("schema_version"),
-                    "decision": research_loop.get("decision"),
-                    "candidate_count": research_loop.get("candidate_count"),
-                    "dev_round_count": research_loop.get("dev_round_count"),
-                    "evidence_event_count": research_loop.get("evidence_event_count"),
-                    "selected_hypothesis_id": research_loop.get("selected_hypothesis_id"),
-                    "baseline_metric": 1.0,
-                    "dev_metric": research_loop.get("dev_metric"),
-                    "holdout_metric": research_loop.get("holdout_metric"),
-                    "dev_gain_over_baseline": (
-                        float(research_loop["dev_metric"]) - 1.0
-                        if research_loop.get("dev_metric") is not None
-                        else None
-                    ),
-                    "holdout_gain_over_baseline": (
-                        float(research_loop["holdout_metric"]) - 1.0
-                        if research_loop.get("holdout_metric") is not None
-                        else None
-                    ),
-                    "live_codex_lane_authored": False,
-                    "kernel_event_trace": _compact_kernel_event_trace(research_loop),
-                    "state_transitions": [
-                        "seed_quickstart_pack",
-                        "run_protected_eval_dev_holdout",
-                        "write_public_safe_evidence_packet",
-                        "append_evidence_to_loopx_state",
-                        "read_board_and_acceptance_projection",
-                    ],
-                    "public_boundary": research_loop.get("public_boundary"),
-                },
-                "multiround_gain_acceptance": _compact_multiround_gain_acceptance(
-                    research_loop,
-                    append_payload=append_payload,
-                ),
-                "append": {
-                    "appended_count": append_payload.get("appended_count"),
-                    "skipped_existing_count": append_payload.get("skipped_existing_count"),
-                    "counts_by_kind": append_payload.get("counts_by_kind"),
-                },
-                "board": _compact_board(board),
-                "acceptance": _compact_acceptance(acceptance),
-                "workspace_retained": keep_workspace or launch_visible,
-            }
-        )
+        visible_control, visible_registry_path, visible_runtime_root_arg = ensure_visible_control_plane()
         if run_worker_loop:
-            visible_control, visible_registry_path, visible_runtime_root_arg = ensure_visible_control_plane()
             worker_agent_ids = [
                 str(lane.get("agent_id") or "").strip()
                 for lane in supervisor.get("lanes") or []
@@ -1000,7 +729,7 @@ def run_auto_research_demo_e2e(
             payload["tonight_experience"] = {
                 "schema_version": "auto_research_tonight_experience_v0",
                 "ready": bool(worker_loop.get("executed_turn_count")),
-                "one_command": payload["commands"]["real_worker_loop"],
+                "one_command": payload["commands"]["one_command_worker_loop"],
                 "goal_id": goal_id,
                 "goal_surface_mode": goal_surface_mode,
                 "coordination_pattern": "decentralized_state_a2a",
@@ -1062,6 +791,17 @@ def run_auto_research_demo_e2e(
             if isinstance(live_boundary, dict):
                 live_boundary["visible_lanes_launched"] = True
                 live_boundary["visible_lanes_accepted"] = bool(visible_acceptance.get("accepted"))
+        board, acceptance = _live_board_and_acceptance(
+            goal_id=goal_id,
+            agent_id=agent_id,
+            objective=objective,
+            supervisor=supervisor,
+            registry_path=visible_registry_path,
+            runtime_root_arg=visible_runtime_root_arg,
+        )
+        payload["board"] = _compact_board(board)
+        payload["acceptance"] = _compact_acceptance(acceptance)
+        payload["workspace_retained"] = keep_workspace or launch_visible
         if live_evidence_path:
             live_evidence = load_live_codex_e2e_evidence(
                 evidence_path=live_evidence_path,

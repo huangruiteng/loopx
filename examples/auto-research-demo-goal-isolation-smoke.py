@@ -96,7 +96,7 @@ def assert_route(
     if mode == "inherited_default_goal":
         assert route["fresh_goal_default"] is False, route
         assert route["inherits_default_goal"] is True, route
-    assert "--goal-id " + goal_id in payload["commands"]["multiround_kernel"], payload
+    assert "--goal-id " + goal_id in payload["commands"]["one_command_worker_loop"], payload
 
 
 def main() -> int:

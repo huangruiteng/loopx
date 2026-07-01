@@ -65,7 +65,6 @@ def main() -> int:
                 "--demo-run-id",
                 "worker-loop-smoke",
                 "--execute",
-                "--run-worker-loop",
             ],
             cwd=workspace,
             env=env,
@@ -80,8 +79,11 @@ def main() -> int:
         payload = json.loads(result.stdout)
         assert payload["ok"] is True, payload
         assert payload["goal_id"] == GOAL_ID, payload
-        assert payload["execution_kind"] == "loopx_worker_loop_plus_minimal_kernel", payload
-        assert payload["result_source"] == "loopx_worker_loop_with_protected_eval", payload
+        assert payload["execution_kind"] == "loopx_worker_loop", payload
+        assert payload["result_source"] == "loopx_worker_loop_public_evidence", payload
+        assert "protected_eval_result" not in payload, payload
+        assert "research_loop" not in payload, payload
+        assert "multiround_gain_acceptance" not in payload, payload
         assert payload["route_contract"]["goal_surface_mode"] == "fresh_demo_goal", payload
         assert payload["supervisor"]["lane_count"] == 4, payload
         worker_loop = payload["worker_loop"]
@@ -104,11 +106,13 @@ def main() -> int:
         assert tonight["leader_agent_required"] is False, tonight
         assert tonight["dev_metric"] == 4.0, tonight
         assert tonight["holdout_metric"] == 4.5, tonight
-        assert "--run-worker-loop" in tonight["one_command"], tonight
+        assert "--run-worker-loop" not in tonight["one_command"], tonight
         claim = payload["claim_summary"]
         assert claim["status"] == "loopx_worker_loop_positive", claim
         assert claim["can_claim"] == ["one_command_loopx_worker_loop_positive_result"], claim
         assert "visible_codex_tui_authored_result" in claim["cannot_claim"], claim
+        removed_replay_source = "deterministic_" + "protected_eval_kernel"
+        assert removed_replay_source not in json.dumps(payload, sort_keys=True), payload
         assert_public_safe(payload)
     print("auto-research-demo-e2e-worker-loop-smoke ok")
     return 0

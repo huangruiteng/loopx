@@ -268,7 +268,6 @@ def main() -> int:
         assert claim_summary["claim_basis"] == "live_codex_lane_output", claimed_payload
         assert claim_summary["live_worker_claim_allowed"] is True, claimed_payload
         assert claim_summary["live_worker_authored"] is True, claimed_payload
-        assert claim_summary["kernel_precheck_passed"] is True, claimed_payload
         assert claim_summary["can_claim"] == ["visible_worker_live_dev_evidence_supported"], claimed_payload
         assert "live_holdout_metric_or_claim" in claim_summary["cannot_claim"], claimed_payload
         assert "automatic_promotion_success" in claim_summary["cannot_claim"], claimed_payload

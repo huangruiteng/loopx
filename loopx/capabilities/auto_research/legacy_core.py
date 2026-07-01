@@ -3488,24 +3488,18 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
                 lines.append(f"- {item}")
         return "\n".join(lines) + "\n"
     if payload.get("schema_version") == AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION:
-        protected_eval = (
-            payload.get("protected_eval_result")
-            if isinstance(payload.get("protected_eval_result"), dict)
+        worker_loop = (
+            payload.get("worker_loop")
+            if isinstance(payload.get("worker_loop"), dict)
             else {}
         )
-        research_loop = (
-            payload.get("research_loop")
-            if isinstance(payload.get("research_loop"), dict)
+        tonight = (
+            payload.get("tonight_experience")
+            if isinstance(payload.get("tonight_experience"), dict)
             else {}
         )
-        append = payload.get("append") if isinstance(payload.get("append"), dict) else {}
         board = payload.get("board") if isinstance(payload.get("board"), dict) else {}
         acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), dict) else {}
-        gain_acceptance = (
-            payload.get("multiround_gain_acceptance")
-            if isinstance(payload.get("multiround_gain_acceptance"), dict)
-            else {}
-        )
         supervisor = payload.get("supervisor") if isinstance(payload.get("supervisor"), dict) else {}
         commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
         route = payload.get("route_contract") if isinstance(payload.get("route_contract"), dict) else {}
@@ -3534,35 +3528,21 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- claim_summary_status: `{claim_summary.get('status')}`",
             f"- claim_summary_basis: `{claim_summary.get('claim_basis')}`",
             f"- claim_summary_live_worker_claim_allowed: `{claim_summary.get('live_worker_claim_allowed')}`",
-            f"- claim_summary_kernel_precheck_passed: `{claim_summary.get('kernel_precheck_passed')}`",
             f"- goal_id: `{payload.get('goal_id')}`",
             f"- tracking_goal_id: `{payload.get('tracking_goal_id')}`",
             f"- frontier_goal_id: `{route.get('frontier_goal_id')}`",
             f"- tracking_goal_drives_frontier: `{route.get('tracking_goal_drives_frontier')}`",
             f"- agent_id: `{payload.get('agent_id')}`",
             f"- reasoning_effort: `{payload.get('reasoning_effort')}`",
-            f"- research_loop_executed: `{research_loop.get('executed')}`",
-            f"- research_loop_source: `{research_loop.get('result_source')}`",
-            f"- research_loop_decision: `{research_loop.get('decision')}`",
-            f"- research_loop_dev_rounds: `{research_loop.get('dev_round_count')}`",
-            f"- research_loop_evidence_events: `{research_loop.get('evidence_event_count')}`",
-            f"- research_loop_selected_hypothesis: `{research_loop.get('selected_hypothesis_id')}`",
-            f"- research_loop_dev_gain: `{research_loop.get('dev_gain_over_baseline')}`",
-            f"- research_loop_holdout_gain: `{research_loop.get('holdout_gain_over_baseline')}`",
-            f"- research_loop_live_codex_lane_authored: `{research_loop.get('live_codex_lane_authored')}`",
-            f"- research_loop_kernel_events: `{len(research_loop.get('kernel_event_trace') or [])}`",
-            f"- multiround_gain_rounds: `{gain_acceptance.get('round_count')}`",
-            f"- multiround_gain_hypotheses: `{gain_acceptance.get('hypotheses_attempted')}`",
-            f"- multiround_gain_appended_events: `{gain_acceptance.get('evidence_events_appended')}`",
-            f"- multiround_gain_final_delta: `{gain_acceptance.get('final_gain_over_seed')}`",
-            f"- multiround_gain_better_than_seed: `{gain_acceptance.get('better_than_seed')}`",
-            f"- multiround_gain_why_better: `{gain_acceptance.get('why_better')}`",
-            f"- protected_eval_executed: `{protected_eval.get('executed')}`",
-            f"- protected_eval_source: `{protected_eval.get('result_source')}`",
-            f"- protected_eval_status: `{protected_eval.get('status')}`",
-            f"- protected_eval_dev_metric: `{protected_eval.get('dev_metric')}`",
-            f"- protected_eval_holdout_metric: `{protected_eval.get('holdout_metric')}`",
-            f"- protected_scope_clean: `{protected_eval.get('protected_scope_clean')}`",
+            f"- worker_loop_executed_turns: `{worker_loop.get('executed_turn_count')}`",
+            f"- worker_loop_completed_turns: `{worker_loop.get('completed_turn_count')}`",
+            f"- worker_loop_selected_actions: `{worker_loop.get('selected_actions')}`",
+            f"- worker_loop_stop_reason: `{worker_loop.get('stop_reason')}`",
+            f"- tonight_ready: `{tonight.get('ready')}`",
+            f"- tonight_coordination_pattern: `{tonight.get('coordination_pattern')}`",
+            f"- tonight_dev_metric: `{tonight.get('dev_metric')}`",
+            f"- tonight_holdout_metric: `{tonight.get('holdout_metric')}`",
+            f"- tonight_positive_result: `{tonight.get('positive_result')}`",
             f"- live_codex_e2e_executed: `{live_codex.get('executed')}`",
             f"- live_codex_e2e_claim_allowed: `{live_codex.get('claim_allowed')}`",
             f"- live_codex_e2e_claim_scope: `{live_codex.get('claim_scope')}`",
@@ -3570,8 +3550,6 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- live_codex_e2e_promotion_claim_allowed: `{live_codex.get('promotion_claim_allowed')}`",
             f"- live_codex_e2e_evidence_source: `{live_codex.get('evidence_source')}`",
             f"- visible_lanes_launched: `{live_codex.get('visible_lanes_launched')}`",
-            f"- appended_events: `{append.get('appended_count')}`",
-            f"- skipped_existing_events: `{append.get('skipped_existing_count')}`",
             f"- board_rollout_backed: `{board.get('rollout_backed')}`",
             f"- promotion_candidates: `{board.get('promotion_candidate_count')}`",
             f"- ready_for_real_launch: `{acceptance.get('ready_for_real_launch')}`",
@@ -3579,8 +3557,9 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             "",
             "## Commands",
             "",
-            f"- multi-round research: `{commands.get('multiround_kernel')}`",
-            f"- multi-round research plus visible lanes: `{commands.get('multiround_kernel_with_visible_lanes')}`",
+            f"- one-command worker-loop: `{commands.get('one_command_worker_loop')}`",
+            f"- worker-loop plus visible lanes: `{commands.get('one_command_worker_loop_with_visible_lanes')}`",
+            f"- live Codex claim from evidence: `{commands.get('live_codex_claim_from_evidence')}`",
         ]
         if board_claim_boundary:
             lines.extend(

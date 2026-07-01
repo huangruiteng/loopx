@@ -493,7 +493,7 @@ def register_auto_research_commands(
         default=[],
         help=(
             "Optional visible worker lane as agent_id:lane_id:role_id. "
-            "When --run-worker-loop is set and omitted, demo-e2e uses the default four-role worker loop."
+            "Omit to use the default four-role worker loop."
         ),
     )
     demo_e2e_parser.add_argument(
@@ -533,24 +533,21 @@ def register_auto_research_commands(
         "--execute",
         action="store_true",
         help=(
-            "Run the lightweight multi-round protected-eval kernel, append public rollout evidence, "
-            "and report measured dev/holdout gains. This still requires live evidence before "
-            "claiming that visible Codex panes authored the result."
+            "Seed a demo-local LoopX goal queue, run role-compatible worker-loop turns through "
+            "quota/frontier/todo writeback, and report measured dev/holdout gains. This still "
+            "requires live evidence before claiming that visible Codex panes authored the result."
         ),
     )
     demo_e2e_parser.add_argument(
         "--run-worker-loop",
         action="store_true",
-        help=(
-            "With --execute, seed a demo-local LoopX goal queue and run the role-compatible "
-            "auto-research worker-loop against quota/frontier before optional visible launch."
-        ),
+        help=argparse.SUPPRESS,
     )
     demo_e2e_parser.add_argument(
         "--worker-loop-rounds",
         type=int,
         default=2,
-        help="Maximum worker-loop rounds for --run-worker-loop.",
+        help="Maximum worker-loop rounds for --execute.",
     )
     demo_e2e_parser.add_argument(
         "--launch-visible",
@@ -932,7 +929,7 @@ def handle_auto_research_command(
                 objective=args.objective,
                 output_dir=args.output_dir,
                 execute=args.execute,
-                run_worker_loop=args.run_worker_loop,
+                run_worker_loop=args.execute,
                 worker_loop_rounds=args.worker_loop_rounds,
                 launch_visible=args.launch_visible,
                 keep_workspace=args.keep_workspace,

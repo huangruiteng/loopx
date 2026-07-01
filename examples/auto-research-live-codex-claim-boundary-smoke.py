@@ -146,11 +146,16 @@ def main() -> int:
         assert no_live_payload["live_codex_e2e"]["evidence_source"] == (
             "not_collected_from_codex_lane_output"
         ), no_live_payload
-        assert no_live_payload["claim_summary"]["status"] == "kernel_precheck_only", no_live_payload
+        assert no_live_payload["execution_kind"] == "loopx_worker_loop", no_live_payload
+        assert no_live_payload["result_source"] == "loopx_worker_loop_public_evidence", no_live_payload
+        assert no_live_payload["claim_summary"]["status"] == "loopx_worker_loop_positive", no_live_payload
         assert no_live_payload["claim_summary"]["live_worker_claim_allowed"] is False, no_live_payload
         assert no_live_payload["claim_summary"]["claim_basis"] == (
-            "deterministic_protected_eval_kernel"
+            "loopx_worker_loop_public_evidence"
         ), no_live_payload
+        assert no_live_payload["worker_loop"]["executed_turn_count"] == 4, no_live_payload
+        assert no_live_payload["tonight_experience"]["dev_metric"] == 4.0, no_live_payload
+        assert no_live_payload["tonight_experience"]["holdout_metric"] == 4.5, no_live_payload
         assert_public_board_claim_boundary(no_live_payload)
 
         evidence = temp / "live-evidence.public.json"
@@ -192,13 +197,12 @@ def main() -> int:
         claimed_payload = json.loads(claimed.stdout)
         live = claimed_payload["live_codex_e2e"]
         claim_summary = claimed_payload["claim_summary"]
-        protected_eval = claimed_payload["protected_eval_result"]
-        research_loop = claimed_payload["research_loop"]
         assert claimed_payload["ok"] is True, claimed_payload
-        assert protected_eval["dev_metric"] == 4.0, claimed_payload
-        assert protected_eval["holdout_metric"] == 4.5, claimed_payload
-        assert research_loop["dev_metric"] == 4.0, claimed_payload
-        assert research_loop["holdout_metric"] == 4.5, claimed_payload
+        assert "protected_eval_result" not in claimed_payload, claimed_payload
+        assert "research_loop" not in claimed_payload, claimed_payload
+        assert claimed_payload["worker_loop"]["executed_turn_count"] == 4, claimed_payload
+        assert claimed_payload["tonight_experience"]["dev_metric"] == 4.0, claimed_payload
+        assert claimed_payload["tonight_experience"]["holdout_metric"] == 4.5, claimed_payload
         assert live["executed"] is True, claimed_payload
         assert live["claim_allowed"] is True, claimed_payload
         assert live["claim_scope"] == "dev_only", claimed_payload

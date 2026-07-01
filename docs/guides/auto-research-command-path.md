@@ -97,29 +97,18 @@ loopx --registry "$LOOPX_REGISTRY" \
 
 Expected minimal E2E result:
 
-- `execution_kind` is `minimal_research_kernel`;
-- `result_source` is `deterministic_protected_eval_kernel`;
-- `claim_summary.status` is `kernel_precheck_only`;
+- `execution_kind` is `loopx_worker_loop`;
+- `result_source` is `loopx_worker_loop_public_evidence`;
+- `claim_summary.status` is `loopx_worker_loop_positive`;
 - `claim_summary.live_worker_claim_allowed` is `false`;
-- `research_loop.dev_round_count` is `2`;
-- `research_loop.evidence_event_count` is `3`;
-- `research_loop.live_codex_lane_authored` is `false`;
-- `research_loop.kernel_event_trace` contains the actual protected-eval
-  dev/dev/holdout events, not synthetic worker panels;
-- `research_loop.selected_hypothesis_id` is `hyp_partial_selection`;
-- `research_loop.dev_gain_over_baseline` is `3.0`;
-- `research_loop.holdout_gain_over_baseline` is `3.5`;
-- `multiround_gain_acceptance.round_count` is `2`;
-- `multiround_gain_acceptance.hypotheses_attempted` lists the seed
-  full-sort hypothesis and the selected partial-selection hypothesis;
-- `multiround_gain_acceptance.evidence_events_appended` is `3`;
-- `multiround_gain_acceptance.final_gain_over_seed` is `3.5`;
-- `multiround_gain_acceptance.why_better` explains why the final result beats
-  the seed/baseline without reading raw logs;
-- `protected_eval_result.dev_metric` is `4.0`;
-- `protected_eval_result.holdout_metric` is `4.5`;
-- dev and holdout exactness are both `true`;
-- `protected_scope_clean` is `true`;
+- `worker_loop.executed_turn_count` is `4`;
+- `worker_loop.selected_actions` is
+  `write_research_contract`, `propose_hypothesis`, `run_dev_eval`,
+  `run_holdout_eval`;
+- `tonight_experience.coordination_pattern` is `decentralized_state_a2a`;
+- `tonight_experience.dev_metric` is `4.0`;
+- `tonight_experience.holdout_metric` is `4.5`;
+- `tonight_experience.positive_result` is `true`;
 - the board is rollout-backed and has at least one promotion candidate;
 - visible launch controls stay separate from the research result and only prove
   that panes can be inspected, stopped, or retried.
@@ -130,9 +119,9 @@ Truth boundary:
 - `live_codex_e2e.claim_allowed` is `false`;
 - `live_codex_e2e.evidence_source` is `not_collected_from_codex_lane_output`;
 - `claim_summary.can_claim` is limited to
-  `protected_eval_kernel_positive_precheck`;
+  `one_command_loopx_worker_loop_positive_result`;
 - `claim_summary.cannot_claim` includes
-  `visible_codex_workers_authored_result`;
+  `visible_codex_tui_authored_result`;
 - `--launch-visible` proves visible panes can start, but pane startup alone is
   not a live Codex research result.
 
