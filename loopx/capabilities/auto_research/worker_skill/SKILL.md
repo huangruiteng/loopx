@@ -214,6 +214,8 @@ contradicted, retry-needed, promotion-ready, or retirement-ready.
 
 Allowed actions:
 
+- run held-out validation only when the selected frontier action is
+  `run_holdout_eval` and the contract permits that split;
 - apply the contract's metric and promotion policy to scored or unscored
   evidence;
 - request retry with a bounded reason and resumable ref;

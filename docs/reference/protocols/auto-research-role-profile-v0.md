@@ -113,7 +113,7 @@ records still name the role that produced each transition.
 | `research_curator` | Research curator | `contract_ready`, `promotion_gate` | `research_contract_v0`, owner gate todos, protected-boundary notes. | The next step would select a winner, run an experiment, or publish unsupported evidence. |
 | `hypothesis_mapper` | Hypothesis mapper | `hypothesis_proposed`, `retired` | `research_hypothesis_v0`, successor todos, no-follow-up rationale. | Novelty requires the same source that inspired the idea, or negative evidence would be hidden. |
 | `evidence_runner` | Evidence runner | `frontier_selected`, `attempt_running` | Branch refs, dev eval evidence, retry packets. | Protected scope changes, promotion decisions, or private/raw artifacts are needed. |
-| `evidence_verifier` | Evidence verifier | `evidence_recorded`, `evaluated`, `promotion_gate` | Evaluation summary, promotion/retirement candidates, gate todos. | Evidence is dev-only but would be presented as promoted, or held-out data is missing when required. |
+| `evidence_verifier` | Evidence verifier | `evidence_recorded`, `evaluated`, `promotion_gate` | Held-out validation evidence, evaluation summary, promotion/retirement candidates, gate todos. | Evidence is dev-only but would be presented as promoted, or held-out data is missing when required. |
 
 Future roles such as gate steward, synthesis narrator, and frontier janitor are
 split candidates, not required v0 panes. They should be introduced only when
