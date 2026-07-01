@@ -73,6 +73,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST,
     DEFAULT_DOCKER_MAVEN_MIRROR_HOST,
     DEFAULT_DOCKER_MAVEN_MIRROR_URL,
+    DEFAULT_DOCKER_MAVEN_SETTINGS_PATH,
     DEFAULT_DOCKER_PIP_INDEX_HOST,
     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST,
     DECLARED_DONE_MARKER,
@@ -6016,9 +6017,11 @@ def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
         ) in staged_text, staged_text
         assert "# BEGIN LOOPX_SKILLSBENCH_MAVEN_MIRROR" in staged_text, staged_text
         assert DEFAULT_DOCKER_MAVEN_MIRROR_URL in staged_text, staged_text
-        assert "mvn --settings /etc/maven/settings.xml dependency:resolve" in (
-            staged_text
-        ), staged_text
+        assert (
+            f"mvn --settings {DEFAULT_DOCKER_MAVEN_SETTINGS_PATH} "
+            "dependency:resolve"
+        ) in staged_text, staged_text
+        assert "/etc/maven/settings.xml" not in staged_text, staged_text
         assert (
             "wget --tries=5 --timeout=120 --read-timeout=120 "
             "--retry-connrefused "
@@ -7363,7 +7366,7 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
             "RUN true\n"
             "# END LOOPX_SKILLSBENCH_APT_RETRY\n"
             f"{DOCKER_MAVEN_MIRROR_BEGIN}\n"
-            "RUN mkdir -p /etc/maven\n"
+            "RUN mkdir -p /opt/loopx-maven\n"
             f"{DOCKER_MAVEN_MIRROR_END}\n"
             "RUN wget https://mirrors.huaweicloud.com/apache/druid/0.20.0/"
             "apache-druid-0.20.0-bin.tar.gz\n",

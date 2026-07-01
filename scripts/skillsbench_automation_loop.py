@@ -496,6 +496,7 @@ DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_BASE = "https://mirrors.huaweicloud.com/apa
 DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST = "mirrors.huaweicloud.com"
 DEFAULT_DOCKER_MAVEN_MIRROR_URL = "https://repo.huaweicloud.com/repository/maven"
 DEFAULT_DOCKER_MAVEN_MIRROR_HOST = "repo.huaweicloud.com"
+DEFAULT_DOCKER_MAVEN_SETTINGS_PATH = "/opt/loopx-maven/settings.xml"
 VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
 )
@@ -6581,7 +6582,8 @@ def patch_dockerfile_maven_mirror(dockerfile: Path) -> bool:
     )
     settings_block = (
         f"{DOCKER_MAVEN_MIRROR_BEGIN}\n"
-        "RUN mkdir -p /etc/maven && cat > /etc/maven/settings.xml "
+        "RUN mkdir -p /opt/loopx-maven && cat > "
+        f"{DEFAULT_DOCKER_MAVEN_SETTINGS_PATH} "
         "<<'LOOPX_MAVEN_SETTINGS_EOF'\n"
         "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\" "
         "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
@@ -6610,7 +6612,7 @@ def patch_dockerfile_maven_mirror(dockerfile: Path) -> bool:
         text = _insert_dockerfile_block_after_first_from(text, settings_block)
     text = re.sub(
         r"\bmvn(?!\s+(?:--settings|-s)\b)",
-        "mvn --settings /etc/maven/settings.xml",
+        f"mvn --settings {DEFAULT_DOCKER_MAVEN_SETTINGS_PATH}",
         text,
     )
     if text == original:
