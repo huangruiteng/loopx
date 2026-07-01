@@ -119,7 +119,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in lane["visible_launch_command"], lane
         assert "LOOPX_ROLE_PROFILE_JSON" in lane["visible_launch_command"], lane
         assert "LOOPX_ROLE_PROFILE_PATH" in lane["visible_launch_command"], lane
-        assert "role_profile_path=%s" in lane["visible_launch_command"], lane
+        assert "role_profile_artifact=%s.public.json" in lane["visible_launch_command"], lane
+        assert "role_profile_path=%s" not in lane["visible_launch_command"], lane
         assert "LOOPX_REQUIRED_SKILL" in lane["visible_launch_command"], lane
         assert "bootstrap-or-stop" in lane["visible_launch_command"], lane
         assert lane["visible_codex_tui"] == "codex", lane
@@ -147,7 +148,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "tmux new-session" in start_script, start_script
     assert "tmux new-window" in start_script, start_script
     assert "LOOPX_PROJECT" in start_script, start_script
-    assert "[Codex bootstrap prompt]" in start_script, start_script
+    assert "[Codex bootstrap]" in start_script, start_script
+    assert "bootstrap_prompt_artifact" in start_script, start_script
+    assert "[Codex bootstrap prompt]" not in start_script, start_script
     assert "You are a visible LoopX auto-research lane" in start_script, start_script
     assert "codex-cli-bootstrap-message" not in start_script, start_script
     assert "auto-research frontier" in start_script, start_script
@@ -161,25 +164,34 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "dry-run rehearsal only" in rehearsal, rehearsal
     assert "does not start tmux" in rehearsal, rehearsal
     assert "LOOPX_PROJECT" in rehearsal, rehearsal
-    assert "start script - inspect before pasting" in rehearsal, rehearsal
-    assert "tmux new-session" in rehearsal, rehearsal
+    assert "launch posture" in rehearsal, rehearsal
+    assert "demo-e2e --execute" in rehearsal, rehearsal
+    assert "machine JSON/artifacts" in rehearsal, rehearsal
+    assert "start script - inspect before pasting" not in rehearsal, rehearsal
+    assert "tmux new-session" not in rehearsal, rehearsal
+    assert "LOOPX_ROLE_PROFILE_JSON" not in rehearsal, rehearsal
     assert "tmux attach -t loopx-auto-research" in rehearsal, rehearsal
     assert "tmux kill-session -t loopx-auto-research" in rehearsal, rehearsal
+    assert "prints the real one-command launch posture" in " ".join(
+        one_click["expected_visible_result"]
+    ), one_click
     assert "start tmux" in one_click["does_not"], one_click
     assert "launch Codex" in one_click["does_not"], one_click
 
     acceptance = payload["demo_acceptance"]
     assert acceptance["schema_version"] == "auto_research_demo_acceptance_v0", payload
+    assert "commands.start_script" not in acceptance["required_visible_fields"], acceptance
     assert "lanes[].role_profile" in acceptance["required_visible_fields"], acceptance
     assert "lanes[].lane_timeline" in acceptance["required_visible_fields"], acceptance
     assert any("role_profile_v0" in item for item in acceptance["operator_can_accept_when"]), acceptance
-    assert any("without executing it" in item for item in acceptance["operator_can_accept_when"]), acceptance
+    assert any("launch posture" in item for item in acceptance["operator_can_accept_when"]), acceptance
     assert any("role_profile_v0" in item for item in acceptance["operator_must_reject_when"]), acceptance
     assert any("hides attach/stop" in item for item in acceptance["operator_must_reject_when"]), acceptance
 
     takeover = payload["user_takeover"]
     assert takeover["schema_version"] == "auto_research_user_takeover_v0", payload
     assert any("rehearsal script first" in item for item in takeover["operator_controls"]), takeover
+    assert any("start_script is machine-bound" in item for item in takeover["operator_controls"]), takeover
     assert any("attach to tmux" in item for item in takeover["operator_controls"]), takeover
     assert any("role_profile_v0" in item for item in takeover["visible_status_cues"]), takeover
     assert any("quota guard" in item for item in takeover["visible_status_cues"]), takeover
@@ -312,6 +324,10 @@ def main() -> int:
     assert "## Demo Acceptance" in markdown, markdown
     assert "accept when:" in markdown, markdown
     assert "tmux attach -t loopx-auto-research" in markdown, markdown
+    assert "start_script: `machine_json_only`" in markdown, markdown
+    assert "loopx auto-research demo-e2e --execute" in markdown, markdown
+    assert "tmux new-session" not in markdown, markdown
+    assert "LOOPX_ROLE_PROFILE_JSON" not in markdown, markdown
 
     print("auto-research-demo-supervisor-smoke ok")
     return 0

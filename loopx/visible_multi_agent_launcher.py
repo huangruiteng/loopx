@@ -225,9 +225,10 @@ def build_visible_frontier_command(
         f"printf '\\n%s\\n' {_q(frontier_label)}; "
         f"FRONTIER_PACKET=\"$(LOOPX_MACHINE_JSON=1; export LOOPX_MACHINE_JSON; {frontier_command} 2>&1)\"; "
         "FRONTIER_STATUS=$?; "
-        'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/frontier.public.json"; '
+        'FRONTIER_ARTIFACT_NAME="frontier.public.json"; '
+        'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$FRONTIER_ARTIFACT_NAME"; '
         f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} frontier \"$FRONTIER_ARTIFACT\" || true; "
-        'printf "\\n[frontier window ready]\\nexit=%s\\nartifact=%s\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT"; '
+        'printf "\\n[frontier window ready]\\nexit=%s\\nartifact=%s\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT_NAME"; '
         "exec /bin/sh -i"
     )
 

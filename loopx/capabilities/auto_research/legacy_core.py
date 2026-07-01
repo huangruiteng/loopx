@@ -1118,10 +1118,9 @@ def _env_lane_launch_command(
     )
 
 
-def _demo_rehearsal_script(*, session: str, start_script: list[str], attach_command: str, stop_command: str) -> list[str]:
-    """Return a copy-paste dry-run script that prints the real launch plan only."""
+def _demo_rehearsal_script(*, session: str, attach_command: str, stop_command: str) -> list[str]:
+    """Return a copy-paste dry-run script that keeps machine launch shell hidden."""
 
-    quoted_start_lines = " ".join(_shell_arg(line) for line in start_script)
     return [
         "set -euo pipefail",
         "echo 'LoopX auto-research demo supervisor: dry-run rehearsal only'",
@@ -1131,8 +1130,9 @@ def _demo_rehearsal_script(*, session: str, start_script: list[str], attach_comm
         ": ${LOOPX_RUNTIME_ROOT:?set LOOPX_RUNTIME_ROOT to the LoopX runtime root before rehearsal}",
         "printf '\\n[visible session]\\n'",
         f"printf '%s\\n' {_shell_arg(session)}",
-        "printf '\\n[start script - inspect before pasting]\\n'",
-        f"printf '%s\\n' {quoted_start_lines}",
+        "printf '\\n[launch posture]\\n'",
+        "printf '%s\\n' 'Real launch uses: loopx auto-research demo-e2e --execute'",
+        "printf '%s\\n' 'Internal tmux bootstrap shell stays in machine JSON/artifacts, not the first screen.'",
         "printf '\\n[attach after start]\\n'",
         f"printf '%s\\n' {_shell_arg(attach_command)}",
         "printf '\\n[stop / user takeover abort]\\n'",
@@ -1272,7 +1272,6 @@ def build_auto_research_demo_supervisor_plan(
     stop_command = str(commands["stop"])
     rehearsal_script = _demo_rehearsal_script(
         session=session,
-        start_script=start_script,
         attach_command=attach_command,
         stop_command=stop_command,
     )
@@ -1337,7 +1336,7 @@ def build_auto_research_demo_supervisor_plan(
             "script": rehearsal_script,
             "expected_visible_result": [
                 "prints the tmux session name",
-                "prints every command that would be pasted into a visible pane",
+                "prints the real one-command launch posture without dumping internal shell",
                 "prints attach and stop commands for user takeover",
             ],
             "does_not": [
@@ -1352,7 +1351,6 @@ def build_auto_research_demo_supervisor_plan(
             "schema_version": "auto_research_demo_acceptance_v0",
             "required_visible_fields": [
                 "commands.one_click_dry_run_rehearsal",
-                "commands.start_script",
                 "commands.attach",
                 "commands.stop",
                 "lanes[].role_id",
@@ -1366,7 +1364,7 @@ def build_auto_research_demo_supervisor_plan(
                 "boundary",
             ],
             "operator_can_accept_when": [
-                "the rehearsal script prints the real start script without executing it",
+                "the rehearsal script prints launch posture without exposing internal tmux bootstrap shell",
                 "every lane prints role_profile_v0 before quota, frontier, bootstrap, or Codex startup",
                 "every lane has a quota guard before frontier/bootstrap/Codex startup",
                 "the attach command is visible before any Codex prompt is accepted",
@@ -1385,8 +1383,8 @@ def build_auto_research_demo_supervisor_plan(
         "user_takeover": {
             "schema_version": "auto_research_user_takeover_v0",
             "operator_controls": [
-                "run the rehearsal script first and inspect the printed start script",
-                "paste start_script manually only after deciding to launch the visible demo",
+                "run the rehearsal script first to confirm attach/stop controls",
+                "use demo-e2e --execute for real launch; internal start_script is machine-bound",
                 "attach to tmux before accepting any Codex prompt",
                 "use the stop command to kill the whole demo session",
                 "interrupt an individual pane with the normal terminal interrupt before any write path",
@@ -1642,13 +1640,14 @@ def build_auto_research_demo_acceptance_packet(
             ),
             "default_safe": bool(one_click.get("default_safe")),
             "rehearsal_script_visible": bool(rehearsal_script),
-            "start_script_visible": bool(start_script),
+            "start_script_visible": False,
+            "start_script_machine_bound": bool(start_script),
             "attach": attach,
             "stop": stop,
         },
         "lane_checks": lane_checks,
         "operator_checklist": [
-            "Run the dry-run rehearsal first and inspect the printed start script.",
+            "Run the dry-run rehearsal first and inspect attach/stop controls.",
             "Confirm every lane prints role_profile_v0 with agent_id, role_id, phase, allowed writes, required skill, stop conditions, and takeover controls.",
             "Confirm every lane prints quota should-run before frontier, bootstrap, or Codex.",
             "Confirm attach and stop commands are visible before accepting any Codex prompt.",
@@ -1680,7 +1679,7 @@ def build_auto_research_demo_acceptance_packet(
         },
         "upgrade_path": [
             "Keep this packet as the required preflight before any real tmux/Codex launch.",
-            "Only after user approval, paste the printed start_script in a visible shell.",
+            "Use demo-e2e --execute for real tmux/Codex launch; keep internal start_script machine-bound.",
             "Attach to the tmux session before accepting any Codex prompt.",
             "Use normal LoopX todo/evidence writeback; the supervisor never writes state directly.",
         ],
@@ -3867,8 +3866,8 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             if acceptance:
                 lines.append(f"- visible_acceptance: `{acceptance.get('accepted')}`")
         lines.extend(["", "## Shell Plan", ""])
-        for line in commands.get("start_script") or []:
-            lines.append(f"- `{line}`")
+        lines.append("- start_script: `machine_json_only`")
+        lines.append("- launch: `loopx auto-research demo-e2e --execute`")
         lines.extend(
             [
                 "",

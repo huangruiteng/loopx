@@ -281,6 +281,17 @@ def main() -> int:
                 acceptance = launch["visible_acceptance"]
                 assert acceptance["accepted"] is True, visible_payload
                 assert all(not item["blocked_before_bootstrap"] for item in acceptance["pane_checks"]), acceptance
+                frontier_capture = subprocess.run(
+                    ["tmux", "capture-pane", "-pt", f"{session_name}:frontier", "-S", "-300"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                ).stdout
+                assert "[LoopX frontier]" in frontier_capture, frontier_capture
+                assert "artifact=frontier.public.json" in frontier_capture, frontier_capture
+                assert '"schema_version"' not in frontier_capture, frontier_capture
+                assert "/" + "private/" not in frontier_capture, frontier_capture
+                assert "/" + "tmp/" not in frontier_capture, frontier_capture
                 skill_items = launch["worker_skill_materialization"]
                 assert skill_items, visible_payload
                 assert {item["source_resolution"] for item in skill_items} == {"package_root"}, skill_items
@@ -298,6 +309,9 @@ def main() -> int:
                     assert "quota_wait_timeout" not in capture, (lane, capture)
                     assert "frontier_wait_timeout" not in capture, (lane, capture)
                     assert '"schema_version"' not in capture, (lane, capture)
+                    assert "LOOPX_ROLE_PROFILE_JSON" not in capture, (lane, capture)
+                    assert "/" + "private/" not in capture, (lane, capture)
+                    assert "/" + "tmp/" not in capture, (lane, capture)
                     assert "role_profile_path=" not in capture, (lane, capture)
                     assert "[Codex bootstrap prompt]" not in capture, (lane, capture)
                     assert "codex_output=streaming_below" in capture, (lane, capture)

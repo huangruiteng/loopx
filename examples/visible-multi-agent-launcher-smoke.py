@@ -94,6 +94,9 @@ def main() -> int:
     assert "LOOPX_MACHINE_JSON=1 explicitly" in launcher_source
     assert "human_stream_contract=role_todo_progress_codex_stream" in launcher_source
     assert "machine_json_policy=file_or_explicit_machine_channel_only" in launcher_source
+    assert 'FRONTIER_ARTIFACT_NAME="frontier.public.json"' in launcher_source
+    assert 'artifact=%s\\\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT_NAME"' in launcher_source
+    assert 'artifact=%s\\\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT"' not in launcher_source
 
     dry_packet = build_visible_multi_agent_payload(
         goal_id="loopx-meta",
