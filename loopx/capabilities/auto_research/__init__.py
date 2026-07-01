@@ -5,7 +5,6 @@ from .core import (
     LIGHTWEIGHT_AUTO_RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
     LIGHTWEIGHT_AUTO_RESEARCH_RESULT_SCHEMA_VERSION,
     lightweight_hypothesis,
-    run_builtin_lightweight_demo,
     run_lightweight_auto_research,
 )
 __all__ = [
@@ -13,6 +12,5 @@ __all__ = [
     "LIGHTWEIGHT_AUTO_RESEARCH_HYPOTHESIS_SCHEMA_VERSION",
     "LIGHTWEIGHT_AUTO_RESEARCH_RESULT_SCHEMA_VERSION",
     "lightweight_hypothesis",
-    "run_builtin_lightweight_demo",
     "run_lightweight_auto_research",
 ]

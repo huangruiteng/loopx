@@ -359,7 +359,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     auto_research_profile = auto_research_profiles["auto-research-demo"]
     auto_research_commands = [check["command"] for check in auto_research_profile["checks"]]
     assert (
-        "python3 examples/auto-research-lightweight-kernel-smoke.py"
+        "python3 examples/auto-research-minimal-kernel-smoke.py"
         in auto_research_commands
     ), auto_research_profile
     assert (

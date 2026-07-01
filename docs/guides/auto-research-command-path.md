@@ -32,14 +32,14 @@ export PATH="$HOME/.local/bin:$PATH"
 loopx doctor
 ```
 
-## 0. Prove The Multi-Round Positive Path
+## 0. Prove The Worker-Loop Positive Path
 
-The fastest positive check is a lightweight multi-round research kernel. It
-tries the baseline and candidate hypotheses on dev, selects the improved
-candidate, validates it on holdout, appends public rollout evidence, and reports
-the measured gain. It is intentionally small and still does not claim that
-visible Codex lanes authored the research result unless a compact live evidence
-packet is supplied.
+The fastest honest positive check is the worker-loop E2E path. It seeds a fresh
+demo-local LoopX goal, lets role-compatible workers read quota/frontier state,
+complete todo-backed turns, append public rollout evidence, and report the
+measured gain. It is intentionally small and still does not claim that visible
+Codex lanes authored the research result unless a compact live evidence packet
+is supplied.
 
 To run the multi-round path and open visible panes through the normal auto-research
 surface:

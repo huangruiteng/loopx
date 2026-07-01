@@ -841,7 +841,6 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "trigger_hints": (
             "auto-research",
             "auto research",
-            "lite-e2e",
             "demo-supervisor",
             "demo e2e",
             "frontier",
@@ -851,9 +850,9 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/auto-research-lightweight-kernel-smoke.py",
+                "command": "python3 examples/auto-research-minimal-kernel-smoke.py",
                 "tier": "default",
-                "reason": "checks the minimal real kernel and one-command lite-e2e path",
+                "reason": "checks the minimal evaluator-agnostic kernel and rejects public shortcut replay paths",
             },
             {
                 "command": "python3 examples/decentralized-auto-research-frontier-smoke.py",

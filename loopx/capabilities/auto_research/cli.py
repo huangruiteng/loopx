@@ -7,7 +7,6 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .kernel import run_builtin_lightweight_demo
 from .legacy_core import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
@@ -619,17 +618,6 @@ def register_auto_research_commands(
         help="Create --workspace when it does not already exist.",
     )
 
-    lite_e2e_parser = auto_research_sub.add_parser(
-        "lite-e2e",
-        help="Run the lightweight two-round auto-research kernel demo.",
-    )
-    add_subcommand_format(lite_e2e_parser)
-    lite_e2e_parser.add_argument(
-        "--goal-id",
-        default="loopx-auto-research-lite",
-        help="Public-safe goal id for the lightweight demo result.",
-    )
-
 
 def _execute_auto_research_demo_supervisor(
     payload: dict[str, object],
@@ -966,13 +954,11 @@ def handle_auto_research_command(
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,
             )
-        elif args.auto_research_command == "lite-e2e":
-            payload = run_builtin_lightweight_demo(goal_id=args.goal_id)
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
                 "`board`, `acceptance`, `append-evidence`, `capture-live-evidence`, "
-                "`worker-turn`, `worker-loop`, `demo-supervisor`, `demo-e2e`, or `lite-e2e` subcommand"
+                "`worker-turn`, `worker-loop`, `demo-supervisor`, or `demo-e2e` subcommand"
             )
     except Exception as exc:
         payload = {
