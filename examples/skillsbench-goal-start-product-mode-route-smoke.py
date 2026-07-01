@@ -338,6 +338,14 @@ def _assert_app_server_goal_baseline_bridge_contract() -> None:
     assert "relative task output file names from `/root`" in prompt, prompt
     assert "`/root/<name>`" in prompt, prompt
     assert "`/app/<name>` working copy alone is not a scored output" in prompt, prompt
+    assert "Before writing the final scored output" in prompt, prompt
+    assert "task-derived quality self-check" in prompt, prompt
+    assert "visible task instructions and workspace data" in prompt, prompt
+    assert "official verifier/reward/pass-fail output" in prompt, prompt
+    assert "hidden tests" in prompt, prompt
+    assert prompt.index("Before writing the final scored output") < prompt.index(
+        "After the task-required scored output file"
+    ), prompt
 
 
 def _assert_verifier_feedback_routes_disabled() -> None:
