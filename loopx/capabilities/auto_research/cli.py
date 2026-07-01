@@ -6,7 +6,8 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
-from . import (
+from .kernel import run_builtin_lightweight_demo
+from .legacy_core import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,
@@ -22,15 +23,14 @@ from . import (
     load_auto_research_evidence_packet_inputs,
     load_auto_research_fixture,
     render_auto_research_markdown,
-    run_builtin_lightweight_demo,
-    run_auto_research_worker_loop,
-    run_auto_research_worker_turn,
 )
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
     capture_live_codex_e2e_evidence,
 )
+from .worker_loop import run_auto_research_worker_loop
+from .worker_runtime import run_auto_research_worker_turn
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run

@@ -9,7 +9,8 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
-from .core import (
+from .kernel import run_builtin_lightweight_demo
+from .legacy_core import (
     AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION,
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
@@ -23,7 +24,6 @@ from .core import (
     build_research_evidence_graph_from_rollout_events,
     load_auto_research_evidence_packet_inputs,
 )
-from .kernel import run_builtin_lightweight_demo
 from .live_evidence import (
     build_live_codex_claim_from_evidence,
     load_live_codex_e2e_evidence,

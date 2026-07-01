@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .core import (
+from .legacy_core import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION,

@@ -8,7 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .core import (
+from .legacy_core import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,

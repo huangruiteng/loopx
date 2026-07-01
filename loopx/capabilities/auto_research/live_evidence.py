@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .core import (
+from .legacy_core import (
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
     load_auto_research_evidence_packet,
     validate_auto_research_evidence_packet,
