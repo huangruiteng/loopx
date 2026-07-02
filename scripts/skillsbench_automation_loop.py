@@ -1323,10 +1323,12 @@ def _effective_local_codex_task_output_quiet_timeout_sec(
 
 
 def _codex_api_egress_preflight_required(args: argparse.Namespace) -> bool:
-    return (
-        getattr(args, "route", "") == "codex-app-server-goal-baseline"
-        and bool(getattr(args, "host_local_acp_launch", False))
-    )
+    if not bool(getattr(args, "host_local_acp_launch", False)):
+        return False
+    requested = _codex_api_egress_requested_mode(args)
+    if requested in {"reverse-tunnel", "direct"}:
+        return True
+    return getattr(args, "route", "") == "codex-app-server-goal-baseline"
 
 
 def _codex_api_egress_requested_mode(args: argparse.Namespace | None) -> str:
@@ -1339,13 +1341,15 @@ def _codex_api_egress_requested_mode(args: argparse.Namespace | None) -> str:
 
 
 def _codex_api_egress_resolved_mode(args: argparse.Namespace | None) -> str:
-    if args is None or not _codex_api_egress_preflight_required(args):
+    if args is None or not bool(getattr(args, "host_local_acp_launch", False)):
         return "not_required"
     requested = _codex_api_egress_requested_mode(args)
     if requested == "auto":
         # Formal remote app-server benchmark runs must use the reverse tunnel
         # path by default; direct egress is only for explicit local debugging.
-        return "reverse-tunnel"
+        if getattr(args, "route", "") == "codex-app-server-goal-baseline":
+            return "reverse-tunnel"
+        return "not_required"
     return requested
 
 
@@ -1952,7 +1956,11 @@ def _host_local_acp_target_env(
             continue
         target_env[key] = str(value)
     proxy_url, _proxy_source = _codex_api_reverse_tunnel_proxy(args)
-    if proxy_url and args is not None and _codex_api_egress_preflight_required(args):
+    if (
+        proxy_url
+        and args is not None
+        and _codex_api_egress_resolved_mode(args) == "reverse-tunnel"
+    ):
         for key in CODEX_API_PROXY_FORWARD_ENV_KEYS:
             target_env[key] = proxy_url
         target_env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
@@ -14772,11 +14780,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=CODEX_API_EGRESS_MODE_CHOICES,
         default=os.environ.get("LOOPX_CODEX_API_EGRESS_MODE", "auto"),
         help=(
-            "How native app-server goal workers reach the Codex backend. "
-            "For formal host-local app-server benchmark runs, auto resolves "
-            "to reverse-tunnel so the runner fails fast unless a checked HTTP "
-            "CONNECT reverse tunnel proxy is configured. direct is intended "
-            "only for explicit local debugging."
+            "How host-local Codex workers reach the Codex backend. For formal "
+            "host-local app-server benchmark runs, auto resolves to "
+            "reverse-tunnel so the runner fails fast unless a checked HTTP "
+            "CONNECT reverse tunnel proxy is configured. For other host-local "
+            "routes, explicit reverse-tunnel/direct requests are honored; "
+            "direct is intended only for explicit local debugging."
         ),
     )
     parser.add_argument(
