@@ -2720,6 +2720,7 @@ def run_skillsbench_local_acp_relay_probe(
     prompt_text: str | None = None,
     required_response_marker: str | None = None,
     model_id: str | None = "probe-model",
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     argv = (
         _command_to_argv(command)
@@ -2736,6 +2737,7 @@ def run_skillsbench_local_acp_relay_probe(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=({**os.environ, **env} if env else None),
         )
         stage = "initialize"
         initialize = _probe_request(

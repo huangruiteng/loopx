@@ -2073,6 +2073,9 @@ def _host_local_acp_codex_exec_preflight_command(
     )
     if args.model:
         command.extend(["--model", args.model])
+    cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
+    if cli_reasoning_effort and args.route != "codex-app-server-goal-baseline":
+        command.extend(["--reasoning-effort", cli_reasoning_effort])
     relay_trace_dir = str(plan.get("host_local_acp_relay_trace_dir") or "")
     if relay_trace_dir:
         command.extend(
@@ -2297,7 +2300,15 @@ def _run_host_local_acp_codex_exec_preflight(
         int(getattr(args, "host_local_acp_codex_exec_preflight_attempts", 1) or 1),
     )
     command = _host_local_acp_codex_exec_preflight_command(args, plan)
-    proxy_probe = _host_local_proxy_endpoint_probe()
+    target_env = _host_local_acp_target_env({}, args=args)
+    prerequisites["host_local_acp_target_env_forwarded"] = bool(target_env)
+    prerequisites["host_local_acp_target_env_key_count"] = len(target_env)
+    prerequisites["host_local_acp_target_env_keys"] = sorted(target_env)
+    if target_env:
+        prerequisites["benchmark_egress_proxy_agent_env_injected"] = bool(
+            any(key.startswith("LOOPX_SKILLSBENCH") for key in target_env)
+        )
+    proxy_probe = _host_local_proxy_endpoint_probe(env=target_env or None)
     prerequisites["host_local_acp_proxy_endpoint_status"] = proxy_probe["status"]
     prerequisites["host_local_acp_proxy_endpoint_checked"] = (
         proxy_probe.get("checked") is True
@@ -2359,6 +2370,7 @@ def _run_host_local_acp_codex_exec_preflight(
                 else SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER
             ),
             model_id=str(getattr(args, "model", "") or "") or None,
+            env=target_env or None,
         )
         ready = probe.get("ready") is True
         prerequisites["host_local_acp_codex_exec_preflight_ready"] = ready

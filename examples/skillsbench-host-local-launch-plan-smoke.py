@@ -613,6 +613,7 @@ if out:
                 local_codex_bin="/unused/when-explicit-client-is-configured",
                 local_codex_sandbox="workspace-write",
                 model="gpt-5.5",
+                reasoning_effort="xhigh",
                 route="loopx-product-mode",
                 task_id="demo-task",
             ),
@@ -628,6 +629,13 @@ if out:
                 explicit_preflight_command.index("--codex-bin") + 1
             ]
             == "/unused/when-explicit-client-is-configured"
+        )
+        assert "--reasoning-effort" in explicit_preflight_command
+        assert (
+            explicit_preflight_command[
+                explicit_preflight_command.index("--reasoning-effort") + 1
+            ]
+            == "xhigh"
         )
         bridge_preflight_command = _host_local_acp_codex_exec_preflight_command(
             SimpleNamespace(
@@ -646,6 +654,7 @@ if out:
                 remote_command_file_bridge_probe_timeout_sec=5.0,
                 remote_command_file_bridge_ready=True,
                 remote_command_file_bridge_solver_command="/tmp/remote-solver-bridge",
+                reasoning_effort="xhigh",
                 route="loopx-product-mode",
                 task_id="demo-task",
             ),
@@ -2170,6 +2179,95 @@ output.write_text({SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER!r}, encod
             "remote_command_file_bridge_agent_task_facing_operation_count"
             not in bridge_preflight_prereqs
         ), bridge_preflight_prereqs
+        captured_preflight: dict[str, object] = {}
+        original_relay_probe = _run_host_local_acp_codex_exec_preflight.__globals__[
+            "run_skillsbench_local_acp_relay_probe"
+        ]
+
+        def fake_relay_probe(command, **kwargs):
+            captured_preflight["command"] = list(command)
+            captured_preflight["env"] = dict(kwargs.get("env") or {})
+            return {
+                "ready": True,
+                "stage": "complete",
+                "first_blocker": "skillsbench_local_acp_relay_ready",
+                "response_marker_observed": True,
+            }
+
+        _run_host_local_acp_codex_exec_preflight.__globals__[
+            "run_skillsbench_local_acp_relay_probe"
+        ] = fake_relay_probe
+        try:
+            env_preflight_plan = {
+                "host_local_acp_relay_trace_dir": str(
+                    Path(tmp) / "env-preflight-traces"
+                ),
+                "runner_prerequisites": {},
+            }
+            env_preflight_args = SimpleNamespace(
+                codex_api_egress_mode="reverse-tunnel",
+                codex_api_reverse_tunnel_proxy=(
+                    "http://reverse-proxy.example.invalid:18080"
+                ),
+                dataset="skillsbench-v1.1",
+                host_local_acp_codex_exec_preflight_attempts=1,
+                host_local_acp_codex_exec_preflight_timeout_sec=20,
+                host_local_acp_launch=True,
+                local_acp_relay_command=None,
+                local_codex_bin=str(bridge_preflight_codex),
+                local_codex_first_action_timeout_sec=0,
+                local_codex_sandbox="workspace-write",
+                model="gpt-5.5",
+                remote_command_file_bridge_agent_command="",
+                remote_command_file_bridge_probe=False,
+                remote_command_file_bridge_probe_timeout_sec=5.0,
+                remote_command_file_bridge_ready=False,
+                remote_command_file_bridge_solver_command="",
+                reasoning_effort="xhigh",
+                route="codex-acp-blind-loop-baseline",
+                task_id="demo-task",
+            )
+            _run_host_local_acp_codex_exec_preflight(
+                env_preflight_args,
+                env_preflight_plan,
+            )
+        finally:
+            _run_host_local_acp_codex_exec_preflight.__globals__[
+                "run_skillsbench_local_acp_relay_probe"
+            ] = original_relay_probe
+        env_preflight_prereqs = env_preflight_plan["runner_prerequisites"]
+        assert (
+            env_preflight_prereqs["host_local_acp_codex_exec_preflight_status"]
+            == "passed"
+        ), env_preflight_prereqs
+        assert (
+            env_preflight_prereqs["host_local_acp_target_env_forwarded"] is True
+        ), env_preflight_prereqs
+        assert "HTTPS_PROXY" in env_preflight_prereqs["host_local_acp_target_env_keys"]
+        assert (
+            "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY"
+            in env_preflight_prereqs["host_local_acp_target_env_keys"]
+        )
+        assert (
+            env_preflight_prereqs["host_local_acp_proxy_endpoint_status"]
+            == "non_loopback_proxy"
+        ), env_preflight_prereqs
+        assert (
+            env_preflight_prereqs["host_local_acp_proxy_endpoint_raw_url_recorded"]
+            is False
+        ), env_preflight_prereqs
+        captured_env = captured_preflight["env"]
+        assert isinstance(captured_env, dict)
+        assert (
+            captured_env["HTTPS_PROXY"]
+            == "http://reverse-proxy.example.invalid:18080"
+        )
+        captured_command = captured_preflight["command"]
+        assert isinstance(captured_command, list)
+        assert "--reasoning-effort" in captured_command
+        assert captured_command[captured_command.index("--reasoning-effort") + 1] == (
+            "xhigh"
+        )
         preflight_plan = {
             "host_local_acp_relay_trace_dir": str(Path(tmp) / "preflight-traces"),
             "runner_prerequisites": {},
@@ -2187,6 +2285,7 @@ output.write_text({SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER!r}, encod
             remote_command_file_bridge_probe=False,
             remote_command_file_bridge_ready=False,
             remote_command_file_bridge_solver_command=None,
+            reasoning_effort="xhigh",
             route="loopx-product-mode",
             task_id="demo-task",
         )
