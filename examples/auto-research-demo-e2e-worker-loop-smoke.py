@@ -45,7 +45,10 @@ def main() -> int:
     )
     assert "raw JSON is not printed in visible panes" in launcher_source
     assert "Use $LOOPX_PANE_LOOPX for human-readable output" in launcher_source
-    assert "$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json" in launcher_source
+    assert "$LOOPX_PANE_LOOPX_JSON <command>" in launcher_source
+    assert "$LOOPX_PANE_ARTIFACT_DIR/<name>.public.json" in launcher_source
+    assert "It injects --format json unless you pass an explicit --format." in launcher_source
+    assert "$LOOPX_PANE_LOOPX_JSON is a command path, not an output file." in launcher_source
     assert "LOOPX_PANE_WORKER_TURN" in launcher_source
     assert "loopx-pane-a2a-tick" in launcher_source
     assert "role_prompt_inside_codex_tui" in launcher_source

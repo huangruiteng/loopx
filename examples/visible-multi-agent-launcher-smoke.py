@@ -89,13 +89,17 @@ def main() -> int:
     assert "demo_local_wrapper" not in launcher_source
     assert "scoped_loopx_wrapper" in launcher_source
     assert "LOOPX_PANE_LOOPX_JSON" in launcher_source
+    assert "LOOPX_PANE_ARTIFACT_DIR" in launcher_source
     assert "LOOPX_PANE_A2A_TICK" in launcher_source
     assert "loopx-pane-a2a-tick" in launcher_source
     assert "LOOPX_PANE_WORKER_TURN" in launcher_source
     assert "LOOPX_PANE_TICK_ROUNDS" in launcher_source
     assert "First action: immediately run `$LOOPX_PANE_A2A_TICK`" in launcher_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
-    assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in launcher_source
+    assert "machine_json_command=$LOOPX_PANE_LOOPX_JSON artifact_dir=$LOOPX_PANE_ARTIFACT_DIR" in launcher_source
+    assert "$LOOPX_PANE_LOOPX_JSON is a command path, not an output file." in launcher_source
+    assert "It injects --format json unless you pass an explicit --format." in launcher_source
+    assert "Never write output to `$LOOPX_PANE_LOOPX_JSON`" in launcher_source
     assert "LoopX machine JSON hidden" in launcher_source
     assert "LOOPX_ALLOW_TTY_JSON" in launcher_source
     assert "stat.S_ISREG" in launcher_source
@@ -153,6 +157,10 @@ def main() -> int:
         "LOOPX_PANE_TICK_ROUNDS"
     )
     assert "LOOPX_PANE_WORKER_TURN" in runner_contract["lane_runtime_env"]["pane_tools"]
+    assert "LOOPX_PANE_ARTIFACT_DIR" in runner_contract["lane_runtime_env"]["pane_tools"]
+    assert runner_contract["pane_local_a2a"]["machine_json_destination"] == (
+        "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
+    )
     assert runner_contract["role_prompt_and_skill"]["worker_local_skill_only"] is True
     assert runner_contract["debug_artifacts"]["machine_json"] == (
         "redirected_public_artifacts_only"
@@ -205,6 +213,8 @@ def main() -> int:
     assert "auto_start_pane_local_a2a_tick" in generic_lane["lane_timeline"], generic_lane
     assert "LOOPX_PANE_A2A_TICK" in generic_lane["visible_launch_command"], generic_lane
     assert "LOOPX_PANE_WORKER_TURN" in generic_lane["visible_launch_command"], generic_lane
+    assert "LOOPX_PANE_ARTIFACT_DIR" in generic_lane["visible_launch_command"], generic_lane
+    assert "$LOOPX_PANE_ARTIFACT_DIR/quota.public.json" in generic_lane["quota_guard"], generic_lane
     assert "LOOPX_PANE_TICK_ROUNDS=2" in generic_lane["visible_launch_command"], generic_lane
     assert "LOOPX_PANE_TICK_SLEEP_SECONDS=1" in generic_lane["visible_launch_command"], generic_lane
 
@@ -293,6 +303,7 @@ def main() -> int:
                     "LOOPX_REAL_CLI": str(fake_bin / "loopx"),
                     "LOOPX_REGISTRY": str(registry),
                     "LOOPX_RUNTIME_ROOT": str(runtime_root),
+                    "LOOPX_PANE_ARTIFACT_DIR": str(workspace / ".local" / "pane-artifacts" / "reviewer"),
                 }
             )
             workspace.mkdir(parents=True, exist_ok=True)
@@ -316,7 +327,7 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
-            machine_artifact = workspace / ".local" / "reviewer" / "status.public.json"
+            machine_artifact = workspace / ".local" / "pane-artifacts" / "reviewer" / "status.public.json"
             machine_artifact.parent.mkdir(parents=True, exist_ok=True)
             with machine_artifact.open("w", encoding="utf-8") as handle:
                 subprocess.run(
@@ -327,8 +338,20 @@ def main() -> int:
                     check=True,
                     text=True,
                 )
+            implicit_machine_artifact = (
+                workspace / ".local" / "pane-artifacts" / "reviewer" / "implicit-status.public.json"
+            )
+            with implicit_machine_artifact.open("w", encoding="utf-8") as handle:
+                subprocess.run(
+                    [str(workspace / ".local/bin/loopx-json"), "status"],
+                    env=scoped_env,
+                    stdout=handle,
+                    stderr=subprocess.STDOUT,
+                    check=True,
+                    text=True,
+                )
             explicit_machine = subprocess.run(
-                [str(workspace / ".local/bin/loopx-json"), "--format", "json", "status"],
+                [str(workspace / ".local/bin/loopx-json"), "status"],
                 env={**scoped_env, "LOOPX_MACHINE_JSON": "1"},
                 check=True,
                 capture_output=True,
@@ -354,12 +377,19 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
-            assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in human.stdout, human.stdout
+            assert "machine_json_command=$LOOPX_PANE_LOOPX_JSON artifact_dir=$LOOPX_PANE_ARTIFACT_DIR" in human.stdout, human.stdout
             assert "--format markdown status" in human.stdout, human.stdout
             assert visible_pipe.returncode == 2, visible_pipe.stdout
             assert "LoopX machine JSON hidden" in visible_pipe.stdout, visible_pipe.stdout
+            assert "LOOPX_PANE_ARTIFACT_DIR" in visible_pipe.stdout, visible_pipe.stdout
+            assert "command path, not an output file" in visible_pipe.stdout, visible_pipe.stdout
+            assert "injects --format json" in visible_pipe.stdout, visible_pipe.stdout
             assert "fake-loopx" not in visible_pipe.stdout, visible_pipe.stdout
             assert "--format json status" in machine_artifact.read_text(encoding="utf-8")
+            assert "--format json status" in implicit_machine_artifact.read_text(encoding="utf-8")
+            assert (workspace / ".local/bin/loopx-json").read_text(encoding="utf-8").startswith(
+                "#!/usr/bin/env python3"
+            )
             assert "--format json status" in explicit_machine.stdout, explicit_machine.stdout
             assert tty_status == 2, tty_output
             assert "LoopX machine JSON hidden" in tty_output, tty_output

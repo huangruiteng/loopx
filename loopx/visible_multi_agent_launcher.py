@@ -41,10 +41,17 @@ json_target.write_text(
     "if not explicit and not stdout_is_file:\n"
     "    print('\\n[LoopX machine JSON hidden]\\nraw JSON is not printed in visible panes.\\n')\n"
     "    print('Use $LOOPX_PANE_LOOPX for human-readable output, or redirect machine JSON:')\n"
-    "    print('  $LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json')\n"
+    "    print('  mkdir -p \"$LOOPX_PANE_ARTIFACT_DIR\"')\n"
+    "    print('  $LOOPX_PANE_LOOPX_JSON <command> > \"$LOOPX_PANE_ARTIFACT_DIR/<name>.public.json\"')\n"
+    "    print('$LOOPX_PANE_LOOPX_JSON is a command path, not an output file.')\n"
+    "    print('It injects --format json unless you pass an explicit --format.')\n"
     "    print('Internal launcher pipes must set LOOPX_MACHINE_JSON=1 explicitly.')\n"
     "    raise SystemExit(2)\n"
-    "os.execv(real, [real, '--registry', registry, '--runtime-root', runtime] + sys.argv[1:])\n",
+    "args = sys.argv[1:]\n"
+    "has_format = any(arg == '--format' or arg.startswith('--format=') for arg in args)\n"
+    "if not has_format:\n"
+    "    args = ['--format', 'json'] + args\n"
+    "os.execv(real, [real, '--registry', registry, '--runtime-root', runtime] + args)\n",
     encoding="utf-8",
 )
 json_target.chmod(0o700)
@@ -81,7 +88,7 @@ human_target.write_text(
     "        index += 1\n"
     "    args = rewritten\n"
     "if changed:\n"
-    "    print('\\n[LoopX human view]\\nformat=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON\\n', flush=True)\n"
+    "    print('\\n[LoopX human view]\\nformat=markdown; machine_json_command=$LOOPX_PANE_LOOPX_JSON artifact_dir=$LOOPX_PANE_ARTIFACT_DIR\\n', flush=True)\n"
     "os.execv(real, [real, '--registry', registry, '--runtime-root', runtime] + args)\n",
     encoding="utf-8",
 )
@@ -349,6 +356,7 @@ def build_tui_multi_agent_runner_contract(
             "pane_tools": [
                 "LOOPX_PANE_LOOPX",
                 "LOOPX_PANE_LOOPX_JSON",
+                "LOOPX_PANE_ARTIFACT_DIR",
                 "LOOPX_PANE_A2A_TICK",
                 "LOOPX_PANE_WORKER_TURN",
                 "LOOPX_PANE_WORKER_LOOP",
@@ -371,6 +379,7 @@ def build_tui_multi_agent_runner_contract(
             "runs": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
             "bounded_rounds_env": "LOOPX_PANE_TICK_ROUNDS",
             "machine_json_policy": "file_or_explicit_machine_channel_only",
+            "machine_json_destination": "$LOOPX_PANE_ARTIFACT_DIR/*.public.json",
             "human_default": "markdown_status_inside_codex_tui",
         },
         "user_takeover": {
@@ -445,6 +454,8 @@ def build_visible_lane_command(
         "export LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1; "
         f"export LOOPX_ROLE_ID={_q(role_id)}; "
         f"export LOOPX_ROLE_PROFILE_REF={_q(role_profile_ref)}; "
+        'export LOOPX_PANE_ARTIFACT_DIR="${LOOPX_PANE_ARTIFACT_DIR:-$LOOPX_VISIBLE_ARTIFACT_DIR/${LOOPX_ROLE_ID:-lane}}"; '
+        'mkdir -p "$LOOPX_PANE_ARTIFACT_DIR"; '
         'cd "$LOOPX_PROJECT"; '
         f"{scoped_loopx_wrapper}"
         f"{pane_a2a_env}"
@@ -662,7 +673,8 @@ def _generic_role_prompt(
             "- First action: immediately run `$LOOPX_PANE_A2A_TICK` in this Codex TUI. Do not ask the user to start it.",
             "- The tick reads your quota/frontier and then runs this role's worker-turn when configured.",
             "- When the tick completes, summarize what changed, what remains blocked, and stay interactive for user takeover.",
-            "- Keep machine JSON redirected through $LOOPX_PANE_LOOPX_JSON into .local artifacts.",
+            "- For machine reads, run `$LOOPX_PANE_LOOPX_JSON` as the command and redirect output into `$LOOPX_PANE_ARTIFACT_DIR/<name>.public.json`; it defaults to `--format json`.",
+            "- Never write output to `$LOOPX_PANE_LOOPX_JSON`; it is the executable wrapper, not an artifact path.",
             "- Write compact public-safe evidence before completing or handing off a todo.",
             "- The user may type into this pane; respond like a normal Codex CLI agent.",
         ]
@@ -767,9 +779,10 @@ def build_visible_multi_agent_payload_from_spec(
             "role_profile": role_profile,
             "role_profile_ref": role_profile_ref,
             "quota_guard": (
+                "mkdir -p \"$LOOPX_PANE_ARTIFACT_DIR\" && "
                 "$LOOPX_PANE_LOOPX_JSON quota should-run "
                 f"--goal-id {_q(goal_id)} --agent-id {_q(agent_id)} "
-                f"> .local/{lane_slug}/quota.public.json"
+                "> \"$LOOPX_PANE_ARTIFACT_DIR/quota.public.json\""
             ),
             "frontier": "agent-scoped LoopX todo/quota/frontier projection",
             "pane_local_a2a": {

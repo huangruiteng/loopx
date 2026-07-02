@@ -200,6 +200,9 @@ def main() -> int:
         assert dry_packet["runner_contract"]["runner_surface"] == "tmux_codex_cli_tui", dry_packet
         assert dry_packet["runner_contract"]["coordination_model"]["leader_required"] is False, dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", dry_packet
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["machine_json_destination"] == (
+            "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
+        ), dry_packet
         assert dry_packet["runner_contract"]["boundaries"]["domain_specific_research_logic"] is False, dry_packet
         assert dry_packet["interactive_tui_contract"]["schema_version"] == "multi_agent_visible_interactive_tui_contract_v0", dry_packet
         assert dry_packet["interactive_tui_contract"]["runner_contract"] == RUNNER_CONTRACT_SCHEMA_VERSION, dry_packet
@@ -273,6 +276,7 @@ def main() -> int:
         assert all("LOOPX_CODEX_BIN=codex" in command for command in start_payloads), start_payloads
         assert all("LOOPX_CODEX_REASONING_EFFORT=high" in command for command in start_payloads), start_payloads
         assert all("exec python3 -c" in command for command in start_payloads), start_payloads
+        assert all("LOOPX_PANE_ARTIFACT_DIR" in command for command in start_payloads), start_payloads
         assert all("codex exec" not in command for command in start_payloads), start_payloads
         launcher_source = (ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
             encoding="utf-8"
