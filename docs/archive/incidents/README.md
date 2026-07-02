@@ -10,3 +10,4 @@ Current records:
 - [Agent-scoped user gate overreach incident, 2026-06-24](agent-scoped-user-gate-overreach-incident-20260624.md)
 - [Default workflow planner gap incident, 2026-06-25](default-workflow-planner-gap-incident-20260625.md)
 - [Standing authorization reprompt incident, 2026-06-28](standing-authorization-reprompt-incident-20260628.md)
+- [Agent-scoped replan precedence incident, 2026-07-03](agent-scoped-replan-precedence-incident-20260703.md)
