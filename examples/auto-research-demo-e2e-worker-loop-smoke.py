@@ -299,13 +299,15 @@ def main() -> int:
                 assert launch["attach_requested"] is False, visible_payload
                 assert launch["workspace_mode"] == "explicit_workspace", visible_payload
                 assert launch["codex_trust_workspace"] is True, visible_payload
-                assert launch["codex_trust_scope"] == "per_invocation_selected_workspace", visible_payload
+                assert (
+                    launch["codex_trust_scope"] == "persisted_selected_workspace_and_git_root"
+                ), visible_payload
                 workspace_route = visible_payload["visible_control_plane"]["workspace_route"]
                 assert workspace_route["side_lane_worktree_count"] == 0, workspace_route
                 assert workspace_route["primary_workspace"] == "visible_codex_tui_workspace", workspace_route
                 assert (
                     workspace_route["trust_prompt_avoidance"]
-                    == "demo_owned_clean_workspace_with_per_invocation_codex_trust_config"
+                    == "demo_owned_clean_workspace_with_persisted_codex_trust_config"
                 ), workspace_route
                 assert workspace_route["default_visible_workspace"] == "demo_owned_clean_workspace", workspace_route
                 acceptance = launch["visible_acceptance"]
