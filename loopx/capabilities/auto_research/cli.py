@@ -476,6 +476,15 @@ def register_auto_research_commands(
         action="store_true",
         help="Create --workspace when it does not already exist.",
     )
+    demo_supervisor_parser.add_argument(
+        "--codex-trust-workspace",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Pass a per-invocation Codex trust config for the selected visible workspace. "
+            "Default is off for generic supervisor launches."
+        ),
+    )
 
     demo_e2e_parser = auto_research_sub.add_parser(
         "demo-e2e",
@@ -610,12 +619,24 @@ def register_auto_research_commands(
     )
     demo_e2e_parser.add_argument(
         "--workspace",
-        help="Directory where visible Codex lanes should start when --launch-visible is set.",
+        help=(
+            "Directory where visible Codex lanes should start when --launch-visible is set. "
+            "Omit to use a demo-owned clean workspace."
+        ),
     )
     demo_e2e_parser.add_argument(
         "--create-workspace",
         action="store_true",
         help="Create --workspace when it does not already exist.",
+    )
+    demo_e2e_parser.add_argument(
+        "--codex-trust-workspace",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Pass a per-invocation Codex trust config for the visible workspace. "
+            "Defaults on only for the demo-owned clean workspace."
+        ),
     )
 
 
@@ -632,6 +653,7 @@ def _execute_auto_research_demo_supervisor(
     replace_existing: bool,
     workspace: str | None,
     create_workspace: bool,
+    codex_trust_workspace: bool,
 ) -> dict[str, object]:
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_arg)
@@ -648,6 +670,7 @@ def _execute_auto_research_demo_supervisor(
         workspace=workspace,
         create_workspace=create_workspace,
         cwd=Path.cwd(),
+        codex_trust_workspace=codex_trust_workspace,
         launch_result_schema="auto_research_demo_launch_result_v0",
         acceptance_schema="auto_research_visible_launch_acceptance_v0",
         lane_default="research-lane",
@@ -666,7 +689,13 @@ def _execute_auto_research_demo_supervisor(
                 "spends_loopx_quota": False,
                 "external_service_call": False,
                 "workspace_mode": workspace_mode,
-                "workspace_write_scope": "user_selected_workspace_only",
+                "workspace_write_scope": "selected_visible_workspace_only",
+                "codex_trust_workspace": codex_trust_workspace,
+                "codex_trust_scope": (
+                    "per_invocation_selected_workspace"
+                    if codex_trust_workspace
+                    else "native_codex_trust_prompt"
+                ),
                 "shared_state_route": "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
                 "shared_goal_surface": True,
                 "all_lane_workspace_isolation": False,
@@ -875,6 +904,7 @@ def handle_auto_research_command(
                     replace_existing=args.replace_existing,
                     workspace=args.workspace,
                     create_workspace=args.create_workspace,
+                    codex_trust_workspace=args.codex_trust_workspace,
                 )
         elif args.auto_research_command == "demo-e2e":
             if args.headless and args.launch_visible:
@@ -906,6 +936,18 @@ def handle_auto_research_command(
                     visible_runtime_root_arg: str | None,
                     _default_workspace: Path,
                 ) -> dict[str, object]:
+                    demo_owned_workspace = args.workspace is None
+                    visible_workspace = (
+                        str(_default_workspace / "visible-user-workspace")
+                        if demo_owned_workspace
+                        else args.workspace
+                    )
+                    create_visible_workspace = True if demo_owned_workspace else args.create_workspace
+                    codex_trust_workspace = (
+                        demo_owned_workspace
+                        if args.codex_trust_workspace is None
+                        else bool(args.codex_trust_workspace)
+                    )
                     return _execute_auto_research_demo_supervisor(
                         supervisor,
                         registry_path=visible_registry_path,
@@ -916,8 +958,9 @@ def handle_auto_research_command(
                         codex_bin=args.codex_bin,
                         attach=attach_visible,
                         replace_existing=args.replace_existing,
-                        workspace=args.workspace,
-                        create_workspace=args.create_workspace,
+                        workspace=visible_workspace,
+                        create_workspace=create_visible_workspace,
+                        codex_trust_workspace=codex_trust_workspace,
                     )
 
             run_hidden_worker_loop = bool(args.execute and (args.headless or args.run_worker_loop))

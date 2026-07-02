@@ -94,6 +94,8 @@ def main() -> int:
     assert "LOOPX_MACHINE_JSON=1 explicitly" in launcher_source
     assert "multi_agent_visible_interactive_tui_contract_v0" in launcher_source
     assert "LOOPX_CODEX_TUI_MODE=interactive" in launcher_source
+    assert "LOOPX_CODEX_TRUST_WORKSPACE" in launcher_source
+    assert "trust_level=" in launcher_source and "trusted" in launcher_source
     assert "pre_codex_character_stream" in launcher_source
     assert "build_visible_frontier_command" not in launcher_source
     assert 'FRONTIER_ARTIFACT_NAME="frontier.public.json"' not in launcher_source
@@ -311,6 +313,7 @@ def main() -> int:
                 workspace=str(workspace),
                 create_workspace=True,
                 cwd=temp,
+                codex_trust_workspace=True,
             )
         finally:
             os.environ["PATH"] = original_path
@@ -321,6 +324,8 @@ def main() -> int:
         assert workspace_mode == "explicit_workspace", launch
         assert workspace.is_dir(), workspace
         assert launch["schema_version"] == "multi_agent_visible_launch_result_v0", launch
+        assert launch["codex_trust_workspace"] is True, launch
+        assert launch["codex_trust_scope"] == "per_invocation_selected_workspace", launch
         skills = launch["worker_skill_materialization"]
         assert skills == [
             {

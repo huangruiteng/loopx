@@ -299,14 +299,17 @@ def main() -> int:
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload
                 assert launch["attach_requested"] is False, visible_payload
-                assert launch["workspace_mode"] == "current_directory", visible_payload
+                assert launch["workspace_mode"] == "explicit_workspace", visible_payload
+                assert launch["codex_trust_workspace"] is True, visible_payload
+                assert launch["codex_trust_scope"] == "per_invocation_selected_workspace", visible_payload
                 workspace_route = visible_payload["visible_control_plane"]["workspace_route"]
                 assert workspace_route["side_lane_worktree_count"] == 0, workspace_route
                 assert workspace_route["primary_workspace"] == "visible_codex_tui_workspace", workspace_route
                 assert (
                     workspace_route["trust_prompt_avoidance"]
-                    == "do_not_start_codex_tui_in_demo_local_git_worktrees"
+                    == "demo_owned_clean_workspace_with_per_invocation_codex_trust_config"
                 ), workspace_route
+                assert workspace_route["default_visible_workspace"] == "demo_owned_clean_workspace", workspace_route
                 acceptance = launch["visible_acceptance"]
                 assert acceptance["accepted"] is True, visible_payload
                 assert all(not item["blocked_before_bootstrap"] for item in acceptance["pane_checks"]), acceptance
@@ -324,8 +327,9 @@ def main() -> int:
                 invocation_text = codex_invocations.read_text(encoding="utf-8")
                 assert invocation_text.count("Fake Codex TUI") == 0, invocation_text
                 assert invocation_text.count("PWD=") == 4, invocation_text
-                assert invocation_text.count(f"PWD={workspace.resolve()}") == 4, invocation_text
-                assert invocation_text.count(f'-C {workspace.resolve()}') == 4, invocation_text
+                assert invocation_text.count("visible-user-workspace") >= 8, invocation_text
+                assert invocation_text.count("trust_level=trusted") == 0, invocation_text
+                assert invocation_text.count('trust_level="trusted"') == 4, invocation_text
                 assert "visible-lane-worktrees" not in invocation_text, invocation_text
                 assert "visible-control-plane" not in invocation_text, invocation_text
                 for lane in launch["started_lanes"]:

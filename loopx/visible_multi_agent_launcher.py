@@ -154,6 +154,20 @@ def build_visible_lane_command(
     codex_bin: str,
     reasoning_effort: str,
 ) -> str:
+    trust_config_py = (
+        'import json, os; '
+        'print("projects." + json.dumps(os.environ["LOOPX_PROJECT"]) + '
+        '".trust_level=\\"trusted\\"")'
+    )
+    codex_trust_args = (
+        'if [ "${LOOPX_CODEX_TRUST_WORKSPACE:-0}" = "1" ]; then '
+        f'CODEX_TRUST_CONFIG="$(python3 -c {_q(trust_config_py)})"; '
+        f"exec {_q(codex_bin)} "
+        '-c "$CODEX_TRUST_CONFIG" '
+        f"-c model_reasoning_effort={_q(reasoning_effort)} "
+        '-C "$LOOPX_PROJECT" "$BOOTSTRAP_PROMPT"; '
+        "fi; "
+    )
     scoped_loopx_wrapper = (
         'LOOPX_REAL_CLI="$(command -v loopx)"; '
         "export LOOPX_REAL_CLI; "
@@ -186,6 +200,7 @@ def build_visible_lane_command(
         "fi; "
         "export LOOPX_CODEX_TUI_MODE=interactive; "
         "export LOOPX_CODEX_TUI_PROMPT_ARTIFACT=\"$BOOTSTRAP_ARTIFACT\"; "
+        f"{codex_trust_args}"
         f"exec {_q(codex_bin)} -c model_reasoning_effort={_q(reasoning_effort)} "
         '-C "$LOOPX_PROJECT" "$BOOTSTRAP_PROMPT"'
     )
@@ -421,6 +436,7 @@ def execute_visible_multi_agent_launcher(
     workspace: str | None,
     create_workspace: bool,
     cwd: Path,
+    codex_trust_workspace: bool = False,
     launch_result_schema: str = "multi_agent_visible_launch_result_v0",
     acceptance_schema: str = "multi_agent_visible_launch_acceptance_v0",
     lane_default: str = "agent-lane",
@@ -453,6 +469,7 @@ def execute_visible_multi_agent_launcher(
         launch_result_schema=launch_result_schema,
         acceptance_schema=acceptance_schema,
         lane_default=lane_default,
+        codex_trust_workspace=codex_trust_workspace,
     )
     result["worker_skill_materialization"] = worker_skills
     return result, chosen, workspace_mode
@@ -472,6 +489,7 @@ def _launch_with_tmux(
     launch_result_schema: str,
     acceptance_schema: str,
     lane_default: str,
+    codex_trust_workspace: bool,
 ) -> dict[str, object]:
     session = str(payload.get("session_name") or "loopx-visible-agents")
     lanes = [item for item in payload.get("lanes", []) if isinstance(item, dict)]
@@ -485,6 +503,7 @@ def _launch_with_tmux(
             "LOOPX_REGISTRY": str(registry),
             "LOOPX_RUNTIME_ROOT": str(runtime_root),
             "LOOPX_VISIBLE_SESSION": session,
+            "LOOPX_CODEX_TRUST_WORKSPACE": "1" if codex_trust_workspace else "0",
         }
     )
     exists = subprocess.run(
@@ -516,7 +535,8 @@ def _launch_with_tmux(
             script_dir=script_dir,
             name=lane_id,
             command=runtime_shell_command(
-                launch_command,
+                f"export LOOPX_CODEX_TRUST_WORKSPACE={_q('1' if codex_trust_workspace else '0')}; "
+                f"{launch_command}",
                 project=lane_project,
                 registry=registry,
                 runtime_root=runtime_root,
@@ -586,6 +606,12 @@ def _launch_with_tmux(
         "attach_command": f"{tmux_bin} attach -t {session}",
         "stop_command": f"{tmux_bin} kill-session -t {session}",
         "workspace_mode": workspace_mode,
+        "codex_trust_workspace": codex_trust_workspace,
+        "codex_trust_scope": (
+            "per_invocation_selected_workspace"
+            if codex_trust_workspace
+            else "native_codex_trust_prompt"
+        ),
         "script_mode": "runtime_local_files",
         "launcher_script_count": len(launcher_scripts),
         "attach_requested": attach,

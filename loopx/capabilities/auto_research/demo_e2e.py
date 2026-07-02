@@ -73,13 +73,17 @@ def _prepare_visible_demo_workspace_route(
         "schema_version": "auto_research_visible_demo_workspace_route_v0",
         "shared_goal_surface": "demo_local_loopx_registry_and_runtime",
         "primary_workspace": "visible_codex_tui_workspace",
+        "default_visible_workspace": "demo_owned_clean_workspace",
         "side_lane_workspace": "visible_codex_tui_workspace",
         "side_lane_worktree_count": 0,
         "side_lane_count": side_count,
-        "trust_prompt_avoidance": "do_not_start_codex_tui_in_demo_local_git_worktrees",
+        "trust_prompt_avoidance": (
+            "demo_owned_clean_workspace_with_per_invocation_codex_trust_config"
+        ),
         "mutation_isolation_policy": (
             "mutating attempts claim an execution boundary from inside the role; "
-            "the first visible TUI uses the operator-selected workspace"
+            "the first visible TUI uses the demo-owned clean workspace unless "
+            "the operator passes --workspace"
         ),
         "absolute_paths_recorded": False,
     }
