@@ -344,6 +344,41 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "repo-architecture-budget",
+        "title": "Repository architecture budget",
+        "purpose": (
+            "Keep Python source files below a default line budget, with explicit legacy "
+            "allowlist entries for oversized modules that need staged refactors."
+        ),
+        "catalog_families": ["Planning Governance", "State And Boundary"],
+        "trigger_hints": (
+            "architecture",
+            "architecture budget",
+            "file length",
+            "line budget",
+            "large file",
+            "mega-file",
+            "refactor",
+            "quota.py",
+            "status.py",
+            "terminal_bench.py",
+            "skillsbench",
+            "loopx/",
+            "examples/",
+            "scripts/",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/repo-python-line-budget-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "fails when a Python source file grows beyond the default limit or "
+                    "its current legacy allowlist budget"
+                ),
+            },
+        ],
+    },
+    {
         "id": "status-read-path",
         "title": "Status read-path contract",
         "purpose": "Check scoped status reads, markdown rendering, and goal-channel status export before status/read-path changes ship.",
