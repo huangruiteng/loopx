@@ -155,6 +155,19 @@ for line in sys.stdin:
                     "type": "response_item",
                     "payload": {
                         "type": "message",
+                        "role": "developer",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "<permissions instructions>startup context</permissions instructions><skills_instructions>skill context</skills_instructions>",
+                            }
+                        ],
+                    },
+                }) + "\\n")
+                session.write(json.dumps({
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
                         "role": "assistant",
                         "content": [
                             {"type": "text", "text": "Session file final answer."}
@@ -393,14 +406,18 @@ def main() -> int:
             assert compact["turn_completed_observed"] is True, compact
             assert compact["turn_status"] == "completed", compact
             assert compact["session_log_observed"] is True, compact
-            assert compact["session_event_count"] >= 2, compact
+            assert compact["session_event_count"] >= 3, compact
             assert compact["session_task_complete_observed"] is True, compact
             assert compact["assistant_message_present"] is True, compact
+            assert session_completed_turn.assistant_message == "Session file final answer."
             assert compact["assistant_message_chars"] == len(
                 "Session file final answer."
             )
+            assert compact["agent_message_item_count"] == 1, compact
+            assert compact["non_user_item_completed_count"] == 1, compact
             assert "event_msg:task_complete" in compact["notifications"], compact
             assert "Session file final answer." not in json.dumps(compact), compact
+            assert "startup context" not in json.dumps(compact), compact
         finally:
             session_completed_turn.terminate()
 

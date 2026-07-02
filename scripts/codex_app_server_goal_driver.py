@@ -417,6 +417,8 @@ def _record_turn_event(
         if role == "user":
             turn.user_message_item_count += 1
             return False
+        if role != "assistant":
+            return False
         if item_text:
             turn._assistant_message_parts.append(item_text)
         turn.agent_message_item_count += 1
