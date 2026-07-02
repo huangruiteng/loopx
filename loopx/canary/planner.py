@@ -967,6 +967,15 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
+                "command": "python3 examples/terminal-bench-adapter-readiness-characterization-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "characterizes Terminal-Bench preflight, no-submit boundary, "
+                    "CLI bridge/access packet, and benchmark_run builders without "
+                    "launching benchmark jobs"
+                ),
+            },
+            {
                 "command": "python3 examples/benchmark-core-adapter-contract-smoke.py",
                 "tier": "default",
                 "reason": "checks shared benchmark adapter contract behavior",

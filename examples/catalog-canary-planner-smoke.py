@@ -390,16 +390,40 @@ def assert_explicit_profile_can_include_deep_checks() -> None:
     payload = build_catalog_canary_plan(
         profiles=["benchmark-adapter-readiness"],
         include_deep_checks=True,
-        max_checks_per_profile=3,
+        max_checks_per_profile=4,
     )
     assert payload["profile_count"] == 0, payload
     assert payload["domain_profile_count"] == 1, payload
     profile = payload["domain_profiles"][0]
     assert profile["id"] == "benchmark-adapter-readiness", profile
     assert profile["deep_checks_included"] is True, profile
+    commands = payload["commands"]
+    assert (
+        "python3 examples/terminal-bench-adapter-readiness-characterization-smoke.py"
+        in commands
+    ), payload
     assert any(check["tier"] == "deep" for check in profile["checks"]), profile
     assert "existing public runtime/status contracts first" in payload["note"], payload
     assert "owner-review necessity/risk packet" in payload["note"], payload
+
+
+def assert_terminal_bench_adapter_changes_select_readiness_smoke() -> None:
+    payload = build_catalog_canary_plan(
+        changed_files=["loopx/benchmark_adapters/terminal_bench.py"],
+        surfaces=["terminal-bench adapter preflight no-submit cli bridge"],
+        max_checks_per_profile=3,
+    )
+    profiles = {profile["id"]: profile for profile in payload["domain_profiles"]}
+    assert "benchmark-adapter-readiness" in profiles, payload
+    profile = profiles["benchmark-adapter-readiness"]
+    commands = [check["command"] for check in profile["checks"]]
+    assert (
+        "python3 examples/terminal-bench-adapter-readiness-characterization-smoke.py"
+        in commands
+    ), profile
+    assert all(check["tier"] == "default" for check in profile["checks"]), profile
+    assert profile["deep_checks_available"] is True, profile
+    assert profile["deep_checks_included"] is False, profile
 
 
 def assert_explicit_catalog_profile_id_selects_family_profile() -> None:
@@ -696,6 +720,7 @@ def main() -> int:
     assert_plan_selects_minimal_profiles_from_changed_surfaces()
     assert_pr_release_and_refactor_profiles_select()
     assert_explicit_profile_can_include_deep_checks()
+    assert_terminal_bench_adapter_changes_select_readiness_smoke()
     assert_explicit_catalog_profile_id_selects_family_profile()
     assert_catalog_canary_selects_own_profile_not_benchmark()
     assert_catalog_canary_deep_profile_includes_pytest_facade()
