@@ -94,6 +94,39 @@ def main() -> int:
         must_attempt_work=False,
     )
 
+    resume_blocked_by_monitor = build_work_lane_contract(
+        progress_scope="agent_lane",
+        external_poll_signal=False,
+        todo_counts={"open": 2, "advancement": 0, "monitor": 1},
+        monitor_due_count=0,
+        due_monitor_items=[],
+        first_advancement=None,
+        due_monitor_preempts_advancement=False,
+        outcome_followthrough=None,
+        next_action_requires_advancement=False,
+        monitor_due_item_limit=1,
+        resume_blocked_by_monitor_count=1,
+        resume_blocked_by_monitor_items=[
+            {
+                "todo_id": "todo_gated_refactor",
+                "resume_when": "todo_done:todo_standing_gate",
+            }
+        ],
+    )
+    assert_contract(
+        "resume-blocked-by-monitor",
+        resume_blocked_by_monitor,
+        lane="advancement_task",
+        obligation="repair_resume_gate_or_close_standing_monitor",
+        must_attempt_work=True,
+        monitor_policy="material_transition_only",
+        selected_todo_id="todo_gated_refactor",
+    )
+    assert resume_blocked_by_monitor["reason_codes"] == [
+        "monitor_todo_only",
+        "resume_blocked_by_open_monitor",
+    ], resume_blocked_by_monitor
+
     dependency_advancement = build_work_lane_contract(
         progress_scope="dependency_observation",
         external_poll_signal=False,
