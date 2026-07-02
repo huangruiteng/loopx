@@ -99,22 +99,41 @@ tick_target.write_text(
     "if not goal or not agent:\n"
     "    print('\\n[LoopX pane A2A]\\nmissing LOOPX_GOAL_ID or LOOPX_AGENT_ID; cannot read role-local frontier.\\n', flush=True)\n"
     "    raise SystemExit(2)\n"
+    "def _positive_int(value, *, default):\n"
+    "    try:\n"
+    "        parsed = int(str(value).strip())\n"
+    "    except Exception:\n"
+    "        return default\n"
+    "    return parsed if parsed > 0 else default\n"
     "def run(args):\n"
     "    print('\\n[LoopX pane A2A] ' + ' '.join(shlex.quote(str(arg)) for arg in args), flush=True)\n"
     "    return subprocess.call([str(arg) for arg in args])\n"
     "print(f'\\n[LoopX pane A2A] role={role} agent={agent}\\n', flush=True)\n"
-    "status = run([loopx, '--format', 'markdown', 'quota', 'should-run', '--goal-id', goal, '--agent-id', agent])\n"
-    "if status != 0:\n"
-    "    raise SystemExit(status)\n"
     "turn = os.environ.get('LOOPX_PANE_WORKER_TURN', '').strip()\n"
     "loop = os.environ.get('LOOPX_PANE_WORKER_LOOP', '').strip()\n"
     "command = turn or loop\n"
     "if not command:\n"
+    "    status = run([loopx, '--format', 'markdown', 'quota', 'should-run', '--goal-id', goal, '--agent-id', agent])\n"
+    "    if status != 0:\n"
+    "        raise SystemExit(status)\n"
     "    print('\\n[LoopX pane A2A]\\nNo role worker-turn command is configured; continue manually with $LOOPX_PANE_LOOPX.\\n', flush=True)\n"
     "    raise SystemExit(0)\n"
     "label = 'worker-turn' if turn else 'worker-loop'\n"
-    "print(f'\\n[LoopX pane A2A {label}]\\n{command}\\n', flush=True)\n"
-    "raise SystemExit(subprocess.call(command, shell=True, executable=os.environ.get('SHELL') or '/bin/bash'))\n",
+    "rounds = _positive_int(os.environ.get('LOOPX_PANE_TICK_ROUNDS', '1'), default=1)\n"
+    "sleep_seconds = _positive_int(os.environ.get('LOOPX_PANE_TICK_SLEEP_SECONDS', '3'), default=3)\n"
+    "for round_index in range(1, rounds + 1):\n"
+    "    print(f'\\n[LoopX pane A2A round {round_index}/{rounds}]\\n', flush=True)\n"
+    "    status = run([loopx, '--format', 'markdown', 'quota', 'should-run', '--goal-id', goal, '--agent-id', agent])\n"
+    "    if status != 0:\n"
+    "        raise SystemExit(status)\n"
+    "    print(f'\\n[LoopX pane A2A {label}]\\n{command}\\n', flush=True)\n"
+    "    result = subprocess.call(command, shell=True, executable=os.environ.get('SHELL') or '/bin/bash')\n"
+    "    if result != 0:\n"
+    "        raise SystemExit(result)\n"
+    "    if round_index < rounds:\n"
+    "        print(f'\\n[LoopX pane A2A] waiting {sleep_seconds}s for other lanes before the next local tick\\n', flush=True)\n"
+    "        subprocess.call(['sleep', str(sleep_seconds)])\n"
+    "raise SystemExit(0)\n",
     encoding="utf-8",
 )
 tick_target.chmod(0o700)
@@ -249,8 +268,10 @@ def build_tui_multi_agent_runner_contract(
         },
         "pane_local_a2a": {
             "tick_command": "$LOOPX_PANE_A2A_TICK",
+            "first_action": "run $LOOPX_PANE_A2A_TICK inside the Codex TUI",
             "reads": ["quota should-run", "agent-scoped frontier"],
             "runs": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
+            "bounded_rounds_env": "LOOPX_PANE_TICK_ROUNDS",
             "machine_json_policy": "file_or_explicit_machine_channel_only",
             "human_default": "markdown_status_inside_codex_tui",
         },
@@ -287,6 +308,8 @@ def build_visible_lane_command(
     agent_id: str | None = None,
     worker_turn_command: str | None = None,
     worker_loop_command: str | None = None,
+    tick_rounds: int | None = None,
+    tick_sleep_seconds: int | None = None,
 ) -> str:
     trust_config_py = (
         'import json, os; '
@@ -325,6 +348,10 @@ def build_visible_lane_command(
         pane_a2a_env += f"export LOOPX_PANE_WORKER_TURN={_q(worker_turn_command)}; "
     if worker_loop_command:
         pane_a2a_env += f"export LOOPX_PANE_WORKER_LOOP={_q(worker_loop_command)}; "
+    if tick_rounds and tick_rounds > 1:
+        pane_a2a_env += f"export LOOPX_PANE_TICK_ROUNDS={_q(tick_rounds)}; "
+    if tick_sleep_seconds and tick_sleep_seconds > 0:
+        pane_a2a_env += f"export LOOPX_PANE_TICK_SLEEP_SECONDS={_q(tick_sleep_seconds)}; "
     return (
         "set -uo pipefail; "
         "export LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1; "
@@ -492,6 +519,14 @@ def _as_string_list(value: object) -> list[str]:
     return [str(value).strip()] if str(value).strip() else []
 
 
+def _positive_int_value(value: object, *, default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except Exception:
+        return default
+    return parsed if parsed > 0 else default
+
+
 def _role_skill_profile(skill: object) -> dict[str, str]:
     if not skill:
         return {}
@@ -536,7 +571,9 @@ def _generic_role_prompt(
             "",
             "How to work:",
             "- Treat LoopX state as the shared A2A surface.",
-            "- Start one role-local A2A turn with `$LOOPX_PANE_A2A_TICK`; it reads your quota/frontier and then runs this role's worker-turn when configured.",
+            "- First action: immediately run `$LOOPX_PANE_A2A_TICK` in this Codex TUI. Do not ask the user to start it.",
+            "- The tick reads your quota/frontier and then runs this role's worker-turn when configured.",
+            "- When the tick completes, summarize what changed, what remains blocked, and stay interactive for user takeover.",
             "- Keep machine JSON redirected through $LOOPX_PANE_LOOPX_JSON into .local artifacts.",
             "- Write compact public-safe evidence before completing or handing off a todo.",
             "- The user may type into this pane; respond like a normal Codex CLI agent.",
@@ -599,6 +636,11 @@ def build_visible_multi_agent_payload_from_spec(
         reasoning_effort = str(raw_role.get("reasoning_effort") or default_reasoning_effort)
         worker_turn_command = str(raw_role.get("worker_turn_command") or "").strip()
         worker_loop_command = str(raw_role.get("worker_loop_command") or "").strip()
+        tick_rounds = _positive_int_value(
+            raw_role.get("tick_rounds") or raw_role.get("auto_tick_rounds"),
+            default=1,
+        )
+        tick_sleep_seconds = _positive_int_value(raw_role.get("tick_sleep_seconds"), default=3)
         role_profile = {
             "schema_version": "generic_multi_agent_role_profile_v0",
             "role_id": role_id,
@@ -646,6 +688,9 @@ def build_visible_multi_agent_payload_from_spec(
                 "tick_command": "$LOOPX_PANE_A2A_TICK",
                 "worker_turn_configured": bool(worker_turn_command),
                 "worker_loop_configured": bool(worker_loop_command),
+                "auto_start": True,
+                "tick_rounds": tick_rounds,
+                "tick_sleep_seconds": tick_sleep_seconds,
             },
             "bootstrap_message": "role_prompt_inside_codex_tui",
             "visible_launch_command": build_visible_lane_command(
@@ -659,9 +704,16 @@ def build_visible_multi_agent_payload_from_spec(
                 agent_id=agent_id,
                 worker_turn_command=worker_turn_command,
                 worker_loop_command=worker_loop_command,
+                tick_rounds=tick_rounds,
+                tick_sleep_seconds=tick_sleep_seconds,
             ),
             "reasoning_effort": reasoning_effort,
-            "lane_timeline": ["role_profile", "pane_local_a2a_tick", "frontier", "codex_tui"],
+            "lane_timeline": [
+                "role_profile",
+                "codex_tui",
+                "auto_start_pane_local_a2a_tick",
+                "frontier",
+            ],
         }
         if raw_role.get("workspace") or raw_role.get("project"):
             lane["workspace"] = str(raw_role.get("workspace") or raw_role.get("project"))

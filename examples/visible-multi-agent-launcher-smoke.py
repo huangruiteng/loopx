@@ -91,6 +91,8 @@ def main() -> int:
     assert "LOOPX_PANE_A2A_TICK" in launcher_source
     assert "loopx-pane-a2a-tick" in launcher_source
     assert "LOOPX_PANE_WORKER_TURN" in launcher_source
+    assert "LOOPX_PANE_TICK_ROUNDS" in launcher_source
+    assert "First action: immediately run `$LOOPX_PANE_A2A_TICK`" in launcher_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
     assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in launcher_source
     assert "LoopX machine JSON hidden" in launcher_source
@@ -136,6 +138,12 @@ def main() -> int:
     assert runner_contract["tmux_lifecycle"]["attach_command"] == dry_packet["commands"]["attach"]
     assert runner_contract["tmux_lifecycle"]["stop_command"] == dry_packet["commands"]["stop"]
     assert runner_contract["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK"
+    assert runner_contract["pane_local_a2a"]["first_action"] == (
+        "run $LOOPX_PANE_A2A_TICK inside the Codex TUI"
+    )
+    assert runner_contract["pane_local_a2a"]["bounded_rounds_env"] == (
+        "LOOPX_PANE_TICK_ROUNDS"
+    )
     assert "LOOPX_PANE_WORKER_TURN" in runner_contract["lane_runtime_env"]["pane_tools"]
     assert runner_contract["role_prompt_and_skill"]["worker_local_skill_only"] is True
     assert runner_contract["debug_artifacts"]["machine_json"] == (
@@ -171,6 +179,8 @@ def main() -> int:
                     "role_id": "planner",
                     "scope": "plan one state-backed handoff",
                     "worker_turn_command": "printf 'turn streamed\\n'",
+                    "tick_rounds": 2,
+                    "tick_sleep_seconds": 1,
                 }
             ],
         }
@@ -182,9 +192,13 @@ def main() -> int:
     generic_lane = generic_packet["lanes"][0]
     assert generic_lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", generic_lane
     assert generic_lane["pane_local_a2a"]["worker_turn_configured"] is True, generic_lane
-    assert "pane_local_a2a_tick" in generic_lane["lane_timeline"], generic_lane
+    assert generic_lane["pane_local_a2a"]["auto_start"] is True, generic_lane
+    assert generic_lane["pane_local_a2a"]["tick_rounds"] == 2, generic_lane
+    assert "auto_start_pane_local_a2a_tick" in generic_lane["lane_timeline"], generic_lane
     assert "LOOPX_PANE_A2A_TICK" in generic_lane["visible_launch_command"], generic_lane
     assert "LOOPX_PANE_WORKER_TURN" in generic_lane["visible_launch_command"], generic_lane
+    assert "LOOPX_PANE_TICK_ROUNDS=2" in generic_lane["visible_launch_command"], generic_lane
+    assert "LOOPX_PANE_TICK_SLEEP_SECONDS=1" in generic_lane["visible_launch_command"], generic_lane
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -302,6 +316,8 @@ def main() -> int:
                     "LOOPX_AGENT_ID": "codex-side-bypass",
                     "LOOPX_ROLE_ID": "planner",
                     "LOOPX_PANE_WORKER_TURN": "printf 'worker turn streamed\\n'",
+                    "LOOPX_PANE_TICK_ROUNDS": "2",
+                    "LOOPX_PANE_TICK_SLEEP_SECONDS": "1",
                 },
                 check=True,
                 capture_output=True,
@@ -318,6 +334,7 @@ def main() -> int:
             assert "LoopX machine JSON hidden" in tty_output, tty_output
             assert "fake-loopx" not in tty_output, tty_output
             assert "role=planner agent=codex-side-bypass" in tick.stdout, tick.stdout
+            assert "round 1/2" in tick.stdout and "round 2/2" in tick.stdout, tick.stdout
             assert "quota should-run" in tick.stdout, tick.stdout
             assert "--format markdown" in tick.stdout, tick.stdout
             assert "worker turn streamed" in tick.stdout, tick.stdout

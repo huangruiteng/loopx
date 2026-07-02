@@ -126,11 +126,21 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert lane["bootstrap_message"] == "role_prompt_inside_codex_tui", lane
         assert lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", lane
         assert lane["pane_local_a2a"]["worker_turn_configured"] is True, lane
-        assert lane["lane_timeline"] == ["role_profile", "pane_local_a2a_tick", "frontier", "codex_tui"], lane
+        assert lane["pane_local_a2a"]["auto_start"] is True, lane
+        assert lane["pane_local_a2a"]["tick_rounds"] == 3, lane
+        assert lane["pane_local_a2a"]["tick_sleep_seconds"] == 3, lane
+        assert lane["lane_timeline"] == [
+            "role_profile",
+            "codex_tui",
+            "auto_start_pane_local_a2a_tick",
+            "frontier",
+        ], lane
 
         command = lane["visible_launch_command"]
         assert "LOOPX_PANE_A2A_TICK" in command, lane
         assert "LOOPX_PANE_WORKER_TURN" in command, lane
+        assert "LOOPX_PANE_TICK_ROUNDS=3" in command, lane
+        assert "LOOPX_PANE_TICK_SLEEP_SECONDS=3" in command, lane
         assert "auto-research worker-turn" in command, lane
         assert "--complete-selected-todo" in command, lane
         assert "LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1" in command, lane
@@ -159,6 +169,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert one_click["mode"] == "visible_codex_tui_lanes", payload
     assert one_click["default_safe"] is True, payload
     assert "each window starts a real interactive Codex CLI TUI" in " ".join(
+        one_click["expected_visible_result"]
+    ), one_click
+    assert "starts by running $LOOPX_PANE_A2A_TICK" in " ".join(
         one_click["expected_visible_result"]
     ), one_click
 

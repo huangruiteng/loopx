@@ -16,6 +16,8 @@ AUTO_RESEARCH_REQUIRED_SKILL = "loopx-auto-research"
 AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
     "loopx/capabilities/auto_research/worker_skill/SKILL.md"
 )
+AUTO_RESEARCH_DEMO_TICK_ROUNDS = 3
+AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS = 3
 
 AUTO_RESEARCH_DEMO_DEFAULT_LANES = (
     (
@@ -206,6 +208,8 @@ def build_auto_research_demo_supervisor_plan(
                     agent_id=agent_id,
                     objective="Run the next bounded auto-research frontier item.",
                 ),
+                "tick_rounds": AUTO_RESEARCH_DEMO_TICK_ROUNDS,
+                "tick_sleep_seconds": AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS,
                 "reasoning_effort": reasoning_effort,
             }
         )
@@ -252,7 +256,8 @@ def build_auto_research_demo_supervisor_plan(
                 "expected_visible_result": [
                     "one tmux window per role",
                     "each window starts a real interactive Codex CLI TUI",
-                    "each pane can run $LOOPX_PANE_A2A_TICK against its own frontier",
+                    "each pane starts by running $LOOPX_PANE_A2A_TICK against its own frontier",
+                    "each pane performs bounded role-local polling so successor todos can flow across lanes",
                 ],
             },
         }
