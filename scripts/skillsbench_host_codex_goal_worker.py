@@ -37,11 +37,28 @@ from scripts.codex_app_server_goal_driver import (  # noqa: E402
     start_codex_app_server_goal_turn,
 )
 
+SKILLS_INSTRUCTIONS_END_MARKER = "</skills_instructions>"
+
 
 def _json_default(value: Any) -> str:
     if isinstance(value, Path):
         return str(value)
     return str(value)
+
+
+def _public_safe_label(value: Any, *, limit: int = 80) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    cleaned = []
+    for char in text:
+        cleaned.append(
+            char.lower() if char.isalnum() or char in {"-", "_", ".", ":"} else "-"
+        )
+    label = "".join(cleaned).strip("-_.:")
+    while "--" in label:
+        label = label.replace("--", "-")
+    return label[:limit]
 
 
 def build_contract_payload(args: argparse.Namespace) -> dict[str, Any]:
@@ -101,9 +118,35 @@ def _prompt_with_loopx_case_lifecycle_packet(
     )
 
 
+def _post_context_assistant_chars(turn: Any) -> int:
+    message = str(getattr(turn, "assistant_message", "") or "")
+    stripped = message.strip()
+    if not stripped:
+        return 0
+    marker_index = stripped.rfind(SKILLS_INSTRUCTIONS_END_MARKER)
+    if marker_index < 0:
+        return len(stripped)
+    tail = stripped[marker_index + len(SKILLS_INSTRUCTIONS_END_MARKER) :].strip()
+    return len(tail)
+
+
+def _assistant_message_context_only(turn: Any) -> bool:
+    message = str(getattr(turn, "assistant_message", "") or "")
+    stripped = message.strip()
+    if not stripped or _post_context_assistant_chars(turn) > 0:
+        return False
+    return (
+        stripped.startswith("<permissions instructions>")
+        or stripped.startswith("<skills_instructions>")
+        or "<skills_instructions>" in stripped[:4096]
+    )
+
+
 def _first_action_observed(turn: Any) -> bool:
     if int(getattr(turn, "agent_message_delta_count", 0) or 0) > 0:
         return True
+    if _assistant_message_context_only(turn):
+        return False
     if int(getattr(turn, "agent_message_item_count", 0) or 0) > 0:
         return True
     if int(getattr(turn, "non_user_item_completed_count", 0) or 0) > 0:
@@ -117,6 +160,8 @@ def _first_action_observed(turn: Any) -> bool:
 
 
 def _effective_action_observed(turn: Any) -> bool:
+    if _assistant_message_context_only(turn):
+        return False
     if bool(getattr(turn, "turn_completed_observed", False)):
         return True
     if str(getattr(turn, "assistant_message", "") or ""):
@@ -236,6 +281,12 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 "first_action_observed": _first_action_observed(turn),
                 "effective_action_observed": _effective_action_observed(turn),
+                "assistant_message_context_only": _assistant_message_context_only(
+                    turn
+                ),
+                "post_context_assistant_chars": _post_context_assistant_chars(turn),
+                "reasoning_effort": _public_safe_label(args.reasoning_effort)
+                or "high",
                 "loopx_mode": args.loopx_mode,
                 "loopx_access_packet_mode": args.loopx_access_packet_mode,
                 "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
@@ -248,6 +299,12 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             and compact.get("assistant_message_present") is not True
         ):
             worker_error_type = "codex_app_server_no_assistant_message"
+        if (
+            not worker_error_type
+            and not args.no_wait_for_completion
+            and compact.get("assistant_message_context_only") is True
+        ):
+            worker_error_type = "codex_app_server_context_only_assistant_message"
         private_response_written = False
         if args.response_text_file and turn.assistant_message:
             response_path = Path(args.response_text_file).expanduser()

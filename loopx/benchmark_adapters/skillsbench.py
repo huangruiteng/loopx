@@ -2583,6 +2583,18 @@ def _skillsbench_controller_trace_counters(
         "native_goal_worker_assistant_message_present_count": count(
             "native_goal_worker_assistant_message_present_count"
         ),
+        "native_goal_worker_assistant_context_only_count": count(
+            "native_goal_worker_assistant_context_only_count"
+        ),
+        "native_goal_worker_post_context_assistant_chars_total": count(
+            "native_goal_worker_post_context_assistant_chars_total"
+        ),
+        "native_goal_worker_reasoning_effort": text_value(
+            "native_goal_worker_reasoning_effort"
+        ),
+        "native_goal_worker_reasoning_efforts": text_list(
+            "native_goal_worker_reasoning_efforts"
+        ),
         "native_goal_worker_first_action_observed_count": count(
             "native_goal_worker_first_action_observed_count"
         ),
@@ -3234,6 +3246,25 @@ def _skillsbench_native_goal_worker_failure_label(
         counters.get("native_goal_worker_failure_trace_count", 0)
         or counters.get("native_goal_worker_failure_category")
     )
+    context_only_count = counters.get("native_goal_worker_assistant_context_only_count")
+    post_context_chars = counters.get(
+        "native_goal_worker_post_context_assistant_chars_total"
+    )
+    if (
+        isinstance(context_only_count, int)
+        and not isinstance(context_only_count, bool)
+        and context_only_count > 0
+        and (
+            not isinstance(post_context_chars, int)
+            or isinstance(post_context_chars, bool)
+            or post_context_chars <= 0
+        )
+    ):
+        return (
+            "skillsbench_native_goal_worker_failed_"
+            "codex_app_server_context_only_assistant_message"
+        )
+
     if trace_status == "public_trace_observed" and not has_worker_failure_trace:
         return ""
 
@@ -3699,6 +3730,15 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "assistant_message_present_count": _controller_public_count(
             "native_goal_worker_assistant_message_present_count"
         ),
+        "assistant_context_only_count": _controller_public_count(
+            "native_goal_worker_assistant_context_only_count"
+        ),
+        "post_context_assistant_chars_total": _controller_public_count(
+            "native_goal_worker_post_context_assistant_chars_total"
+        ),
+        "reasoning_effort": str(
+            controller_counters.get("native_goal_worker_reasoning_effort") or ""
+        )[:40],
         "first_action_observed_count": _controller_public_count(
             "native_goal_worker_first_action_observed_count"
         ),
@@ -5239,6 +5279,19 @@ def build_skillsbench_benchflow_result_benchmark_run(
                     "native_goal_worker_assistant_message_present_count", 0
                 )
             ),
+            "native_goal_worker_assistant_context_only_count": (
+                controller_counters.get(
+                    "native_goal_worker_assistant_context_only_count", 0
+                )
+            ),
+            "native_goal_worker_post_context_assistant_chars_total": (
+                controller_counters.get(
+                    "native_goal_worker_post_context_assistant_chars_total", 0
+                )
+            ),
+            "native_goal_worker_reasoning_effort": controller_counters.get(
+                "native_goal_worker_reasoning_effort", ""
+            ),
             "remote_command_file_bridge_consumed_by_solver": (
                 controller_counters.get(
                     "remote_command_file_bridge_consumed_by_solver", False
@@ -5537,6 +5590,19 @@ def build_skillsbench_benchflow_result_benchmark_run(
                 controller_counters.get(
                     "native_goal_worker_effective_action_observed_count", 0
                 )
+            ),
+            "native_goal_worker_assistant_context_only_count": (
+                controller_counters.get(
+                    "native_goal_worker_assistant_context_only_count", 0
+                )
+            ),
+            "native_goal_worker_post_context_assistant_chars_total": (
+                controller_counters.get(
+                    "native_goal_worker_post_context_assistant_chars_total", 0
+                )
+            ),
+            "native_goal_worker_reasoning_effort": controller_counters.get(
+                "native_goal_worker_reasoning_effort", ""
             ),
             "native_goal_worker_trace_status": native_goal_worker_trace_status,
             "native_goal_worker_countable_baseline": native_goal_worker_countable,
