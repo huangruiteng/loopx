@@ -1,8 +1,9 @@
-"""Compatibility boundary for older auto-research demo/projection code.
+"""Legacy auto-research quickstart/demo internals.
 
 New product logic belongs in the lightweight kernel or generic multi-agent
-runner. Keep this module as a temporary adapter for legacy quickstart/demo
-callers while those paths are migrated or deleted.
+runner. This module is intentionally not a compatibility export surface; keep
+only the legacy paths that still back current worker/demo behavior until they
+are migrated or deleted.
 """
 
 from __future__ import annotations
@@ -14,41 +15,33 @@ import shlex
 from pathlib import Path
 from typing import Any, Iterable
 
-from .evidence_packet import (
-    AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION,
-    AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
-    EVIDENCE_STATUSES,
-    HYPOTHESIS_STATUSES,
-    METRIC_DIRECTIONS,
-    NEGATIVE_PRIMARY_METRIC_STATUSES,
-    RESEARCH_CONTRACT_SCHEMA_VERSION,
-    RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION,
-    RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
-    RETRY_PRIMARY_METRIC_STATUSES,
-    _compact_public_text,
-    _compact_public_text_list,
-    _compact_public_token,
-    _finite_float,
-    _json_list,
-    _json_obj,
-    _is_negative_evidence_event,
-    _is_retry_evidence_event,
-    _load_json_object,
-    _metric_improved,
-    _metric_rank_key,
-    build_auto_research_evidence_packet,
-    build_auto_research_rollout_events,
-    load_auto_research_evidence_packet,
-    load_auto_research_evidence_packet_inputs,
-    validate_auto_research_evidence_packet,
-    validate_research_contract,
-    validate_research_evidence_event,
-    validate_research_hypothesis,
-)
+from . import evidence_packet as _evidence_packet
 from ...visible_multi_agent_launcher import (
     build_visible_lane_command,
     build_visible_multi_agent_payload,
 )
+
+
+_EP_RESEARCH_CONTRACT_SCHEMA_VERSION = _evidence_packet.RESEARCH_CONTRACT_SCHEMA_VERSION
+_EP_RESEARCH_HYPOTHESIS_SCHEMA_VERSION = _evidence_packet.RESEARCH_HYPOTHESIS_SCHEMA_VERSION
+_EP_RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION = _evidence_packet.RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION
+_EP_AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION = _evidence_packet.AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION
+_EP_AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION = _evidence_packet.AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION
+_compact_public_text = _evidence_packet._compact_public_text
+_compact_public_text_list = _evidence_packet._compact_public_text_list
+_compact_public_token = _evidence_packet._compact_public_token
+_finite_float = _evidence_packet._finite_float
+_json_list = _evidence_packet._json_list
+_json_obj = _evidence_packet._json_obj
+_METRIC_DIRECTIONS = _evidence_packet.METRIC_DIRECTIONS
+_is_negative_evidence_event = _evidence_packet._is_negative_evidence_event
+_is_retry_evidence_event = _evidence_packet._is_retry_evidence_event
+_load_json_object = _evidence_packet._load_json_object
+_metric_improved = _evidence_packet._metric_improved
+_metric_rank_key = _evidence_packet._metric_rank_key
+_validate_research_contract = _evidence_packet.validate_research_contract
+_validate_research_evidence_event = _evidence_packet.validate_research_evidence_event
+_validate_research_hypothesis = _evidence_packet.validate_research_hypothesis
 
 
 AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION = "decentralized_auto_research_fixture_v0"
@@ -351,13 +344,13 @@ def validate_auto_research_fixture(payload: dict[str, Any]) -> dict[str, Any]:
     if schema != AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION:
         raise ValueError(f"schema_version must be {AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION}")
 
-    contract = validate_research_contract(_json_obj(payload.get("research_contract"), field="research_contract"))
+    contract = _validate_research_contract(_json_obj(payload.get("research_contract"), field="research_contract"))
     hypotheses = [
-        validate_research_hypothesis(_json_obj(item, field="hypotheses[]"))
+        _validate_research_hypothesis(_json_obj(item, field="hypotheses[]"))
         for item in _json_list(payload.get("hypotheses"), field="hypotheses")
     ]
     evidence_events = [
-        validate_research_evidence_event(_json_obj(item, field="evidence_events[]"))
+        _validate_research_evidence_event(_json_obj(item, field="evidence_events[]"))
         for item in _json_list(payload.get("evidence_events"), field="evidence_events")
     ]
 
@@ -1310,9 +1303,9 @@ def build_auto_research_demo_acceptance_packet(
 
 
 def _quickstart_contract(*, goal_id: str, objective: str) -> dict[str, Any]:
-    contract = validate_research_contract(
+    contract = _validate_research_contract(
         {
-            "schema_version": RESEARCH_CONTRACT_SCHEMA_VERSION,
+            "schema_version": _EP_RESEARCH_CONTRACT_SCHEMA_VERSION,
             "goal_id": goal_id,
             "research_objective": objective,
             "editable_scope": ["solution_candidate.py"],
@@ -1641,9 +1634,9 @@ def build_auto_research_quickstart(
         f"python3 {pack_dir.as_posix()}/protected_eval.py "
         f"--solution {pack_dir.as_posix()}/solution_candidate.py --split holdout"
     )
-    hypothesis = validate_research_hypothesis(
+    hypothesis = _validate_research_hypothesis(
         {
-            "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
+            "schema_version": _EP_RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
             "hypothesis_id": "hyp_quickstart_partial_selection",
             "todo_id": "todo_auto_research_quickstart_001",
             "claimed_by": agent,
@@ -1845,7 +1838,7 @@ def _rollout_hypothesis_text(event: dict[str, Any], details: dict[str, Any]) -> 
 def _research_hypothesis_from_rollout_event(event: dict[str, Any]) -> dict[str, Any] | None:
     if str(event.get("event_kind") or "") != "research_hypothesis":
         return None
-    if str(event.get("classification") or "") != RESEARCH_HYPOTHESIS_SCHEMA_VERSION:
+    if str(event.get("classification") or "") != _EP_RESEARCH_HYPOTHESIS_SCHEMA_VERSION:
         return None
     details = _json_obj(event.get("details") or {}, field="rollout.hypothesis.details")
     grounding_refs, novelty_audit_ref = _rollout_source_refs(event)
@@ -1857,9 +1850,9 @@ def _research_hypothesis_from_rollout_event(event: dict[str, Any]) -> dict[str, 
         blocked_by.append("evidence_or_boundary_guardrail_failed")
     elif str(status) == "needs_retry" or retry_count:
         blocked_by.append("needs_retry_evidence")
-    return validate_research_hypothesis(
+    return _validate_research_hypothesis(
         {
-            "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
+            "schema_version": _EP_RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
             "hypothesis_id": details.get("hypothesis_id"),
             "parent_hypothesis_id": details.get("parent_hypothesis_id") or None,
             "todo_id": event.get("todo_id"),
@@ -1877,12 +1870,12 @@ def _research_hypothesis_from_rollout_event(event: dict[str, Any]) -> dict[str, 
 def _research_evidence_from_rollout_event(event: dict[str, Any]) -> dict[str, Any] | None:
     if str(event.get("event_kind") or "") != "research_evidence":
         return None
-    if str(event.get("classification") or "") != RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION:
+    if str(event.get("classification") or "") != _EP_RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION:
         return None
     details = _json_obj(event.get("details") or {}, field="rollout.evidence.details")
-    return validate_research_evidence_event(
+    return _validate_research_evidence_event(
         {
-            "schema_version": RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION,
+            "schema_version": _EP_RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION,
             "hypothesis_id": details.get("hypothesis_id"),
             "todo_id": event.get("todo_id"),
             "agent_id": event.get("agent_id") or "unknown_agent",
@@ -1910,9 +1903,9 @@ def _synthetic_hypothesis_from_evidence(events: list[dict[str, Any]]) -> dict[st
         blocked_by.append("evidence_or_boundary_guardrail_failed")
     elif status == "needs_retry":
         blocked_by.append("needs_retry_evidence")
-    return validate_research_hypothesis(
+    return _validate_research_hypothesis(
         {
-            "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
+            "schema_version": _EP_RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
             "hypothesis_id": first["hypothesis_id"],
             "parent_hypothesis_id": None,
             "todo_id": first["todo_id"],
@@ -2499,7 +2492,7 @@ def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[s
     graph = _json_obj(evidence_graph, field="evidence_graph")
     metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
     direction = str(metric.get("direction") or "maximize")
-    if direction not in METRIC_DIRECTIONS:
+    if direction not in _METRIC_DIRECTIONS:
         direction = "maximize"
     baseline = _finite_float(metric.get("baseline"), field="evidence_graph.metric.baseline")
     source_kind = _compact_optional_token(
@@ -2758,12 +2751,12 @@ def build_research_evidence_graph_from_records(
 ) -> dict[str, Any]:
     goal = _compact_public_token(goal_id, field="goal_id")
     direction = _compact_public_token(metric_direction, field="metric.direction")
-    if direction not in METRIC_DIRECTIONS:
+    if direction not in _METRIC_DIRECTIONS:
         raise ValueError("metric.direction must be maximize or minimize")
     name = _compact_public_token(metric_name, field="metric.name")
     source = _compact_public_token(source_kind, field="source_kind")
-    hypotheses = [validate_research_hypothesis(dict(item)) for item in hypotheses]
-    events = [validate_research_evidence_event(dict(event)) for event in evidence_events]
+    hypotheses = [_validate_research_hypothesis(dict(item)) for item in hypotheses]
+    events = [_validate_research_evidence_event(dict(event)) for event in evidence_events]
     baseline = _finite_float(baseline_metric, field="baseline_metric")
     scored_events = [event for event in events if event["eval_status"] == "scored"]
     best_dev = _best_metric(scored_events, split="dev", direction=direction)
@@ -3395,7 +3388,7 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             ]
         )
         return "\n".join(lines) + "\n"
-    if payload.get("schema_version") == AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION:
+    if payload.get("schema_version") == _EP_AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION:
         summary = payload["summary"]  # type: ignore[index]
         hypothesis = payload["hypothesis"]  # type: ignore[index]
         lines = [
@@ -3411,7 +3404,7 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
             f"- protected scope clean: `{summary.get('protected_scope_clean')}`",
         ]
         return "\n".join(lines) + "\n"
-    if payload.get("schema_version") == AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION:
+    if payload.get("schema_version") == _EP_AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION:
         lines = [
             "# LoopX Auto Research Rollout Append",
             "",
