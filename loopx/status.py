@@ -6186,6 +6186,10 @@ def apply_resume_conditions(
             if isinstance(target_item, dict):
                 condition["target_archive_state"] = target_item.get("archive_state")
                 condition["target_source_section"] = target_item.get("source_section")
+                condition["target_task_class"] = todo_item_task_class(target_item)
+                target_claimed_by = normalize_todo_claimed_by(target_item.get("claimed_by"))
+                if target_claimed_by:
+                    condition["target_claimed_by"] = target_claimed_by
             condition["satisfied"] = condition["target_status"] == "done"
         elif kind == TODO_RESUME_KIND_PR_MERGED and target:
             condition.update(pr_merged_condition(target, rollout_events or []))
@@ -6263,6 +6267,12 @@ def compact_todo_group(
         for item in projected_open_items
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    ]
+    resume_blocked_items = [
+        item
+        for item in projected_open_items
+        if normalize_todo_resume_when(item.get("resume_when"))
+        if item.get("resume_ready") is False
     ]
     monitor_items = [
         item
@@ -6367,6 +6377,12 @@ def compact_todo_group(
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
         "items": budgeted_items if item_limit is None else budgeted_items[:item_limit],
     }
+    if resume_blocked_items:
+        summary["resume_blocked_count"] = len(resume_blocked_items)
+        summary["resume_blocked_items"] = [
+            compact_todo_item(item)
+            for item in resume_blocked_items[:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
+        ]
     handoff_gates = build_todo_handoff_gate_states(items)
     if handoff_gates:
         summary["handoff_gates"] = handoff_gates

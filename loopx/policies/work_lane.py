@@ -18,6 +18,8 @@ def build_work_lane_contract(
     outcome_followthrough: dict[str, Any] | None,
     next_action_requires_advancement: bool,
     monitor_due_item_limit: int,
+    resume_blocked_by_monitor_count: int = 0,
+    resume_blocked_by_monitor_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Return the work-lane execution contract from precomputed quota facts.
 
@@ -35,6 +37,7 @@ def build_work_lane_contract(
     has_monitor_todos = monitor_count > 0
     monitor_only_todos = has_agent_todos and has_monitor_todos and not has_advancement_todos
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None
+    blocked_by_monitor_items = resume_blocked_by_monitor_items or []
 
     def due_monitor_contract(*, reason_codes: list[str]) -> dict[str, Any]:
         selected = first_due_monitor or {}
@@ -111,6 +114,29 @@ def build_work_lane_contract(
                 "action": (
                     "verify the observable external result handle; if it is absent, "
                     "write a compact blocker instead of rerunning launched work"
+                ),
+            }
+        if resume_blocked_by_monitor_count > 0 and not first_due_monitor:
+            selected = blocked_by_monitor_items[0] if blocked_by_monitor_items else {}
+            reason_codes = ["resume_blocked_by_open_monitor"]
+            if monitor_only_todos:
+                reason_codes.insert(0, "monitor_todo_only")
+            return {
+                "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+                "lane": "advancement_task",
+                "next_lane": "advancement_task",
+                "obligation": "repair_resume_gate_or_close_standing_monitor",
+                "must_attempt_work": True,
+                "reason_codes": reason_codes,
+                "monitor_policy": "material_transition_only",
+                "resume_blocked_by_monitor_count": max(0, int(resume_blocked_by_monitor_count)),
+                "resume_blocked_by_monitor_items": blocked_by_monitor_items[:monitor_due_item_limit],
+                "selected_todo_id": selected.get("todo_id"),
+                "selected_resume_when": selected.get("resume_when"),
+                "action": (
+                    "repair the standing monitor dependency: close/supersede the monitor "
+                    "after validated evidence, or replan the gated advancement todo with a "
+                    "non-blocking monitor contract"
                 ),
             }
         if monitor_only_todos:
