@@ -1,3 +1,10 @@
+"""Compatibility boundary for older auto-research demo/projection code.
+
+New product logic belongs in the lightweight kernel or generic multi-agent
+runner. Keep this module as a temporary adapter for legacy quickstart/demo
+callers while those paths are migrated or deleted.
+"""
+
 from __future__ import annotations
 
 import json

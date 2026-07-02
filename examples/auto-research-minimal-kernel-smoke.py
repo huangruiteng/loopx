@@ -28,6 +28,21 @@ from loopx.capabilities.auto_research import (  # noqa: E402
 
 KERNEL = REPO_ROOT / "loopx/capabilities/auto_research/kernel.py"
 CORE = REPO_ROOT / "loopx/capabilities/auto_research/core.py"
+INIT = REPO_ROOT / "loopx/capabilities/auto_research/__init__.py"
+LEGACY_CORE = REPO_ROOT / "loopx/capabilities/auto_research/legacy_core.py"
+
+KERNEL_FORBIDDEN_MARKERS = [
+    "legacy_core",
+    "demo_e2e",
+    "worker_runtime",
+    "visible_multi_agent_launcher",
+    "protected_eval",
+    "quickstart",
+    "knn",
+    "showcase",
+    "tmux",
+    "codex",
+]
 
 
 def assert_public_safe(payload: Any) -> None:
@@ -65,13 +80,28 @@ def assert_positive_result(payload: dict[str, Any]) -> None:
     assert_public_safe(payload)
 
 
-def main() -> None:
+def assert_kernel_boundary() -> None:
     kernel_text = KERNEL.read_text(encoding="utf-8")
     core_text = CORE.read_text(encoding="utf-8")
+    init_text = INIT.read_text(encoding="utf-8")
+    lightweight_surface = kernel_text + "\n" + core_text + "\n" + init_text
     assert len(kernel_text.splitlines()) <= 220
     assert len(core_text.splitlines()) <= 40
-    assert "run_builtin_lightweight_demo" not in kernel_text + core_text
-    assert "protected_eval.py" not in kernel_text
+    assert "run_builtin_lightweight_demo" not in lightweight_surface
+    leaked_markers = [
+        marker
+        for marker in KERNEL_FORBIDDEN_MARKERS
+        if marker.lower() in lightweight_surface.lower()
+    ]
+    assert not leaked_markers, leaked_markers
+
+    legacy_text = LEGACY_CORE.read_text(encoding="utf-8")
+    assert "Compatibility boundary" in legacy_text
+    assert "New product logic belongs in the lightweight kernel" in legacy_text
+
+
+def main() -> None:
+    assert_kernel_boundary()
 
     candidates = [
         lightweight_hypothesis(
