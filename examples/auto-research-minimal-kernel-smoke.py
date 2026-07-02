@@ -29,7 +29,6 @@ from loopx.capabilities.auto_research import (  # noqa: E402
 KERNEL = REPO_ROOT / "loopx/capabilities/auto_research/kernel.py"
 CORE = REPO_ROOT / "loopx/capabilities/auto_research/core.py"
 INIT = REPO_ROOT / "loopx/capabilities/auto_research/__init__.py"
-LEGACY_CORE = REPO_ROOT / "loopx/capabilities/auto_research/legacy_core.py"
 
 KERNEL_FORBIDDEN_MARKERS = [
     "legacy_core",
@@ -94,11 +93,6 @@ def assert_kernel_boundary() -> None:
         if marker.lower() in lightweight_surface.lower()
     ]
     assert not leaked_markers, leaked_markers
-
-    legacy_text = LEGACY_CORE.read_text(encoding="utf-8")
-    assert "Compatibility boundary" in legacy_text
-    assert "New product logic belongs in the lightweight kernel" in legacy_text
-
 
 def main() -> None:
     assert_kernel_boundary()
