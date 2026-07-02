@@ -61,13 +61,23 @@ def primary_claimed_advancement() -> dict:
     }
 
 
-def status_payload(agent_todo_items: list[dict]) -> dict:
+def status_payload(
+    agent_todo_items: list[dict],
+    *,
+    replan_obligation: dict | None = REPLAN_OBLIGATION,
+) -> dict:
     agent_todos = compact_todo_group(
         agent_todo_items,
         source_section="Agent Todo",
         role="agent",
     )
     assert agent_todos is not None
+    project_asset = {
+        "next_action": "Observe the fixture signal; no material transition is available.",
+        "agent_todos": agent_todos,
+    }
+    if replan_obligation is not None:
+        project_asset["autonomous_replan_obligation"] = replan_obligation
     return {
         "ok": True,
         "attention_queue": {
@@ -88,11 +98,7 @@ def status_payload(agent_todo_items: list[dict]) -> dict:
                         "state": "eligible",
                         "reason": "eligible fixture",
                     },
-                    "project_asset": {
-                        "next_action": "Observe the fixture signal; no material transition is available.",
-                        "agent_todos": agent_todos,
-                        "autonomous_replan_obligation": REPLAN_OBLIGATION,
-                    },
+                    "project_asset": project_asset,
                 }
             ]
         },
@@ -164,9 +170,35 @@ def assert_replan_beats_agent_scope_wait() -> None:
     assert "agent_scope_wait" in guard["autonomous_replan_decision"]["not_disturbed_by"], guard
 
 
+def assert_empty_monitor_frontier_derives_replan() -> None:
+    guard = build_quota_should_run(
+        status_payload([monitor_item()], replan_obligation=None),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["required"] is True, guard
+    assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    assert guard["goal_frontier_projection"]["remaining_advancement_frontier"] == {
+        "current_agent_claimed_advancement_count": 0,
+        "unclaimed_advancement_count": 0,
+        "other_agent_claimed_advancement_count": 0,
+    }, guard
+    scheduler = guard["scheduler_hint"]
+    assert scheduler["action"] == "run_now", guard
+    assert scheduler["cadence_class"] == "active_work", guard
+
+
 def main() -> None:
     assert_replan_beats_monitor_quiet_skip()
     assert_replan_beats_agent_scope_wait()
+    assert_empty_monitor_frontier_derives_replan()
     print("quota-replan-decision-plane-smoke ok")
 
 

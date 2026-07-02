@@ -38,6 +38,7 @@ from .policies.goal_frontier import (
     autonomous_replan_decision_allowed,
     build_autonomous_replan_recommendation,
     build_goal_frontier_projection_from_summaries,
+    derive_goal_frontier_replan_obligation_from_summaries,
     select_autonomous_replan_obligation,
 )
 from .policies.goal_route_hint import build_goal_route_hint
@@ -6209,6 +6210,7 @@ def _heartbeat_recommendation(
     agent_todo_summary: dict[str, Any] | None,
     work_lane_contract: dict[str, Any] | None = None,
     stall_self_repair: dict[str, Any] | None = None,
+    replan_obligation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status = str(item.get("status") or "")
     waiting_on = str(item.get("waiting_on") or "")
@@ -6217,7 +6219,11 @@ def _heartbeat_recommendation(
     lifecycle_flags = item.get("lifecycle_flags")
     quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    replan_obligation = select_autonomous_replan_obligation(item, project_asset)
+    replan_obligation = (
+        replan_obligation
+        if isinstance(replan_obligation, dict)
+        else select_autonomous_replan_obligation(item, project_asset)
+    )
     has_user_todos = _open_todo_count(user_todo_summary) > 0
     has_agent_todos = _open_todo_count(agent_todo_summary) > 0
     work_lane_contract = work_lane_contract or _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
@@ -7020,6 +7026,15 @@ def build_quota_should_run(
             if isinstance(agent_identity, dict)
             else None
         )
+        frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
+            user_todo_summary=user_todo_summary,
+            agent_todo_summary=agent_todo_summary,
+            work_lane_contract=work_lane_contract,
+            agent_id=agent_frontier_id,
+            existing_replan_obligation=replan_obligation,
+        )
+        if frontier_replan_obligation:
+            replan_obligation = frontier_replan_obligation
         goal_frontier_projection = build_goal_frontier_projection_from_summaries(
             goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
@@ -7135,6 +7150,7 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
             stall_self_repair=stall_self_repair,
+            replan_obligation=replan_obligation,
         )
         if capability_gate and capability_gate.get("action") == "repair_bridge":
             heartbeat_recommendation = {

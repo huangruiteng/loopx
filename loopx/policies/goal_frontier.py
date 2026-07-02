@@ -5,7 +5,9 @@ from typing import Any
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
 AUTONOMOUS_REPLAN_DECISION_SCHEMA_VERSION = "autonomous_replan_decision_v0"
+AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
+FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
 
@@ -128,17 +130,11 @@ def _summary_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
     }
 
 
-def build_goal_frontier_projection_from_summaries(
+def _frontier_advancement_counts(
     *,
-    goal_id: str,
-    agent_id: str | None,
-    user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
-    work_lane_contract: dict[str, Any] | None,
-    replan_obligation: dict[str, Any] | None,
-) -> dict[str, Any]:
-    user_counts = _summary_task_counts(user_todo_summary)
-    agent_counts = _summary_task_counts(agent_todo_summary)
+    agent_id: str | None,
+) -> dict[str, int]:
     current_agent_advancement_count = (
         safe_non_negative_int(agent_todo_summary.get("current_agent_claimed_advancement_count"))
         if isinstance(agent_todo_summary, dict)
@@ -171,21 +167,136 @@ def build_goal_frontier_projection_from_summaries(
             else {}
         )
         other_agent_claimed_items = claim_scope.get("other_agent_claimed_items")
-    monitor_only_lane = bool(
+    return {
+        "current_agent_claimed_advancement_count": current_agent_advancement_count,
+        "unclaimed_advancement_count": unclaimed_advancement_count,
+        "other_agent_claimed_advancement_count": _count_advancement_items(
+            other_agent_claimed_items
+        ),
+    }
+
+
+def _is_monitor_only_lane(
+    work_lane_contract: dict[str, Any] | None,
+) -> bool:
+    return bool(
         work_lane_contract
         and work_lane_contract.get("lane") == TODO_TASK_CLASS_MONITOR
         and work_lane_contract.get("must_attempt_work") is False
     )
+
+
+def derive_goal_frontier_replan_obligation_from_summaries(
+    *,
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+    agent_id: str | None,
+    existing_replan_obligation: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return a compact replan obligation when the goal frontier has no advancement.
+
+    This keeps the per-goal completion/replan rule in the goal-frontier policy
+    seam. Quota should consume the resulting obligation instead of embedding
+    monitor/vision semantics in its scheduler path.
+    """
+
+    if autonomous_replan_is_required(existing_replan_obligation):
+        return None
+
+    user_counts = _summary_task_counts(user_todo_summary)
+    agent_counts = _summary_task_counts(agent_todo_summary)
+    frontier_counts = _frontier_advancement_counts(
+        agent_todo_summary=agent_todo_summary,
+        agent_id=agent_id,
+    )
+    total_frontier_advancement = sum(frontier_counts.values())
+    if user_counts.get("open", 0) > 0:
+        return None
+    if not _is_monitor_only_lane(work_lane_contract):
+        return None
+    if agent_counts.get("monitor", 0) <= 0:
+        return None
+    if agent_counts.get("advancement", 0) > 0 or total_frontier_advancement > 0:
+        return None
+
+    return {
+        "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+        "required": True,
+        "stall_threshold": 1,
+        "trigger_count": 1,
+        "triggers": [
+            {
+                "kind": FRONTIER_EXHAUSTED_MONITOR_TRIGGER,
+                "section": "goal_frontier_projection",
+                "text": (
+                    "current goal frontier has no current, unclaimed, or other-agent "
+                    "advancement todo while only monitor work remains"
+                ),
+                "agent_id": agent_id,
+                "agent_open_count": agent_counts.get("open", 0),
+                "agent_monitor_open_count": agent_counts.get("monitor", 0),
+            }
+        ],
+        "guidance_actions": [
+            "create_successor",
+            "supersede_monitor",
+            "set_watch_expiry",
+            "record_no_followup",
+        ],
+        "todo_actions": [
+            {
+                "action": "add",
+                "role": "agent",
+                "priority": "P1",
+                "text": (
+                    "run a compact goal-frontier replan: create a successor runnable "
+                    "todo, supersede stale monitor work, set watch-lane expiry, or "
+                    "record an explicit no-follow-up rationale"
+                ),
+            }
+        ],
+        "next_validation_command": "python3 examples/quota-replan-decision-plane-smoke.py",
+        "stop_condition": (
+            "stop if the replan requires private material, credentials, destructive git, "
+            "production actions, or owner-only decisions"
+        ),
+        "recommended_action": (
+            "run a bounded goal-frontier replan before another monitor-only quiet "
+            "poll: create successor work, supersede the monitor lane, set an expiry, "
+            "or record no-follow-up"
+        ),
+    }
+
+
+def build_goal_frontier_projection_from_summaries(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+    replan_obligation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    user_counts = _summary_task_counts(user_todo_summary)
+    agent_counts = _summary_task_counts(agent_todo_summary)
+    frontier_counts = _frontier_advancement_counts(
+        agent_todo_summary=agent_todo_summary,
+        agent_id=agent_id,
+    )
+    monitor_only_lane = _is_monitor_only_lane(work_lane_contract)
     return build_goal_frontier_projection(
         goal_id=goal_id,
         agent_id=agent_id,
         user_counts=user_counts,
         agent_counts=agent_counts,
-        current_agent_claimed_advancement_count=current_agent_advancement_count,
-        unclaimed_advancement_count=unclaimed_advancement_count,
-        other_agent_claimed_advancement_count=_count_advancement_items(
-            other_agent_claimed_items
-        ),
+        current_agent_claimed_advancement_count=frontier_counts[
+            "current_agent_claimed_advancement_count"
+        ],
+        unclaimed_advancement_count=frontier_counts["unclaimed_advancement_count"],
+        other_agent_claimed_advancement_count=frontier_counts[
+            "other_agent_claimed_advancement_count"
+        ],
         monitor_only_lane=monitor_only_lane,
         replan_obligation=replan_obligation,
     )
