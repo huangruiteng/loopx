@@ -672,22 +672,17 @@ def main() -> int:
         assert "claude_code_loop" not in first_guard["scheduler_hint"], first_guard
         assert "cold_path_detail" not in first_guard["scheduler_hint"], first_guard
         reset = first_guard["scheduler_hint"]["reset_policy"]
-        assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-        assert reset["profile_action"] == "backoff_until_material_transition", reset
         assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
         assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
         assert reset["codex_app_initial_interval_minutes"] == 15, reset
         assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
-        assert reset["identity_key_count"] == len(first_guard["scheduler_hint"]["unchanged_identity_keys"]), reset
         assert len(reset["identity_signature"]) == 12, reset
-        assert len(reset["profile_signature"]) == 12, reset
         assert "identity_snapshot" not in reset, reset
         assert "profile_snapshot" not in reset, reset
         assert "identity_keys" not in reset, reset
-        assert "token_changed" in reset["reset_condition_summary"], reset
-        assert "material_transition" in reset["reset_condition_summary"], reset
-        assert "active_work_projected" in reset["reset_condition_summary"], reset
-        assert reset["clear_unchanged_poll_state"] is True, reset
+        assert "profile_signature" not in reset, reset
+        assert "reset_condition_summary" not in reset, reset
+        assert "clear_unchanged_poll_state" not in reset, reset
         first_reset_token = reset["reset_token"]
         assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
         assert "scheduler=backoff_until_material_transition" in first_guard["protocol_action_packet"]["summary"], first_guard
@@ -807,7 +802,7 @@ def main() -> int:
         replan_reset = replan_guard["scheduler_hint"]["reset_policy"]
         assert replan_reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=3", replan_reset
         assert replan_reset["reset_token"] != first_reset_token, replan_reset
-        assert "active_work_projected" in replan_reset["reset_condition_summary"], replan_reset
+        assert "reset_condition_summary" not in replan_reset, replan_reset
         assert "automation=execute_bounded_work" in replan_guard["protocol_action_packet"]["summary"], replan_guard
         interaction = replan_guard["interaction_contract"]
         assert interaction["mode"] == "autonomous_replan", interaction

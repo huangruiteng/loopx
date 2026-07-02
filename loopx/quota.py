@@ -10279,14 +10279,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         if reset_policy:
             lines.append(
                 "- scheduler_reset: "
-                f"reset_to={reset_policy.get('reset_to')} "
                 f"initial_interval={reset_policy.get('codex_app_initial_interval_minutes')} "
                 f"initial_rrule={reset_policy.get('codex_app_initial_rrule')} "
                 f"reset_generation={reset_policy.get('reset_token')} "
-                f"identity_key_count={reset_policy.get('identity_key_count')} "
-                f"identity_signature={reset_policy.get('identity_signature')} "
-                f"profile_signature={reset_policy.get('profile_signature')} "
-                f"conditions={reset_policy.get('reset_condition_summary')}"
+                f"identity_signature={reset_policy.get('identity_signature')}"
             )
     protocol_action_packet = (
         payload.get("protocol_action_packet")

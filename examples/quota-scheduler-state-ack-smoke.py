@@ -99,7 +99,7 @@ def state_from(hint: dict) -> dict:
         "reset_token": stateful["reset_token"],
         "identity_signature": stateful["identity_signature"],
         "progression_index": stateful["progression_index"],
-        "progression_minutes": stateful["progression_minutes"],
+        "progression_minutes": hint["codex_app"]["example_progression_minutes"],
         "last_applied_rrule": hint["codex_app"]["recommended_rrule"],
         "updated_at": "2026-01-01T00:00:00+00:00",
     }
@@ -174,10 +174,16 @@ def assert_active_work_keeps_initial_cadence() -> None:
     )
     assert first["action"] == "run_now", first
     assert first["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", first
+    assert "same_identity_action" not in first["codex_app"]["stateful_backoff"], first
+    first_detailed = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        include_detail=True,
+    )
     assert (
-        first["codex_app"]["stateful_backoff"]["same_identity_action"]
+        first_detailed["cold_path_detail"]["stateful_backoff_detail"]["same_identity_action"]
         == "keep_initial_interval_while_active_work"
-    ), first
+    ), first_detailed
 
     stale_backoff_state = state_from_hint_with_applied_rrule(
         first,

@@ -1611,16 +1611,12 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert "claude_code_loop" not in scheduler, scheduler
     assert "cold_path_detail" not in scheduler, scheduler
     reset = scheduler["reset_policy"]
-    assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-    assert reset["reset_to"] == "profile_initial_interval", reset
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
     assert reset["reset_token"] == expected_scheduler_reset_token(scheduler, mapped_decision), reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
     assert reset["codex_app_initial_interval_minutes"] == 60, reset
     assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", reset
-    assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
     assert len(reset["identity_signature"]) == 12, reset
-    assert len(reset["profile_signature"]) == 12, reset
     assert "identity_snapshot" not in reset, reset
     assert "profile_snapshot" not in reset, reset
     assert "identity_keys" not in reset, reset
@@ -1630,24 +1626,21 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert profile_snapshot["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", profile_snapshot
     assert profile_snapshot["codex_app_max_interval_minutes"] == 240, profile_snapshot
     assert profile_snapshot["unchanged_poll_backoff_multiplier"] == 2, profile_snapshot
-    assert reset["profile_signature"] == _short_hash(profile_snapshot, 12), reset
     identity_snapshot = {
         key: _nested_value(mapped_decision, key)
         for key in scheduler["unchanged_identity_keys"]
     }
     assert identity_snapshot["recommended_action"] == mapped_decision["recommended_action"], identity_snapshot
     assert reset["identity_signature"] == _short_hash(identity_snapshot, 12), reset
-    assert "token_changed" in reset["reset_condition_summary"], reset
-    assert "user_feedback" in reset["reset_condition_summary"], reset
-    assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
-    assert "active_work_projected" in reset["reset_condition_summary"], reset
+    assert "profile_signature" not in reset, reset
+    assert "reset_condition_summary" not in reset, reset
     assert "do not run another dry-run" in mapped_rec["spend_policy"], mapped_rec
     assert "heartbeat_recommendation: mode=mapped_noop_if_unchanged notify=DONT_NOTIFY" in mapped_markdown
     assert "heartbeat_stop_if_unchanged: `True`" in mapped_markdown, mapped_markdown
     assert "scheduler_hint: action=backoff_until_fresh_evidence" in mapped_markdown, mapped_markdown
     assert "codex_app_rrule=FREQ=MINUTELY;INTERVAL=60" in mapped_markdown, mapped_markdown
     assert "codex_app_progression=[60, 120, 240]" in mapped_markdown, mapped_markdown
-    assert "scheduler_reset: reset_to=profile_initial_interval initial_interval=60" in mapped_markdown, mapped_markdown
+    assert "scheduler_reset: initial_interval=60" in mapped_markdown, mapped_markdown
     assert "initial_rrule=FREQ=MINUTELY;INTERVAL=60" in mapped_markdown, mapped_markdown
     assert "reset_generation=" in mapped_markdown, mapped_markdown
     assert (

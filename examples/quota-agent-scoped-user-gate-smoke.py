@@ -890,23 +890,18 @@ def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet
     assert "claude_code_loop" not in scheduler, scheduler
     assert "cold_path_detail" not in scheduler, scheduler
     reset = scheduler["reset_policy"]
-    assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-    assert reset["profile_action"] == "backoff_until_material_transition", reset
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
     assert reset["codex_app_initial_interval_minutes"] == 15, reset
     assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
     assert scheduler["codex_app"]["max_interval_minutes"] == 60, scheduler
-    assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
     assert len(reset["identity_signature"]) == 12, reset
-    assert len(reset["profile_signature"]) == 12, reset
     assert "identity_snapshot" not in reset, reset
     assert "profile_snapshot" not in reset, reset
     assert "identity_keys" not in reset, reset
-    assert "token_changed" in reset["reset_condition_summary"], reset
-    assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
-    assert "active_work_projected" in reset["reset_condition_summary"], reset
-    assert reset["no_spend_for_reset"] is True, reset
+    assert "profile_signature" not in reset, reset
+    assert "reset_condition_summary" not in reset, reset
+    assert "no_spend_for_reset" not in reset, reset
     assert "scheduler=backoff_until_material_transition" in payload["protocol_action_packet"]["summary"], payload
 
 

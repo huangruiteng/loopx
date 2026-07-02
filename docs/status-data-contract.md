@@ -1280,14 +1280,16 @@ changes, final checks, and loop self-stop never spend quota. Host schedulers
 apply `recommended_interval_minutes` as the next target interval and multiply
 subsequent unchanged intervals by `unchanged_poll_backoff_multiplier` until
 `max_interval_minutes`; `example_progression_minutes` exposes the compact
-human-readable sequence. The hint also includes
-`reset_policy.schema_version=scheduler_reset_policy_v0`: hosts compare its
-`reset_token` between polls and clear the unchanged/backoff streak when that
-token changes, or when a user reply, new/reassigned todo, resolved gate, or
-material transition makes the goal actionable again. The token is derived from
-scheduler action plus identity/profile inputs, while the hot path carries only
-short identity/profile signatures instead of full snapshots. The reset moves
-Codex App/local cadence back to the current profile's initial interval before
+human-readable sequence. The hint also includes a compact `reset_policy`:
+hosts compare `reset_token` between polls and clear the unchanged/backoff
+streak when that token changes, or when a user reply, new/reassigned todo,
+resolved gate, or material transition makes the goal actionable again. The
+token is derived from scheduler action plus identity/profile inputs, while the
+hot path carries only action fields plus a short `identity_signature`; the
+profile signature, reset-condition summary, and full stateful-backoff policy are
+available from `scheduler_hint.cold_path_detail` when callers request
+`loopx quota should-run --include-scheduler-detail`. The reset moves Codex
+App/local cadence back to the current profile's initial interval before
 unchanged backoff resumes, and does not spend quota.
 Codex App heartbeats should use `automation_update` only when
 `codex_app.stateful_backoff.apply_needed=true` and

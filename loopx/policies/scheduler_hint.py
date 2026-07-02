@@ -87,10 +87,15 @@ def build_codex_app_scheduler_ack_event(
         raise ValueError(
             f"quota scheduler-ack applied_rrule {safe_applied_rrule!r} does not match expected {expected_rrule!r}"
         )
+    codex_progression = (
+        codex_app.get("example_progression_minutes")
+        if isinstance(codex_app.get("example_progression_minutes"), list)
+        else []
+    )
     progression_minutes = (
         stateful_backoff.get("progression_minutes")
         if isinstance(stateful_backoff.get("progression_minutes"), list)
-        else []
+        else codex_progression
     )
     progression_index = max(0, _int_number(stateful_backoff.get("progression_index"), default=0))
     safe_generated_at = generated_at or ""
@@ -264,7 +269,7 @@ def build_scheduler_hint(
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:12]
-        reset_policy = {
+        reset_policy_detail = {
             "schema_version": SCHEDULER_RESET_POLICY_SCHEMA_VERSION,
             "source": "quota.should-run",
             "reset_to": "profile_initial_interval",
@@ -283,6 +288,13 @@ def build_scheduler_hint(
             "codex_app_tool": "automation_update",
             "codex_app_apply": "call_automation_update_to_restore_initial_rrule_on_token_change",
             "no_spend_for_reset": True,
+        }
+        reset_policy = {
+            "reset_token": reset_token,
+            "host_state_key": "scheduler_hint.reset_policy.reset_token",
+            "codex_app_initial_interval_minutes": codex_interval,
+            "codex_app_initial_rrule": codex_rrule,
+            "identity_signature": identity_signature,
         }
         local_scheduler = {
             "recommended_interval_minutes": codex_interval,
@@ -332,6 +344,19 @@ def build_scheduler_hint(
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
         apply_needed = state_status != "same_identity" or last_applied_rrule != current_rrule
+        stateful_backoff_detail = {
+            "progression_minutes": cadence_progression,
+            "current_interval_minutes": current_interval,
+            "ack_required_after_apply": apply_needed,
+            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
+            "same_identity_action": (
+                "advance_index_after_scheduler_ack"
+                if advance_same_identity
+                else "keep_initial_interval_while_active_work"
+            ),
+            "reset_action": "clear_progression_index_apply_initial_rrule",
+            "automation_update_scope": "rrule_only_preserve_body_name_status",
+        }
         codex_app = {
             "recommended_interval_minutes": current_interval,
             "max_interval_minutes": codex_max,
@@ -363,20 +388,9 @@ def build_scheduler_hint(
                 "state_key": CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
                 "identity_signature": identity_signature,
                 "reset_token": reset_token,
-                "progression_minutes": cadence_progression,
                 "progression_index": current_index,
-                "current_interval_minutes": current_interval,
                 "current_rrule": current_rrule,
                 "apply_needed": apply_needed,
-                "ack_required_after_apply": apply_needed,
-                "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
-                "same_identity_action": (
-                    "advance_index_after_scheduler_ack"
-                    if advance_same_identity
-                    else "keep_initial_interval_while_active_work"
-                ),
-                "reset_action": "clear_progression_index_apply_initial_rrule",
-                "automation_update_scope": "rrule_only_preserve_body_name_status",
                 "state_status": state_status,
             },
             "no_spend_for_cadence_change": True,
@@ -425,6 +439,8 @@ def build_scheduler_hint(
                     "codex_cli_tui",
                     "claude_code_loop",
                     "final_quota_replan_check",
+                    "reset_policy_detail",
+                    "stateful_backoff_detail",
                 ],
             },
         }
@@ -436,6 +452,8 @@ def build_scheduler_hint(
                 "codex_cli_tui": codex_cli_tui,
                 "claude_code_loop": claude_code_loop,
                 "final_quota_replan_check": final_replan_check,
+                "reset_policy_detail": reset_policy_detail,
+                "stateful_backoff_detail": stateful_backoff_detail,
             }
         return scheduler_hint
 

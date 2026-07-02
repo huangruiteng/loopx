@@ -384,8 +384,8 @@ def assert_monitor_quiet_skip_scheduler_and_packet_contract() -> None:
     assert scheduler["codex_app"]["recommended_rrule"] == (
         "FREQ=MINUTELY;INTERVAL=15"
     ), scheduler
-    assert scheduler["codex_app"]["stateful_backoff"]["current_interval_minutes"] == 15, scheduler
-    assert scheduler["codex_app"]["stateful_backoff"]["ack_required_after_apply"] is True, scheduler
+    assert scheduler["codex_app"]["recommended_interval_minutes"] == 15, scheduler
+    assert scheduler["codex_app"]["stateful_backoff"]["apply_needed"] is True, scheduler
     assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
 
     packet = build_review_packet(payload, goal_id=GOAL_ID)
@@ -497,8 +497,8 @@ def assert_agent_scope_wait_scheduler_contract() -> None:
     assert scheduler["codex_app"]["recommended_rrule"] == (
         "FREQ=MINUTELY;INTERVAL=10"
     ), scheduler
-    assert scheduler["codex_app"]["stateful_backoff"]["current_interval_minutes"] == 10, scheduler
-    assert scheduler["codex_app"]["stateful_backoff"]["ack_required_after_apply"] is True, scheduler
+    assert scheduler["codex_app"]["recommended_interval_minutes"] == 10, scheduler
+    assert scheduler["codex_app"]["stateful_backoff"]["apply_needed"] is True, scheduler
     assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
 
     packet = build_review_packet(payload, goal_id=GOAL_ID)

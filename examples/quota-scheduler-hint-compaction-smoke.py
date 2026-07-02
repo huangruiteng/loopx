@@ -83,32 +83,19 @@ def assert_compact_runtime_policy_complete(name: str, compact: dict) -> None:
         compact,
     )
     assert stateful_backoff["reset_token"] == compact["reset_policy"]["reset_token"], (name, compact)
-    assert stateful_backoff["progression_minutes"] == codex_app["example_progression_minutes"], (
-        name,
-        compact,
-    )
     assert stateful_backoff["apply_needed"] is True, (name, compact)
-    assert stateful_backoff["ack_required_after_apply"] is True, (name, compact)
     assert stateful_backoff["current_rrule"] == codex_app["recommended_rrule"], (name, compact)
     assert stateful_backoff["state_status"] == "missing", (name, compact)
-    assert "progression_index" in stateful_backoff["persist"], (name, compact)
-    expected_same_identity_action = (
-        "keep_initial_interval_while_active_work"
-        if compact["cadence_class"] == "active_work"
-        else "advance_index_after_scheduler_ack"
-    )
-    assert stateful_backoff["same_identity_action"] == expected_same_identity_action, (
-        name,
-        compact,
-    )
-    assert stateful_backoff["reset_action"] == "clear_progression_index_apply_initial_rrule", (
-        name,
-        compact,
-    )
-    assert stateful_backoff["automation_update_scope"] == "rrule_only_preserve_body_name_status", (
-        name,
-        compact,
-    )
+    for omitted in (
+        "progression_minutes",
+        "current_interval_minutes",
+        "ack_required_after_apply",
+        "persist",
+        "same_identity_action",
+        "reset_action",
+        "automation_update_scope",
+    ):
+        assert omitted not in stateful_backoff, (name, omitted, compact)
     assert set(unchanged_poll["limits"]) == set(RUNTIME_KEYS), (name, compact)
     assert set(unchanged_poll["after_limits"]) == set(RUNTIME_KEYS), (name, compact)
     assert "final_quota_replan_check_enabled" in unchanged_poll, (name, compact)
@@ -116,8 +103,15 @@ def assert_compact_runtime_policy_complete(name: str, compact: dict) -> None:
     assert unchanged_poll["spend_policy"], (name, compact)
     assert compact["reset_policy"]["reset_token"], (name, compact)
     assert compact["reset_policy"]["codex_app_initial_rrule"], (name, compact)
-    assert compact["reset_policy"]["codex_app_tool"] == "automation_update", (name, compact)
-    assert "automation_update" in compact["reset_policy"]["codex_app_apply"], (name, compact)
+    for omitted in (
+        "schema_version",
+        "codex_app_tool",
+        "codex_app_apply",
+        "profile_signature",
+        "identity_key_count",
+        "reset_condition_summary",
+    ):
+        assert omitted not in compact["reset_policy"], (name, omitted, compact)
     detail_ref = compact["detail_ref"]
     assert detail_ref["omitted_by_default"] is True, (name, compact)
     assert detail_ref["execution_required"] is False, (name, compact)
@@ -164,8 +158,28 @@ def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     assert cold_path["local_scheduler"]["recommended_interval_minutes"], (name, detailed)
     assert cold_path["codex_cli_tui"]["final_quota_replan_check"], (name, detailed)
     assert cold_path["claude_code_loop"]["after_limit"], (name, detailed)
+    stateful_detail = cold_path["stateful_backoff_detail"]
+    assert stateful_detail["progression_minutes"] == compact["codex_app"]["example_progression_minutes"], (
+        name,
+        detailed,
+    )
+    assert stateful_detail["ack_required_after_apply"] is True, (name, detailed)
+    expected_same_identity_action = (
+        "keep_initial_interval_while_active_work"
+        if compact["cadence_class"] == "active_work"
+        else "advance_index_after_scheduler_ack"
+    )
+    assert stateful_detail["same_identity_action"] == expected_same_identity_action, (
+        name,
+        detailed,
+    )
+    reset_detail = cold_path["reset_policy_detail"]
+    assert reset_detail["schema_version"] == "scheduler_reset_policy_v0", (name, detailed)
+    assert reset_detail["codex_app_tool"] == "automation_update", (name, detailed)
+    assert "automation_update" in reset_detail["codex_app_apply"], (name, detailed)
+    assert len(reset_detail["profile_signature"]) == 12, (name, detailed)
     assert json_size(compact) < json_size(detailed), (name, json_size(compact), json_size(detailed))
-    assert json_size(compact) <= 3_300, (name, json_size(compact))
+    assert json_size(compact) <= 2_700, (name, json_size(compact))
 
 
 def run_should_run_cli(*, include_detail: bool, registry_path: Path, runtime: Path, project: Path) -> dict:
@@ -229,6 +243,10 @@ def assert_cli_compact_and_detail_contract() -> None:
     assert detailed["cold_path_detail"]["codex_cli_tui"]["final_quota_replan_check"], detailed
     assert detailed["cold_path_detail"]["claude_code_loop"]["after_limit"] == (
         compact["unchanged_poll"]["after_limits"]["claude_code_loop"]
+    ), detailed
+    assert detailed["cold_path_detail"]["reset_policy_detail"]["codex_app_tool"] == "automation_update", detailed
+    assert detailed["cold_path_detail"]["stateful_backoff_detail"]["progression_minutes"] == (
+        compact["codex_app"]["example_progression_minutes"]
     ), detailed
 
 
