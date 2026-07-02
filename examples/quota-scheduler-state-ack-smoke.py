@@ -61,6 +61,33 @@ def payload(*, recommended_action: str = "Wait for reassignment.") -> dict:
     }
 
 
+def active_payload() -> dict:
+    return {
+        "goal_id": "scheduler-state-ack-smoke",
+        "agent_identity": {"agent_id": "codex-side-agent"},
+        "should_run": True,
+        "effective_action": "normal_run",
+        "recommended_action": "Run the active work cadence smoke.",
+        "heartbeat_recommendation": {
+            "recommended_mode": "run_first_read_only_map",
+            "notify": "DONT_NOTIFY",
+            "spend_policy": "spend once after validated writeback",
+        },
+        "execution_obligation": {
+            "must_attempt_work": True,
+            "spend_policy": "spend after validation",
+        },
+        "automation_liveness": {
+            "automation_action": "execute_bounded_work",
+            "spend_policy": "spend after validation",
+        },
+        "interaction_contract": {
+            "mode": "bounded_delivery",
+            "user_channel": {"action_required": False},
+        },
+    }
+
+
 def state_from(hint: dict) -> dict:
     stateful = hint["codex_app"]["stateful_backoff"]
     return {
@@ -76,6 +103,13 @@ def state_from(hint: dict) -> dict:
         "last_applied_rrule": hint["codex_app"]["recommended_rrule"],
         "updated_at": "2026-01-01T00:00:00+00:00",
     }
+
+
+def state_from_hint_with_applied_rrule(hint: dict, *, index: int, rrule: str) -> dict:
+    state = state_from(hint)
+    state["progression_index"] = index
+    state["last_applied_rrule"] = rrule
+    return state
 
 
 def assert_policy_state_progression() -> None:
@@ -130,6 +164,45 @@ def assert_policy_state_progression() -> None:
     )
     assert reset["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=10", reset
     assert reset["codex_app"]["stateful_backoff"]["state_status"] == "reset_required", reset
+
+
+def assert_active_work_keeps_initial_cadence() -> None:
+    base = active_payload()
+    first = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+    )
+    assert first["action"] == "run_now", first
+    assert first["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", first
+    assert (
+        first["codex_app"]["stateful_backoff"]["same_identity_action"]
+        == "keep_initial_interval_while_active_work"
+    ), first
+
+    stale_backoff_state = state_from_hint_with_applied_rrule(
+        first,
+        index=1,
+        rrule="FREQ=MINUTELY;INTERVAL=6",
+    )
+    repaired = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        codex_app_scheduler_state=stale_backoff_state,
+    )
+    assert repaired["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", repaired
+    assert repaired["codex_app"]["stateful_backoff"]["progression_index"] == 0, repaired
+    assert repaired["codex_app"]["stateful_backoff"]["state_status"] == "same_identity", repaired
+    assert repaired["codex_app"]["stateful_backoff"]["apply_needed"] is True, repaired
+
+    steady = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        codex_app_scheduler_state=state_from(repaired),
+    )
+    assert steady["codex_app"]["stateful_backoff"]["current_rrule"] == "FREQ=MINUTELY;INTERVAL=3", steady
+    assert steady["codex_app"]["stateful_backoff"]["progression_index"] == 0, steady
+    assert steady["codex_app"]["stateful_backoff"]["apply_needed"] is False, steady
+    assert "recommended_rrule" not in steady["codex_app"], steady
 
 
 def run_cli(root: Path, *args: str, registry_path: Path, runtime: Path, project: Path) -> dict:
@@ -330,6 +403,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
 
 def main() -> int:
     assert_policy_state_progression()
+    assert_active_work_keeps_initial_cadence()
     assert_cli_scheduler_ack_progression()
     assert_cli_scheduler_ack_uses_should_run_lookback()
     print("quota-scheduler-state-ack-smoke ok")

@@ -139,6 +139,40 @@ tick_target.write_text(
 tick_target.chmod(0o700)
 """
 
+
+_CODEX_TUI_EXEC_PY = r"""
+import json
+import os
+import subprocess
+
+codex = os.environ["LOOPX_CODEX_BIN"]
+project = os.environ["LOOPX_PROJECT"]
+reasoning_effort = os.environ["LOOPX_CODEX_REASONING_EFFORT"]
+prompt = os.environ["BOOTSTRAP_PROMPT"]
+
+args = [codex]
+if os.environ.get("LOOPX_CODEX_TRUST_WORKSPACE") == "1":
+    candidates = [project, os.path.realpath(project)]
+    git_root = subprocess.run(
+        ["git", "-C", project, "rev-parse", "--show-toplevel"],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if git_root:
+        candidates.extend([git_root, os.path.realpath(git_root)])
+    seen = set()
+    for path in candidates:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        args.extend(["-c", f"projects.{json.dumps(path)}.trust_level=\"trusted\""])
+
+args.extend(["-c", f"model_reasoning_effort={reasoning_effort}", "-C", project, prompt])
+os.execvp(codex, args)
+"""
+
+
 def _q(value: object) -> str:
     return shlex.quote(str(value))
 
@@ -148,6 +182,70 @@ def require_executable(command: str, *, field: str) -> str:
     if not path:
         raise ValueError(f"{field} executable not found on PATH: {command}")
     return path
+
+
+def _codex_config_path() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")) / "config.toml"
+
+
+def _toml_project_header(path: str) -> str:
+    return f"[projects.{json.dumps(path)}]"
+
+
+def _trust_project_in_config_text(text: str, path: str) -> str:
+    header = _toml_project_header(path)
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip() != header:
+            continue
+        end = index + 1
+        while end < len(lines) and not lines[end].lstrip().startswith("["):
+            end += 1
+        for trust_index in range(index + 1, end):
+            if lines[trust_index].strip().startswith("trust_level"):
+                lines[trust_index] = 'trust_level = "trusted"'
+                break
+        else:
+            lines.insert(index + 1, 'trust_level = "trusted"')
+        return "\n".join(lines) + "\n"
+    suffix = "" if not text or text.endswith("\n") else "\n"
+    return text + suffix + f"\n{header}\ntrust_level = \"trusted\"\n"
+
+
+def _codex_trust_candidate_paths(project: Path) -> list[str]:
+    candidates = [str(project), os.path.realpath(project)]
+    git_root = subprocess.run(
+        ["git", "-C", str(project), "rev-parse", "--show-toplevel"],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if git_root:
+        candidates.extend([git_root, os.path.realpath(git_root)])
+    trusted: list[str] = []
+    seen = set()
+    for path in candidates:
+        if path and path not in seen:
+            seen.add(path)
+            trusted.append(path)
+    return trusted
+
+
+def _persist_codex_workspace_trust(paths: Iterable[str]) -> dict[str, object]:
+    config = _codex_config_path()
+    config.parent.mkdir(parents=True, exist_ok=True)
+    before = config.read_text(encoding="utf-8") if config.exists() else ""
+    after = before
+    trusted_paths = []
+    for path in paths:
+        trusted_paths.append(path)
+        after = _trust_project_in_config_text(after, path)
+    if after != before:
+        config.write_text(after, encoding="utf-8")
+    return {
+        "persisted": after != before,
+        "trusted_path_count": len(trusted_paths),
+    }
 
 
 def runtime_shell_command(
@@ -311,19 +409,9 @@ def build_visible_lane_command(
     tick_rounds: int | None = None,
     tick_sleep_seconds: int | None = None,
 ) -> str:
-    trust_config_py = (
-        'import json, os; '
-        'print("projects." + json.dumps(os.environ["LOOPX_PROJECT"]) + '
-        '".trust_level=\\"trusted\\"")'
-    )
-    codex_trust_args = (
-        'if [ "${LOOPX_CODEX_TRUST_WORKSPACE:-0}" = "1" ]; then '
-        f'CODEX_TRUST_CONFIG="$(python3 -c {_q(trust_config_py)})"; '
-        f"exec {_q(codex_bin)} "
-        '-c "$CODEX_TRUST_CONFIG" '
-        f"-c model_reasoning_effort={_q(reasoning_effort)} "
-        '-C "$LOOPX_PROJECT" "$BOOTSTRAP_PROMPT"; '
-        "fi; "
+    codex_exec_env = (
+        f"export LOOPX_CODEX_BIN={_q(codex_bin)}; "
+        f"export LOOPX_CODEX_REASONING_EFFORT={_q(reasoning_effort)}; "
     )
     scoped_loopx_wrapper = (
         'LOOPX_REAL_CLI="$(command -v loopx)"; '
@@ -364,6 +452,7 @@ def build_visible_lane_command(
         'VISIBLE_ARTIFACT_PREFIX="${LOOPX_LANE_ID:-${LOOPX_ROLE_ID:-lane}}"; '
         f"BOOTSTRAP_PROMPT=\"$({bootstrap_command} 2>&1)\"; "
         "BOOTSTRAP_STATUS=$?; "
+        "export BOOTSTRAP_PROMPT; "
         'BOOTSTRAP_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.bootstrap-prompt.public.txt"; '
         'printf "%s\\n" "$BOOTSTRAP_PROMPT" > "$BOOTSTRAP_ARTIFACT"; '
         "if [ \"$BOOTSTRAP_STATUS\" -ne 0 ]; then "
@@ -373,9 +462,8 @@ def build_visible_lane_command(
         "fi; "
         "export LOOPX_CODEX_TUI_MODE=interactive; "
         "export LOOPX_CODEX_TUI_PROMPT_ARTIFACT=\"$BOOTSTRAP_ARTIFACT\"; "
-        f"{codex_trust_args}"
-        f"exec {_q(codex_bin)} -c model_reasoning_effort={_q(reasoning_effort)} "
-        '-C "$LOOPX_PROJECT" "$BOOTSTRAP_PROMPT"'
+        f"{codex_exec_env}"
+        f"exec python3 -c {_q(_CODEX_TUI_EXEC_PY)}"
     )
 
 
@@ -944,6 +1032,17 @@ def _launch_with_tmux(
     lanes = [item for item in payload.get("lanes", []) if isinstance(item, dict)]
     if not lanes:
         raise ValueError("visible multi-agent launcher has no lanes to launch")
+    codex_trust_config: dict[str, object] = {
+        "persisted": False,
+        "trusted_path_count": 0,
+    }
+    if codex_trust_workspace:
+        trust_paths: list[str] = []
+        for lane in lanes:
+            trust_paths.extend(
+                _codex_trust_candidate_paths(_lane_workspace(lane, default_project=project))
+            )
+        codex_trust_config = _persist_codex_workspace_trust(trust_paths)
 
     env = os.environ.copy()
     env.update(
@@ -1056,8 +1155,9 @@ def _launch_with_tmux(
         "stop_command": f"{tmux_bin} kill-session -t {session}",
         "workspace_mode": workspace_mode,
         "codex_trust_workspace": codex_trust_workspace,
+        "codex_trust_config": codex_trust_config,
         "codex_trust_scope": (
-            "per_invocation_selected_workspace"
+            "persisted_selected_workspace_and_git_root"
             if codex_trust_workspace
             else "native_codex_trust_prompt"
         ),
@@ -1081,7 +1181,8 @@ def _tmux_acceptance(
 ) -> dict[str, object]:
     codex_name = Path(codex_bin).name or "codex"
     last_payload: dict[str, object] | None = None
-    for attempt in range(20):
+    min_stable_acceptance_attempts = 12
+    for attempt in range(32):
         time.sleep(0.25)
         list_result = subprocess.run(
             [tmux_bin, "list-windows", "-t", session, "-F", "#{window_name}"],
@@ -1116,7 +1217,14 @@ def _tmux_acceptance(
                 "quota_wait_timeout",
                 "bootstrap_command_failed",
             ]
+            trust_prompt_markers = [
+                "Do you trust the contents of this directory?",
+                "Working with untrusted contents",
+                "Trusting will apply to the repository root:",
+                "Press enter to continue",
+            ]
             blocked_before_bootstrap = any(marker in capture for marker in failure_markers)
+            trust_prompt_blocked = any(marker in capture for marker in trust_prompt_markers)
             script_words = script_text.replace("\n", " ").replace(";", " ").split()
             uses_headless_codex_subcommand = any(
                 Path(word).name == codex_name
@@ -1130,12 +1238,18 @@ def _tmux_acceptance(
                 and "| python3" not in script_text
                 and not uses_headless_codex_subcommand
             )
-            ok = lane in surviving and not blocked_before_bootstrap and script_execs_codex_tui
+            ok = (
+                lane in surviving
+                and not blocked_before_bootstrap
+                and not trust_prompt_blocked
+                and script_execs_codex_tui
+            )
             pane_checks.append(
                 {
                     "lane_id": lane,
                     "accepted": ok,
                     "blocked_before_bootstrap": blocked_before_bootstrap,
+                    "trust_prompt_blocked": trust_prompt_blocked,
                     "interactive_codex_tui_script": script_execs_codex_tui,
                     "pane_current_command": current_command,
                 }
@@ -1150,7 +1264,9 @@ def _tmux_acceptance(
             "missing_lanes": [lane for lane in expected_lanes if lane not in surviving],
             "pane_checks": pane_checks,
         }
-        if accepted:
+        if any(item["trust_prompt_blocked"] for item in pane_checks):
+            return last_payload
+        if accepted and attempt + 1 >= min_stable_acceptance_attempts:
             return last_payload
     assert last_payload is not None
     return last_payload

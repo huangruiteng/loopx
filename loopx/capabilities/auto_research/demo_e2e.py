@@ -64,7 +64,7 @@ def _prepare_visible_demo_workspace_route(
         "side_lane_worktree_count": 0,
         "side_lane_count": side_count,
         "trust_prompt_avoidance": (
-            "demo_owned_clean_workspace_with_per_invocation_codex_trust_config"
+            "demo_owned_clean_workspace_with_persisted_codex_trust_config"
         ),
         "mutation_isolation_policy": (
             "mutating attempts claim an execution boundary from inside the role; "

@@ -92,7 +92,12 @@ def assert_compact_runtime_policy_complete(name: str, compact: dict) -> None:
     assert stateful_backoff["current_rrule"] == codex_app["recommended_rrule"], (name, compact)
     assert stateful_backoff["state_status"] == "missing", (name, compact)
     assert "progression_index" in stateful_backoff["persist"], (name, compact)
-    assert stateful_backoff["same_identity_action"] == "advance_index_after_scheduler_ack", (
+    expected_same_identity_action = (
+        "keep_initial_interval_while_active_work"
+        if compact["cadence_class"] == "active_work"
+        else "advance_index_after_scheduler_ack"
+    )
+    assert stateful_backoff["same_identity_action"] == expected_same_identity_action, (
         name,
         compact,
     )

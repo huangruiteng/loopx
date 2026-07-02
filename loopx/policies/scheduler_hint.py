@@ -209,6 +209,7 @@ def build_scheduler_hint(
         claude_limit: int | None,
         multiplier: int = 2,
         cadence_progression_override: list[int] | None = None,
+        advance_same_identity: bool = True,
     ) -> dict[str, Any]:
         cadence_progression = cadence_progression_override or [
             min(codex_interval * (multiplier**step), codex_max)
@@ -323,7 +324,8 @@ def build_scheduler_hint(
                     applied_index = int(scheduler_state.get("progression_index"))
                 except (TypeError, ValueError):
                     applied_index = -1
-                current_index = min(max(applied_index + 1, 0), len(cadence_progression) - 1)
+                next_index = applied_index + 1 if advance_same_identity else 0
+                current_index = min(max(next_index, 0), len(cadence_progression) - 1)
             else:
                 state_status = "reset_required"
         current_interval = cadence_progression[current_index]
@@ -368,7 +370,11 @@ def build_scheduler_hint(
                 "apply_needed": apply_needed,
                 "ack_required_after_apply": apply_needed,
                 "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
-                "same_identity_action": "advance_index_after_scheduler_ack",
+                "same_identity_action": (
+                    "advance_index_after_scheduler_ack"
+                    if advance_same_identity
+                    else "keep_initial_interval_while_active_work"
+                ),
                 "reset_action": "clear_progression_index_apply_initial_rrule",
                 "automation_update_scope": "rrule_only_preserve_body_name_status",
                 "state_status": state_status,
@@ -471,6 +477,7 @@ def build_scheduler_hint(
             codex_max=10,
             cli_limit=None,
             claude_limit=None,
+            advance_same_identity=False,
         )
 
     if user_required or recommended_mode in {"ask_operator_gate", "blocker_push_notify"}:
