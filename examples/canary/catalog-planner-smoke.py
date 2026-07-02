@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 CATALOG = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
 
@@ -455,10 +455,10 @@ def assert_catalog_canary_selects_own_profile_not_benchmark() -> None:
     assert "catalog-canary-contract" in domain_profiles, payload
     assert "benchmark-adapter-readiness" not in domain_profiles, payload
     commands = payload["commands"]
-    assert "python3 examples/catalog-canary-planner-smoke.py" in commands, payload
-    assert "python3 examples/catalog-canary-run-e2e-smoke.py" in commands, payload
-    assert "python3 examples/canary-smoke-suite-runner-smoke.py" in commands, payload
-    assert "python3 examples/pytest-smoke-suite-facade-smoke.py" not in commands, payload
+    assert "python3 examples/canary/catalog-planner-smoke.py" in commands, payload
+    assert "python3 examples/canary/catalog-run-e2e-smoke.py" in commands, payload
+    assert "python3 examples/canary/smoke-suite-runner-smoke.py" in commands, payload
+    assert "python3 examples/canary/pytest-smoke-suite-facade-smoke.py" not in commands, payload
 
 
 def assert_catalog_canary_deep_profile_includes_pytest_facade() -> None:
@@ -472,7 +472,7 @@ def assert_catalog_canary_deep_profile_includes_pytest_facade() -> None:
     assert profile["id"] == "catalog-canary-contract", profile
     assert profile["deep_checks_included"] is True, profile
     commands = payload["commands"]
-    assert "python3 examples/pytest-smoke-suite-facade-smoke.py" in commands, payload
+    assert "python3 examples/canary/pytest-smoke-suite-facade-smoke.py" in commands, payload
 
 
 def assert_install_update_does_not_select_release_promotion() -> None:
@@ -517,10 +517,10 @@ def _make_git_diff_selector_repo(tmp_dir: Path) -> tuple[Path, str]:
     _run_git(repo, "add", "loopx/canary/planner.py")
     _run_git(repo, "commit", "-m", "committed canary planner")
 
-    unstaged_path = repo / "examples" / "catalog-canary-planner-smoke.py"
+    unstaged_path = repo / "examples" / "canary" / "catalog-planner-smoke.py"
     unstaged_path.parent.mkdir(parents=True)
     unstaged_path.write_text("# tracked catalog canary smoke change\n", encoding="utf-8")
-    _run_git(repo, "add", "examples/catalog-canary-planner-smoke.py")
+    _run_git(repo, "add", "examples/canary/catalog-planner-smoke.py")
     _run_git(repo, "commit", "-m", "tracked catalog canary smoke")
 
     staged_path = repo / "loopx" / "cli_commands" / "canary.py"
@@ -542,7 +542,7 @@ def assert_git_diff_selector_covers_pr_and_worktree_changes(tmp_dir: Path) -> No
         "loopx/cli_commands/canary.py",
     ]
     assert _run_git(repo, "diff", "--name-only").stdout.splitlines() == [
-        "examples/catalog-canary-planner-smoke.py",
+        "examples/canary/catalog-planner-smoke.py",
     ]
     assert _run_git(repo, "ls-files", "--others", "--exclude-standard").stdout.splitlines() == [
         "docs/new-catalog-canary-note.md",
@@ -551,7 +551,7 @@ def assert_git_diff_selector_covers_pr_and_worktree_changes(tmp_dir: Path) -> No
     assert selector["ok"] is True, selector
     assert selector["successful_sources"] == ["base", "staged", "unstaged", "untracked"], selector
     assert selector["changed_files"] == [
-        "examples/catalog-canary-planner-smoke.py",
+        "examples/canary/catalog-planner-smoke.py",
         "loopx/canary/planner.py",
         "loopx/cli_commands/canary.py",
         "docs/new-catalog-canary-note.md",
@@ -584,7 +584,7 @@ def assert_git_diff_selector_covers_pr_and_worktree_changes(tmp_dir: Path) -> No
     domain_profile_ids = {profile["id"] for profile in payload["domain_profiles"]}
     assert "catalog-canary-contract" in domain_profile_ids, payload
     assert "benchmark-adapter-readiness" not in domain_profile_ids, payload
-    assert "python3 examples/catalog-canary-planner-smoke.py" in payload["commands"], payload
+    assert "python3 examples/canary/catalog-planner-smoke.py" in payload["commands"], payload
 
 
 def assert_coverage_audit_tracks_p0_p1_patterns() -> None:

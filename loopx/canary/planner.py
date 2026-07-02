@@ -924,26 +924,26 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "trigger_hints": (
             "catalog canary", "canary planner", "canary runner", "canary plan", "canary run",
             "smoke-suite", "run-smokes", "full smoke", "loopx/canary", "loopx/cli_commands/canary.py",
-            "examples/catalog-canary", "examples/run-smokes.py",
+            "examples/canary/catalog", "examples/run-smokes.py",
         ),
         "checks": [
             {
-                "command": "python3 examples/catalog-canary-planner-smoke.py",
+                "command": "python3 examples/canary/catalog-planner-smoke.py",
                 "tier": "default",
                 "reason": "guards catalog coverage, selector routing, and actionable JSON plan commands",
             },
             {
-                "command": "python3 examples/catalog-canary-run-e2e-smoke.py",
+                "command": "python3 examples/canary/catalog-run-e2e-smoke.py",
                 "tier": "default",
                 "reason": "guards shell-free no-write canary execution from the selected catalog plan",
             },
             {
-                "command": "python3 examples/canary-smoke-suite-runner-smoke.py",
+                "command": "python3 examples/canary/smoke-suite-runner-smoke.py",
                 "tier": "default",
                 "reason": "guards full-public, module-filtered, and catalog-profile smoke-suite selection",
             },
             {
-                "command": "python3 examples/pytest-smoke-suite-facade-smoke.py",
+                "command": "python3 examples/canary/pytest-smoke-suite-facade-smoke.py",
                 "tier": "deep",
                 "reason": "guards optional pytest/JUnit reporting while keeping canary smoke-suite as source of truth",
             },
