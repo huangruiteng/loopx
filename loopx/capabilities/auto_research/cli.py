@@ -904,9 +904,8 @@ def handle_auto_research_command(
                     supervisor: dict[str, object],
                     visible_registry_path: Path,
                     visible_runtime_root_arg: str | None,
-                    default_workspace: Path,
+                    _default_workspace: Path,
                 ) -> dict[str, object]:
-                    workspace = args.workspace or str(default_workspace)
                     return _execute_auto_research_demo_supervisor(
                         supervisor,
                         registry_path=visible_registry_path,
@@ -917,13 +916,12 @@ def handle_auto_research_command(
                         codex_bin=args.codex_bin,
                         attach=attach_visible,
                         replace_existing=args.replace_existing,
-                        workspace=workspace,
+                        workspace=args.workspace,
                         create_workspace=args.create_workspace,
                     )
 
             run_hidden_worker_loop = bool(
-                args.execute
-                and (args.headless or (args.run_worker_loop and not launch_visible))
+                args.execute and (args.headless or args.run_worker_loop or launch_visible)
             )
             payload = run_auto_research_demo_e2e(
                 agent_id=args.agent_id,

@@ -121,6 +121,8 @@ def main() -> int:
             "dry-run mode starts no process, runs no agent, writes no LoopX state, and\n   spends no quota",
             "execute mode still writes state and spends quota only through normal LoopX\n   writeback after validation",
             "workspace isolation scoped to mutating attempts rather than\n   splitting the shared goal surface",
+            "Visible Codex TUI panes must not default into a generated demo-local git\nworktree or control-plane repository",
+            "generated workspace trust prompt",
         ],
         source=PROTOCOL,
     )
@@ -160,6 +162,7 @@ def main() -> int:
             "isolate only\nmutating evidence-runner attempts",
             "Each Codex TUI role must route through its own quota/frontier/worker-turn path",
             "first show the Codex CLI TUI",
+            "should not default into the demo-local\ncontrol-plane repository or generated lane worktrees",
         ],
         source=AUTO_RESEARCH_GUIDE,
     )

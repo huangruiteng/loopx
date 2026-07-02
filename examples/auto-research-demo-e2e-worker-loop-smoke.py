@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -156,8 +158,12 @@ def main() -> int:
         fake_bin = temp / "bin"
         fake_bin.mkdir()
         fake_codex = fake_bin / "fake-codex-tui"
+        codex_invocations = temp / "codex-invocations.txt"
         fake_codex.write_text(
-            "#!/usr/bin/env sh\nprintf 'Fake Codex TUI ready\\n'\nsleep 8\n",
+            "#!/usr/bin/env sh\n"
+            f"{{ printf 'PWD=%s\\n' \"$PWD\"; printf 'ARGS=%s\\n' \"$*\"; }} >> {shlex.quote(str(codex_invocations))}\n"
+            "printf 'Fake Codex TUI ready\\n'\n"
+            "sleep 8\n",
             encoding="utf-8",
         )
         fake_codex.chmod(0o755)
@@ -267,9 +273,6 @@ def main() -> int:
                         "--replace-existing",
                         "--session-name",
                         session_name,
-                        "--workspace",
-                        str(workspace),
-                        "--create-workspace",
                         "--codex-bin",
                         "fake-codex-tui",
                     ],
@@ -288,6 +291,14 @@ def main() -> int:
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload
                 assert launch["attach_requested"] is False, visible_payload
+                assert launch["workspace_mode"] == "current_directory", visible_payload
+                workspace_route = visible_payload["visible_control_plane"]["workspace_route"]
+                assert workspace_route["side_lane_worktree_count"] == 0, workspace_route
+                assert workspace_route["primary_workspace"] == "visible_codex_tui_workspace", workspace_route
+                assert (
+                    workspace_route["trust_prompt_avoidance"]
+                    == "do_not_start_codex_tui_in_demo_local_git_worktrees"
+                ), workspace_route
                 acceptance = launch["visible_acceptance"]
                 assert acceptance["accepted"] is True, visible_payload
                 assert all(not item["blocked_before_bootstrap"] for item in acceptance["pane_checks"]), acceptance
@@ -296,6 +307,17 @@ def main() -> int:
                 assert skill_items, visible_payload
                 assert {item["source_resolution"] for item in skill_items} == {"package_root"}, skill_items
                 assert all(item["materialized"] is True for item in skill_items), skill_items
+                for _attempt in range(40):
+                    if codex_invocations.exists():
+                        break
+                    time.sleep(0.25)
+                invocation_text = codex_invocations.read_text(encoding="utf-8")
+                assert invocation_text.count("Fake Codex TUI") == 0, invocation_text
+                assert invocation_text.count("PWD=") == 4, invocation_text
+                assert invocation_text.count(f"PWD={workspace.resolve()}") == 4, invocation_text
+                assert invocation_text.count(f'-C {workspace.resolve()}') == 4, invocation_text
+                assert "visible-lane-worktrees" not in invocation_text, invocation_text
+                assert "visible-control-plane" not in invocation_text, invocation_text
                 for lane in launch["started_lanes"]:
                     capture = subprocess.run(
                         ["tmux", "capture-pane", "-pt", f"{session_name}:{lane}", "-S", "-300"],

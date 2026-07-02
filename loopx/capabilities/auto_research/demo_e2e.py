@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import json
-import re
 import shlex
-import subprocess
 import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -45,52 +43,44 @@ DEFAULT_WORKER_LOOP_AGENT_SPECS = [
 ]
 
 
-def _safe_ref_fragment(value: object, *, fallback: str) -> str:
-    text = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip()).strip("-._")
-    return text[:48] or fallback
-
-
-def _git(cwd: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=cwd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def _prepare_visible_demo_git_workspaces(
+def _prepare_visible_demo_workspace_route(
     *,
     control_project: Path,
     demo_root: Path,
     lanes: list[dict[str, object]],
     primary_agent: str | None,
 ) -> dict[str, object]:
-    """Give side-agent lanes real git worktrees while sharing one LoopX state."""
+    """Keep visible Codex TUIs off demo-local git worktrees.
+
+    The demo still shares one LoopX state surface. Mutating attempts can claim
+    their own execution boundary from inside the role, but the first visible TUI
+    screen must not start in a freshly-created git worktree because Codex will
+    stop on a trust prompt before the user sees the auto-research flow.
+    """
 
     (control_project / ".gitignore").write_text(".local/\n", encoding="utf-8")
-    _git(control_project, "init")
-    _git(control_project, "config", "user.email", "loopx-demo@example.invalid")
-    _git(control_project, "config", "user.name", "LoopX Demo")
-    _git(control_project, "add", ".")
-    _git(control_project, "commit", "-m", "seed visible auto research demo control plane")
 
-    worktree_root = demo_root / "visible-lane-worktrees"
     side_count = 0
-    for index, lane in enumerate(lanes, start=1):
+    for lane in lanes:
         agent_id = str(lane.get("agent_id") or "").strip()
         if not agent_id or agent_id == primary_agent:
-            lane["workspace_role"] = "primary_control_project"
+            lane["workspace_role"] = "shared_visible_tui_workspace"
             continue
-        lane_id = _safe_ref_fragment(lane.get("lane_id"), fallback=f"lane-{index}")
-        branch = f"demo/{_safe_ref_fragment(agent_id, fallback=f'agent-{index}')}-{index}"
-        workspace = worktree_root / lane_id
-        _git(control_project, "worktree", "add", "-b", branch, str(workspace))
-        lane["workspace"] = str(workspace)
-        lane["workspace_role"] = "independent_git_worktree"
+        lane["workspace_role"] = "shared_visible_tui_workspace"
         side_count += 1
 
     return {
         "schema_version": "auto_research_visible_demo_workspace_route_v0",
         "shared_goal_surface": "demo_local_loopx_registry_and_runtime",
-        "primary_workspace": "control_project_git_worktree",
-        "side_lane_workspace": "independent_git_worktree",
-        "side_lane_worktree_count": side_count,
+        "primary_workspace": "visible_codex_tui_workspace",
+        "side_lane_workspace": "visible_codex_tui_workspace",
+        "side_lane_worktree_count": 0,
+        "side_lane_count": side_count,
+        "trust_prompt_avoidance": "do_not_start_codex_tui_in_demo_local_git_worktrees",
+        "mutation_isolation_policy": (
+            "mutating attempts claim an execution boundary from inside the role; "
+            "the first visible TUI uses the operator-selected workspace"
+        ),
         "absolute_paths_recorded": False,
     }
 
@@ -217,7 +207,7 @@ def _seed_visible_demo_control_plane(
             }
         )
 
-    workspace_route = _prepare_visible_demo_git_workspaces(
+    workspace_route = _prepare_visible_demo_workspace_route(
         control_project=control_project,
         demo_root=demo_root,
         lanes=lanes,

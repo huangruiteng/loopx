@@ -111,6 +111,10 @@ agents cooperate on one goal surface. Isolation is applied only to the lane or
 attempt that mutates files, typically through an independent git worktree,
 scratch directory, or equivalent execution boundary. The launcher must make that
 policy explicit instead of silently moving every lane into unrelated state.
+Visible Codex TUI panes must not default into a generated demo-local git
+worktree or control-plane repository. By default they should start in the
+caller-selected workspace, or in an explicit user-owned scratch workspace, so a
+user sees the agent role TUI instead of a generated workspace trust prompt.
 
 ## Lane Shape
 
@@ -184,6 +188,8 @@ Required runtime shape:
 - every role window executes the interactive Codex CLI, not `codex exec`;
 - no pre-Codex character stream, marker transcript, raw JSON dump, or copied
   role profile appears before the TUI;
+- no generated demo-local worktree trust prompt should be the first visible
+  screen;
 - the role prompt instructs Codex to use the pane-local LoopX wrapper for
   quota/frontier/todo/evidence work;
 - users can interact with each role through ordinary Codex CLI controls.
