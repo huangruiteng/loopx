@@ -7,10 +7,11 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .legacy_core import (
+from .human_view import render_auto_research_markdown
+from .research_state import (
     build_auto_research_projection,
+    build_live_auto_research_projection,
     load_auto_research_fixture,
-    render_auto_research_markdown,
 )
 from .demo_supervisor import build_auto_research_demo_supervisor_plan
 from .evidence_packet import load_auto_research_evidence_packet_inputs
@@ -20,7 +21,6 @@ from .quickstart_seed import (
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,
     build_auto_research_quickstart,
 )
-from .research_state import build_live_auto_research_projection
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,

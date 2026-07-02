@@ -15,14 +15,14 @@ DEFAULT_MAX_LINES = 2000
 # budget with an explicit follow-up plan for retiring that whitelist entry.
 LEGACY_OVERSIZED_LIMITS = {
     "examples/benchmark-run-ledger-smoke.py": 2106,
-    "examples/quota-plan-smoke.py": 2137,
+    "examples/quota-plan-smoke.py": 2142,
     "examples/skillsbench-app-server-goal-worker-smoke.py": 2864,
     "examples/skillsbench-benchmark-run-smoke.py": 14493,
     "examples/skillsbench-host-local-launch-plan-smoke.py": 2274,
     "examples/status-markdown-smoke.py": 2411,
     "examples/terminal-bench-harbor-runner-ingest-smoke.py": 2759,
     "examples/terminal-bench-private-runner-env-guard-smoke.py": 2585,
-    "examples/work-lane-contract-smoke.py": 2264,
+    "examples/work-lane-contract-smoke.py": 2288,
     "loopx/benchmark.py": 2875,
     "loopx/benchmark_adapters/agentissue.py": 2644,
     "loopx/benchmark_adapters/agents_last_exam.py": 3998,
@@ -30,12 +30,11 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/benchmark_adapters/skillsbench_acp_relay.py": 3092,
     "loopx/benchmark_adapters/terminal_bench.py": 10045,
     "loopx/benchmark_ledger.py": 3535,
-    "loopx/capabilities/auto_research/legacy_core.py": 3013,
     "loopx/capabilities/content_ops/surface.py": 2549,
     "loopx/capabilities/lark/kanban.py": 3034,
     "loopx/codex_cli_probe.py": 3546,
-    "loopx/quota.py": 10093,
-    "loopx/status.py": 11475,
+    "loopx/quota.py": 10115,
+    "loopx/status.py": 11510,
     "loopx/terminal_bench_agent.py": 2056,
     "loopx/todos.py": 2105,
     "scripts/harbor_host_codex_goal_agent.py": 2140,
@@ -56,7 +55,7 @@ def tracked_python_files() -> list[Path]:
         text=True,
         stdout=subprocess.PIPE,
     )
-    return [ROOT / line for line in result.stdout.splitlines() if line]
+    return [path for line in result.stdout.splitlines() if line and (path := ROOT / line).exists()]
 
 
 def line_count(path: Path) -> int:

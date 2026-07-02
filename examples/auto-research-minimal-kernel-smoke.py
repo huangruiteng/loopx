@@ -9,7 +9,6 @@ protected-eval replay or a user-facing shortcut that looks like a full E2E run.
 from __future__ import annotations
 
 import json
-import importlib
 import subprocess
 import sys
 from pathlib import Path
@@ -31,14 +30,15 @@ KERNEL = REPO_ROOT / "loopx/capabilities/auto_research/kernel.py"
 CORE = REPO_ROOT / "loopx/capabilities/auto_research/core.py"
 INIT = REPO_ROOT / "loopx/capabilities/auto_research/__init__.py"
 EVIDENCE_PACKET = REPO_ROOT / "loopx/capabilities/auto_research/evidence_packet.py"
-LEGACY_CORE = REPO_ROOT / "loopx/capabilities/auto_research/legacy_core.py"
 ROLLOUT_APPEND = REPO_ROOT / "loopx/capabilities/auto_research/rollout_append.py"
 LIVE_EVIDENCE = REPO_ROOT / "loopx/capabilities/auto_research/live_evidence.py"
+RESEARCH_STATE = REPO_ROOT / "loopx/capabilities/auto_research/research_state.py"
+HUMAN_VIEW = REPO_ROOT / "loopx/capabilities/auto_research/human_view.py"
 WORKER_RUNTIME = REPO_ROOT / "loopx/capabilities/auto_research/worker_runtime.py"
 CLI = REPO_ROOT / "loopx/capabilities/auto_research/cli.py"
 
 KERNEL_FORBIDDEN_MARKERS = [
-    "legacy_core",
+    "legacy" + "_core",
     "demo_e2e",
     "worker_runtime",
     "visible_multi_agent_launcher",
@@ -49,23 +49,6 @@ KERNEL_FORBIDDEN_MARKERS = [
     "tmux",
     "codex",
 ]
-
-MIGRATED_EVIDENCE_EXPORTS = [
-    "AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION",
-    "AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION",
-    "RESEARCH_CONTRACT_SCHEMA_VERSION",
-    "RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION",
-    "RESEARCH_HYPOTHESIS_SCHEMA_VERSION",
-    "build_auto_research_evidence_packet",
-    "build_auto_research_rollout_events",
-    "load_auto_research_evidence_packet",
-    "load_auto_research_evidence_packet_inputs",
-    "validate_auto_research_evidence_packet",
-    "validate_research_contract",
-    "validate_research_evidence_event",
-    "validate_research_hypothesis",
-]
-
 
 def assert_public_safe(payload: Any) -> None:
     text = json.dumps(payload, sort_keys=True) if not isinstance(payload, str) else payload
@@ -120,21 +103,20 @@ def assert_kernel_boundary() -> None:
 
 def assert_evidence_packet_boundary() -> None:
     evidence_text = EVIDENCE_PACKET.read_text(encoding="utf-8")
-    legacy_text = LEGACY_CORE.read_text(encoding="utf-8")
     rollout_text = ROLLOUT_APPEND.read_text(encoding="utf-8")
     live_text = LIVE_EVIDENCE.read_text(encoding="utf-8")
+    research_state_text = RESEARCH_STATE.read_text(encoding="utf-8")
+    human_view_text = HUMAN_VIEW.read_text(encoding="utf-8")
     worker_text = WORKER_RUNTIME.read_text(encoding="utf-8")
     cli_text = CLI.read_text(encoding="utf-8")
-    legacy_core = importlib.import_module("loopx.capabilities.auto_research.legacy_core")
-    assert "legacy_core" not in evidence_text
-    assert "from .evidence_packet import" not in legacy_text
-    leaked_legacy_exports = [
-        name for name in MIGRATED_EVIDENCE_EXPORTS if hasattr(legacy_core, name)
-    ]
-    assert not leaked_legacy_exports, leaked_legacy_exports
-    assert "from .legacy_core import" not in rollout_text
-    assert "from .legacy_core import" not in live_text
-    assert "from .legacy_core import" not in worker_text
+    legacy_name = "legacy" + "_core"
+    assert not (REPO_ROOT / f"loopx/capabilities/auto_research/{legacy_name}.py").exists()
+    assert legacy_name not in evidence_text
+    assert legacy_name not in cli_text
+    assert f"from .{legacy_name} import" not in rollout_text
+    assert f"from .{legacy_name} import" not in live_text
+    assert f"from .{legacy_name} import" not in worker_text
+    assert f"from .{legacy_name} import" not in cli_text
     assert "from .evidence_packet import (" in worker_text
     assert "from .quickstart_seed import (" in worker_text
     assert "from .research_state import (" in worker_text
@@ -142,7 +124,11 @@ def assert_evidence_packet_boundary() -> None:
     assert "load_auto_research_evidence_packet_inputs" in worker_text
     assert "from .evidence_packet import load_auto_research_evidence_packet_inputs" in cli_text
     assert "from .quickstart_seed import (" in cli_text
-    assert "from .research_state import build_live_auto_research_projection" in cli_text
+    assert "from .research_state import (" in cli_text
+    assert "build_live_auto_research_projection" in cli_text
+    assert "build_auto_research_projection" in research_state_text
+    assert "load_auto_research_fixture" in research_state_text
+    assert "render_auto_research_markdown" in human_view_text
     for removed_surface in (
         "build_auto_research_board_projection",
         "build_auto_research_demo_acceptance_packet",
@@ -153,7 +139,8 @@ def assert_evidence_packet_boundary() -> None:
         "RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION",
         "AUTO_RESEARCH_PUBLIC_CLAIM_BOUNDARY_SCHEMA_VERSION",
     ):
-        assert removed_surface not in legacy_text, removed_surface
+        assert removed_surface not in research_state_text, removed_surface
+        assert removed_surface not in human_view_text, removed_surface
         assert removed_surface not in cli_text, removed_surface
 
 

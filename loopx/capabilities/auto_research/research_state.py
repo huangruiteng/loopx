@@ -8,7 +8,9 @@ legacy presentation code.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any
 
 from .evidence_packet import (
@@ -22,18 +24,67 @@ from .evidence_packet import (
     _finite_float,
     _is_negative_evidence_event,
     _is_retry_evidence_event,
+    _json_list,
     _json_obj,
     _metric_improved,
     _metric_rank_key,
+    validate_research_contract,
     validate_research_evidence_event,
     validate_research_hypothesis,
 )
 
 
+AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION = "decentralized_auto_research_fixture_v0"
 AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projection_v0"
 RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION = "research_evidence_graph_v0"
 RESEARCH_FRONTIER_SCHEMA_VERSION = "decentralized_research_frontier_v0"
 ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND = "loopx_rollout_event_log"
+
+
+def load_auto_research_fixture(path: str | Path) -> dict[str, Any]:
+    payload = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    return validate_auto_research_fixture(payload)
+
+
+def validate_auto_research_fixture(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = _json_obj(payload, field="fixture")
+    schema = _compact_public_token(payload.get("schema_version"), field="schema_version")
+    if schema != AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION:
+        raise ValueError(f"schema_version must be {AUTO_RESEARCH_FIXTURE_SCHEMA_VERSION}")
+
+    contract = validate_research_contract(_json_obj(payload.get("research_contract"), field="research_contract"))
+    hypotheses = [
+        validate_research_hypothesis(_json_obj(item, field="hypotheses[]"))
+        for item in _json_list(payload.get("hypotheses"), field="hypotheses")
+    ]
+    evidence_events = [
+        validate_research_evidence_event(_json_obj(item, field="evidence_events[]"))
+        for item in _json_list(payload.get("evidence_events"), field="evidence_events")
+    ]
+
+    hypothesis_ids = {item["hypothesis_id"] for item in hypotheses}
+    todo_ids = {item["todo_id"] for item in hypotheses if item.get("todo_id")}
+    for item in evidence_events:
+        if item["hypothesis_id"] not in hypothesis_ids:
+            raise ValueError(f"evidence references unknown hypothesis_id {item['hypothesis_id']}")
+        if item.get("todo_id") and item["todo_id"] not in todo_ids:
+            raise ValueError(f"evidence references unknown todo_id {item['todo_id']}")
+
+    agents = [
+        _compact_public_token(value, field="agents[]")
+        for value in _json_list(payload.get("agents"), field="agents")
+    ]
+
+    return {
+        "schema_version": schema,
+        "generated_at": _compact_public_text(payload.get("generated_at"), field="generated_at"),
+        "research_contract": contract,
+        "agents": agents,
+        "hypotheses": hypotheses,
+        "evidence_events": evidence_events,
+        "raw_logs_recorded": False,
+        "private_artifacts_recorded": False,
+    }
 
 
 def _compact_optional_token(value: Any, *, field: str, default: str) -> str:
@@ -371,6 +422,20 @@ def build_research_evidence_graph_from_rollout_events(
     )
 
 
+def build_research_evidence_graph(fixture: dict[str, Any]) -> dict[str, Any]:
+    fixture = validate_auto_research_fixture(fixture)
+    contract = fixture["research_contract"]
+    return build_research_evidence_graph_from_records(
+        goal_id=contract["goal_id"],
+        hypotheses=fixture["hypotheses"],
+        evidence_events=fixture["evidence_events"],
+        metric_name=contract["metric"]["name"],
+        metric_direction=contract["metric"]["direction"],
+        baseline_metric=contract["metric"]["baseline"],
+        source_kind="public_fixture",
+    )
+
+
 def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     graph = _json_obj(evidence_graph, field="evidence_graph")
     metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
@@ -443,6 +508,62 @@ def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[s
         "validated_promotion_candidates": validated_promotion_candidates,
         "promotion_candidates": promotion_candidates,
         "retirement_candidates": retirement_candidates,
+    }
+
+
+def build_auto_research_projection(
+    fixture: dict[str, Any],
+    *,
+    agent_id: str,
+) -> dict[str, Any]:
+    fixture = validate_auto_research_fixture(fixture)
+    agent = _compact_public_token(agent_id, field="agent_id")
+    contract = fixture["research_contract"]
+    hypotheses = fixture["hypotheses"]
+    evidence_graph = build_research_evidence_graph(fixture)
+    decision_candidates = build_research_decision_candidates(evidence_graph)
+
+    runnable_statuses = {"active", "needs_retry"}
+    selected = None
+    blocked: list[dict[str, Any]] = []
+    runnable: list[dict[str, Any]] = []
+    for item in hypotheses:
+        item_summary = {
+            "hypothesis_id": item["hypothesis_id"],
+            "todo_id": item["todo_id"],
+            "claimed_by": item["claimed_by"],
+            "status": item["status"],
+            "mechanism_family": item["mechanism_family"],
+        }
+        if item["claimed_by"] == agent and item["status"] in runnable_statuses and not item["blocked_by"]:
+            runnable.append(item_summary | {"allowed_action": "run_dev_attempt"})
+            selected = selected or runnable[-1]
+        elif item["claimed_by"] != agent and item["status"] in runnable_statuses:
+            blocked.append(item_summary | {"blocked_by": f"claimed_by:{item['claimed_by']}"})
+        elif item["blocked_by"]:
+            blocked.append(item_summary | {"blocked_by": ",".join(item["blocked_by"])})
+
+    frontier = {
+        "schema_version": RESEARCH_FRONTIER_SCHEMA_VERSION,
+        "goal_id": contract["goal_id"],
+        "agent_id": agent,
+        "selected": selected,
+        "runnable": runnable,
+        "blocked": blocked,
+        "promotion_candidates": decision_candidates["promotion_candidates"],
+        "retirement_candidates": decision_candidates["retirement_candidates"],
+    }
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
+        "source_schema_version": fixture["schema_version"],
+        "frontier": frontier,
+        "evidence_graph": evidence_graph,
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "source": "public_fixture",
+        },
     }
 
 

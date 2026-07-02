@@ -38,7 +38,7 @@ def assert_public_safe(payload: Any) -> None:
 
 def main() -> int:
     sys.path.insert(0, str(REPO_ROOT))
-    from loopx.capabilities.auto_research.legacy_core import render_auto_research_markdown
+    from loopx.capabilities.auto_research.human_view import render_auto_research_markdown
 
     launcher_source = (REPO_ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
         encoding="utf-8"

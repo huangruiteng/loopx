@@ -15,14 +15,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.auto_research.legacy_core import (  # noqa: E402
+from loopx.capabilities.auto_research.research_state import (  # noqa: E402
     AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
     RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
     RESEARCH_FRONTIER_SCHEMA_VERSION,
     build_auto_research_projection,
+    build_live_auto_research_projection,
     load_auto_research_fixture,
 )
-from loopx.capabilities.auto_research.research_state import build_live_auto_research_projection  # noqa: E402
 
 
 FIXTURE = REPO_ROOT / "examples/fixtures/decentralized-auto-research-knn.public.json"
