@@ -2605,6 +2605,12 @@ def _skillsbench_controller_trace_counters(
         "native_goal_worker_transport_reconnect_succeeded_count": count(
             "native_goal_worker_transport_reconnect_succeeded_count"
         ),
+        "native_goal_worker_goal_reactivation_attempted_count": count(
+            "native_goal_worker_goal_reactivation_attempted_count"
+        ),
+        "native_goal_worker_goal_reactivation_succeeded_count": count(
+            "native_goal_worker_goal_reactivation_succeeded_count"
+        ),
         "native_goal_worker_post_context_assistant_chars_total": count(
             "native_goal_worker_post_context_assistant_chars_total"
         ),
@@ -3769,6 +3775,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ),
         "transport_reconnect_succeeded_count": _controller_public_count(
             "native_goal_worker_transport_reconnect_succeeded_count"
+        ),
+        "goal_reactivation_attempted_count": _controller_public_count(
+            "native_goal_worker_goal_reactivation_attempted_count"
+        ),
+        "goal_reactivation_succeeded_count": _controller_public_count(
+            "native_goal_worker_goal_reactivation_succeeded_count"
         ),
         "post_context_assistant_chars_total": _controller_public_count(
             "native_goal_worker_post_context_assistant_chars_total"
@@ -5349,6 +5361,16 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "native_goal_worker_transport_reconnect_succeeded_count": (
                 controller_counters.get(
                     "native_goal_worker_transport_reconnect_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_goal_reactivation_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_goal_reactivation_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_goal_reactivation_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_goal_reactivation_succeeded_count", 0
                 )
             ),
             "native_goal_worker_post_context_assistant_chars_total": (
