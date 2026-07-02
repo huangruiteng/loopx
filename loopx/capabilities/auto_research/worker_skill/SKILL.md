@@ -104,9 +104,10 @@ Allowed actions:
 Useful command:
 
 ```bash
-loopx --format json auto-research quickstart \
+loopx --format json auto-research worker-turn \
   --goal-id "$LOOPX_GOAL_ID" \
-  --agent-id "$LOOPX_AGENT_ID"
+  --agent-id "$LOOPX_AGENT_ID" \
+  --execute
 ```
 
 Artifact contract:

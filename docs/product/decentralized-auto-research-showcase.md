@@ -128,56 +128,28 @@ next agent does not rediscover them from scratch.
 
 ## Minimal Reproduction Plan
 
-New users should not have to learn the full command matrix first. The
-quickstart path starts from one read-only command that returns the research
-contract, the files that would be created, and the first runnable hypothesis for
-the current agent:
+New users should not have to learn the full command matrix first. The default
+path previews a fresh demo-local goal surface and the visible Codex TUI lanes
+that will work it:
 
 ```bash
-loopx --format json auto-research quickstart \
+loopx --format json auto-research demo-e2e \
   --agent-id codex-side-bypass
 ```
 
-When the preview is acceptable, explicitly create the protected starter pack:
+When the preview is acceptable, launch the visible lanes:
 
 ```bash
-loopx --format json auto-research quickstart \
+loopx --format json auto-research demo-e2e \
   --agent-id codex-side-bypass \
-  --output-dir auto_research_knn_pack \
   --execute
 ```
 
-This writes a k-NN research pack with one editable candidate file, a protected
-baseline/evaluator, and a `research_contract_v0`. The command also returns the
-next dev/holdout/evidence commands, so an agent can continue from a concrete
-hypothesis instead of choosing among `frontier`, `evidence`, and
-`append-evidence` manually.
-
-The runnable pack now lives at `examples/auto_research_knn_pack/`. It provides
-an editable candidate solver, a protected evaluator, deterministic dev/held-out
-splits, and a no-upload boundary.
-
-Run the candidate on the dev split:
-
-```bash
-python3 examples/auto_research_knn_pack/protected_eval.py \
-  --solution examples/auto_research_knn_pack/solution_candidate.py \
-  --split dev
-```
-
-Run the candidate on the held-out split:
-
-```bash
-python3 examples/auto_research_knn_pack/protected_eval.py \
-  --solution examples/auto_research_knn_pack/solution_candidate.py \
-  --split holdout
-```
-
-The current public pack reports exact neighbor identity with deterministic
-protected speedup `4.0x` on dev and `4.5x` on holdout for the partial-selection
-candidate. The metric is a protected ranking-work proxy rather than wall-clock
-time, so it is stable enough for smoke tests while still preserving the product
-shape: dev evidence, held-out promotion evidence, and a clean boundary.
+This does not create a starter pack. The worker path now uses the built-in
+lightweight metric kernel so the demo can prove the state loop without shipping
+domain-specific problem code. The stable smoke metric still shows the product
+shape: baseline `1.0`, dev evidence `4.0`, holdout evidence `4.5`, and a clean
+public boundary.
 
 The fixture-backed projection remains the read-only showcase state slice:
 
@@ -192,20 +164,21 @@ This renders `decentralized_research_frontier_v0`,
 fixture. It does not launch experiments; it proves that the state shape can
 present a per-agent frontier without one leader agent.
 
-The protected evaluator outputs can also be converted into public-safe evidence
-records:
+Public-safe evaluator outputs can also be converted into evidence records. A
+minimal contract/eval pair is enough; the kernel does not require a shipped
+domain pack:
 
 ```bash
 loopx --format json auto-research evidence \
-  --contract examples/auto_research_knn_pack/research_contract.json \
+  --contract research-contract.public.json \
   --eval-result dev-result.public.json \
   --eval-result holdout-result.public.json \
-  --hypothesis-id hyp_pack_partial_selection \
-  --todo-id todo_auto_research_pack_001 \
+  --hypothesis-id hyp_state_a2a_round \
+  --todo-id todo_auto_research_demo_001 \
   --agent-id codex-side-bypass \
   --claimed-by codex-side-bypass \
-  --mechanism-family partial_selection \
-  --hypothesis "Use exact partial selection to avoid full distance sorting." \
+  --mechanism-family state_a2a_iteration \
+  --hypothesis "Use a small state-mediated handoff loop to improve the shared candidate." \
   --branch-ref codex/auto-research-evidence-writer
 ```
 
@@ -235,7 +208,7 @@ control loop.
 
 ```bash
 loopx --format json auto-research frontier \
-  --goal-id loopx-auto-research-knn \
+  --goal-id loopx-auto-research-demo \
   --agent-id codex-side-bypass
 ```
 
@@ -250,7 +223,7 @@ launch Codex, read session files, write LoopX state, or spend quota.
 
 ```bash
 loopx --format json auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn
+  --goal-id loopx-auto-research-demo
 ```
 
 The packet has two important product properties:
@@ -275,7 +248,7 @@ Operators can pass explicit lanes when rehearsing a real local demo:
 
 ```bash
 loopx --format json auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn \
+  --goal-id loopx-auto-research-demo \
   --agent codex-product-capability:research-curator:research_curator \
   --agent codex-side-bypass:hypothesis-mapper:hypothesis_mapper \
   --agent codex-main-control:evidence-runner:evidence_runner \
@@ -294,7 +267,7 @@ local Codex CLI TUIs. This is intentionally opt-in:
 
 ```bash
 loopx auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn \
+  --goal-id loopx-auto-research-demo \
   --agent codex-product-capability:research-curator:research_curator \
   --agent codex-side-bypass:hypothesis-mapper:hypothesis_mapper \
   --agent codex-main-control:evidence-runner:evidence_runner \
@@ -324,7 +297,7 @@ quota/frontier/todos and writes evidence through LoopX:
 
 ```bash
 loopx --format json auto-research worker-loop \
-  --goal-id loopx-auto-research-knn \
+  --goal-id loopx-auto-research-demo \
   --agent-id codex-product-capability \
   --agent-id codex-side-bypass \
   --agent-id codex-main-control \
@@ -342,7 +315,7 @@ launcher:
 
 ```bash
 loopx --format json auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn
+  --goal-id loopx-auto-research-demo
 ```
 
 The user should see four concrete things in the packet:

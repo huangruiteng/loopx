@@ -110,21 +110,26 @@ def assert_evidence_packet_boundary() -> None:
     worker_text = WORKER_RUNTIME.read_text(encoding="utf-8")
     cli_text = CLI.read_text(encoding="utf-8")
     legacy_name = "legacy" + "_core"
+    quickstart_name = "quickstart" + "_seed"
     assert not (REPO_ROOT / f"loopx/capabilities/auto_research/{legacy_name}.py").exists()
+    assert not (REPO_ROOT / f"loopx/capabilities/auto_research/{quickstart_name}.py").exists()
     assert legacy_name not in evidence_text
     assert legacy_name not in cli_text
     assert f"from .{legacy_name} import" not in rollout_text
     assert f"from .{legacy_name} import" not in live_text
     assert f"from .{legacy_name} import" not in worker_text
     assert f"from .{legacy_name} import" not in cli_text
+    assert quickstart_name not in worker_text
+    assert quickstart_name not in cli_text
+    assert "protected_eval" not in worker_text
+    assert "auto_research_knn_pack" not in worker_text
     assert "from .evidence_packet import (" in worker_text
-    assert "from .quickstart_seed import (" in worker_text
     assert "from .research_state import (" in worker_text
     assert "RESEARCH_HYPOTHESIS_SCHEMA_VERSION" in worker_text
     assert "load_auto_research_evidence_packet_inputs" in worker_text
     assert "from .evidence_packet import load_auto_research_evidence_packet_inputs" in cli_text
-    assert "from .quickstart_seed import (" in cli_text
     assert "from .research_state import (" in cli_text
+    assert "auto-research quickstart" not in cli_text
     assert "build_live_auto_research_projection" in cli_text
     assert "build_auto_research_projection" in research_state_text
     assert "load_auto_research_fixture" in research_state_text

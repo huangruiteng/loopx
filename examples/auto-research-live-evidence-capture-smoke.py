@@ -13,7 +13,7 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-GOAL_ID = "loopx-auto-research-knn"
+GOAL_ID = "loopx-auto-research-demo"
 AGENT_ID = "codex-side-bypass"
 
 
@@ -65,26 +65,61 @@ def run_cli(
     )
 
 
-def run_eval(pack_dir: Path, split: str) -> dict[str, Any]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(pack_dir / "protected_eval.py"),
-            "--solution",
-            str(pack_dir / "solution_candidate.py"),
-            "--split",
-            split,
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    payload = json.loads(result.stdout)
-    (pack_dir / f"{split}-result.public.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+def write_demo_contract_and_eval(workspace: Path) -> tuple[Path, Path, Path]:
+    contract_path = workspace / "research-contract.public.json"
+    dev_path = workspace / "dev-result.public.json"
+    holdout_path = workspace / "holdout-result.public.json"
+    contract_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "research_contract_v0",
+                "goal_id": GOAL_ID,
+                "research_objective": "Validate compact visible-lane evidence capture.",
+                "editable_scope": ["candidate_strategy", "todo_handoff"],
+                "protected_scope": ["metric_definition", "holdout_split"],
+                "metric": {
+                    "name": "demo_quality_score",
+                    "direction": "maximize",
+                    "baseline": 1.0,
+                },
+                "dev_eval": "builtin lightweight metric evaluator on dev split",
+                "holdout_eval": "builtin lightweight metric evaluator on holdout split",
+                "promotion_policy": "dev_and_holdout_improved",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
-    return payload
+    for path, split, value in (
+        (dev_path, "dev", 4.0),
+        (holdout_path, "holdout", 4.5),
+    ):
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "auto_research_lightweight_eval_result_v0",
+                    "split": split,
+                    "metric": {
+                        "name": "demo_quality_score",
+                        "value": value,
+                        "direction": "maximize",
+                        "baseline": 1.0,
+                    },
+                    "eval_status": "scored",
+                    "primary_metric_status": "improved",
+                    "artifact_refs": [f"public_metric:{split}:state_a2a_round"],
+                    "protected_scope_clean": True,
+                    "no_upload": True,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    return contract_path, dev_path, holdout_path
 
 
 def main() -> int:
@@ -99,52 +134,32 @@ def main() -> int:
             encoding="utf-8",
         )
 
-        quickstart = run_cli(
-            [
-                "auto-research",
-                "quickstart",
-                "--goal-id",
-                GOAL_ID,
-                "--agent-id",
-                AGENT_ID,
-                "--output-dir",
-                "auto_research_knn_pack",
-                "--execute",
-            ],
-            registry=registry,
-            runtime_root=runtime_root,
-            cwd=workspace,
-        )
-        pack_dir = workspace / json.loads(quickstart.stdout)["pack_dir"]
-        dev = run_eval(pack_dir, "dev")
-        holdout = run_eval(pack_dir, "holdout")
-        assert dev["metric"]["value"] == 4.0, dev
-        assert holdout["metric"]["value"] == 4.5, holdout
+        contract_path, dev_path, holdout_path = write_demo_contract_and_eval(workspace)
 
         evidence = run_cli(
             [
                 "auto-research",
                 "evidence",
                 "--contract",
-                str(pack_dir / "research_contract.json"),
+                str(contract_path),
                 "--eval-result",
-                str(pack_dir / "dev-result.public.json"),
+                str(dev_path),
                 "--eval-result",
-                str(pack_dir / "holdout-result.public.json"),
+                str(holdout_path),
                 "--hypothesis-id",
-                "hyp_live_lane_partial_selection",
+                "hyp_live_lane_state_a2a_round",
                 "--todo-id",
-                "todo_live_lane_partial_selection",
+                "todo_live_lane_state_a2a_round",
                 "--agent-id",
                 AGENT_ID,
                 "--claimed-by",
                 AGENT_ID,
                 "--mechanism-family",
-                "partial_selection",
+                "state_a2a_iteration",
                 "--hypothesis",
-                "Use exact partial selection to avoid full distance sorting.",
+                "Use a small state-mediated handoff loop to improve the shared candidate.",
                 "--grounding-ref",
-                "visible-lane:public-demo",
+                "kernel:state_a2a_metric_demo",
             ],
             registry=registry,
             runtime_root=runtime_root,

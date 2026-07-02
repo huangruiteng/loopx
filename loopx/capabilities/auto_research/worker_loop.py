@@ -43,7 +43,7 @@ def run_auto_research_worker_loop(
     agent_ids: Sequence[str],
     objective: str,
     workspace: Path,
-    output_dir: str = "auto_research_knn_pack",
+    output_dir: str = "auto_research_lightweight_kernel",
     evidence_dir: str = ".local/auto-research-worker",
     execute: bool = False,
     append_evidence: AppendEvidence | None = None,

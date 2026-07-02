@@ -6,7 +6,7 @@ import shlex
 from collections.abc import Iterable
 from typing import Any
 
-from .quickstart_seed import AUTO_RESEARCH_DEFAULT_GOAL_ID
+from .defaults import AUTO_RESEARCH_DEFAULT_GOAL_ID
 from ...visible_multi_agent_launcher import build_visible_multi_agent_payload_from_spec
 
 

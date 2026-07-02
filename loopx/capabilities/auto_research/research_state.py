@@ -2,7 +2,7 @@
 
 This module turns LoopX quota/todo state and rollout evidence events into the
 minimal frontier, evidence graph, and decision-candidate shapes that worker
-turns need. It intentionally avoids demo boards, quickstart packs, and other
+turns need. It intentionally avoids demo boards, starter packs, and other
 legacy presentation code.
 """
 

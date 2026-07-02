@@ -209,31 +209,28 @@ The one-command E2E path must not record raw logs, private artifacts,
 credentials, or local absolute workspace paths. It writes only public rollout
 evidence through the normal LoopX runtime root when `--execute` is present.
 
-## 1. Preview The Research Pack
+## 1. Preview The One-Command Demo
 
-The quickstart starts read-only. It returns the research contract, protected
-files that would be created, and the first runnable hypothesis.
+The default path starts from a fresh demo-local goal surface and visible Codex
+TUI lanes. It does not reuse the internal default goal unless
+`--inherit-default-goal` is passed.
 
 ```bash
-loopx --format json auto-research quickstart \
+loopx --format json auto-research demo-e2e \
   --agent-id codex-side-bypass
 ```
 
-When the preview is acceptable, create the starter pack in the clean workspace:
+When the preview is acceptable, launch the visible lanes:
 
 ```bash
-loopx --format json auto-research quickstart \
+loopx --format json auto-research demo-e2e \
   --agent-id codex-side-bypass \
-  --output-dir auto_research_knn_pack \
   --execute
 ```
 
-Expected artifacts:
-
-- `auto_research_knn_pack/research_contract.json`
-- `auto_research_knn_pack/solution_candidate.py`
-- `auto_research_knn_pack/protected_eval.py`
-- baseline and README files that describe the public-safe evaluation boundary
+The visible lanes use the same tiny kernel path as the headless proof:
+frontier/todo selection, built-in lightweight metric evidence, rollout append,
+and compact live evidence. Raw JSON is written only to local artifacts.
 
 ## 2. Inspect The Visible Employee Plan
 
@@ -244,7 +241,7 @@ packet and inspect it before launching Codex.
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn \
+  --goal-id loopx-auto-research-demo \
   --workspace "$PWD"
 ```
 
@@ -285,7 +282,7 @@ interaction when the role runs LoopX commands; raw JSON belongs in
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research worker-loop \
-  --goal-id loopx-auto-research-knn \
+  --goal-id loopx-auto-research-demo \
   --agent-id codex-product-capability \
   --agent-id codex-side-bypass \
   --agent-id codex-main-control \
@@ -305,7 +302,7 @@ place:
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   auto-research demo-supervisor \
-  --goal-id loopx-auto-research-knn \
+  --goal-id loopx-auto-research-demo \
   --workspace "$PWD" \
   --execute \
   --launcher tmux \
@@ -332,7 +329,7 @@ Useful read-only checks:
 ```bash
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" status
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research frontier --goal-id loopx-auto-research-knn \
+  --format json auto-research frontier --goal-id loopx-auto-research-demo \
   --agent-id codex-side-bypass
 ```
 

@@ -36,14 +36,14 @@ frontier item, bootstrap prompt, or future kernel API.
 ```json
 {
   "schema_version": "auto_research_role_profile_v0",
-  "goal_id": "loopx-auto-research-knn",
+  "goal_id": "loopx-auto-research-demo",
   "agent_id": "codex-auto-research-runner-1",
   "role_id": "evidence_runner",
   "display_name": "Evidence runner",
   "phase": "attempt_running",
   "capability_token": "evidence_runner",
-  "todo_id": "todo_knn_attempt_001",
-  "hypothesis_id": "hyp_knn_vectorized_distance",
+  "todo_id": "todo_auto_research_demo_001",
+  "hypothesis_id": "hyp_state_a2a_round",
   "allowed_actions": ["claim_attempt", "edit_allowed_scope", "run_dev_eval", "write_evidence"],
   "write_scope": ["solution.py", "experiments/**"],
   "protected_scope": ["task.py", "eval.py", "data/**"],
@@ -148,7 +148,7 @@ A visible tmux or terminal launcher should silently materialize the profile and
 start one fresh interactive Codex CLI TUI per role:
 
 ```bash
-export LOOPX_GOAL_ID=loopx-auto-research-knn
+export LOOPX_GOAL_ID=loopx-auto-research-demo
 export LOOPX_AGENT_ID=codex-auto-research-runner-1
 export LOOPX_ROLE_ID=evidence_runner
 export LOOPX_ROLE_PROFILE_REF=auto_research_role_profile_v0

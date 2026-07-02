@@ -23,12 +23,17 @@ from loopx.capabilities.auto_research.research_state import (  # noqa: E402
 )
 from loopx.rollout_event_log import load_rollout_events, rollout_event_log_path  # noqa: E402
 
-
-PACK = REPO_ROOT / "examples/auto_research_knn_pack"
-EVAL = PACK / "protected_eval.py"
-CONTRACT = PACK / "research_contract.json"
-CANDIDATE = PACK / "solution_candidate.py"
-GOAL_ID = "loopx-auto-research-knn"
+from examples.auto_research_lightweight_fixture import (  # noqa: E402
+    AGENT_ID,
+    GOAL_ID,
+    GROUNDING_REF,
+    HYPOTHESIS_ID,
+    HYPOTHESIS_TEXT,
+    MECHANISM_FAMILY,
+    METRIC_NAME,
+    TODO_ID,
+    write_contract_and_results,
+)
 
 
 def assert_public_safe(payload: Any) -> None:
@@ -62,30 +67,7 @@ def run_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def eval_result(split: str) -> dict[str, Any]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(EVAL),
-            "--solution",
-            str(CANDIDATE),
-            "--split",
-            split,
-        ],
-        cwd=REPO_ROOT,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return json.loads(result.stdout)
-
-
-def evidence_packet(dev: Path, holdout: Path) -> dict[str, Any]:
+def evidence_packet(contract: Path, dev: Path, holdout: Path) -> dict[str, Any]:
     return run_json(
         [
             "-m",
@@ -95,25 +77,25 @@ def evidence_packet(dev: Path, holdout: Path) -> dict[str, Any]:
             "auto-research",
             "evidence",
             "--contract",
-            str(CONTRACT),
+            str(contract),
             "--eval-result",
             str(dev),
             "--eval-result",
             str(holdout),
             "--hypothesis-id",
-            "hyp_pack_partial_selection",
+            HYPOTHESIS_ID,
             "--todo-id",
-            "todo_auto_research_pack_001",
+            TODO_ID,
             "--agent-id",
-            "codex-side-bypass",
+            AGENT_ID,
             "--claimed-by",
-            "codex-side-bypass",
+            AGENT_ID,
             "--mechanism-family",
-            "partial_selection",
+            MECHANISM_FAMILY,
             "--hypothesis",
-            "Use exact partial selection to avoid full distance sorting.",
+            HYPOTHESIS_TEXT,
             "--grounding-ref",
-            "knn_pack_public_contract",
+            GROUNDING_REF,
             "--branch-ref",
             "codex/auto-research-rollout-readpath-smoke",
         ]
@@ -168,11 +150,11 @@ def main() -> None:
                     "# Active Goal State",
                     "",
                     "## Next Action",
-                    "Try partial selection for exact k-NN.",
+                    "Run one lightweight state-mediated research round.",
                     "",
                     "## Agent Todo",
                     "",
-                    "- [ ] [P0-auto-research] Try partial selection for exact k-NN. <!-- todo_id=todo_auto_research_pack_001 claimed_by=codex-side-bypass task_class=advancement_task action_kind=run_dev_attempt -->",
+                    f"- [ ] [P0-auto-research] Run one lightweight state-mediated research round. <!-- todo_id={TODO_ID} claimed_by={AGENT_ID} task_class=advancement_task action_kind=run_dev_attempt -->",
                     "",
                 ]
             ),
@@ -206,12 +188,12 @@ def main() -> None:
             encoding="utf-8",
         )
 
-        dev = temp / "dev.json"
-        holdout = temp / "holdout.json"
         packet_path = temp / "packet.json"
-        write_json(dev, eval_result("dev"))
-        write_json(holdout, eval_result("holdout"))
-        write_json(packet_path, evidence_packet(dev, holdout))
+        contract, dev, holdout = write_contract_and_results(temp)
+        packet_path.write_text(
+            json.dumps(evidence_packet(contract, dev, holdout), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         append_payload = append_packet(registry, packet_path)
         assert append_payload["appended_count"] == 3, append_payload
 
@@ -224,12 +206,12 @@ def main() -> None:
         assert graph["source_kind"] == "loopx_rollout_event_log", graph
         assert graph["hypothesis_count"] == 1, graph
         assert graph["evidence_event_count"] == 2, graph
-        assert graph["metric"]["name"] == "deterministic_speedup", graph
+        assert graph["metric"]["name"] == METRIC_NAME, graph
         assert graph["baseline_metric"] == 1.0, graph
         assert graph["best_dev_metric"] and graph["best_dev_metric"] > 1.0, graph
         assert graph["best_holdout_metric"] and graph["best_holdout_metric"] > 1.0, graph
         assert graph["holdout_improved"] is True, graph
-        assert graph["nodes"][0]["hypothesis_id"] == "hyp_pack_partial_selection", graph
+        assert graph["nodes"][0]["hypothesis_id"] == HYPOTHESIS_ID, graph
         assert graph["nodes"][0]["evidence_event_count"] == 2, graph
         assert graph["nodes"][0]["best_dev_metric"] == graph["best_dev_metric"], graph
         assert graph["nodes"][0]["best_holdout_metric"] == graph["best_holdout_metric"], graph
@@ -238,7 +220,7 @@ def main() -> None:
         assert graph_decisions["retirement_candidates"] == [], graph_decisions
         assert graph_decisions["promotion_candidates"], graph_decisions
         assert graph_decisions["promotion_candidates"][0]["hypothesis_id"] == (
-            "hyp_pack_partial_selection"
+            HYPOTHESIS_ID
         ), graph_decisions
         assert graph_decisions["promotion_candidates"][0]["requires"] == [
             "boundary_scan",
@@ -258,7 +240,7 @@ def main() -> None:
                     "mechanism_family": "distance_cache",
                     "hypothesis": "Cache distances before normalization.",
                     "status": "contradicted",
-                    "grounding_refs": ["knn_pack_public_contract"],
+                    "grounding_refs": [GROUNDING_REF],
                     "blocked_by": ["evidence_or_boundary_guardrail_failed"],
                 }
             ],
@@ -271,7 +253,7 @@ def main() -> None:
                     "attempt": 1,
                     "split": "dev",
                     "metric": {
-                        "name": "deterministic_speedup",
+                        "name": METRIC_NAME,
                         "value": 0.74,
                         "direction": "maximize",
                     },
@@ -282,7 +264,7 @@ def main() -> None:
                     "protected_scope_clean": True,
                 }
             ],
-            metric_name="deterministic_speedup",
+            metric_name=METRIC_NAME,
             metric_direction="maximize",
             baseline_metric=1.0,
             source_kind="public_records",
@@ -303,9 +285,9 @@ def main() -> None:
             quota_payload={
                 "ok": True,
                 "agent_lane_next_action": {
-                    "todo_id": "todo_auto_research_pack_001",
-                    "title": "Try partial selection for exact k-NN",
-                    "claimed_by": "codex-side-bypass",
+                    "todo_id": TODO_ID,
+                    "title": "Run one lightweight state-mediated research round",
+                    "claimed_by": AGENT_ID,
                     "status": "open",
                     "task_class": "advancement_task",
                     "action_kind": "run_dev_attempt",
@@ -313,9 +295,9 @@ def main() -> None:
                 "capability_gate": {
                     "runnable_candidates": [
                         {
-                            "todo_id": "todo_auto_research_pack_001",
-                            "title": "Try partial selection for exact k-NN",
-                            "claimed_by": "codex-side-bypass",
+                            "todo_id": TODO_ID,
+                            "title": "Run one lightweight state-mediated research round",
+                            "claimed_by": AGENT_ID,
                             "status": "open",
                             "task_class": "advancement_task",
                             "action_kind": "run_dev_attempt",
@@ -330,7 +312,7 @@ def main() -> None:
         assert live_payload["evidence_graph"]["evidence_event_count"] == 2, live_payload
         assert live_payload["frontier"]["promotion_candidates"], live_payload
         assert live_payload["frontier"]["promotion_candidates"][0]["hypothesis_id"] == (
-            "hyp_pack_partial_selection"
+            HYPOTHESIS_ID
         ), live_payload
         assert live_payload["frontier"]["retirement_candidates"] == [], live_payload
         assert "showcase_projection" not in live_payload, live_payload

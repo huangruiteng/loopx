@@ -22,7 +22,7 @@ from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
 )
 
 
-GOAL_ID = "loopx-auto-research-knn"
+GOAL_ID = "loopx-auto-research-demo"
 AGENT_IDS = [
     "codex-product-capability",
     "codex-side-bypass",

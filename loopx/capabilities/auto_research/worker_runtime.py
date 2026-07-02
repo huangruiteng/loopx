@@ -2,22 +2,24 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .quickstart_seed import (
+from .defaults import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
-    AUTO_RESEARCH_QUICKSTART_TEMPLATE,
-    build_auto_research_quickstart,
 )
 from .evidence_packet import (
+    RESEARCH_CONTRACT_SCHEMA_VERSION,
     RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
     load_auto_research_evidence_packet_inputs,
     validate_research_hypothesis,
+)
+from .kernel import (
+    LIGHTWEIGHT_AUTO_RESEARCH_RESULT_SCHEMA_VERSION,
+    lightweight_hypothesis,
+    run_lightweight_auto_research,
 )
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
@@ -66,6 +68,15 @@ GENERIC_VERIFIER_HANDOFF_KEYWORDS = (
 )
 
 AppendEvidence = Callable[[str], dict[str, object]]
+AUTO_RESEARCH_BUILTIN_KERNEL_MODE = "builtin_lightweight_metric_kernel"
+AUTO_RESEARCH_BUILTIN_EVAL_SCHEMA_VERSION = "auto_research_lightweight_eval_result_v0"
+AUTO_RESEARCH_DEMO_METRIC_NAME = "demo_quality_score"
+AUTO_RESEARCH_DEMO_BASELINE = 1.0
+AUTO_RESEARCH_DEMO_MECHANISM_FAMILY = "state_a2a_iteration"
+AUTO_RESEARCH_DEMO_CANDIDATE_KEY = "state_a2a_round"
+AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT = (
+    "Use a small state-mediated handoff loop so each role can improve the shared candidate."
+)
 
 
 def _slug(value: object, *, default: str = "item") -> str:
@@ -86,57 +97,114 @@ def _artifact_summary(kind: str, *, filename: str) -> dict[str, object]:
     }
 
 
-def _run_protected_eval(*, pack_dir: Path, split: str, output_path: Path) -> dict[str, object]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(pack_dir / "protected_eval.py"),
-            "--solution",
-            str(pack_dir / "solution_candidate.py"),
-            "--split",
-            split,
+def _demo_research_contract(*, goal_id: str, objective: str) -> dict[str, object]:
+    return {
+        "schema_version": RESEARCH_CONTRACT_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "research_objective": objective,
+        "editable_scope": [
+            "candidate_strategy",
+            "hypothesis_text",
+            "todo_handoff",
         ],
-        check=True,
-        capture_output=True,
-        text=True,
+        "protected_scope": [
+            "metric_definition",
+            "baseline_metric",
+            "holdout_split",
+        ],
+        "metric": {
+            "name": AUTO_RESEARCH_DEMO_METRIC_NAME,
+            "direction": "maximize",
+            "baseline": AUTO_RESEARCH_DEMO_BASELINE,
+        },
+        "dev_eval": "builtin lightweight metric evaluator on dev split",
+        "holdout_eval": "builtin lightweight metric evaluator on holdout split",
+        "promotion_policy": "dev_and_holdout_improved",
+    }
+
+
+def _demo_metric_evaluator(hypothesis: dict[str, Any], split: str) -> dict[str, object]:
+    candidate_key = str(hypothesis.get("candidate_key") or AUTO_RESEARCH_DEMO_CANDIDATE_KEY)
+    metric_by_split = {
+        "dev": 4.0,
+        "holdout": 4.5,
+    }
+    metric = metric_by_split.get(split, AUTO_RESEARCH_DEMO_BASELINE)
+    return {
+        "metric": metric,
+        "exact": True,
+        "protected_scope_clean": True,
+        "strategy": candidate_key,
+        "artifact_refs": [f"public_metric:{split}:{candidate_key}"],
+        "result_source": "builtin_metric_evaluator",
+    }
+
+
+def _demo_kernel_result(*, goal_id: str, todo_id: str, agent_id: str) -> dict[str, object]:
+    hypothesis = lightweight_hypothesis(
+        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}",
+        todo_id=todo_id,
+        claimed_by=agent_id,
+        text=AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT,
+        candidate_key=AUTO_RESEARCH_DEMO_CANDIDATE_KEY,
     )
-    payload = json.loads(result.stdout)
-    _write_json(output_path, payload)
-    return payload
-
-
-def _ensure_quickstart_pack(
-    *,
-    workspace: Path,
-    output_dir: str,
-    agent_id: str,
-    goal_id: str,
-    objective: str,
-) -> tuple[Path, str]:
-    pack_dir = (workspace / output_dir).resolve()
-    if pack_dir.exists():
-        return pack_dir, "existing"
-    build_auto_research_quickstart(
-        agent_id=agent_id,
+    return run_lightweight_auto_research(
         goal_id=goal_id,
-        objective=objective,
-        output_dir=output_dir,
-        template=AUTO_RESEARCH_QUICKSTART_TEMPLATE,
-        execute=True,
-        cwd=workspace,
+        hypotheses=[hypothesis],
+        evaluate=_demo_metric_evaluator,
+        baseline=AUTO_RESEARCH_DEMO_BASELINE,
+        direction="maximize",
+        max_dev_rounds=1,
     )
-    return pack_dir, "created"
+
+
+def _demo_eval_result(
+    *,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+    split: str,
+) -> dict[str, object]:
+    kernel_result = _demo_kernel_result(goal_id=goal_id, todo_id=todo_id, agent_id=agent_id)
+    if kernel_result.get("schema_version") != LIGHTWEIGHT_AUTO_RESEARCH_RESULT_SCHEMA_VERSION:
+        raise ValueError("unexpected lightweight auto-research kernel result")
+    matching = [
+        event
+        for event in kernel_result.get("evidence") or []
+        if isinstance(event, dict) and event.get("split") == split
+    ]
+    if not matching:
+        raise ValueError(f"lightweight auto-research kernel produced no {split} evidence")
+    event = matching[0]
+    improved = event.get("status") == "improved"
+    return {
+        "schema_version": AUTO_RESEARCH_BUILTIN_EVAL_SCHEMA_VERSION,
+        "split": split,
+        "metric": {
+            "name": AUTO_RESEARCH_DEMO_METRIC_NAME,
+            "value": event.get("metric"),
+            "direction": event.get("direction") or "maximize",
+            "baseline": event.get("baseline"),
+        },
+        "eval_status": "scored",
+        "primary_metric_status": "improved" if improved else "regressed",
+        "artifact_refs": event.get("artifact_refs") or [],
+        "protected_scope_clean": bool(event.get("protected_scope_clean")),
+        "no_upload": True,
+        "kernel_schema_version": kernel_result.get("schema_version"),
+        "result_source": event.get("result_source"),
+    }
 
 
 def _write_contract_artifact(
     *,
-    pack_dir: Path,
     output_path: Path,
     goal_id: str,
+    objective: str,
     todo_id: str,
     agent_id: str,
 ) -> dict[str, object]:
-    contract = json.loads((pack_dir / "research_contract.json").read_text(encoding="utf-8"))
+    contract = _demo_research_contract(goal_id=goal_id, objective=objective)
     artifact = {
         "ok": True,
         "schema_version": "auto_research_worker_contract_artifact_v0",
@@ -169,14 +237,14 @@ def _write_hypothesis_artifact(
     hypothesis = validate_research_hypothesis(
         {
             "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
-            "hypothesis_id": f"hyp_{_slug(todo_id, default='todo')}_partial_selection",
-            "parent_hypothesis_id": "hyp_quickstart_partial_selection",
+            "hypothesis_id": f"hyp_{_slug(todo_id, default='todo')}_{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}",
+            "parent_hypothesis_id": None,
             "todo_id": todo_id,
             "claimed_by": agent_id,
-            "mechanism_family": "partial_selection",
-            "hypothesis": "Use exact partial selection to avoid full distance sorting.",
+            "mechanism_family": AUTO_RESEARCH_DEMO_MECHANISM_FAMILY,
+            "hypothesis": AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT,
             "status": "active",
-            "grounding_refs": ["quickstart:knn_exact_pack"],
+            "grounding_refs": ["kernel:state_a2a_metric_demo"],
             "blocked_by": [],
         }
     )
@@ -536,7 +604,7 @@ def run_auto_research_worker_turn(
     agent_id: str,
     objective: str = AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     workspace: Path,
-    output_dir: str = "auto_research_knn_pack",
+    output_dir: str = "auto_research_lightweight_kernel",
     evidence_dir: str = ".local/auto-research-worker",
     execute: bool = False,
     append_evidence: AppendEvidence | None = None,
@@ -615,15 +683,9 @@ def run_auto_research_worker_turn(
     if action in {"run_dev_eval", "run_holdout_eval", "write_evidence"} and append_evidence is None:
         raise ValueError("execute requires an append_evidence callback")
 
-    pack_dir, pack_mode = _ensure_quickstart_pack(
-        workspace=workspace,
-        output_dir=output_dir,
-        agent_id=agent_id,
-        goal_id=goal_id,
-        objective=objective,
-    )
     run_dir = workspace / evidence_dir / _slug(agent_id, default="agent") / _slug(todo_id, default="todo")
     contract_artifact_path = run_dir / "research-contract.public.json"
+    contract_input_path = run_dir / "research-contract-input.public.json"
     hypothesis_artifact_path = run_dir / "hypothesis.public.json"
     evaluation_summary_path = run_dir / "evaluation-summary.public.json"
     dev_result_path = run_dir / "dev-result.public.json"
@@ -634,9 +696,9 @@ def run_auto_research_worker_turn(
 
     if action == "write_research_contract":
         artifact = _write_contract_artifact(
-            pack_dir=pack_dir,
             output_path=contract_artifact_path,
             goal_id=goal_id,
+            objective=objective,
             todo_id=todo_id,
             agent_id=agent_id,
         )
@@ -661,7 +723,7 @@ def run_auto_research_worker_turn(
             "selected_todo_id": todo_id,
             "selected_action": action,
             "executed": True,
-            "pack_mode": pack_mode,
+            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
             "artifact": _artifact_summary("research_contract", filename="research-contract.public.json"),
             "artifact_status": artifact["summary"]["status"],
             "completion": completion,
@@ -702,7 +764,7 @@ def run_auto_research_worker_turn(
             "selected_todo_id": todo_id,
             "selected_action": action,
             "executed": True,
-            "pack_mode": pack_mode,
+            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
             "artifact": _artifact_summary("research_hypothesis", filename="hypothesis.public.json"),
             "artifact_status": artifact["summary"]["status"],
             "hypothesis_id": artifact["summary"]["hypothesis_id"],
@@ -754,7 +816,7 @@ def run_auto_research_worker_turn(
             "selected_todo_id": todo_id,
             "selected_action": action,
             "executed": True,
-            "pack_mode": pack_mode,
+            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
             "artifact": _artifact_summary("evaluation_summary", filename="evaluation-summary.public.json"),
             "artifact_status": artifact["summary"]["status"],
             "claim_allowed": artifact["summary"]["claim_allowed"],
@@ -801,24 +863,34 @@ def run_auto_research_worker_turn(
                     "credentials_recorded": False,
                 },
             }
-        holdout_result = _run_protected_eval(
-            pack_dir=pack_dir,
-            split="holdout",
-            output_path=holdout_result_path,
+        contract_artifact = _write_contract_artifact(
+            output_path=contract_artifact_path,
+            goal_id=goal_id,
+            objective=objective,
+            todo_id=todo_id,
+            agent_id=agent_id,
         )
+        _write_json(contract_input_path, contract_artifact["research_contract"])
+        holdout_result = _demo_eval_result(
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+            split="holdout",
+        )
+        _write_json(holdout_result_path, holdout_result)
         packet = load_auto_research_evidence_packet_inputs(
-            contract_path=pack_dir / "research_contract.json",
+            contract_path=contract_input_path,
             eval_result_paths=[holdout_result_path],
             hypothesis_id=str(candidate["hypothesis_id"]),
             todo_id=str(candidate["todo_id"]),
             agent_id=agent_id,
             claimed_by=str(candidate.get("claimed_by") or agent_id),
-            mechanism_family="partial_selection",
-            hypothesis="Use exact partial selection to avoid full distance sorting.",
+            mechanism_family=str(candidate.get("mechanism_family") or AUTO_RESEARCH_DEMO_MECHANISM_FAMILY),
+            hypothesis=str(candidate.get("hypothesis") or AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT),
             parent_hypothesis_id=str(candidate.get("parent_hypothesis_id") or "") or None,
             grounding_refs=[
                 str(ref)
-                for ref in candidate.get("grounding_refs") or ["quickstart:knn_exact_pack"]
+                for ref in candidate.get("grounding_refs") or ["kernel:state_a2a_metric_demo"]
                 if str(ref).strip()
             ],
             novelty_audit_ref=str(candidate.get("novelty_audit_ref") or "") or None,
@@ -856,7 +928,8 @@ def run_auto_research_worker_turn(
             "selected_todo_id": todo_id,
             "selected_action": action,
             "executed": True,
-            "pack_mode": pack_mode,
+            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
+            "contract_status": contract_artifact["summary"]["status"],
             "validated_hypothesis_id": candidate["hypothesis_id"],
             "holdout_metric": (holdout_result.get("metric") or {}).get("value")
             if isinstance(holdout_result.get("metric"), dict)
@@ -888,17 +961,31 @@ def run_auto_research_worker_turn(
             },
         }
 
-    dev_result = _run_protected_eval(pack_dir=pack_dir, split="dev", output_path=dev_result_path)
+    contract_artifact = _write_contract_artifact(
+        output_path=contract_artifact_path,
+        goal_id=goal_id,
+        objective=objective,
+        todo_id=todo_id,
+        agent_id=agent_id,
+    )
+    _write_json(contract_input_path, contract_artifact["research_contract"])
+    dev_result = _demo_eval_result(
+        goal_id=goal_id,
+        todo_id=todo_id,
+        agent_id=agent_id,
+        split="dev",
+    )
+    _write_json(dev_result_path, dev_result)
     packet = load_auto_research_evidence_packet_inputs(
-        contract_path=pack_dir / "research_contract.json",
+        contract_path=contract_input_path,
         eval_result_paths=[dev_result_path],
-        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_partial_selection",
+        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}",
         todo_id=todo_id,
         agent_id=agent_id,
         claimed_by=agent_id,
-        mechanism_family="partial_selection",
-        hypothesis="Use exact partial selection to avoid full distance sorting.",
-        grounding_refs=["quickstart:knn_exact_pack"],
+        mechanism_family=AUTO_RESEARCH_DEMO_MECHANISM_FAMILY,
+        hypothesis=AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT,
+        grounding_refs=["kernel:state_a2a_metric_demo"],
         attempt_start=1,
     )
     _write_json(evidence_packet_path, packet)
@@ -942,7 +1029,8 @@ def run_auto_research_worker_turn(
         "selected_todo_id": todo_id,
         "selected_action": action,
         "executed": True,
-        "pack_mode": pack_mode,
+        "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
+        "contract_status": contract_artifact["summary"]["status"],
         "dev_metric": (dev_result.get("metric") or {}).get("value")
         if isinstance(dev_result.get("metric"), dict)
         else None,

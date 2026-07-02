@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from .demo_supervisor import build_auto_research_demo_supervisor_plan
-from .quickstart_seed import AUTO_RESEARCH_DEFAULT_GOAL_ID
+from .defaults import AUTO_RESEARCH_DEFAULT_GOAL_ID
 from .live_evidence import load_live_codex_e2e_evidence
 from .rollout_append import append_auto_research_rollout_events
 from .worker_loop import run_auto_research_worker_loop
@@ -152,16 +152,16 @@ def _seed_visible_demo_control_plane(
             action_kind = "run_dev_eval"
         title_by_action = {
             "write_research_contract": (
-                "Write the public-safe research contract for the quickstart k-NN hypothesis."
+                "Write the public-safe research contract for the shared demo hypothesis."
             ),
             "propose_hypothesis": (
-                "Map the quickstart partial-selection idea into a todo-backed research hypothesis."
+                "Map the first shared idea into a todo-backed research hypothesis."
             ),
             "claim_attempt": (
-                "Claim one visible attempt boundary for the selected quickstart hypothesis."
+                "Claim one visible attempt boundary for the selected hypothesis."
             ),
             "run_dev_eval": (
-                "Run the selected quickstart hypothesis on the dev split, write public-safe evidence, append it, and capture live evidence."
+                "Run the selected hypothesis on the dev split, write public-safe evidence, append it, and capture live evidence."
             ),
             "run_holdout_eval": (
                 "Run held-out validation for the dev-supported hypothesis, append public-safe evidence, and summarize promotion readiness."

@@ -15,11 +15,9 @@ from .research_state import (
 )
 from .demo_supervisor import build_auto_research_demo_supervisor_plan
 from .evidence_packet import load_auto_research_evidence_packet_inputs
-from .quickstart_seed import (
+from .defaults import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
-    AUTO_RESEARCH_QUICKSTART_TEMPLATE,
-    build_auto_research_quickstart,
 )
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
@@ -86,43 +84,6 @@ def register_auto_research_commands(
         dest="auto_research_command",
         required=True,
     )
-    quickstart_parser = auto_research_sub.add_parser(
-        "quickstart",
-        help="Preview or create a protected starter pack for decentralized auto-research.",
-    )
-    add_subcommand_format(quickstart_parser)
-    quickstart_parser.add_argument(
-        "--agent-id",
-        required=True,
-        help="Agent id that should receive the first runnable hypothesis.",
-    )
-    quickstart_parser.add_argument(
-        "--goal-id",
-        default=AUTO_RESEARCH_DEFAULT_GOAL_ID,
-        help="Research goal id for the generated contract.",
-    )
-    quickstart_parser.add_argument(
-        "--objective",
-        default=AUTO_RESEARCH_DEFAULT_OBJECTIVE,
-        help="Compact public-safe research objective for the generated contract.",
-    )
-    quickstart_parser.add_argument(
-        "--output-dir",
-        default="auto_research_knn_pack",
-        help="Relative output directory for --execute. Refuses to overwrite an existing pack.",
-    )
-    quickstart_parser.add_argument(
-        "--template",
-        choices=[AUTO_RESEARCH_QUICKSTART_TEMPLATE],
-        default=AUTO_RESEARCH_QUICKSTART_TEMPLATE,
-        help="Starter pack template.",
-    )
-    quickstart_parser.add_argument(
-        "--execute",
-        action="store_true",
-        help="Write the starter pack. Omit for a read-only preview.",
-    )
-
     frontier_parser = auto_research_sub.add_parser(
         "frontier",
         help="Render a per-agent decentralized research frontier from a public fixture or live LoopX state.",
@@ -144,7 +105,7 @@ def register_auto_research_commands(
 
     evidence_parser = auto_research_sub.add_parser(
         "evidence",
-        help="Build public-safe research hypothesis/evidence records from protected eval outputs.",
+        help="Build public-safe research hypothesis/evidence records from metric evaluator outputs.",
     )
     add_subcommand_format(evidence_parser)
     evidence_parser.add_argument("--contract", required=True, help="Path to research_contract_v0 JSON.")
@@ -152,7 +113,7 @@ def register_auto_research_commands(
         "--eval-result",
         action="append",
         required=True,
-        help="Path to a protected evaluator JSON result. Repeat for dev/holdout or retry evidence.",
+        help="Path to a public-safe evaluator JSON result. Repeat for dev/holdout or retry evidence.",
     )
     evidence_parser.add_argument("--hypothesis-id", required=True)
     evidence_parser.add_argument("--todo-id", required=True)
@@ -234,12 +195,12 @@ def register_auto_research_commands(
     worker_turn_parser.add_argument(
         "--objective",
         default=AUTO_RESEARCH_DEFAULT_OBJECTIVE,
-        help="Public-safe objective used only when the quickstart pack must be created.",
+        help="Public-safe objective used by the built-in lightweight metric kernel.",
     )
     worker_turn_parser.add_argument(
         "--output-dir",
-        default="auto_research_knn_pack",
-        help="Quickstart pack directory inside the worker workspace.",
+        default="auto_research_lightweight_kernel",
+        help=argparse.SUPPRESS,
     )
     worker_turn_parser.add_argument(
         "--evidence-dir",
@@ -292,12 +253,12 @@ def register_auto_research_commands(
     worker_loop_parser.add_argument(
         "--objective",
         default=AUTO_RESEARCH_DEFAULT_OBJECTIVE,
-        help="Public-safe objective used only when the quickstart pack must be created.",
+        help="Public-safe objective used by the built-in lightweight metric kernel.",
     )
     worker_loop_parser.add_argument(
         "--output-dir",
-        default="auto_research_knn_pack",
-        help="Quickstart pack directory inside the worker workspace.",
+        default="auto_research_lightweight_kernel",
+        help=argparse.SUPPRESS,
     )
     worker_loop_parser.add_argument(
         "--evidence-dir",
@@ -429,7 +390,7 @@ def register_auto_research_commands(
     demo_e2e_parser = auto_research_sub.add_parser(
         "demo-e2e",
         help=(
-            "Run or preview the one-command multi-round k-NN research path and "
+            "Run or preview the one-command multi-round lightweight research path and "
             "launch visible Codex TUI lanes or a headless worker-loop proof."
         ),
     )
@@ -474,8 +435,8 @@ def register_auto_research_commands(
     )
     demo_e2e_parser.add_argument(
         "--output-dir",
-        default="auto_research_knn_pack",
-        help="Relative output directory inside the temporary demo workspace.",
+        default="auto_research_lightweight_kernel",
+        help=argparse.SUPPRESS,
     )
     demo_e2e_parser.add_argument(
         "--execute",
@@ -656,17 +617,7 @@ def handle_auto_research_command(
     print_payload: PrintPayload,
 ) -> int:
     try:
-        if args.auto_research_command == "quickstart":
-            payload = build_auto_research_quickstart(
-                agent_id=args.agent_id,
-                goal_id=args.goal_id,
-                objective=args.objective,
-                output_dir=args.output_dir,
-                template=args.template,
-                execute=args.execute,
-                cwd=Path.cwd(),
-            )
-        elif args.auto_research_command == "frontier":
+        if args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):
                 raise ValueError(f"auto-research {args.auto_research_command} requires exactly one of --fixture or --goal-id")
             if args.fixture:
@@ -916,7 +867,7 @@ def handle_auto_research_command(
             )
         else:
             raise ValueError(
-                "auto-research requires the `quickstart`, `frontier`, `evidence`, "
+                "auto-research requires the `frontier`, `evidence`, "
                 "`append-evidence`, `capture-live-evidence`, "
                 "`worker-turn`, `worker-loop`, `demo-supervisor`, or `demo-e2e` subcommand"
             )

@@ -17,11 +17,15 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.rollout_event_log import load_rollout_events, rollout_event_log_path  # noqa: E402
 
-
-PACK = REPO_ROOT / "examples/auto_research_knn_pack"
-EVAL = PACK / "protected_eval.py"
-CONTRACT = PACK / "research_contract.json"
-CANDIDATE = PACK / "solution_candidate.py"
+from examples.auto_research_lightweight_fixture import (  # noqa: E402
+    AGENT_ID,
+    GROUNDING_REF,
+    HYPOTHESIS_ID,
+    HYPOTHESIS_TEXT,
+    MECHANISM_FAMILY,
+    TODO_ID,
+    write_contract_and_results,
+)
 
 
 def assert_public_safe(payload: Any) -> None:
@@ -55,30 +59,7 @@ def run_json(args: list[str]) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def eval_result(split: str) -> dict[str, Any]:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(EVAL),
-            "--solution",
-            str(CANDIDATE),
-            "--split",
-            split,
-        ],
-        cwd=REPO_ROOT,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return json.loads(result.stdout)
-
-
-def evidence_packet(dev: Path, holdout: Path) -> dict[str, Any]:
+def evidence_packet(contract: Path, dev: Path, holdout: Path) -> dict[str, Any]:
     return run_json(
         [
             "-m",
@@ -88,25 +69,25 @@ def evidence_packet(dev: Path, holdout: Path) -> dict[str, Any]:
             "auto-research",
             "evidence",
             "--contract",
-            str(CONTRACT),
+            str(contract),
             "--eval-result",
             str(dev),
             "--eval-result",
             str(holdout),
             "--hypothesis-id",
-            "hyp_pack_partial_selection",
+            HYPOTHESIS_ID,
             "--todo-id",
-            "todo_auto_research_pack_001",
+            TODO_ID,
             "--agent-id",
-            "codex-side-bypass",
+            AGENT_ID,
             "--claimed-by",
-            "codex-side-bypass",
+            AGENT_ID,
             "--mechanism-family",
-            "partial_selection",
+            MECHANISM_FAMILY,
             "--hypothesis",
-            "Use exact partial selection to avoid full distance sorting.",
+            HYPOTHESIS_TEXT,
             "--grounding-ref",
-            "knn_pack_public_contract",
+            GROUNDING_REF,
             "--branch-ref",
             "codex/auto-research-rollout-append-smoke",
         ]
@@ -165,12 +146,12 @@ def main() -> None:
             encoding="utf-8",
         )
 
-        dev = temp / "dev.json"
-        holdout = temp / "holdout.json"
         packet_path = temp / "packet.json"
-        write_json(dev, eval_result("dev"))
-        write_json(holdout, eval_result("holdout"))
-        write_json(packet_path, evidence_packet(dev, holdout))
+        contract, dev, holdout = write_contract_and_results(temp)
+        packet_path.write_text(
+            json.dumps(evidence_packet(contract, dev, holdout), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
         dry = append_packet(registry, packet_path, dry_run=True)
         assert dry["schema_version"] == "auto_research_rollout_append_v0", dry

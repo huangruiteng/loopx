@@ -24,7 +24,7 @@ from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
 from loopx.todos import add_goal_todo  # noqa: E402
 
 
-GOAL_ID = "loopx-auto-research-knn"
+GOAL_ID = "loopx-auto-research-demo"
 CURATOR_AGENT_ID = "codex-product-capability"
 MAPPER_AGENT_ID = "codex-side-bypass"
 EVIDENCE_AGENT_ID = "codex-main-control"
@@ -204,7 +204,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             tracking_goal_id="loopx-meta",
             objective="Prove the visible worker can run a LoopX-selected auto-research evidence turn.",
-            output_dir="auto_research_knn_pack",
+            output_dir="auto_research_lightweight_kernel",
             execute=True,
             launch_visible=True,
             keep_workspace=False,

@@ -20,7 +20,7 @@ from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
 )
 
 
-GOAL_ID = "loopx-auto-research-knn"
+GOAL_ID = "loopx-auto-research-demo"
 LANES = [
     "codex-product-capability:research-curator:research_curator",
     "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
