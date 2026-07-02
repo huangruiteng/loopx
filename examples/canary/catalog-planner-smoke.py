@@ -284,7 +284,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     product_entry_commands = [check["command"] for check in product_entry_profile["checks"]]
     assert "python3 examples/issue-fix-workflow-contract-smoke.py" in product_entry_commands, product_entry_profile
     assert "python3 examples/content-ops-issue-fix-intake-smoke.py" in product_entry_commands, product_entry_profile
-    assert "python3 examples/readme-demo-surface-smoke.py" in product_entry_commands, product_entry_profile
+    assert "python3 examples/public_entry/readme-demo-surface-smoke.py" in product_entry_commands, product_entry_profile
     assert "python3 examples/update-notes-archive-smoke.py" in product_entry_commands, product_entry_profile
     assert all(check["tier"] == "default" for check in product_entry_profile["checks"]), product_entry_profile
     assert product_entry_profile["deep_checks_available"] is True, product_entry_profile
@@ -311,7 +311,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert (
         "python3 examples/cross-runtime-impl-review-demo-smoke.py" in cross_runtime_commands
     ), cross_runtime_profile
-    assert "python3 examples/readme-demo-surface-smoke.py" in cross_runtime_commands
+    assert "python3 examples/public_entry/readme-demo-surface-smoke.py" in cross_runtime_commands
     assert all(check["tier"] == "default" for check in cross_runtime_profile["checks"])
     assert cross_runtime_profile["deep_checks_available"] is False, cross_runtime_profile
     assert cross_runtime_profile["deep_checks_included"] is False, cross_runtime_profile

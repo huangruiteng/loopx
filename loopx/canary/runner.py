@@ -258,6 +258,8 @@ def _normalize_script_filter(script: str) -> str:
         return ""
     path = Path(value)
     if path.parts and path.parts[0] == "examples":
+        if path.suffix and len(path.parts) == 2:
+            return path.name
         return path.as_posix()
     if path.suffix and len(path.parts) > 1:
         return path.as_posix()

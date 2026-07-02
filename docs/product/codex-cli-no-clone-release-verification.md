@@ -27,7 +27,7 @@ credentials, mutate a Codex session, or spend LoopX quota.
 Run it with:
 
 ```bash
-python3 examples/codex-cli-no-clone-release-verification-smoke.py
+python3 examples/release/codex-cli-no-clone-release-verification-smoke.py
 ```
 
 ## Current Result
@@ -61,7 +61,7 @@ while contributor clone-plus-canary remains the development path.
 Before promoting a new release snapshot, run:
 
 ```bash
-python3 examples/codex-cli-no-clone-release-verification-smoke.py
+python3 examples/release/codex-cli-no-clone-release-verification-smoke.py
 python3 examples/codex-cli-first-run-rehearsal-smoke.py
 python3 examples/codex-cli-tui-bootstrap-smoke-bundle-smoke.py
 python3 examples/codex-cli-proof-capture-demo-fixtures-smoke.py

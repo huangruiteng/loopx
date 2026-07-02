@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DOC = REPO_ROOT / "docs" / "product" / "codex-cli-no-clone-release-verification.md"
 FIRST_RUN_DOC = REPO_ROOT / "docs" / "product" / "codex-cli-first-run-rehearsal.md"
 PRODUCT_README = REPO_ROOT / "docs" / "product" / "README.md"
@@ -70,7 +70,7 @@ def assert_docs() -> None:
         "Current release route: **ready as the default candidate, with one boundary**.",
         "network access to GitHub archive endpoints",
         "same-TUI automation is not the default path",
-        "python3 examples/codex-cli-no-clone-release-verification-smoke.py",
+        "python3 examples/release/codex-cli-no-clone-release-verification-smoke.py",
         "no raw Codex transcript or session material",
         "no Codex execution as part of the verifier",
     )

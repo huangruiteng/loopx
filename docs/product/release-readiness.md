@@ -81,11 +81,11 @@ on a new surface, run the smallest gate that covers the touched surface:
 
 ```bash
 python3 -m py_compile loopx/*.py
-python3 examples/codex-cli-no-clone-release-verification-smoke.py
+python3 examples/release/codex-cli-no-clone-release-verification-smoke.py
 python3 examples/fresh-clone-quickstart-smoke.py
 python3 examples/loopx-update-smoke.py
-python3 examples/release-version-contract-smoke.py
-python3 examples/release-readiness-doc-smoke.py
+python3 examples/release/release-version-contract-smoke.py
+python3 examples/release/release-readiness-doc-smoke.py
 git diff --check
 loopx check --scan-path README.md --scan-path docs/ --scan-path examples/
 ```

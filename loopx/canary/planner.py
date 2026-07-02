@@ -681,7 +681,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks content-ops issue-fix intake from public metadata without external reads or writes",
             },
             {
-                "command": "python3 examples/readme-demo-surface-smoke.py",
+                "command": "python3 examples/public_entry/readme-demo-surface-smoke.py",
                 "tier": "default",
                 "reason": "guards the README and cross-runtime implement/review demo entry surface",
             },
@@ -740,7 +740,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards the dry-run packet, CLI route, role split, and no-write boundary",
             },
             {
-                "command": "python3 examples/readme-demo-surface-smoke.py",
+                "command": "python3 examples/public_entry/readme-demo-surface-smoke.py",
                 "tier": "default",
                 "reason": "guards the public README and product note entry points for the demo",
             },

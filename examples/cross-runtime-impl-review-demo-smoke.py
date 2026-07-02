@@ -81,7 +81,7 @@ def assert_cli_json_packet() -> None:
         "--requirement",
         "Ship a small public-safe docs change",
         "--verifier",
-        "python3 examples/readme-demo-surface-smoke.py",
+        "python3 examples/public_entry/readme-demo-surface-smoke.py",
     )
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout)

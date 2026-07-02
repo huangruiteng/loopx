@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "docs" / "product" / "release-readiness.md"
 README = ROOT / "README.md"
 DOCS_INDEX = ROOT / "docs" / "README.md"
@@ -60,10 +60,10 @@ def main() -> None:
         "loopx update --execute",
         "## Named Version Contract",
         "The version source is `loopx.__version__`, mirrored by `pyproject.toml`",
-        "examples/release-version-contract-smoke.py",
+        "examples/release/release-version-contract-smoke.py",
         "## Compatibility Gate",
-        "examples/codex-cli-no-clone-release-verification-smoke.py",
-        "examples/release-readiness-doc-smoke.py",
+        "examples/release/codex-cli-no-clone-release-verification-smoke.py",
+        "examples/release/release-readiness-doc-smoke.py",
         "## Canary Model",
         "catalog-informed readiness slice",
         "near-E2E",
