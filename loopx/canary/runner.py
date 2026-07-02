@@ -114,6 +114,21 @@ def _display_argv(argv: list[str]) -> list[str]:
 
 
 def _tracked_change_paths() -> tuple[bool, list[str], str]:
+    worktree_probe = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", "--is-inside-work-tree"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if worktree_probe.returncode != 0 or worktree_probe.stdout.strip() != "true":
+        detail = (
+            worktree_probe.stderr
+            or worktree_probe.stdout
+            or "repository root is not a git worktree"
+        ).strip()
+        return False, [], f"not_a_git_worktree: {detail[-400:]}"
+
     paths: set[str] = set()
     stderr_parts: list[str] = []
     ok = True
@@ -127,7 +142,7 @@ def _tracked_change_paths() -> tuple[bool, list[str], str]:
         )
         if completed.returncode != 0:
             ok = False
-            stderr_parts.append(completed.stderr[-400:])
+            stderr_parts.append(f"git_diff_failed: {completed.stderr[-400:]}")
             continue
         paths.update(line.strip() for line in completed.stdout.splitlines() if line.strip())
     return ok, sorted(paths), "\n".join(part for part in stderr_parts if part)
@@ -375,6 +390,7 @@ def build_canary_smoke_suite_run(
         "schema_version": "canary_smoke_suite_side_effect_guard_v0",
         "tracked_side_effects_allowed": allow_tracked_side_effects,
         "enforced": False,
+        "enforcement_reason": "not_executed",
         "clean_start": None,
         "tracked_before": [],
         "tracked_side_effects": [],
@@ -383,16 +399,23 @@ def build_canary_smoke_suite_run(
     if execute:
         git_ok, tracked_before, git_stderr = _tracked_change_paths()
         clean_start = git_ok and not tracked_before
+        if allow_tracked_side_effects:
+            enforcement_reason = "tracked_side_effects_explicitly_allowed"
+        elif not git_ok:
+            enforcement_reason = "git_worktree_unavailable"
+        else:
+            enforcement_reason = "tracked_side_effect_guard_active"
         side_effect_guard.update(
             {
                 "git_status_ok": git_ok,
                 "clean_start": clean_start,
                 "tracked_before": tracked_before,
                 "enforced": bool(git_ok and not allow_tracked_side_effects),
+                "enforcement_reason": enforcement_reason,
             }
         )
         if git_stderr:
-            side_effect_guard["git_status_stderr_tail"] = git_stderr[-800:]
+            side_effect_guard["git_status_unavailable_reason"] = git_stderr[-800:]
         for index, check in enumerate(selected, start=1):
             normalized_check = normalize_canary_command(str(check.get("command") or ""))
             if progress_callback:
@@ -660,6 +683,7 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
         f"- writes_evidence: `{str(payload.get('writes_evidence')).lower()}`",
         "- creates_runtime_contract: `false`",
         f"- read_only_guard_enforced: `{str(guard.get('enforced')).lower()}`",
+        f"- read_only_guard_reason: `{guard.get('enforcement_reason')}`",
         f"- read_only_guard_clean_start: `{str(guard.get('clean_start')).lower()}`",
         "",
         str(payload.get("note") or ""),

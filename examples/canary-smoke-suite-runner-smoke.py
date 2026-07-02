@@ -123,6 +123,15 @@ def assert_execution_reports_progress_indices() -> None:
     assert events[1]["status"] == "passed", events
 
 
+def assert_git_probe_contract_is_explicit() -> None:
+    ok, paths, detail = canary_runner._tracked_change_paths()
+    assert isinstance(paths, list), paths
+    if ok:
+        assert detail == "", detail
+        return
+    assert detail.startswith(("not_a_git_worktree:", "git_diff_failed:")), detail
+
+
 def _fake_passed_check(
     check: dict[str, object],
     *,
@@ -182,6 +191,10 @@ def assert_readonly_run_rejects_and_restores_tracked_side_effects() -> None:
     assert payload["writes_evidence"] is False, payload
     assert payload["tracked_side_effect_failure_count"] == 1, payload
     assert payload["side_effect_guard"]["enforced"] is True, payload
+    assert (
+        payload["side_effect_guard"]["enforcement_reason"]
+        == "tracked_side_effect_guard_active"
+    ), payload
     assert payload["side_effect_guard"]["auto_restored"] is True, payload
     assert restored == [["examples/generated-tracked-side-effect.txt"]], payload
     check = payload["selected_checks"][0]
@@ -189,7 +202,43 @@ def assert_readonly_run_rejects_and_restores_tracked_side_effects() -> None:
     assert check["tracked_side_effects"] == ["examples/generated-tracked-side-effect.txt"], payload
     rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
     assert "- tracked_side_effect_failures: `1`" in rendered, rendered
+    assert "- read_only_guard_reason: `tracked_side_effect_guard_active`" in rendered, rendered
     assert "- tracked_side_effect_restore_ok: `true`" in rendered, rendered
+
+
+def assert_unavailable_git_worktree_is_reported_explicitly() -> None:
+    original_run_check = canary_runner._run_check
+    original_tracked_change_paths = canary_runner._tracked_change_paths
+
+    def fake_tracked_change_paths() -> tuple[bool, list[str], str]:
+        return False, [], "not_a_git_worktree: fixture"
+
+    try:
+        canary_runner._run_check = _fake_passed_check
+        canary_runner._tracked_change_paths = fake_tracked_change_paths
+        payload = build_canary_smoke_suite_run(
+            suite="default-public",
+            scripts=["todo-contract-smoke.py"],
+            execute=True,
+            timeout_seconds=60,
+        )
+    finally:
+        canary_runner._run_check = original_run_check
+        canary_runner._tracked_change_paths = original_tracked_change_paths
+
+    assert payload["ok"] is True, payload
+    assert payload["writes_evidence"] is False, payload
+    assert payload["tracked_side_effect_failure_count"] == 0, payload
+    assert payload["side_effect_guard"]["git_status_ok"] is False, payload
+    assert payload["side_effect_guard"]["enforced"] is False, payload
+    assert payload["side_effect_guard"]["enforcement_reason"] == "git_worktree_unavailable", payload
+    assert (
+        payload["side_effect_guard"]["git_status_unavailable_reason"]
+        == "not_a_git_worktree: fixture"
+    ), payload
+    rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
+    assert "- read_only_guard_enforced: `false`" in rendered, rendered
+    assert "- read_only_guard_reason: `git_worktree_unavailable`" in rendered, rendered
 
 
 def assert_tracked_side_effects_require_explicit_allow() -> None:
@@ -224,9 +273,14 @@ def assert_tracked_side_effects_require_explicit_allow() -> None:
     assert payload["tracked_side_effect_failure_count"] == 0, payload
     assert payload["side_effect_guard"]["tracked_side_effects_allowed"] is True, payload
     assert payload["side_effect_guard"]["enforced"] is False, payload
+    assert (
+        payload["side_effect_guard"]["enforcement_reason"]
+        == "tracked_side_effects_explicitly_allowed"
+    ), payload
     rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
     assert "- writes_evidence: `true`" in rendered, rendered
     assert "- read_only_guard_enforced: `false`" in rendered, rendered
+    assert "- read_only_guard_reason: `tracked_side_effects_explicitly_allowed`" in rendered, rendered
 
 
 def main() -> int:
@@ -236,7 +290,9 @@ def main() -> int:
     assert_catalog_profile_preview_is_supported()
     assert_cli_json_preview_works()
     assert_execution_reports_progress_indices()
+    assert_git_probe_contract_is_explicit()
     assert_readonly_run_rejects_and_restores_tracked_side_effects()
+    assert_unavailable_git_worktree_is_reported_explicitly()
     assert_tracked_side_effects_require_explicit_allow()
     print("canary-smoke-suite-runner-smoke ok")
     return 0
