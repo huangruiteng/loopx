@@ -52,6 +52,28 @@ Before promoting a stable install/update recommendation, maintainers must move
 the public `stable` ref to the release commit that passed this gate. Do not
 claim stable-channel readiness while `stable` is missing or stale.
 
+## Named Version Contract
+
+LoopX v0.x is distributed from GitHub, but each stable promotion still needs a
+package version name. The version source is `loopx.__version__`, mirrored by
+`pyproject.toml`; the expected public tag is `vX.Y.Z` for that version.
+
+Before moving `stable`, maintainers should:
+
+- bump `loopx.__version__` and `pyproject.toml` together when user-visible
+  release behavior changes;
+- create or verify the matching Git tag, for example `v0.1.3`;
+- fast-forward `stable` to that tagged commit after the release canary passes;
+- confirm `release.json`, `loopx doctor`, and `loopx update --check` report the
+  same package version and tag;
+- tell existing users to run `loopx update --check`, then
+  `loopx update --execute` when the check recommends or when they want to
+  refresh to the named stable release.
+
+This is a lightweight GitHub release contract, not a PyPI publishing
+requirement. A future package registry can reuse the same version/tag contract
+instead of inventing a second release identity.
+
 ## Compatibility Gate
 
 Before a release snapshot is promoted or a public guide tells users to depend
@@ -62,6 +84,7 @@ python3 -m py_compile loopx/*.py
 python3 examples/codex-cli-no-clone-release-verification-smoke.py
 python3 examples/fresh-clone-quickstart-smoke.py
 python3 examples/loopx-update-smoke.py
+python3 examples/release-version-contract-smoke.py
 python3 examples/release-readiness-doc-smoke.py
 git diff --check
 loopx check --scan-path README.md --scan-path docs/ --scan-path examples/
@@ -156,6 +179,7 @@ Treat these as experimental until their contract docs say otherwise:
 Every public release note or update note should answer:
 
 - What user-visible capability became more dependable?
+- What package version and public tag name this stable release uses?
 - Which install/update path should a new user follow?
 - Which commands, docs, or smokes prove the claim?
 - Are there compatibility or migration notes for existing local state?

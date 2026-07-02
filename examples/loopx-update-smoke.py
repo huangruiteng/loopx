@@ -14,11 +14,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from loopx import __version__  # noqa: E402
+from loopx.release_manifest import release_version_tag  # noqa: E402
 from loopx.self_update import (
     DEFAULT_UPDATE_REF,
     build_rollback_plan,
     build_update_plan,
     execute_rollback_plan,
+    render_update_plan_markdown,
 )
 
 
@@ -35,8 +38,12 @@ def fake_doctor_payload() -> dict[str, object]:
             "status": "stale",
             "requires_upgrade": True,
             "reason": "fixture is intentionally stale",
-            "current_version": "0.1.2",
+            "current_version": __version__,
+            "current_version_tag": release_version_tag(),
             "release_id": "20260621T170342Z",
+            "manifest_package_version": __version__,
+            "manifest_package_version_tag": release_version_tag(),
+            "manifest_package_version_matches_runtime": True,
         },
         "release_manifest": {
             "available": True,
@@ -52,7 +59,9 @@ def fake_doctor_payload() -> dict[str, object]:
                 },
                 "package": {
                     "name": "loopx",
-                    "version": "0.1.2",
+                    "version": __version__,
+                    "version_tag": release_version_tag(),
+                    "version_source": "loopx.__version__",
                 },
                 "skills": {
                     "digest": "skills123",
@@ -69,8 +78,12 @@ def fake_fresh_doctor_payload() -> dict[str, object]:
         "status": "fresh",
         "requires_upgrade": False,
         "reason": "fixture is intentionally fresh",
-        "current_version": "0.1.3",
+        "current_version": __version__,
+        "current_version_tag": release_version_tag(),
         "release_id": "20260622T170342Z",
+        "manifest_package_version": __version__,
+        "manifest_package_version_tag": release_version_tag(),
+        "manifest_package_version_matches_runtime": True,
     }
     return payload
 
@@ -88,8 +101,12 @@ def fake_doctor_payload_for_release(release_root: Path) -> dict[str, object]:
             "status": "fresh",
             "requires_upgrade": False,
             "reason": "fixture release",
-            "current_version": "0.1.3",
+            "current_version": __version__,
+            "current_version_tag": release_version_tag(),
             "release_id": release_root.name,
+            "manifest_package_version": __version__,
+            "manifest_package_version_tag": release_version_tag(),
+            "manifest_package_version_matches_runtime": True,
         },
     }
 
@@ -128,6 +145,11 @@ def test_module_plan() -> None:
     assert payload["dry_run"] is True, payload
     assert payload["execute_requested"] is False, payload
     assert payload["current"]["requires_upgrade"] is True, payload
+    assert payload["current"]["current_version"] == __version__, payload
+    assert payload["current"]["current_version_tag"] == release_version_tag(), payload
+    assert payload["current"]["manifest_package_version"] == __version__, payload
+    assert payload["current"]["manifest_package_version_tag"] == release_version_tag(), payload
+    assert payload["current"]["manifest_package_version_matches_runtime"] is True, payload
     assert payload["current"]["release_manifest_available"] is True, payload
     assert payload["current"]["release_manifest"]["source"]["ref"] == "stable", payload
     assert payload["current"]["release_manifest"]["source"]["archive_sha256"] == "abc123", payload
@@ -138,6 +160,9 @@ def test_module_plan() -> None:
     assert "loopx update --rollback 20260621T170342Z" in payload["plan"]["backup"]["rollback_command"], payload
     assert "ln -sfn" not in payload["plan"]["backup"]["rollback_command"], payload
     assert "LOOPX_ARCHIVE_URL=https://example.invalid/loopx.tar.gz" in payload["plan"]["install_command"], payload
+    rendered = render_update_plan_markdown(payload)
+    assert f"Current version tag: `{release_version_tag()}`" in rendered, rendered
+    assert f"Manifest package version tag: `{release_version_tag()}`" in rendered, rendered
 
 
 def test_default_source_uses_stable_ref() -> None:

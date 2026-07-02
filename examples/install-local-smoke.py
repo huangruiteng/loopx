@@ -18,7 +18,9 @@ INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install-local.sh"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx import __version__  # noqa: E402
 from loopx.doctor import add_promotion_readiness_freshness, build_install_freshness  # noqa: E402
+from loopx.release_manifest import release_version_tag  # noqa: E402
 from loopx.release_manifest import build_release_manifest, load_release_manifest  # noqa: E402
 
 
@@ -101,7 +103,12 @@ def assert_release_snapshot_source_fallback(root: Path) -> None:
             "archive_url": "https://example.com/loopx.tar.gz",
             "archive_sha256": "f" * 64,
         },
-        "package": {"name": "loopx", "version": "0.1.2"},
+        "package": {
+            "name": "loopx",
+            "version": __version__,
+            "version_tag": release_version_tag(),
+            "version_source": "loopx.__version__",
+        },
         "skills": {"digest": "fixture", "items": {}},
     }
     (source_root / "release.json").write_text(
@@ -209,7 +216,9 @@ def main() -> int:
         assert release_manifest["schema_version"] == "loopx_release_manifest_v0", release_manifest
         assert release_manifest["release_id"] == "install-smoke-initial", release_manifest
         assert release_manifest["package"]["name"] == "loopx", release_manifest
-        assert release_manifest["package"]["version"], release_manifest
+        assert release_manifest["package"]["version"] == __version__, release_manifest
+        assert release_manifest["package"]["version_tag"] == release_version_tag(), release_manifest
+        assert release_manifest["package"]["version_source"] == "loopx.__version__", release_manifest
         assert release_manifest["source"]["kind"] == "local_checkout", release_manifest
         assert release_manifest["source"]["git_commit"] == source_commit, release_manifest
         assert isinstance(release_manifest["source"]["git_dirty"], bool), release_manifest
@@ -328,6 +337,10 @@ def main() -> int:
         assert freshness["status"] == "unknown", freshness
         assert freshness["requires_upgrade"] is False, freshness
         assert freshness["current_version"], freshness
+        assert freshness["current_version_tag"] == release_version_tag(), freshness
+        assert freshness["manifest_package_version"] == __version__, freshness
+        assert freshness["manifest_package_version_tag"] == release_version_tag(), freshness
+        assert freshness["manifest_package_version_matches_runtime"] is True, freshness
         assert freshness["release_manifest_available"] is True, freshness
         assert freshness["release_manifest_path"] == str(release_manifest_path), freshness
         assert freshness["manifest_source_kind"] == "local_checkout", freshness
@@ -414,6 +427,10 @@ def main() -> int:
         assert "## Install Freshness" in doctor_markdown, doctor_markdown
         assert "schema_version: `loopx_install_freshness_v0`" in doctor_markdown, doctor_markdown
         assert "status: `unknown`" in doctor_markdown, doctor_markdown
+        assert f"current_version_tag: `{release_version_tag()}`" in doctor_markdown, doctor_markdown
+        assert f"manifest_package_version: `{__version__}`" in doctor_markdown, doctor_markdown
+        assert f"manifest_package_version_tag: `{release_version_tag()}`" in doctor_markdown, doctor_markdown
+        assert "manifest_package_version_matches_runtime: `True`" in doctor_markdown, doctor_markdown
         assert "release_manifest_available: `True`" in doctor_markdown, doctor_markdown
         assert f"manifest_source_git_commit: `{source_commit[:12]}`" in doctor_markdown, doctor_markdown
         assert "manifest_source: `local_checkout` @ `n/a`" not in doctor_markdown, doctor_markdown
@@ -483,7 +500,7 @@ def main() -> int:
                 "path": str(root / "release.json"),
                 "reason": None,
                 "manifest": {
-                    "package": {"version": "0.1.2"},
+                    "package": {"version": __version__},
                     "source": {
                         "kind": "local_checkout",
                         "git_commit": "a" * 40,

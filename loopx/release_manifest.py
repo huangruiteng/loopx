@@ -13,6 +13,26 @@ from . import __version__
 
 RELEASE_MANIFEST_SCHEMA_VERSION = "loopx_release_manifest_v0"
 RELEASE_MANIFEST_FILENAME = "release.json"
+PACKAGE_VERSION_SOURCE = "loopx.__version__"
+
+
+def release_version_tag(version: str | None = None) -> str | None:
+    selected = __version__ if version is None else version
+    if not isinstance(selected, str):
+        return None
+    text = selected.strip()
+    if not text:
+        return None
+    return text if text.startswith("v") else f"v{text}"
+
+
+def package_release_metadata() -> dict[str, str | None]:
+    return {
+        "name": "loopx",
+        "version": __version__,
+        "version_tag": release_version_tag(__version__),
+        "version_source": PACKAGE_VERSION_SOURCE,
+    }
 
 
 def _sha256_file(path: Path) -> str:
@@ -185,10 +205,7 @@ def build_release_manifest(
         "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
         "release_id": release_id,
         "installed_at": installed_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "package": {
-            "name": "loopx",
-            "version": __version__,
-        },
+        "package": package_release_metadata(),
         "source": {
             "kind": source_kind,
             "repo": repo,

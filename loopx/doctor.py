@@ -13,7 +13,7 @@ from typing import Any
 from . import __version__
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path
 from .registry_writability import probe_registry_write_path
-from .release_manifest import load_release_manifest
+from .release_manifest import load_release_manifest, release_version_tag
 
 
 PROMOTION_READINESS_CLASSIFICATIONS = {
@@ -211,6 +211,18 @@ def build_install_freshness(
     manifest_package = (
         manifest_body.get("package") if isinstance(manifest_body.get("package"), dict) else {}
     )
+    manifest_package_version = manifest_package.get("version")
+    manifest_package_version_tag = manifest_package.get("version_tag") or (
+        release_version_tag(manifest_package_version)
+        if isinstance(manifest_package_version, str)
+        else None
+    )
+    current_version_tag = release_version_tag(__version__)
+    manifest_package_version_matches_runtime = (
+        manifest_package_version == __version__
+        if isinstance(manifest_package_version, str) and manifest_package_version
+        else None
+    )
     manifest_source = (
         manifest_body.get("source") if isinstance(manifest_body.get("source"), dict) else {}
     )
@@ -235,6 +247,15 @@ def build_install_freshness(
         reason = f"release manifest source commit differs from {comparison_source_label} commit"
         requires_upgrade = True
 
+    if (
+        manifest_package_version_matches_runtime is False
+        and command_path is not None
+        and not skill_problem
+    ):
+        status = "repair_recommended"
+        reason = "release manifest package version differs from runtime package version"
+        requires_upgrade = True
+
     manifest_skills = (
         manifest_body.get("skills") if isinstance(manifest_body.get("skills"), dict) else {}
     )
@@ -244,6 +265,7 @@ def build_install_freshness(
         "requires_upgrade": requires_upgrade,
         "reason": reason,
         "current_version": __version__,
+        "current_version_tag": current_version_tag,
         "stale_after_hours": INSTALL_FRESHNESS_STALE_HOURS,
         "release_id": release_id,
         "release_age_hours": age_hours,
@@ -254,7 +276,9 @@ def build_install_freshness(
         "release_manifest_available": manifest.get("available"),
         "release_manifest_path": manifest.get("path"),
         "release_manifest_reason": manifest.get("reason"),
-        "manifest_package_version": manifest_package.get("version"),
+        "manifest_package_version": manifest_package_version,
+        "manifest_package_version_tag": manifest_package_version_tag,
+        "manifest_package_version_matches_runtime": manifest_package_version_matches_runtime,
         "manifest_source_kind": manifest_source.get("kind"),
         "manifest_source_repo": manifest_source.get("repo"),
         "manifest_source_ref": manifest_source.get("ref"),
@@ -702,6 +726,10 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
                 f"- status: `{freshness.get('status')}`",
                 f"- requires_upgrade: `{freshness.get('requires_upgrade')}`",
                 f"- current_version: `{freshness.get('current_version')}`",
+                f"- current_version_tag: `{freshness.get('current_version_tag')}`",
+                f"- manifest_package_version: `{freshness.get('manifest_package_version')}`",
+                f"- manifest_package_version_tag: `{freshness.get('manifest_package_version_tag')}`",
+                f"- manifest_package_version_matches_runtime: `{freshness.get('manifest_package_version_matches_runtime')}`",
                 f"- release_id: `{freshness.get('release_id')}`",
                 f"- release_age_hours: `{freshness.get('release_age_hours')}`",
                 f"- reason: `{freshness.get('reason')}`",
