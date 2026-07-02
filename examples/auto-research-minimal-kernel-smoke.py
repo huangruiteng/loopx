@@ -29,6 +29,11 @@ from loopx.capabilities.auto_research import (  # noqa: E402
 KERNEL = REPO_ROOT / "loopx/capabilities/auto_research/kernel.py"
 CORE = REPO_ROOT / "loopx/capabilities/auto_research/core.py"
 INIT = REPO_ROOT / "loopx/capabilities/auto_research/__init__.py"
+EVIDENCE_PACKET = REPO_ROOT / "loopx/capabilities/auto_research/evidence_packet.py"
+ROLLOUT_APPEND = REPO_ROOT / "loopx/capabilities/auto_research/rollout_append.py"
+LIVE_EVIDENCE = REPO_ROOT / "loopx/capabilities/auto_research/live_evidence.py"
+WORKER_RUNTIME = REPO_ROOT / "loopx/capabilities/auto_research/worker_runtime.py"
+CLI = REPO_ROOT / "loopx/capabilities/auto_research/cli.py"
 
 KERNEL_FORBIDDEN_MARKERS = [
     "legacy_core",
@@ -94,8 +99,23 @@ def assert_kernel_boundary() -> None:
     ]
     assert not leaked_markers, leaked_markers
 
+
+def assert_evidence_packet_boundary() -> None:
+    evidence_text = EVIDENCE_PACKET.read_text(encoding="utf-8")
+    rollout_text = ROLLOUT_APPEND.read_text(encoding="utf-8")
+    live_text = LIVE_EVIDENCE.read_text(encoding="utf-8")
+    worker_text = WORKER_RUNTIME.read_text(encoding="utf-8")
+    cli_text = CLI.read_text(encoding="utf-8")
+    assert "legacy_core" not in evidence_text
+    assert "from .legacy_core import" not in rollout_text
+    assert "from .legacy_core import" not in live_text
+    assert "from .evidence_packet import (\n    load_auto_research_evidence_packet_inputs" in worker_text
+    assert "from .evidence_packet import load_auto_research_evidence_packet_inputs" in cli_text
+
+
 def main() -> None:
     assert_kernel_boundary()
+    assert_evidence_packet_boundary()
 
     candidates = [
         lightweight_hypothesis(
