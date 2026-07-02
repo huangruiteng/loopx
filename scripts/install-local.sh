@@ -111,6 +111,7 @@ copy_path "$repo_root/examples" "$release_tmp/examples"
 copy_path "$repo_root/apps" "$release_tmp/apps"
 copy_path "$repo_root/.github" "$release_tmp/.github"
 copy_path "$repo_root/README.md" "$release_tmp/README.md"
+copy_path "$repo_root/CONTRIBUTOR_TASKS.md" "$release_tmp/CONTRIBUTOR_TASKS.md"
 copy_path "$repo_root/LICENSE" "$release_tmp/LICENSE"
 copy_path "$repo_root/pyproject.toml" "$release_tmp/pyproject.toml"
 find "$release_tmp" -name __pycache__ -type d -prune -exec rm -rf {} +
