@@ -153,6 +153,14 @@ def main() -> int:
         temp = Path(temp_dir)
         workspace = temp / "workspace"
         workspace.mkdir()
+        fake_bin = temp / "bin"
+        fake_bin.mkdir()
+        fake_codex = fake_bin / "fake-codex-tui"
+        fake_codex.write_text(
+            "#!/usr/bin/env sh\nprintf 'Fake Codex TUI ready\\n'\nsleep 8\n",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o755)
         registry = temp / "registry.json"
         runtime_root = temp / "runtime"
         registry.write_text(
@@ -162,6 +170,7 @@ def main() -> int:
         env = os.environ.copy()
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONPATH"] = str(REPO_ROOT)
+        env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
         result = subprocess.run(
             [
                 sys.executable,
@@ -233,7 +242,7 @@ def main() -> int:
         removed_replay_source = "deterministic_" + "protected_eval_kernel"
         assert removed_replay_source not in json.dumps(payload, sort_keys=True), payload
         assert_public_safe(payload)
-        if shutil.which("tmux") and shutil.which("true"):
+        if shutil.which("tmux"):
             session_name = "loopx-auto-research-worker-skill-smoke"
             try:
                 visible = subprocess.run(
@@ -262,7 +271,7 @@ def main() -> int:
                         str(workspace),
                         "--create-workspace",
                         "--codex-bin",
-                        "true",
+                        "fake-codex-tui",
                     ],
                     cwd=workspace,
                     env=env,
@@ -277,21 +286,12 @@ def main() -> int:
                 visible_payload = json.loads(visible.stdout)
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
+                assert "frontier" not in launch["started_lanes"], visible_payload
                 assert launch["attach_requested"] is False, visible_payload
                 acceptance = launch["visible_acceptance"]
                 assert acceptance["accepted"] is True, visible_payload
                 assert all(not item["blocked_before_bootstrap"] for item in acceptance["pane_checks"]), acceptance
-                frontier_capture = subprocess.run(
-                    ["tmux", "capture-pane", "-pt", f"{session_name}:frontier", "-S", "-300"],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                ).stdout
-                assert "[LoopX frontier]" in frontier_capture, frontier_capture
-                assert "artifact=frontier.public.json" in frontier_capture, frontier_capture
-                assert '"schema_version"' not in frontier_capture, frontier_capture
-                assert "/" + "private/" not in frontier_capture, frontier_capture
-                assert "/" + "tmp/" not in frontier_capture, frontier_capture
+                assert all(item["interactive_codex_tui_script"] for item in acceptance["pane_checks"]), acceptance
                 skill_items = launch["worker_skill_materialization"]
                 assert skill_items, visible_payload
                 assert {item["source_resolution"] for item in skill_items} == {"package_root"}, skill_items
@@ -303,7 +303,6 @@ def main() -> int:
                         capture_output=True,
                         text=True,
                     ).stdout
-                    assert "continuing_to_visible_bootstrap" in capture, (lane, capture)
                     assert "state_projection_gap" not in capture, (lane, capture)
                     assert "stopped_before_frontier" not in capture, (lane, capture)
                     assert "quota_wait_timeout" not in capture, (lane, capture)
@@ -314,9 +313,8 @@ def main() -> int:
                     assert "/" + "tmp/" not in capture, (lane, capture)
                     assert "role_profile_path=" not in capture, (lane, capture)
                     assert "[Codex bootstrap prompt]" not in capture, (lane, capture)
-                    assert "codex_output=streaming_below" in capture, (lane, capture)
-                    assert "codex_stream_filter=public_safe" in capture, (lane, capture)
-                    assert f"goal={visible_payload['goal_id']}" in capture, (lane, capture)
+                    assert "codex_output=streaming_below" not in capture, (lane, capture)
+                    assert "codex_stream_filter=public_safe" not in capture, (lane, capture)
                 assert_public_safe(visible_payload)
             finally:
                 subprocess.run(

@@ -136,34 +136,36 @@ role-routed playbook cannot prevent. The split decision should cite evidence
 such as wrong section loading, unauthorized writes, hidden negative evidence, or
 missed stop conditions.
 
-The playbook body should not invent current work. Its first command should tell
-the worker to read the profile and run the quota/frontier command named by the
-profile. This mirrors Arbor's useful "load a checklist at the exact phase"
-behavior while preserving LoopX's decentralized identity model.
+The playbook body should not invent current work. It should tell the worker to
+read the role prompt/profile context and run role-local quota/frontier commands
+through the pane-local LoopX wrapper inside the Codex TUI. This mirrors Arbor's
+useful "load a checklist at the exact phase" behavior while preserving LoopX's
+decentralized identity model.
 
 ## Demo Launcher Implications
 
-A visible tmux or terminal launcher should print the profile before starting
-Codex:
+A visible tmux or terminal launcher should silently materialize the profile and
+start one fresh interactive Codex CLI TUI per role:
 
 ```bash
 export LOOPX_GOAL_ID=loopx-auto-research-knn
 export LOOPX_AGENT_ID=codex-auto-research-runner-1
 export LOOPX_ROLE_ID=evidence_runner
 export LOOPX_ROLE_PROFILE_REF=auto_research_role_profile_v0
-loopx auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"
+exec codex -c model_reasoning_effort=high -C "$LOOPX_PROJECT" "$ROLE_PROMPT"
 ```
 
 The pane title is cosmetic. The profile and quota/frontier projection are the
-authority. The launcher must keep attach, interrupt, and stop commands visible
-so the user can take over without reading hidden logs.
+authority, but raw profile/frontier JSON should stay in local artifacts or an
+explicit machine channel. The launcher must keep attach, interrupt, and stop
+commands visible so the user can take over without reading hidden logs.
 
 ## Acceptance Checks
 
 An implementation satisfies this contract when:
 
 - launcher and frontier packets expose `auto_research_role_profile_v0` for each
-  visible worker;
+  visible worker without printing raw profile JSON on the first screen;
 - each profile names `agent_id`, `role_id`, `phase`, `capability_token`,
   `allowed_actions`, `write_scope`, `protected_scope`, `required_skill`,
   `skill_section`, and `stop_conditions`;

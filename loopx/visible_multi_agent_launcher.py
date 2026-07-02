@@ -9,102 +9,6 @@ from collections.abc import Iterable
 from pathlib import Path
 
 
-_QUOTA_READY_PY = (
-    "import json,sys; "
-    "p=json.load(sys.stdin); "
-    "u=p.get('interaction_contract',{}).get('user_channel',{}); "
-    "a=p.get('interaction_contract',{}).get('agent_channel',{}); "
-    "delivery=a.get('delivery_allowed', p.get('should_run', True)); "
-    "hard_gate=bool(u.get('action_required')); "
-    "sys.exit(42 if hard_gate else (0 if delivery is not False else 43))"
-)
-
-_QUOTA_BLOCKER_SUMMARY_PY = (
-    "import json,sys; "
-    "p=json.load(sys.stdin); "
-    "ic=p.get('interaction_contract',{}); "
-    "u=ic.get('user_channel',{}); "
-    "a=ic.get('agent_channel',{}); "
-    "reason=u.get('reason') or p.get('reason') or p.get('recommended_action') or 'blocked'; "
-    "primary=a.get('primary_action') or p.get('recommended_action') or ''; "
-    "print('reason=' + str(reason)); "
-    "print('primary_action=' + str(primary))"
-)
-
-_FRONTIER_READY_PY = (
-    "import json,os,sys; "
-    "p=json.load(sys.stdin); "
-    "selected=(p.get('frontier') or {}).get('selected') or {}; "
-    "agent=os.environ.get('LOOPX_AGENT_ID'); "
-    "claimed=selected.get('claimed_by'); "
-    "ok=bool(selected) and (not claimed or claimed==agent); "
-    "sys.exit(0 if ok else 43)"
-)
-
-_HUMAN_VIEW_PACKET_PY = r"""
-import json
-import sys
-from pathlib import Path
-
-kind = sys.argv[1] if len(sys.argv) > 1 else "packet"
-artifact = Path(sys.argv[2]) if len(sys.argv) > 2 else None
-raw = sys.stdin.read()
-if artifact is not None:
-    artifact.parent.mkdir(parents=True, exist_ok=True)
-    artifact.write_text(raw, encoding="utf-8")
-
-
-def emit(key, value):
-    if value is None or value == "":
-        return
-    text = str(value).replace("\n", " ").strip()
-    if len(text) > 220:
-        text = text[:217] + "..."
-    print(f"{key}={text}")
-
-
-emit(f"{kind}_artifact", artifact.name if artifact is not None else None)
-try:
-    payload = json.loads(raw)
-except Exception:
-    emit(f"{kind}_status", "not_json")
-    emit(f"{kind}_summary", " ".join(raw.strip().splitlines()[:3]))
-    raise SystemExit(0)
-
-if kind == "quota":
-    interaction = payload.get("interaction_contract") or {}
-    user_channel = interaction.get("user_channel") or {}
-    agent_channel = interaction.get("agent_channel") or {}
-    emit("quota_decision", payload.get("decision") or payload.get("state") or payload.get("effective_action"))
-    emit("should_run", payload.get("should_run"))
-    emit("user_action_required", user_channel.get("action_required"))
-    emit("delivery_allowed", agent_channel.get("delivery_allowed", payload.get("normal_delivery_allowed")))
-    emit("reason", user_channel.get("reason") or payload.get("reason"))
-    emit("next_action", agent_channel.get("primary_action") or payload.get("recommended_action"))
-else:
-    frontier = payload.get("frontier") or payload.get("agent_scope_frontier") or payload
-    selected = frontier.get("selected") or frontier.get("selected_todo") or payload.get("selected") or {}
-    emit("frontier_goal", frontier.get("goal_id") or payload.get("goal_id"))
-    emit("frontier_agent", frontier.get("agent_id") or payload.get("agent_id"))
-    if selected:
-        emit("selected_todo", selected.get("todo_id") or selected.get("id"))
-        emit("selected_title", selected.get("title") or selected.get("text"))
-        emit("selected_status", selected.get("status"))
-        emit("claimed_by", selected.get("claimed_by"))
-        emit("allowed_action", selected.get("allowed_action") or selected.get("action_kind") or selected.get("mechanism_family"))
-    else:
-        emit("selected_todo", "none")
-    for key in ("runnable", "blocked", "promotion_candidates", "retirement_candidates"):
-        value = frontier.get(key)
-        if isinstance(value, list):
-            emit(f"{key}_count", len(value))
-    evidence_graph = payload.get("evidence_graph") or frontier.get("evidence_graph") or {}
-    if isinstance(evidence_graph, dict):
-        for key in ("hypothesis_count", "evidence_event_count", "positive_event_count", "negative_evidence_count"):
-            if key in evidence_graph:
-                emit(key, evidence_graph.get(key))
-"""
-
 _SCOPED_LOOPX_WRAPPER_PY = r"""
 import os
 from pathlib import Path
@@ -176,50 +80,6 @@ human_target.write_text(
 human_target.chmod(0o700)
 """
 
-_VISIBLE_CODEX_STREAM_FILTER_PY = r"""
-import re
-import sys
-
-
-def redact_local_paths(text):
-    slash = chr(47)
-    prefixes = [
-        slash + "private" + slash + "var" + slash + "folders",
-        slash + "var" + slash + "folders",
-        slash + "private" + slash + "tmp",
-        slash + "tmp",
-    ]
-    for prefix in prefixes:
-        text = re.sub(re.escape(prefix) + r"[^ \n\r\t'\"`]+", "<local-path>", text)
-    return text
-
-
-skip_skill_block = False
-waiting_for_first_codex = True
-for raw in sys.stdin:
-    line = raw.rstrip("\n")
-    if waiting_for_first_codex:
-        if line == "codex":
-            waiting_for_first_codex = False
-            print("[Codex]", flush=True)
-        continue
-    if "BEGIN_SKILL" in line:
-        skip_skill_block = True
-        print("[Codex stream note] worker-local skill block hidden; Codex output continues below.", flush=True)
-        continue
-    if "END_SKILL" in line:
-        skip_skill_block = False
-        continue
-    if skip_skill_block:
-        continue
-    if " WARN codex_core_" in line:
-        continue
-    if line.startswith("warning: Skill descriptions were shortened"):
-        continue
-    print(redact_local_paths(line), flush=True)
-"""
-
-
 def _q(value: object) -> str:
     return shlex.quote(str(value))
 
@@ -258,24 +118,6 @@ def runtime_shell_command(
     return "; ".join(parts)
 
 
-def build_visible_frontier_command(
-    frontier_command: str,
-    *,
-    frontier_label: str = "[LoopX frontier]",
-) -> str:
-    return (
-        'cd "$LOOPX_PROJECT"; '
-        f"printf '\\n%s\\n' {_q(frontier_label)}; "
-        f"FRONTIER_PACKET=\"$(LOOPX_MACHINE_JSON=1; export LOOPX_MACHINE_JSON; {frontier_command} 2>&1)\"; "
-        "FRONTIER_STATUS=$?; "
-        'FRONTIER_ARTIFACT_NAME="frontier.public.json"; '
-        'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$FRONTIER_ARTIFACT_NAME"; '
-        f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} frontier \"$FRONTIER_ARTIFACT\" || true; "
-        'printf "\\n[frontier window ready]\\nexit=%s\\nartifact=%s\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT_NAME"; '
-        "exec /bin/sh -i"
-    )
-
-
 def resolve_visible_workspace(
     workspace: str | None,
     *,
@@ -308,12 +150,9 @@ def build_visible_lane_command(
     role_id: str,
     role_profile_ref: str,
     role_profile_command: str,
-    quota_command: str,
-    frontier_command: str,
     bootstrap_command: str,
     codex_bin: str,
     reasoning_effort: str,
-    frontier_label: str = "[LoopX frontier]",
 ) -> str:
     scoped_loopx_wrapper = (
         'LOOPX_REAL_CLI="$(command -v loopx)"; '
@@ -327,131 +166,28 @@ def build_visible_lane_command(
         'export LOOPX_VISIBLE_FORCE_MARKDOWN="${LOOPX_VISIBLE_FORCE_MARKDOWN:-1}"; '
         'export PATH="$LOOPX_PROJECT/.local/bin:$PATH"; '
     )
-    visible_summary = (
-        'printf "\\n[LoopX visible acceptance]\\n"; '
-        'printf "role_profile=printed\\n"; '
-        'printf "quota_guard=printed\\n"; '
-        'printf "frontier_or_blocked_reason=printed\\n"; '
-        'printf "bootstrap_or_stop=printed\\n"; '
-        'printf "loopx_agent_handshake=role_profile_quota_frontier_bootstrap\\n"; '
-        'printf "loopx_polling_prompt=visible_bootstrap_prompt\\n"; '
-        'printf "loopx_cli_scope=scoped_loopx_wrapper\\n"; '
-        'printf "human_stream_contract=role_todo_progress_codex_stream\\n"; '
-        'printf "machine_json_policy=file_or_explicit_machine_channel_only\\n"; '
-        'printf "machine_artifacts=quota_frontier_bootstrap_public_files\\n"; '
-        'printf "takeover_controls=visible\\n"; '
-        f"printf 'reasoning_effort=%s\\n' {_q(reasoning_effort)}"
-    )
-    keep_visible = (
-        f"{visible_summary}; "
-        'printf "\\n[user takeover]\\ninspect this pane; interrupt, close, or retry manually\\n"; '
-        "exec /bin/sh -i"
-    )
-    poll_header = (
-        'POLL_ATTEMPTS="${LOOPX_VISIBLE_POLL_ATTEMPTS:-6}"; '
-        'POLL_SLEEP="${LOOPX_VISIBLE_POLL_INTERVAL_SECONDS:-5}"; '
-        'POLL_INDEX=1; '
-        "while :; do "
-    )
-    poll_retry = (
-        'if [ "$POLL_INDEX" -lt "$POLL_ATTEMPTS" ]; then '
-        'printf "\\n[LoopX waiting for lane turn]\\nattempt=%s/%s sleep=%s\\n" "$POLL_INDEX" "$POLL_ATTEMPTS" "$POLL_SLEEP"; '
-        'POLL_INDEX=$((POLL_INDEX + 1)); '
-        'sleep "$POLL_SLEEP"; '
-        "continue; "
-        "fi; "
-    )
     return (
         "set -uo pipefail; "
+        "export LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1; "
         f"export LOOPX_ROLE_ID={_q(role_id)}; "
         f"export LOOPX_ROLE_PROFILE_REF={_q(role_profile_ref)}; "
         'cd "$LOOPX_PROJECT"; '
         f"{scoped_loopx_wrapper}"
         f"{role_profile_command}"
-        f"{poll_header}"
-        "printf '\\n[LoopX quota guard]\\nattempt=%s/%s\\n' \"$POLL_INDEX\" \"$POLL_ATTEMPTS\"; "
-        f"QUOTA_PACKET=\"$(LOOPX_MACHINE_JSON=1; export LOOPX_MACHINE_JSON; {quota_command} 2>&1)\"; "
-        "QUOTA_STATUS=$?; "
         'VISIBLE_ARTIFACT_PREFIX="${LOOPX_LANE_ID:-${LOOPX_ROLE_ID:-lane}}"; '
-        'QUOTA_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.quota.public.json"; '
-        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} quota \"$QUOTA_ARTIFACT\" || true; "
-        "if [ \"$QUOTA_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'quota_command_failed exit=%s\\n' \"$QUOTA_STATUS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_frontier\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_QUOTA_READY_PY)}; "
-        "QUOTA_GATE_STATUS=$?; "
-        "if [ \"$QUOTA_GATE_STATUS\" -eq 43 ]; then "
-        f"{poll_retry}"
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'quota_wait_timeout attempts=%s\\n' \"$POLL_ATTEMPTS\"; "
-        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_QUOTA_BLOCKER_SUMMARY_PY)} || true; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_frontier\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        "if [ \"$QUOTA_GATE_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        f"printf '%s\\n' \"$QUOTA_PACKET\" | python3 -c {_q(_QUOTA_BLOCKER_SUMMARY_PY)} || true; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_frontier\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        f"printf '\\n{frontier_label}\\n'; "
-        f"FRONTIER_PACKET=\"$(LOOPX_MACHINE_JSON=1; export LOOPX_MACHINE_JSON; {frontier_command} 2>&1)\"; "
-        "FRONTIER_STATUS=$?; "
-        'FRONTIER_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.frontier.public.json"; '
-        f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_HUMAN_VIEW_PACKET_PY)} frontier \"$FRONTIER_ARTIFACT\" || true; "
-        "if [ \"$FRONTIER_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'frontier_command_failed exit=%s\\n' \"$FRONTIER_STATUS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_bootstrap\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        f"printf '%s\\n' \"$FRONTIER_PACKET\" | python3 -c {_q(_FRONTIER_READY_PY)}; "
-        "FRONTIER_READY_STATUS=$?; "
-        "if [ \"$FRONTIER_READY_STATUS\" -eq 43 ]; then "
-        f"{poll_retry}"
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'frontier_wait_timeout attempts=%s\\n' \"$POLL_ATTEMPTS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_bootstrap\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        "if [ \"$FRONTIER_READY_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX blocked reason]\\n'; "
-        "printf 'frontier_not_ready exit=%s\\n' \"$FRONTIER_READY_STATUS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_bootstrap\\n'; "
-        f"{keep_visible}; "
-        "fi; "
-        "break; "
-        "done; "
-        "printf '\\n[bootstrap-or-stop]\\ncontinuing_to_visible_bootstrap\\n'; "
         f"BOOTSTRAP_PROMPT=\"$({bootstrap_command} 2>&1)\"; "
         "BOOTSTRAP_STATUS=$?; "
         'BOOTSTRAP_ARTIFACT="$LOOPX_VISIBLE_ARTIFACT_DIR/$VISIBLE_ARTIFACT_PREFIX.bootstrap-prompt.public.txt"; '
         'printf "%s\\n" "$BOOTSTRAP_PROMPT" > "$BOOTSTRAP_ARTIFACT"; '
-        "printf '\\n[Codex bootstrap]\\n'; "
-        "printf 'bootstrap_prompt_artifact=%s\\n' \"$VISIBLE_ARTIFACT_PREFIX.bootstrap-prompt.public.txt\"; "
-        'if [ -n "${LOOPX_GOAL_ID:-}" ]; then printf "goal=%s\\n" "$LOOPX_GOAL_ID"; fi; '
-        'if [ -n "${LOOPX_AGENT_ID:-}" ]; then printf "agent=%s\\n" "$LOOPX_AGENT_ID"; fi; '
-        'if [ -n "${LOOPX_LANE_ID:-}" ]; then printf "lane=%s\\n" "$LOOPX_LANE_ID"; fi; '
-        "printf 'codex_output=streaming_below\\n'; "
-        "printf 'codex_stream_filter=public_safe\\n'; "
         "if [ \"$BOOTSTRAP_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX blocked reason]\\n'; "
         "printf 'bootstrap_command_failed exit=%s\\n' \"$BOOTSTRAP_STATUS\"; "
-        "printf '\\n[bootstrap-or-stop]\\nstopped_before_codex\\n'; "
-        f"{keep_visible}; "
+        "exec /bin/sh -i; "
         "fi; "
-        f"{visible_summary}; "
-        'sleep "${LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS:-1}"; '
-        "printf '\\n[Starting visible Codex exec]\\n'; "
-        f"{_q(codex_bin)} exec -c model_reasoning_effort={_q(reasoning_effort)} "
-        '--cd "$LOOPX_PROJECT" --skip-git-repo-check --sandbox danger-full-access "$BOOTSTRAP_PROMPT" '
-        f"2>&1 | python3 -u -c {_q(_VISIBLE_CODEX_STREAM_FILTER_PY)}; "
-        "CODEX_STATUS=$?; "
-        "printf '\\n[Codex CLI exited]\\nexit=%s\\n' \"$CODEX_STATUS\"; "
-        f"{keep_visible}"
+        "export LOOPX_CODEX_TUI_MODE=interactive; "
+        "export LOOPX_CODEX_TUI_PROMPT_ARTIFACT=\"$BOOTSTRAP_ARTIFACT\"; "
+        f"exec {_q(codex_bin)} -c model_reasoning_effort={_q(reasoning_effort)} "
+        '-C "$LOOPX_PROJECT" "$BOOTSTRAP_PROMPT"'
     )
 
 
@@ -461,7 +197,6 @@ def build_visible_multi_agent_payload(
     session_name: str,
     lanes: Iterable[dict[str, object]],
     tmux_bin: str = "tmux",
-    frontier_command: str | None = None,
     schema_version: str = "multi_agent_visible_launcher_v0",
 ) -> dict[str, object]:
     lane_list = [lane for lane in lanes if isinstance(lane, dict)]
@@ -474,8 +209,6 @@ def build_visible_multi_agent_payload(
         "rerun the same visible launcher packet after refreshing quota, "
         "frontier, and bootstrap"
     )
-    first_frontier = str(frontier_command or lane_list[0].get("frontier") or "")
-    frontier_launcher = build_visible_frontier_command(first_frontier)
     start_script = [
         "set -uo pipefail",
         ": ${LOOPX_PROJECT:?set LOOPX_PROJECT to the repo root before running}",
@@ -484,24 +217,27 @@ def build_visible_multi_agent_payload(
         f"export LOOPX_VISIBLE_SESSION={_q(session)}",
         'export LOOPX_VISIBLE_ARTIFACT_DIR="${LOOPX_VISIBLE_ARTIFACT_DIR:-$LOOPX_RUNTIME_ROOT/visible-launcher-artifacts/$LOOPX_VISIBLE_SESSION}"',
         'mkdir -p "$LOOPX_VISIBLE_ARTIFACT_DIR"',
-        (
-            f"{_q(tmux_bin)} new-session -d -s {_q(session)} -n frontier "
-            f"bash -lc {_q(frontier_launcher)}"
-        ),
-        (
-            f"{_q(tmux_bin)} display-message -t {_q(session)} "
-            f"{_q('LoopX visible multi-agent session started; attach before accepting prompts')}"
-        ),
     ]
-    for lane in lane_list:
+    for index, lane in enumerate(lane_list):
         lane_id = str(lane.get("lane_id") or "agent-lane")
         launch_command = str(lane.get("visible_launch_command") or "")
         if not launch_command:
             raise ValueError(f"lane {lane_id} is missing visible_launch_command")
-        start_script.append(
-            f"{_q(tmux_bin)} new-window -d -t {_q(session)} "
-            f"-n {_q(lane_id)} bash -lc {_q(launch_command)}"
-        )
+        if index == 0:
+            start_script.append(
+                f"{_q(tmux_bin)} new-session -d -s {_q(session)} "
+                f"-n {_q(lane_id)} bash -lc {_q(launch_command)}"
+            )
+            start_script.append(f"{_q(tmux_bin)} set-option -t {_q(session)} remain-on-exit on")
+        else:
+            start_script.append(
+                f"{_q(tmux_bin)} new-window -d -t {_q(session)} "
+                f"-n {_q(lane_id)} bash -lc {_q(launch_command)}"
+            )
+    start_script.append(
+        f"{_q(tmux_bin)} display-message -t {_q(session)} "
+        f"{_q('LoopX visible multi-agent Codex TUI session started; each window is interactive')}"
+    )
     return {
         "ok": True,
         "schema_version": schema_version,
@@ -509,15 +245,13 @@ def build_visible_multi_agent_payload(
         "goal_id": str(goal_id),
         "session_name": session,
         "lanes": lane_list,
-        "human_stream_contract": {
-            "schema_version": "multi_agent_visible_human_stream_contract_v0",
+        "interactive_tui_contract": {
+            "schema_version": "multi_agent_visible_interactive_tui_contract_v0",
             "human_pane": [
-                "role_profile_summary",
-                "quota_summary",
-                "frontier_or_blocked_summary",
-                "bootstrap_artifact_ref",
-                "codex_stream",
-                "compact_exit_summary",
+                "codex_cli_tui",
+                "role_prompt_inside_codex",
+                "normal_user_typing",
+                "normal_codex_tool_output",
                 "takeover_controls",
             ],
             "machine_artifacts": [
@@ -527,12 +261,13 @@ def build_visible_multi_agent_payload(
                 "role_local_public_artifacts",
             ],
             "machine_json_policy": "file_or_explicit_machine_channel_only",
-            "visible_json_policy": "markdown_or_compact_summary_only",
-            "codex_stream": "public_filtered_stdout_stderr_visible_below_bootstrap",
+            "visible_json_policy": "not_printed_before_tui",
+            "codex_surface": "interactive_cli_tui",
             "forbidden_visible_content": [
                 "raw_quota_json",
                 "raw_frontier_json",
                 "raw_role_profile_json",
+                "pre_codex_character_stream",
                 "credentials",
                 "raw_private_logs",
                 "absolute_local_artifact_paths",
@@ -546,19 +281,15 @@ def build_visible_multi_agent_payload(
         },
         "acceptance": {
             "schema_version": "multi_agent_visible_launcher_acceptance_contract_v0",
-            "required_markers": [
-                "role_profile=printed",
-                "quota_guard=printed",
-                "frontier_or_blocked_reason=printed",
-                "bootstrap_or_stop=printed",
-                "loopx_agent_handshake=role_profile_quota_frontier_bootstrap",
-                "human_stream_contract=role_todo_progress_codex_stream",
-                "machine_json_policy=file_or_explicit_machine_channel_only",
+            "required_runtime_shape": [
+                "one_tmux_window_per_role",
+                "each_role_window_execs_codex_cli_tui",
+                "no_frontier_or_json_status_window",
+                "no_pre_codex_character_stream",
             ],
-            "human_stream_contract": "multi_agent_visible_human_stream_contract_v0",
+            "interactive_tui_contract": "multi_agent_visible_interactive_tui_contract_v0",
             "machine_json_file_bound": True,
-            "codex_stream_visible": True,
-            "codex_stream_public_filter": True,
+            "codex_tui_interactive": True,
         },
         "boundary": {
             "starts_visible_processes": False,
@@ -693,8 +424,6 @@ def execute_visible_multi_agent_launcher(
     launch_result_schema: str = "multi_agent_visible_launch_result_v0",
     acceptance_schema: str = "multi_agent_visible_launch_acceptance_v0",
     lane_default: str = "agent-lane",
-    frontier_or_blocker_markers: Iterable[str] = ("[LoopX frontier]", "[LoopX blocked reason]"),
-    frontier_or_blocker_status_markers: Iterable[str] = ("frontier_or_blocked_reason=printed",),
 ) -> tuple[dict[str, object], str, str]:
     require_executable(cli_bin, field="cli_bin")
     require_executable(codex_bin, field="codex_bin")
@@ -718,13 +447,12 @@ def execute_visible_multi_agent_launcher(
         registry=registry,
         runtime_root=runtime_root,
         tmux_bin=tmux_bin,
+        codex_bin=codex_bin,
         attach=attach,
         replace_existing=replace_existing,
         launch_result_schema=launch_result_schema,
         acceptance_schema=acceptance_schema,
         lane_default=lane_default,
-        frontier_or_blocker_markers=frontier_or_blocker_markers,
-        frontier_or_blocker_status_markers=frontier_or_blocker_status_markers,
     )
     result["worker_skill_materialization"] = worker_skills
     return result, chosen, workspace_mode
@@ -738,13 +466,12 @@ def _launch_with_tmux(
     registry: Path,
     runtime_root: Path,
     tmux_bin: str,
+    codex_bin: str,
     attach: bool,
     replace_existing: bool,
     launch_result_schema: str,
     acceptance_schema: str,
     lane_default: str,
-    frontier_or_blocker_markers: Iterable[str],
-    frontier_or_blocker_status_markers: Iterable[str],
 ) -> dict[str, object]:
     session = str(payload.get("session_name") or "loopx-visible-agents")
     lanes = [item for item in payload.get("lanes", []) if isinstance(item, dict)]
@@ -775,28 +502,9 @@ def _launch_with_tmux(
         subprocess.run([tmux_bin, "kill-session", "-t", session], check=True, env=env)
 
     script_dir = runtime_root / "visible-launcher" / _script_slug(session)
-    first_frontier = str(lanes[0].get("frontier") or "")
-    frontier_command = runtime_shell_command(
-        build_visible_frontier_command(first_frontier),
-        project=project,
-        registry=registry,
-        runtime_root=runtime_root,
-        visible_session=session,
-        errexit=False,
-    )
-    frontier_script = _write_tmux_script(
-        script_dir=script_dir,
-        name="frontier",
-        command=frontier_command,
-    )
-    subprocess.run(
-        [tmux_bin, "new-session", "-d", "-s", session, "-n", "frontier", "bash", str(frontier_script)],
-        check=True,
-        env=env,
-    )
     started_lanes = []
-    launcher_scripts = {"frontier": str(frontier_script)}
-    for lane in lanes:
+    launcher_scripts: dict[str, str] = {}
+    for index, lane in enumerate(lanes):
         lane_id = str(lane.get("lane_id") or lane_default)
         launch_command = str(lane.get("visible_launch_command") or "")
         if not launch_command:
@@ -816,21 +524,43 @@ def _launch_with_tmux(
                 errexit=False,
             ),
         )
-        subprocess.run(
-            [
-                tmux_bin,
-                "new-window",
-                "-d",
-                "-t",
-                session,
-                "-n",
-                lane_id,
-                "bash",
-                str(lane_script),
-            ],
-            check=True,
-            env=env,
-        )
+        if index == 0:
+            subprocess.run(
+                [
+                    tmux_bin,
+                    "new-session",
+                    "-d",
+                    "-s",
+                    session,
+                    "-n",
+                    lane_id,
+                    "bash",
+                    str(lane_script),
+                ],
+                check=True,
+                env=env,
+            )
+            subprocess.run(
+                [tmux_bin, "set-option", "-t", session, "remain-on-exit", "on"],
+                check=False,
+                env=env,
+            )
+        else:
+            subprocess.run(
+                [
+                    tmux_bin,
+                    "new-window",
+                    "-d",
+                    "-t",
+                    session,
+                    "-n",
+                    lane_id,
+                    "bash",
+                    str(lane_script),
+                ],
+                check=True,
+                env=env,
+            )
         started_lanes.append(lane_id)
         launcher_scripts[lane_id] = str(lane_script)
     if attach:
@@ -841,8 +571,8 @@ def _launch_with_tmux(
         expected_lanes=started_lanes,
         env=env,
         schema_version=acceptance_schema,
-        frontier_or_blocker_markers=frontier_or_blocker_markers,
-        frontier_or_blocker_status_markers=frontier_or_blocker_status_markers,
+        lane_scripts=launcher_scripts,
+        codex_bin=codex_bin,
     )
     return {
         "schema_version": launch_result_schema,
@@ -871,10 +601,10 @@ def _tmux_acceptance(
     expected_lanes: list[str],
     env: dict[str, str],
     schema_version: str,
-    frontier_or_blocker_markers: Iterable[str],
-    frontier_or_blocker_status_markers: Iterable[str],
+    lane_scripts: dict[str, str],
+    codex_bin: str,
 ) -> dict[str, object]:
-    frontier_markers = tuple(frontier_or_blocker_markers) + tuple(frontier_or_blocker_status_markers)
+    codex_name = Path(codex_bin).name or "codex"
     last_payload: dict[str, object] | None = None
     for attempt in range(20):
         time.sleep(0.25)
@@ -896,31 +626,43 @@ def _tmux_acceptance(
                 text=True,
                 env=env,
             ).stdout
+            current_command = subprocess.run(
+                [tmux_bin, "display-message", "-p", "-t", f"{session}:{lane}", "#{pane_current_command}"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            ).stdout.strip()
+            script_path = Path(lane_scripts.get(lane, ""))
+            script_text = script_path.read_text(encoding="utf-8") if script_path.is_file() else ""
             failure_markers = [
-                "stopped_before_frontier",
                 "stopped_before_bootstrap",
                 "stopped_before_codex",
                 "quota_wait_timeout",
-                "frontier_wait_timeout",
-                "frontier_not_ready",
+                "bootstrap_command_failed",
             ]
             blocked_before_bootstrap = any(marker in capture for marker in failure_markers)
-            ok = (
-                lane in surviving
-                and ("[LoopX role profile]" in capture or "role_profile=printed" in capture)
-                and ("[LoopX quota guard]" in capture or "quota_guard=printed" in capture)
-                and any(marker in capture for marker in frontier_markers)
-                and ("[bootstrap-or-stop]" in capture or "bootstrap_or_stop=printed" in capture)
-                and "loopx_agent_handshake=role_profile_quota_frontier_bootstrap" in capture
-                and "human_stream_contract=role_todo_progress_codex_stream" in capture
-                and "machine_json_policy=file_or_explicit_machine_channel_only" in capture
-                and not blocked_before_bootstrap
+            script_words = script_text.replace("\n", " ").replace(";", " ").split()
+            uses_headless_codex_subcommand = any(
+                Path(word).name == codex_name
+                and index + 1 < len(script_words)
+                and script_words[index + 1] == "exec"
+                for index, word in enumerate(script_words)
             )
+            script_execs_codex_tui = (
+                "exec " in script_text
+                and codex_name in script_text
+                and "| python3" not in script_text
+                and not uses_headless_codex_subcommand
+            )
+            ok = lane in surviving and not blocked_before_bootstrap and script_execs_codex_tui
             pane_checks.append(
                 {
                     "lane_id": lane,
                     "accepted": ok,
                     "blocked_before_bootstrap": blocked_before_bootstrap,
+                    "interactive_codex_tui_script": script_execs_codex_tui,
+                    "pane_current_command": current_command,
                 }
             )
         accepted = list_result.returncode == 0 and len(surviving) == len(expected_lanes) and all(

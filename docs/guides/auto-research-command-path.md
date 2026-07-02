@@ -58,9 +58,10 @@ loopx --registry "$LOOPX_REGISTRY" \
 
 That command is the user-facing UX for a multi-round visible demo. It creates a
 fresh isolated demo goal by default, runs the LoopX worker-loop, launches the
-visible tmux lanes, and attaches to the session. Generic launcher internals stay
-inside LoopX; the operator does not need to know the module or implementation
-path.
+visible tmux lanes, and attaches to the session. Each tmux window should open as
+a real interactive Codex CLI TUI role, not as a JSON/status stream. Generic
+launcher internals stay inside LoopX; the operator does not need to know the
+module or implementation path.
 
 When this demo is being advanced from a broader productization goal such as
 `loopx-meta`, do not change `--goal-id` to that meta goal. Omit `--goal-id` for
@@ -106,11 +107,11 @@ loopx --registry "$LOOPX_REGISTRY" \
 ```
 
 To start tmux panes but stay in the current shell, use `--no-attach`. Visible
-panes default to human-readable LoopX output. The pane-local `$LOOPX_PANE_LOOPX`
-wrapper rewrites accidental visible JSON requests to markdown, and
-`$LOOPX_PANE_LOOPX_JSON` is reserved for redirected machine artifacts; it refuses
-to dump raw JSON directly into a visible terminal or a Codex-visible pipe unless
-the launcher explicitly sets `LOOPX_MACHINE_JSON=1`.
+panes default to the Codex CLI TUI. The pane-local `$LOOPX_PANE_LOOPX` wrapper
+is for human-readable LoopX commands inside that TUI, and
+`$LOOPX_PANE_LOOPX_JSON` is reserved for redirected machine artifacts. Raw JSON
+should not be dumped into the first visible screen; future control surfaces can
+render those artifacts separately.
 
 Expected minimal E2E result:
 
@@ -259,13 +260,14 @@ The default visible digital employees are:
 | `codex-product-capability:research-curator` | Research curator | Keeps the research contract, protected boundary, metric, stop policy, evidence review, and operator gates explicit. |
 | `codex-side-bypass:hypothesis-mapper` | Hypothesis mapper | Turns ideas into todo-backed hypotheses, successor links, and retirement rationale. |
 | `codex-main-control:evidence-runner` | Evidence runner | Executes one selected hypothesis under an isolated attempt boundary when mutation is required and preserves scored or unscored evidence. |
+| `codex-value-explorer:evidence-verifier` | Evidence verifier | Checks holdout/verification evidence, classifies claims, and keeps promotion boundaries explicit. |
 
-Each pane must route through its own quota/frontier/bootstrap path. The
-supervisor only makes those panes visible. The panes share the same LoopX
-goal surface: registry, runtime root, frontier, todo projection, and evidence
-graph. Do not move every pane into an unrelated empty workspace; isolate only
-mutating evidence-runner attempts with a claimed git worktree or equivalent
-execution boundary.
+Each Codex TUI role must route through its own quota/frontier/worker-turn path
+inside the pane. The supervisor only makes those roles visible and interactive.
+The panes share the same LoopX goal surface: registry, runtime root, frontier,
+todo projection, and evidence graph. Do not move every pane into an unrelated
+empty workspace; isolate only mutating evidence-runner attempts with a claimed
+git worktree or equivalent execution boundary.
 
 For compatibility or product experiments, `--agent` can still name explicit
 lanes, including a separate evidence-verifier lane.
@@ -275,9 +277,10 @@ lanes, including a separate evidence-verifier lane.
 The visible panes should do work through the same CLI path a heartbeat worker
 uses: each turn re-reads quota, frontier, todo projection, and rollout evidence
 before writing anything.
-The user-facing terminal should show the role, selected todo, action, blocker,
-and Codex CLI stream; raw JSON belongs in `.public.json` artifacts, not on the
-first visible screen.
+The user-facing terminal should first show the Codex CLI TUI. Role progress,
+selected todo, action, and blocker summaries should appear as normal Codex
+interaction when the role runs LoopX commands; raw JSON belongs in
+`.public.json` artifacts, not on the first visible screen.
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \

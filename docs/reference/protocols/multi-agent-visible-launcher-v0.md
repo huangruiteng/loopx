@@ -49,15 +49,13 @@ agent lane that must read the same goal state and pass its own guard.
     "all_lane_workspace_isolation": false,
     "mutation_isolation_policy": "only mutating attempts require a claimed worktree or equivalent execution boundary"
   },
-  "human_stream_contract": {
-    "schema_version": "multi_agent_visible_human_stream_contract_v0",
+  "interactive_tui_contract": {
+    "schema_version": "multi_agent_visible_interactive_tui_contract_v0",
     "human_pane": [
-      "role_profile_summary",
-      "quota_summary",
-      "frontier_or_blocked_summary",
-      "bootstrap_artifact_ref",
-      "codex_stream",
-      "compact_exit_summary",
+      "codex_cli_tui",
+      "role_prompt_inside_codex",
+      "normal_user_typing",
+      "normal_codex_tool_output",
       "takeover_controls"
     ],
     "machine_artifacts": [
@@ -67,8 +65,8 @@ agent lane that must read the same goal state and pass its own guard.
       "role_local_public_artifacts"
     ],
     "machine_json_policy": "file_or_explicit_machine_channel_only",
-    "visible_json_policy": "markdown_or_compact_summary_only",
-    "codex_stream": "stdout_stderr_visible_below_bootstrap"
+    "visible_json_policy": "not_printed_before_tui",
+    "codex_surface": "interactive_cli_tui"
   },
   "lanes": [],
   "commands": {
@@ -90,7 +88,7 @@ Required top-level fields:
 - `goal_id` and `session_name`;
 - `reasoning_contract`;
 - `shared_goal_surface`;
-- `human_stream_contract`;
+- `interactive_tui_contract`;
 - `lanes[]`;
 - `commands.attach`, `commands.stop`, and `commands.retry`;
 - `acceptance`;
@@ -116,7 +114,7 @@ policy explicit instead of silently moving every lane into unrelated state.
 
 ## Lane Shape
 
-Each lane is small enough to print before the agent starts:
+Each lane is small enough to inspect before the agent starts:
 
 ```json
 {
@@ -154,41 +152,45 @@ packet is the lane identity authority.
 
 Every visible lane follows the same generic start order:
 
-1. Print the role profile or role profile ref.
-2. Run `quota should-run --goal-id <goal-id> --agent-id <agent-id>`.
-3. Stop visibly if `interaction_contract.user_channel.action_required=true`,
-   delivery is disallowed, quota is false, or the packet is contradictory.
-4. Print the domain frontier or a blocked reason.
-5. Print the public-safe bootstrap message.
-6. Start the visible agent process only after the preceding packets are visible.
-7. Keep the pane open after exit so the user can inspect, interrupt, close, or
-   retry manually.
+1. Prepare the role profile, scoped LoopX wrappers, and bootstrap prompt as
+   local artifacts without printing raw JSON or shell marker streams.
+2. Start one fresh interactive Codex CLI TUI per role window with
+   `codex -c model_reasoning_effort=<effort> -C "$LOOPX_PROJECT" "$PROMPT"`.
+3. Let the Codex role read quota/frontier/todo state through the pane-local
+   LoopX wrapper inside the TUI.
+4. Stop inside that Codex role if
+   `interaction_contract.user_channel.action_required=true`, delivery is
+   disallowed, quota is false, the frontier is contradictory, or the role would
+   bypass LoopX todo/evidence writeback.
+5. Keep the pane interactive so the user can type, interrupt, close, or retry
+   manually like a normal Codex CLI session.
 
-The launcher must not inject prompts into a hidden session, hide guard output,
-or continue a lane after a user gate is projected.
+The launcher must not inject prompts into an existing hidden session, print raw
+control-plane JSON as the first screen, or continue a lane after a user gate is
+projected.
 
-## Human Stream Contract
+## Interactive TUI Contract
 
-The first screen of each visible pane is for humans. It should show role,
-todo/progress, guard status, frontier or blocked reason, bootstrap status, and
-the live Codex CLI stream. Raw quota, frontier, role profile, and machine JSON
-belong in public-safe artifacts or an explicit machine channel.
+The first screen of each visible pane is the Codex CLI TUI itself. Users should
+feel that they opened several normal Codex agents, one per role, and can type
+into any of them. Raw quota, frontier, role profile, bootstrap prompt, and
+machine JSON belong in public-safe artifacts or an explicit machine channel,
+not in the initial tmux viewport.
 
-Required visible markers:
+Required runtime shape:
 
-- `role_profile=printed`;
-- `quota_guard=printed`;
-- `frontier_or_blocked_reason=printed`;
-- `bootstrap_or_stop=printed`;
-- `loopx_agent_handshake=role_profile_quota_frontier_bootstrap`;
-- `human_stream_contract=role_todo_progress_codex_stream`;
-- `machine_json_policy=file_or_explicit_machine_channel_only`.
+- one tmux window per role;
+- no extra frontier/status JSON window by default;
+- every role window executes the interactive Codex CLI, not `codex exec`;
+- no pre-Codex character stream, marker transcript, raw JSON dump, or copied
+  role profile appears before the TUI;
+- the role prompt instructs Codex to use the pane-local LoopX wrapper for
+  quota/frontier/todo/evidence work;
+- users can interact with each role through ordinary Codex CLI controls.
 
-The human pane may print compact summaries and artifact basenames, but it should
-not dump raw JSON, credentials, private logs, raw transcripts, or absolute local
-artifact paths. The Codex CLI stdout/stderr stream remains visible below the
-bootstrap marker so the user can watch the real worker response instead of a
-parallel presentation layer.
+The TUI may later show human-readable LoopX summaries when the Codex role runs
+commands. It should not dump raw JSON, credentials, private logs, raw
+transcripts, or absolute local artifact paths into the visible pane.
 
 ## Host Controls
 
@@ -199,8 +201,8 @@ The packet must expose:
 - per-pane interrupt path using normal terminal controls;
 - `retry`: the safe retry shape, which must recompute quota/frontier/bootstrap
   first instead of replaying stale hidden state;
-- visible acceptance markers that prove each pane printed profile, quota,
-  frontier-or-blocker, bootstrap-or-stop, and takeover controls.
+- visible acceptance proof that each pane was created as an interactive Codex
+  CLI TUI role and remains attachable or inspectable.
 
 Host commands are public-safe command shapes. They must not include credentials,
 auth headers, raw transcript paths, private document ids, or local absolute
@@ -257,10 +259,10 @@ A public fixture or implementation satisfies the contract when:
    agent-scoped quota, todo/frontier projection, run history, and evidence;
 5. it requires per-lane role identity, quota guard, frontier, bootstrap message,
    high reasoning, lane timeline, and visible launch command;
-6. it requires attach, stop, retry, pane interrupt, and visible acceptance
-   markers;
-7. it has a human stream contract that keeps raw machine JSON in artifacts or
-   explicit machine channels while streaming Codex CLI output visibly;
+6. it requires attach, stop, retry, pane interrupt, and visible acceptance proof
+   for interactive Codex CLI TUI role windows;
+7. it has an interactive TUI contract that keeps raw machine JSON in artifacts
+   or explicit machine channels instead of printing it before Codex starts;
 8. dry-run mode starts no process, runs no agent, writes no LoopX state, and
    spends no quota;
 9. execute mode still writes state and spends quota only through normal LoopX

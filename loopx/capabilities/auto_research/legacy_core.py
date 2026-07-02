@@ -962,15 +962,15 @@ def _auto_research_codex_bootstrap_prompt(
     return "\n".join(
         [
             "You are a visible LoopX auto-research lane, not a generic LoopX heartbeat worker.",
-            "Use the pane-local LoopX wrapper for quota/status/frontier, then follow this compact role prompt.",
+            "Use the pane-local LoopX wrapper for quota/frontier/todo work inside this Codex TUI, then follow this compact role prompt.",
             "The worker-local loopx-auto-research playbook is available at `$LOOPX_WORKER_SKILL_PATH` for ambiguous cases, but do not print or cat it in the visible pane.",
-            "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH` or `$LOOPX_ROLE_PROFILE_JSON`; the visible role summary above is the human-facing profile.",
+            "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH` or `$LOOPX_ROLE_PROFILE_JSON`; treat them as machine-local context for this TUI role.",
             "Use only the pane-local human LoopX wrapper: `$LOOPX_PANE_LOOPX`. Do not call bare `loopx` or an absolute LoopX binary; those can hit the wrong registry and make this demo goal look missing.",
             "The human wrapper has this demo's registry/runtime baked in and rewrites accidental visible `--format json` to markdown. If `$LOOPX_PANE_LOOPX` is unset or not executable, stop and report that blocker instead of falling back.",
             "Visible panes are for human observation: run worker-turn and worker-loop with `--format markdown`. If machine JSON is needed, use `$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json` and print only a compact summary.",
             "This pane is a visible LoopX polling turn: use worker-turn preview/execute as the human-facing polling command; it re-reads quota and frontier internally.",
             "Avoid `--help` probes and full quota/status dumps in the visible pane unless you are explaining a blocker.",
-            "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the printed frontier explicitly asks for it.",
+            "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the role-local worker-turn/frontier result explicitly asks for it.",
             "If a future scheduled automation owns this lane, it must use a generated LoopX heartbeat/polling prompt; this visible bootstrap is the local manual polling prompt.",
             "",
             f"Goal: {goal}",
@@ -981,7 +981,7 @@ def _auto_research_codex_bootstrap_prompt(
             f"Responsibility: {responsibility}",
             f"Reasoning: model_reasoning_effort={effort}",
             "",
-            "Before any write, resolve identity from the visible role summary, environment variables, quota summary, and auto-research frontier summary.",
+            "Before any write, resolve identity from environment variables, the role-local worker-turn preview, and the auto-research frontier summary.",
             "If any of those disagree, or quota/frontier no longer selects this role, stop and report the blocker in this pane.",
             f"Allowed actions: {allowed_actions}",
             f"Allowed write scope: {write_scope}",
@@ -990,7 +990,7 @@ def _auto_research_codex_bootstrap_prompt(
             f"Stop conditions: {stop_conditions}",
             "",
             "Live E2E proof contract:",
-            "- Work only from the printed auto-research frontier and compact role summary.",
+            "- Work only from the role-local worker-turn/frontier result and this compact role prompt.",
             "- The lightweight multi-round kernel is not live Codex evidence; do not claim kernel metrics as lane-authored results.",
             "- If you author evidence, write a public packet, run append-evidence with --output .local/<role>/append-result.public.json, then run capture-live-evidence.",
             "- For verifier/holdout turns, the hypothesis may be owned by an upstream lane; the live evidence author is the packet evidence event agent_id.",
@@ -1084,6 +1084,7 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         'mkdir -p "$LOOPX_ROLE_PROFILE_DIR"; '
         'export LOOPX_ROLE_PROFILE_PATH="$LOOPX_ROLE_PROFILE_DIR/$LOOPX_LANE_ID.public.json"; '
         'printf "%s\\n" "$LOOPX_ROLE_PROFILE_JSON" > "$LOOPX_ROLE_PROFILE_PATH"; '
+        'if [ "${LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP:-0}" != "1" ]; then '
         "printf '\\n[LoopX role profile]\\n'; "
         "printf 'role=%s\\n' \"$LOOPX_ROLE_DISPLAY_NAME\"; "
         "printf 'lane_id=%s\\n' \"$LOOPX_LANE_ID\"; "
@@ -1092,14 +1093,13 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
         "printf 'required_skill=%s\\n' \"$LOOPX_REQUIRED_SKILL\"; "
         "printf 'role_profile_artifact=%s.public.json\\n' \"$LOOPX_LANE_ID\"; "
         "printf 'worker_skill=%s (local)\\n' \"$LOOPX_REQUIRED_SKILL\"; "
+        "fi; "
     )
 
 
 def _env_lane_launch_command(
     *,
     role_id: str,
-    quota_command: str,
-    frontier_command: str,
     bootstrap_command: str,
     codex_bin: str,
     reasoning_effort: str,
@@ -1109,12 +1109,9 @@ def _env_lane_launch_command(
         role_id=role_id,
         role_profile_ref=AUTO_RESEARCH_ROLE_PROFILE_REF,
         role_profile_command=_role_profile_shell_prefix(role_profile),
-        quota_command=quota_command,
-        frontier_command=frontier_command,
         bootstrap_command=bootstrap_command,
         codex_bin=codex_bin,
         reasoning_effort=reasoning_effort,
-        frontier_label="[LoopX auto-research frontier]",
     )
 
 
@@ -1132,7 +1129,7 @@ def _demo_rehearsal_script(*, session: str, attach_command: str, stop_command: s
         f"printf '%s\\n' {_shell_arg(session)}",
         "printf '\\n[launch posture]\\n'",
         "printf '%s\\n' 'Real launch uses: loopx auto-research demo-e2e --execute'",
-        "printf '%s\\n' 'Internal tmux bootstrap shell stays in machine JSON/artifacts, not the first screen.'",
+        "printf '%s\\n' 'Real launch opens one interactive Codex CLI TUI role per tmux window.'",
         "printf '\\n[attach after start]\\n'",
         f"printf '%s\\n' {_shell_arg(attach_command)}",
         "printf '\\n[stop / user takeover abort]\\n'",
@@ -1205,47 +1202,44 @@ def build_auto_research_demo_supervisor_plan(
                 "reasoning_effort": effort,
                 "visible_launch_command": _env_lane_launch_command(
                     role_id=role_id,
-                    quota_command=quota_command,
-                    frontier_command=frontier_command,
                     bootstrap_command=bootstrap_command,
                     codex_bin=codex,
                     reasoning_effort=effort,
                     role_profile=role_profile,
                 ),
                 "start_sequence": [
-                    "print role_profile_v0 identity before any quota/frontier/bootstrap command",
-                    "run quota_guard and stop when user_channel.action_required=true",
-                    "render the lane frontier from LoopX state",
-                    "print the role-scoped auto-research bootstrap message for this visible TUI",
-                    "start Codex CLI visibly; do not inject hidden prompts into an existing session",
+                    "write role_profile_v0 and bootstrap prompt to local artifacts without printing them",
+                    "start a fresh Codex CLI TUI in this tmux window",
+                    "let the Codex role run pane-local LoopX worker-turn/worker-loop commands",
+                    "keep quota/frontier/todo/evidence interaction inside the visible Codex TUI",
                 ],
                 "lane_timeline": [
                     {
                         "phase": "role_profile",
                         "command_ref": "role_profile",
-                        "operator_visible_signal": "agent_id, role_id, phase, required skill, write boundary, stop conditions, and takeover controls",
-                        "continue_when": "profile matches quota/frontier identity for this lane",
+                        "operator_visible_signal": "silent artifact consumed by the Codex TUI prompt",
+                        "continue_when": "profile is written locally and matches the lane identity",
                         "stop_when": "profile conflicts with quota, frontier, AGENTS.md, or required skill",
                     },
                     {
                         "phase": "quota_guard",
                         "command_ref": "quota_guard",
-                        "operator_visible_signal": "should-run packet for this agent lane",
-                        "continue_when": "agent_channel.delivery_allowed=true and user_channel.action_required=false",
+                        "operator_visible_signal": "Codex TUI runs the pane-local worker-turn preview before any write",
+                        "continue_when": "the role-local worker-turn preview selects this lane",
                         "stop_when": "user_channel.action_required=true or quota says do not run",
                     },
                     {
                         "phase": "frontier_projection",
                         "command_ref": "frontier",
-                        "operator_visible_signal": "current auto-research frontier and todo/evidence hints",
-                        "continue_when": "frontier contains a bounded lane-local next action",
+                        "operator_visible_signal": "frontier appears in the Codex TUI as the role works",
+                        "continue_when": "the role-local worker-turn preview contains a bounded next action",
                         "stop_when": "frontier is empty, contradictory, private, or asks for owner input",
                     },
                     {
                         "phase": "bootstrap_prompt",
                         "command_ref": "bootstrap_message",
-                        "operator_visible_signal": "role-scoped auto-research Codex bootstrap message printed in the lane pane",
-                        "continue_when": "bootstrap scope matches the lane frontier",
+                        "operator_visible_signal": "prompt is passed to the Codex TUI, not printed as shell text",
+                        "continue_when": "Codex TUI starts with the role-scoped prompt",
                         "stop_when": "bootstrap would bypass LoopX quota, todo claims, or evidence writeback",
                     },
                     {
@@ -1264,7 +1258,6 @@ def build_auto_research_demo_supervisor_plan(
         session_name=session,
         lanes=pane_plans,
         tmux_bin=tmux,
-        frontier_command=_env_frontier_command(cli_bin=cli, goal_id=goal, agent_id=lanes[0]["agent_id"]),
     )
     commands = launcher_payload["commands"]
     start_script = list(commands["start_script"])
@@ -1365,9 +1358,9 @@ def build_auto_research_demo_supervisor_plan(
             ],
             "operator_can_accept_when": [
                 "the rehearsal script prints launch posture without exposing internal tmux bootstrap shell",
-                "every lane prints role_profile_v0 before quota, frontier, bootstrap, or Codex startup",
-                "every lane has a quota guard before frontier/bootstrap/Codex startup",
-                "the attach command is visible before any Codex prompt is accepted",
+                "every lane opens as a fresh interactive Codex CLI TUI role window",
+                "no role window starts with quota/frontier/profile JSON or shell character streams",
+                "the attach command is visible for user takeover",
                 "the stop command and terminal interrupt path are visible",
                 "boundary fields prove no tmux/Codex/state/quota side effects in dry-run mode",
             ],
@@ -1390,12 +1383,11 @@ def build_auto_research_demo_supervisor_plan(
                 "interrupt an individual pane with the normal terminal interrupt before any write path",
             ],
             "visible_status_cues": [
-                "frontier window shows the shared research frontier",
-                "each lane window prints its role_profile_v0 before quota/frontier/bootstrap",
-                "each lane window prints its own quota guard before Codex starts",
-                "each lane window prints its own auto-research frontier before Codex starts",
-                f"each lane window prints reasoning_effort={effort} before Codex starts",
-                "bootstrap message is visible in the same pane that would run Codex",
+                "each lane window is a real Codex CLI TUI role",
+                "each role starts from the role-scoped prompt and can be typed into by the user",
+                "quota/frontier/todo/evidence progress appears as normal Codex interaction",
+                f"each lane uses reasoning_effort={effort}",
+                "machine JSON stays in local artifacts unless a role explicitly redirects it",
             ],
             "handoff_boundary": "the shell supervisor owns layout only; LoopX quota, todo claims, frontier, and evidence graph remain source of truth",
         },
@@ -1437,7 +1429,7 @@ def build_auto_research_demo_supervisor_plan(
         "operator_notes": [
             "Set LOOPX_PROJECT, LOOPX_REGISTRY, and LOOPX_RUNTIME_ROOT in the user shell before running the script.",
             "Attach to tmux before accepting any Codex prompt so every lane stays visible and interruptible.",
-            "Use the printed quota/frontier packet in each pane to decide whether that lane should continue, ask, or stop.",
+            "Use each Codex TUI role's worker-turn/frontier summary to decide whether that lane should continue, ask, or stop.",
         ],
     }
 

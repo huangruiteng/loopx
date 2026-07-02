@@ -113,16 +113,24 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "auto-research worker-turn" in lane["bootstrap_message"], lane
         assert "--complete-selected-todo" in lane["bootstrap_message"], lane
         assert "$LOOPX_PANE_LOOPX" in lane["bootstrap_message"], lane
-        assert "[LoopX role profile]" in lane["visible_launch_command"], lane
-        assert "[LoopX visible acceptance]" in lane["visible_launch_command"], lane
+        assert "LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1" in lane["visible_launch_command"], lane
+        assert "LOOPX_CODEX_TUI_MODE=interactive" in lane["visible_launch_command"], lane
+        assert "LOOPX_CODEX_TUI_PROMPT_ARTIFACT" in lane["visible_launch_command"], lane
+        assert "exec codex -c model_reasoning_effort=high" in lane["visible_launch_command"], lane
+        assert '-C "$LOOPX_PROJECT" "$BOOTSTRAP_PROMPT"' in lane["visible_launch_command"], lane
+        assert "codex exec" not in lane["visible_launch_command"], lane
+        assert "codex_stream_filter" not in lane["visible_launch_command"], lane
+        assert "[LoopX visible acceptance]" not in lane["visible_launch_command"], lane
+        assert "[LoopX auto-research frontier]" not in lane["visible_launch_command"], lane
         assert "LOOPX_GOAL_ID" in lane["visible_launch_command"], lane
-        assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in lane["visible_launch_command"], lane
+        assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" not in lane["visible_launch_command"], lane
         assert "LOOPX_ROLE_PROFILE_JSON" in lane["visible_launch_command"], lane
         assert "LOOPX_ROLE_PROFILE_PATH" in lane["visible_launch_command"], lane
         assert "role_profile_artifact=%s.public.json" in lane["visible_launch_command"], lane
         assert "role_profile_path=%s" not in lane["visible_launch_command"], lane
         assert "LOOPX_REQUIRED_SKILL" in lane["visible_launch_command"], lane
-        assert "bootstrap-or-stop" in lane["visible_launch_command"], lane
+        assert "BOOTSTRAP_ARTIFACT" in lane["visible_launch_command"], lane
+        assert "bootstrap-or-stop" not in lane["visible_launch_command"], lane
         assert lane["visible_codex_tui"] == "codex", lane
         phases = [item["phase"] for item in lane["lane_timeline"]]
         assert phases == [
@@ -148,8 +156,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "tmux new-session" in start_script, start_script
     assert "tmux new-window" in start_script, start_script
     assert "LOOPX_PROJECT" in start_script, start_script
-    assert "[Codex bootstrap]" in start_script, start_script
-    assert "bootstrap_prompt_artifact" in start_script, start_script
+    assert "[Codex bootstrap]" not in start_script, start_script
+    assert "bootstrap_prompt_artifact" not in start_script, start_script
+    assert "LOOPX_CODEX_TUI_MODE=interactive" in start_script, start_script
+    assert "exec codex -c model_reasoning_effort=high" in start_script, start_script
     assert "[Codex bootstrap prompt]" not in start_script, start_script
     assert "You are a visible LoopX auto-research lane" in start_script, start_script
     assert "codex-cli-bootstrap-message" not in start_script, start_script
@@ -166,7 +176,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "LOOPX_PROJECT" in rehearsal, rehearsal
     assert "launch posture" in rehearsal, rehearsal
     assert "demo-e2e --execute" in rehearsal, rehearsal
-    assert "machine JSON/artifacts" in rehearsal, rehearsal
+    assert "interactive Codex CLI TUI role per tmux window" in rehearsal, rehearsal
     assert "start script - inspect before pasting" not in rehearsal, rehearsal
     assert "tmux new-session" not in rehearsal, rehearsal
     assert "LOOPX_ROLE_PROFILE_JSON" not in rehearsal, rehearsal
@@ -183,18 +193,18 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "commands.start_script" not in acceptance["required_visible_fields"], acceptance
     assert "lanes[].role_profile" in acceptance["required_visible_fields"], acceptance
     assert "lanes[].lane_timeline" in acceptance["required_visible_fields"], acceptance
-    assert any("role_profile_v0" in item for item in acceptance["operator_can_accept_when"]), acceptance
-    assert any("launch posture" in item for item in acceptance["operator_can_accept_when"]), acceptance
+    assert any("interactive Codex CLI TUI" in item for item in acceptance["operator_can_accept_when"]), acceptance
+    assert any("no role window starts with quota/frontier/profile JSON" in item for item in acceptance["operator_can_accept_when"]), acceptance
     assert any("role_profile_v0" in item for item in acceptance["operator_must_reject_when"]), acceptance
     assert any("hides attach/stop" in item for item in acceptance["operator_must_reject_when"]), acceptance
 
     takeover = payload["user_takeover"]
     assert takeover["schema_version"] == "auto_research_user_takeover_v0", payload
     assert any("rehearsal script first" in item for item in takeover["operator_controls"]), takeover
-    assert any("start_script is machine-bound" in item for item in takeover["operator_controls"]), takeover
+    assert any("internal start_script is machine-bound" in item for item in takeover["operator_controls"]), takeover
     assert any("attach to tmux" in item for item in takeover["operator_controls"]), takeover
-    assert any("role_profile_v0" in item for item in takeover["visible_status_cues"]), takeover
-    assert any("quota guard" in item for item in takeover["visible_status_cues"]), takeover
+    assert any("real Codex CLI TUI role" in item for item in takeover["visible_status_cues"]), takeover
+    assert any("normal Codex interaction" in item for item in takeover["visible_status_cues"]), takeover
 
     boundary = payload["boundary"]
     assert boundary["dry_run_plan_only"] is True, payload

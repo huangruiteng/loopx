@@ -18,7 +18,6 @@ sys.path.insert(0, str(ROOT))
 
 from loopx.visible_multi_agent_launcher import (  # noqa: E402
     _SCOPED_LOOPX_WRAPPER_PY,
-    _VISIBLE_CODEX_STREAM_FILTER_PY,
     build_visible_multi_agent_payload,
     execute_visible_multi_agent_launcher,
 )
@@ -85,7 +84,7 @@ def main() -> int:
     leaked_defs = [name for name in forbidden_defs if name in auto_research_cli]
     assert not leaked_defs, leaked_defs
     assert "demo_local_wrapper" not in launcher_source
-    assert "loopx_cli_scope=scoped_loopx_wrapper" in launcher_source
+    assert "scoped_loopx_wrapper" in launcher_source
     assert "LOOPX_PANE_LOOPX_JSON" in launcher_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
     assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in launcher_source
@@ -93,42 +92,16 @@ def main() -> int:
     assert "LOOPX_ALLOW_TTY_JSON" in launcher_source
     assert "stat.S_ISREG" in launcher_source
     assert "LOOPX_MACHINE_JSON=1 explicitly" in launcher_source
-    assert "human_stream_contract=role_todo_progress_codex_stream" in launcher_source
-    assert "machine_json_policy=file_or_explicit_machine_channel_only" in launcher_source
-    assert 'FRONTIER_ARTIFACT_NAME="frontier.public.json"' in launcher_source
-    assert 'artifact=%s\\\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT_NAME"' in launcher_source
-    assert 'artifact=%s\\\\n" "$FRONTIER_STATUS" "$FRONTIER_ARTIFACT"' not in launcher_source
-    assert "_VISIBLE_CODEX_STREAM_FILTER_PY" in launcher_source
-    assert "worker-local skill block hidden" in launcher_source
-    assert " WARN codex_core_" in launcher_source
-
-    slash = "/"
-    private_tmp = slash + "private" + slash + "tmp"
-    var_folders = slash + "var" + slash + "folders"
-    filtered = subprocess.run(
-        [sys.executable, "-u", "-c", _VISIBLE_CODEX_STREAM_FILTER_PY],
-        input=(
-            "OpenAI Codex v0\n"
-            "user\n"
-            "hidden bootstrap prompt\n"
-            "codex\n"
-            "codex says hello\n"
-            "2026-01-01T00:00:00Z  WARN codex_core_plugins::manifest: noisy\n"
-            f"exec in {private_tmp}/loopx-demo/path\n"
-            "BEGIN_SKILL\nhidden skill body\nEND_SKILL\n"
-            f"result saved under {var_folders}/demo/file\n"
-        ),
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
-    assert "codex says hello" in filtered, filtered
-    assert "hidden bootstrap prompt" not in filtered, filtered
-    assert "WARN codex_core" not in filtered, filtered
-    assert "hidden skill body" not in filtered, filtered
-    assert private_tmp not in filtered, filtered
-    assert var_folders not in filtered, filtered
-    assert "<local-path>" in filtered, filtered
+    assert "multi_agent_visible_interactive_tui_contract_v0" in launcher_source
+    assert "LOOPX_CODEX_TUI_MODE=interactive" in launcher_source
+    assert "pre_codex_character_stream" in launcher_source
+    assert "build_visible_frontier_command" not in launcher_source
+    assert 'FRONTIER_ARTIFACT_NAME="frontier.public.json"' not in launcher_source
+    assert "_VISIBLE_CODEX_STREAM_FILTER_PY" not in launcher_source
+    assert "_HUMAN_VIEW_PACKET_PY" not in launcher_source
+    assert "worker-local skill block hidden" not in launcher_source
+    assert "codex_stream_filter" not in launcher_source
+    assert " codex exec " not in launcher_source
 
     dry_packet = build_visible_multi_agent_payload(
         goal_id="loopx-meta",
@@ -145,18 +118,15 @@ def main() -> int:
     assert dry_packet["commands"]["stop"] == "tmux kill-session -t loopx-visible-launcher-contract-smoke"
     assert "retry" in dry_packet["commands"], dry_packet
     assert (
-        dry_packet["human_stream_contract"]["schema_version"]
-        == "multi_agent_visible_human_stream_contract_v0"
+        dry_packet["interactive_tui_contract"]["schema_version"]
+        == "multi_agent_visible_interactive_tui_contract_v0"
     ), dry_packet
-    assert dry_packet["human_stream_contract"]["machine_json_policy"] == (
+    assert dry_packet["interactive_tui_contract"]["machine_json_policy"] == (
         "file_or_explicit_machine_channel_only"
     ), dry_packet
-    assert dry_packet["human_stream_contract"]["codex_stream"] == (
-        "public_filtered_stdout_stderr_visible_below_bootstrap"
-    ), dry_packet
+    assert dry_packet["interactive_tui_contract"]["codex_surface"] == "interactive_cli_tui", dry_packet
     assert dry_packet["acceptance"]["machine_json_file_bound"] is True, dry_packet
-    assert dry_packet["acceptance"]["codex_stream_visible"] is True, dry_packet
-    assert dry_packet["acceptance"]["codex_stream_public_filter"] is True, dry_packet
+    assert dry_packet["acceptance"]["codex_tui_interactive"] is True, dry_packet
     assert dry_packet["boundary"]["hidden_prompt_injection"] is False, dry_packet
     assert dry_packet["boundary"]["spends_loopx_quota"] is False, dry_packet
 
@@ -188,7 +158,7 @@ def main() -> int:
                 ]
             ),
         )
-        write_executable(fake_bin / "codex", "#!/usr/bin/env sh\nexit 0\n")
+        write_executable(fake_bin / "codex", "#!/usr/bin/env sh\nprintf 'fake codex tui\\n'\nexit 0\n")
         write_executable(
             fake_bin / "tmux",
             "\n".join(
@@ -203,15 +173,6 @@ def main() -> int:
                     "    print('planner\\nreviewer')",
                     "    raise SystemExit(0)",
                     "if len(sys.argv) > 1 and sys.argv[1] == 'capture-pane':",
-                    "    print('[LoopX visible acceptance]')",
-                    "    print('[LoopX role profile]')",
-                    "    print('[LoopX quota guard]')",
-                    "    print('[LoopX frontier]')",
-                    "    print('[bootstrap-or-stop]')",
-                    "    print('loopx_agent_handshake=role_profile_quota_frontier_bootstrap')",
-                    "    print('loopx_cli_scope=scoped_loopx_wrapper')",
-                    "    print('human_stream_contract=role_todo_progress_codex_stream')",
-                    "    print('machine_json_policy=file_or_explicit_machine_channel_only')",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
                     "",
@@ -324,10 +285,14 @@ def main() -> int:
                 payload={
                     "session_name": "loopx-visible-launcher-smoke",
                     "lanes": [
-                        {"lane_id": "planner", "frontier": "true", "visible_launch_command": "true"},
+                        {
+                            "lane_id": "planner",
+                            "frontier": "true",
+                            "visible_launch_command": "exec codex -c model_reasoning_effort=high -C \"$LOOPX_PROJECT\" planner",
+                        },
                         {
                             "lane_id": "reviewer",
-                            "visible_launch_command": "true",
+                            "visible_launch_command": "exec codex -c model_reasoning_effort=high -C \"$LOOPX_PROJECT\" reviewer",
                             "role_profile": {
                                 "required_skill": "loopx-auto-research",
                                 "worker_skill_source": "worker/SKILL.md",
@@ -373,15 +338,16 @@ def main() -> int:
         assert launch["started_lanes"] == ["planner", "reviewer"], launch
         assert launch["surviving_lanes"] == ["planner", "reviewer"], launch
         assert launch["script_mode"] == "runtime_local_files", launch
-        assert launch["launcher_script_count"] == 3, launch
+        assert launch["launcher_script_count"] == 2, launch
         acceptance = launch["visible_acceptance"]
         assert acceptance["schema_version"] == "multi_agent_visible_launch_acceptance_v0", acceptance
         assert acceptance["accepted"] is True, acceptance
         assert acceptance["missing_lanes"] == [], acceptance
         assert all(item["accepted"] for item in acceptance["pane_checks"]), acceptance
+        assert all(item["interactive_codex_tui_script"] for item in acceptance["pane_checks"]), acceptance
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
-        assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 2, log_entries
+        assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 1, log_entries
         tmux_starts = [entry for entry in log_entries if entry[:1] in (["new-session"], ["new-window"])]
         assert all("-lc" not in entry for entry in tmux_starts), tmux_starts
 

@@ -651,11 +651,6 @@ def _execute_auto_research_demo_supervisor(
         launch_result_schema="auto_research_demo_launch_result_v0",
         acceptance_schema="auto_research_visible_launch_acceptance_v0",
         lane_default="research-lane",
-        frontier_or_blocker_markers=(
-            "[LoopX auto-research frontier]",
-            "[LoopX blocked reason]",
-        ),
-        frontier_or_blocker_status_markers=("frontier_or_blocked_reason=printed",),
     )
     payload["mode"] = "executed_visible_launch"
     payload["launch_result"] = result
