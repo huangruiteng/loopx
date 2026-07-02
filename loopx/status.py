@@ -6367,14 +6367,12 @@ def attach_monitor_writeback_contract(
     supported: bool,
     source: str,
 ) -> None:
+    if supported:
+        return
     contract = {
         "schema_version": MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION,
-        "supported": supported,
+        "supported": False,
         "source": source,
-        "policy": (
-            "quota may route due monitor todos as runnable only when the selected "
-            "read model can be updated by todo_id or target_key"
-        ),
     }
     for key in ("user_todos", "agent_todos"):
         summary = fields.get(key)

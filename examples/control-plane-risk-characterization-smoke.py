@@ -234,6 +234,87 @@ def assert_due_monitor_context_does_not_steal_advancement() -> None:
     assert quota["agent_lane_next_action"]["todo_id"] == "todo_advancement", quota
 
 
+def assert_current_agent_claimed_advancement_beats_other_agent_frontier() -> None:
+    payload = status_payload(
+        [
+            todo_item(
+                todo_id="todo_primary_first",
+                title="Primary agent owns earlier work.",
+                claimed_by=PRIMARY_AGENT_ID,
+                index=1,
+            ),
+            todo_item(
+                todo_id="todo_side_advancement",
+                title="Side agent owns the implementation slice.",
+                claimed_by=AGENT_ID,
+                index=2,
+            ),
+            todo_item(
+                todo_id="todo_side_monitor",
+                title="Side agent has due monitor context.",
+                task_class="continuous_monitor",
+                claimed_by=AGENT_ID,
+                index=3,
+                next_due_at="2026-01-01T00:00:00+00:00",
+            ),
+        ]
+    )
+    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    assert quota["decision"] == "run", quota
+    assert quota["effective_action"] == "normal_run", quota
+
+    summary = quota["agent_todo_summary"]
+    assert summary["first_executable_items"][0]["todo_id"] == (
+        "todo_side_advancement"
+    ), summary
+    assert summary["current_agent_claimed_advancement_items"][0]["todo_id"] == (
+        "todo_side_advancement"
+    ), summary
+    assert summary["current_agent_claimed_monitor_items"][0]["todo_id"] == (
+        "todo_side_monitor"
+    ), summary
+    assert summary["claimed_by_others_items"][0]["todo_id"] == (
+        "todo_primary_first"
+    ), summary
+    claim_scope = summary["claim_scope"]
+    assert claim_scope["selection_order"] == (
+        "current_agent_claimed_then_unclaimed"
+    ), claim_scope
+    assert claim_scope["other_agent_claimed_weight"] == "diagnostic_only", claim_scope
+    assert claim_scope["blocked_claimed_items"][0]["todo_id"] == (
+        "todo_primary_first"
+    ), claim_scope
+
+    contract = quota["work_lane_contract"]
+    assert contract["lane"] == "advancement_task", contract
+    assert "due_monitor_context" in contract["reason_codes"], contract
+    lane = quota["agent_lane_next_action"]
+    assert lane["todo_id"] == "todo_side_advancement", lane
+    assert lane["selected_by"] == "current_agent_claimed_todo", lane
+    assert lane["source"] == "agent_todo_summary.first_executable_items", lane
+
+    primary_quota = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=PRIMARY_AGENT_ID,
+    )
+    assert primary_quota["agent_lane_next_action"]["todo_id"] == (
+        "todo_primary_first"
+    ), primary_quota
+    primary_scope = primary_quota["agent_todo_summary"]["claim_scope"]
+    assert primary_scope["other_agent_claimed_items"][0]["todo_id"] == (
+        "todo_side_advancement"
+    ), primary_scope
+
+    packet = build_review_packet(payload, goal_id=GOAL_ID)
+    assert packet["ok"] is True, packet
+    assert packet["agent_todo_items"] == [
+        "[P0] Primary agent owns earlier work. claimed_by=codex-main-control",
+        "[P0] Side agent owns the implementation slice. claimed_by=codex-product-capability",
+        "[P0] Side agent has due monitor context. claimed_by=codex-product-capability",
+    ], packet
+
+
 def assert_higher_priority_due_monitor_preempts_advancement() -> None:
     payload = status_payload(
         [
@@ -362,6 +443,7 @@ def main() -> None:
     assert_agent_lane_delivery()
     assert_scoped_operator_gate_safe_bypass()
     assert_due_monitor_context_does_not_steal_advancement()
+    assert_current_agent_claimed_advancement_beats_other_agent_frontier()
     assert_higher_priority_due_monitor_preempts_advancement()
     assert_monitor_quiet_skip_scheduler_and_packet_contract()
     assert_agent_scope_wait_scheduler_contract()

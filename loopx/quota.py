@@ -1951,7 +1951,13 @@ def _todo_summary_monitor_writeback_contract(value: dict[str, Any] | None) -> di
     contract = value.get("monitor_writeback")
     if not isinstance(contract, dict):
         return None
-    return dict(contract)
+    if contract.get("supported") is not False:
+        return None
+    compact: dict[str, Any] = {"supported": False}
+    source = str(contract.get("source") or "").strip()
+    if source:
+        compact["source"] = source
+    return compact
 
 
 def _todo_summary_monitor_writeback_supported(value: dict[str, Any] | None) -> bool:
