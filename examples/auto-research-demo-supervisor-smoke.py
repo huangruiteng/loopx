@@ -110,6 +110,12 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "Do not run loopx bootstrap-command-pack" in lane["bootstrap_message"], lane
         assert "codex-cli-bootstrap-message" not in lane["bootstrap_message"], lane
         assert "Minimal live worker-turn path" in lane["bootstrap_message"], lane
+        assert "$LOOPX_PANE_A2A_TICK" in lane["bootstrap_message"], lane
+        assert "LOOPX_PANE_A2A_TICK" in lane["visible_launch_command"], lane
+        assert "LOOPX_PANE_WORKER_TURN" in lane["visible_launch_command"], lane
+        assert lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", lane
+        assert lane["pane_local_a2a"]["worker_turn_configured"] is True, lane
+        assert lane["pane_local_a2a"]["stream_surface"] == "codex_cli_tui", lane
         assert "auto-research worker-turn" in lane["bootstrap_message"], lane
         assert "--complete-selected-todo" in lane["bootstrap_message"], lane
         assert "$LOOPX_PANE_LOOPX" in lane["bootstrap_message"], lane
@@ -138,10 +144,12 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
             "quota_guard",
             "frontier_projection",
             "bootstrap_prompt",
+            "pane_local_a2a_tick",
             "visible_codex",
         ], lane
         assert lane["lane_timeline"][0]["command_ref"] == "role_profile", lane
         assert lane["lane_timeline"][1]["command_ref"] == "quota_guard", lane
+        assert lane["lane_timeline"][4]["command_ref"] == "$LOOPX_PANE_A2A_TICK", lane
         assert "operator is attached" in lane["lane_timeline"][-1]["continue_when"], lane
     expected_action_hints = {
         "research_curator": "`write_research_contract`",

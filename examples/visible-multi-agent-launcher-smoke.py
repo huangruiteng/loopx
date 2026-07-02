@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 from loopx.visible_multi_agent_launcher import (  # noqa: E402
     _SCOPED_LOOPX_WRAPPER_PY,
     build_visible_multi_agent_payload,
+    build_visible_multi_agent_payload_from_spec,
     execute_visible_multi_agent_launcher,
 )
 
@@ -86,6 +87,9 @@ def main() -> int:
     assert "demo_local_wrapper" not in launcher_source
     assert "scoped_loopx_wrapper" in launcher_source
     assert "LOOPX_PANE_LOOPX_JSON" in launcher_source
+    assert "LOOPX_PANE_A2A_TICK" in launcher_source
+    assert "loopx-pane-a2a-tick" in launcher_source
+    assert "LOOPX_PANE_WORKER_TURN" in launcher_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
     assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in launcher_source
     assert "LoopX machine JSON hidden" in launcher_source
@@ -131,6 +135,26 @@ def main() -> int:
     assert dry_packet["acceptance"]["codex_tui_interactive"] is True, dry_packet
     assert dry_packet["boundary"]["hidden_prompt_injection"] is False, dry_packet
     assert dry_packet["boundary"]["spends_loopx_quota"] is False, dry_packet
+
+    generic_packet = build_visible_multi_agent_payload_from_spec(
+        {
+            "goal_id": "loopx-meta",
+            "roles": [
+                {
+                    "agent_id": "codex-side-bypass",
+                    "role_id": "planner",
+                    "scope": "plan one state-backed handoff",
+                    "worker_turn_command": "printf 'turn streamed\\n'",
+                }
+            ],
+        }
+    )
+    generic_lane = generic_packet["lanes"][0]
+    assert generic_lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", generic_lane
+    assert generic_lane["pane_local_a2a"]["worker_turn_configured"] is True, generic_lane
+    assert "pane_local_a2a_tick" in generic_lane["lane_timeline"], generic_lane
+    assert "LOOPX_PANE_A2A_TICK" in generic_lane["visible_launch_command"], generic_lane
+    assert "LOOPX_PANE_WORKER_TURN" in generic_lane["visible_launch_command"], generic_lane
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -239,6 +263,20 @@ def main() -> int:
                 [str(workspace / ".local/bin/loopx-json"), "--format", "json", "status"],
                 env=scoped_env,
             )
+            tick = subprocess.run(
+                [str(workspace / ".local/bin/loopx-pane-a2a-tick")],
+                env={
+                    **scoped_env,
+                    "LOOPX_PANE_LOOPX": str(workspace / ".local/bin/loopx"),
+                    "LOOPX_GOAL_ID": "loopx-meta",
+                    "LOOPX_AGENT_ID": "codex-side-bypass",
+                    "LOOPX_ROLE_ID": "planner",
+                    "LOOPX_PANE_WORKER_TURN": "printf 'worker turn streamed\\n'",
+                },
+                check=True,
+                capture_output=True,
+                text=True,
+            )
             assert "format=markdown; machine_json_wrapper=$LOOPX_PANE_LOOPX_JSON" in human.stdout, human.stdout
             assert "--format markdown status" in human.stdout, human.stdout
             assert visible_pipe.returncode == 2, visible_pipe.stdout
@@ -249,6 +287,10 @@ def main() -> int:
             assert tty_status == 2, tty_output
             assert "LoopX machine JSON hidden" in tty_output, tty_output
             assert "fake-loopx" not in tty_output, tty_output
+            assert "role=planner agent=codex-side-bypass" in tick.stdout, tick.stdout
+            assert "quota should-run" in tick.stdout, tick.stdout
+            assert "--format markdown" in tick.stdout, tick.stdout
+            assert "worker turn streamed" in tick.stdout, tick.stdout
 
             try:
                 execute_visible_multi_agent_launcher(

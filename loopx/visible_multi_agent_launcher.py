@@ -79,6 +79,38 @@ human_target.write_text(
     encoding="utf-8",
 )
 human_target.chmod(0o700)
+
+tick_target = bin_dir / "loopx-pane-a2a-tick"
+tick_target.write_text(
+    "#!/usr/bin/env python3\n"
+    "import os, shlex, subprocess\n"
+    "from pathlib import Path\n"
+    "loopx = os.environ.get('LOOPX_PANE_LOOPX') or str(Path(os.environ.get('LOOPX_PROJECT', '.')) / '.local' / 'bin' / 'loopx')\n"
+    "goal = os.environ.get('LOOPX_GOAL_ID', '').strip()\n"
+    "agent = os.environ.get('LOOPX_AGENT_ID', '').strip()\n"
+    "role = os.environ.get('LOOPX_ROLE_ID', '').strip() or os.environ.get('LOOPX_LANE_ID', '').strip() or agent\n"
+    "if not goal or not agent:\n"
+    "    print('\\n[LoopX pane A2A]\\nmissing LOOPX_GOAL_ID or LOOPX_AGENT_ID; cannot read role-local frontier.\\n', flush=True)\n"
+    "    raise SystemExit(2)\n"
+    "def run(args):\n"
+    "    print('\\n[LoopX pane A2A] ' + ' '.join(shlex.quote(str(arg)) for arg in args), flush=True)\n"
+    "    return subprocess.call([str(arg) for arg in args])\n"
+    "print(f'\\n[LoopX pane A2A] role={role} agent={agent}\\n', flush=True)\n"
+    "status = run([loopx, '--format', 'markdown', 'quota', 'should-run', '--goal-id', goal, '--agent-id', agent])\n"
+    "if status != 0:\n"
+    "    raise SystemExit(status)\n"
+    "turn = os.environ.get('LOOPX_PANE_WORKER_TURN', '').strip()\n"
+    "loop = os.environ.get('LOOPX_PANE_WORKER_LOOP', '').strip()\n"
+    "command = turn or loop\n"
+    "if not command:\n"
+    "    print('\\n[LoopX pane A2A]\\nNo role worker-turn command is configured; continue manually with $LOOPX_PANE_LOOPX.\\n', flush=True)\n"
+    "    raise SystemExit(0)\n"
+    "label = 'worker-turn' if turn else 'worker-loop'\n"
+    "print(f'\\n[LoopX pane A2A {label}]\\n{command}\\n', flush=True)\n"
+    "raise SystemExit(subprocess.call(command, shell=True, executable=os.environ.get('SHELL') or '/bin/bash'))\n",
+    encoding="utf-8",
+)
+tick_target.chmod(0o700)
 """
 
 def _q(value: object) -> str:
@@ -154,6 +186,10 @@ def build_visible_lane_command(
     bootstrap_command: str,
     codex_bin: str,
     reasoning_effort: str,
+    goal_id: str | None = None,
+    agent_id: str | None = None,
+    worker_turn_command: str | None = None,
+    worker_loop_command: str | None = None,
 ) -> str:
     trust_config_py = (
         'import json, os; '
@@ -176,11 +212,22 @@ def build_visible_lane_command(
         f"python3 -c {_q(_SCOPED_LOOPX_WRAPPER_PY)}; "
         'chmod +x "$LOOPX_PROJECT/.local/bin/loopx"; '
         'chmod +x "$LOOPX_PROJECT/.local/bin/loopx-json"; '
+        'chmod +x "$LOOPX_PROJECT/.local/bin/loopx-pane-a2a-tick"; '
         'export LOOPX_PANE_LOOPX="$LOOPX_PROJECT/.local/bin/loopx"; '
         'export LOOPX_PANE_LOOPX_JSON="$LOOPX_PROJECT/.local/bin/loopx-json"; '
+        'export LOOPX_PANE_A2A_TICK="$LOOPX_PROJECT/.local/bin/loopx-pane-a2a-tick"; '
         'export LOOPX_VISIBLE_FORCE_MARKDOWN="${LOOPX_VISIBLE_FORCE_MARKDOWN:-1}"; '
         'export PATH="$LOOPX_PROJECT/.local/bin:$PATH"; '
     )
+    pane_a2a_env = ""
+    if goal_id:
+        pane_a2a_env += f"export LOOPX_GOAL_ID={_q(goal_id)}; "
+    if agent_id:
+        pane_a2a_env += f"export LOOPX_AGENT_ID={_q(agent_id)}; "
+    if worker_turn_command:
+        pane_a2a_env += f"export LOOPX_PANE_WORKER_TURN={_q(worker_turn_command)}; "
+    if worker_loop_command:
+        pane_a2a_env += f"export LOOPX_PANE_WORKER_LOOP={_q(worker_loop_command)}; "
     return (
         "set -uo pipefail; "
         "export LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1; "
@@ -188,6 +235,7 @@ def build_visible_lane_command(
         f"export LOOPX_ROLE_PROFILE_REF={_q(role_profile_ref)}; "
         'cd "$LOOPX_PROJECT"; '
         f"{scoped_loopx_wrapper}"
+        f"{pane_a2a_env}"
         f"{role_profile_command}"
         'VISIBLE_ARTIFACT_PREFIX="${LOOPX_LANE_ID:-${LOOPX_ROLE_ID:-lane}}"; '
         f"BOOTSTRAP_PROMPT=\"$({bootstrap_command} 2>&1)\"; "
@@ -377,7 +425,7 @@ def _generic_role_prompt(
             "",
             "How to work:",
             "- Treat LoopX state as the shared A2A surface.",
-            "- Start by reading your agent-scoped todo/quota/frontier with $LOOPX_PANE_LOOPX.",
+            "- Start one role-local A2A turn with `$LOOPX_PANE_A2A_TICK`; it reads your quota/frontier and then runs this role's worker-turn when configured.",
             "- Keep machine JSON redirected through $LOOPX_PANE_LOOPX_JSON into .local artifacts.",
             "- Write compact public-safe evidence before completing or handing off a todo.",
             "- The user may type into this pane; respond like a normal Codex CLI agent.",
@@ -434,6 +482,8 @@ def build_visible_multi_agent_payload_from_spec(
         )
         skill_profile = _role_skill_profile(raw_role.get("skill"))
         reasoning_effort = str(raw_role.get("reasoning_effort") or default_reasoning_effort)
+        worker_turn_command = str(raw_role.get("worker_turn_command") or "").strip()
+        worker_loop_command = str(raw_role.get("worker_loop_command") or "").strip()
         role_profile = {
             "schema_version": "generic_multi_agent_role_profile_v0",
             "role_id": role_id,
@@ -474,6 +524,11 @@ def build_visible_multi_agent_payload_from_spec(
                 f"> .local/{lane_slug}/quota.public.json"
             ),
             "frontier": "agent-scoped LoopX todo/quota/frontier projection",
+            "pane_local_a2a": {
+                "tick_command": "$LOOPX_PANE_A2A_TICK",
+                "worker_turn_configured": bool(worker_turn_command),
+                "worker_loop_configured": bool(worker_loop_command),
+            },
             "bootstrap_message": "role_prompt_inside_codex_tui",
             "visible_launch_command": build_visible_lane_command(
                 role_id=role_id,
@@ -482,9 +537,13 @@ def build_visible_multi_agent_payload_from_spec(
                 bootstrap_command=bootstrap_command,
                 codex_bin=codex_bin,
                 reasoning_effort=reasoning_effort,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                worker_turn_command=worker_turn_command,
+                worker_loop_command=worker_loop_command,
             ),
             "reasoning_effort": reasoning_effort,
-            "lane_timeline": ["role_profile", "quota_guard", "frontier", "codex_tui"],
+            "lane_timeline": ["role_profile", "pane_local_a2a_tick", "frontier", "codex_tui"],
         }
         if raw_role.get("workspace") or raw_role.get("project"):
             lane["workspace"] = str(raw_role.get("workspace") or raw_role.get("project"))
@@ -508,6 +567,8 @@ def build_visible_multi_agent_payload_from_spec(
                     "skill",
                     "handoff_hints",
                     "reasoning_effort",
+                    "worker_turn_command",
+                    "worker_loop_command",
                 ],
                 "role_count": len(lanes),
                 "uses_generic_runner": True,

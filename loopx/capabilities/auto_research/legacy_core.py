@@ -948,16 +948,18 @@ def _auto_research_codex_bootstrap_prompt(
         "",
         "Minimal live worker-turn path:",
         f"1. Confirm the selected frontier action matches this role ({expected_actions}).",
-        "2. Confirm the pane-local wrapper exists: `test -x \"$LOOPX_PANE_LOOPX\"`.",
-        "3. Single-pane preview, using human-readable output. This command re-reads quota and frontier internally:",
+        "2. Confirm the pane-local A2A tick exists: `test -x \"$LOOPX_PANE_A2A_TICK\"`.",
+        "3. Preferred one-step visible turn, using human-readable output. This reads quota/frontier and then runs this role's worker-turn:",
+        "   `\"$LOOPX_PANE_A2A_TICK\"`",
+        "4. Manual single-pane preview, if the tick reports a blocker. This command re-reads quota and frontier internally:",
         "   `\"$LOOPX_PANE_LOOPX\" auto-research worker-turn --format markdown --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\"`",
-        "4. Single-pane execute, only when the preview selected this lane:",
+        "5. Manual single-pane execute, only when the preview selected this lane:",
         "   `\"$LOOPX_PANE_LOOPX\" auto-research worker-turn --format markdown --goal-id \"$LOOPX_GOAL_ID\" --agent-id \"$LOOPX_AGENT_ID\" --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
-        "5. Local multi-lane driver, when this pane is acting as the visible supervisor:",
+        "6. Local multi-lane driver, when this pane is acting as the visible supervisor:",
         "   `\"$LOOPX_PANE_LOOPX\" auto-research worker-loop --format markdown --goal-id \"$LOOPX_GOAL_ID\" $LOOPX_WORKER_LOOP_AGENT_ARGS --lane-count \"${LOOPX_VISIBLE_LANE_COUNT:-1}\" --visible-lanes-accepted --complete-selected-todo --execute`",
-        "6. Stop after the selected command reports executed/completed turns and no runnable frontier.",
-        "7. For evidence-runner, additionally require appended evidence and live_evidence.written=true.",
-        "8. Do not run `--help` or full quota/status dumps on the first screen; if deep debugging is needed, use `$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json` and print a short summary.",
+        "7. Stop after the selected command reports executed/completed turns and no runnable frontier.",
+        "8. For evidence-runner, additionally require appended evidence and live_evidence.written=true.",
+        "9. Do not run `--help` or full quota/status dumps on the first screen; if deep debugging is needed, use `$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json` and print a short summary.",
     ]
     return "\n".join(
         [
@@ -968,7 +970,7 @@ def _auto_research_codex_bootstrap_prompt(
             "Use only the pane-local human LoopX wrapper: `$LOOPX_PANE_LOOPX`. Do not call bare `loopx` or an absolute LoopX binary; those can hit the wrong registry and make this demo goal look missing.",
             "The human wrapper has this demo's registry/runtime baked in and rewrites accidental visible `--format json` to markdown. If `$LOOPX_PANE_LOOPX` is unset or not executable, stop and report that blocker instead of falling back.",
             "Visible panes are for human observation: run worker-turn and worker-loop with `--format markdown`. If machine JSON is needed, use `$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json` and print only a compact summary.",
-            "This pane is a visible LoopX polling turn: use worker-turn preview/execute as the human-facing polling command; it re-reads quota and frontier internally.",
+            "This pane is a visible LoopX polling turn: prefer `$LOOPX_PANE_A2A_TICK` as the human-facing polling command; it re-reads quota/frontier and streams the worker-turn result in this Codex TUI.",
             "Avoid `--help` probes and full quota/status dumps in the visible pane unless you are explaining a blocker.",
             "Do not run loopx bootstrap-command-pack, loopx heartbeat-prompt, or generic onboarding unless the role-local worker-turn/frontier result explicitly asks for it.",
             "If a future scheduled automation owns this lane, it must use a generated LoopX heartbeat/polling prompt; this visible bootstrap is the local manual polling prompt.",
@@ -1097,6 +1099,15 @@ def _role_profile_shell_prefix(role_profile: dict[str, Any]) -> str:
     )
 
 
+def _auto_research_pane_worker_turn_command() -> str:
+    return (
+        '"$LOOPX_PANE_LOOPX" auto-research worker-turn --format markdown '
+        '--goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID" '
+        '--lane-count "${LOOPX_VISIBLE_LANE_COUNT:-1}" '
+        "--visible-lanes-accepted --complete-selected-todo --execute"
+    )
+
+
 def _env_lane_launch_command(
     *,
     role_id: str,
@@ -1112,6 +1123,9 @@ def _env_lane_launch_command(
         bootstrap_command=bootstrap_command,
         codex_bin=codex_bin,
         reasoning_effort=reasoning_effort,
+        goal_id=str(role_profile.get("goal_id") or ""),
+        agent_id=str(role_profile.get("agent_id") or ""),
+        worker_turn_command=_auto_research_pane_worker_turn_command(),
     )
 
 
@@ -1197,6 +1211,12 @@ def build_auto_research_demo_supervisor_plan(
                 "window_name": lane_id,
                 "quota_guard": quota_command,
                 "frontier": frontier_command,
+                "pane_local_a2a": {
+                    "tick_command": "$LOOPX_PANE_A2A_TICK",
+                    "worker_turn_command_ref": "LOOPX_PANE_WORKER_TURN",
+                    "worker_turn_configured": True,
+                    "stream_surface": "codex_cli_tui",
+                },
                 "bootstrap_message": bootstrap_command,
                 "visible_codex_tui": codex,
                 "reasoning_effort": effort,
@@ -1241,6 +1261,13 @@ def build_auto_research_demo_supervisor_plan(
                         "operator_visible_signal": "prompt is passed to the Codex TUI, not printed as shell text",
                         "continue_when": "Codex TUI starts with the role-scoped prompt",
                         "stop_when": "bootstrap would bypass LoopX quota, todo claims, or evidence writeback",
+                    },
+                    {
+                        "phase": "pane_local_a2a_tick",
+                        "command_ref": "$LOOPX_PANE_A2A_TICK",
+                        "operator_visible_signal": "the Codex TUI role runs a human-readable state-backed worker turn",
+                        "continue_when": "the tick reads this agent's frontier and streams worker-turn output in the pane",
+                        "stop_when": "the tick reports user action, no action, or contradictory role identity",
                     },
                     {
                         "phase": "visible_codex",
