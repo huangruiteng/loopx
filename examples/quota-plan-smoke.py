@@ -598,52 +598,6 @@ def run_cli_slot_spend_execute(root: Path) -> tuple[dict, dict, str, str]:
     )
 
 
-def run_cli_unscoped_slot_spend_execute(root: Path) -> tuple[dict, int, str, str, str, str]:
-    registry_path, runtime, project = write_cli_fixture(root, scoped_agents=True)
-    registry_before = registry_path.read_text(encoding="utf-8")
-    index_path = runtime / "goals" / "near-limit-half" / "runs" / "index.jsonl"
-    index_before = index_path.read_text(encoding="utf-8")
-    base_args = [
-        sys.executable,
-        "-m",
-        "loopx.cli",
-        "--registry",
-        str(registry_path),
-        "--runtime-root",
-        str(runtime),
-        "--format",
-        "json",
-        "quota",
-    ]
-    result = subprocess.run(
-        [
-            *base_args,
-            "spend-slot",
-            "--goal-id",
-            "near-limit-half",
-            "--slots",
-            "1",
-            "--source",
-            "heartbeat",
-            "--execute",
-            "--scan-path",
-            str(project),
-        ],
-        cwd=REPO_ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return (
-        json.loads(result.stdout),
-        result.returncode,
-        index_before,
-        index_path.read_text(encoding="utf-8"),
-        registry_before,
-        registry_path.read_text(encoding="utf-8"),
-    )
-
-
 def run_cli_slot_void_execute(root: Path) -> tuple[dict, dict, dict, str, str]:
     registry_path, runtime, project = write_cli_fixture(root, scoped_agents=True)
     registry_before = registry_path.read_text(encoding="utf-8")
@@ -1964,29 +1918,6 @@ def assert_slot_spend_execute(payload: dict, next_should_run: dict, registry_bef
     assert next_should_run["quota"]["allowed_slots"] == 12, next_should_run
 
 
-def assert_unscoped_slot_spend_execute_fails_closed(
-    payload: dict,
-    returncode: int,
-    index_before: str,
-    index_after: str,
-    registry_before: str,
-    registry_after: str,
-) -> None:
-    before = payload["before"]
-
-    assert returncode == 1, payload
-    assert payload["ok"] is False, payload
-    assert payload["dry_run"] is True, payload
-    assert payload["appended"] is False, payload
-    assert payload["registry_mutated"] is False, payload
-    assert payload["agent_id"] is None, payload
-    assert payload["reason"].startswith("quota spend-slot requires --agent-id"), payload
-    assert before["effective_action"] == "automation_prompt_upgrade_required", payload
-    assert before["should_run"] is False, payload
-    assert registry_after == registry_before
-    assert index_after == index_before
-
-
 def assert_slot_void_execute(
     spend_payload: dict,
     void_payload: dict,
@@ -2201,8 +2132,6 @@ def main() -> int:
     assert_dry_run_left_cli_fixture_unchanged(should_run_after_preview)
     with tempfile.TemporaryDirectory(prefix="loopx-quota-slot-execute-smoke-") as tmp:
         assert_slot_spend_execute(*run_cli_slot_spend_execute(Path(tmp)))
-    with tempfile.TemporaryDirectory(prefix="loopx-quota-slot-unscoped-execute-smoke-") as tmp:
-        assert_unscoped_slot_spend_execute_fails_closed(*run_cli_unscoped_slot_spend_execute(Path(tmp)))
     with tempfile.TemporaryDirectory(prefix="loopx-quota-slot-void-smoke-") as tmp:
         assert_slot_void_execute(*run_cli_slot_void_execute(Path(tmp)))
     print("quota-plan-smoke ok")

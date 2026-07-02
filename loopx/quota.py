@@ -7443,23 +7443,6 @@ def build_quota_slot_preview(
         agent_id=agent_id,
         available_capabilities=available_capabilities,
     )
-    if before.get("effective_action") == "automation_prompt_upgrade_required" and not safe_requested_agent_id:
-        return {
-            "ok": False,
-            "mode": "spend-slot",
-            "dry_run": True,
-            "goal_id": safe_goal_id,
-            "slots": safe_slots,
-            "agent_id": None,
-            "appended": False,
-            "registry_mutated": False,
-            "reason": (
-                "quota spend-slot requires --agent-id for registered multi-agent goals; "
-                "rerun quota should-run and spend-slot with the same registered agent id"
-            ),
-            "before": before,
-            "after": None,
-        }
     safe_bypass_spend = (
         (
             before.get("state") == "operator_gate"
@@ -7507,6 +7490,7 @@ def build_quota_slot_preview(
             not before.get("should_run")
             or before.get("effective_action") == "external_evidence_observe"
         )
+        and before.get("effective_action") != "automation_prompt_upgrade_required"
         and not safe_bypass_spend
         and str(before.get("state") or "") in {"waiting", "focus_wait", "operator_gate", "eligible"}
     )
@@ -7529,7 +7513,6 @@ def build_quota_slot_preview(
             "before": before,
             "after": None,
         }
-
     before_quota = before.get("quota") if isinstance(before.get("quota"), dict) else {}
     if not before_quota:
         return {
