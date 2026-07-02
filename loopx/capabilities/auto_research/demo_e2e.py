@@ -7,10 +7,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from .demo_supervisor import build_auto_research_demo_supervisor_plan
-from .quickstart_seed import (
-    AUTO_RESEARCH_DEFAULT_GOAL_ID,
-    build_auto_research_quickstart,
-)
+from .quickstart_seed import AUTO_RESEARCH_DEFAULT_GOAL_ID
 from .live_evidence import load_live_codex_e2e_evidence
 from .rollout_append import append_auto_research_rollout_events
 from .worker_loop import run_auto_research_worker_loop
@@ -516,20 +513,6 @@ def run_auto_research_demo_e2e(
         "visible_worker_proof": _visible_worker_proof(launch_visible=launch_visible),
     }
     if not execute:
-        quickstart = build_auto_research_quickstart(
-            agent_id=agent_id,
-            goal_id=goal_id,
-            objective=objective,
-            output_dir=output_dir,
-            execute=False,
-            cwd=Path.cwd(),
-        )
-        payload["quickstart_preview"] = {
-            "schema_version": quickstart.get("schema_version"),
-            "mode": quickstart.get("mode"),
-            "template": quickstart.get("template"),
-            "next_commands": quickstart.get("next_commands"),
-        }
         payload["worker_loop_preview"] = {
             "executed": False,
             "result_source": "dry_run_preview",

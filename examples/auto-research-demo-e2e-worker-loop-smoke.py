@@ -43,6 +43,9 @@ def main() -> int:
     launcher_source = (REPO_ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
         encoding="utf-8"
     )
+    demo_e2e_source = (
+        REPO_ROOT / "loopx/capabilities/auto_research/demo_e2e.py"
+    ).read_text(encoding="utf-8")
     assert "raw JSON is not printed in visible panes" in launcher_source
     assert "Use $LOOPX_PANE_LOOPX for human-readable output" in launcher_source
     assert "$LOOPX_PANE_LOOPX_JSON <command>" in launcher_source
@@ -54,6 +57,8 @@ def main() -> int:
     assert "role_prompt_inside_codex_tui" in launcher_source
     assert "model_reasoning_effort" in launcher_source
     assert "codex_stream_filter" not in launcher_source
+    assert "build_auto_research_quickstart" not in demo_e2e_source
+    assert "quickstart_preview" not in demo_e2e_source
 
     worker_markdown = render_auto_research_markdown(
         {
