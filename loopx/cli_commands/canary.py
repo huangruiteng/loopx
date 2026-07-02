@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -134,6 +135,23 @@ def _attach_selector_sources(
     if git_diff_selector is None:
         return
     payload["selector_sources"] = {"git_diff": git_diff_selector}
+
+
+def _print_smoke_suite_progress(event: dict[str, object]) -> None:
+    kind = str(event.get("event") or "")
+    index = event.get("check_index")
+    total = event.get("check_count")
+    if kind == "check_started":
+        command = str(event.get("command") or "")
+        print(f"[loopx canary] start {index}/{total}: {command}", file=sys.stderr, flush=True)
+    elif kind == "check_finished":
+        status = str(event.get("status") or "")
+        duration = event.get("duration_seconds")
+        print(
+            f"[loopx canary] done {index}/{total}: {status} ({duration}s)",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def _add_canary_selector_args(parser: argparse.ArgumentParser) -> None:
@@ -300,6 +318,20 @@ def register_canary_commands(
         action="store_true",
         help="Stop execution at the first failed or timed-out smoke.",
     )
+    smoke_parser.add_argument(
+        "--allow-tracked-side-effects",
+        action="store_true",
+        help=(
+            "Allow selected smoke scripts to modify tracked files. Defaults to false; "
+            "read-only smoke-suite runs fail and restore generated tracked changes "
+            "when the suite starts from a clean tree."
+        ),
+    )
+    smoke_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Do not print per-check smoke-suite progress to stderr during execution.",
+    )
 
     coverage_parser = canary_sub.add_parser(
         "coverage-audit",
@@ -380,6 +412,12 @@ def handle_canary_command(
             execute=not bool(args.no_execute),
             timeout_seconds=float(args.timeout_seconds or 120.0),
             fail_fast=bool(args.fail_fast),
+            allow_tracked_side_effects=bool(args.allow_tracked_side_effects),
+            progress_callback=(
+                None
+                if bool(args.no_execute) or bool(args.no_progress)
+                else _print_smoke_suite_progress
+            ),
         )
         _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
         renderer = render_canary_smoke_suite_run_markdown
