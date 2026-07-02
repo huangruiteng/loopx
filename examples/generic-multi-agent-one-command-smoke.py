@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNNER_CONTRACT_SCHEMA_VERSION = "tui_multi_agent_runner_contract_v0"
 
 PRIVATE_MARKERS = [
     "byte" + "dance",
@@ -195,9 +196,16 @@ def main() -> int:
         assert dry_packet["reasoning_contract"]["default_reasoning_effort"] == "high", dry_packet
         assert dry_packet["shared_goal_surface"]["shared_state_route"] == "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT", dry_packet
         assert dry_packet["shared_goal_surface"]["all_lane_workspace_isolation"] is False, dry_packet
+        assert dry_packet["runner_contract"]["schema_version"] == RUNNER_CONTRACT_SCHEMA_VERSION, dry_packet
+        assert dry_packet["runner_contract"]["runner_surface"] == "tmux_codex_cli_tui", dry_packet
+        assert dry_packet["runner_contract"]["coordination_model"]["leader_required"] is False, dry_packet
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", dry_packet
+        assert dry_packet["runner_contract"]["boundaries"]["domain_specific_research_logic"] is False, dry_packet
         assert dry_packet["interactive_tui_contract"]["schema_version"] == "multi_agent_visible_interactive_tui_contract_v0", dry_packet
+        assert dry_packet["interactive_tui_contract"]["runner_contract"] == RUNNER_CONTRACT_SCHEMA_VERSION, dry_packet
         assert dry_packet["interactive_tui_contract"]["machine_json_policy"] == "file_or_explicit_machine_channel_only", dry_packet
         assert dry_packet["interactive_tui_contract"]["codex_surface"] == "interactive_cli_tui", dry_packet
+        assert dry_packet["acceptance"]["runner_contract"] == RUNNER_CONTRACT_SCHEMA_VERSION, dry_packet
         assert dry_packet["acceptance"]["machine_json_file_bound"] is True, dry_packet
         assert dry_packet["acceptance"]["codex_tui_interactive"] is True, dry_packet
         assert dry_packet["boundary"]["starts_visible_processes"] is False, dry_packet
