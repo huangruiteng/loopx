@@ -199,6 +199,8 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
         "agent_lane_next_action",
         "agent_scoped_user_gate_override",
         "agent_scope_frontier",
+        "goal_frontier_projection",
+        "autonomous_replan_decision",
     )
     return {key: quota.get(key) for key in keys if key in quota}
 
