@@ -12,6 +12,9 @@ license = { file = "LICENSE" }
 authors = [{ name = "LoopX contributors" }]
 dependencies = []
 
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
 [project.scripts]
 loopx = "loopx.cli:main"
 

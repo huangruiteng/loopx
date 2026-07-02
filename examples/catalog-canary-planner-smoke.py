@@ -431,6 +431,21 @@ def assert_catalog_canary_selects_own_profile_not_benchmark() -> None:
     assert "python3 examples/catalog-canary-planner-smoke.py" in commands, payload
     assert "python3 examples/catalog-canary-run-e2e-smoke.py" in commands, payload
     assert "python3 examples/canary-smoke-suite-runner-smoke.py" in commands, payload
+    assert "python3 examples/pytest-smoke-suite-facade-smoke.py" not in commands, payload
+
+
+def assert_catalog_canary_deep_profile_includes_pytest_facade() -> None:
+    payload = build_catalog_canary_plan(
+        profiles=["catalog-canary-contract"],
+        include_deep_checks=True,
+        max_checks_per_profile=4,
+    )
+    assert payload["domain_profile_count"] == 1, payload
+    profile = payload["domain_profiles"][0]
+    assert profile["id"] == "catalog-canary-contract", profile
+    assert profile["deep_checks_included"] is True, profile
+    commands = payload["commands"]
+    assert "python3 examples/pytest-smoke-suite-facade-smoke.py" in commands, payload
 
 
 def assert_install_update_does_not_select_release_promotion() -> None:
@@ -680,6 +695,7 @@ def main() -> int:
     assert_explicit_profile_can_include_deep_checks()
     assert_explicit_catalog_profile_id_selects_family_profile()
     assert_catalog_canary_selects_own_profile_not_benchmark()
+    assert_catalog_canary_deep_profile_includes_pytest_facade()
     assert_install_update_does_not_select_release_promotion()
     assert_coverage_audit_tracks_p0_p1_patterns()
     tmp = tempfile.mkdtemp(prefix="loopx-catalog-canary-smoke-")

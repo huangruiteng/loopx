@@ -937,6 +937,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "tier": "default",
                 "reason": "guards full-public, module-filtered, and catalog-profile smoke-suite selection",
             },
+            {
+                "command": "python3 examples/pytest-smoke-suite-facade-smoke.py",
+                "tier": "deep",
+                "reason": "guards optional pytest/JUnit reporting while keeping canary smoke-suite as source of truth",
+            },
         ],
     },
     {

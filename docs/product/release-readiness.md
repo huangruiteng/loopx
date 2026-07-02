@@ -138,6 +138,26 @@ promotion-readiness evidence:
 python3 examples/canary-promotion-readiness-smoke.py
 ```
 
+For broader source-checkout regressions, keep `loopx canary smoke-suite` as the
+source of truth. Local and LoopX automation should continue to use the runner
+payload directly:
+
+```bash
+python3 examples/run-smokes.py --suite default-public --module canary
+loopx canary smoke-suite --suite default-public --module canary
+```
+
+CI may wrap the same runner selection in pytest when JUnit reporting is useful.
+The pytest facade still executes each `examples/*-smoke.py` through a
+subprocess; it is not a migration of legacy smokes into pytest unit tests:
+
+```bash
+python3 -m pytest tests/test_smoke_suite.py \
+  --loopx-smoke-suite default-public \
+  --loopx-smoke-module canary \
+  --junitxml smoke-suite.xml
+```
+
 If the source checkout has optional frontend dependencies installed, dashboard
 readiness can be included in the same canary. If a release snapshot omits the
 dashboard app, the canary should degrade gracefully and record that boundary

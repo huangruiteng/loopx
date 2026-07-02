@@ -156,6 +156,16 @@ def _run_check(check: dict[str, Any], *, timeout_seconds: float) -> dict[str, An
     return result
 
 
+def run_canary_smoke_check(
+    check: dict[str, Any],
+    *,
+    timeout_seconds: float = 120.0,
+) -> dict[str, Any]:
+    """Execute one normalized canary smoke-suite check through the runner contract."""
+
+    return _run_check(check, timeout_seconds=max(1.0, timeout_seconds))
+
+
 def _smoke_script_check(script: Path, *, source: str = "suite") -> dict[str, Any]:
     return {
         "source": source,
