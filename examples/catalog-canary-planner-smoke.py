@@ -47,6 +47,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "release-promotion",
         "install-update",
         "control-plane-refactor",
+        "repo-architecture-budget",
         "status-read-path",
         "review-packet-read-path",
         "event-sourced-read-path",
@@ -88,7 +89,10 @@ def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
     assert "monitor-scheduler" in domain_profiles, payload
     for profile in domain_profiles.values():
         assert all(check["tier"] == "default" for check in profile["checks"]), profile
-        assert profile["deep_checks_available"] is True, profile
+        if profile["id"] == "repo-architecture-budget":
+            assert profile["deep_checks_available"] is False, profile
+        else:
+            assert profile["deep_checks_available"] is True, profile
         assert profile["deep_checks_included"] is False, profile
     assert payload["suggested_check_count"] == len(payload["suggested_checks"]), payload
     assert payload["commands"] == [
@@ -158,6 +162,16 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     )
     refactor_profile_ids = {profile["id"] for profile in refactor_payload["domain_profiles"]}
     assert "control-plane-refactor" in refactor_profile_ids, refactor_payload
+    assert "repo-architecture-budget" in refactor_profile_ids, refactor_payload
+    architecture_profile = next(
+        profile
+        for profile in refactor_payload["domain_profiles"]
+        if profile["id"] == "repo-architecture-budget"
+    )
+    architecture_commands = [check["command"] for check in architecture_profile["checks"]]
+    assert "python3 examples/repo-python-line-budget-smoke.py" in architecture_commands, (
+        architecture_profile
+    )
 
     work_lane_policy_payload = build_catalog_canary_plan(
         changed_files=["loopx/policies/monitor_todo.py"],
