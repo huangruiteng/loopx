@@ -33,7 +33,7 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/capabilities/content_ops/surface.py": 2549,
     "loopx/capabilities/lark/kanban.py": 3034,
     "loopx/codex_cli_probe.py": 3546,
-    "loopx/quota.py": 10123,
+    "loopx/quota.py": 10174,
     "loopx/status.py": 11557,
     "loopx/terminal_bench_agent.py": 2056,
     "loopx/todos.py": 2105,

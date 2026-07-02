@@ -61,6 +61,29 @@ def assert_module_preview_selects_matching_scripts() -> None:
     assert all("quota" in command for command in commands), payload
 
 
+def assert_subdirectory_smoke_selection_is_supported() -> None:
+    script = "examples/canary/smoke-suite-subdir-discovery-smoke.py"
+    for selector in [script, "canary/smoke-suite-subdir-discovery-smoke.py", Path(script).name]:
+        payload = build_canary_smoke_suite_run(
+            suite="default-public",
+            scripts=[selector],
+            execute=False,
+        )
+        assert payload["ok"] is True, payload
+        assert payload["warning_count"] == 0, payload
+        assert payload["selected_check_count"] == 1, payload
+        assert payload["selected_checks"][0]["normalized"]["script"] == script, payload
+
+    module_payload = build_canary_smoke_suite_run(
+        suite="default-public",
+        modules=["canary"],
+        scripts=[script],
+        execute=False,
+    )
+    assert module_payload["ok"] is True, module_payload
+    assert module_payload["selected_check_count"] == 1, module_payload
+
+
 def assert_catalog_profile_preview_is_supported() -> None:
     payload = build_canary_smoke_suite_run(
         suite="catalog-plan",
@@ -287,6 +310,7 @@ def main() -> int:
     assert_default_public_preview_excludes_grouped_smokes()
     assert_full_public_preview_injects_safe_group_args()
     assert_module_preview_selects_matching_scripts()
+    assert_subdirectory_smoke_selection_is_supported()
     assert_catalog_profile_preview_is_supported()
     assert_cli_json_preview_works()
     assert_execution_reports_progress_indices()

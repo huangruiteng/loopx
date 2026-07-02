@@ -228,33 +228,49 @@ def run_canary_smoke_check(
     return _run_check(check, timeout_seconds=max(1.0, timeout_seconds))
 
 
+def _smoke_script_relative(script: Path) -> str:
+    return script.relative_to(REPO_ROOT).as_posix()
+
+
+def _smoke_script_filter_keys(script: Path) -> set[str]:
+    examples_root = REPO_ROOT / "examples"
+    return {
+        script.name,
+        _smoke_script_relative(script),
+        script.relative_to(examples_root).as_posix(),
+    }
+
+
 def _smoke_script_check(script: Path, *, source: str = "suite") -> dict[str, Any]:
     return {
         "source": source,
         "profile_id": "smoke-suite",
         "profile_title": "Smoke suite",
         "tier": "default",
-        "command": f"python3 {script.relative_to(REPO_ROOT)}",
+        "command": f"python3 {_smoke_script_relative(script)}",
         "reason": "tracked public smoke script",
     }
 
 
 def _normalize_script_filter(script: str) -> str:
-    value = script.strip()
+    value = script.strip().replace("\\", "/")
     if not value:
         return ""
     path = Path(value)
     if path.parts and path.parts[0] == "examples":
-        return path.name
+        return path.as_posix()
+    if path.suffix and len(path.parts) > 1:
+        return path.as_posix()
     return path.name if path.suffix else value
 
 
 def _matches_modules(script: Path, modules: list[str]) -> bool:
     if not modules:
         return True
-    haystack = script.name.lower()
+    examples_relative = script.relative_to(REPO_ROOT / "examples").as_posix().lower()
+    haystack = f"{script.name.lower()} {examples_relative}"
     stem_tokens = {
-        token for token in re.split(r"[-_.]+", script.stem.lower()) if token
+        token for token in re.split(r"[-_./]+", examples_relative.removesuffix(script.suffix)) if token
     }
     for module in modules:
         needle = module.strip().lower()
@@ -276,7 +292,7 @@ def _discover_smoke_suite_checks(
     requested_scripts = {
         script for script in (_normalize_script_filter(item) for item in (scripts or [])) if script
     }
-    all_scripts = sorted((REPO_ROOT / "examples").glob("*-smoke.py"))
+    all_scripts = sorted(path for path in (REPO_ROOT / "examples").rglob("*-smoke.py") if path.is_file())
     if normalized_suite == "default-public":
         all_scripts = [
             script for script in all_scripts
@@ -285,12 +301,13 @@ def _discover_smoke_suite_checks(
     selected: list[Path] = []
     missing_scripts = set(requested_scripts)
     for script in all_scripts:
-        if requested_scripts and script.name not in requested_scripts:
+        script_filter_keys = _smoke_script_filter_keys(script)
+        if requested_scripts and requested_scripts.isdisjoint(script_filter_keys):
             continue
         if not _matches_modules(script, modules):
             continue
         selected.append(script)
-        missing_scripts.discard(script.name)
+        missing_scripts.difference_update(script_filter_keys)
     warnings = [
         {
             "kind": "unknown_script",
@@ -336,7 +353,7 @@ def build_canary_smoke_suite_run(
 ) -> dict[str, Any]:
     """Build and optionally execute a continue-on-failure smoke suite.
 
-    This runner is intentionally bounded to repository-local `examples/*-smoke.py`
+    This runner is intentionally bounded to repository-local `examples/**/*-smoke.py`
     commands plus catalog-plan checks. It gives maintainers a full regression
     sweep without hiding the smaller profile/module loops used while developing.
     """

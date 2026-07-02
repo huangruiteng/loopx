@@ -35,7 +35,7 @@ def pytest_addoption(parser) -> None:
         action="append",
         default=[],
         dest="loopx_smoke_scripts",
-        help="examples/*-smoke.py selector passed through to the LoopX runner. Repeat or comma-separate.",
+        help="examples/**/*-smoke.py selector passed through to the LoopX runner. Repeat or comma-separate.",
     )
     group.addoption(
         "--loopx-smoke-profile",

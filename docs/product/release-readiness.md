@@ -148,7 +148,7 @@ loopx canary smoke-suite --suite default-public --module canary
 ```
 
 CI may wrap the same runner selection in pytest when JUnit reporting is useful.
-The pytest facade still executes each `examples/*-smoke.py` through a
+The pytest facade still executes each `examples/**/*-smoke.py` through a
 subprocess; it is not a migration of legacy smokes into pytest unit tests:
 
 ```bash

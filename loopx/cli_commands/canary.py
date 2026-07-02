@@ -280,7 +280,7 @@ def register_canary_commands(
         default="default-public",
         help=(
             "Smoke selection mode. default-public excludes explicit grouped checks; "
-            "full-public includes every tracked examples/*-smoke.py; catalog-plan "
+            "full-public includes every tracked examples/**/*-smoke.py; catalog-plan "
             "runs only checks selected by catalog/profile inputs."
         ),
     )
@@ -294,7 +294,7 @@ def register_canary_commands(
         "--script",
         action="append",
         default=[],
-        help="Run a specific examples/*-smoke.py script. Repeatable.",
+        help="Run a specific examples/**/*-smoke.py script. Repeatable.",
     )
     smoke_parser.add_argument(
         "--no-execute",
