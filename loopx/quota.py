@@ -1943,6 +1943,22 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
     return open_items
 
 
+def _todo_summary_monitor_writeback_contract(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    contract = value.get("monitor_writeback")
+    if not isinstance(contract, dict):
+        return None
+    return dict(contract)
+
+
+def _todo_summary_monitor_writeback_supported(value: dict[str, Any] | None) -> bool:
+    contract = _todo_summary_monitor_writeback_contract(value)
+    if not contract:
+        return True
+    return contract.get("supported") is not False
+
+
 def _handoff_ready_successor_todo_ids(value: dict[str, Any]) -> set[str]:
     ready: set[str] = set()
     for gate in _todo_summary_handoff_gates(value):
@@ -2061,12 +2077,17 @@ def _summarize_user_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    monitor_due_items = [
-        item
-        for item in monitor_items
-        if _todo_item_is_due_monitor(item)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ]
+    monitor_writeback_supported = _todo_summary_monitor_writeback_supported(value)
+    monitor_due_items = (
+        [
+            item
+            for item in monitor_items
+            if _todo_item_is_due_monitor(item)
+            if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
+        ]
+        if monitor_writeback_supported
+        else []
+    )
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     gate_items = [
         item
@@ -2107,6 +2128,9 @@ def _summarize_user_todos(
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    monitor_writeback = _todo_summary_monitor_writeback_contract(value)
+    if monitor_writeback:
+        summary["monitor_writeback"] = monitor_writeback
     summary.update(
         _todo_summary_visibility_lanes(
             blocking_open_items,
@@ -2209,12 +2233,17 @@ def _summarize_project_asset_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    monitor_due_items = [
-        item
-        for item in monitor_items
-        if _todo_item_is_due_monitor(item)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ]
+    monitor_writeback_supported = _todo_summary_monitor_writeback_supported(value)
+    monitor_due_items = (
+        [
+            item
+            for item in monitor_items
+            if _todo_item_is_due_monitor(item)
+            if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
+        ]
+        if monitor_writeback_supported
+        else []
+    )
     active_next_action_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
@@ -2249,6 +2278,9 @@ def _summarize_project_asset_todos(
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    monitor_writeback = _todo_summary_monitor_writeback_contract(value)
+    if monitor_writeback:
+        summary["monitor_writeback"] = monitor_writeback
     summary.update(
         _todo_summary_visibility_lanes(
             blocking_open_items,
@@ -5259,6 +5291,8 @@ def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
 def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(summary, dict):
         return []
+    if not _todo_summary_monitor_writeback_supported(summary):
+        return []
     projected_items = summary.get("monitor_due_items")
     if isinstance(projected_items, list):
         due_items = [
@@ -5292,6 +5326,8 @@ def _todo_summary_monitor_due_count(
     due_items: list[dict[str, Any]] | None = None,
 ) -> int:
     if not isinstance(summary, dict):
+        return 0
+    if not _todo_summary_monitor_writeback_supported(summary):
         return 0
     agent_id = _todo_summary_claim_scope_agent_id(summary)
     if agent_id:

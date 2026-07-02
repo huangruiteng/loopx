@@ -236,6 +236,7 @@ STATUS_CONTRACT_SCHEMA_VERSION = 2
 MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
 PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION = "project_asset_todo_projection_gap_v0"
+MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
 TODO_INDEX_SCHEMA_VERSION = "todo_index_v0"
 TODO_INDEX_ITEM_SCHEMA_VERSION = "todo_index_item_v0"
 DECISION_FRESHNESS_WINDOW_DAYS = 7
@@ -6360,6 +6361,27 @@ def compact_todo_group(
     return summary
 
 
+def attach_monitor_writeback_contract(
+    fields: dict[str, Any],
+    *,
+    supported: bool,
+    source: str,
+) -> None:
+    contract = {
+        "schema_version": MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION,
+        "supported": supported,
+        "source": source,
+        "policy": (
+            "quota may route due monitor todos as runnable only when the selected "
+            "read model can be updated by todo_id or target_key"
+        ),
+    }
+    for key in ("user_todos", "agent_todos"):
+        summary = fields.get(key)
+        if isinstance(summary, dict):
+            summary["monitor_writeback"] = dict(contract)
+
+
 def redacted_status_todo_fields(fields: dict[str, Any]) -> dict[str, Any]:
     redacted = dict(fields)
     for key in ("user_todos", "agent_todos"):
@@ -7335,6 +7357,9 @@ def project_asset_todo_summary(
             summary["next_index"] = open_items[0].get("index")
         if open_items[0].get("claimed_by"):
             summary["next_claimed_by"] = open_items[0].get("claimed_by")
+    monitor_writeback = todos.get("monitor_writeback")
+    if isinstance(monitor_writeback, dict):
+        summary["monitor_writeback"] = dict(monitor_writeback)
     deferred_items = [
         compact_todo_item(item)
         for item in todos.get("deferred_items", [])
@@ -8300,6 +8325,11 @@ def active_state_todo_fields(
     )
     if event_fields.get("user_todos") or event_fields.get("agent_todos"):
         fields = event_fields
+        attach_monitor_writeback_contract(
+            fields,
+            supported=False,
+            source="event_projection_read_model",
+        )
     else:
         fields = parse_active_state_todos(
             state_text,
@@ -8307,6 +8337,11 @@ def active_state_todo_fields(
             state_path=state_path,
             preferred_todo_ids=preferred_todo_ids,
             rollout_events=rollout_events,
+        )
+        attach_monitor_writeback_contract(
+            fields,
+            supported=True,
+            source="markdown_active_state",
         )
         if event_fields:
             fields.update(event_fields)
