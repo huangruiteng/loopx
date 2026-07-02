@@ -33,6 +33,13 @@ from .execution_profile import (
 from .long_task_cadence import long_task_cadence_hint_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .policies.execution_obligation import build_execution_obligation
+from .policies.goal_frontier import (
+    AUTONOMOUS_REPLAN_REQUIRED_MODE,
+    autonomous_replan_decision_allowed,
+    build_autonomous_replan_recommendation,
+    build_goal_frontier_projection_from_summaries,
+    select_autonomous_replan_obligation,
+)
 from .policies.goal_route_hint import build_goal_route_hint
 from .policies.monitor_todo import (
     monitor_todo_expires_at,
@@ -4336,7 +4343,7 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "user_action_required"
     if kind == "external_evidence_observation_required":
         return "external_evidence_observation"
-    if kind == "autonomous_replan_required":
+    if kind == AUTONOMOUS_REPLAN_REQUIRED_MODE:
         return "autonomous_replan"
     agent_scope_action = _agent_scope_frontier_action(effective_action)
     if agent_scope_action is not None:
@@ -4734,7 +4741,7 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             "next_trigger": (
                 "material monitor transition, regression, concrete blocker, or "
-                "autonomous_replan_required"
+                f"{AUTONOMOUS_REPLAN_REQUIRED_MODE}"
             ),
             "spend_policy": "no quota spend for unchanged monitor-only polls",
         }
@@ -4773,7 +4780,7 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             "spend_policy": "no quota spend for agent-scoped no-candidate checks",
         }
-    if must_attempt_work or recommended_mode == "autonomous_replan_required":
+    if must_attempt_work or recommended_mode == AUTONOMOUS_REPLAN_REQUIRED_MODE:
         return {
             **base,
             "automation_action": "execute_bounded_work",
@@ -5905,13 +5912,7 @@ def _heartbeat_recommendation(
     lifecycle_flags = item.get("lifecycle_flags")
     quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    replan_obligation = (
-        item.get("autonomous_replan_obligation")
-        if isinstance(item.get("autonomous_replan_obligation"), dict)
-        else project_asset.get("autonomous_replan_obligation")
-        if isinstance(project_asset.get("autonomous_replan_obligation"), dict)
-        else None
-    )
+    replan_obligation = select_autonomous_replan_obligation(item, project_asset)
     has_user_todos = _open_todo_count(user_todo_summary) > 0
     has_agent_todos = _open_todo_count(agent_todo_summary) > 0
     work_lane_contract = work_lane_contract or _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
@@ -5939,6 +5940,11 @@ def _heartbeat_recommendation(
             "spend_policy": stall_self_repair.get("spend_policy") or base["spend_policy"],
             "reason": stall_self_repair.get("reason") or "control-plane stall requires bounded repair",
             "repair_focus": stall_self_repair.get("repair_focus"),
+        }
+    if should_run and replan_obligation and replan_obligation.get("required"):
+        return {
+            **base,
+            **build_autonomous_replan_recommendation(replan_obligation),
         }
     if state in {"focus_wait", "waiting"} and has_user_todos:
         return {
@@ -5989,29 +5995,6 @@ def _heartbeat_recommendation(
             "recommended_mode": "quota_skip",
             "reason": f"quota state is {state}; skip delivery compute",
         }
-    if replan_obligation and replan_obligation.get("required"):
-        payload = {
-            **base,
-            "recommended_mode": "autonomous_replan_required",
-            "notify": "DONT_NOTIFY",
-            "replan_obligation": {
-                "schema_version": replan_obligation.get("schema_version"),
-                "stall_threshold": replan_obligation.get("stall_threshold"),
-                "trigger_count": replan_obligation.get("trigger_count"),
-                "triggers": replan_obligation.get("triggers") or [],
-                "next_validation_command": replan_obligation.get("next_validation_command"),
-                "stop_condition": replan_obligation.get("stop_condition"),
-            },
-            "spend_policy": (
-                "append exactly one heartbeat spend only after executing the selected "
-                "replan slice, validating it, and writing back todo split/add/retire state"
-            ),
-            "reason": (
-                "status exposes an autonomous replan obligation; advance the "
-                "planning-trigger slice before another monitor-only or repeated action"
-            ),
-        }
-        return payload
 
     if item.get("agent_command"):
         return {
@@ -6726,6 +6709,20 @@ def build_quota_should_run(
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
+        replan_obligation = select_autonomous_replan_obligation(item, project_asset)
+        agent_frontier_id = (
+            normalize_todo_claimed_by(agent_identity.get("agent_id"))
+            if isinstance(agent_identity, dict)
+            else None
+        )
+        goal_frontier_projection = build_goal_frontier_projection_from_summaries(
+            goal_id=safe_goal_id,
+            agent_id=agent_frontier_id,
+            user_todo_summary=user_todo_summary,
+            agent_todo_summary=agent_todo_summary,
+            work_lane_contract=work_lane_contract,
+            replan_obligation=replan_obligation,
+        )
         capability_gate = _capability_gate(
             agent_todo_summary,
             available_capabilities=_available_capabilities(available_capabilities),
@@ -6805,6 +6802,21 @@ def build_quota_should_run(
             state=state,
             quota=quota,
         )
+        replan_decision_allowed = autonomous_replan_decision_allowed(
+            replan_obligation=replan_obligation,
+            plan_ok=bool(plan.get("ok")),
+            workspace_blocked=bool(workspace_guard),
+            automation_prompt_upgrade_required=automation_prompt_upgrade_required,
+        )
+        if replan_decision_allowed:
+            normal_delivery_allowed = False
+            recovery_allowed = False
+            should_run = True
+            effective_action = AUTONOMOUS_REPLAN_REQUIRED_MODE
+            reason = (
+                "autonomous replan obligation is selected before monitor quiet "
+                "or agent-scope wait classification"
+            )
         if automation_prompt_upgrade_required:
             should_run = False
             effective_action = "automation_prompt_upgrade_required"
@@ -6900,7 +6912,8 @@ def build_quota_should_run(
             effective_action = "external_evidence_observe"
             reason = "external evidence monitor requires read-only observation before quiet no-op"
         monitor_quiet_skip = (
-            normal_delivery_allowed
+            not replan_decision_allowed
+            and normal_delivery_allowed
             and not recovery_allowed
             and not self_repair_allowed
             and isinstance(work_lane_contract, dict)
@@ -6947,6 +6960,12 @@ def build_quota_should_run(
                 or automation_prompt_upgrade.get("reason")
                 or selected_recommended_action
             )
+        if replan_decision_allowed:
+            selected_recommended_action = (
+                str(replan_obligation.get("recommended_action") or "").strip()
+                or str(replan_obligation.get("stop_condition") or "").strip()
+                or "Run one bounded autonomous replan slice and write back the selected todo/frontier changes."
+            )
         scoped_user_gate_fallback = _scoped_user_gate_fallback(
             user_todo_summary,
             agent_todo_summary,
@@ -6954,7 +6973,7 @@ def build_quota_should_run(
             allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
         )
         agent_lane_next_action = None
-        if not due_monitor_attempt:
+        if not due_monitor_attempt and not replan_decision_allowed:
             agent_lane_next_action = _agent_lane_next_action(
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,
@@ -6973,24 +6992,28 @@ def build_quota_should_run(
                 selected_recommended_action,
                 agent_lane_next_action=agent_lane_next_action,
             )
-        agent_scope_frontier = _agent_scope_no_candidate_frontier(
-            agent_identity=agent_identity,
-            agent_todo_summary=agent_todo_summary,
-            agent_lane_next_action=agent_lane_next_action,
-            work_lane_contract=work_lane_contract,
-            candidate_should_run=bool(should_run and normal_delivery_allowed),
-        )
-        agent_lane_frontier_hint = _agent_lane_frontier_hint(
-            goal_id=safe_goal_id,
-            agent_identity=agent_identity,
-            agent_todo_summary=agent_todo_summary,
-            agent_lane_next_action=agent_lane_next_action,
-            agent_scope_frontier=agent_scope_frontier,
-            work_lane_contract=work_lane_contract,
-        )
+        agent_scope_frontier = None
+        if not replan_decision_allowed:
+            agent_scope_frontier = _agent_scope_no_candidate_frontier(
+                agent_identity=agent_identity,
+                agent_todo_summary=agent_todo_summary,
+                agent_lane_next_action=agent_lane_next_action,
+                work_lane_contract=work_lane_contract,
+                candidate_should_run=bool(should_run and normal_delivery_allowed),
+            )
+        agent_lane_frontier_hint = None
+        if not replan_decision_allowed:
+            agent_lane_frontier_hint = _agent_lane_frontier_hint(
+                goal_id=safe_goal_id,
+                agent_identity=agent_identity,
+                agent_todo_summary=agent_todo_summary,
+                agent_lane_next_action=agent_lane_next_action,
+                agent_scope_frontier=agent_scope_frontier,
+                work_lane_contract=work_lane_contract,
+            )
         if agent_scope_frontier and agent_lane_frontier_hint:
             agent_scope_frontier["frontier_hint"] = agent_lane_frontier_hint
-        if agent_scope_frontier:
+        if agent_scope_frontier and not replan_decision_allowed:
             frontier_action = str(agent_scope_frontier.get("effective_action") or "")
             successor_replan_required = (
                 frontier_action == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value
@@ -7054,7 +7077,9 @@ def build_quota_should_run(
             "mode": "should-run",
             "goal_id": safe_goal_id,
             "decision": (
-                "run"
+                AUTONOMOUS_REPLAN_REQUIRED_MODE
+                if replan_decision_allowed
+                else "run"
                 if normal_delivery_allowed
                 else "observe"
                 if external_evidence_observation
@@ -7134,9 +7159,13 @@ def build_quota_should_run(
                 external_evidence_observation=external_evidence_observation,
             ),
             "goal_boundary": goal_boundary,
+            "goal_frontier_projection": goal_frontier_projection,
             "plan_summary": plan.get("summary"),
             "todo_write_hint": _todo_write_hint(safe_goal_id),
         }
+        autonomous_replan_decision = goal_frontier_projection.get("autonomous_replan_decision")
+        if isinstance(autonomous_replan_decision, dict):
+            payload["autonomous_replan_decision"] = autonomous_replan_decision
         if agent_identity:
             payload["agent_identity"] = agent_identity
         if agent_lane_next_action:
@@ -7202,7 +7231,7 @@ def build_quota_should_run(
                         or "no-work polling should ask the current open user todo"
                     )
                     payload["open_todo_notification_policy"] = "repeat_until_resolved"
-        if scoped_user_gate_fallback:
+        if scoped_user_gate_fallback and not replan_decision_allowed:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
             payload["should_run"] = True
             if payload.get("decision") == "skip":
@@ -7291,13 +7320,6 @@ def build_quota_should_run(
         )
         if archive_warning:
             payload["completed_todo_archive_warning"] = archive_warning
-        replan_obligation = (
-            item.get("autonomous_replan_obligation")
-            if isinstance(item.get("autonomous_replan_obligation"), dict)
-            else project_asset.get("autonomous_replan_obligation")
-            if isinstance(project_asset.get("autonomous_replan_obligation"), dict)
-            else None
-        )
         if replan_obligation:
             payload["autonomous_replan_obligation"] = replan_obligation
         dreaming_proposal = (
@@ -9282,6 +9304,35 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"top_todo_id={first_candidate.get('todo_id')} "
                 f"route={first_candidate.get('route_id') or first_candidate.get('route_key') or ''}"
             )
+    goal_frontier = (
+        payload.get("goal_frontier_projection")
+        if isinstance(payload.get("goal_frontier_projection"), dict)
+        else {}
+    )
+    if goal_frontier:
+        remaining = (
+            goal_frontier.get("remaining_advancement_frontier")
+            if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
+            else {}
+        )
+        lines.append(
+            "- goal_frontier_projection: "
+            f"replan_required={goal_frontier.get('replan_required')} "
+            f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
+            f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
+            f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')}"
+        )
+    replan_decision = (
+        payload.get("autonomous_replan_decision")
+        if isinstance(payload.get("autonomous_replan_decision"), dict)
+        else {}
+    )
+    if replan_decision:
+        lines.append(
+            "- autonomous_replan_decision: "
+            f"decision={replan_decision.get('decision')} "
+            f"plane={replan_decision.get('decision_plane')}"
+        )
     automation_prompt_upgrade = (
         payload.get("automation_prompt_upgrade")
         if isinstance(payload.get("automation_prompt_upgrade"), dict)
