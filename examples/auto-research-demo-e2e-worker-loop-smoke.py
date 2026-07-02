@@ -216,7 +216,23 @@ def main() -> int:
         assert "research_loop" not in payload, payload
         assert "multiround_gain_acceptance" not in payload, payload
         assert payload["route_contract"]["goal_surface_mode"] == "fresh_demo_goal", payload
-        assert payload["supervisor"]["lane_count"] == 4, payload
+        supervisor = payload["supervisor"]
+        assert supervisor["lane_count"] == 4, payload
+        assert supervisor["uses_generic_runner"] is True, supervisor
+        assert supervisor["generic_spec_schema"] == "generic_multi_agent_launch_spec_v0", supervisor
+        assert supervisor["runner_contract_schema"] == "tui_multi_agent_runner_contract_v0", supervisor
+        assert supervisor["machine_json_policy"] == "artifact_only_in_visible_panes", supervisor
+        assert supervisor["domain_specific_runner_logic"] is False, supervisor
+        assert supervisor["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", supervisor
+        assert (
+            supervisor["pane_local_a2a"]["machine_json_destination"]
+            == "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
+        ), supervisor
+        assert (
+            supervisor["kernel_boundary"]["coordination_pattern"]
+            == "decentralized_state_a2a"
+        ), supervisor
+        assert supervisor["kernel_boundary"]["presentation_layers_in_kernel"] is False, supervisor
         worker_loop = payload["worker_loop"]
         assert worker_loop["schema_version"] == "auto_research_worker_loop_v0", payload
         assert worker_loop["mode"] == "execute", payload
@@ -293,6 +309,13 @@ def main() -> int:
                 assert visible_payload["result_source"] == "visible_worker_launcher", visible_payload
                 assert "worker_loop" not in visible_payload, visible_payload
                 assert "tonight_experience" not in visible_payload, visible_payload
+                visible_supervisor = visible_payload["supervisor"]
+                assert visible_supervisor["uses_generic_runner"] is True, visible_supervisor
+                assert visible_supervisor["machine_json_policy"] == "artifact_only_in_visible_panes", visible_supervisor
+                assert (
+                    visible_supervisor["pane_local_a2a"]["human_default"]
+                    == "markdown_status_inside_codex_tui"
+                ), visible_supervisor
                 visible_proof = visible_payload["visible_worker_proof"]
                 assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
                 assert visible_proof["lane_authored_evidence_loaded"] is False, visible_proof

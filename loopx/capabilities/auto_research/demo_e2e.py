@@ -284,6 +284,66 @@ def _visible_worker_proof(*, launch_visible: bool) -> dict[str, object]:
     }
 
 
+def _supervisor_summary(supervisor: dict[str, object]) -> dict[str, object]:
+    product_spec = (
+        supervisor.get("product_spec")
+        if isinstance(supervisor.get("product_spec"), dict)
+        else {}
+    )
+    runner_contract = (
+        supervisor.get("runner_contract")
+        if isinstance(supervisor.get("runner_contract"), dict)
+        else {}
+    )
+    pane_local_a2a = (
+        runner_contract.get("pane_local_a2a")
+        if isinstance(runner_contract.get("pane_local_a2a"), dict)
+        else {}
+    )
+    cli_contract = (
+        supervisor.get("cli_contract")
+        if isinstance(supervisor.get("cli_contract"), dict)
+        else {}
+    )
+    auto_research = (
+        supervisor.get("auto_research")
+        if isinstance(supervisor.get("auto_research"), dict)
+        else {}
+    )
+    coordination_model = (
+        supervisor.get("coordination_model")
+        if isinstance(supervisor.get("coordination_model"), dict)
+        else {}
+    )
+    return {
+        "schema_version": supervisor.get("schema_version"),
+        "mode": supervisor.get("mode"),
+        "lane_count": len(supervisor.get("lanes") or []),
+        "reasoning_contract": supervisor.get("reasoning_contract"),
+        "uses_generic_runner": bool(
+            product_spec.get("uses_generic_runner")
+            or auto_research.get("uses_generic_runner")
+        ),
+        "generic_spec_schema": product_spec.get("schema_version"),
+        "runner_contract_schema": runner_contract.get("schema_version"),
+        "pane_local_a2a": {
+            "tick_command": pane_local_a2a.get("tick_command"),
+            "machine_json_policy": pane_local_a2a.get("machine_json_policy"),
+            "machine_json_destination": pane_local_a2a.get("machine_json_destination"),
+            "human_default": pane_local_a2a.get("human_default"),
+        },
+        "machine_json_policy": cli_contract.get("machine_json_policy"),
+        "domain_specific_runner_logic": bool(product_spec.get("domain_specific")),
+        "kernel_boundary": {
+            "state_bus": auto_research.get("state_bus"),
+            "presentation_layers_in_kernel": bool(
+                auto_research.get("presentation_layers_in_kernel")
+            ),
+            "coordination_pattern": coordination_model.get("pattern"),
+        },
+    }
+
+
 def _compact_live_worker_evidence(evidence: dict[str, object]) -> dict[str, object]:
     return {
         "schema_version": "auto_research_live_worker_evidence_summary_v0",
@@ -442,12 +502,7 @@ def run_auto_research_demo_e2e(
                 tracking_goal_id=tracking_goal or None,
             ),
         },
-        "supervisor": {
-            "schema_version": supervisor.get("schema_version"),
-            "mode": supervisor.get("mode"),
-            "lane_count": len(supervisor.get("lanes") or []),
-            "reasoning_contract": supervisor.get("reasoning_contract"),
-        },
+        "supervisor": _supervisor_summary(supervisor),
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
