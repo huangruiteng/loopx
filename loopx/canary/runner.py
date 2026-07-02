@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .planner import REPO_ROOT, build_catalog_canary_plan, flatten_catalog_canary_checks
 
@@ -25,6 +25,7 @@ PYTHON_BINARIES = {"python", "python3"}
 NODE_BINARIES = {"node"}
 SHELL_TOKENS = {"&&", "||", ";", "|", ">", "<", ">>", "2>", "2>>"}
 SMOKE_SUITE_CHOICES = {"default-public", "full-public", "catalog-plan"}
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -112,9 +113,55 @@ def _display_argv(argv: list[str]) -> list[str]:
     return displayed
 
 
-def _run_check(check: dict[str, Any], *, timeout_seconds: float) -> dict[str, Any]:
+def _tracked_change_paths() -> tuple[bool, list[str], str]:
+    paths: set[str] = set()
+    stderr_parts: list[str] = []
+    ok = True
+    for args in (["diff", "--name-only"], ["diff", "--name-only", "--cached"]):
+        completed = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), *args],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if completed.returncode != 0:
+            ok = False
+            stderr_parts.append(completed.stderr[-400:])
+            continue
+        paths.update(line.strip() for line in completed.stdout.splitlines() if line.strip())
+    return ok, sorted(paths), "\n".join(part for part in stderr_parts if part)
+
+
+def _restore_tracked_paths(paths: list[str]) -> dict[str, Any]:
+    if not paths:
+        return {"ok": True, "restored_paths": []}
+    completed = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "restore", "--staged", "--worktree", "--", *paths],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return {
+        "ok": completed.returncode == 0,
+        "returncode": completed.returncode,
+        "restored_paths": paths if completed.returncode == 0 else [],
+        "stderr_tail": completed.stderr[-800:],
+    }
+
+
+def _run_check(
+    check: dict[str, Any],
+    *,
+    timeout_seconds: float,
+    check_index: int | None = None,
+    check_count: int | None = None,
+) -> dict[str, Any]:
     normalized = normalize_canary_command(str(check.get("command") or ""))
     result = {**check, "normalized": normalized}
+    if check_index is not None and check_count is not None:
+        result.update({"check_index": check_index, "check_count": check_count})
     if not normalized.get("ok"):
         result.update({"status": "skipped", "ok": False, "reason": normalized.get("reason")})
         return result
@@ -269,6 +316,8 @@ def build_canary_smoke_suite_run(
     execute: bool = True,
     timeout_seconds: float = 120.0,
     fail_fast: bool = False,
+    allow_tracked_side_effects: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Build and optionally execute a continue-on-failure smoke suite.
 
@@ -322,16 +371,102 @@ def build_canary_smoke_suite_run(
     ]
 
     results: list[dict[str, Any]] = []
+    side_effect_guard: dict[str, Any] = {
+        "schema_version": "canary_smoke_suite_side_effect_guard_v0",
+        "tracked_side_effects_allowed": allow_tracked_side_effects,
+        "enforced": False,
+        "clean_start": None,
+        "tracked_before": [],
+        "tracked_side_effects": [],
+        "auto_restored": False,
+    }
     if execute:
-        for check in selected:
-            result = _run_check(check, timeout_seconds=max(1.0, timeout_seconds))
+        git_ok, tracked_before, git_stderr = _tracked_change_paths()
+        clean_start = git_ok and not tracked_before
+        side_effect_guard.update(
+            {
+                "git_status_ok": git_ok,
+                "clean_start": clean_start,
+                "tracked_before": tracked_before,
+                "enforced": bool(git_ok and not allow_tracked_side_effects),
+            }
+        )
+        if git_stderr:
+            side_effect_guard["git_status_stderr_tail"] = git_stderr[-800:]
+        for index, check in enumerate(selected, start=1):
+            normalized_check = normalize_canary_command(str(check.get("command") or ""))
+            if progress_callback:
+                progress_callback(
+                    {
+                        "schema_version": "canary_smoke_suite_progress_v0",
+                        "event": "check_started",
+                        "check_index": index,
+                        "check_count": len(selected),
+                        "command": " ".join(
+                            str(part) for part in normalized_check.get("display_argv") or []
+                        )
+                        or str(check.get("command") or ""),
+                    }
+                )
+            result = _run_check(
+                check,
+                timeout_seconds=max(1.0, timeout_seconds),
+                check_index=index,
+                check_count=len(selected),
+            )
+            if side_effect_guard["enforced"]:
+                after_ok, tracked_after, after_stderr = _tracked_change_paths()
+                side_effects = sorted(set(tracked_after) - set(tracked_before))
+                if side_effects:
+                    result.update(
+                        {
+                            "ok": False,
+                            "status": "failed_tracked_side_effect",
+                            "tracked_side_effects": side_effects,
+                        }
+                    )
+                    if clean_start:
+                        restore = _restore_tracked_paths(side_effects)
+                        result["tracked_side_effect_restore"] = restore
+                        side_effect_guard["auto_restored"] = (
+                            bool(side_effect_guard.get("auto_restored")) or bool(restore.get("ok"))
+                        )
+                if not after_ok and after_stderr:
+                    result["tracked_side_effect_stderr_tail"] = after_stderr[-800:]
+            if progress_callback:
+                progress_callback(
+                    {
+                        "schema_version": "canary_smoke_suite_progress_v0",
+                        "event": "check_finished",
+                        "check_index": index,
+                        "check_count": len(selected),
+                        "status": result.get("status"),
+                        "ok": bool(result.get("ok")),
+                        "duration_seconds": result.get("duration_seconds"),
+                    }
+                )
             results.append(result)
             if fail_fast and not result.get("ok"):
                 break
+        if side_effect_guard["enforced"]:
+            final_ok, tracked_after, final_stderr = _tracked_change_paths()
+            side_effects = sorted(set(tracked_after) - set(tracked_before))
+            side_effect_guard.update(
+                {
+                    "git_status_final_ok": final_ok,
+                    "tracked_after": tracked_after,
+                    "tracked_side_effects": side_effects,
+                }
+            )
+            if final_stderr:
+                side_effect_guard["git_status_final_stderr_tail"] = final_stderr[-800:]
 
     display_items = results if execute else normalized
     failures = [item for item in results if not item.get("ok")]
     timed_out = [item for item in results if item.get("status") == "timed_out"]
+    side_effect_failures = [
+        item for item in results if item.get("status") == "failed_tracked_side_effect"
+    ]
     unsafe = [
         item
         for item in normalized
@@ -345,15 +480,17 @@ def build_canary_smoke_suite_run(
         "repo_root": str(REPO_ROOT),
         "dry_run": not execute,
         "executes_checks": execute,
-        "writes_evidence": False,
+        "writes_evidence": bool(allow_tracked_side_effects),
         "creates_runtime_contract": False,
         "timeout_seconds": max(1.0, timeout_seconds),
         "fail_fast": fail_fast,
+        "side_effect_guard": side_effect_guard,
         "limit": max(0, limit),
         "selected_check_count": len(selected),
         "executed_check_count": len(results),
         "failure_count": len(failures),
         "timeout_count": len(timed_out),
+        "tracked_side_effect_failure_count": len(side_effect_failures),
         "unsafe_command_count": len(unsafe),
         "warning_count": len(warnings),
         "warnings": warnings,
@@ -506,6 +643,8 @@ def render_catalog_canary_run_markdown(payload: dict[str, Any]) -> str:
 
 def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
     mode = "execute" if payload.get("executes_checks") else "preview"
+    guard = payload.get("side_effect_guard")
+    guard = guard if isinstance(guard, dict) else {}
     lines = [
         "# Canary Smoke Suite",
         "",
@@ -516,9 +655,12 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
         f"- executed_checks: `{payload.get('executed_check_count')}`",
         f"- failures: `{payload.get('failure_count')}`",
         f"- timeouts: `{payload.get('timeout_count')}`",
+        f"- tracked_side_effect_failures: `{payload.get('tracked_side_effect_failure_count')}`",
         f"- warnings: `{payload.get('warning_count')}`",
-        "- writes_evidence: `false`",
+        f"- writes_evidence: `{str(payload.get('writes_evidence')).lower()}`",
         "- creates_runtime_contract: `false`",
+        f"- read_only_guard_enforced: `{str(guard.get('enforced')).lower()}`",
+        f"- read_only_guard_clean_start: `{str(guard.get('clean_start')).lower()}`",
         "",
         str(payload.get("note") or ""),
         "",
@@ -553,6 +695,15 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- returncode: `{check.get('returncode')}`")
         if check.get("duration_seconds") is not None:
             lines.append(f"- duration_seconds: `{check.get('duration_seconds')}`")
+        if check.get("tracked_side_effects"):
+            lines.append(
+                "- tracked_side_effects: `"
+                + ", ".join(str(path) for path in check.get("tracked_side_effects") or [])
+                + "`"
+            )
+        restore = check.get("tracked_side_effect_restore")
+        if isinstance(restore, dict):
+            lines.append(f"- tracked_side_effect_restore_ok: `{str(restore.get('ok')).lower()}`")
         if check.get("stderr_tail"):
             lines.append(f"- stderr_tail: `{str(check.get('stderr_tail')).strip()[-300:]}`")
         lines.append("")
