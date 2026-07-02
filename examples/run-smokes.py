@@ -1,51 +1,112 @@
 #!/usr/bin/env python3
-"""Run the public dependency-free smoke scripts.
-
-This is intentionally a tiny examples runner, not a test framework. Keep
-`loopx check` focused on contract health and call this explicitly when
-example behavior needs coverage.
-"""
+"""Run public smoke scripts through the LoopX canary smoke-suite runner."""
 
 from __future__ import annotations
 
-import subprocess
+import argparse
+import json
 import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES_DIR = REPO_ROOT / "examples"
-EXPLICIT_GROUPED_SMOKES = {
-    "canary-promotion-readiness-smoke.py",
-    "dashboard-demo-readiness-smoke.py",
-}
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.canary.runner import (  # noqa: E402
+    build_canary_smoke_suite_run,
+    render_canary_smoke_suite_run_markdown,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--suite",
+        choices=["default-public", "full-public", "catalog-plan"],
+        default="default-public",
+        help=(
+            "Smoke selection mode. default-public excludes explicit grouped checks; "
+            "full-public includes every tracked examples/*-smoke.py."
+        ),
+    )
+    parser.add_argument(
+        "--module",
+        action="append",
+        default=[],
+        help="Filter suite scripts by module token, such as quota, status, or canary.",
+    )
+    parser.add_argument(
+        "--script",
+        action="append",
+        default=[],
+        help="Run a specific examples/*-smoke.py script.",
+    )
+    parser.add_argument(
+        "--profile",
+        action="append",
+        default=[],
+        help="Run catalog profile checks instead of the default full script set.",
+    )
+    parser.add_argument(
+        "--family",
+        action="append",
+        default=[],
+        help="Run catalog family checks instead of the default full script set.",
+    )
+    parser.add_argument(
+        "--include-deep-checks",
+        action="store_true",
+        help="Include catalog deep checks when --profile/--family is used.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Maximum selected checks to execute or preview. Defaults to all selected checks.",
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=120.0,
+        help="Per-check timeout for executed smoke scripts.",
+    )
+    parser.add_argument(
+        "--no-execute",
+        action="store_true",
+        help="Preview normalized smoke commands without running checks.",
+    )
+    parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop execution at the first failed or timed-out smoke.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON instead of markdown.",
+    )
+    return parser.parse_args()
 
 
 def main() -> int:
-    all_smoke_scripts = sorted(EXAMPLES_DIR.glob("*-smoke.py"))
-    smoke_scripts = [
-        script for script in all_smoke_scripts if script.name not in EXPLICIT_GROUPED_SMOKES
-    ]
-    if not smoke_scripts:
-        print("no smoke scripts found")
-        return 0
-
-    skipped = [
-        script.name for script in all_smoke_scripts if script.name in EXPLICIT_GROUPED_SMOKES
-    ]
-    if skipped:
-        print(f"skipping explicit grouped smoke(s): {', '.join(skipped)}", flush=True)
-
-    for script in smoke_scripts:
-        label = script.relative_to(REPO_ROOT)
-        print(f"==> {label}", flush=True)
-        result = subprocess.run([sys.executable, str(script)], cwd=REPO_ROOT)
-        if result.returncode != 0:
-            print(f"{label} failed with exit code {result.returncode}", file=sys.stderr)
-            return result.returncode
-
-    print(f"ok: {len(smoke_scripts)} smoke script(s)")
-    return 0
+    args = parse_args()
+    payload = build_canary_smoke_suite_run(
+        suite=args.suite,
+        modules=list(args.module or []),
+        scripts=list(args.script or []),
+        families=list(args.family or []),
+        profiles=list(args.profile or []),
+        include_deep_checks=bool(args.include_deep_checks),
+        limit=int(args.limit or 0),
+        execute=not bool(args.no_execute),
+        timeout_seconds=float(args.timeout_seconds or 120.0),
+        fail_fast=bool(args.fail_fast),
+    )
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(render_canary_smoke_suite_run_markdown(payload), end="")
+    return 0 if payload.get("ok") else 1
 
 
 if __name__ == "__main__":

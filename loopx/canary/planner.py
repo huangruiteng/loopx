@@ -919,17 +919,12 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "catalog-canary-contract",
         "title": "Catalog canary contract",
-        "purpose": "Check catalog-to-canary planning, JSON actionability, and shell-free no-write execution.",
+        "purpose": "Check catalog-to-canary planning, JSON actionability, shell-free no-write execution, and full/module smoke-suite selection.",
         "catalog_families": ["Planning Governance", "State And Boundary", "Work Routing"],
         "trigger_hints": (
-            "catalog canary",
-            "canary planner",
-            "canary runner",
-            "canary plan",
-            "canary run",
-            "loopx/canary",
-            "loopx/cli_commands/canary.py",
-            "examples/catalog-canary",
+            "catalog canary", "canary planner", "canary runner", "canary plan", "canary run",
+            "smoke-suite", "run-smokes", "full smoke", "loopx/canary", "loopx/cli_commands/canary.py",
+            "examples/catalog-canary", "examples/run-smokes.py",
         ),
         "checks": [
             {
@@ -941,6 +936,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/catalog-canary-run-e2e-smoke.py",
                 "tier": "default",
                 "reason": "guards shell-free no-write canary execution from the selected catalog plan",
+            },
+            {
+                "command": "python3 examples/canary-smoke-suite-runner-smoke.py",
+                "tier": "default",
+                "reason": "guards full-public, module-filtered, and catalog-profile smoke-suite selection",
             },
         ],
     },

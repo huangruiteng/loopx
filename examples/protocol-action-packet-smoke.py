@@ -313,7 +313,7 @@ def assert_monitor_only_packet_keeps_user_todo_pending() -> None:
     assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
 
 
-def assert_agent_scoped_gate_prompt_matches_scoped_summary() -> None:
+def assert_agent_scoped_user_gate_stays_diagnostic_only() -> None:
     payload = status_payload(
         status="operator_gate_fixture",
         agent_todos=[
@@ -345,15 +345,14 @@ def assert_agent_scoped_gate_prompt_matches_scoped_summary() -> None:
     user_summary = guard["user_todo_summary"]
     assert user_summary["open_count"] == 0, user_summary
     assert user_summary["other_agent_scoped_open_count"] == 1, user_summary
-    gate_prompt = guard["gate_prompt"]
-    assert "当前 agent 无阻塞用户待办" in gate_prompt, gate_prompt
-    assert "其他 agent/global 用户待办：1 项" in gate_prompt, gate_prompt
-    assert "用户待办：0 项未完成" not in gate_prompt, gate_prompt
-    assert "用户待办：1 项未完成" not in gate_prompt, gate_prompt
-    assert "PR #807" in gate_prompt, gate_prompt
+    assert "gate_prompt" not in guard, guard
+    assert guard["state"] == "eligible", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["should_run"] is False, guard
     contract = guard["interaction_contract"]
-    assert contract["mode"] == "user_gate", contract
-    assert contract["user_channel"]["action_required"] is True, contract
+    assert contract["mode"] == "monitor_quiet_skip", contract
+    assert contract["user_channel"]["action_required"] is False, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
 
 
 def assert_explicit_non_gating_user_todo_stays_quiet() -> None:
@@ -477,7 +476,7 @@ def main() -> None:
     assert_advancement_packet_keeps_user_todo_pending()
     assert_explicit_user_gate_still_allows_independent_agent_action()
     assert_monitor_only_packet_keeps_user_todo_pending()
-    assert_agent_scoped_gate_prompt_matches_scoped_summary()
+    assert_agent_scoped_user_gate_stays_diagnostic_only()
     assert_explicit_non_gating_user_todo_stays_quiet()
     assert_monitor_only_packet_allows_quiet_noop()
     assert_executable_recommended_action_overrides_monitor_todo()

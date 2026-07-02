@@ -14,7 +14,9 @@ from ..canary.planner import (
     render_catalog_canary_profiles_markdown,
 )
 from ..canary.runner import (
+    build_canary_smoke_suite_run,
     build_catalog_canary_run,
+    render_canary_smoke_suite_run_markdown,
     render_catalog_canary_run_markdown,
 )
 
@@ -202,7 +204,7 @@ def register_canary_commands(
 ) -> None:
     canary_parser = subparsers.add_parser(
         "canary",
-        help="Plan or run catalog-informed canary profiles.",
+        help="Plan or run catalog-informed canary profiles and smoke suites.",
     )
     canary_sub = canary_parser.add_subparsers(dest="canary_command", required=True)
 
@@ -246,6 +248,57 @@ def register_canary_commands(
         type=float,
         default=120.0,
         help="Per-check timeout for executed canaries.",
+    )
+
+    smoke_parser = canary_sub.add_parser(
+        "smoke-suite",
+        help="Run or preview public smoke scripts as a full suite, module subset, or catalog profile.",
+    )
+    add_subcommand_format(smoke_parser)
+    _add_canary_selector_args(smoke_parser)
+    smoke_parser.add_argument(
+        "--suite",
+        choices=["default-public", "full-public", "catalog-plan"],
+        default="default-public",
+        help=(
+            "Smoke selection mode. default-public excludes explicit grouped checks; "
+            "full-public includes every tracked examples/*-smoke.py; catalog-plan "
+            "runs only checks selected by catalog/profile inputs."
+        ),
+    )
+    smoke_parser.add_argument(
+        "--module",
+        action="append",
+        default=[],
+        help="Filter suite scripts by module token, such as quota, status, or canary. Repeatable.",
+    )
+    smoke_parser.add_argument(
+        "--script",
+        action="append",
+        default=[],
+        help="Run a specific examples/*-smoke.py script. Repeatable.",
+    )
+    smoke_parser.add_argument(
+        "--no-execute",
+        action="store_true",
+        help="Preview normalized smoke commands without running checks.",
+    )
+    smoke_parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Maximum selected checks to execute or preview. Defaults to all selected checks.",
+    )
+    smoke_parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=120.0,
+        help="Per-check timeout for executed smoke scripts.",
+    )
+    smoke_parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop execution at the first failed or timed-out smoke.",
     )
 
     coverage_parser = canary_sub.add_parser(
@@ -309,6 +362,27 @@ def handle_canary_command(
         )
         _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
         renderer = render_catalog_canary_run_markdown
+    elif args.canary_command == "smoke-suite":
+        changed_files, git_diff_selector = _resolve_canary_changed_files(args)
+        payload = build_canary_smoke_suite_run(
+            suite=str(args.suite or "default-public"),
+            modules=list(args.module or []),
+            scripts=list(args.script or []),
+            catalog_path=args.catalog,
+            changed_files=changed_files,
+            surfaces=list(args.surface or []),
+            families=list(args.family or []),
+            profiles=list(args.profile or []),
+            include_deep_checks=bool(args.include_deep_checks),
+            max_checks_per_family=int(args.max_checks_per_family or 3),
+            max_checks_per_profile=int(args.max_checks_per_profile or 3),
+            limit=int(args.limit or 0),
+            execute=not bool(args.no_execute),
+            timeout_seconds=float(args.timeout_seconds or 120.0),
+            fail_fast=bool(args.fail_fast),
+        )
+        _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
+        renderer = render_canary_smoke_suite_run_markdown
     elif args.canary_command == "coverage-audit":
         payload = build_catalog_canary_coverage_audit(
             catalog_path=args.catalog,
@@ -316,6 +390,6 @@ def handle_canary_command(
         )
         renderer = render_catalog_canary_coverage_audit_markdown
     else:
-        raise ValueError("canary requires `profiles`, `plan`, `run`, or `coverage-audit`")
+        raise ValueError("canary requires `profiles`, `plan`, `run`, `smoke-suite`, or `coverage-audit`")
     print_payload(payload, output_format(args), renderer)
     return 0 if payload.get("ok") else 1

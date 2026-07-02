@@ -158,7 +158,7 @@ def main() -> int:
         assert "promotion-readiness evidence is missing" in preflight_install.stderr, preflight_install.stderr
         assert "non-blocking" in preflight_install.stderr, preflight_install.stderr
 
-        module.write_readiness_evidence(env)
+        module.write_readiness_evidence(env, dashboard_skipped=False)
 
         index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
         assert index_path.is_file(), index_path
