@@ -17,6 +17,8 @@ from .legacy_core import (
     build_live_auto_research_projection,
     build_research_decision_candidates,
     build_research_evidence_graph_from_rollout_events,
+)
+from .evidence_packet import (
     load_auto_research_evidence_packet_inputs,
     validate_research_hypothesis,
 )

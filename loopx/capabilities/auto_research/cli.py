@@ -17,10 +17,10 @@ from .legacy_core import (
     build_auto_research_quickstart,
     build_live_auto_research_projection,
     build_auto_research_projection,
-    load_auto_research_evidence_packet_inputs,
     load_auto_research_fixture,
     render_auto_research_markdown,
 )
+from .evidence_packet import load_auto_research_evidence_packet_inputs
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,

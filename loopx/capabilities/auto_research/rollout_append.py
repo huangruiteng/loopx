@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
-from .legacy_core import (
+from .evidence_packet import (
     AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION,
     build_auto_research_rollout_events,
     load_auto_research_evidence_packet,

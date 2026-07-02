@@ -16,14 +16,16 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.capabilities.auto_research.legacy_core import (  # noqa: E402
     AUTO_RESEARCH_ARTIFACT_PACKET_SCHEMA_VERSION,
-    AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION,
     RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
-    build_auto_research_evidence_packet,
     build_auto_research_projection,
-    build_auto_research_rollout_events,
     build_research_artifact_packet,
     build_research_evidence_graph_from_rollout_events,
     load_auto_research_fixture,
+)
+from loopx.capabilities.auto_research.evidence_packet import (  # noqa: E402
+    AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION,
+    build_auto_research_evidence_packet,
+    build_auto_research_rollout_events,
 )
 
 
