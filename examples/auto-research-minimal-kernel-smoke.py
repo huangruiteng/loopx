@@ -141,6 +141,8 @@ def assert_evidence_packet_boundary() -> None:
     assert "RESEARCH_HYPOTHESIS_SCHEMA_VERSION" in worker_text
     assert "load_auto_research_evidence_packet_inputs" in worker_text
     assert "from .evidence_packet import load_auto_research_evidence_packet_inputs" in cli_text
+    assert "from .quickstart_seed import (" in cli_text
+    assert "from .research_state import build_live_auto_research_projection" in cli_text
 
 
 def main() -> None:

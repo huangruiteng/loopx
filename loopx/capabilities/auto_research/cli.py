@@ -8,19 +8,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .legacy_core import (
-    AUTO_RESEARCH_DEFAULT_GOAL_ID,
-    AUTO_RESEARCH_DEFAULT_OBJECTIVE,
-    AUTO_RESEARCH_QUICKSTART_TEMPLATE,
     build_auto_research_board_projection,
     build_auto_research_demo_acceptance_packet,
     build_auto_research_demo_supervisor_plan,
-    build_auto_research_quickstart,
-    build_live_auto_research_projection,
     build_auto_research_projection,
     load_auto_research_fixture,
     render_auto_research_markdown,
 )
 from .evidence_packet import load_auto_research_evidence_packet_inputs
+from .quickstart_seed import (
+    AUTO_RESEARCH_DEFAULT_GOAL_ID,
+    AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+    AUTO_RESEARCH_QUICKSTART_TEMPLATE,
+    build_auto_research_quickstart,
+)
+from .research_state import build_live_auto_research_projection
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
