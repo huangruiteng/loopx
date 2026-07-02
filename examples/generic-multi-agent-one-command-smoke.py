@@ -270,7 +270,9 @@ def main() -> int:
             start_payloads.append(
                 command_path.read_text(encoding="utf-8") if command_path.is_file() else command
             )
-        assert all("exec codex -c model_reasoning_effort=high" in command for command in start_payloads), start_payloads
+        assert all("LOOPX_CODEX_BIN=codex" in command for command in start_payloads), start_payloads
+        assert all("LOOPX_CODEX_REASONING_EFFORT=high" in command for command in start_payloads), start_payloads
+        assert all("exec python3 -c" in command for command in start_payloads), start_payloads
         assert all("codex exec" not in command for command in start_payloads), start_payloads
         launcher_source = (ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
             encoding="utf-8"

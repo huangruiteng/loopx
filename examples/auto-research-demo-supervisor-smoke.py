@@ -146,8 +146,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1" in command, lane
         assert "LOOPX_CODEX_TUI_MODE=interactive" in command, lane
         assert "LOOPX_CODEX_TUI_PROMPT_ARTIFACT" in command, lane
-        assert "exec codex -c model_reasoning_effort=high" in command, lane
-        assert '-C "$LOOPX_PROJECT" "$BOOTSTRAP_PROMPT"' in command, lane
+        assert "LOOPX_CODEX_BIN=codex" in command, lane
+        assert "LOOPX_CODEX_REASONING_EFFORT=high" in command, lane
+        assert "exec python3 -c" in command, lane
         assert "codex exec" not in command, lane
         assert "codex_stream_filter" not in command, lane
         assert "[LoopX auto-research frontier]" not in command, lane
@@ -159,7 +160,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "tmux new-window" in start_script, start_script
     assert "LOOPX_PROJECT" in start_script, start_script
     assert "LOOPX_CODEX_TUI_MODE=interactive" in start_script, start_script
-    assert "exec codex -c model_reasoning_effort=high" in start_script, start_script
+    assert "LOOPX_CODEX_BIN=codex" in start_script, start_script
+    assert "LOOPX_CODEX_REASONING_EFFORT=high" in start_script, start_script
+    assert "exec python3 -c" in start_script, start_script
     assert "[Codex bootstrap]" not in start_script, start_script
     assert "[Codex bootstrap prompt]" not in start_script, start_script
     assert payload["commands"]["attach"] == "tmux attach -t loopx-auto-research", payload

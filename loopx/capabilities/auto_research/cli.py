@@ -632,7 +632,7 @@ def _execute_auto_research_demo_supervisor(
                 "workspace_write_scope": "selected_visible_workspace_only",
                 "codex_trust_workspace": codex_trust_workspace,
                 "codex_trust_scope": (
-                    "per_invocation_selected_workspace"
+                    "persisted_selected_workspace_and_git_root"
                     if codex_trust_workspace
                     else "native_codex_trust_prompt"
                 ),

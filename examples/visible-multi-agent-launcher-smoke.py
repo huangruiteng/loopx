@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from loopx.visible_multi_agent_launcher import (  # noqa: E402
+    _CODEX_TUI_EXEC_PY,
     _SCOPED_LOOPX_WRAPPER_PY,
     TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
     build_visible_multi_agent_payload,
@@ -104,7 +105,14 @@ def main() -> int:
     assert "build_tui_multi_agent_runner_contract" in launcher_source
     assert "LOOPX_CODEX_TUI_MODE=interactive" in launcher_source
     assert "LOOPX_CODEX_TRUST_WORKSPACE" in launcher_source
+    assert "LOOPX_CODEX_BIN" in launcher_source
+    assert "LOOPX_CODEX_REASONING_EFFORT" in launcher_source
+    assert "export BOOTSTRAP_PROMPT" in launcher_source
+    assert "_persist_codex_workspace_trust" in launcher_source
+    assert "rev-parse\", \"--show-toplevel" in launcher_source
     assert "trust_level=" in launcher_source and "trusted" in launcher_source
+    assert "trust_prompt_blocked" in launcher_source
+    assert "Do you trust the contents of this directory?" in launcher_source
     assert "pre_codex_character_stream" in launcher_source
     assert "build_visible_frontier_command" not in launcher_source
     assert 'FRONTIER_ARTIFACT_NAME="frontier.public.json"' not in launcher_source
@@ -208,6 +216,8 @@ def main() -> int:
         runtime_root = temp / "runtime"
         workspace = temp / "workspace"
         tmux_log = temp / "tmux.jsonl"
+        codex_home = temp / "codex-home"
+        codex_argv_log = temp / "codex-argv.json"
         worker_skill = temp / "worker" / "SKILL.md"
         wrapper_arg_log = temp / "wrapper-args.jsonl"
         worker_skill.parent.mkdir(parents=True)
@@ -228,7 +238,22 @@ def main() -> int:
                 ]
             ),
         )
-        write_executable(fake_bin / "codex", "#!/usr/bin/env sh\nprintf 'fake codex tui\\n'\nexit 0\n")
+        write_executable(
+            fake_bin / "codex",
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json, os, sys",
+                    "path = os.environ.get('FAKE_CODEX_ARGV_LOG')",
+                    "if path:",
+                    "    with open(path, 'w', encoding='utf-8') as f:",
+                    "        json.dump(sys.argv, f)",
+                    "print('fake codex tui')",
+                    "raise SystemExit(0)",
+                    "",
+                ]
+            ),
+        )
         write_executable(
             fake_bin / "tmux",
             "\n".join(
@@ -243,6 +268,9 @@ def main() -> int:
                     "    print('planner\\nreviewer')",
                     "    raise SystemExit(0)",
                     "if len(sys.argv) > 1 and sys.argv[1] == 'capture-pane':",
+                    "    text = os.environ.get('FAKE_TMUX_CAPTURE_TEXT', '')",
+                    "    if text:",
+                    "        print(text)",
                     "    raise SystemExit(0)",
                     "raise SystemExit(0)",
                     "",
@@ -251,8 +279,11 @@ def main() -> int:
         )
 
         original_path = os.environ.get("PATH", "")
+        original_codex_home = os.environ.get("CODEX_HOME")
         os.environ["PATH"] = f"{fake_bin}{os.pathsep}{original_path}"
+        os.environ["CODEX_HOME"] = str(codex_home)
         os.environ["FAKE_TMUX_LOG"] = str(tmux_log)
+        os.environ["FAKE_CODEX_ARGV_LOG"] = str(codex_argv_log)
         os.environ["WRAPPER_ARG_LOG"] = str(wrapper_arg_log)
         try:
             scoped_env = dict(os.environ)
@@ -404,17 +435,84 @@ def main() -> int:
                 cwd=temp,
                 codex_trust_workspace=True,
             )
+
+            git_root_workspace = temp / "git-root" / "lanes" / "planner"
+            git_root_workspace.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                ["git", "init", str(temp / "git-root")],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [sys.executable, "-c", _CODEX_TUI_EXEC_PY],
+                env={
+                    **os.environ,
+                    "LOOPX_CODEX_BIN": str(fake_bin / "codex"),
+                    "LOOPX_PROJECT": str(git_root_workspace),
+                    "LOOPX_CODEX_REASONING_EFFORT": "high",
+                    "BOOTSTRAP_PROMPT": "planner prompt",
+                    "LOOPX_CODEX_TRUST_WORKSPACE": "1",
+                },
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            codex_args = json.loads(codex_argv_log.read_text(encoding="utf-8"))
+            assert "-C" in codex_args and str(git_root_workspace) in codex_args, codex_args
+            assert codex_args[-1] == "planner prompt", codex_args
+            trust_args = [
+                item
+                for index, item in enumerate(codex_args)
+                if index > 0 and codex_args[index - 1] == "-c" and ".trust_level=" in item
+            ]
+            assert any(str(git_root_workspace) in item for item in trust_args), codex_args
+            assert any(str(temp / "git-root") in item for item in trust_args), codex_args
+
+            os.environ["FAKE_TMUX_CAPTURE_TEXT"] = "Do you trust the contents of this directory?"
+            blocked_launch, _, _ = execute_visible_multi_agent_launcher(
+                payload={
+                    "session_name": "loopx-visible-launcher-trust-block-smoke",
+                    "lanes": [
+                        {
+                            "lane_id": "planner",
+                            "visible_launch_command": "exec codex -c model_reasoning_effort=high -C \"$LOOPX_PROJECT\" planner",
+                        }
+                    ],
+                },
+                registry=registry,
+                runtime_root=runtime_root,
+                requested_launcher="tmux",
+                tmux_bin="tmux",
+                cli_bin="loopx",
+                codex_bin="codex",
+                attach=False,
+                replace_existing=False,
+                workspace=str(workspace),
+                create_workspace=True,
+                cwd=temp,
+                codex_trust_workspace=True,
+            )
         finally:
             os.environ["PATH"] = original_path
+            if original_codex_home is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = original_codex_home
             os.environ.pop("FAKE_TMUX_LOG", None)
+            os.environ.pop("FAKE_CODEX_ARGV_LOG", None)
             os.environ.pop("WRAPPER_ARG_LOG", None)
+            os.environ.pop("FAKE_TMUX_CAPTURE_TEXT", None)
 
         assert chosen == "tmux", launch
         assert workspace_mode == "explicit_workspace", launch
         assert workspace.is_dir(), workspace
         assert launch["schema_version"] == "multi_agent_visible_launch_result_v0", launch
         assert launch["codex_trust_workspace"] is True, launch
-        assert launch["codex_trust_scope"] == "per_invocation_selected_workspace", launch
+        assert launch["codex_trust_scope"] == "persisted_selected_workspace_and_git_root", launch
+        assert launch["codex_trust_config"]["trusted_path_count"] >= 1, launch
+        config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
+        assert str(workspace) in config_text, config_text
         skills = launch["worker_skill_materialization"]
         assert skills == [
             {
@@ -439,6 +537,12 @@ def main() -> int:
         assert acceptance["missing_lanes"] == [], acceptance
         assert all(item["accepted"] for item in acceptance["pane_checks"]), acceptance
         assert all(item["interactive_codex_tui_script"] for item in acceptance["pane_checks"]), acceptance
+        assert not any(item["trust_prompt_blocked"] for item in acceptance["pane_checks"]), acceptance
+
+        blocked_acceptance = blocked_launch["visible_acceptance"]
+        assert blocked_acceptance["accepted"] is False, blocked_acceptance
+        assert blocked_acceptance["pane_checks"][0]["trust_prompt_blocked"] is True, blocked_acceptance
+
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["new-window"]) == 1, log_entries
