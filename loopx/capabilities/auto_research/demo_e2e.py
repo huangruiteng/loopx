@@ -378,6 +378,8 @@ def _command_text(
         parts.extend(["--tracking-goal-id", shlex.quote(tracking_goal_id)])
     if execute:
         parts.append("--execute")
+    if run_worker_loop:
+        parts.append("--run-worker-loop")
     if headless:
         parts.append("--headless")
     if launch_visible:
@@ -507,7 +509,7 @@ def _demo_claim_summary(payload: dict[str, object]) -> dict[str, object]:
         "holdout_metric": None,
         "holdout_metric_redacted": False,
         "next_required": (
-            "run --execute to seed a demo-local LoopX queue and execute the worker-loop"
+            "run --execute to seed a demo-local LoopX queue and launch visible Codex lanes"
         ),
     }
 

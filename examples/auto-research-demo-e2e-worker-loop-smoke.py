@@ -237,7 +237,7 @@ def main() -> int:
         assert tonight["leader_agent_required"] is False, tonight
         assert tonight["dev_metric"] == 4.0, tonight
         assert tonight["holdout_metric"] == 4.5, tonight
-        assert "--run-worker-loop" not in tonight["one_command"], tonight
+        assert "--run-worker-loop" in tonight["one_command"], tonight
         assert "--headless" not in tonight["one_command"], tonight
         assert "--headless" in payload["commands"]["headless_worker_loop"], payload
         assert "--no-attach" in payload["commands"]["start_visible_lanes_without_attach"], payload
@@ -287,6 +287,14 @@ def main() -> int:
                         f"visible demo-e2e failed rc={visible.returncode}\nstdout={visible.stdout}\nstderr={visible.stderr}"
                     )
                 visible_payload = json.loads(visible.stdout)
+                assert visible_payload["execution_kind"] == "visible_worker_launch", visible_payload
+                assert visible_payload["result_source"] == "visible_worker_launcher", visible_payload
+                assert "worker_loop" not in visible_payload, visible_payload
+                assert "tonight_experience" not in visible_payload, visible_payload
+                visible_claim = visible_payload["claim_summary"]
+                assert visible_claim["status"] == "visible_worker_queue_started", visible_claim
+                assert visible_claim["dev_metric"] is None, visible_claim
+                assert visible_claim["holdout_metric"] is None, visible_claim
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload
@@ -308,7 +316,9 @@ def main() -> int:
                 assert {item["source_resolution"] for item in skill_items} == {"package_root"}, skill_items
                 assert all(item["materialized"] is True for item in skill_items), skill_items
                 for _attempt in range(40):
-                    if codex_invocations.exists():
+                    if codex_invocations.exists() and codex_invocations.read_text(
+                        encoding="utf-8"
+                    ).count("PWD=") >= 4:
                         break
                     time.sleep(0.25)
                 invocation_text = codex_invocations.read_text(encoding="utf-8")

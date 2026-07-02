@@ -532,9 +532,9 @@ def register_auto_research_commands(
         "--execute",
         action="store_true",
         help=(
-            "Seed a demo-local LoopX goal queue, run role-compatible worker-loop turns through "
-            "quota/frontier/todo writeback, and report measured dev/holdout gains. This still "
-            "requires live evidence before claiming that visible Codex panes authored the result."
+            "Seed a demo-local LoopX goal queue and, by default, launch visible Codex TUI lanes "
+            "that work the frontier from zero. Use --headless or --run-worker-loop for the "
+            "non-interactive worker-loop proof path."
         ),
     )
     demo_e2e_parser.add_argument(
@@ -920,9 +920,7 @@ def handle_auto_research_command(
                         create_workspace=args.create_workspace,
                     )
 
-            run_hidden_worker_loop = bool(
-                args.execute and (args.headless or args.run_worker_loop or launch_visible)
-            )
+            run_hidden_worker_loop = bool(args.execute and (args.headless or args.run_worker_loop))
             payload = run_auto_research_demo_e2e(
                 agent_id=args.agent_id,
                 goal_id=goal_id,
