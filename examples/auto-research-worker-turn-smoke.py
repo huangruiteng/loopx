@@ -18,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.capabilities.auto_research.demo_e2e import _seed_visible_demo_control_plane  # noqa: E402
 from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e  # noqa: E402
-from loopx.capabilities.auto_research.legacy_core import (  # noqa: E402
+from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
     build_auto_research_demo_supervisor_plan,
 )
 
@@ -254,12 +254,12 @@ def main() -> int:
             "research_hypothesis": 1,
         }, executed
         assert executed["live_evidence"]["written"] is True, executed
-        assert executed["live_evidence"]["claim_source"] == "live_codex_lane_output", executed
+        assert executed["live_evidence"]["evidence_source"] == "live_codex_lane_output", executed
         assert executed["live_evidence"]["dev_metric"] == 4.0, executed
         assert executed["frontier"]["frontier"]["selected"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
         assert payload["visible_launch"]["launch_result"]["worker_turn_executed"] is True, payload
         assert payload["visible_launch"]["launch_result"]["worker_turn_count"] == 3, payload
-        assert payload["live_codex_e2e"]["visible_lanes_accepted"] is True, payload
+        assert payload["visible_worker_proof"]["visible_lanes_accepted"] is True, payload
         assert_public_safe(preview)
         assert_public_safe(curator_executed)
         assert_public_safe(mapper_executed)
@@ -298,14 +298,11 @@ def main() -> int:
         )
         assert verifier["schema_version"] == "auto_research_worker_turn_v0", verifier
         assert verifier["mode"] == "execute", verifier
-        assert verifier["selected_action"] == "run_holdout_eval", verifier
-        assert verifier["artifact"]["kind"] == "holdout_validation", verifier
-        assert verifier["artifact_status"] == "holdout_evidence_appended", verifier
-        assert verifier["holdout_metric"] == 4.5, verifier
-        assert verifier["append"]["appended_count"] == 1, verifier
-        assert verifier["evaluation_summary"]["best_dev_metric"] == 4.0, verifier
-        assert verifier["evaluation_summary"]["best_holdout_metric"] == 4.5, verifier
-        assert verifier["evaluation_summary"]["claim_allowed"] is True, verifier
+        assert verifier["selected_action"] == "summarize_evidence", verifier
+        assert verifier["artifact"]["kind"] == "evaluation_summary", verifier
+        assert verifier["artifact_status"] == "evaluation_summary_written", verifier
+        assert verifier["claim_allowed"] is False, verifier
+        assert verifier["promotion_decision_made"] is False, verifier
         assert verifier["completion"]["status"] == "done", verifier
         assert_public_safe(verifier)
 

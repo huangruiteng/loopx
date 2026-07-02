@@ -31,10 +31,8 @@ from .evidence_packet import (
 
 
 AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projection_v0"
-AUTO_RESEARCH_PUBLIC_CLAIM_BOUNDARY_SCHEMA_VERSION = "auto_research_public_claim_boundary_v0"
 RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION = "research_evidence_graph_v0"
 RESEARCH_FRONTIER_SCHEMA_VERSION = "decentralized_research_frontier_v0"
-RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION = "research_showcase_projection_v0"
 ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND = "loopx_rollout_event_log"
 
 
@@ -448,72 +446,6 @@ def build_research_decision_candidates(evidence_graph: dict[str, Any]) -> dict[s
     }
 
 
-def _public_claim_boundary(
-    *,
-    source_kind: str,
-    best_dev: Any,
-    best_holdout: Any,
-) -> dict[str, Any]:
-    dev_metric = _finite_float(best_dev, field="claim_boundary.best_dev")
-    holdout_metric = _finite_float(best_holdout, field="claim_boundary.best_holdout")
-    return {
-        "schema_version": AUTO_RESEARCH_PUBLIC_CLAIM_BOUNDARY_SCHEMA_VERSION,
-        "metric_source_kind": source_kind,
-        "claim_source": "live_codex_e2e",
-        "live_claim_scope": "dev_only" if dev_metric is not None else "none",
-        "dev_metric_present": dev_metric is not None,
-        "holdout_metric_present": holdout_metric is not None,
-        "holdout_result_scope": "rollout_context_only",
-        "holdout_claim_allowed": False,
-        "promotion_result_scope": "candidate_only_not_auto_promoted",
-        "promotion_claim_allowed": False,
-        "first_screen_claim_allowed": False,
-        "blocked_claims": [
-            "live_holdout_result_without_authority",
-            "automatic_promotion",
-            "first_screen_product_claim_without_owner_review",
-        ],
-    }
-
-
-def _minimal_artifact_packet(
-    evidence_graph: dict[str, Any],
-    *,
-    decision_candidates: dict[str, list[dict[str, Any]]],
-) -> dict[str, Any]:
-    source_kind = str(evidence_graph.get("source_kind") or "unknown_source")
-    return {
-        "ok": True,
-        "schema_version": "auto_research_artifact_packet_v0",
-        "goal_id": evidence_graph.get("goal_id"),
-        "source_kind": source_kind,
-        "rollout_backed": source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND,
-        "source_map": [
-            {
-                "source_id": f"hypothesis:{node.get('hypothesis_id')}",
-                "source_kind": node.get("source_kind") or source_kind,
-                "todo_id": node.get("todo_id"),
-                "claimed_by": node.get("claimed_by"),
-                "status": node.get("status"),
-            }
-            for node in evidence_graph.get("nodes") or []
-            if isinstance(node, dict)
-        ],
-        "decision_packet": {
-            "schema_version": "auto_research_decision_packet_v0",
-            "promotion_candidates": decision_candidates["promotion_candidates"],
-            "retirement_candidates": decision_candidates["retirement_candidates"],
-            "requires_operator_gate": bool(decision_candidates["promotion_candidates"]),
-        },
-        "public_boundary": {
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "raw_source_bodies_recorded": False,
-            "source": source_kind,
-        },
-    }
-
-
 def build_live_auto_research_projection(
     *,
     goal_id: str,
@@ -615,12 +547,6 @@ def build_live_auto_research_projection(
         else todo_graph
     )
     decisions = build_research_decision_candidates(evidence_graph)
-    source_kind = str(evidence_graph.get("source_kind") or "loopx_live_quota_status")
-    claim_boundary = _public_claim_boundary(
-        source_kind=source_kind,
-        best_dev=evidence_graph.get("best_dev_metric"),
-        best_holdout=evidence_graph.get("best_holdout_metric"),
-    )
     frontier = {
         "schema_version": RESEARCH_FRONTIER_SCHEMA_VERSION,
         "goal_id": goal,
@@ -632,46 +558,19 @@ def build_live_auto_research_projection(
         "retirement_candidates": decisions["retirement_candidates"],
         "source_kind": "loopx_live_quota_status",
     }
-    graph_metric = evidence_graph.get("metric") if isinstance(evidence_graph.get("metric"), dict) else {}
-    showcase_projection = {
-        "schema_version": RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
-        "title": "LoopX Live Auto Research Frontier",
-        "goal_id": goal,
-        "objective": selected.get("title") if isinstance(selected, dict) else "No runnable hypothesis",
-        "metric": {
-            "name": graph_metric.get("name") or "runnable_hypotheses",
-            "direction": graph_metric.get("direction") or "maximize",
-            "baseline": graph_metric.get("baseline") or 0.0,
-        },
-        "best_dev_metric": evidence_graph.get("best_dev_metric"),
-        "best_holdout_metric": evidence_graph.get("best_holdout_metric"),
-        "holdout_improved": evidence_graph.get("holdout_improved"),
-        "promotion_candidates": decisions["promotion_candidates"],
-        "retirement_candidates": decisions["retirement_candidates"],
-        "negative_evidence_count": evidence_graph.get("negative_evidence_count"),
-        "claim_boundary": claim_boundary,
-        "decentralized_pattern": (
-            "todo_backed_live_frontier_rollout_evidence_graph"
-            if source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
-            else "todo_backed_live_frontier_agent_scoped_quota_projection"
-        ),
-        "source_kind": source_kind,
-    }
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
         "source_schema_version": "loopx_live_quota_status_v0",
         "frontier": frontier,
         "evidence_graph": evidence_graph,
-        "showcase_projection": showcase_projection,
-        "artifact_packet": _minimal_artifact_packet(evidence_graph, decision_candidates=decisions),
-        "public_claim_boundary": claim_boundary,
+        "decision_candidates": decisions,
         "public_boundary": {
             "raw_logs_recorded": False,
             "private_artifacts_recorded": False,
             "source": (
                 "live_quota_status_and_rollout_event_log"
-                if source_kind == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
+                if evidence_graph.get("source_kind") == ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND
                 else "live_quota_status_projection"
             ),
         },

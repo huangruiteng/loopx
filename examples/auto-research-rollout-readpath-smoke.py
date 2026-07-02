@@ -16,10 +16,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.auto_research.legacy_core import (  # noqa: E402
-    build_live_auto_research_projection,
     build_research_decision_candidates,
     build_research_evidence_graph_from_records,
     build_research_evidence_graph_from_rollout_events,
+)
+from loopx.capabilities.auto_research.research_state import (  # noqa: E402
+    build_live_auto_research_projection,
 )
 from loopx.rollout_event_log import load_rollout_events, rollout_event_log_path  # noqa: E402
 
@@ -152,50 +154,6 @@ def frontier_projection(registry: Path) -> dict[str, Any]:
             GOAL_ID,
             "--agent-id",
             "codex-side-bypass",
-        ]
-    )
-
-
-def board_projection(registry: Path) -> dict[str, Any]:
-    return run_json(
-        [
-            "-m",
-            "loopx.cli",
-            "--registry",
-            str(registry),
-            "--format",
-            "json",
-            "auto-research",
-            "board",
-            "--goal-id",
-            GOAL_ID,
-            "--agent-id",
-            "codex-side-bypass",
-        ]
-    )
-
-
-def acceptance_projection(registry: Path) -> dict[str, Any]:
-    return run_json(
-        [
-            "-m",
-            "loopx.cli",
-            "--registry",
-            str(registry),
-            "--format",
-            "json",
-            "auto-research",
-            "acceptance",
-            "--goal-id",
-            GOAL_ID,
-            "--agent-id",
-            "codex-side-bypass",
-            "--agent",
-            "codex-side-bypass:hypothesis-runner",
-            "--agent",
-            "codex-product-capability:evidence-promoter",
-            "--agent",
-            "codex-main-control:control-plane-guard",
         ]
     )
 
@@ -377,13 +335,8 @@ def main() -> None:
             "hyp_pack_partial_selection"
         ), live_payload
         assert live_payload["frontier"]["retirement_candidates"] == [], live_payload
-        assert live_payload["showcase_projection"]["best_holdout_metric"] == graph["best_holdout_metric"], live_payload
-        assert live_payload["showcase_projection"]["promotion_candidates"] == (
-            live_payload["frontier"]["promotion_candidates"]
-        ), live_payload
-        assert live_payload["showcase_projection"]["decentralized_pattern"] == (
-            "todo_backed_live_frontier_rollout_evidence_graph"
-        ), live_payload
+        assert "showcase_projection" not in live_payload, live_payload
+        assert "artifact_packet" not in live_payload, live_payload
         assert live_payload["public_boundary"]["source"] == "live_quota_status_and_rollout_event_log", live_payload
         assert_public_safe(live_payload)
 
@@ -396,37 +349,9 @@ def main() -> None:
             "boundary_scan",
             "promotion_decision",
         ], cli_payload
-        assert cli_payload["showcase_projection"]["best_holdout_metric"] == graph["best_holdout_metric"], cli_payload
+        assert "showcase_projection" not in cli_payload, cli_payload
+        assert "artifact_packet" not in cli_payload, cli_payload
         assert_public_safe(cli_payload)
-
-        board_payload = board_projection(registry)
-        assert board_payload["ok"], board_payload
-        assert board_payload["schema_version"] == "auto_research_frontstage_board_v0", board_payload
-        assert board_payload["projection_binding"]["read_only"] is True, board_payload
-        assert board_payload["projection_binding"]["source_kind"] == "loopx_rollout_event_log", board_payload
-        assert board_payload["projection_binding"]["rollout_backed"] is True, board_payload
-        assert board_payload["projection_binding"]["first_screen_policy"] == (
-            "experimental_only_not_first_screen_without_owner_review"
-        ), board_payload
-        assert board_payload["artifact_packet"]["rollout_backed"] is True, board_payload
-        assert board_payload["decision_candidates"]["promotion_candidates"], board_payload
-        assert len(board_payload["user_gates"]) >= 4, board_payload
-        assert_public_safe(board_payload)
-
-        acceptance_payload = acceptance_projection(registry)
-        assert acceptance_payload["ok"], acceptance_payload
-        assert acceptance_payload["schema_version"] == "auto_research_demo_acceptance_packet_v0", acceptance_payload
-        assert acceptance_payload["board_output"]["source_kind"] == "loopx_rollout_event_log", acceptance_payload
-        assert acceptance_payload["board_output"]["rollout_backed"] is True, acceptance_payload
-        assert acceptance_payload["supervisor_rehearsal"]["mode"] == "dry_run", acceptance_payload
-        assert acceptance_payload["readiness_summary"]["operator_can_review_now"] is True, acceptance_payload
-        assert acceptance_payload["readiness_summary"]["ready_for_real_launch"] is True, acceptance_payload
-        assert acceptance_payload["readiness_summary"]["ready_for_public_first_screen"] is False, acceptance_payload
-        assert acceptance_payload["public_boundary"]["starts_tmux"] is False, acceptance_payload
-        assert acceptance_payload["public_boundary"]["runs_codex"] is False, acceptance_payload
-        assert acceptance_payload["public_boundary"]["writes_loopx_state"] is False, acceptance_payload
-        assert acceptance_payload["public_boundary"]["spends_loopx_quota"] is False, acceptance_payload
-        assert_public_safe(acceptance_payload)
 
     print("auto-research-rollout-readpath-smoke ok")
 

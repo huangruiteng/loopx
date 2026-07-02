@@ -892,12 +892,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             {
                 "command": "python3 examples/decentralized-auto-research-frontier-smoke.py",
                 "tier": "default",
-                "reason": "checks shared frontier, evidence graph, board projection, and public boundary fixtures",
-            },
-            {
-                "command": "python3 examples/auto-research-live-codex-claim-boundary-smoke.py",
-                "tier": "deep",
-                "reason": "guards that live E2E claims stay dev-only unless held-out or promotion authority is explicit",
+                "reason": "checks shared frontier, evidence graph, and public boundary fixtures",
             },
             {
                 "command": "python3 examples/auto-research-demo-supervisor-smoke.py",

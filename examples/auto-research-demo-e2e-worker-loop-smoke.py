@@ -40,22 +40,17 @@ def main() -> int:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.capabilities.auto_research.legacy_core import render_auto_research_markdown
 
-    bootstrap_source = (
-        REPO_ROOT / "loopx/capabilities/auto_research/legacy_core.py"
-    ).read_text(encoding="utf-8")
-    assert "--format json auto-research worker-turn" not in bootstrap_source
-    assert "--format json auto-research worker-loop" not in bootstrap_source
-    assert "auto-research worker-turn --format markdown" in bootstrap_source
-    assert "Do not call bare `loopx`" in bootstrap_source
-    assert "Use loopx-project" not in bootstrap_source
-    assert "read that local JSON profile" not in bootstrap_source
-    assert "Do not print, cat, or sed `$LOOPX_ROLE_PROFILE_PATH`" in bootstrap_source
-    assert "Do not run `--help`" in bootstrap_source
-    assert "prefer `$LOOPX_PANE_A2A_TICK` as the human-facing polling command" in bootstrap_source
-    assert '"$LOOPX_PANE_A2A_TICK"' in bootstrap_source
-    assert "LOOPX_PANE_WORKER_TURN" in bootstrap_source
-    assert "rewrites accidental visible `--format json` to markdown" in bootstrap_source
-    assert "$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json" in bootstrap_source
+    launcher_source = (REPO_ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
+        encoding="utf-8"
+    )
+    assert "raw JSON is not printed in visible panes" in launcher_source
+    assert "Use $LOOPX_PANE_LOOPX for human-readable output" in launcher_source
+    assert "$LOOPX_PANE_LOOPX_JSON ... --format json > .local/<role>/<name>.public.json" in launcher_source
+    assert "LOOPX_PANE_WORKER_TURN" in launcher_source
+    assert "loopx-pane-a2a-tick" in launcher_source
+    assert "role_prompt_inside_codex_tui" in launcher_source
+    assert "model_reasoning_effort" in launcher_source
+    assert "codex_stream_filter" not in launcher_source
 
     worker_markdown = render_auto_research_markdown(
         {
@@ -228,25 +223,26 @@ def main() -> int:
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
-            "run_holdout_eval",
+            "summarize_evidence",
         ], payload
         assert worker_loop["stop_reason"] == "no_runnable_frontier", payload
         tonight = payload["tonight_experience"]
         assert tonight["ready"] is True, tonight
         assert tonight["positive_result"] is True, tonight
+        assert tonight["positive_result_basis"] == "public_safe_dev_evidence", tonight
         assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight
         assert tonight["workflow_model"] == "state_projected_frontier_not_dynamic_workflow", tonight
         assert tonight["leader_agent_required"] is False, tonight
         assert tonight["dev_metric"] == 4.0, tonight
-        assert tonight["holdout_metric"] == 4.5, tonight
+        assert tonight["holdout_metric"] is None, tonight
         assert "--run-worker-loop" in tonight["one_command"], tonight
         assert "--headless" not in tonight["one_command"], tonight
         assert "--headless" in payload["commands"]["headless_worker_loop"], payload
         assert "--no-attach" in payload["commands"]["start_visible_lanes_without_attach"], payload
-        claim = payload["claim_summary"]
-        assert claim["status"] == "loopx_worker_loop_positive", claim
-        assert claim["can_claim"] == ["one_command_loopx_worker_loop_positive_result"], claim
-        assert "visible_codex_tui_authored_result" in claim["cannot_claim"], claim
+        visible_proof = payload["visible_worker_proof"]
+        assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
+        assert visible_proof["lane_authored_evidence_loaded"] is False, visible_proof
+        assert visible_proof["visible_lanes_launched"] is False, visible_proof
         removed_replay_source = "deterministic_" + "protected_eval_kernel"
         assert removed_replay_source not in json.dumps(payload, sort_keys=True), payload
         assert_public_safe(payload)
@@ -293,10 +289,10 @@ def main() -> int:
                 assert visible_payload["result_source"] == "visible_worker_launcher", visible_payload
                 assert "worker_loop" not in visible_payload, visible_payload
                 assert "tonight_experience" not in visible_payload, visible_payload
-                visible_claim = visible_payload["claim_summary"]
-                assert visible_claim["status"] == "visible_worker_queue_started", visible_claim
-                assert visible_claim["dev_metric"] is None, visible_claim
-                assert visible_claim["holdout_metric"] is None, visible_claim
+                visible_proof = visible_payload["visible_worker_proof"]
+                assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
+                assert visible_proof["lane_authored_evidence_loaded"] is False, visible_proof
+                assert visible_proof["visible_lanes_launched"] is True, visible_proof
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload
@@ -314,6 +310,7 @@ def main() -> int:
                 assert workspace_route["default_visible_workspace"] == "demo_owned_clean_workspace", workspace_route
                 acceptance = launch["visible_acceptance"]
                 assert acceptance["accepted"] is True, visible_payload
+                assert visible_proof["visible_lanes_accepted"] is True, visible_proof
                 assert all(not item["blocked_before_bootstrap"] for item in acceptance["pane_checks"]), acceptance
                 assert all(item["interactive_codex_tui_script"] for item in acceptance["pane_checks"]), acceptance
                 skill_items = launch["worker_skill_materialization"]

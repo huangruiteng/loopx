@@ -143,6 +143,18 @@ def assert_evidence_packet_boundary() -> None:
     assert "from .evidence_packet import load_auto_research_evidence_packet_inputs" in cli_text
     assert "from .quickstart_seed import (" in cli_text
     assert "from .research_state import build_live_auto_research_projection" in cli_text
+    for removed_surface in (
+        "build_auto_research_board_projection",
+        "build_auto_research_demo_acceptance_packet",
+        "build_research_artifact_packet",
+        "build_research_showcase_projection",
+        "AUTO_RESEARCH_BOARD_SCHEMA_VERSION",
+        "AUTO_RESEARCH_DEMO_ACCEPTANCE_PACKET_SCHEMA_VERSION",
+        "RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION",
+        "AUTO_RESEARCH_PUBLIC_CLAIM_BOUNDARY_SCHEMA_VERSION",
+    ):
+        assert removed_surface not in legacy_text, removed_surface
+        assert removed_surface not in cli_text, removed_surface
 
 
 def main() -> None:
@@ -208,6 +220,8 @@ def main() -> None:
         stderr=subprocess.PIPE,
     )
     assert "lite-e2e" not in help_result.stdout
+    assert " board " not in help_result.stdout
+    assert " acceptance " not in help_result.stdout
 
 
 if __name__ == "__main__":

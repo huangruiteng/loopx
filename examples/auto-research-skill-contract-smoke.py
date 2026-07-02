@@ -77,7 +77,7 @@ def main() -> int:
         "research_contract_v0",
         "research_hypothesis_v0",
         "auto_research_evidence_packet_v0",
-        "research_showcase_projection_v0",
+        "research_evidence_graph_v0",
         "quota should-run",
         "demo-supervisor",
         "--execute",

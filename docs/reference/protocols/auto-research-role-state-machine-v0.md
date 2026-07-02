@@ -15,7 +15,7 @@ The auto-research kernel is intentionally split into three protocol surfaces:
 
 | Contract | Owns | Does not own |
 | --- | --- | --- |
-| `decentralized_auto_research_state_v0` | Record and projection shapes: contract, todo-linked hypothesis, evidence event, frontier, evidence graph, showcase projection. | Which role may write each transition. |
+| `decentralized_auto_research_state_v0` | Record and projection shapes: contract, todo-linked hypothesis, evidence event, frontier, evidence graph, evidence graph projection. | Which role may write each transition. |
 | `auto_research_lane_contract_v1` | Capability ownership for curator, proposer, executor, evaluator, and narrator lanes. | The ordered state machine and transition evidence. |
 | `auto_research_role_state_machine_v0` | Digital employee role map, state transition rules, takeover gates, and no-leader invariants. | Runtime scheduling, model prompts, or hidden orchestration. |
 | `auto_research_role_profile_v0` | Per-worker identity packet: `agent_id`, role, phase, capability, write scope, required skill section, AGENTS overlay, and stop conditions. | Research source records, phase checklist prose, or authority beyond quota/frontier. |
@@ -32,7 +32,7 @@ cleanup are transition duties rather than separate permanent workers.
 
 | Role | Capability token | Primary job | May write | Must not |
 | --- | --- | --- | --- | --- |
-| Research curator | `research_curator` | Keep the objective, editable scope, protected scope, metric, stop policy, and operator gates explicit. | `research_contract_v0`, protected-boundary notes, owner gate todos, public projection requests. | Pick winners, run experiments, or publish unsupported showcase claims. |
+| Research curator | `research_curator` | Keep the objective, editable scope, protected scope, metric, stop policy, and operator gates explicit. | `research_contract_v0`, protected-boundary notes, owner gate todos, public projection requests. | Pick winners, run experiments, or publish unsupported claims. |
 | Hypothesis mapper | `hypothesis_mapper` | Turn research ideas into todo-backed hypotheses, parent links, mechanism families, and bounded retire/successor decisions. | `research_hypothesis_v0`, successor todos, grounding refs, no-follow-up rationale. | Claim novelty from the same source used to ideate or delete negative evidence. |
 | Evidence runner | `evidence_runner` | Execute one selected hypothesis in an isolated worktree and preserve scored or unscored attempt evidence. | branch refs, `research_evidence_event_v0`, retry packets. | Edit protected scope, hide failures, or promote results. |
 | Evidence verifier | `evidence_verifier` | Run contract-authorized held-out validation, then classify evidence as supported, contradicted, retry-needed, promotion-ready, or retirement-ready. | held-out evidence, evaluation summary, promotion candidate, retirement candidate, gate todo, projection-ready evidence. | Treat dev-only lift as promoted or override missing held-out evidence. |
@@ -55,7 +55,7 @@ reintroducing a leader or coordinator agent.
 | Future role | Current v0 duty | Split trigger | Still must not |
 | --- | --- | --- | --- |
 | Gate steward | Research curator plus evidence verifier handle `operator_gate` and `promotion_gate` transitions. | Gates become frequent enough that wait reasons, owner questions, and unblock evidence need independent monitoring. | Approve its own gate, bypass owner decisions, or select experiments. |
-| Synthesis narrator | Read-only projection builder creates `research_showcase_projection_v0` from promoted/retired evidence. | Users need a continuously updated report lane that summarizes evidence without slowing runners or verifiers. | Certify scores, hide negative evidence, or mutate source records. |
+| Synthesis narrator | Read-only projection builder creates `research_evidence_graph_v0` from promoted/retired evidence. | Users need a continuously updated report lane that summarizes evidence without slowing runners or verifiers. | Certify scores, hide negative evidence, or mutate source records. |
 | Frontier janitor | Hypothesis mapper and evidence verifier retire duplicates, exhausted retries, and no-follow-up branches. | The frontier grows large enough that stale hypotheses crowd out active research. | Delete evidence, rewrite todo ownership, or prune without a public rationale. |
 
 Promoting any future role requires a smoke update that proves the role is a
@@ -78,8 +78,8 @@ over the full graph.
 | `needs_retry` | Attempt is inconclusive but resumable from a ref or clearly bounded retry. | `frontier_selected`, `retired` |
 | `contradicted` | Evidence shows regression, correctness failure, or guardrail failure. | `retired`, `hypothesis_proposed` |
 | `promotion_gate` | Promotion requires held-out evidence, owner decision, merge gate, or public-boundary review. | `promoted`, `retired`, `operator_gate` |
-| `promoted` | Promotion policy accepted the result into the current best artifact. | `research_showcase_projection_v0` |
-| `retired` | The direction is no longer active; negative evidence remains queryable. | `research_showcase_projection_v0` |
+| `promoted` | Promotion policy accepted the result into the current best artifact. | `research_evidence_graph_v0` |
+| `retired` | The direction is no longer active; negative evidence remains queryable. | `research_evidence_graph_v0` |
 
 ## State Machine
 
@@ -97,7 +97,7 @@ flowchart TD
   Gate["promotion_gate"]
   Promoted["promoted"]
   Retired["retired"]
-  Showcase["research_showcase_projection_v0"]
+  Showcase["research_evidence_graph_v0"]
 
   Contract --> Proposed
   Proposed --> Selected
@@ -139,7 +139,7 @@ flowchart TD
 | `evaluated -> promotion_gate` | Evidence verifier | holdout candidate, clean boundary, pending owner/merge/publication decision. |
 | `promotion_gate -> promoted` | Research curator plus evidence verifier | held-out evidence when required, clean boundary, and applicable operator gate accepted. |
 | `supported|contradicted|needs_retry -> retired` | Hypothesis mapper plus evidence verifier | negative evidence, retry exhaustion, duplicate proof, or no-follow-up rationale. |
-| `promoted|retired -> research_showcase_projection_v0` | Read-only projection builder | projection refs only; no direct mutation of source records. |
+| `promoted|retired -> research_evidence_graph_v0` | Read-only projection builder | projection refs only; no direct mutation of source records. |
 
 ## No-Leader Invariants
 
@@ -147,7 +147,7 @@ flowchart TD
 - `quota should-run --agent-id ...` selects only the current agent frontier.
 - Every executable hypothesis remains backed by a `todo_id` and `claimed_by`.
 - Promotion is evidence plus gate policy, not a persuasive summary.
-- Public narration reads `research_showcase_projection_v0`; it does not
+- Public narration reads `research_evidence_graph_v0`; it does not
   certify scores or mutate source state.
 - Gate handling is a transition duty; no role can bypass an operator gate.
 - Failed, contradicted, and retry-exhausted attempts stay visible as negative

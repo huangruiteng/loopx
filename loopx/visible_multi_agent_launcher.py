@@ -586,6 +586,10 @@ def build_visible_multi_agent_payload_from_spec(
             or ""
         ).strip()
         responsibility = str(raw_role.get("responsibility") or scope or role_id).strip()
+        role_profile_ref = str(
+            raw_role.get("role_profile_ref")
+            or f"generic_multi_agent_launch_spec_v0:{role_id}"
+        ).strip()
         handoff_hints = _as_string_list(
             raw_role.get("handoff")
             or raw_role.get("handoff_hints")
@@ -603,6 +607,9 @@ def build_visible_multi_agent_payload_from_spec(
             "responsibility": responsibility,
             "handoff_hints": handoff_hints,
         }
+        extra_profile = raw_role.get("role_profile")
+        if isinstance(extra_profile, dict):
+            role_profile.update(extra_profile)
         role_profile.update(skill_profile)
         lane_slug = _script_slug(lane_id)
         role_profile_json = json.dumps(role_profile, ensure_ascii=False, sort_keys=True)
@@ -628,7 +635,7 @@ def build_visible_multi_agent_payload_from_spec(
             "agent_scope": scope,
             "handoff_hints": handoff_hints,
             "role_profile": role_profile,
-            "role_profile_ref": f"generic_multi_agent_launch_spec_v0:{role_id}",
+            "role_profile_ref": role_profile_ref,
             "quota_guard": (
                 "$LOOPX_PANE_LOOPX_JSON quota should-run "
                 f"--goal-id {_q(goal_id)} --agent-id {_q(agent_id)} "
@@ -643,7 +650,7 @@ def build_visible_multi_agent_payload_from_spec(
             "bootstrap_message": "role_prompt_inside_codex_tui",
             "visible_launch_command": build_visible_lane_command(
                 role_id=role_id,
-                role_profile_ref=f"generic_multi_agent_launch_spec_v0:{role_id}",
+                role_profile_ref=role_profile_ref,
                 role_profile_command=role_profile_command,
                 bootstrap_command=bootstrap_command,
                 codex_bin=codex_bin,

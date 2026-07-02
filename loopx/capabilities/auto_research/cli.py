@@ -8,13 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .legacy_core import (
-    build_auto_research_board_projection,
-    build_auto_research_demo_acceptance_packet,
-    build_auto_research_demo_supervisor_plan,
     build_auto_research_projection,
     load_auto_research_fixture,
     render_auto_research_markdown,
 )
+from .demo_supervisor import build_auto_research_demo_supervisor_plan
 from .evidence_packet import load_auto_research_evidence_packet_inputs
 from .quickstart_seed import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
@@ -142,66 +140,6 @@ def register_auto_research_commands(
         "--agent-id",
         required=True,
         help="Agent id whose runnable frontier should be projected.",
-    )
-
-    board_parser = auto_research_sub.add_parser(
-        "board",
-        help="Render a read-only Frontstage board packet from a fixture or live LoopX rollout projection.",
-    )
-    add_subcommand_format(board_parser)
-    board_parser.add_argument(
-        "--fixture",
-        help="Path to a decentralized_auto_research_fixture_v0 JSON file.",
-    )
-    board_parser.add_argument(
-        "--goal-id",
-        help="Goal id for live LoopX quota/status input. Mutually exclusive with --fixture.",
-    )
-    board_parser.add_argument(
-        "--agent-id",
-        required=True,
-        help="Agent id whose board/frontier should be projected.",
-    )
-
-    acceptance_parser = auto_research_sub.add_parser(
-        "acceptance",
-        help="Render an operator acceptance packet that links board output, dry-run supervisor, and takeover checks.",
-    )
-    add_subcommand_format(acceptance_parser)
-    acceptance_parser.add_argument(
-        "--fixture",
-        help="Path to a decentralized_auto_research_fixture_v0 JSON file.",
-    )
-    acceptance_parser.add_argument(
-        "--goal-id",
-        help="Goal id for live LoopX quota/status input. Mutually exclusive with --fixture.",
-    )
-    acceptance_parser.add_argument(
-        "--agent-id",
-        required=True,
-        help="Agent id whose board/frontier should be projected.",
-    )
-    acceptance_parser.add_argument(
-        "--agent",
-        action="append",
-        default=[],
-        help=(
-            "Supervisor agent/lane pair as agent_id:lane_id. Repeat for each visible lane. "
-            "Omit to use the default LoopX auto-research demo lane set."
-        ),
-    )
-    acceptance_parser.add_argument(
-        "--session-name",
-        default="loopx-auto-research",
-        help="Public-safe tmux session name for the dry-run supervisor packet.",
-    )
-    acceptance_parser.add_argument("--cli-bin", default="loopx", help="LoopX CLI executable name.")
-    acceptance_parser.add_argument("--codex-bin", default="codex", help="Codex CLI executable name.")
-    acceptance_parser.add_argument("--tmux-bin", default="tmux", help="tmux executable name.")
-    acceptance_parser.add_argument(
-        "--reasoning-effort",
-        default="high",
-        help="Reasoning effort passed to visible Codex lanes in the demo supervisor packet.",
     )
 
     evidence_parser = auto_research_sub.add_parser(
@@ -492,7 +430,7 @@ def register_auto_research_commands(
         "demo-e2e",
         help=(
             "Run or preview the one-command multi-round k-NN research path and "
-            "report board/acceptance truth boundaries."
+            "launch visible Codex TUI lanes or a headless worker-loop proof."
         ),
     )
     add_subcommand_format(demo_e2e_parser)
@@ -577,7 +515,7 @@ def register_auto_research_commands(
         "--live-evidence",
         help=(
             "Path to compact public-safe live Codex lane evidence. "
-            "Only this can flip live_codex_e2e.claim_allowed; raw transcripts are not read."
+            "Raw transcripts are not read."
         ),
     )
     demo_e2e_parser.add_argument(
@@ -729,7 +667,7 @@ def handle_auto_research_command(
                 execute=args.execute,
                 cwd=Path.cwd(),
             )
-        elif args.auto_research_command in {"frontier", "board", "acceptance"}:
+        elif args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):
                 raise ValueError(f"auto-research {args.auto_research_command} requires exactly one of --fixture or --goal-id")
             if args.fixture:
@@ -761,19 +699,6 @@ def handle_auto_research_command(
                     quota_payload=quota_payload,
                     rollout_events=rollout_events,
                 )
-            if args.auto_research_command in {"board", "acceptance"}:
-                payload = build_auto_research_board_projection(payload)
-            if args.auto_research_command == "acceptance":
-                supervisor = build_auto_research_demo_supervisor_plan(
-                    goal_id=args.goal_id or payload["research_contract"]["goal_id"],
-                    agent_specs=args.agent,
-                    session_name=args.session_name,
-                    cli_bin=args.cli_bin,
-                    codex_bin=args.codex_bin,
-                    tmux_bin=args.tmux_bin,
-                    reasoning_effort=args.reasoning_effort,
-                )
-                payload = build_auto_research_demo_acceptance_packet(payload, supervisor)
         elif args.auto_research_command == "evidence":
             payload = load_auto_research_evidence_packet_inputs(
                 contract_path=args.contract,
@@ -993,7 +918,7 @@ def handle_auto_research_command(
         else:
             raise ValueError(
                 "auto-research requires the `quickstart`, `frontier`, `evidence`, "
-                "`board`, `acceptance`, `append-evidence`, `capture-live-evidence`, "
+                "`append-evidence`, `capture-live-evidence`, "
                 "`worker-turn`, `worker-loop`, `demo-supervisor`, or `demo-e2e` subcommand"
             )
     except Exception as exc:

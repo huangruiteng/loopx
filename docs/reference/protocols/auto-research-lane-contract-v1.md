@@ -26,7 +26,7 @@ research loop while LoopX stays decentralized?
 | Hypothesis proposer | `hypothesis_proposer` | Proposes grounded, todo-backed hypotheses and parent-child refinements. | `research_hypothesis_v0`, agent todos, grounding refs. | Claim novelty from the same material used for ideation. |
 | Executor | `research_executor` | Runs one claimed hypothesis in an isolated worktree and produces split-aware results. | branch refs, eval result projections, `auto_research_evidence_packet_v0`. | Mutate protected scope, promote results, or hide failed attempts. |
 | Evaluator / promoter | `evaluator_promoter` | Converts scored attempts into promotion, retry, or retirement candidates under the contract policy. | `research_evidence_event_v0`, promotion or retirement candidate projections, gate todos. | Treat dev-only lift as promoted evidence or bypass owner gates. |
-| Product narrator | `product_narrator` | Renders the public-safe case story from projections for Frontstage/showcase surfaces. | `research_showcase_projection_v0`, public docs, screenshots after first-screen review when needed. | Invent metrics, read private source bodies, or mutate source state. |
+| Product narrator | `product_narrator` | Renders the public-safe case story from projections for downstream product surfaces. | `research_evidence_graph_v0`, public docs, screenshots after first-screen review when needed. | Invent metrics, read private source bodies, or mutate source state. |
 
 No lane is privileged. A single Codex session may implement more than one role
 when it has the matching todo claim and boundary, but the graph must still show
@@ -66,7 +66,7 @@ flowchart LR
   Evidence["research_evidence_event_v0"]
   Graph["research_evidence_graph_v0"]
   Frontier["decentralized_research_frontier_v0"]
-  Showcase["research_showcase_projection_v0"]
+  Showcase["research_evidence_graph_v0"]
 
   Contract --> Hypothesis
   Todo --> Hypothesis
@@ -91,7 +91,7 @@ projection builders derive frontiers and product views afterward.
    agent-scoped quota or an explicitly claimed successor todo.
 4. An `evaluator_promoter` may promote only when dev evidence, held-out
    evidence, clean boundary, and required gates are present.
-5. A `product_narrator` may publish only from `research_showcase_projection_v0`
+5. A `product_narrator` may publish only from `research_evidence_graph_v0`
    and related public-safe refs; first-screen public surface changes still obey
    the first-screen review gate.
 

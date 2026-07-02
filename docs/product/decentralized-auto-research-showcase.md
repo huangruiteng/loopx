@@ -49,7 +49,7 @@ The executable product contract is split into three peer artifacts:
 
 - `decentralized_auto_research_state_v0` defines the records and projections:
   contracts, todo-linked hypotheses, evidence events, frontier, evidence graph,
-  and showcase projection.
+  and compact decision candidates.
 - `auto_research_lane_contract_v1` defines decentralized lanes: curator,
   hypothesis proposer, executor, evaluator/promoter, and product narrator. Each
   lane contributes typed records through claims and gates; none owns the whole
@@ -188,9 +188,9 @@ loopx --format json auto-research frontier \
 ```
 
 This renders `decentralized_research_frontier_v0`,
-`research_evidence_graph_v0`, and `research_showcase_projection_v0` from a
-public fixture. It does not launch experiments; it proves that the state shape
-can present a per-agent frontier without one leader agent.
+`research_evidence_graph_v0`, and compact decision candidates from a public
+fixture. It does not launch experiments; it proves that the state shape can
+present a per-agent frontier without one leader agent.
 
 The protected evaluator outputs can also be converted into public-safe evidence
 records:
@@ -227,28 +227,19 @@ The append step writes one `research_hypothesis` rollout event and one
 `research_evidence` event per split. It skips existing event ids on retry, which
 keeps heartbeat-driven lanes replayable.
 
-After rollout evidence exists, the frontier packet also returns
-`auto_research_artifact_packet_v0`: a read-only artifact chain for the
-user-facing research answer. It carries the question, source map, claim ledger,
-contradiction review, citation packet, and decision packet derived from
-`research_evidence_graph_v0`. For real demos this should be rollout-backed, not
-fixture-only, so every claim can point back to LoopX rollout/evidence events
-without exposing raw logs or private source bodies.
-
-The experimental Frontstage board is also available as a read-only packet. It
-wraps the same frontier/evidence/artifact projection with product-facing value
-metrics, user gates, and the first-screen policy, so the dashboard is not a
-second source of truth:
+After rollout evidence exists, the frontier read path exposes the compact
+`research_evidence_graph_v0` plus promotion, retirement, and retry candidates.
+That graph is the only durable research read model in the kernel; product
+surfaces may consume it later, but they are not part of the auto-research
+control loop.
 
 ```bash
-loopx --format json auto-research board \
+loopx --format json auto-research frontier \
   --goal-id loopx-auto-research-knn \
   --agent-id codex-side-bypass
 ```
 
-For fixture rehearsals, use `--fixture` instead of `--goal-id`. In both modes
-the board must remain experimental and must not take over README, hosted
-frontstage home, showcase index, hero, or primary CTA without owner review.
+For fixture rehearsals, use `--fixture` instead of `--goal-id`.
 
 ## Local Demo Supervisor
 
@@ -425,7 +416,7 @@ P0 candidates:
 - **Retry semantics.** Add `needs_retry` as a reusable outcome for
   incomplete/unscored research attempts, preserving branch/evidence refs.
 - **Split-aware evidence.** Make dev/held-out split labels first-class in
-  evidence events and showcase projections.
+  evidence events and evidence graph projections.
 
 P1 candidates:
 

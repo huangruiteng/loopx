@@ -313,30 +313,19 @@ def main() -> int:
             cwd=workspace,
         )
         claimed_payload = json.loads(claimed.stdout)
-        live = claimed_payload["live_codex_e2e"]
-        claim_summary = claimed_payload["claim_summary"]
-        assert live["executed"] is True, claimed_payload
-        assert live["claim_allowed"] is True, claimed_payload
-        assert live["evidence_source"] == "live_codex_lane_output", claimed_payload
+        proof = claimed_payload["visible_worker_proof"]
+        live = claimed_payload["live_worker_evidence"]
+        assert proof["lane_authored_evidence_loaded"] is True, claimed_payload
+        assert proof["visible_lanes_launched"] is True, claimed_payload
+        assert proof["visible_lanes_accepted"] is True, claimed_payload
+        assert proof["evidence_source"] == "live_worker_evidence", claimed_payload
+        assert live["loaded"] is True, claimed_payload
+        assert live["source"] == "live_codex_lane_output", claimed_payload
         assert live["evidence_event_count"] == 2, claimed_payload
         assert live["dev_metric"] == 4.0, claimed_payload
-        assert live["claim_scope"] == "dev_only", claimed_payload
-        assert live["dev_claim_allowed"] is True, claimed_payload
-        assert live["holdout_claim_allowed"] is False, claimed_payload
-        assert live["promotion_claim_allowed"] is False, claimed_payload
-        assert live["holdout_metric"] is None, claimed_payload
-        assert live["holdout_metric_present"] is True, claimed_payload
-        assert live["holdout_metric_redacted"] is True, claimed_payload
-        assert claim_summary["status"] == "live_worker_dev_evidence_ready", claimed_payload
-        assert claim_summary["claim_basis"] == "live_codex_lane_output", claimed_payload
-        assert claim_summary["live_worker_claim_allowed"] is True, claimed_payload
-        assert claim_summary["live_worker_authored"] is True, claimed_payload
-        assert claim_summary["can_claim"] == ["visible_worker_live_dev_evidence_supported"], claimed_payload
-        assert "live_holdout_metric_or_claim" in claim_summary["cannot_claim"], claimed_payload
-        assert "automatic_promotion_success" in claim_summary["cannot_claim"], claimed_payload
-        assert claim_summary["dev_metric"] == 4.0, claimed_payload
-        assert claim_summary["holdout_metric"] is None, claimed_payload
-        assert claim_summary["holdout_metric_redacted"] is True, claimed_payload
+        assert live["holdout_metric"] == 4.5, claimed_payload
+        assert "live_codex_e2e" not in claimed_payload, claimed_payload
+        assert "claim_summary" not in claimed_payload, claimed_payload
         assert_public_safe(claimed_payload)
 
     print("auto-research-live-evidence-capture-smoke ok")

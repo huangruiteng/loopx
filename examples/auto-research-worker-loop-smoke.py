@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.auto_research.demo_e2e import _seed_visible_demo_control_plane  # noqa: E402
-from loopx.capabilities.auto_research.legacy_core import (  # noqa: E402
+from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
     build_auto_research_demo_supervisor_plan,
 )
 
@@ -123,7 +123,7 @@ def main() -> int:
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
-            "run_holdout_eval",
+            "summarize_evidence",
         ], payload
         evidence_turn = next(
             turn for turn in payload["turns"] if turn.get("selected_action") == "run_dev_eval"
@@ -132,12 +132,11 @@ def main() -> int:
         assert evidence_turn["appended_count"] == 2, evidence_turn
         assert evidence_turn["live_evidence_written"] is True, evidence_turn
         verifier_turn = next(
-            turn for turn in payload["turns"] if turn.get("selected_action") == "run_holdout_eval"
+            turn for turn in payload["turns"] if turn.get("selected_action") == "summarize_evidence"
         )
-        assert verifier_turn["holdout_metric"] == 4.5, verifier_turn
-        assert verifier_turn["best_holdout_metric"] == 4.5, verifier_turn
-        assert verifier_turn["claim_allowed"] is True, verifier_turn
-        assert verifier_turn["appended_count"] == 1, verifier_turn
+        assert verifier_turn["completion_status"] == "done", verifier_turn
+        assert verifier_turn["claim_allowed"] is None, verifier_turn
+        assert verifier_turn["appended_count"] is None, verifier_turn
         assert_public_safe(payload)
     return 0
 

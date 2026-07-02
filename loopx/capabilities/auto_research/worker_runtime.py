@@ -45,6 +45,7 @@ SUPPORTED_WORKER_ACTIONS = {
     "run_holdout_eval",
     "write_evidence",
     "classify_evidence",
+    "summarize_evidence",
     "write_evaluation_summary",
 }
 
@@ -537,7 +538,7 @@ def run_auto_research_worker_turn(
             },
         }
 
-    if action in {"classify_evidence", "write_evaluation_summary"}:
+    if action in {"classify_evidence", "summarize_evidence", "write_evaluation_summary"}:
         artifact = _write_evaluation_summary_artifact(
             registry_path=registry_path,
             runtime_root_arg=runtime_root_arg,
@@ -767,7 +768,7 @@ def run_auto_research_worker_turn(
         },
         "live_evidence": {
             "written": live_evidence is not None,
-            "claim_source": live_evidence.get("source") if live_evidence else None,
+            "evidence_source": live_evidence.get("source") if live_evidence else None,
             "dev_metric": live_lane_evidence.get("dev_metric"),
         },
         "artifacts": {

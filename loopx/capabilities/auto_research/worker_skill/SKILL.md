@@ -242,7 +242,7 @@ is a transition duty in v0 and may become a separate role later.
 
 Allowed actions:
 
-- render `research_showcase_projection_v0` from promoted, retired, and retry
+- render `research_evidence_graph_v0` from promoted, retired, and retry
   evidence;
 - update public-safe docs or Frontstage surfaces only from projection refs;
 - preserve failed and retired directions as useful learning.
@@ -250,7 +250,7 @@ Allowed actions:
 Useful command:
 
 ```bash
-loopx --format json auto-research board \
+loopx --format json auto-research frontier \
   --goal-id "$LOOPX_GOAL_ID" \
   --agent-id "$LOOPX_AGENT_ID"
 ```
@@ -297,7 +297,7 @@ by the role:
 - `research_hypothesis_v0`;
 - `auto_research_evidence_packet_v0`;
 - promotion/retirement/gate candidate;
-- `research_showcase_projection_v0`;
+- `research_evidence_graph_v0`;
 - LoopX todo completion plus next todo/rationale;
 - `loopx refresh-state` and one quota spend only after validation when the
   quota contract permits it.

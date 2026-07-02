@@ -124,8 +124,6 @@ Expected minimal E2E result:
 
 - `execution_kind` is `loopx_worker_loop`;
 - `result_source` is `loopx_worker_loop_public_evidence`;
-- `claim_summary.status` is `loopx_worker_loop_positive`;
-- `claim_summary.live_worker_claim_allowed` is `false`;
 - `worker_loop.executed_turn_count` is `4`;
 - `worker_loop.selected_actions` is
   `write_research_contract`, `propose_hypothesis`, `run_dev_eval`,
@@ -134,24 +132,24 @@ Expected minimal E2E result:
 - `tonight_experience.dev_metric` is `4.0`;
 - `tonight_experience.holdout_metric` is `4.5`;
 - `tonight_experience.positive_result` is `true`;
-- the board is rollout-backed and has at least one promotion candidate;
+- `visible_worker_proof.lane_authored_evidence_loaded` is `false` unless a
+  compact lane evidence file is passed;
 - visible launch controls stay separate from the research result and only prove
   that panes can be inspected, stopped, or retried.
 
-Truth boundary:
+Evidence boundary:
 
-- `live_codex_e2e.executed` is `false`;
-- `live_codex_e2e.claim_allowed` is `false`;
-- `live_codex_e2e.evidence_source` is `not_collected_from_codex_lane_output`;
-- `claim_summary.can_claim` is limited to
-  `one_command_loopx_worker_loop_positive_result`;
-- `claim_summary.cannot_claim` includes
-  `visible_codex_tui_authored_result`;
+- `visible_worker_proof.visible_lanes_launched` reports whether panes were
+  started;
+- `visible_worker_proof.visible_lanes_accepted` reports whether the launcher
+  observed healthy panes;
+- `visible_worker_proof.lane_authored_evidence_loaded` reports whether compact
+  lane evidence was provided;
 - the default visible launch proves panes can start, but pane startup alone is
   not a live Codex research result.
 
-To claim a live Codex lane-authored E2E result, first let the visible lane that
-appended evidence capture the compact public-safe live proof:
+To attach compact lane-authored evidence to the E2E result, first let the
+visible lane that appended evidence capture the public-safe evidence summary:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -182,18 +180,8 @@ loopx --registry "$LOOPX_REGISTRY" \
 The capture helper requires `source: live_codex_lane_output`, matching goal and
 agent, accepted visible lanes, lane-authored evidence appended to LoopX state,
 and zero raw logs, private artifacts, credentials, or local absolute paths in
-the payload. Without this packet,
-`live_codex_e2e.claim_allowed` stays `false`.
-
-With a valid compact live evidence packet, `live_codex_e2e.claim_allowed`
-means only that a live lane-authored dev claim may be projected. Holdout and
-promotion claims stay blocked by default: `holdout_claim_allowed=false`,
-`promotion_claim_allowed=false`, and the live `holdout_metric` is redacted from
-the claim projection. The companion `claim_summary` switches to
-`live_worker_dev_evidence_ready`, with `claim_basis=live_codex_lane_output`.
-To project a live holdout or promotion claim, the compact
-evidence must carry explicit public-safe `claim_authority`, such as
-`separate_heldout_live_evidence` or `owner_approval`.
+the payload. With this packet, the E2E result includes `live_worker_evidence`
+and flips `visible_worker_proof.lane_authored_evidence_loaded=true`.
 
 For an explicit visible demo command, `--launch-visible --attach` is still
 accepted, but it is equivalent to the default `--execute` behavior:
@@ -345,9 +333,6 @@ Useful read-only checks:
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" status
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research frontier --goal-id loopx-auto-research-knn \
-  --agent-id codex-side-bypass
-loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research board --goal-id loopx-auto-research-knn \
   --agent-id codex-side-bypass
 ```
 
