@@ -63,6 +63,7 @@ def assert_policy_case(
     expected_action: str,
     expected_rrule: str,
     expected_progression: list[int] | None = None,
+    expected_same_identity_action: str = "advance_index_after_scheduler_ack",
 ) -> None:
     quota_wrapper = _scheduler_hint(deepcopy(base_payload))
     extracted = build_scheduler_hint(
@@ -108,7 +109,7 @@ def assert_policy_case(
     assert stateful_backoff["ack_required_after_apply"] is True, (name, extracted)
     assert stateful_backoff["current_rrule"] == expected_rrule, (name, extracted)
     assert stateful_backoff["state_status"] == "missing", (name, extracted)
-    assert stateful_backoff["same_identity_action"] == "advance_index_after_scheduler_ack", (
+    assert stateful_backoff["same_identity_action"] == expected_same_identity_action, (
         name,
         extracted,
     )
@@ -147,6 +148,7 @@ def main() -> int:
         payload(should_run=True, effective_action="normal_run"),
         expected_action="run_now",
         expected_rrule="FREQ=MINUTELY;INTERVAL=3",
+        expected_same_identity_action="keep_initial_interval_while_active_work",
     )
     assert_policy_case(
         "mapped-noop",
