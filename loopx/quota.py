@@ -32,6 +32,7 @@ from .execution_profile import (
 from .long_task_cadence import long_task_cadence_hint_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .policies.execution_obligation import build_execution_obligation
+from .policies.goal_route_hint import build_goal_route_hint
 from .policies.monitor_todo import (
     monitor_todo_expires_at,
     monitor_todo_is_actionable_open,
@@ -7013,6 +7014,16 @@ def build_quota_should_run(
             latest_run_recommended_action=latest_run_recommended_action_text,
             agent_lane_next_action=agent_lane_next_action_text,
         )
+        goal_route_hint = build_goal_route_hint(
+            agent_identity=agent_identity,
+            agent_todo_summary=agent_todo_summary,
+            agent_lane_next_action=agent_lane_next_action,
+            agent_scope_frontier=agent_scope_frontier,
+            agent_lane_frontier_hint=agent_lane_frontier_hint,
+            active_state_next_action=active_state_next_action_text,
+            latest_run_recommended_action=latest_run_recommended_action_text,
+            selected_recommended_action=selected_recommended_action,
+        )
         agent_scope_action = _agent_scope_frontier_action(effective_action)
         payload = {
             "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
@@ -7109,6 +7120,8 @@ def build_quota_should_run(
             payload["agent_lane_next_action"] = agent_lane_next_action
         if agent_lane_frontier_hint:
             payload["agent_lane_frontier_hint"] = agent_lane_frontier_hint
+        if goal_route_hint:
+            payload["goal_route_hint"] = goal_route_hint
         if agent_scope_frontier:
             payload["agent_scope_frontier"] = agent_scope_frontier
         if workspace_guard:
@@ -9152,6 +9165,35 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"reason_code={agent_lane_frontier_hint.get('reason_code')} "
             f"target_todo_id={agent_lane_frontier_hint.get('target_todo_id')}"
         )
+    goal_route_hint = (
+        payload.get("goal_route_hint")
+        if isinstance(payload.get("goal_route_hint"), dict)
+        else {}
+    )
+    if goal_route_hint:
+        counts = (
+            goal_route_hint.get("counts")
+            if isinstance(goal_route_hint.get("counts"), dict)
+            else {}
+        )
+        lines.append(
+            "- goal_route_hint: "
+            f"decision={goal_route_hint.get('route_decision')} "
+            f"agent_id={goal_route_hint.get('agent_id')} "
+            f"preserves_goal_next_action={goal_route_hint.get('preserves_goal_next_action')} "
+            f"other_agent_claimed_advancement_count={counts.get('other_agent_claimed_advancement_count')}"
+        )
+        current_action = (
+            goal_route_hint.get("current_agent_next_action")
+            if isinstance(goal_route_hint.get("current_agent_next_action"), dict)
+            else {}
+        )
+        if current_action:
+            lines.append(
+                "- goal_route_hint_current_action: "
+                f"todo_id={current_action.get('todo_id')} "
+                f"selected_by={current_action.get('selected_by')}"
+            )
     agent_scope_frontier = (
         payload.get("agent_scope_frontier")
         if isinstance(payload.get("agent_scope_frontier"), dict)

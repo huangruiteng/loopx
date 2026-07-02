@@ -639,7 +639,13 @@ When available, `quota should-run` also keeps next-action signals separate:
 `active_state_next_action` is the durable `## Next Action`,
 `latest_run_recommended_action` is the latest non-agent-lane run's
 recommendation, and `agent_lane_next_action` is the current `--agent-id`
-slice. If the active-state and latest-run actions differ,
+slice. Agent-scoped payloads may also include
+`goal_route_hint.schema_version=goal_route_hint_v0`, a compact read-only
+synthesis that says whether the current lane should run, claim, wait, or
+reassign while preserving `## Next Action` as durable goal-level guidance. It
+is an advisory routing hint, not a writeback instruction and not a replacement
+for `agent_todo_summary`.
+If the active-state and latest-run actions differ,
 `next_action_projection_warning` asks the executor to explicitly write back the
 intended durable route with a primary goal-scope `refresh-state --next-action`
 or keep treating the signals as distinct.
