@@ -274,6 +274,92 @@ for line in sys.stdin:
     print(json.dumps({"id": mid, "result": result}), flush=True)
 """
 
+FAKE_CODEX_CONTEXT_ONLY_THEN_FOLLOWUP = """#!/usr/bin/env python3
+import json
+import sys
+
+turn_count = 0
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "xhigh":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing xhigh effort"},
+            }), flush=True)
+            continue
+        turn_count += 1
+        if turn_count == 1:
+            print(json.dumps({
+                "method": "turn/started",
+                "params": {
+                    "threadId": "thread-skillsbench",
+                    "turn": {"id": "turn-context-only", "status": "inProgress"},
+                },
+            }), flush=True)
+            result = {"turn": {"id": "turn-context-only", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "<permissions instructions>\\ncontext preamble\\n</skills_instructions>",
+                        }
+                    ],
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            }), flush=True)
+            continue
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-followup", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-followup",
+                "itemId": "item-followup",
+                "delta": "private worker answer after context retry",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup", "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
 
 def assert_plan_prerequisites(plan: dict[str, Any]) -> None:
     prereq = plan["runner_prerequisites"]
@@ -373,6 +459,7 @@ def test_worker_contract_is_public_safe() -> None:
     assert payload["runner_integration_ready"] is False, payload
     assert payload["worker_adapter"]["worker_surface"] == "codex_app_server", payload
     assert "turn/start" in payload["worker_adapter"]["native_goal_methods_required"], payload
+    assert payload["worker_adapter"]["context_only_followup_supported"] is True, payload
     assert payload["proof_required"]["thread_goal_get"] is True, payload
     assert payload["proof_required"]["turn_start"] is True, payload
     assert payload["boundary"]["raw_task_text_read_into_public_state"] is False, payload
@@ -934,6 +1021,73 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert private_response.read_text(encoding="utf-8") == "private worker answer"
         public_json = json.dumps(payload)
         assert "private worker answer" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
+def test_host_worker_recovers_when_first_turn_only_echoes_context() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-context-retry-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_CONTEXT_ONLY_THEN_FOLLOWUP, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--reasoning-effort",
+                "xhigh",
+                "--context-only-followup-max",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["error_type"] == "", payload
+        assert payload["turn"]["reasoning_effort"] == "xhigh", payload
+        assert payload["turn"]["turn_attempt_count"] == 2, payload
+        assert payload["turn"]["context_only_turn_count"] == 1, payload
+        assert payload["turn"]["context_only_recovery_attempted"] is True, payload
+        assert payload["turn"]["context_only_recovery_succeeded"] is True, payload
+        assert payload["turn"]["assistant_message_context_only"] is False, payload
+        assert payload["turn"]["post_context_assistant_chars"] == len(
+            "private worker answer after context retry"
+        ), payload
+        assert payload["context_only_recovery"]["attempted"] is True, payload
+        assert payload["context_only_recovery"]["succeeded"] is True, payload
+        assert len(payload["turn_attempts"]) == 2, payload
+        assert payload["turn_attempts"][0]["assistant_message_context_only"] is True, payload
+        assert payload["turn_attempts"][1]["selected_final_turn"] is True, payload
+        assert private_response.read_text(encoding="utf-8") == (
+            "private worker answer after context retry"
+        )
+        public_json = json.dumps(payload)
+        assert "context preamble" not in public_json, payload
+        assert "private worker answer after context retry" not in public_json, payload
         assert "Private task instruction placeholder" not in public_json, payload
 
 
@@ -2356,6 +2510,7 @@ if __name__ == "__main__":
     test_launcher_plan_only_marks_runner_ready_with_host_acp_launch()
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
+    test_host_worker_recovers_when_first_turn_only_echoes_context()
     test_host_worker_fails_closed_on_first_action_timeout()
     test_host_worker_fails_fast_when_app_server_stream_closes()
     test_acp_relay_delegates_to_app_server_goal_worker()

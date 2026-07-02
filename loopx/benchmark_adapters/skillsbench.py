@@ -895,6 +895,7 @@ def build_skillsbench_app_server_goal_worker_contract(
             "native_goal_methods_required": list(worker_plan["methods"]),
             "thread_goal_get_required": True,
             "turn_start_required": True,
+            "context_only_followup_supported": True,
             "raw_transcript_recorded": False,
         },
         "worker_plan": {

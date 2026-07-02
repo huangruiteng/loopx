@@ -34,10 +34,10 @@ for line in sys.stdin:
     elif method == "thread/goal/get":
         result = {"goal": {"threadId": "thread-smoke", "status": "active"}}
     elif method == "turn/start":
-        if msg.get("params", {}).get("effort") != "high":
+        if msg.get("params", {}).get("effort") not in {"high", "xhigh"}:
             print(json.dumps({
                 "id": mid,
-                "error": {"code": -32602, "message": "missing high effort"},
+                "error": {"code": -32602, "message": "missing supported effort"},
             }), flush=True)
             continue
         prompt_text = msg.get("params", {}).get("input", [{}])[0].get("text", "")
@@ -231,6 +231,25 @@ def main() -> int:
             assert "Synthetic final answer." not in json.dumps(compact), compact
         finally:
             completed_turn.terminate()
+
+        xhigh_turn = module.start_codex_app_server_goal_turn(
+            codex_bin=str(fake),
+            work_dir=root / "work-xhigh",
+            objective="Synthetic objective.",
+            prompt="Synthetic prompt.",
+            model_name="gpt-5.5",
+            reasoning_effort="xhigh",
+            response_timeout_sec=5,
+            wait_for_completion=True,
+            turn_timeout_sec=5,
+        )
+        try:
+            assert xhigh_turn.assistant_message == "Synthetic final answer."
+            compact = module.compact_turn_metadata(xhigh_turn)
+            assert compact["turn_completed_observed"] is True, compact
+            assert compact["assistant_message_present"] is True, compact
+        finally:
+            xhigh_turn.terminate()
 
         event_completed_turn = module.start_codex_app_server_goal_turn(
             codex_bin=str(fake),

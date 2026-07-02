@@ -9189,15 +9189,34 @@ def _merge_app_server_goal_worker_trace_summary(
                 if safe_category not in failure_categories:
                     failure_categories.append(safe_category)
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
+        turn_attempts = turn.get("turn_attempt_count")
+        if not isinstance(turn_attempts, int) or isinstance(turn_attempts, bool):
+            turn_attempts = 1
+        turn_attempts = max(1, turn_attempts)
         if turn.get("goal_get_present") is True:
-            goal_get_count += 1
+            goal_get_count += turn_attempts
         if turn.get("turn_id_present") is True:
-            turn_start_count += 1
-        if turn.get("turn_completed_observed") is True:
+            turn_start_count += turn_attempts
+        completed_attempts = turn.get("turn_completed_attempt_count")
+        if isinstance(completed_attempts, int) and not isinstance(
+            completed_attempts, bool
+        ):
+            turn_completed_count += max(0, completed_attempts)
+        elif turn.get("turn_completed_observed") is True:
             turn_completed_count += 1
-        if turn.get("assistant_message_present") is True:
+        assistant_attempts = turn.get("assistant_message_attempt_count")
+        if isinstance(assistant_attempts, int) and not isinstance(
+            assistant_attempts, bool
+        ):
+            assistant_message_count += max(0, assistant_attempts)
+        elif turn.get("assistant_message_present") is True:
             assistant_message_count += 1
-        if turn.get("assistant_message_context_only") is True:
+        context_only_attempts = turn.get("context_only_turn_count")
+        if isinstance(context_only_attempts, int) and not isinstance(
+            context_only_attempts, bool
+        ):
+            context_only_assistant_message_count += max(0, context_only_attempts)
+        elif turn.get("assistant_message_context_only") is True:
             context_only_assistant_message_count += 1
         post_context_chars = turn.get("post_context_assistant_chars")
         if isinstance(post_context_chars, int) and not isinstance(

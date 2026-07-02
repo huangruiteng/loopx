@@ -34,6 +34,7 @@ from scripts.codex_app_server_goal_driver import (  # noqa: E402
     CodexAppServerGoalDriverError,
     compact_turn_metadata,
     observe_codex_app_server_goal_turn,
+    start_codex_app_server_goal_followup_turn,
     start_codex_app_server_goal_turn,
 )
 
@@ -192,6 +193,35 @@ def _terminal_app_server_failure(turn: Any) -> str:
     return ""
 
 
+def _compact_worker_turn(
+    turn: Any,
+    *,
+    args: argparse.Namespace,
+    lifecycle_packet: str,
+    lifecycle_contract: dict[str, object] | None,
+) -> dict[str, Any]:
+    compact = compact_turn_metadata(turn)
+    compact.update(
+        {
+            "completion_hard_gate": False,
+            "completion_source_of_truth": "codex_turn_completion",
+            "first_action_timeout_sec": max(
+                0.0, float(args.first_action_timeout_sec or 0.0)
+            ),
+            "first_action_observed": _first_action_observed(turn),
+            "effective_action_observed": _effective_action_observed(turn),
+            "assistant_message_context_only": _assistant_message_context_only(turn),
+            "post_context_assistant_chars": _post_context_assistant_chars(turn),
+            "reasoning_effort": _public_safe_label(args.reasoning_effort) or "high",
+            "loopx_mode": args.loopx_mode,
+            "loopx_access_packet_mode": args.loopx_access_packet_mode,
+            "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
+            "benchmark_case_lifecycle_contract": lifecycle_contract,
+        }
+    )
+    return compact
+
+
 def _wait_for_worker_turn_completion(
     turn: Any,
     *,
@@ -252,47 +282,114 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         wait_for_completion=False,
     )
     worker_error_type = ""
+    active_turn = turn
+    attempt_compacts: list[dict[str, Any]] = []
     try:
-        if not args.no_wait_for_completion:
-            try:
-                turn_completed = _wait_for_worker_turn_completion(
-                    turn,
-                    timeout_sec=args.turn_timeout_sec,
-                    first_action_timeout_sec=args.first_action_timeout_sec,
-                )
-                if not turn_completed:
-                    raise TimeoutError(
-                        "timed out waiting for app-server worker turn completion"
+        followup_budget = max(0, int(args.context_only_followup_max or 0))
+        attempt_number = 1
+        while True:
+            if not args.no_wait_for_completion:
+                try:
+                    turn_completed = _wait_for_worker_turn_completion(
+                        active_turn,
+                        timeout_sec=args.turn_timeout_sec,
+                        first_action_timeout_sec=args.first_action_timeout_sec,
                     )
-            except (TimeoutError, CodexAppServerGoalDriverError) as exc:
-                if str(exc) == "codex_exec_first_action_timeout":
-                    worker_error_type = "codex_exec_first_action_timeout"
-                elif str(exc).startswith("codex_app_server_"):
-                    worker_error_type = str(exc)
-                else:
-                    worker_error_type = "codex_app_server_turn_timeout"
-        compact = compact_turn_metadata(turn)
+                    if not turn_completed:
+                        raise TimeoutError(
+                            "timed out waiting for app-server worker turn completion"
+                        )
+                except (TimeoutError, CodexAppServerGoalDriverError) as exc:
+                    if str(exc) == "codex_exec_first_action_timeout":
+                        worker_error_type = "codex_exec_first_action_timeout"
+                    elif str(exc).startswith("codex_app_server_"):
+                        worker_error_type = str(exc)
+                    else:
+                        worker_error_type = "codex_app_server_turn_timeout"
+            compact = _compact_worker_turn(
+                active_turn,
+                args=args,
+                lifecycle_packet=lifecycle_packet,
+                lifecycle_contract=lifecycle_contract,
+            )
+            compact.update(
+                {
+                    "attempt_number": attempt_number,
+                    "selected_final_turn": False,
+                }
+            )
+            attempt_compacts.append(compact)
+            if worker_error_type or args.no_wait_for_completion:
+                break
+            if compact.get("assistant_message_context_only") is not True:
+                break
+            if followup_budget <= 0:
+                worker_error_type = "codex_app_server_context_only_assistant_message"
+                break
+            followup_budget -= 1
+            attempt_number += 1
+            try:
+                active_turn = start_codex_app_server_goal_followup_turn(
+                    active_turn,
+                    work_dir=work_dir,
+                    prompt=effective_prompt,
+                    model_name=args.model,
+                    reasoning_effort=args.reasoning_effort,
+                    approval_policy=args.approval_policy,
+                    response_timeout_sec=args.response_timeout_sec,
+                    wait_for_completion=False,
+                )
+            except CodexAppServerGoalDriverError as exc:
+                detail = str(exc)
+                worker_error_type = (
+                    detail
+                    if detail.startswith("codex_app_server_")
+                    else "codex_app_server_context_only_followup_start_failed"
+                )
+                break
+        turn = active_turn
+        compact = _compact_worker_turn(
+            turn,
+            args=args,
+            lifecycle_packet=lifecycle_packet,
+            lifecycle_contract=lifecycle_contract,
+        )
+        context_only_turn_count = sum(
+            1
+            for attempt in attempt_compacts
+            if attempt.get("assistant_message_context_only") is True
+        )
         compact.update(
             {
-                "completion_hard_gate": False,
-                "completion_source_of_truth": "codex_turn_completion",
-                "first_action_timeout_sec": max(
-                    0.0, float(args.first_action_timeout_sec or 0.0)
+                "attempt_number": len(attempt_compacts) or 1,
+                "selected_final_turn": True,
+                "turn_attempt_count": len(attempt_compacts) or 1,
+                "turn_completed_attempt_count": sum(
+                    1
+                    for attempt in attempt_compacts
+                    if attempt.get("turn_completed_observed") is True
                 ),
-                "first_action_observed": _first_action_observed(turn),
-                "effective_action_observed": _effective_action_observed(turn),
-                "assistant_message_context_only": _assistant_message_context_only(
-                    turn
+                "assistant_message_attempt_count": sum(
+                    1
+                    for attempt in attempt_compacts
+                    if attempt.get("assistant_message_present") is True
                 ),
-                "post_context_assistant_chars": _post_context_assistant_chars(turn),
-                "reasoning_effort": _public_safe_label(args.reasoning_effort)
-                or "high",
-                "loopx_mode": args.loopx_mode,
-                "loopx_access_packet_mode": args.loopx_access_packet_mode,
-                "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
-                "benchmark_case_lifecycle_contract": lifecycle_contract,
+                "context_only_turn_count": context_only_turn_count,
+                "context_only_followup_max": max(
+                    0, int(args.context_only_followup_max or 0)
+                ),
+                "context_only_recovery_attempted": bool(
+                    context_only_turn_count and len(attempt_compacts) > 1
+                ),
+                "context_only_recovery_succeeded": bool(
+                    context_only_turn_count
+                    and compact.get("assistant_message_context_only") is not True
+                    and not worker_error_type
+                )
             }
         )
+        if attempt_compacts:
+            attempt_compacts[-1] = dict(compact)
         if (
             not worker_error_type
             and not args.no_wait_for_completion
@@ -312,7 +409,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             response_path.write_text(turn.assistant_message, encoding="utf-8")
             private_response_written = True
     finally:
-        turn.terminate()
+        active_turn.terminate()
     worker_contract = build_contract_payload(args)
     if worker_error_type:
         worker_contract = dict(worker_contract)
@@ -353,6 +450,17 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             "raw_recorded": False,
         },
         "turn": compact,
+        "turn_attempts": attempt_compacts,
+        "context_only_recovery": {
+            "enabled": max(0, int(args.context_only_followup_max or 0)) > 0,
+            "max_followups": max(0, int(args.context_only_followup_max or 0)),
+            "attempted": bool(compact.get("context_only_recovery_attempted")),
+            "succeeded": bool(compact.get("context_only_recovery_succeeded")),
+            "context_only_turn_count": int(
+                compact.get("context_only_turn_count") or 0
+            ),
+            "turn_attempt_count": int(compact.get("turn_attempt_count") or 1),
+        },
         "private_response_text": {
             "written": private_response_written,
             "path_recorded": False,
@@ -395,6 +503,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--response-timeout-sec", type=float, default=30.0)
     parser.add_argument("--turn-timeout-sec", type=float, default=7200.0)
     parser.add_argument("--first-action-timeout-sec", type=float, default=0.0)
+    parser.add_argument(
+        "--context-only-followup-max",
+        type=int,
+        default=1,
+        help=(
+            "Retry in the same app-server thread when a completed turn only "
+            "echoes startup context. The retry keeps xhigh/Goal runs from "
+            "writing the context preamble as the scored answer."
+        ),
+    )
     parser.add_argument(
         "--no-wait-for-completion",
         action="store_true",
