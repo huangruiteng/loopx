@@ -5,8 +5,11 @@ import json
 from collections.abc import Collection
 from typing import Any
 
+from ..delivery_outcome import DeliveryOutcome
 from ..scheduler_state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    CODEX_APP_SURFACE,
+    SCHEDULER_STATE_SCHEMA_VERSION,
     rrule_for_minutes,
 )
 
@@ -15,6 +18,116 @@ SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
+
+
+def normalize_scheduler_rrule(value: Any) -> str:
+    text = " ".join(str(value or "").strip().split())
+    if text.upper().startswith("RRULE:"):
+        text = text[6:].strip()
+    return text
+
+
+def scheduler_backoff_packet(
+    decision: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    scheduler_hint = (
+        decision.get("scheduler_hint")
+        if isinstance(decision.get("scheduler_hint"), dict)
+        else {}
+    )
+    codex_app = (
+        scheduler_hint.get("codex_app")
+        if isinstance(scheduler_hint.get("codex_app"), dict)
+        else {}
+    )
+    stateful_backoff = (
+        codex_app.get("stateful_backoff")
+        if isinstance(codex_app.get("stateful_backoff"), dict)
+        else {}
+    )
+    return scheduler_hint, codex_app, stateful_backoff
+
+
+def _int_number(value: Any, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def build_codex_app_scheduler_ack_event(
+    before: dict[str, Any],
+    *,
+    agent_id: str | None,
+    applied_rrule: str,
+    classification: str = "quota_scheduler_ack",
+    surface: str = CODEX_APP_SURFACE,
+    state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    generated_at: str | None = None,
+    reason_summary: str | None = None,
+    compact_before: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    safe_agent_id = str(agent_id or "").strip()
+    if not safe_agent_id:
+        raise ValueError("quota scheduler-ack requires a scoped --agent-id")
+    _, codex_app, stateful_backoff = scheduler_backoff_packet(before)
+    if not stateful_backoff:
+        raise ValueError("quota scheduler-ack requires scheduler_hint.codex_app.stateful_backoff")
+    if str(stateful_backoff.get("state_key") or "") != state_key:
+        raise ValueError("quota scheduler-ack state_key does not match current quota scheduler hint")
+    if stateful_backoff.get("apply_needed") is not True:
+        raise ValueError("quota scheduler-ack is not needed because the current RRULE is already applied")
+    expected_rrule = normalize_scheduler_rrule(
+        codex_app.get("recommended_rrule") or stateful_backoff.get("current_rrule")
+    )
+    safe_applied_rrule = normalize_scheduler_rrule(applied_rrule)
+    if not expected_rrule:
+        raise ValueError("quota scheduler-ack has no current recommended_rrule to acknowledge")
+    if safe_applied_rrule != expected_rrule:
+        raise ValueError(
+            f"quota scheduler-ack applied_rrule {safe_applied_rrule!r} does not match expected {expected_rrule!r}"
+        )
+    progression_minutes = (
+        stateful_backoff.get("progression_minutes")
+        if isinstance(stateful_backoff.get("progression_minutes"), list)
+        else []
+    )
+    progression_index = max(0, _int_number(stateful_backoff.get("progression_index"), default=0))
+    safe_generated_at = generated_at or ""
+    scheduler_state = {
+        "schema_version": SCHEDULER_STATE_SCHEMA_VERSION,
+        "goal_id": before.get("goal_id"),
+        "agent_id": safe_agent_id,
+        "surface": surface,
+        "state_key": state_key,
+        "reset_token": stateful_backoff.get("reset_token"),
+        "identity_signature": stateful_backoff.get("identity_signature"),
+        "progression_index": progression_index,
+        "progression_minutes": progression_minutes,
+        "last_applied_rrule": expected_rrule,
+        "updated_at": safe_generated_at,
+        "source": classification,
+    }
+    reason = str(reason_summary or "").strip() or (
+        f"acknowledged Codex App scheduler RRULE {expected_rrule}; no quota spend"
+    )
+    return {
+        "generated_at": safe_generated_at,
+        "goal_id": before.get("goal_id"),
+        "classification": classification,
+        "agent_id": safe_agent_id,
+        "recommended_action": reason,
+        "health_check": "scheduler ack state updated; no quota spend",
+        "delivery_outcome": DeliveryOutcome.SURFACE_ONLY.value,
+        "scheduler_ack_event": {
+            "event_type": classification,
+            "surface": surface,
+            "state_key": state_key,
+            "applied_rrule": expected_rrule,
+            "before": compact_before if isinstance(compact_before, dict) else before,
+            "scheduler_state": scheduler_state,
+        },
+    }
 
 
 def build_scheduler_hint(
