@@ -8603,7 +8603,174 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         value = prerequisites.get("benchmark_egress_no_proxy_entry_count")
         if isinstance(value, int) and not isinstance(value, bool):
             config["benchmark_egress_no_proxy_entry_count"] = value
+    app_server_observability = _app_server_goal_worker_observability(plan)
+    if app_server_observability:
+        config["app_server_goal_worker_observability"] = app_server_observability
     return config
+
+
+def _app_server_goal_worker_observability(
+    plan: dict[str, Any],
+    controller_trace: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a public-safe attribution packet for app-server Goal launches."""
+
+    if str(plan.get("route") or "") != "codex-app-server-goal-baseline":
+        return {}
+
+    trace_summary = plan.get("app_server_goal_worker_trace_summary")
+    if not isinstance(trace_summary, dict):
+        trace_summary = {}
+    if isinstance(controller_trace, dict):
+        trace_summary = {**trace_summary, **controller_trace}
+
+    prereqs = plan.get("runner_prerequisites")
+    if not isinstance(prereqs, dict):
+        prereqs = {}
+    egress = plan.get("codex_api_egress_preflight")
+    if not isinstance(egress, dict):
+        egress = {}
+
+    requested_effort = str(plan.get("app_server_reasoning_effort") or "")[:40]
+    observed_effort = str(
+        trace_summary.get("native_goal_worker_reasoning_effort") or ""
+    )[:40]
+    if requested_effort and observed_effort:
+        if requested_effort == observed_effort:
+            effort_status = "matched"
+        else:
+            effort_status = "mismatch"
+    elif requested_effort:
+        effort_status = "requested_not_yet_observed"
+    else:
+        effort_status = "not_recorded"
+
+    preflight_status = str(
+        egress.get("status")
+        or prereqs.get("codex_api_egress_preflight_status")
+        or ""
+    )[:80]
+    preflight_required = bool(
+        egress.get("required") or prereqs.get("codex_api_egress_preflight_required")
+    )
+    preflight_ready = bool(
+        egress.get("ready") or prereqs.get("codex_api_egress_preflight_ready")
+    )
+    if not preflight_required:
+        preflight_observation_status = "not_required"
+    elif preflight_ready:
+        preflight_observation_status = "executed_ready"
+    elif preflight_status and preflight_status != "pending":
+        preflight_observation_status = "executed_blocked"
+    else:
+        preflight_observation_status = "required_pending"
+
+    def _int_field(name: str) -> int:
+        value = trace_summary.get(name)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        return 0
+
+    summary: dict[str, Any] = {
+        "schema_version": "skillsbench_app_server_goal_worker_observability_v0",
+        "route": "codex-app-server-goal-baseline",
+        "requested_reasoning_effort": requested_effort,
+        "observed_reasoning_effort": observed_effort,
+        "reasoning_effort_observation_status": effort_status,
+        "reasoning_effort_matches_request": bool(
+            requested_effort and observed_effort and requested_effort == observed_effort
+        ),
+        "trace_dir_configured": bool(plan.get("app_server_goal_worker_trace_dir")),
+        "trace_dir_present": bool(
+            trace_summary.get("native_goal_worker_trace_dir_present")
+        ),
+        "public_trace_read": bool(
+            trace_summary.get("native_goal_worker_public_trace_read")
+        ),
+        "trace_count": _int_field("native_goal_worker_trace_count"),
+        "lifecycle_trace_count": _int_field(
+            "native_goal_worker_lifecycle_trace_count"
+        ),
+        "prompt_received_count": _int_field(
+            "native_goal_worker_prompt_received_count"
+        ),
+        "goal_get_count": _int_field("native_goal_worker_goal_get_count"),
+        "turn_start_count": _int_field("native_goal_worker_turn_start_count"),
+        "turn_completed_observed_count": _int_field(
+            "native_goal_worker_turn_completed_observed_count"
+        ),
+        "assistant_message_present_count": _int_field(
+            "native_goal_worker_assistant_message_present_count"
+        ),
+        "effective_action_observed_count": _int_field(
+            "native_goal_worker_effective_action_observed_count"
+        ),
+        "first_action_observed_count": _int_field(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "raw_material_recorded": bool(
+            trace_summary.get("native_goal_worker_raw_material_recorded")
+        ),
+        "codex_api_egress_preflight_required": preflight_required,
+        "codex_api_egress_preflight_ready": preflight_ready,
+        "codex_api_egress_preflight_status": preflight_status,
+        "codex_api_egress_preflight_observation_status": (
+            preflight_observation_status
+        ),
+        "codex_api_egress_mode_resolved": str(
+            egress.get("resolved_mode")
+            or prereqs.get("codex_api_egress_mode_resolved")
+            or ""
+        )[:80],
+        "codex_api_reverse_tunnel_required": bool(
+            egress.get("reverse_tunnel_required")
+            or prereqs.get("codex_api_reverse_tunnel_required")
+        ),
+        "codex_api_reverse_tunnel_proxy_configured": bool(
+            egress.get("proxy_configured")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_configured")
+        ),
+        "codex_api_reverse_tunnel_proxy_source": str(
+            egress.get("proxy_source")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_source")
+            or ""
+        )[:40],
+        "codex_api_reverse_tunnel_proxy_scheme": str(
+            egress.get("proxy_scheme")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_scheme")
+            or ""
+        )[:20],
+        "codex_api_reverse_tunnel_proxy_endpoint_kind": str(
+            egress.get("proxy_endpoint_kind")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_endpoint_kind")
+            or ""
+        )[:40],
+        "codex_api_reverse_tunnel_proxy_endpoint_port": int(
+            egress.get("proxy_endpoint_port")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_endpoint_port")
+            or 0
+        ),
+        "codex_api_reverse_tunnel_proxy_url_recorded": False,
+        "codex_api_egress_raw_probe_output_recorded": False,
+    }
+
+    for key in (
+        "native_goal_worker_failure_category",
+        "native_goal_worker_first_blocker",
+    ):
+        value = trace_summary.get(key)
+        if isinstance(value, str) and value:
+            summary[key] = value[:120]
+    efforts = trace_summary.get("native_goal_worker_reasoning_efforts")
+    if isinstance(efforts, list):
+        compact_efforts = [
+            item[:40]
+            for item in efforts
+            if isinstance(item, str) and item
+        ][:8]
+        if compact_efforts:
+            summary["observed_reasoning_efforts"] = compact_efforts
+    return summary
 
 
 def _runner_config_public_path(plan: dict[str, Any]) -> Path | None:
@@ -9363,6 +9530,44 @@ def _merge_app_server_goal_worker_trace_summary(
     )
     trace["native_goal_worker_public_trace_read"] = worker_trace_count > 0
     trace["native_goal_worker_raw_material_recorded"] = raw_material_recorded
+    public_summary_keys = (
+        "native_goal_worker_route",
+        "native_goal_worker_trace_dir_present",
+        "native_goal_worker_trace_count",
+        "native_goal_worker_lifecycle_trace_count",
+        "native_goal_worker_prompt_received_count",
+        "native_goal_worker_ok_count",
+        "native_goal_worker_failure_trace_count",
+        "native_goal_worker_failure_categories",
+        "native_goal_worker_failure_category",
+        "native_goal_worker_first_blockers",
+        "native_goal_worker_first_blocker",
+        "native_goal_worker_goal_get_count",
+        "native_goal_worker_turn_start_count",
+        "native_goal_worker_turn_completed_observed_count",
+        "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_assistant_context_only_count",
+        "native_goal_worker_context_only_recovery_attempted_count",
+        "native_goal_worker_context_only_recovery_succeeded_count",
+        "native_goal_worker_context_only_followup_start_attempted_count",
+        "native_goal_worker_context_only_followup_start_succeeded_count",
+        "native_goal_worker_transport_reconnect_attempted_count",
+        "native_goal_worker_transport_reconnect_succeeded_count",
+        "native_goal_worker_goal_reactivation_attempted_count",
+        "native_goal_worker_goal_reactivation_succeeded_count",
+        "native_goal_worker_post_context_assistant_chars_total",
+        "native_goal_worker_reasoning_efforts",
+        "native_goal_worker_reasoning_effort",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
+        "native_goal_worker_public_trace_read",
+        "native_goal_worker_raw_material_recorded",
+    )
+    plan["app_server_goal_worker_trace_summary"] = {
+        key: trace[key]
+        for key in public_summary_keys
+        if key in trace
+    }
     if worker_trace_count:
         trace["last_decision"] = "host_app_server_goal_worker_trace_recorded"
 
@@ -13110,6 +13315,12 @@ def reduce_result(
     runner_config = _public_runner_config(plan)
     if runner_config:
         compact["runner_config"] = runner_config
+    app_server_observability = _app_server_goal_worker_observability(
+        plan,
+        controller_trace,
+    )
+    if app_server_observability:
+        compact["app_server_goal_worker_observability"] = app_server_observability
     goal_start_control_score = _build_goal_start_product_mode_control_score(
         compact,
         plan,
@@ -13815,6 +14026,10 @@ def build_runner_failure_compact(
         exc,
         cleanup_if_missing=True,
     )
+    controller_trace = _read_controller_trace(plan)
+    _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
+    _merge_host_local_acp_relay_trace_summary(plan, controller_trace)
+    _write_controller_trace(plan, controller_trace)
     _write_public_runner_config(plan)
     _write_public_runner_prerequisites(plan)
 
@@ -13944,6 +14159,12 @@ def build_runner_failure_compact(
     runner_config = _public_runner_config(plan)
     if runner_config:
         reduced["runner_config"] = runner_config
+    app_server_observability = _app_server_goal_worker_observability(
+        plan,
+        controller_trace,
+    )
+    if app_server_observability:
+        reduced["app_server_goal_worker_observability"] = app_server_observability
     recovered = _recover_runner_failure_score_from_controller_trace(reduced, plan)
     if not recovered:
         _recover_runner_failure_score_from_verifier_artifact(reduced, plan)
