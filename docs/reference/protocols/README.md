@@ -37,3 +37,4 @@ Current contracts:
 - [local_agent_launch_plan_v0](local-agent-launch-plan-v0.md)
 - [multi_agent_three_layer_minimality_contract_v0](multi-agent-three-layer-minimality-v0.md)
 - [multi_agent_visible_launcher_v0](multi-agent-visible-launcher-v0.md)
+- [goal_vision_replan_contract_v0](goal-vision-replan-contract-v0.md)

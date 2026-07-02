@@ -16,9 +16,9 @@ rather than a second product-specific runner.
 
 | Layer | Owns | Must Not Own |
 | --- | --- | --- |
-| User | Objective, rounds, optional role overrides, and optional data/eval entrypoint. | Tmux/Codex TUI launch, pane-local tick commands, quota/frontier protocol details, worker plumbing, or machine JSON routing. |
-| Preset | Domain roles, handoff hints, metric/evidence loop, and domain defaults. | Generic runner lifecycle, real Codex TUI panes, workspace/trust-safe launch, pane-local A2A tick, todo/evidence/status protocol, or compact human status. |
-| Kernel | Multi-agent runner, real Codex TUI panes, workspace/trust-safe launch, pane-local A2A tick, todo/evidence/status protocol, compact human status, and default role prompt scaffolding. | Domain-specific research, benchmark, support, or sales semantics. |
+| User | Objective, rounds, optional role overrides, and optional data/eval entrypoint. | Tmux/Codex TUI launch, pane-local tick commands, quota/frontier protocol details, worker plumbing, per-agent vision/replan state, or machine JSON routing. |
+| Preset | Domain roles, handoff hints, metric/evidence loop, and domain defaults. | Generic runner lifecycle, real Codex TUI panes, workspace/trust-safe launch, pane-local A2A tick, todo/evidence/status protocol, per-agent vision budgets, replan state transitions, or compact human status. |
+| Kernel | Multi-agent runner, real Codex TUI panes, workspace/trust-safe launch, pane-local A2A tick, todo/evidence/status protocol, CLI-enforced per-agent vision budgets, vision/replan state transitions, compact human status, and default role prompt scaffolding. | Domain-specific research, benchmark, support, or sales semantics. |
 
 ## Contract Shape
 
@@ -56,7 +56,8 @@ It returns:
 Auto-research is one preset on top of the generic kernel. Its preset layer owns
 research roles, handoff hints, the metric/evidence loop, and domain defaults.
 It does not own the runner, TUI panes, workspace/trust-safe launch,
-pane-local A2A tick, or todo/evidence/status protocol.
+pane-local A2A tick, todo/evidence/status protocol, per-agent vision budgets,
+or replan state transitions.
 
 This keeps the public promise honest: a small auto-research recipe should prove
 that other products can also reuse the same kernel with their own thin preset.
@@ -67,6 +68,7 @@ A change satisfies this contract only when:
 
 - the user recipe remains a few intent fields, not runner configuration;
 - the preset has no host process lifecycle or pane-local tick implementation;
+- the preset has no product-specific fork of per-agent vision/replan mechanics;
 - the generic kernel contract stays domain-agnostic;
 - another multi-agent product can reuse the same kernel without importing
   auto-research code.

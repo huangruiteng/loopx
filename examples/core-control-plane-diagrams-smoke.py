@@ -58,6 +58,7 @@ def main() -> None:
         "Scheduler / Heartbeat Machine",
         "Projection Sink Machine",
         "Agent Onboarding / Automation Enablement Machine",
+        "Agent Vision / Replan Machine",
     ):
         assert section in docs["state-machine.md"], f"missing state machine: {section}"
     assert "```mermaid" in combined

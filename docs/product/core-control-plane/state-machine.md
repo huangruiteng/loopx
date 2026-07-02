@@ -19,6 +19,8 @@ public-safe map over the current repository contracts, especially:
   contracts;
 - [`loopx/policies/scheduler_hint.py`](../../../loopx/policies/scheduler_hint.py)
   for cadence/backoff/reset-token behavior;
+- [`goal_vision_replan_contract_v0`](../../reference/protocols/goal-vision-replan-contract-v0.md)
+  for bounded per-agent vision, replan transitions, and goal-route projection;
 - [`loopx/todo_handoff_gate.py`](../../../loopx/todo_handoff_gate.py) for
   cross-agent handoff gate states;
 - [`loopx/project_map.py`](../../../loopx/project_map.py) and
@@ -35,6 +37,8 @@ flowchart LR
   Owner["Owner route / handoff"] --> Quota
   Evidence["Evidence / rollout"] --> Todo
   Quota --> Scheduler["Scheduler / heartbeat"]
+  Quota --> Vision["Agent vision / replan"]
+  Vision --> Todo
   Quota --> Projection["Projection sinks"]
   Projection --> WriteAPI["LoopX write APIs"]
   WriteAPI --> Registry
@@ -384,6 +388,47 @@ preview until the `read_only_map_opt_in` operator gate approves it. Connected
 read-only states such as `connected`, `connected-read-only`, and
 `read-only-map-ready` can append a real read-only map.
 
+## 9. Agent Vision / Replan Machine
+
+Agent vision is compact executable routing state, not a scratchpad. Each agent
+may have a bounded vision packet that describes its current role direction,
+scope, acceptance summary, replan trigger, dreaming policy, and latest patch.
+The CLI/write API must enforce those budgets before quota or status consumes
+the projection.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Unset
+  Unset --> DraftVision: goal configured or preset seeded
+  DraftVision --> ActiveVision: budget + acceptance validated
+  ActiveVision --> VisionDriftDetected: frontier exhausted or objective shifted
+  ActiveVision --> DreamProposal: advisory patch proposed
+  VisionDriftDetected --> ReplanRequired: goal-level trigger accepted
+  DreamProposal --> ReplanRequired: delivery route needed
+  ReplanRequired --> ReplanDrafted: bounded plan + todo delta
+  ReplanDrafted --> VisionPatchProposed: bounded vision patch
+  VisionPatchProposed --> ActiveVision: write correctness validated
+  ActiveVision --> Superseded: successor route replaces it
+  ActiveVision --> Retired: acceptance or no-follow-up recorded
+```
+
+| State | Product Meaning | Legal Exit |
+| --- | --- | --- |
+| `DraftVision` | A compact packet is being seeded or rewritten. | Validate budget and acceptance. |
+| `ActiveVision` | The role may use the packet for lane-local work. | Evidence, drift, dreaming proposal, supersession, or retirement. |
+| `ReplanRequired` | Goal-level progress requires replan before quiet/wait. | Write a bounded vision/todo/acceptance delta. |
+| `VisionPatchProposed` | Replan produced a bounded patch. | Apply through LoopX write APIs or reject as over budget. |
+
+The important ordering is goal-level first: required replan is evaluated before
+monitor quiet skip, scoped gate wait, or an individual agent's no-candidate
+state. Those local states may remain visible, but they cannot clear a required
+replan. An acknowledgement without a vision, todo, acceptance, or no-follow-up
+delta is `replan_noop`.
+
+See
+[`goal_vision_replan_contract_v0`](../../reference/protocols/goal-vision-replan-contract-v0.md)
+for the field budgets and projection contract.
+
 ## Catalog Linkage
 
 | Machine | Representative Patterns |
@@ -396,6 +441,7 @@ read-only states such as `connected`, `connected-read-only`, and
 | Scheduler / heartbeat | IP-008 Monitor Quiet Skip, IP-026 Agent-Scoped No-Candidate Gap |
 | Projection sink | IP-005 State Projection Gap |
 | Agent onboarding | Project bootstrap/connect and read-only-map opt-in flows |
+| Agent vision / replan | Autonomous replan, dreaming proposal promotion, successor replan |
 
 If a new interaction pattern cannot be placed in one of these machines, first
 check whether it is a UI variant, wording variant, or private incident label.
