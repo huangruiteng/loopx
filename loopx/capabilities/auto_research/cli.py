@@ -494,7 +494,7 @@ def register_auto_research_commands(
     demo_e2e_parser.add_argument(
         "--worker-loop-rounds",
         type=int,
-        default=2,
+        default=3,
         help="Maximum worker-loop rounds for --execute.",
     )
     demo_e2e_parser.add_argument(

@@ -21,6 +21,7 @@ from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e
 from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
     build_auto_research_demo_supervisor_plan,
 )
+from loopx.todos import add_goal_todo  # noqa: E402
 
 
 GOAL_ID = "loopx-auto-research-knn"
@@ -303,8 +304,48 @@ def main() -> int:
         assert verifier["artifact_status"] == "evaluation_summary_written", verifier
         assert verifier["claim_allowed"] is False, verifier
         assert verifier["promotion_decision_made"] is False, verifier
+        assert verifier["followup"]["needed"] is True, verifier
+        assert verifier["followup"]["action_kind"] == "run_holdout_eval", verifier
+        assert verifier["followup"]["claimed_by"] == EVIDENCE_AGENT_ID, verifier
         assert verifier["completion"]["status"] == "done", verifier
         assert_public_safe(verifier)
+        holdout = run_worker_turn(
+            registry=four_registry,
+            runtime_root=four_runtime_root,
+            workspace=four_workspace,
+            agent_id=EVIDENCE_AGENT_ID,
+            execute=True,
+            complete=True,
+        )
+        assert holdout["mode"] == "execute", holdout
+        assert holdout["selected_action"] == "run_holdout_eval", holdout
+        assert holdout["holdout_metric"] == 4.5, holdout
+        assert holdout["completion"]["status"] == "done", holdout
+        generic = add_goal_todo(
+            registry_path=four_registry,
+            goal_id=GOAL_ID,
+            role="agent",
+            text="[P0-auto-research-verify] Verify supported dev evidence and close the promotion handoff.",
+            task_class="advancement_task",
+            claimed_by=VERIFIER_AGENT_ID,
+            project=four_workspace,
+        )
+        assert generic["added"] is True, generic
+        cleanup = run_worker_turn(
+            registry=four_registry,
+            runtime_root=four_runtime_root,
+            workspace=four_workspace,
+            agent_id=VERIFIER_AGENT_ID,
+            execute=True,
+            complete=True,
+        )
+        assert cleanup["mode"] == "execute", cleanup
+        assert cleanup["selected_action"] == "advance_todo", cleanup
+        assert cleanup["artifact_status"] == "satisfied_generic_handoff_closed", cleanup
+        assert cleanup["completion"]["status"] == "done", cleanup
+        assert cleanup["decision_summary"]["validated_promotion_candidate_count"] == 1, cleanup
+        assert_public_safe(holdout)
+        assert_public_safe(cleanup)
 
     print("auto-research-worker-turn-smoke ok")
     return 0

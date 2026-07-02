@@ -220,24 +220,25 @@ def main() -> int:
         worker_loop = payload["worker_loop"]
         assert worker_loop["schema_version"] == "auto_research_worker_loop_v0", payload
         assert worker_loop["mode"] == "execute", payload
-        assert worker_loop["executed_turn_count"] == 4, payload
-        assert worker_loop["completed_turn_count"] == 4, payload
+        assert worker_loop["executed_turn_count"] == 5, payload
+        assert worker_loop["completed_turn_count"] == 5, payload
         assert worker_loop["selected_actions"] == [
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
             "summarize_evidence",
+            "run_holdout_eval",
         ], payload
         assert worker_loop["stop_reason"] == "no_runnable_frontier", payload
         tonight = payload["tonight_experience"]
         assert tonight["ready"] is True, tonight
         assert tonight["positive_result"] is True, tonight
-        assert tonight["positive_result_basis"] == "public_safe_dev_evidence", tonight
+        assert tonight["positive_result_basis"] == "public_safe_dev_and_holdout_evidence", tonight
         assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight
         assert tonight["workflow_model"] == "state_projected_frontier_not_dynamic_workflow", tonight
         assert tonight["leader_agent_required"] is False, tonight
         assert tonight["dev_metric"] == 4.0, tonight
-        assert tonight["holdout_metric"] is None, tonight
+        assert tonight["holdout_metric"] == 4.5, tonight
         assert "--run-worker-loop" in tonight["one_command"], tonight
         assert "--headless" not in tonight["one_command"], tonight
         assert "--headless" in payload["commands"]["headless_worker_loop"], payload

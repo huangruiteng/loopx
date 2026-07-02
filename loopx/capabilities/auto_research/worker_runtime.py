@@ -28,12 +28,13 @@ from .research_state import (
     build_research_decision_candidates,
     build_research_evidence_graph_from_rollout_events,
 )
+from ...agent_registry import registered_agent_ids_from_registry
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
 from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from ...status import collect_status
-from ...todos import complete_goal_todo
+from ...todos import add_goal_todo, complete_goal_todo
 
 
 AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION = "auto_research_worker_turn_v0"
@@ -48,6 +49,21 @@ SUPPORTED_WORKER_ACTIONS = {
     "summarize_evidence",
     "write_evaluation_summary",
 }
+DEFAULT_EVIDENCE_RUNNER_AGENT_ID = "codex-main-control"
+HOLDOUT_FOLLOWUP_TEXT = (
+    "[P0-auto-research-live] Run held-out validation for the dev-supported "
+    "hypothesis, append public-safe evidence, and summarize promotion readiness."
+)
+GENERIC_VERIFIER_HANDOFF_KEYWORDS = (
+    "verify",
+    "verifier",
+    "validate",
+    "validation",
+    "evidence",
+    "holdout",
+    "promotion",
+    "promote",
+)
 
 AppendEvidence = Callable[[str], dict[str, object]]
 
@@ -265,6 +281,154 @@ def _select_holdout_candidate(graph: dict[str, object]) -> dict[str, object]:
     )[0]
 
 
+def _evidence_runner_agent_id(*, registry_path: Path, goal_id: str, current_agent_id: str) -> str:
+    registered = registered_agent_ids_from_registry(registry_path, goal_id)
+    if DEFAULT_EVIDENCE_RUNNER_AGENT_ID in registered:
+        return DEFAULT_EVIDENCE_RUNNER_AGENT_ID
+    for agent_id in registered:
+        if agent_id != current_agent_id:
+            return agent_id
+    return current_agent_id
+
+
+def _maybe_add_holdout_followup_todo(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    source_todo_id: str,
+    agent_id: str,
+    decision_summary: dict[str, object],
+    execute: bool,
+) -> dict[str, object]:
+    dev_candidate_count = int(decision_summary.get("dev_promotion_candidate_count") or 0)
+    validated_candidate_count = int(decision_summary.get("validated_promotion_candidate_count") or 0)
+    if not dev_candidate_count:
+        return {"needed": False, "reason": "no_dev_promotion_candidate"}
+    if validated_candidate_count:
+        return {"needed": False, "reason": "holdout_already_validated"}
+
+    claimed_by = _evidence_runner_agent_id(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        current_agent_id=agent_id,
+    )
+    if not execute:
+        return {
+            "needed": True,
+            "executed": False,
+            "action_kind": "run_holdout_eval",
+            "claimed_by": claimed_by,
+            "unblocks_todo_id": source_todo_id,
+        }
+
+    result = add_goal_todo(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        role="agent",
+        text=HOLDOUT_FOLLOWUP_TEXT,
+        task_class="advancement_task",
+        action_kind="run_holdout_eval",
+        claimed_by=claimed_by,
+        unblocks_todo_id=source_todo_id,
+        dry_run=False,
+    )
+    return {
+        "needed": True,
+        "executed": True,
+        "added": bool(result.get("added")),
+        "already_exists": bool(result.get("already_exists")),
+        "metadata_updated": bool(result.get("metadata_updated")),
+        "todo_id": result.get("todo_id"),
+        "action_kind": result.get("action_kind") or "run_holdout_eval",
+        "claimed_by": result.get("claimed_by") or claimed_by,
+        "unblocks_todo_id": result.get("unblocks_todo_id") or source_todo_id,
+    }
+
+
+def _generic_handoff_is_satisfied(
+    *,
+    selected: dict[str, object],
+    evidence_graph: dict[str, object],
+    decisions: dict[str, list[dict[str, object]]],
+) -> bool:
+    if not decisions.get("validated_promotion_candidates"):
+        return False
+    if not evidence_graph.get("holdout_improved"):
+        return False
+    selected_text = " ".join(
+        str(selected.get(key) or "")
+        for key in ("title", "mechanism_family", "source_kind", "todo_id")
+    ).lower()
+    return any(keyword in selected_text for keyword in GENERIC_VERIFIER_HANDOFF_KEYWORDS)
+
+
+def _maybe_close_satisfied_generic_handoff(
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+    selected: dict[str, object],
+    action: str,
+    execute: bool,
+    complete_selected_todo: bool,
+    frontier_packet: dict[str, object],
+) -> dict[str, object] | None:
+    if action != "advance_todo":
+        return None
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+    graph = build_research_evidence_graph_from_rollout_events(
+        goal_id=goal_id,
+        rollout_events=load_rollout_events(rollout_event_log_path(runtime_root, goal_id)),
+    )
+    decisions = build_research_decision_candidates(graph)
+    if not _generic_handoff_is_satisfied(
+        selected=selected,
+        evidence_graph=graph,
+        decisions=decisions,
+    ):
+        return None
+
+    completion = (
+        _complete_selected_todo(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+            action="satisfied_generic_handoff",
+            execute=True,
+        )
+        if execute and complete_selected_todo
+        else {"requested": complete_selected_todo, "executed": False}
+    )
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+        "mode": "execute" if execute else "dry_run",
+        "goal_id": goal_id,
+        "agent_id": agent_id,
+        "selected_todo_id": todo_id,
+        "selected_action": action,
+        "executed": bool(execute and complete_selected_todo),
+        "artifact_status": "satisfied_generic_handoff_closed",
+        "decision_summary": {
+            "validated_promotion_candidate_count": len(decisions.get("validated_promotion_candidates") or []),
+            "holdout_improved": bool(graph.get("holdout_improved")),
+        },
+        "completion": completion,
+        "frontier": frontier_packet,
+        "public_boundary": {
+            "source": "rollout_event_log_and_todo_projection",
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "credentials_recorded": False,
+        },
+    }
+
+
 def _complete_selected_todo(
     *,
     registry_path: Path,
@@ -408,6 +572,20 @@ def run_auto_research_worker_turn(
             "executed": False,
             "frontier": frontier_packet,
         }
+    cleanup = _maybe_close_satisfied_generic_handoff(
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        agent_id=agent_id,
+        selected=selected,
+        action=action,
+        execute=execute,
+        complete_selected_todo=complete_selected_todo,
+        frontier_packet=frontier_packet,
+    )
+    if cleanup is not None:
+        return cleanup
     if action not in SUPPORTED_WORKER_ACTIONS:
         return {
             "ok": True,
@@ -547,6 +725,14 @@ def run_auto_research_worker_turn(
             todo_id=todo_id,
             agent_id=agent_id,
         )
+        followup = _maybe_add_holdout_followup_todo(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            source_todo_id=todo_id,
+            agent_id=agent_id,
+            decision_summary=artifact["decision_summary"],
+            execute=True,
+        )
         completion = (
             _complete_selected_todo(
                 registry_path=registry_path,
@@ -573,6 +759,7 @@ def run_auto_research_worker_turn(
             "artifact_status": artifact["summary"]["status"],
             "claim_allowed": artifact["summary"]["claim_allowed"],
             "promotion_decision_made": artifact["summary"]["promotion_decision_made"],
+            "followup": followup,
             "completion": completion,
             "frontier": frontier_packet,
             "public_boundary": {

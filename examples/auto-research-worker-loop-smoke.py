@@ -93,7 +93,7 @@ def main() -> int:
             "--lane-count",
             str(len(AGENT_IDS)),
             "--max-rounds",
-            "2",
+            "3",
             "--visible-lanes-accepted",
             "--complete-selected-todo",
             "--execute",
@@ -116,14 +116,15 @@ def main() -> int:
         assert payload["ok"] is True, payload
         assert payload["schema_version"] == "auto_research_worker_loop_v0", payload
         assert payload["mode"] == "execute", payload
-        assert payload["executed_turn_count"] == 4, payload
-        assert payload["completed_turn_count"] == 4, payload
+        assert payload["executed_turn_count"] == 5, payload
+        assert payload["completed_turn_count"] == 5, payload
         assert payload["stop_reason"] == "no_runnable_frontier", payload
         assert payload["selected_actions"] == [
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
             "summarize_evidence",
+            "run_holdout_eval",
         ], payload
         evidence_turn = next(
             turn for turn in payload["turns"] if turn.get("selected_action") == "run_dev_eval"
@@ -137,6 +138,13 @@ def main() -> int:
         assert verifier_turn["completion_status"] == "done", verifier_turn
         assert verifier_turn["claim_allowed"] is None, verifier_turn
         assert verifier_turn["appended_count"] is None, verifier_turn
+        holdout_turn = next(
+            turn for turn in payload["turns"] if turn.get("selected_action") == "run_holdout_eval"
+        )
+        assert holdout_turn["holdout_metric"] == 4.5, holdout_turn
+        assert holdout_turn["completion_status"] == "done", holdout_turn
+        final_round = [turn for turn in payload["turns"] if turn.get("round") == 3]
+        assert final_round and all(turn["mode"] == "no_action" for turn in final_round), payload
         assert_public_safe(payload)
     return 0
 

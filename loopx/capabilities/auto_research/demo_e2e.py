@@ -324,7 +324,7 @@ def run_auto_research_demo_e2e(
     goal_surface_mode: str = "explicit_goal",
     agent_specs: Sequence[str] | None = None,
     run_worker_loop: bool = False,
-    worker_loop_rounds: int = 2,
+    worker_loop_rounds: int = 3,
 ) -> dict[str, object]:
     if launch_visible and not execute:
         raise ValueError("--launch-visible requires --execute")
@@ -575,8 +575,12 @@ def run_auto_research_demo_e2e(
                 "selected_actions": worker_loop.get("selected_actions"),
                 "dev_metric": dev_metric,
                 "holdout_metric": holdout_metric,
-                "positive_result": dev_metric is not None,
-                "positive_result_basis": "public_safe_dev_evidence",
+                "positive_result": holdout_metric is not None or dev_metric is not None,
+                "positive_result_basis": (
+                    "public_safe_dev_and_holdout_evidence"
+                    if holdout_metric is not None
+                    else "public_safe_dev_evidence"
+                ),
                 "state_surfaces": [
                     "demo-local LoopX registry",
                     "quota/frontier selection",
