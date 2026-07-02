@@ -225,7 +225,7 @@ def build_auto_research_demo_supervisor_plan(
         cli_bin=cli_bin,
         codex_bin=codex_bin,
     )
-    launch_checks = payload.pop("acceptance", None)
+    payload.pop("acceptance", None)
     payload.update(
         {
             "schema_version": AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION,
@@ -248,7 +248,6 @@ def build_auto_research_demo_supervisor_plan(
                 ],
                 "pattern": "decentralized_state_a2a",
             },
-            "launch_checks": launch_checks,
             "one_click_demo": {
                 "schema_version": "auto_research_one_click_demo_v1",
                 "mode": "visible_codex_tui_lanes",

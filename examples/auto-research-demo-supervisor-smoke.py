@@ -190,7 +190,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert boundary["public_safe_redaction"] is True, payload
 
     for removed_key in [
+        "acceptance",
         "demo_acceptance",
+        "launch_checks",
         "board",
         "showcase_projection",
         "artifact_packet",
