@@ -3735,14 +3735,10 @@ def _state_action_projection_warning(
         "requires_state_writeback": True,
         "active_state_next_action": _protocol_action_text(active_next_action, limit=320),
         "selected_recommended_action": _protocol_action_text(selected_text, limit=320),
-        "reason": (
-            "quota selected the executable backlog item, but the active state's visible "
-            "Next Action still points at a different action"
-        ),
+        "reason": "quota selected executable backlog while active Next Action differs",
         "recommended_action": (
-            "sync the active state Next Action to the selected protocol action, or treat "
-            "protocol_action_packet / interaction_contract as authoritative over stale "
-            "Next Action text"
+            "sync active-state Next Action, or treat protocol_action_packet / "
+            "interaction_contract as authoritative"
         ),
     }
 

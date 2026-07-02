@@ -265,11 +265,106 @@ def assert_higher_priority_due_monitor_preempts_advancement() -> None:
     assert quota["recommended_action"] == "[P0] Poll the due monitor first.", quota
 
 
+def assert_monitor_quiet_skip_scheduler_and_packet_contract() -> None:
+    payload = status_payload(
+        [
+            todo_item(
+                todo_id="todo_monitor_wait",
+                title="Watch unchanged monitor.",
+                task_class="continuous_monitor",
+                claimed_by=AGENT_ID,
+            )
+        ]
+    )
+    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    assert quota["decision"] == "skip", quota
+    assert quota["should_run"] is False, quota
+    assert quota["effective_action"] == "monitor_quiet_skip", quota
+
+    contract = quota["interaction_contract"]
+    assert contract["mode"] == "monitor_quiet_skip", contract
+    assert contract["user_channel"]["action_required"] is False, contract
+    assert contract["user_channel"]["notify"] == "DONT_NOTIFY", contract
+    assert contract["agent_channel"]["must_attempt"] is False, contract
+    assert contract["agent_channel"]["delivery_allowed"] is False, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["cli_channel"]["spend_allowed_now"] is False, contract
+    assert contract["cli_channel"]["spend_after_validation"] is False, contract
+
+    scheduler = quota["scheduler_hint"]
+    assert scheduler["action"] == "backoff_until_material_transition", scheduler
+    assert scheduler["cadence_class"] == "monitor_wait", scheduler
+    assert scheduler["codex_app"]["recommended_rrule"] == (
+        "FREQ=MINUTELY;INTERVAL=15"
+    ), scheduler
+    assert scheduler["codex_app"]["stateful_backoff"]["current_interval_minutes"] == 15, scheduler
+    assert scheduler["codex_app"]["stateful_backoff"]["ack_required_after_apply"] is True, scheduler
+    assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
+
+    packet = build_review_packet(payload, goal_id=GOAL_ID)
+    assert packet["ok"] is True, packet
+    assert packet["project_asset_source"] == "project_asset", packet
+    assert packet["handoff_interface_budget"]["within_budget"] is True, packet
+    assert packet["agent_todo_items"] == [
+        "[P0] Watch unchanged monitor. claimed_by=codex-product-capability"
+    ], packet
+
+
+def assert_agent_scope_wait_scheduler_contract() -> None:
+    payload = status_payload(
+        [
+            todo_item(
+                todo_id="todo_primary_only",
+                title="Primary agent owns the only runnable work.",
+                claimed_by=PRIMARY_AGENT_ID,
+            )
+        ]
+    )
+    quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    assert quota["decision"] == "agent_scope_wait", quota
+    assert quota["should_run"] is False, quota
+    assert quota["effective_action"] == "agent_scope_wait", quota
+    assert quota["agent_lane_frontier_hint"]["reason_code"] == (
+        "blocked_by_other_agent_frontier"
+    ), quota
+    assert quota["agent_lane_frontier_hint"]["target_todo_id"] == (
+        "todo_primary_only"
+    ), quota
+
+    contract = quota["interaction_contract"]
+    assert contract["mode"] == "agent_scope_wait", contract
+    assert contract["user_channel"]["action_required"] is False, contract
+    assert contract["user_channel"]["notify"] == "DONT_NOTIFY", contract
+    assert contract["agent_channel"]["must_attempt"] is False, contract
+    assert contract["agent_channel"]["delivery_allowed"] is False, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["cli_channel"]["spend_after_validation"] is False, contract
+
+    scheduler = quota["scheduler_hint"]
+    assert scheduler["action"] == "backoff_until_reassigned", scheduler
+    assert scheduler["cadence_class"] == "agent_scope_wait", scheduler
+    assert scheduler["codex_app"]["recommended_rrule"] == (
+        "FREQ=MINUTELY;INTERVAL=10"
+    ), scheduler
+    assert scheduler["codex_app"]["stateful_backoff"]["current_interval_minutes"] == 10, scheduler
+    assert scheduler["codex_app"]["stateful_backoff"]["ack_required_after_apply"] is True, scheduler
+    assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
+
+    packet = build_review_packet(payload, goal_id=GOAL_ID)
+    assert packet["ok"] is True, packet
+    assert packet["handoff_interface_budget"]["within_budget"] is True, packet
+    assert packet["agent_todo_items"] == [
+        "[P0] Primary agent owns the only runnable work. claimed_by=codex-main-control"
+    ], packet
+
+
 def main() -> None:
     assert_agent_lane_delivery()
     assert_scoped_operator_gate_safe_bypass()
     assert_due_monitor_context_does_not_steal_advancement()
     assert_higher_priority_due_monitor_preempts_advancement()
+    assert_monitor_quiet_skip_scheduler_and_packet_contract()
+    assert_agent_scope_wait_scheduler_contract()
     print("control-plane-risk-characterization-smoke ok")
 
 

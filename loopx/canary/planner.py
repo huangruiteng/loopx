@@ -319,7 +319,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             {
                 "command": "python3 examples/control-plane-risk-characterization-smoke.py",
                 "tier": "default",
-                "reason": "characterizes shared control-plane routing risks",
+                "reason": "characterizes shared control-plane routing, scheduler, and review-packet risks",
             },
             {
                 "command": "python3 examples/hot-path-interface-budget-smoke.py",
