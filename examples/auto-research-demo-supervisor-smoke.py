@@ -18,6 +18,9 @@ from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
     AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION,
     build_auto_research_demo_supervisor_plan,
 )
+from loopx.capabilities.auto_research.preset import (  # noqa: E402
+    AUTO_RESEARCH_PRESET_SCHEMA_VERSION,
+)
 
 
 GOAL_ID = "loopx-auto-research-demo"
@@ -75,8 +78,20 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "compact_human_status" in layering["kernel_layer"]["owns"], layering
     assert layering["acceptance"]["preset_has_no_runner_process_logic"] is True, layering
 
+    preset = payload["preset"]
+    assert preset["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, preset
+    assert preset["role_count"] == 4, preset
+    assert preset["owns"] == [
+        "research_roles",
+        "handoff_hints",
+        "metric_evidence_loop",
+        "domain_defaults",
+    ], preset
+    assert "multi_agent_runner" in preset["forbidden"], preset
+    assert "pane_local_a2a_tick" in preset["forbidden"], preset
+
     kernel = payload["auto_research"]
-    assert kernel["schema_version"] == "auto_research_visible_demo_kernel_v0", payload
+    assert kernel["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, payload
     assert kernel["uses_generic_runner"] is True, payload
     assert kernel["surface_count"] == 4, payload
     assert kernel["state_bus"] == "loopx_registry_runtime_todo_quota_frontier", payload

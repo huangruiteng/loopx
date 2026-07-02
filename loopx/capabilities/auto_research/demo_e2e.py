@@ -9,6 +9,11 @@ from pathlib import Path
 from .demo_supervisor import build_auto_research_demo_supervisor_plan
 from .defaults import AUTO_RESEARCH_DEFAULT_GOAL_ID
 from .live_evidence import load_live_codex_e2e_evidence
+from .preset import (
+    auto_research_seed_action_for_role,
+    auto_research_seed_title,
+    default_auto_research_agent_specs,
+)
 from .rollout_append import append_auto_research_rollout_events
 from .worker_loop import run_auto_research_worker_loop
 
@@ -17,13 +22,6 @@ AppendEvidence = Callable[[str], dict[str, object]]
 VisibleLauncher = Callable[..., dict[str, object]]
 
 AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION = "auto_research_demo_e2e_result_v0"
-
-DEFAULT_WORKER_LOOP_AGENT_SPECS = [
-    "codex-product-capability:research-curator:research_curator",
-    "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
-    "codex-main-control:evidence-runner:evidence_runner",
-    "codex-value-explorer:evidence-verifier:evidence_verifier",
-]
 
 
 def _prepare_visible_demo_workspace_route(
@@ -145,34 +143,11 @@ def _seed_visible_demo_control_plane(
         agent_id = str(lane.get("agent_id") or "").strip()
         role_id = str(lane.get("role_id") or "").strip()
         lane_id = str(lane.get("lane_id") or "").strip()
-        profile = lane.get("role_profile") if isinstance(lane.get("role_profile"), dict) else {}
-        allowed_actions = profile.get("allowed_actions") if isinstance(profile, dict) else []
-        action_kind = str((allowed_actions or ["advance_todo"])[0])
-        if role_id == "evidence_runner":
-            action_kind = "run_dev_eval"
-        title_by_action = {
-            "write_research_contract": (
-                "Write the public-safe research contract for the shared demo hypothesis."
-            ),
-            "propose_hypothesis": (
-                "Map the first shared idea into a todo-backed research hypothesis."
-            ),
-            "claim_attempt": (
-                "Claim one visible attempt boundary for the selected hypothesis."
-            ),
-            "run_dev_eval": (
-                "Run the selected hypothesis on the dev split, write public-safe evidence, append it, and capture live evidence."
-            ),
-            "run_holdout_eval": (
-                "Run held-out validation for the dev-supported hypothesis, append public-safe evidence, and summarize promotion readiness."
-            ),
-            "write_evaluation_summary": (
-                "Verify the evidence packet and open the next validation or promotion gate."
-            ),
-        }
-        title = title_by_action.get(
-            action_kind,
-            f"Run one role-compatible auto-research action for {role_id or lane_id}.",
+        action_kind = auto_research_seed_action_for_role(role_id)
+        title = auto_research_seed_title(
+            action_kind=action_kind,
+            role_id=role_id,
+            lane_id=lane_id,
         )
         result = add_goal_todo(
             registry_path=control_registry,
@@ -400,7 +375,7 @@ def run_auto_research_demo_e2e(
     reuses_default_internal_goal = goal_id == AUTO_RESEARCH_DEFAULT_GOAL_ID
     effective_agent_specs = list(agent_specs or [])
     if (run_worker_loop or launch_visible) and not effective_agent_specs:
-        effective_agent_specs = list(DEFAULT_WORKER_LOOP_AGENT_SPECS)
+        effective_agent_specs = default_auto_research_agent_specs()
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,
         agent_specs=effective_agent_specs,

@@ -10,6 +10,13 @@ Use the deeper showcase and protocol docs only after this path is clear:
 - [auto_research_role_state_machine_v0](../reference/protocols/auto-research-role-state-machine-v0.md)
 - [auto_research_role_profile_v0](../reference/protocols/auto-research-role-profile-v0.md)
 
+Implementation boundary: auto-research is a thin preset over the generic
+multi-agent kernel. `loopx/capabilities/auto_research/preset.py` owns only the
+research roles, handoff hints, metric/evidence loop defaults, and seed todo
+phrasing. The generic kernel owns the real Codex TUI panes, pane-local A2A
+tick, workspace/trust-safe launch, todo/evidence/status protocol, and compact
+human status.
+
 ## Start From A Clean Workspace
 
 Use a user-owned directory for the visible demo, while keeping LoopX state in
@@ -124,9 +131,10 @@ Expected minimal E2E result:
 
 - `execution_kind` is `loopx_worker_loop`;
 - `result_source` is `loopx_worker_loop_public_evidence`;
-- `worker_loop.executed_turn_count` is `4`;
+- `worker_loop.executed_turn_count` is `5`;
 - `worker_loop.selected_actions` is
   `write_research_contract`, `propose_hypothesis`, `run_dev_eval`,
+  `summarize_evidence`,
   `run_holdout_eval`;
 - `tonight_experience.coordination_pattern` is `decentralized_state_a2a`;
 - `tonight_experience.dev_metric` is `4.0`;

@@ -49,6 +49,9 @@ def main() -> int:
     demo_e2e_source = (
         REPO_ROOT / "loopx/capabilities/auto_research/demo_e2e.py"
     ).read_text(encoding="utf-8")
+    preset_source = (
+        REPO_ROOT / "loopx/capabilities/auto_research/preset.py"
+    ).read_text(encoding="utf-8")
     assert "raw JSON is not printed in visible panes" in runtime_scripts_source
     assert "Use $LOOPX_PANE_LOOPX for human-readable output" in runtime_scripts_source
     assert "$LOOPX_PANE_LOOPX_JSON <command>" in runtime_scripts_source
@@ -62,6 +65,10 @@ def main() -> int:
     assert "codex_stream_filter" not in launcher_source
     assert "build_auto_research_quickstart" not in demo_e2e_source
     assert "quickstart_preview" not in demo_e2e_source
+    assert "DEFAULT_WORKER_LOOP_AGENT_SPECS" not in demo_e2e_source
+    assert "title_by_action" not in demo_e2e_source
+    assert "AUTO_RESEARCH_DEFAULT_LANES" in preset_source
+    assert "AUTO_RESEARCH_SEED_TITLES" in preset_source
 
     worker_markdown = render_auto_research_markdown(
         {
