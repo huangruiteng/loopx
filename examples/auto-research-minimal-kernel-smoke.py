@@ -134,17 +134,12 @@ def assert_evidence_packet_boundary() -> None:
     assert not leaked_legacy_exports, leaked_legacy_exports
     assert "from .legacy_core import" not in rollout_text
     assert "from .legacy_core import" not in live_text
+    assert "from .legacy_core import" not in worker_text
     assert "from .evidence_packet import (" in worker_text
+    assert "from .quickstart_seed import (" in worker_text
     assert "from .research_state import (" in worker_text
     assert "RESEARCH_HYPOTHESIS_SCHEMA_VERSION" in worker_text
     assert "load_auto_research_evidence_packet_inputs" in worker_text
-    worker_legacy_import = worker_text.split("from .legacy_core import (", 1)[1].split(")", 1)[0]
-    for name in (
-        "build_live_auto_research_projection",
-        "build_research_decision_candidates",
-        "build_research_evidence_graph_from_rollout_events",
-    ):
-        assert name not in worker_legacy_import, name
     assert "from .evidence_packet import load_auto_research_evidence_packet_inputs" in cli_text
 
 
