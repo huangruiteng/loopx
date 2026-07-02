@@ -17,6 +17,9 @@ incident report, or launch draft.
 - [Auto-research command path](guides/auto-research-command-path.md): the
   shortest visible route from a clean workspace to an inspectable multi-agent
   auto-research rehearsal with stop and takeover controls.
+- [Multi-agent product recipe](guides/multi-agent-product-recipe.md): the
+  product-author path for keeping both user config and product presets thin
+  while the generic kernel owns runner, TUI, tick, status, and host controls.
 - [Product vision](product/vision.md): long-term product direction, Loop Agent
   definition, maintainer-first management surface, and open-source anchor
   strategy.
@@ -78,6 +81,7 @@ incident report, or launch draft.
 - [Getting started](guides/getting-started.md)
 - [Newcomer command path](guides/newcomer-command-path.md)
 - [Auto-research command path](guides/auto-research-command-path.md)
+- [Multi-agent product recipe](guides/multi-agent-product-recipe.md)
 - [Integration guide](integration.md)
 - [Benchmark developer workflow](benchmark-developer-workflow.md)
 - [Attention queue](attention-queue.md)
