@@ -645,6 +645,12 @@ synthesis that says whether the current lane should run, claim, wait, or
 reassign while preserving `## Next Action` as durable goal-level guidance. It
 is an advisory routing hint, not a writeback instruction and not a replacement
 for `agent_todo_summary`.
+When projected, `goal_frontier_projection.schema_version =
+goal_frontier_projection_v0` is the per-goal progress/frontier view used before
+lane-local quiet or wait decisions. Its `autonomous_replan_decision` says that a
+required replan must be selected independently of `monitor_quiet_skip` or
+`agent_scope_wait`; the policy lives in `loopx.policies.goal_frontier`, while
+quota only wires the selected mode into `interaction_contract`.
 If the active-state and latest-run actions differ,
 `next_action_projection_warning` asks the executor to explicitly write back the
 intended durable route with a primary goal-scope `refresh-state --next-action`

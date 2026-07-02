@@ -1249,6 +1249,13 @@ todos remain visible, as long as the selected slice stays outside private,
 destructive, production, or owner-only authority and honors `stop_condition`.
 This is intended to keep monitor-only work from consuming the primary
 executable backlog, not to bypass real gates.
+`quota should-run` and `status --agent-id` may also expose
+`goal_frontier_projection.schema_version=goal_frontier_projection_v0`. This
+projection is owned by `loopx.policies.goal_frontier`: it is a compact per-goal
+progress/frontier view, not another quota sub-state. When it contains
+`autonomous_replan_decision`, that decision is made before lane-local
+`monitor_quiet_skip`, `agent_scope_wait`, or `agent_scope_exhausted` projection,
+so those local no-candidate states cannot mask a required bounded replan.
 The payload includes `interaction_contract.schema_version =
 loopx_interaction_contract_v0`, which is the primary user/agent/CLI
 protocol for a selected goal. It groups the current turn into a stable

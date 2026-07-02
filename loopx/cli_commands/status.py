@@ -426,6 +426,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
     attached = 0
     frontier_attached = 0
     hint_attached = 0
+    goal_frontier_attached = 0
     member_attached = 0
     for item in items:
         if not isinstance(item, dict):
@@ -460,6 +461,13 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
                 project_asset["agent_lane_frontier_hint"] = frontier_hint
             hint_attached += 1
             changed = True
+        goal_frontier = guard.get("goal_frontier_projection")
+        if isinstance(goal_frontier, dict):
+            item["goal_frontier_projection"] = goal_frontier
+            if isinstance(project_asset, dict):
+                project_asset["goal_frontier_projection"] = goal_frontier
+            goal_frontier_attached += 1
+            changed = True
         agent_member = _build_agent_member_projection(
             item,
             guard=guard,
@@ -473,13 +481,14 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
             changed = True
         if not changed:
             continue
-    if attached or frontier_attached or hint_attached or member_attached:
+    if attached or frontier_attached or hint_attached or goal_frontier_attached or member_attached:
         payload["agent_lane_next_action_projection"] = {
             "schema_version": "agent_lane_next_action_projection_v0",
             "agent_id": safe_agent_id,
             "attached_count": attached,
             "frontier_attached_count": frontier_attached,
             "frontier_hint_attached_count": hint_attached,
+            "goal_frontier_attached_count": goal_frontier_attached,
             "agent_member_attached_count": member_attached,
             "preserves_goal_next_action": True,
         }

@@ -34,6 +34,7 @@ private evidence migration, production actions, or public first-screen copy.
 | Work-lane policy | `_work_lane_contract` | Pure policy module that chooses lane, obligation, monitor policy, and reason codes from compact status inputs. | Parity snapshot for advancement, due monitor, external evidence, and quiet skip cases. |
 | Capability and boundary gates | `_capability_gate`, `_side_agent_workspace_guard`, `_automation_prompt_upgrade` | Gate evaluators that return typed decisions without mutating payloads. | Existing quota contract fields and workspace guard failure mode remain stable. |
 | Agent-lane selection | `_agent_lane_next_action`, `_agent_lane_frontier_hint` | Agent-scoped selector over normalized todo projections. | Current-agent claimed todos outrank unrelated agents; frontier hints stay diagnostic when no runnable candidate exists. |
+| Goal frontier and replan decision | `loopx.policies.goal_frontier`, `build_quota_should_run` adapter | Goal-frontier policy owns completion/replan projection; quota only selects the resulting interaction mode. | Required autonomous replan is decided before monitor quiet or agent-scope wait classification, without growing per-agent vision logic inside quota. |
 | Quota plan and should-run assembly | `build_quota_plan`, `build_quota_should_run` | Thin orchestration layer that merges status, quota accounting, gates, and policy outputs. | `quota should-run` JSON field names and interaction contract stay compatible. |
 | User/agent/CLI split | `_protocol_action_packet`, `_interaction_contract` | Protocol packet builder with no scheduler or writeback side effects. | Operator gate vs bounded delivery payloads keep the same action_required and must_attempt meanings. |
 | Scheduler policy | `_scheduler_hint` wrapper plus `loopx/policies/scheduler_hint.py` | Pure scheduler-hint builder fed by final decision state. | RRULE, reset token, and no-spend cadence fields stay stable for Codex App and local loops. |
@@ -82,6 +83,9 @@ private evidence migration, production actions, or public first-screen copy.
 - `goal_route_hint` may summarize current, other-agent, and unclaimed lane
   signals for hosts, but it is read-only advisory projection and must preserve
   shared `## Next Action`.
+- `goal_frontier_projection` is the small per-goal completion/replan view used
+  before lane-local quiet/wait decisions; keep its policy in
+  `loopx.policies.goal_frontier` rather than expanding `quota.py`.
 - Monitor routing is attribute based, not name based:
   `task_class=continuous_monitor` plus due metadata defines due monitor work,
   while `waiting_on=external_evidence` or
