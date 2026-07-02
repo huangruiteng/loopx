@@ -129,6 +129,7 @@ def _json_bridge_public_contract(args: argparse.Namespace) -> dict[str, Any]:
         "raw_socket_paths_recorded": False,
         "raw_client_path_recorded": False,
         "raw_probe_output_recorded": False,
+        "remote_socket_cleanup": _remote_json_socket_cleanup_public_contract(args),
     }
 
 
@@ -254,6 +255,45 @@ def _probe_remote_json_socket(args: argparse.Namespace) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return proc.returncode == 0
+
+
+def _remote_json_socket_cleanup_public_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return {
+        "requested": bool(_json_bridge_requested(args) and args.json_remote_socket),
+        "attempted": False,
+        "ok": False,
+        "raw_socket_paths_recorded": False,
+        "raw_output_recorded": False,
+    }
+
+
+def _cleanup_remote_json_socket(args: argparse.Namespace) -> dict[str, Any]:
+    payload = _remote_json_socket_cleanup_public_contract(args)
+    if not payload["requested"]:
+        return payload
+    payload["attempted"] = True
+    command = "rm -f -- " + shlex.quote(args.json_remote_socket)
+    try:
+        proc = _run_remote_shell_command(
+            args,
+            command,
+            timeout_sec=args.remote_setup_timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        payload["first_blocker"] = "json_bridge_remote_socket_cleanup_timeout"
+        return payload
+    except OSError:
+        payload["first_blocker"] = "json_bridge_remote_socket_cleanup_launch_failed"
+        return payload
+    payload["exit_code"] = proc.returncode
+    payload["stdout_size_bucket"] = _size_bucket(proc.stdout or "")
+    payload["stderr_size_bucket"] = _size_bucket(proc.stderr or "")
+    payload["ok"] = proc.returncode == 0
+    if proc.returncode != 0:
+        payload["first_blocker"] = "json_bridge_remote_socket_cleanup_exit_nonzero"
+    return payload
 
 
 def _materialize_remote_json_client(args: argparse.Namespace, runtime_dir: Path) -> bool:
@@ -752,6 +792,17 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 json_bridge_payload["server_exit_code"] = json_bridge_proc.returncode
                 return finish(2)
             json_bridge_payload["local_socket_ready"] = True
+            json_bridge_payload["remote_socket_cleanup"] = (
+                _cleanup_remote_json_socket(args)
+            )
+            if not json_bridge_payload["remote_socket_cleanup"].get("ok"):
+                payload["first_blocker"] = (
+                    json_bridge_payload["remote_socket_cleanup"].get(
+                        "first_blocker",
+                        "json_bridge_remote_socket_cleanup_failed",
+                    )
+                )
+                return finish(2)
 
         tunnel_proc = subprocess.Popen(
             _tunnel_command(args, json_local_socket=json_local_socket),

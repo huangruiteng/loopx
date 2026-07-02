@@ -272,6 +272,11 @@ def test_supervisor_holds_json_bridge_and_materializes_remote_client() -> None:
         assert bridge["remote_socket_ready"] is True, bridge
         assert bridge["remote_client_materialized"] is True, bridge
         assert bridge["sandbox_env_probe_deferred"] is True, bridge
+        cleanup = bridge["remote_socket_cleanup"]
+        assert cleanup["requested"] is True, cleanup
+        assert cleanup["attempted"] is True, cleanup
+        assert cleanup["ok"] is True, cleanup
+        assert cleanup["exit_code"] == 0, cleanup
         assert bridge["raw_bridge_command_recorded"] is False, bridge
         assert bridge["raw_socket_paths_recorded"] is False, bridge
         assert bridge["raw_client_path_recorded"] is False, bridge
@@ -282,7 +287,10 @@ def test_supervisor_holds_json_bridge_and_materializes_remote_client() -> None:
         assert str(local_socket) not in public_text
         assert opaque_remote_socket not in public_text
         assert opaque_remote_client not in public_text
-        assert opaque_remote_client in ssh_log.read_text(encoding="utf-8")
+        ssh_log_text = ssh_log.read_text(encoding="utf-8")
+        assert "rm -f --" in ssh_log_text
+        assert opaque_remote_socket in ssh_log_text
+        assert opaque_remote_client in ssh_log_text
         assert private_log.exists()
 
 
