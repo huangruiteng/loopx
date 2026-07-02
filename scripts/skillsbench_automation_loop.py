@@ -9140,6 +9140,12 @@ def _merge_app_server_goal_worker_trace_summary(
     turn_completed_count = 0
     assistant_message_count = 0
     context_only_assistant_message_count = 0
+    context_only_recovery_attempted_count = 0
+    context_only_recovery_succeeded_count = 0
+    context_only_followup_start_attempted_count = 0
+    context_only_followup_start_succeeded_count = 0
+    transport_reconnect_attempted_count = 0
+    transport_reconnect_succeeded_count = 0
     post_context_assistant_chars_total = 0
     first_action_count = 0
     effective_action_count = 0
@@ -9218,6 +9224,35 @@ def _merge_app_server_goal_worker_trace_summary(
             context_only_assistant_message_count += max(0, context_only_attempts)
         elif turn.get("assistant_message_context_only") is True:
             context_only_assistant_message_count += 1
+        recovery = (
+            payload.get("context_only_recovery")
+            if isinstance(payload.get("context_only_recovery"), dict)
+            else {}
+        )
+        if (
+            turn.get("context_only_recovery_attempted") is True
+            or recovery.get("attempted") is True
+        ):
+            context_only_recovery_attempted_count += 1
+        if (
+            turn.get("context_only_recovery_succeeded") is True
+            or recovery.get("succeeded") is True
+        ):
+            context_only_recovery_succeeded_count += 1
+        if (
+            turn.get("context_only_followup_start_attempted") is True
+            or recovery.get("followup_start_attempted") is True
+        ):
+            context_only_followup_start_attempted_count += 1
+        if (
+            turn.get("context_only_followup_start_succeeded") is True
+            or recovery.get("followup_start_succeeded") is True
+        ):
+            context_only_followup_start_succeeded_count += 1
+        if turn.get("transport_reconnect_attempted") is True:
+            transport_reconnect_attempted_count += 1
+        if turn.get("transport_reconnect_succeeded") is True:
+            transport_reconnect_succeeded_count += 1
         post_context_chars = turn.get("post_context_assistant_chars")
         if isinstance(post_context_chars, int) and not isinstance(
             post_context_chars, bool
@@ -9284,6 +9319,24 @@ def _merge_app_server_goal_worker_trace_summary(
     )
     trace["native_goal_worker_assistant_context_only_count"] = (
         context_only_assistant_message_count
+    )
+    trace["native_goal_worker_context_only_recovery_attempted_count"] = (
+        context_only_recovery_attempted_count
+    )
+    trace["native_goal_worker_context_only_recovery_succeeded_count"] = (
+        context_only_recovery_succeeded_count
+    )
+    trace["native_goal_worker_context_only_followup_start_attempted_count"] = (
+        context_only_followup_start_attempted_count
+    )
+    trace["native_goal_worker_context_only_followup_start_succeeded_count"] = (
+        context_only_followup_start_succeeded_count
+    )
+    trace["native_goal_worker_transport_reconnect_attempted_count"] = (
+        transport_reconnect_attempted_count
+    )
+    trace["native_goal_worker_transport_reconnect_succeeded_count"] = (
+        transport_reconnect_succeeded_count
     )
     trace["native_goal_worker_post_context_assistant_chars_total"] = (
         post_context_assistant_chars_total

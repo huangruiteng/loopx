@@ -360,6 +360,97 @@ for line in sys.stdin:
     print(json.dumps({"id": mid, "result": result}), flush=True)
 """
 
+FAKE_CODEX_CONTEXT_ONLY_EXIT_THEN_RESUME = """#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+state_path = Path(__file__).with_suffix(".state")
+resumed = state_path.exists()
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/resume":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "xhigh":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing xhigh effort"},
+            }), flush=True)
+            continue
+        if not resumed:
+            print(json.dumps({
+                "method": "turn/started",
+                "params": {
+                    "threadId": "thread-skillsbench",
+                    "turn": {"id": "turn-context-only", "status": "inProgress"},
+                },
+            }), flush=True)
+            result = {"turn": {"id": "turn-context-only", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "<permissions instructions>\\ncontext preamble\\n</skills_instructions>",
+                        }
+                    ],
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            }), flush=True)
+            state_path.write_text("resume", encoding="utf-8")
+            sys.exit(0)
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-resumed", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-followup-resumed", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-followup-resumed",
+                "itemId": "item-followup-resumed",
+                "delta": "private worker answer after transport reconnect",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-resumed", "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
 
 def assert_plan_prerequisites(plan: dict[str, Any]) -> None:
     prereq = plan["runner_prerequisites"]
@@ -1088,6 +1179,74 @@ def test_host_worker_recovers_when_first_turn_only_echoes_context() -> None:
         public_json = json.dumps(payload)
         assert "context preamble" not in public_json, payload
         assert "private worker answer after context retry" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
+def test_host_worker_reconnects_context_only_followup_transport() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-app-goal-context-reconnect-"
+    ) as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_CONTEXT_ONLY_EXIT_THEN_RESUME, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--reasoning-effort",
+                "xhigh",
+                "--context-only-followup-max",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["error_type"] == "", payload
+        assert payload["turn"]["turn_attempt_count"] == 2, payload
+        assert payload["turn"]["context_only_turn_count"] == 1, payload
+        assert payload["turn"]["context_only_recovery_attempted"] is True, payload
+        assert payload["turn"]["context_only_recovery_succeeded"] is True, payload
+        assert payload["turn"]["context_only_followup_start_attempted"] is True, payload
+        assert payload["turn"]["context_only_followup_start_succeeded"] is True, payload
+        assert payload["turn"]["transport_reconnect_attempted"] is True, payload
+        assert payload["turn"]["transport_reconnect_succeeded"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_attempted"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_succeeded"] is True, payload
+        assert len(payload["turn_attempts"]) == 2, payload
+        assert payload["turn_attempts"][0]["assistant_message_context_only"] is True, payload
+        assert payload["turn_attempts"][1]["transport_reconnect_succeeded"] is True, payload
+        assert private_response.read_text(encoding="utf-8") == (
+            "private worker answer after transport reconnect"
+        )
+        public_json = json.dumps(payload)
+        assert "context preamble" not in public_json, payload
+        assert "private worker answer after transport reconnect" not in public_json, payload
         assert "Private task instruction placeholder" not in public_json, payload
 
 
@@ -2511,6 +2670,7 @@ if __name__ == "__main__":
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
     test_host_worker_recovers_when_first_turn_only_echoes_context()
+    test_host_worker_reconnects_context_only_followup_transport()
     test_host_worker_fails_closed_on_first_action_timeout()
     test_host_worker_fails_fast_when_app_server_stream_closes()
     test_acp_relay_delegates_to_app_server_goal_worker()

@@ -2587,6 +2587,24 @@ def _skillsbench_controller_trace_counters(
         "native_goal_worker_assistant_context_only_count": count(
             "native_goal_worker_assistant_context_only_count"
         ),
+        "native_goal_worker_context_only_recovery_attempted_count": count(
+            "native_goal_worker_context_only_recovery_attempted_count"
+        ),
+        "native_goal_worker_context_only_recovery_succeeded_count": count(
+            "native_goal_worker_context_only_recovery_succeeded_count"
+        ),
+        "native_goal_worker_context_only_followup_start_attempted_count": count(
+            "native_goal_worker_context_only_followup_start_attempted_count"
+        ),
+        "native_goal_worker_context_only_followup_start_succeeded_count": count(
+            "native_goal_worker_context_only_followup_start_succeeded_count"
+        ),
+        "native_goal_worker_transport_reconnect_attempted_count": count(
+            "native_goal_worker_transport_reconnect_attempted_count"
+        ),
+        "native_goal_worker_transport_reconnect_succeeded_count": count(
+            "native_goal_worker_transport_reconnect_succeeded_count"
+        ),
         "native_goal_worker_post_context_assistant_chars_total": count(
             "native_goal_worker_post_context_assistant_chars_total"
         ),
@@ -3733,6 +3751,24 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ),
         "assistant_context_only_count": _controller_public_count(
             "native_goal_worker_assistant_context_only_count"
+        ),
+        "context_only_recovery_attempted_count": _controller_public_count(
+            "native_goal_worker_context_only_recovery_attempted_count"
+        ),
+        "context_only_recovery_succeeded_count": _controller_public_count(
+            "native_goal_worker_context_only_recovery_succeeded_count"
+        ),
+        "context_only_followup_start_attempted_count": _controller_public_count(
+            "native_goal_worker_context_only_followup_start_attempted_count"
+        ),
+        "context_only_followup_start_succeeded_count": _controller_public_count(
+            "native_goal_worker_context_only_followup_start_succeeded_count"
+        ),
+        "transport_reconnect_attempted_count": _controller_public_count(
+            "native_goal_worker_transport_reconnect_attempted_count"
+        ),
+        "transport_reconnect_succeeded_count": _controller_public_count(
+            "native_goal_worker_transport_reconnect_succeeded_count"
         ),
         "post_context_assistant_chars_total": _controller_public_count(
             "native_goal_worker_post_context_assistant_chars_total"
@@ -5283,6 +5319,36 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "native_goal_worker_assistant_context_only_count": (
                 controller_counters.get(
                     "native_goal_worker_assistant_context_only_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_recovery_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_recovery_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_recovery_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_recovery_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_followup_start_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_followup_start_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_followup_start_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_followup_start_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_transport_reconnect_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_transport_reconnect_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_transport_reconnect_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_transport_reconnect_succeeded_count", 0
                 )
             ),
             "native_goal_worker_post_context_assistant_chars_total": (

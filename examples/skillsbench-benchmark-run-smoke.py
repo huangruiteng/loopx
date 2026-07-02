@@ -8159,6 +8159,13 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
                     "agent_message_delta_count": 0,
                     "assistant_message_context_only": True,
                     "post_context_assistant_chars": 0,
+                    "context_only_recovery_attempted": True,
+                    "context_only_recovery_succeeded": False,
+                    "context_only_followup_start_attempted": True,
+                    "context_only_followup_start_succeeded": False,
+                    "context_only_followup_start_error_type": (
+                        "codex_app_server_context_only_followup_start_failed"
+                    ),
                     "reasoning_effort": "xhigh",
                     "first_action_observed": False,
                     "effective_action_observed": False,
@@ -8219,6 +8226,18 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
             "assistant_context_only_count"
         ] == 1, context_only_compact
         assert context_only_compact["native_goal_worker_contract"][
+            "context_only_recovery_attempted_count"
+        ] == 1, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "context_only_recovery_succeeded_count"
+        ] == 0, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "context_only_followup_start_attempted_count"
+        ] == 1, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "context_only_followup_start_succeeded_count"
+        ] == 0, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
             "post_context_assistant_chars_total"
         ] == 0, context_only_compact
         assert context_only_compact["native_goal_worker_contract"][
@@ -8227,6 +8246,12 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         context_only_counters = context_only_compact["interaction_counters"]
         assert (
             context_only_counters["native_goal_worker_assistant_context_only_count"]
+            == 1
+        ), context_only_compact
+        assert (
+            context_only_counters[
+                "native_goal_worker_context_only_followup_start_attempted_count"
+            ]
             == 1
         ), context_only_compact
         assert (

@@ -286,6 +286,9 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     attempt_compacts: list[dict[str, Any]] = []
     try:
         followup_budget = max(0, int(args.context_only_followup_max or 0))
+        context_only_followup_start_attempted = False
+        context_only_followup_start_succeeded = False
+        context_only_followup_start_error_type = ""
         attempt_number = 1
         while True:
             if not args.no_wait_for_completion:
@@ -328,17 +331,22 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                 break
             followup_budget -= 1
             attempt_number += 1
+            context_only_followup_start_attempted = True
             try:
                 active_turn = start_codex_app_server_goal_followup_turn(
                     active_turn,
+                    codex_bin=args.codex_bin,
                     work_dir=work_dir,
                     prompt=effective_prompt,
                     model_name=args.model,
                     reasoning_effort=args.reasoning_effort,
                     approval_policy=args.approval_policy,
+                    sandbox=args.sandbox,
+                    reconnect_if_needed=True,
                     response_timeout_sec=args.response_timeout_sec,
                     wait_for_completion=False,
                 )
+                context_only_followup_start_succeeded = True
             except CodexAppServerGoalDriverError as exc:
                 detail = str(exc)
                 worker_error_type = (
@@ -346,6 +354,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                     if detail.startswith("codex_app_server_")
                     else "codex_app_server_context_only_followup_start_failed"
                 )
+                context_only_followup_start_error_type = worker_error_type
                 break
         turn = active_turn
         compact = _compact_worker_turn(
@@ -379,13 +388,26 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                     0, int(args.context_only_followup_max or 0)
                 ),
                 "context_only_recovery_attempted": bool(
-                    context_only_turn_count and len(attempt_compacts) > 1
+                    context_only_turn_count
+                    and (
+                        len(attempt_compacts) > 1
+                        or context_only_followup_start_attempted
+                    )
                 ),
                 "context_only_recovery_succeeded": bool(
                     context_only_turn_count
                     and compact.get("assistant_message_context_only") is not True
                     and not worker_error_type
-                )
+                ),
+                "context_only_followup_start_attempted": bool(
+                    context_only_followup_start_attempted
+                ),
+                "context_only_followup_start_succeeded": bool(
+                    context_only_followup_start_succeeded
+                ),
+                "context_only_followup_start_error_type": (
+                    context_only_followup_start_error_type
+                ),
             }
         )
         if attempt_compacts:
@@ -456,6 +478,15 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             "max_followups": max(0, int(args.context_only_followup_max or 0)),
             "attempted": bool(compact.get("context_only_recovery_attempted")),
             "succeeded": bool(compact.get("context_only_recovery_succeeded")),
+            "followup_start_attempted": bool(
+                compact.get("context_only_followup_start_attempted")
+            ),
+            "followup_start_succeeded": bool(
+                compact.get("context_only_followup_start_succeeded")
+            ),
+            "followup_start_error_type": str(
+                compact.get("context_only_followup_start_error_type") or ""
+            ),
             "context_only_turn_count": int(
                 compact.get("context_only_turn_count") or 0
             ),
