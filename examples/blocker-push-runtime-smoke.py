@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Runtime fixture for focus-wait user-todo blocker push.
+"""Runtime fixture for active-state user-todo gate notification.
 
 This smoke covers the public CLI path rather than only helper functions:
 
 1. A sanitized registered goal has a refreshed runtime record.
-2. Registry attention keeps it in a Codex-owned focus-wait lane.
+2. Registry attention projects an owner/controller gate from the active state.
 3. The active state exposes one open user todo.
-4. `quota should-run` emits a no-spend blocker-push notification signal.
+4. `quota should-run` emits a no-spend operator-gate notification signal.
 """
 
 from __future__ import annotations
@@ -151,8 +151,14 @@ def main() -> int:
         assert len(items) == 1, items
         item = items[0]
         assert item["goal_id"] == GOAL_ID, item
-        assert item["status"] == "focus_wait", item
-        assert item["waiting_on"] == "codex", item
+        assert item["status"] == "active_state_user_todo", item
+        assert item["waiting_on"] == "controller", item
+        assert item["severity"] == "action", item
+        assert item["recommended_action"] == USER_TODO, item
+        project_asset = item["project_asset"]
+        assert project_asset["gate"] == "active_state_user_todo", item
+        assert project_asset["support_mode"] == "decision_support", item
+        assert project_asset["quota"]["state"] == "operator_gate", item
         assert item["user_todos"]["open_count"] == 1, item
         assert item["user_todos"]["items"][0]["text"] == USER_TODO, item
 
@@ -168,14 +174,24 @@ def main() -> int:
         )
         assert decision["decision"] == "skip", decision
         assert decision["should_run"] is False, decision
-        assert decision["state"] == "focus_wait", decision
-        assert decision["notify_user_on_open_todo"] is True, decision
-        assert decision["heartbeat_recommendation"]["repeat_notification_required"] is True, decision
-        assert decision["open_todo_notification_policy"] == "repeat_until_resolved", decision
-        assert "focus_wait" in decision["open_todo_notify_reason"], decision
+        assert decision["state"] == "operator_gate", decision
+        assert decision["effective_action"] == "operator_gate_notify", decision
+        assert decision["requires_user_action"] is True, decision
+        assert "notify_user_on_open_todo" not in decision, decision
+        assert "open_todo_notification_policy" not in decision, decision
+        assert decision["heartbeat_recommendation"]["recommended_mode"] == "ask_operator_gate", decision
+        assert decision["heartbeat_recommendation"]["notify"] == "NOTIFY", decision
+        assert decision["interaction_contract"]["mode"] == "user_gate", decision
+        assert decision["interaction_contract"]["user_channel"]["action_required"] is True, decision
+        assert decision["interaction_contract"]["agent_channel"]["must_attempt"] is False, decision
+        assert decision["interaction_contract"]["agent_channel"]["delivery_allowed"] is False, decision
+        assert decision["interaction_contract"]["cli_channel"]["spend_policy"] == (
+            "no spend for gate or blocker push"
+        ), decision
         assert decision["user_todo_summary"]["open_count"] == 1, decision
         assert decision["user_todo_summary"]["first_open_items"][0]["text"] == USER_TODO, decision
-        assert decision["safe_bypass_allowed"] is False, decision
+        assert decision["safe_bypass_allowed"] is True, decision
+        assert decision["blocked_action_scope"] == "gated_delivery", decision
         assert "agent_command" not in decision, decision
 
         prompt = run_cli(
@@ -188,7 +204,8 @@ def main() -> int:
             str(state_file),
         )["task_body"]
         compact_prompt = " ".join(prompt.split())
-        assert "notify_user_on_open_todo=true" in compact_prompt, prompt
+        assert "state=operator_gate" in compact_prompt, prompt
+        assert "action_required=true/open_count>0" in compact_prompt, prompt
         assert "return heartbeat `NOTIFY`" in compact_prompt, prompt
         assert "No delivery/spend" in compact_prompt, prompt
 
