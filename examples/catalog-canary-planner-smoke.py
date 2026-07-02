@@ -204,7 +204,10 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "status-read-path" in status_profiles, status_payload
     status_commands = [check["command"] for check in status_profiles["status-read-path"]["checks"]]
     assert "python3 examples/status-goal-filter-smoke.py" in status_commands, status_payload
+    assert "python3 examples/status-quota-review-packet-parity-smoke.py" in status_commands, status_payload
     assert all(check["tier"] == "default" for check in status_profiles["status-read-path"]["checks"]), status_payload
+    assert status_profiles["status-read-path"]["deep_checks_available"] is True, status_payload
+    assert status_profiles["status-read-path"]["deep_checks_included"] is False, status_payload
 
     review_packet_payload = build_catalog_canary_plan(
         changed_files=["loopx/review_packet.py", "loopx/cli_commands/status.py"],

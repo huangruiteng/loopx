@@ -398,13 +398,18 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards scoped status projection and global default status behavior",
             },
             {
+                "command": "python3 examples/status-quota-review-packet-parity-smoke.py",
+                "tier": "default",
+                "reason": "guards scoped status, agent quota, review-packet handoff, and scheduler_hint parity on one fixture",
+            },
+            {
                 "command": "python3 examples/status-markdown-smoke.py",
                 "tier": "default",
                 "reason": "checks operator-facing markdown status rendering",
             },
             {
                 "command": "python3 examples/goal-channel-status-export-smoke.py",
-                "tier": "default",
+                "tier": "deep",
                 "reason": "guards goal-channel status export consumed by non-hot-path readers",
             },
             {
