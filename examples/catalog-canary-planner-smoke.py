@@ -430,6 +430,7 @@ def assert_catalog_canary_selects_own_profile_not_benchmark() -> None:
     commands = payload["commands"]
     assert "python3 examples/catalog-canary-planner-smoke.py" in commands, payload
     assert "python3 examples/catalog-canary-run-e2e-smoke.py" in commands, payload
+    assert "python3 examples/canary-smoke-suite-runner-smoke.py" in commands, payload
 
 
 def assert_install_update_does_not_select_release_promotion() -> None:
