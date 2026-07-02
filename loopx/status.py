@@ -53,14 +53,6 @@ from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .paths import global_registry_path, resolve_runtime_root
-from .policies.monitor_todo import (
-    monitor_todo_expires_at,
-    monitor_todo_is_actionable_open,
-    monitor_todo_is_due,
-    monitor_todo_is_expired,
-    monitor_todo_next_due_at,
-    monitor_todo_task_class,
-)
 from .projections.task_graph import (
     TASK_GRAPH_MAX_USER_GATE_NODES,
     TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
@@ -120,6 +112,17 @@ from .todo_contract import (
     todo_status_from_marker,
 )
 from .todo_handoff_gate import build_todo_handoff_gate_states
+from .todo_projection import (
+    todo_item_expires_at as projection_todo_item_expires_at,
+    todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
+    todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
+    todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
+    todo_item_next_due_at as projection_todo_item_next_due_at,
+    todo_item_task_class as projection_todo_item_task_class,
+    todo_priority_parts as projection_todo_priority_parts,
+    todo_priority_rank as projection_todo_priority_rank,
+    todo_projection_sort_key as projection_todo_projection_sort_key,
+)
 
 
 CODEX_READY_CLASSIFICATIONS = {
@@ -5820,10 +5823,7 @@ def todo_role_for_heading(heading: str) -> str | None:
 
 
 def todo_priority_parts(text: str) -> tuple[str | None, str]:
-    match = AUTONOMOUS_PRIORITY_PATTERN.match(text)
-    if not match:
-        return None, text
-    return match.group(1).strip().upper(), match.group(2).strip()
+    return projection_todo_priority_parts(text)
 
 
 def structured_todo_item(
@@ -5973,46 +5973,35 @@ def compact_active_next_action_todo_item(item: dict[str, Any]) -> dict[str, Any]
 
 
 def todo_item_task_class(item: dict[str, Any]) -> str:
-    return monitor_todo_task_class(item, task_text=str(item.get("text") or ""))
+    return projection_todo_item_task_class(item, task_text_keys=("text",))
 
 
 def todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
-    return monitor_todo_is_actionable_open(item)
+    return projection_todo_item_is_actionable_open(item)
 
 
 def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_next_due_at(item)
+    return projection_todo_item_next_due_at(item)
 
 
 def todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_expires_at(item)
+    return projection_todo_item_expires_at(item)
 
 
 def todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    return monitor_todo_is_expired(item, now=now)
+    return projection_todo_item_is_expired_monitor(item, now=now)
 
 
 def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    return monitor_todo_is_due(item, now=now, task_text=str(item.get("text") or ""))
+    return projection_todo_item_is_due_monitor(item, now=now, task_text_keys=("text",))
 
 
 def todo_priority_rank(priority: Any) -> int:
-    if not isinstance(priority, str):
-        return 50
-    match = re.match(r"P([0-4])", priority.strip().upper())
-    if not match:
-        return 50
-    return int(match.group(1))
+    return projection_todo_priority_rank(priority)
 
 
 def todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
-    priority = item.get("priority")
-    if not isinstance(priority, str):
-        priority, _ = todo_priority_parts(str(item.get("text") or ""))
-    return (
-        todo_priority_rank(priority),
-        int(item.get("index") or 999999),
-    )
+    return projection_todo_projection_sort_key(item, text_mode="prefix")
 
 
 def claimed_visibility_items(items: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:

@@ -41,14 +41,6 @@ from .policies.goal_frontier import (
     select_autonomous_replan_obligation,
 )
 from .policies.goal_route_hint import build_goal_route_hint
-from .policies.monitor_todo import (
-    monitor_todo_expires_at,
-    monitor_todo_is_actionable_open,
-    monitor_todo_is_due,
-    monitor_todo_is_expired,
-    monitor_todo_next_due_at,
-    monitor_todo_task_class,
-)
 from .policies.outcome_followthrough import build_outcome_followthrough_hint
 from .policies.scheduler_hint import (
     build_codex_app_scheduler_ack_event,
@@ -89,6 +81,18 @@ from .todo_contract import (
     normalize_todo_task_class,
 )
 from .todo_handoff_gate import HandoffGateState, build_todo_handoff_gate_states
+from .todo_projection import (
+    todo_index_rank as projection_todo_index_rank,
+    todo_item_expires_at as projection_todo_item_expires_at,
+    todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
+    todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
+    todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
+    todo_item_next_due_at as projection_todo_item_next_due_at,
+    todo_item_task_class as projection_todo_item_task_class,
+    todo_priority_label as projection_todo_priority_label,
+    todo_priority_rank as projection_todo_priority_rank,
+    todo_projection_sort_key as projection_todo_projection_sort_key,
+)
 
 
 DEFAULT_COMPUTE_QUOTA = 1.0
@@ -229,8 +233,6 @@ TODO_BACKLOG_ITEM_LIMIT = 8
 TODO_DEFERRED_VISIBILITY_LIMIT = 8
 TODO_VISIBILITY_LANE_LIMIT = 16
 MONITOR_DUE_ITEM_LIMIT = 1
-TODO_MISSING_PRIORITY_RANK = 50
-TODO_MISSING_INDEX = 999999
 EXTERNAL_EVIDENCE_OBSERVE_PATTERNS = (
     re.compile(
         r"(?i)\b(?:poll(?:ing)?|observ(?:e|ing)|watch(?:ing)?|await(?:ing)?|wait\s+for|monitor(?:ing)?)\b.*\b"
@@ -1347,39 +1349,19 @@ def _capability_gate(
 
 
 def _todo_priority_label(item: dict[str, Any]) -> str | None:
-    priority = item.get("priority")
-    if isinstance(priority, str) and priority.strip():
-        return priority.strip().upper()
-    text = " ".join(
-        str(value or "")
-        for value in (item.get("title"), item.get("text"))
-        if str(value or "").strip()
-    )
-    match = re.search(r"\bP([0-4])\b", text.upper())
-    if not match:
-        return None
-    return f"P{match.group(1)}"
+    return projection_todo_priority_label(item)
 
 
 def _todo_priority_rank(item: dict[str, Any]) -> int:
-    priority = _todo_priority_label(item)
-    if not priority:
-        return TODO_MISSING_PRIORITY_RANK
-    match = re.match(r"P([0-4])", priority)
-    if not match:
-        return TODO_MISSING_PRIORITY_RANK
-    return int(match.group(1))
+    return projection_todo_priority_rank(item)
 
 
 def _todo_index_rank(item: dict[str, Any]) -> int:
-    try:
-        return int(item.get("index"))
-    except (TypeError, ValueError):
-        return TODO_MISSING_INDEX
+    return projection_todo_index_rank(item)
 
 
 def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
-    return (_todo_priority_rank(item), _todo_index_rank(item))
+    return projection_todo_projection_sort_key(item)
 
 
 def _claimed_visibility_items(items: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
@@ -5281,37 +5263,27 @@ def _user_gate_todo_notify_reason(summary: dict[str, Any] | None) -> str:
 
 
 def _todo_task_class(item: dict[str, Any]) -> str:
-    text = " ".join(
-        str(value or "")
-        for value in (item.get("title"), item.get("text"))
-        if str(value or "").strip()
-    )
-    return monitor_todo_task_class(item, task_text=text)
+    return projection_todo_item_task_class(item)
 
 
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
-    return monitor_todo_is_actionable_open(item)
+    return projection_todo_item_is_actionable_open(item)
 
 
 def _todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_next_due_at(item)
+    return projection_todo_item_next_due_at(item)
 
 
 def _todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_expires_at(item)
+    return projection_todo_item_expires_at(item)
 
 
 def _todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    return monitor_todo_is_expired(item, now=now)
+    return projection_todo_item_is_expired_monitor(item, now=now)
 
 
 def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    text = " ".join(
-        str(value or "")
-        for value in (item.get("title"), item.get("text"))
-        if str(value or "").strip()
-    )
-    return monitor_todo_is_due(item, now=now, task_text=text)
+    return projection_todo_item_is_due_monitor(item, now=now)
 
 
 def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
