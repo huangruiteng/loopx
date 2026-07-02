@@ -379,6 +379,21 @@ def _record_turn_event(
         return False
     msg_turn_id = _notification_turn_id(params)
     msg_thread_id = _notification_thread_id(params)
+    if (
+        method == "turn/started"
+        and msg_turn_id
+        and msg_turn_id != turn.turn_id
+        and turn.turn_id_source == "turn_start_response"
+        and turn.turn_start_response_turn_id_present
+        and not turn.turn_event_stream_turn_id_present
+    ):
+        # Some app-server/model paths return a placeholder turn id in the
+        # turn/start response, then stream the real turn id on turn/started.
+        # Treat the streamed id as canonical so subsequent item/turn events are
+        # not filtered out as belonging to an unrelated turn.
+        turn.turn_id = msg_turn_id
+        turn.turn_id_source = "event_stream"
+        turn.turn_event_stream_turn_id_present = True
     if msg_turn_id and msg_turn_id != turn.turn_id:
         return False
     if msg_thread_id and msg_thread_id != turn.thread_id:
