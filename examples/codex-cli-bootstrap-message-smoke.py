@@ -130,12 +130,21 @@ def assert_docs_surface_codex_cli_quickstart() -> None:
     assert "Connect the current project to LoopX." in getting_started, getting_started
     assert "Hidden `codex exec` is not the default bootstrap path" in normalized_readme, readme
     assert "paste one setup message" in normalized_readme, readme
-    assert "heartbeat setup, and status check" in normalized_readme, readme
+    assert "install, connect, and status check" in normalized_readme, readme
     assert "heartbeat automation to start at 3 minutes" in normalized_readme, readme
-    assert "set the current Codex CLI goal to `/goal <thin task_body>`" in normalized_readme, readme
+    assert (
+        "set the current Codex CLI goal to `/goal <thin task_body>`"
+        in normalized_product_contract
+        or "set the current Codex CLI goal to `/goal <thin task_body>`"
+        in normalized_getting_started
+    ), product_contract
     assert "reuse it" in normalized_readme, readme
     assert "loopx codex-cli-bootstrap-message --project . --goal-id <goal-id>" not in readme, readme
-    assert "report the goal id, current user gate, top agent todo, and next safe action" in normalized_readme, readme
+    assert (
+        "status, current user gate, top agent todo, and next safe action" in normalized_readme
+        or "report the goal id, current user gate, top agent todo, and next safe action"
+        in normalized_getting_started
+    ), readme
     assert "first-run path should not require you to understand registry paths" in normalized_getting_started, getting_started
     assert "setup-first rewrite of the App onboarding experience" in normalized_getting_started, getting_started
     assert "Codex App gets a heartbeat automation body that starts at 3 minutes" in normalized_getting_started, getting_started

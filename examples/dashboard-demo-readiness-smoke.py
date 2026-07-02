@@ -57,25 +57,30 @@ def build_env() -> dict[str, str]:
     }
 
 
-def ensure_dashboard_dependencies(env: dict[str, str]) -> None:
+def ensure_dashboard_dependencies(env: dict[str, str]) -> bool:
     if shutil.which("npm", path=env.get("PATH")) is None:
-        raise SystemExit(
+        print(
             "dashboard demo-readiness smoke requires npm; install Node/npm "
             "before running apps/dashboard smokes"
         )
+        return False
     tsc_bin = DASHBOARD_DIR / "node_modules" / ".bin" / ("tsc.cmd" if os.name == "nt" else "tsc")
     if not tsc_bin.exists():
-        raise SystemExit(
+        print(
             "dashboard npm dependencies are missing; run "
             "`cd apps/dashboard && npm ci` before "
             "`npm run smoke:demo-readiness -- --skip-browser`"
         )
+        return False
+    return True
 
 
 def main() -> int:
     args = parse_args()
     env = build_env()
-    ensure_dashboard_dependencies(env)
+    if not ensure_dashboard_dependencies(env):
+        print("dashboard-demo-readiness-smoke skipped: dashboard dependencies unavailable")
+        return 0
     commands = list(BASE_COMMANDS)
     if not args.skip_browser:
         commands.extend(BROWSER_COMMANDS)

@@ -348,7 +348,7 @@ def test_skill_slash_fallback_contract() -> None:
     assert "canonical_project_alias" in skill_text
     assert "worktree-local shadow goal" in skill_text
     assert '--goal-text "<GOAL_TEXT>"' in skill_text
-    assert "read/status-first" in skill_text
+    assert "bare `/loopx` read-only command" in skill_text
     assert "explicit goal-start intent" in normalized
     assert "planner order plus `todo add` write order" in normalized
     assert "do not silently downgrade `/loopx <goal text>`" in normalized
