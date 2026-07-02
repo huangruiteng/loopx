@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from loopx.visible_multi_agent_launcher import (  # noqa: E402
     _SCOPED_LOOPX_WRAPPER_PY,
+    TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
     build_visible_multi_agent_payload,
     build_visible_multi_agent_payload_from_spec,
     execute_visible_multi_agent_launcher,
@@ -97,6 +98,8 @@ def main() -> int:
     assert "stat.S_ISREG" in launcher_source
     assert "LOOPX_MACHINE_JSON=1 explicitly" in launcher_source
     assert "multi_agent_visible_interactive_tui_contract_v0" in launcher_source
+    assert TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION in launcher_source
+    assert "build_tui_multi_agent_runner_contract" in launcher_source
     assert "LOOPX_CODEX_TUI_MODE=interactive" in launcher_source
     assert "LOOPX_CODEX_TRUST_WORKSPACE" in launcher_source
     assert "trust_level=" in launcher_source and "trusted" in launcher_source
@@ -123,18 +126,41 @@ def main() -> int:
     assert dry_packet["commands"]["attach"] == "tmux attach -t loopx-visible-launcher-contract-smoke"
     assert dry_packet["commands"]["stop"] == "tmux kill-session -t loopx-visible-launcher-contract-smoke"
     assert "retry" in dry_packet["commands"], dry_packet
+    runner_contract = dry_packet["runner_contract"]
+    assert runner_contract["schema_version"] == TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION
+    assert runner_contract["coordination_model"]["leader_required"] is False, runner_contract
+    assert runner_contract["coordination_model"]["state_bus"] == (
+        "loopx_registry_runtime_todo_quota_frontier"
+    ), runner_contract
+    assert runner_contract["tmux_lifecycle"]["one_window_per_role"] is True, runner_contract
+    assert runner_contract["tmux_lifecycle"]["attach_command"] == dry_packet["commands"]["attach"]
+    assert runner_contract["tmux_lifecycle"]["stop_command"] == dry_packet["commands"]["stop"]
+    assert runner_contract["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK"
+    assert "LOOPX_PANE_WORKER_TURN" in runner_contract["lane_runtime_env"]["pane_tools"]
+    assert runner_contract["role_prompt_and_skill"]["worker_local_skill_only"] is True
+    assert runner_contract["debug_artifacts"]["machine_json"] == (
+        "redirected_public_artifacts_only"
+    )
+    assert runner_contract["boundaries"]["domain_specific_research_logic"] is False
     assert (
         dry_packet["interactive_tui_contract"]["schema_version"]
         == "multi_agent_visible_interactive_tui_contract_v0"
     ), dry_packet
+    assert dry_packet["interactive_tui_contract"]["runner_contract"] == (
+        TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION
+    )
     assert dry_packet["interactive_tui_contract"]["machine_json_policy"] == (
         "file_or_explicit_machine_channel_only"
     ), dry_packet
     assert dry_packet["interactive_tui_contract"]["codex_surface"] == "interactive_cli_tui", dry_packet
+    assert dry_packet["acceptance"]["runner_contract"] == (
+        TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION
+    )
     assert dry_packet["acceptance"]["machine_json_file_bound"] is True, dry_packet
     assert dry_packet["acceptance"]["codex_tui_interactive"] is True, dry_packet
     assert dry_packet["boundary"]["hidden_prompt_injection"] is False, dry_packet
     assert dry_packet["boundary"]["spends_loopx_quota"] is False, dry_packet
+    assert dry_packet["boundary"]["all_lane_workspace_isolation"] is False, dry_packet
 
     generic_packet = build_visible_multi_agent_payload_from_spec(
         {
@@ -149,6 +175,10 @@ def main() -> int:
             ],
         }
     )
+    assert generic_packet["runner_contract"]["schema_version"] == (
+        TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION
+    )
+    assert generic_packet["runner_contract"]["tmux_lifecycle"]["lane_count"] == 1
     generic_lane = generic_packet["lanes"][0]
     assert generic_lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", generic_lane
     assert generic_lane["pane_local_a2a"]["worker_turn_configured"] is True, generic_lane

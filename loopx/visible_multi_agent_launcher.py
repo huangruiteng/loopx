@@ -10,6 +10,13 @@ from collections.abc import Iterable
 from pathlib import Path
 
 
+TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION = "tui_multi_agent_runner_contract_v0"
+INTERACTIVE_TUI_CONTRACT_SCHEMA_VERSION = "multi_agent_visible_interactive_tui_contract_v0"
+VISIBLE_LAUNCHER_ACCEPTANCE_CONTRACT_SCHEMA_VERSION = (
+    "multi_agent_visible_launcher_acceptance_contract_v0"
+)
+
+
 _SCOPED_LOOPX_WRAPPER_PY = r"""
 import os
 from pathlib import Path
@@ -178,6 +185,96 @@ def resolve_visible_launcher(*, requested: str, tmux_bin: str) -> str:
     return "tmux"
 
 
+def build_tui_multi_agent_runner_contract(
+    *,
+    session_name: str,
+    lane_count: int,
+    attach_command: str,
+    stop_command: str,
+    retry_command: str,
+    all_lane_workspace_isolation: bool,
+) -> dict[str, object]:
+    """Describe the reusable visible-TUI runner without domain-specific steps."""
+
+    return {
+        "schema_version": TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
+        "runner_surface": "tmux_codex_cli_tui",
+        "coordination_model": {
+            "leader_required": False,
+            "state_bus": "loopx_registry_runtime_todo_quota_frontier",
+            "selection": "agent_scoped_quota_should_run_frontier",
+            "handoff": "todo_and_public_safe_evidence",
+        },
+        "tmux_lifecycle": {
+            "session_name": session_name,
+            "lane_count": lane_count,
+            "one_window_per_role": True,
+            "remain_on_exit": True,
+            "replace_existing": "execute_flag_only",
+            "attach_command": attach_command,
+            "stop_command": stop_command,
+            "retry_command": retry_command,
+        },
+        "lane_runtime_env": {
+            "shared": [
+                "LOOPX_PROJECT",
+                "LOOPX_REGISTRY",
+                "LOOPX_RUNTIME_ROOT",
+                "LOOPX_VISIBLE_SESSION",
+                "LOOPX_VISIBLE_ARTIFACT_DIR",
+            ],
+            "role_identity": [
+                "LOOPX_ROLE_ID",
+                "LOOPX_ROLE_PROFILE_REF",
+                "LOOPX_GOAL_ID",
+                "LOOPX_AGENT_ID",
+            ],
+            "pane_tools": [
+                "LOOPX_PANE_LOOPX",
+                "LOOPX_PANE_LOOPX_JSON",
+                "LOOPX_PANE_A2A_TICK",
+                "LOOPX_PANE_WORKER_TURN",
+                "LOOPX_PANE_WORKER_LOOP",
+            ],
+            "workspace_policy": (
+                "shared_goal_surface_by_default; mutating lanes may opt into lane workspaces"
+            ),
+            "all_lane_workspace_isolation": all_lane_workspace_isolation,
+        },
+        "role_prompt_and_skill": {
+            "bootstrap_prompt": "written_to_public_artifact_then_passed_to_codex_tui",
+            "role_profile": "role-local public json artifact",
+            "skill_materialization": ".codex/skills/<skill>/SKILL.md",
+            "worker_local_skill_only": True,
+        },
+        "pane_local_a2a": {
+            "tick_command": "$LOOPX_PANE_A2A_TICK",
+            "reads": ["quota should-run", "agent-scoped frontier"],
+            "runs": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
+            "machine_json_policy": "file_or_explicit_machine_channel_only",
+            "human_default": "markdown_status_inside_codex_tui",
+        },
+        "user_takeover": {
+            "interactive_codex_tui": True,
+            "may_type_into_each_role": True,
+            "attach": attach_command,
+            "stop": stop_command,
+        },
+        "debug_artifacts": {
+            "machine_json": "redirected_public_artifacts_only",
+            "launcher_scripts": "runtime_local_debug_files",
+            "raw_transcripts": False,
+            "credentials": False,
+        },
+        "boundaries": {
+            "domain_specific_research_logic": False,
+            "runs_agent_processes_in_dry_run": False,
+            "writes_loopx_state_in_dry_run": False,
+            "spends_quota_in_dry_run": False,
+        },
+    }
+
+
 def build_visible_lane_command(
     *,
     role_id: str,
@@ -273,6 +370,17 @@ def build_visible_multi_agent_payload(
         "rerun the same visible launcher packet after refreshing quota, "
         "frontier, and bootstrap"
     )
+    all_lane_workspace_isolation = all(
+        bool(lane.get("workspace") or lane.get("project")) for lane in lane_list
+    )
+    runner_contract = build_tui_multi_agent_runner_contract(
+        session_name=session,
+        lane_count=len(lane_list),
+        attach_command=attach_command,
+        stop_command=stop_command,
+        retry_command=retry_command,
+        all_lane_workspace_isolation=all_lane_workspace_isolation,
+    )
     start_script = [
         "set -uo pipefail",
         ": ${LOOPX_PROJECT:?set LOOPX_PROJECT to the repo root before running}",
@@ -309,8 +417,10 @@ def build_visible_multi_agent_payload(
         "goal_id": str(goal_id),
         "session_name": session,
         "lanes": lane_list,
+        "runner_contract": runner_contract,
         "interactive_tui_contract": {
-            "schema_version": "multi_agent_visible_interactive_tui_contract_v0",
+            "schema_version": INTERACTIVE_TUI_CONTRACT_SCHEMA_VERSION,
+            "runner_contract": TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
             "human_pane": [
                 "codex_cli_tui",
                 "role_prompt_inside_codex",
@@ -344,14 +454,15 @@ def build_visible_multi_agent_payload(
             "retry": retry_command,
         },
         "acceptance": {
-            "schema_version": "multi_agent_visible_launcher_acceptance_contract_v0",
+            "schema_version": VISIBLE_LAUNCHER_ACCEPTANCE_CONTRACT_SCHEMA_VERSION,
             "required_runtime_shape": [
                 "one_tmux_window_per_role",
                 "each_role_window_execs_codex_cli_tui",
                 "no_frontier_or_json_status_window",
                 "no_pre_codex_character_stream",
             ],
-            "interactive_tui_contract": "multi_agent_visible_interactive_tui_contract_v0",
+            "interactive_tui_contract": INTERACTIVE_TUI_CONTRACT_SCHEMA_VERSION,
+            "runner_contract": TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
             "machine_json_file_bound": True,
             "codex_tui_interactive": True,
         },
@@ -365,7 +476,7 @@ def build_visible_multi_agent_payload(
             "reads_credentials": False,
             "hidden_prompt_injection": False,
             "shared_goal_surface": True,
-            "all_lane_workspace_isolation": False,
+            "all_lane_workspace_isolation": all_lane_workspace_isolation,
             "public_safe_redaction": True,
         },
     }
