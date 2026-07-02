@@ -7987,6 +7987,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else "codex-acp"
         ),
         "model": args.model,
+        "app_server_reasoning_effort": (
+            args.app_server_reasoning_effort if is_app_server_goal_route else ""
+        ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "max_rounds": args.max_rounds,
@@ -8487,6 +8490,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "route",
         "agent",
         "model",
+        "app_server_reasoning_effort",
         "sandbox",
         "run_group_id",
         "job_name",
@@ -9135,8 +9139,11 @@ def _merge_app_server_goal_worker_trace_summary(
     turn_start_count = 0
     turn_completed_count = 0
     assistant_message_count = 0
+    context_only_assistant_message_count = 0
+    post_context_assistant_chars_total = 0
     first_action_count = 0
     effective_action_count = 0
+    reasoning_efforts: list[str] = []
     raw_material_recorded = False
     for path in files:
         try:
@@ -9190,6 +9197,28 @@ def _merge_app_server_goal_worker_trace_summary(
             turn_completed_count += 1
         if turn.get("assistant_message_present") is True:
             assistant_message_count += 1
+        if turn.get("assistant_message_context_only") is True:
+            context_only_assistant_message_count += 1
+        post_context_chars = turn.get("post_context_assistant_chars")
+        if isinstance(post_context_chars, int) and not isinstance(
+            post_context_chars, bool
+        ):
+            post_context_assistant_chars_total += max(0, post_context_chars)
+        effort = turn.get("reasoning_effort")
+        if isinstance(effort, str) and effort and effort not in reasoning_efforts:
+            reasoning_efforts.append(effort[:40])
+        worker_adapter = (
+            payload.get("worker_adapter")
+            if isinstance(payload.get("worker_adapter"), dict)
+            else {}
+        )
+        adapter_effort = worker_adapter.get("reasoning_effort")
+        if (
+            isinstance(adapter_effort, str)
+            and adapter_effort
+            and adapter_effort not in reasoning_efforts
+        ):
+            reasoning_efforts.append(adapter_effort[:40])
         if turn.get("first_action_observed") is True:
             first_action_count += 1
         if turn.get("effective_action_observed") is True:
@@ -9233,6 +9262,16 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_turn_completed_observed_count"] = turn_completed_count
     trace["native_goal_worker_assistant_message_present_count"] = (
         assistant_message_count
+    )
+    trace["native_goal_worker_assistant_context_only_count"] = (
+        context_only_assistant_message_count
+    )
+    trace["native_goal_worker_post_context_assistant_chars_total"] = (
+        post_context_assistant_chars_total
+    )
+    trace["native_goal_worker_reasoning_efforts"] = reasoning_efforts
+    trace["native_goal_worker_reasoning_effort"] = (
+        reasoning_efforts[0] if reasoning_efforts else ""
     )
     trace["native_goal_worker_first_action_observed_count"] = first_action_count
     trace["native_goal_worker_effective_action_observed_count"] = (

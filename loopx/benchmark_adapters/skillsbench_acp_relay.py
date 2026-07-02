@@ -2387,6 +2387,11 @@ raise SystemExit(proc.returncode)
         worker_contract = payload.get("worker_contract")
         if not isinstance(worker_contract, dict):
             worker_contract = {}
+        worker_adapter = (
+            worker_contract.get("worker_adapter")
+            if isinstance(worker_contract.get("worker_adapter"), dict)
+            else {}
+        )
         trace = {
             "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
             "ok": payload.get("ok") is True,
@@ -2401,6 +2406,14 @@ raise SystemExit(proc.returncode)
                     "ready",
                     "runner_integration_ready",
                     "first_blocker",
+                ),
+            ),
+            "worker_adapter": compact_dict(
+                worker_adapter,
+                (
+                    "reasoning_effort",
+                    "agent_execution_mode",
+                    "worker_surface",
                 ),
             ),
             "prompt": compact_dict(
@@ -2427,6 +2440,9 @@ raise SystemExit(proc.returncode)
                     "first_action_timeout_sec",
                     "first_action_observed",
                     "effective_action_observed",
+                    "assistant_message_context_only",
+                    "post_context_assistant_chars",
+                    "reasoning_effort",
                     "raw_transcript_recorded",
                     "raw_assistant_message_recorded",
                 ),

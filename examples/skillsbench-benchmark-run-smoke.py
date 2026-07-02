@@ -186,6 +186,8 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
                 "reverse-tunnel",
                 "--codex-api-reverse-tunnel-proxy",
                 proxy_url,
+                "--app-server-reasoning-effort",
+                "xhigh",
                 "--skillsbench-root",
                 str(skillsbench_root),
                 "--jobs-dir",
@@ -215,6 +217,8 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
         assert "127.0.0.1" in target_env["NO_PROXY"], target_env
 
         config = plan["runner_config"]
+        assert plan["app_server_reasoning_effort"] == "xhigh", plan
+        assert config["app_server_reasoning_effort"] == "xhigh", config
         assert config["codex_api_egress_preflight_required"] is True, config
         assert config["codex_api_egress_mode_requested"] == "reverse-tunnel", config
         assert config["codex_api_egress_mode_resolved"] == "reverse-tunnel", config
@@ -8120,6 +8124,123 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert no_assistant_compact["attempt_accounting"][
             "failure_class"
         ] == "job_materialization_failed", no_assistant_compact
+
+        context_only_trace_dir = root / "native-worker-context-only-message"
+        context_only_trace_dir.mkdir()
+        write_json(
+            context_only_trace_dir / "worker-context-only.compact.json",
+            {
+                "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+                "ok": False,
+                "route": "codex-app-server-goal-baseline",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "llm-prefix-cache-replay",
+                "worker_adapter": {
+                    "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                    "reasoning_effort": "xhigh",
+                    "agent_execution_mode": "codex_app_server_goal",
+                    "worker_surface": "native_codex_app_server_goal",
+                },
+                "worker_contract": {
+                    "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                    "route": "codex-app-server-goal-baseline",
+                    "ready": False,
+                    "runner_integration_ready": True,
+                    "first_blocker": "codex_app_server_context_only_assistant_message",
+                },
+                "turn": {
+                    "thread_id_present": True,
+                    "goal_get_present": True,
+                    "turn_id_present": True,
+                    "turn_completed_observed": True,
+                    "assistant_message_present": True,
+                    "assistant_message_chars": 10339,
+                    "agent_message_item_count": 1,
+                    "agent_message_delta_count": 0,
+                    "assistant_message_context_only": True,
+                    "post_context_assistant_chars": 0,
+                    "reasoning_effort": "xhigh",
+                    "first_action_observed": False,
+                    "effective_action_observed": False,
+                    "raw_transcript_recorded": False,
+                    "raw_assistant_message_recorded": False,
+                },
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                },
+            },
+        )
+        context_only_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(context_only_trace_dir),
+            },
+            context_only_trace,
+        )
+        context_only_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-worker-context-only-result",
+                    reward=0.0,
+                    task_id="llm-prefix-cache-replay",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=context_only_trace,
+            )
+        )
+        assert context_only_compact is not None
+        expected_context_only_failure = (
+            "skillsbench_native_goal_worker_failed_"
+            "codex_app_server_context_only_assistant_message"
+        )
+        assert (
+            context_only_compact["score_failure_attribution"]
+            == expected_context_only_failure
+        ), context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "countable_baseline"
+        ] is False, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "assistant_context_only_count"
+        ] == 1, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "post_context_assistant_chars_total"
+        ] == 0, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "reasoning_effort"
+        ] == "xhigh", context_only_compact
+        context_only_counters = context_only_compact["interaction_counters"]
+        assert (
+            context_only_counters["native_goal_worker_assistant_context_only_count"]
+            == 1
+        ), context_only_compact
+        assert (
+            context_only_counters["native_goal_worker_reasoning_effort"] == "xhigh"
+        ), context_only_compact
+        assert context_only_compact[
+            "official_score_comparable_to_native_codex"
+        ] is False, context_only_compact
+        assert "official_verifier_solution_failure" not in context_only_compact[
+            "failure_attribution_labels"
+        ], context_only_compact
+        assert context_only_compact["attempt_accounting"][
+            "failure_class"
+        ] == "job_materialization_failed", context_only_compact
 
         bridge_quiet_result_path = write_official_skillsbench_result(
             root / "native-worker-bridge-quiet-result",
