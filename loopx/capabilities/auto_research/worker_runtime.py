@@ -13,9 +13,6 @@ from .legacy_core import (
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
     AUTO_RESEARCH_QUICKSTART_TEMPLATE,
     build_auto_research_quickstart,
-    build_live_auto_research_projection,
-    build_research_decision_candidates,
-    build_research_evidence_graph_from_rollout_events,
 )
 from .evidence_packet import (
     RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
@@ -25,6 +22,11 @@ from .evidence_packet import (
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
     build_live_codex_e2e_evidence_from_packet,
+)
+from .research_state import (
+    build_live_auto_research_projection,
+    build_research_decision_candidates,
+    build_research_evidence_graph_from_rollout_events,
 )
 from ...history import load_registry
 from ...paths import resolve_runtime_root
