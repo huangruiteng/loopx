@@ -8,14 +8,18 @@ from pathlib import Path
 
 from .legacy_core import (
     AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION,
-    AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
     build_auto_research_board_projection,
     build_auto_research_demo_acceptance_packet,
     build_auto_research_demo_supervisor_plan,
-    build_auto_research_quickstart,
-    build_live_auto_research_projection,
     build_research_artifact_packet,
+)
+from .quickstart_seed import (
+    AUTO_RESEARCH_DEFAULT_GOAL_ID,
+    build_auto_research_quickstart,
+)
+from .research_state import (
+    build_live_auto_research_projection,
     build_research_decision_candidates,
     build_research_evidence_graph_from_rollout_events,
 )
