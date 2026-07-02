@@ -284,6 +284,92 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
         ), codex_acp_config
 
 
+def test_generic_reasoning_effort_reaches_codex_exec_route() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-reasoning-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "codex-acp-blind-loop-baseline",
+                "--host-local-acp-launch",
+                "--reasoning-effort",
+                "xhigh",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+            ]
+        )
+        plan = build_plan(args)
+        command = _host_local_acp_launch_command(args, plan)
+        assert plan["reasoning_effort"] == "xhigh", plan
+        assert plan["codex_cli_reasoning_effort"] == "xhigh", plan
+        assert plan["app_server_reasoning_effort"] == "", plan
+        assert command[command.index("--reasoning-effort") + 1] == "xhigh", command
+        config = plan["runner_config"]
+        assert config["reasoning_effort"] == "xhigh", config
+        assert config["codex_cli_reasoning_effort"] == "xhigh", config
+        assert "app_server_reasoning_effort" not in config, config
+
+
+def test_codex_exec_relay_maps_reasoning_effort_to_cli_config() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-cli-effort-") as tmp:
+        root = Path(tmp)
+        fake_codex = root / "fake-codex"
+        argv_path = root / "argv.json"
+        fake_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+Path(os.environ["LOOPX_FAKE_CODEX_ARGV_PATH"]).write_text(json.dumps(sys.argv), encoding="utf-8")
+output_path = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
+output_path.write_text("relay ok", encoding="utf-8")
+raise SystemExit(0)
+""",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o700)
+
+        old_env = os.environ.get("LOOPX_FAKE_CODEX_ARGV_PATH")
+        os.environ["LOOPX_FAKE_CODEX_ARGV_PATH"] = str(argv_path)
+        try:
+            relay = SkillsBenchLocalAcpRelay(
+                CodexExecConfig(
+                    codex_bin=str(fake_codex),
+                    route="codex-acp-blind-loop-baseline",
+                    timeout_sec=5,
+                    reasoning_effort="xhigh",
+                )
+            )
+            response = relay._run_codex(
+                "public-safe prompt placeholder",
+                session={"cwd": str(root)},
+                session_id="session-cli-effort",
+                stdout=io.StringIO(),
+            )
+        finally:
+            if old_env is None:
+                os.environ.pop("LOOPX_FAKE_CODEX_ARGV_PATH", None)
+            else:
+                os.environ["LOOPX_FAKE_CODEX_ARGV_PATH"] = old_env
+
+        assert response == "relay ok", response
+        argv = json.loads(argv_path.read_text(encoding="utf-8"))
+        assert "-c" in argv, argv
+        config_value = argv[argv.index("-c") + 1]
+        assert config_value == 'model_reasoning_effort="xhigh"', argv
+
+
 def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-proxy-") as tmp:
         root = Path(tmp)
@@ -14323,6 +14409,8 @@ def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> N
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
     test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract()
+    test_generic_reasoning_effort_reaches_codex_exec_route()
+    test_codex_exec_relay_maps_reasoning_effort_to_cli_config()
     test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme()
     test_codex_app_server_goal_blocks_without_codex_api_egress()
     test_benchmark_egress_proxy_env_is_public_safe_and_forwarded()

@@ -72,10 +72,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--approval-policy", default="never")
     parser.add_argument(
         "--reasoning-effort",
-        default="high",
+        default=None,
         help=(
-            "Codex app-server turn/start effort for --app-server-goal-worker. "
-            "Formal benchmark runs default to high."
+            "Reasoning effort passed to Codex. For codex exec this maps to "
+            "-c model_reasoning_effort=...; for --app-server-goal-worker this "
+            "maps to the native app-server turn/start effort."
         ),
     )
     parser.add_argument(

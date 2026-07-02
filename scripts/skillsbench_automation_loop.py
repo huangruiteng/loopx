@@ -1090,7 +1090,7 @@ def _host_local_acp_launch_command(
                 "--approval-policy",
                 "never",
                 "--reasoning-effort",
-                args.app_server_reasoning_effort,
+                _effective_app_server_reasoning_effort(args),
                 "--response-timeout-sec",
                 "30",
                 "--stream-heartbeat-interval-sec",
@@ -1129,6 +1129,9 @@ def _host_local_acp_launch_command(
             str(_effective_local_codex_task_output_quiet_timeout_sec(args)),
         ]
     )
+    cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
+    if cli_reasoning_effort and args.route != "codex-app-server-goal-baseline":
+        command.extend(["--reasoning-effort", cli_reasoning_effort])
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
         heartbeat_interval = min(
             max(1.0, float(args.app_server_acp_heartbeat_interval_sec)),
@@ -1235,6 +1238,22 @@ def _host_local_acp_launch_command(
             ]
         )
     return command
+
+
+def _effective_reasoning_effort(args: argparse.Namespace) -> str:
+    return str(getattr(args, "reasoning_effort", None) or "").strip()
+
+
+def _effective_app_server_reasoning_effort(args: argparse.Namespace) -> str:
+    return str(
+        getattr(args, "reasoning_effort", None)
+        or getattr(args, "app_server_reasoning_effort", None)
+        or "high"
+    ).strip()
+
+
+def _effective_codex_cli_reasoning_effort(args: argparse.Namespace) -> str:
+    return _effective_reasoning_effort(args)
 
 
 def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
@@ -7883,6 +7902,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     loopx_source_mount = _loopx_source_mount_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     is_app_server_goal_route = route == "codex-app-server-goal-baseline"
+    reasoning_effort = _effective_reasoning_effort(args)
+    app_server_reasoning_effort = _effective_app_server_reasoning_effort(args)
+    codex_cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
     codex_api_egress_preflight = _public_codex_api_egress_contract(
         args,
         status=(
@@ -7969,7 +7991,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             task_id=task_id,
             cwd="<skillsbench-task-workspace>",
             model=args.model,
-            reasoning_effort=args.app_server_reasoning_effort,
+            reasoning_effort=app_server_reasoning_effort,
             sandbox="workspace-write",
             approval_policy="never",
             no_upload=True,
@@ -7995,8 +8017,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else "codex-acp"
         ),
         "model": args.model,
+        "reasoning_effort": reasoning_effort,
+        "codex_cli_reasoning_effort": (
+            codex_cli_reasoning_effort if not is_app_server_goal_route else ""
+        ),
         "app_server_reasoning_effort": (
-            args.app_server_reasoning_effort if is_app_server_goal_route else ""
+            app_server_reasoning_effort if is_app_server_goal_route else ""
         ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
@@ -8498,6 +8524,8 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "route",
         "agent",
         "model",
+        "reasoning_effort",
+        "codex_cli_reasoning_effort",
         "app_server_reasoning_effort",
         "sandbox",
         "run_group_id",
@@ -14431,12 +14459,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
+        "--reasoning-effort",
+        default=None,
+        help=(
+            "Generic Codex reasoning effort for routes backed by Codex. "
+            "For codex-acp routes this is forwarded to codex exec via "
+            "-c model_reasoning_effort=...; for native app-server Goal routes "
+            "it overrides --app-server-reasoning-effort."
+        ),
+    )
+    parser.add_argument(
         "--app-server-reasoning-effort",
         default="high",
         help=(
-            "Reasoning effort passed as turn/start effort for native "
-            "codex-app-server-goal-baseline runs. Formal benchmark runs "
-            "default to high."
+            "Legacy/native app-server-only reasoning effort passed as "
+            "turn/start effort for codex-app-server-goal-baseline runs. "
+            "Prefer --reasoning-effort for cross-route benchmark runs."
         ),
     )
     parser.add_argument("--sandbox", default="docker")

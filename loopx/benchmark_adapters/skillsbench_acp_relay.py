@@ -520,7 +520,7 @@ class CodexExecConfig:
     first_action_timeout_sec: float = 0.0
     bridge_idle_timeout_sec: float = 0.0
     task_output_quiet_timeout_sec: float = 0.0
-    reasoning_effort: str | None = "high"
+    reasoning_effort: str | None = None
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
     remote_command_file_bridge_agent_command: str | None = None
@@ -744,6 +744,14 @@ class SkillsBenchLocalAcpRelay:
                 str(output_path),
                 "--json",
             ]
+            if self._config.reasoning_effort:
+                cmd.extend(
+                    [
+                        "-c",
+                        "model_reasoning_effort="
+                        + json.dumps(str(self._config.reasoning_effort)),
+                    ]
+                )
             model = self._config.model or session.get("model")
             if model:
                 cmd.extend(["--model", str(model)])
