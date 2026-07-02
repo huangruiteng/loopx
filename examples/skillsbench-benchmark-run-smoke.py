@@ -228,6 +228,61 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
         assert config["codex_api_reverse_tunnel_proxy_url_recorded"] is False, config
         assert proxy_url not in json.dumps(config, sort_keys=True), config
 
+        benchmark_proxy_url = "http://benchmark-proxy.example.invalid:3128"
+        codex_acp_args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "codex-acp-blind-loop-baseline",
+                "--host-local-acp-launch",
+                "--codex-api-egress-mode",
+                "reverse-tunnel",
+                "--codex-api-reverse-tunnel-proxy",
+                proxy_url,
+                "--benchmark-egress-proxy",
+                benchmark_proxy_url,
+                "--benchmark-egress-proxy-mode",
+                "require",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs-codex-acp"),
+            ]
+        )
+        codex_acp_plan = build_plan(codex_acp_args)
+        codex_acp_egress = codex_acp_plan["codex_api_egress_preflight"]
+        assert codex_acp_egress["required"] is True, codex_acp_egress
+        assert codex_acp_egress["resolved_mode"] == "reverse-tunnel", codex_acp_egress
+        assert codex_acp_egress["reverse_tunnel_required"] is True, codex_acp_egress
+        codex_acp_config = codex_acp_plan["runner_config"]
+        assert (
+            codex_acp_config["codex_api_egress_mode_resolved"] == "reverse-tunnel"
+        ), codex_acp_config
+        assert codex_acp_config["codex_api_reverse_tunnel_required"] is True, (
+            codex_acp_config
+        )
+        agent_env = {
+            "HTTPS_PROXY": benchmark_proxy_url,
+            "HTTP_PROXY": benchmark_proxy_url,
+            "ALL_PROXY": benchmark_proxy_url,
+            "LOOPX_SKILLSBENCH_EGRESS_PROXY": benchmark_proxy_url,
+        }
+        codex_acp_target_env = skillsbench_loop._host_local_acp_target_env(
+            agent_env,
+            args=codex_acp_args,
+        )
+        for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+            assert codex_acp_target_env[key] == proxy_url, codex_acp_target_env
+        assert (
+            codex_acp_target_env["LOOPX_SKILLSBENCH_EGRESS_PROXY"]
+            == benchmark_proxy_url
+        ), codex_acp_target_env
+        assert benchmark_proxy_url not in json.dumps(
+            codex_acp_config,
+            sort_keys=True,
+        ), codex_acp_config
+
 
 def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-proxy-") as tmp:
