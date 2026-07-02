@@ -343,6 +343,7 @@ def main() -> int:
                 ), workspace_route
                 assert workspace_route["default_visible_workspace"] == "demo_owned_clean_workspace", workspace_route
                 acceptance = launch["visible_acceptance"]
+                assert acceptance["schema_version"] == "multi_agent_visible_launch_acceptance_v0", acceptance
                 assert acceptance["accepted"] is True, visible_payload
                 assert visible_proof["visible_lanes_accepted"] is True, visible_proof
                 assert all(not item["blocked_before_bootstrap"] for item in acceptance["pane_checks"]), acceptance

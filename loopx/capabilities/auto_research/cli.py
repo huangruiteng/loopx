@@ -612,7 +612,6 @@ def _execute_auto_research_demo_supervisor(
         cwd=Path.cwd(),
         codex_trust_workspace=codex_trust_workspace,
         launch_result_schema="auto_research_demo_launch_result_v0",
-        acceptance_schema="auto_research_visible_launch_acceptance_v0",
         lane_default="research-lane",
     )
     payload["mode"] = "executed_visible_launch"
