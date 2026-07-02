@@ -145,6 +145,16 @@ Expected minimal E2E result:
 - visible launch controls stay separate from the research result and only prove
   that panes can be inspected, stopped, or retried.
 
+Maintainer acceptance for this path is:
+
+```bash
+python3 examples/auto-research-layered-e2e-acceptance-smoke.py
+```
+
+That smoke checks the shortest layered contract, the visible Codex TUI runner
+contract, todo handoff, public evidence writes, and two metric-improving rounds
+without making the auto-research preset own generic runner machinery.
+
 Evidence boundary:
 
 - `visible_worker_proof.visible_lanes_launched` reports whether panes were
