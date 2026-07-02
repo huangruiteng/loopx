@@ -340,9 +340,11 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                     prompt=effective_prompt,
                     model_name=args.model,
                     reasoning_effort=args.reasoning_effort,
+                    objective=objective,
                     approval_policy=args.approval_policy,
                     sandbox=args.sandbox,
                     reconnect_if_needed=True,
+                    reactivate_inactive_goal=True,
                     response_timeout_sec=args.response_timeout_sec,
                     wait_for_completion=False,
                 )

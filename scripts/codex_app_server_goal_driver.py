@@ -48,6 +48,10 @@ class CodexAppServerGoalTurn:
     transport_reconnect_attempted: bool = False
     transport_reconnect_succeeded: bool = False
     transport_reconnect_reason: str = ""
+    goal_reactivation_attempted: bool = False
+    goal_reactivation_succeeded: bool = False
+    goal_reactivation_previous_status: str = ""
+    goal_reactivation_result_status: str = ""
     notifications: list[str] = field(default_factory=list)
     _responses: "queue.Queue[dict[str, Any] | Exception] | None" = field(
         default=None,
@@ -768,7 +772,9 @@ def _start_followup_turn_on_transport(
     prompt: str,
     model_name: str | None,
     reasoning_effort: str | None,
+    objective: str | None,
     approval_policy: str,
+    reactivate_inactive_goal: bool,
     response_timeout_sec: float,
 ) -> tuple[CodexAppServerGoalTurn, int]:
     goal_get = {
@@ -788,10 +794,65 @@ def _start_followup_turn_on_transport(
     )
     request_id += 1
     goal_status = _extract_goal_status(goal_result)
+    goal_reactivation_attempted = False
+    goal_reactivation_succeeded = False
+    goal_reactivation_previous_status = ""
+    goal_reactivation_result_status = ""
     if goal_status != "active":
-        raise CodexAppServerGoalDriverError(
-            f"codex_app_server_goal_not_active:{goal_status or 'missing'}"
+        if not reactivate_inactive_goal:
+            raise CodexAppServerGoalDriverError(
+                f"codex_app_server_goal_not_active:{goal_status or 'missing'}"
+            )
+        goal_reactivation_attempted = True
+        goal_reactivation_previous_status = goal_status or "missing"
+        goal_set_params: dict[str, Any] = {
+            "threadId": thread_id,
+            "status": "active",
+        }
+        if objective:
+            goal_set_params["objective"] = objective
+        _send_json(
+            proc,
+            {
+                "id": request_id,
+                "method": "thread/goal/set",
+                "params": goal_set_params,
+            },
         )
+        goal_set_result = _wait_for_response(
+            proc,
+            responses,
+            request_id,
+            notifications=notifications,
+            timeout_sec=response_timeout_sec,
+        )
+        request_id += 1
+        goal_reactivation_result_status = _extract_goal_status(goal_set_result)
+        goal_get = {
+            "id": request_id,
+            "method": "thread/goal/get",
+            "params": {
+                "threadId": thread_id,
+            },
+        }
+        _send_json(proc, goal_get)
+        goal_result = _wait_for_response(
+            proc,
+            responses,
+            request_id,
+            notifications=notifications,
+            timeout_sec=response_timeout_sec,
+        )
+        request_id += 1
+        goal_status = _extract_goal_status(goal_result)
+        goal_reactivation_result_status = (
+            goal_status or goal_reactivation_result_status or "missing"
+        )
+        goal_reactivation_succeeded = goal_status == "active"
+        if goal_status != "active":
+            raise CodexAppServerGoalDriverError(
+                f"codex_app_server_goal_reactivation_failed:{goal_status or 'missing'}"
+            )
 
     turn_params: dict[str, Any] = {
         "threadId": thread_id,
@@ -836,6 +897,10 @@ def _start_followup_turn_on_transport(
         next_request_id=request_id,
         goal_status=goal_status,
         turn_status=_extract_turn_status(turn_result),
+        goal_reactivation_attempted=goal_reactivation_attempted,
+        goal_reactivation_succeeded=goal_reactivation_succeeded,
+        goal_reactivation_previous_status=goal_reactivation_previous_status,
+        goal_reactivation_result_status=goal_reactivation_result_status,
         notifications=notifications,
         _responses=responses,
     )
@@ -852,9 +917,11 @@ def start_codex_app_server_goal_followup_turn(
     prompt: str,
     model_name: str | None = None,
     reasoning_effort: str | None = None,
+    objective: str | None = None,
     approval_policy: str = "never",
     sandbox: str = "danger-full-access",
     reconnect_if_needed: bool = True,
+    reactivate_inactive_goal: bool = False,
     response_timeout_sec: float = 30.0,
     wait_for_completion: bool = False,
     turn_timeout_sec: float | None = None,
@@ -886,7 +953,9 @@ def start_codex_app_server_goal_followup_turn(
             prompt=prompt,
             model_name=model_name,
             reasoning_effort=reasoning_effort,
+            objective=objective,
             approval_policy=approval_policy,
+            reactivate_inactive_goal=reactivate_inactive_goal,
             response_timeout_sec=response_timeout_sec,
         )
     except CodexAppServerGoalDriverError as exc:
@@ -925,7 +994,9 @@ def start_codex_app_server_goal_followup_turn(
             prompt=prompt,
             model_name=model_name,
             reasoning_effort=reasoning_effort,
+            objective=objective,
             approval_policy=approval_policy,
+            reactivate_inactive_goal=reactivate_inactive_goal,
             response_timeout_sec=response_timeout_sec,
         )
         followup.transport_reconnect_attempted = True
@@ -971,6 +1042,10 @@ def compact_turn_metadata(turn: CodexAppServerGoalTurn) -> dict[str, Any]:
         "transport_reconnect_attempted": bool(turn.transport_reconnect_attempted),
         "transport_reconnect_succeeded": bool(turn.transport_reconnect_succeeded),
         "transport_reconnect_reason": turn.transport_reconnect_reason,
+        "goal_reactivation_attempted": bool(turn.goal_reactivation_attempted),
+        "goal_reactivation_succeeded": bool(turn.goal_reactivation_succeeded),
+        "goal_reactivation_previous_status": turn.goal_reactivation_previous_status,
+        "goal_reactivation_result_status": turn.goal_reactivation_result_status,
         "assistant_message_present": bool(assistant_message),
         "assistant_message_chars": len(assistant_message),
         "assistant_message_sha256": sha256(assistant_message.encode()).hexdigest()

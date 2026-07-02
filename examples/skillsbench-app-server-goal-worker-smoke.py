@@ -451,6 +451,104 @@ for line in sys.stdin:
     print(json.dumps({"id": mid, "result": result}), flush=True)
 """
 
+FAKE_CODEX_CONTEXT_ONLY_BLOCKS_GOAL_THEN_REACTIVATE = """#!/usr/bin/env python3
+import json
+import sys
+
+turn_count = 0
+goal_status = "active"
+reactivated = False
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        if msg.get("params", {}).get("status") == "active":
+            goal_status = "active"
+            reactivated = True
+        result = {"goal": {"threadId": "thread-skillsbench", "status": goal_status}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": goal_status}}
+    elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "xhigh":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing xhigh effort"},
+            }), flush=True)
+            continue
+        turn_count += 1
+        if turn_count == 1:
+            print(json.dumps({
+                "method": "turn/started",
+                "params": {
+                    "threadId": "thread-skillsbench",
+                    "turn": {"id": "turn-context-only", "status": "inProgress"},
+                },
+            }), flush=True)
+            result = {"turn": {"id": "turn-context-only", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "<permissions instructions>\\ncontext preamble\\n</skills_instructions>",
+                        }
+                    ],
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            }), flush=True)
+            goal_status = "blocked"
+            continue
+        if not reactivated:
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32000, "message": "goal remained blocked"},
+            }), flush=True)
+            continue
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-reactivated", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-followup-reactivated", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-followup-reactivated",
+                "itemId": "item-followup-reactivated",
+                "delta": "private worker answer after goal reactivation",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-reactivated", "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
 
 def assert_plan_prerequisites(plan: dict[str, Any]) -> None:
     prereq = plan["runner_prerequisites"]
@@ -1179,6 +1277,76 @@ def test_host_worker_recovers_when_first_turn_only_echoes_context() -> None:
         public_json = json.dumps(payload)
         assert "context preamble" not in public_json, payload
         assert "private worker answer after context retry" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
+def test_host_worker_reactivates_goal_for_context_only_followup() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-app-goal-context-reactivate-"
+    ) as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(
+            FAKE_CODEX_CONTEXT_ONLY_BLOCKS_GOAL_THEN_REACTIVATE,
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--reasoning-effort",
+                "xhigh",
+                "--context-only-followup-max",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["error_type"] == "", payload
+        assert payload["turn"]["turn_attempt_count"] == 2, payload
+        assert payload["turn"]["context_only_turn_count"] == 1, payload
+        assert payload["turn"]["context_only_followup_start_attempted"] is True, payload
+        assert payload["turn"]["context_only_followup_start_succeeded"] is True, payload
+        assert payload["turn"]["goal_reactivation_attempted"] is True, payload
+        assert payload["turn"]["goal_reactivation_succeeded"] is True, payload
+        assert payload["turn"]["goal_reactivation_previous_status"] == "blocked", payload
+        assert payload["turn"]["goal_reactivation_result_status"] == "active", payload
+        assert payload["turn_attempts"][0]["assistant_message_context_only"] is True, payload
+        assert payload["turn_attempts"][1]["selected_final_turn"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_attempted"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_succeeded"] is True, payload
+        assert private_response.read_text(encoding="utf-8") == (
+            "private worker answer after goal reactivation"
+        )
+        public_json = json.dumps(payload)
+        assert "context preamble" not in public_json, payload
+        assert "private worker answer after goal reactivation" not in public_json, payload
         assert "Private task instruction placeholder" not in public_json, payload
 
 
@@ -2670,6 +2838,7 @@ if __name__ == "__main__":
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
     test_host_worker_recovers_when_first_turn_only_echoes_context()
+    test_host_worker_reactivates_goal_for_context_only_followup()
     test_host_worker_reconnects_context_only_followup_transport()
     test_host_worker_fails_closed_on_first_action_timeout()
     test_host_worker_fails_fast_when_app_server_stream_closes()
