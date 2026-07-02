@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
@@ -322,6 +323,222 @@ def build_visible_multi_agent_payload(
     }
 
 
+def _as_string_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if isinstance(value, Iterable):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _role_skill_profile(skill: object) -> dict[str, str]:
+    if not skill:
+        return {}
+    if isinstance(skill, str):
+        source = skill.strip()
+        if not source:
+            return {}
+        name = Path(source).parent.name or Path(source).stem or "worker-skill"
+        return {"required_skill": name, "worker_skill_source": source}
+    if not isinstance(skill, dict):
+        return {}
+    name = str(skill.get("name") or skill.get("skill_name") or "").strip()
+    source = str(skill.get("source") or skill.get("path") or "").strip()
+    if not name and source:
+        name = Path(source).parent.name or Path(source).stem
+    if not name or not source:
+        return {}
+    return {"required_skill": name, "worker_skill_source": source}
+
+
+def _generic_role_prompt(
+    *,
+    goal_id: str,
+    agent_id: str,
+    role_id: str,
+    scope: str,
+    handoff_hints: list[str],
+    skill_name: str | None,
+) -> str:
+    lines = [
+        "LoopX multi-agent role",
+        f"Goal: {goal_id}",
+        f"Agent: {agent_id}",
+        f"Role: {role_id}",
+    ]
+    if scope:
+        lines.extend(["", "Scope:", scope])
+    if skill_name:
+        lines.extend(["", "Local skill:", f"Use ${skill_name} when it applies to this role."])
+    lines.extend(
+        [
+            "",
+            "How to work:",
+            "- Treat LoopX state as the shared A2A surface.",
+            "- Start by reading your agent-scoped todo/quota/frontier with $LOOPX_PANE_LOOPX.",
+            "- Keep machine JSON redirected through $LOOPX_PANE_LOOPX_JSON into .local artifacts.",
+            "- Write compact public-safe evidence before completing or handing off a todo.",
+            "- The user may type into this pane; respond like a normal Codex CLI agent.",
+        ]
+    )
+    if handoff_hints:
+        lines.append("")
+        lines.append("Handoff hints:")
+        lines.extend(f"- {hint}" for hint in handoff_hints)
+    return "\n".join(lines)
+
+
+def build_visible_multi_agent_payload_from_spec(
+    spec: dict[str, object],
+    *,
+    tmux_bin: str = "tmux",
+    cli_bin: str = "loopx",
+    codex_bin: str = "codex",
+) -> dict[str, object]:
+    """Build a visible launcher packet from a small user-facing role spec."""
+
+    if not isinstance(spec, dict):
+        raise ValueError("multi-agent launch spec must be an object")
+    goal_id = str(spec.get("goal_id") or "").strip()
+    if not goal_id:
+        raise ValueError("multi-agent launch spec requires goal_id")
+    roles = spec.get("roles") or spec.get("agents") or spec.get("lanes")
+    if not isinstance(roles, list) or not roles:
+        raise ValueError("multi-agent launch spec requires a non-empty roles list")
+    session_name = str(spec.get("session_name") or f"loopx-{_script_slug(goal_id)}-agents")
+    default_reasoning_effort = str(
+        spec.get("default_reasoning_effort") or spec.get("reasoning_effort") or "high"
+    )
+    lanes: list[dict[str, object]] = []
+    for index, raw_role in enumerate(roles, start=1):
+        if not isinstance(raw_role, dict):
+            raise ValueError(f"role #{index} must be an object")
+        agent_id = str(raw_role.get("agent_id") or "").strip()
+        if not agent_id:
+            raise ValueError(f"role #{index} requires agent_id")
+        lane_id = str(raw_role.get("lane_id") or raw_role.get("role_id") or agent_id).strip()
+        role_id = str(raw_role.get("role_id") or lane_id).strip()
+        scope = str(
+            raw_role.get("scope")
+            or raw_role.get("agent_scope")
+            or raw_role.get("responsibility")
+            or ""
+        ).strip()
+        responsibility = str(raw_role.get("responsibility") or scope or role_id).strip()
+        handoff_hints = _as_string_list(
+            raw_role.get("handoff")
+            or raw_role.get("handoff_hints")
+            or raw_role.get("interaction_hints")
+        )
+        skill_profile = _role_skill_profile(raw_role.get("skill"))
+        reasoning_effort = str(raw_role.get("reasoning_effort") or default_reasoning_effort)
+        role_profile = {
+            "schema_version": "generic_multi_agent_role_profile_v0",
+            "role_id": role_id,
+            "agent_id": agent_id,
+            "agent_scope": scope,
+            "responsibility": responsibility,
+            "handoff_hints": handoff_hints,
+        }
+        role_profile.update(skill_profile)
+        lane_slug = _script_slug(lane_id)
+        role_profile_json = json.dumps(role_profile, ensure_ascii=False, sort_keys=True)
+        role_profile_command = (
+            "mkdir -p \"$LOOPX_VISIBLE_ARTIFACT_DIR\"; "
+            f"printf '%s\\n' {_q(role_profile_json)} "
+            f"> \"$LOOPX_VISIBLE_ARTIFACT_DIR/{lane_slug}.role-profile.public.json\"; "
+        )
+        prompt = _generic_role_prompt(
+            goal_id=goal_id,
+            agent_id=agent_id,
+            role_id=role_id,
+            scope=scope,
+            handoff_hints=handoff_hints,
+            skill_name=skill_profile.get("required_skill"),
+        )
+        bootstrap_command = f"printf '%s\\n' {_q(prompt)}"
+        lane = {
+            "lane_id": lane_id,
+            "agent_id": agent_id,
+            "role_id": role_id,
+            "responsibility": responsibility,
+            "agent_scope": scope,
+            "handoff_hints": handoff_hints,
+            "role_profile": role_profile,
+            "role_profile_ref": f"generic_multi_agent_launch_spec_v0:{role_id}",
+            "quota_guard": (
+                "$LOOPX_PANE_LOOPX_JSON quota should-run "
+                f"--goal-id {_q(goal_id)} --agent-id {_q(agent_id)} "
+                f"> .local/{lane_slug}/quota.public.json"
+            ),
+            "frontier": "agent-scoped LoopX todo/quota/frontier projection",
+            "bootstrap_message": "role_prompt_inside_codex_tui",
+            "visible_launch_command": build_visible_lane_command(
+                role_id=role_id,
+                role_profile_ref=f"generic_multi_agent_launch_spec_v0:{role_id}",
+                role_profile_command=role_profile_command,
+                bootstrap_command=bootstrap_command,
+                codex_bin=codex_bin,
+                reasoning_effort=reasoning_effort,
+            ),
+            "reasoning_effort": reasoning_effort,
+            "lane_timeline": ["role_profile", "quota_guard", "frontier", "codex_tui"],
+        }
+        if raw_role.get("workspace") or raw_role.get("project"):
+            lane["workspace"] = str(raw_role.get("workspace") or raw_role.get("project"))
+        lanes.append(lane)
+
+    packet = build_visible_multi_agent_payload(
+        goal_id=goal_id,
+        session_name=session_name,
+        lanes=lanes,
+        tmux_bin=tmux_bin,
+    )
+    packet.update(
+        {
+            "product_spec": {
+                "schema_version": "generic_multi_agent_launch_spec_v0",
+                "input_shape": ["goal_id", "session_name", "roles"],
+                "role_fields": [
+                    "agent_id",
+                    "role_id",
+                    "scope",
+                    "skill",
+                    "handoff_hints",
+                    "reasoning_effort",
+                ],
+                "role_count": len(lanes),
+                "uses_generic_runner": True,
+                "domain_specific": False,
+            },
+            "reasoning_contract": {
+                "default_reasoning_effort": default_reasoning_effort,
+                "codex_cli_config_key": "model_reasoning_effort",
+            },
+            "shared_goal_surface": {
+                "shared_goal_id": goal_id,
+                "shared_state_route": "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
+                "shared_frontier": True,
+                "lane_identity_source": "role_profile_plus_agent_scoped_quota",
+                "all_lane_workspace_isolation": any("workspace" in lane for lane in lanes),
+                "mutation_isolation_policy": (
+                    "mutating attempts require agent-scoped todo/frontier and a claimed "
+                    "worktree or equivalent execution boundary"
+                ),
+            },
+            "cli_contract": {
+                "cli_bin": cli_bin,
+                "codex_bin": codex_bin,
+                "tmux_bin": tmux_bin,
+                "machine_json_policy": "artifact_only_in_visible_panes",
+            },
+        }
+    )
+    return packet
+
+
 def _materialize_worker_skills(
     *,
     payload: dict[str, object],
@@ -437,6 +654,7 @@ def execute_visible_multi_agent_launcher(
     create_workspace: bool,
     cwd: Path,
     codex_trust_workspace: bool = False,
+    source_root: Path | None = None,
     launch_result_schema: str = "multi_agent_visible_launch_result_v0",
     acceptance_schema: str = "multi_agent_visible_launch_acceptance_v0",
     lane_default: str = "agent-lane",
@@ -448,7 +666,7 @@ def execute_visible_multi_agent_launcher(
     worker_skills = _materialize_worker_skills(
         payload=payload,
         project=project,
-        source_root=cwd,
+        source_root=source_root or cwd,
     )
     worker_skill_errors = _worker_skill_materialization_errors(worker_skills)
     if worker_skill_errors:

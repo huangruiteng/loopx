@@ -25,125 +25,58 @@ PRIVATE_MARKERS = [
     "sec" + "ret",
 ]
 
-ONE_COMMAND = r'''
-import json
-import os
-from pathlib import Path
-
-from loopx.visible_multi_agent_launcher import (
-    build_visible_multi_agent_payload,
-    execute_visible_multi_agent_launcher,
-)
-
-
-goal_id = "loopx-meta"
-session_name = "loopx-generic-multi-agent-smoke"
-registry = Path(os.environ["SMOKE_REGISTRY"])
-runtime_root = Path(os.environ["SMOKE_RUNTIME_ROOT"])
-workspace = Path(os.environ["SMOKE_WORKSPACE"])
-cwd = Path(os.environ["SMOKE_CWD"])
-
-lanes = [
-    {
-        "lane_id": "planner",
-        "agent_id": "codex-main-control",
-        "role_id": "planner",
-        "responsibility": "Plan the next bounded step from the shared goal surface.",
-        "role_profile": {"schema_version": "generic_multi_agent_role_profile_v0", "role_id": "planner"},
-        "quota_guard": "loopx --format json --registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" quota should-run --goal-id loopx-meta --agent-id codex-main-control",
-        "frontier": "role-local state projection",
-        "bootstrap_message": "Planner role prompt",
-        "visible_launch_command": "exec codex -c model_reasoning_effort=high -C \"$LOOPX_PROJECT\" \"Planner role prompt\"",
-        "reasoning_effort": "high",
-        "lane_timeline": ["role_profile", "quota_guard", "frontier", "codex_tui"],
-    },
-    {
-        "lane_id": "critic",
-        "agent_id": "codex-side-bypass",
-        "role_id": "critic",
-        "responsibility": "Review the bounded step against the same todo and quota projection.",
-        "role_profile": {"schema_version": "generic_multi_agent_role_profile_v0", "role_id": "critic"},
-        "quota_guard": "loopx --format json --registry \"$LOOPX_REGISTRY\" --runtime-root \"$LOOPX_RUNTIME_ROOT\" quota should-run --goal-id loopx-meta --agent-id codex-side-bypass",
-        "frontier": "role-local state projection",
-        "bootstrap_message": "Critic role prompt",
-        "visible_launch_command": "exec codex -c model_reasoning_effort=high -C \"$LOOPX_PROJECT\" \"Critic role prompt\"",
-        "reasoning_effort": "high",
-        "lane_timeline": ["role_profile", "quota_guard", "frontier", "codex_tui"],
-    },
-]
-
-packet = build_visible_multi_agent_payload(
-    goal_id=goal_id,
-    session_name=session_name,
-    lanes=lanes,
-    tmux_bin="tmux",
-)
-packet.update({
-    "reasoning_contract": {
-        "default_reasoning_effort": "high",
-        "codex_cli_config_key": "model_reasoning_effort",
-    },
-    "shared_goal_surface": {
-        "shared_goal_id": goal_id,
-        "shared_state_route": "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
-        "shared_frontier": True,
-        "lane_identity_source": "role_profile_plus_agent_scoped_quota",
-        "all_lane_workspace_isolation": False,
-        "mutation_isolation_policy": "only mutating attempts require a claimed worktree or equivalent execution boundary",
-    },
-})
-
-launch_result = None
-if os.environ.get("SMOKE_EXECUTE") == "1":
-    launch_result, chosen, workspace_mode = execute_visible_multi_agent_launcher(
-        payload=packet,
-        registry=registry,
-        runtime_root=runtime_root,
-        requested_launcher="tmux",
-        tmux_bin="tmux",
-        cli_bin="loopx",
-        codex_bin="codex",
-        attach=False,
-        replace_existing=False,
-        workspace=str(workspace),
-        create_workspace=True,
-        cwd=cwd,
-    )
-    packet["mode"] = "execute"
-    packet["boundary"] = {
-        **packet["boundary"],
-        "starts_visible_processes": True,
-        "runs_agent_processes": True,
-    }
-else:
-    chosen = "dry_run_only"
-    workspace_mode = "not_created"
-
-print(json.dumps({
-    "schema_version": "generic_multi_agent_one_command_smoke_v0",
-    "chosen_launcher": chosen,
-    "workspace_mode": workspace_mode,
-    "packet": packet,
-    "launch_result": launch_result,
-}, sort_keys=True))
-'''
-
 
 def write_executable(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
 
 
-def run_one_command(env: dict[str, str], *, execute: bool) -> dict[str, object]:
-    run_env = dict(env)
+def run_launch_command(
+    env: dict[str, str],
+    *,
+    spec_path: Path,
+    registry: Path,
+    runtime_root: Path,
+    workspace: Path,
+    execute: bool,
+) -> dict[str, object]:
+    command = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry),
+        "--runtime-root",
+        str(runtime_root),
+        "--format",
+        "json",
+        "multi-agent",
+        "launch",
+        "--spec",
+        str(spec_path),
+        "--tmux-bin",
+        "tmux",
+        "--cli-bin",
+        "loopx",
+        "--codex-bin",
+        "codex",
+    ]
     if execute:
-        run_env["SMOKE_EXECUTE"] = "1"
+        command.extend(
+            [
+                "--execute",
+                "--workspace",
+                str(workspace),
+                "--create-workspace",
+                "--replace-existing",
+            ]
+        )
     completed = subprocess.run(
-        [sys.executable, "-c", ONE_COMMAND],
+        command,
         check=True,
         capture_output=True,
         text=True,
-        env=run_env,
+        env=env,
     )
     return json.loads(completed.stdout)
 
@@ -191,6 +124,49 @@ def main() -> int:
         tmux_log = temp / "tmux.jsonl"
         registry.write_text(json.dumps({"common_runtime_root": str(runtime_root)}), encoding="utf-8")
         runtime_root.mkdir()
+        worker_skill = temp / "worker" / "SKILL.md"
+        worker_skill.parent.mkdir()
+        worker_skill.write_text(
+            "# Planner Worker Skill\n\nUse LoopX todo/frontier state for handoff.\n",
+            encoding="utf-8",
+        )
+        spec_path = temp / "multi-agent-spec.json"
+        spec_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "generic_multi_agent_launch_spec_v0",
+                    "goal_id": "loopx-meta",
+                    "session_name": "loopx-generic-multi-agent-smoke",
+                    "default_reasoning_effort": "high",
+                    "roles": [
+                        {
+                            "lane_id": "planner",
+                            "agent_id": "codex-main-control",
+                            "role_id": "planner",
+                            "scope": "Plan the next bounded step from the shared goal surface.",
+                            "skill": {
+                                "name": "loopx-planner-worker",
+                                "source": "worker/SKILL.md",
+                            },
+                            "handoff_hints": [
+                                "Create or update a LoopX todo for critic when a plan needs review."
+                            ],
+                        },
+                        {
+                            "lane_id": "critic",
+                            "agent_id": "codex-side-bypass",
+                            "role_id": "critic",
+                            "scope": "Review the bounded step against the same todo and quota projection.",
+                            "handoff_hints": [
+                                "Complete the review todo or hand a focused fix todo back to planner."
+                            ],
+                        },
+                    ],
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
 
         write_executable(fake_bin / "loopx", "#!/usr/bin/env sh\nexit 0\n")
         write_executable(fake_bin / "codex", "#!/usr/bin/env sh\nexit 0\n")
@@ -202,18 +178,20 @@ def main() -> int:
                 "PATH": f"{fake_bin}{os.pathsep}{env.get('PATH', '')}",
                 "PYTHONPATH": f"{ROOT}{os.pathsep}{env.get('PYTHONPATH', '')}",
                 "FAKE_TMUX_LOG": str(tmux_log),
-                "SMOKE_CWD": str(temp),
-                "SMOKE_REGISTRY": str(registry),
-                "SMOKE_RUNTIME_ROOT": str(runtime_root),
-                "SMOKE_WORKSPACE": str(workspace),
             }
         )
 
-        dry_run = run_one_command(env, execute=False)
-        assert dry_run["schema_version"] == "generic_multi_agent_one_command_smoke_v0", dry_run
-        assert dry_run["chosen_launcher"] == "dry_run_only", dry_run
-        dry_packet = dry_run["packet"]
+        dry_packet = run_launch_command(
+            env,
+            spec_path=spec_path,
+            registry=registry,
+            runtime_root=runtime_root,
+            workspace=workspace,
+            execute=False,
+        )
         assert dry_packet["mode"] == "dry_run", dry_packet
+        assert dry_packet["product_spec"]["schema_version"] == "generic_multi_agent_launch_spec_v0", dry_packet
+        assert dry_packet["product_spec"]["domain_specific"] is False, dry_packet
         assert dry_packet["reasoning_contract"]["default_reasoning_effort"] == "high", dry_packet
         assert dry_packet["shared_goal_surface"]["shared_state_route"] == "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT", dry_packet
         assert dry_packet["shared_goal_surface"]["all_lane_workspace_isolation"] is False, dry_packet
@@ -225,14 +203,20 @@ def main() -> int:
         assert dry_packet["boundary"]["starts_visible_processes"] is False, dry_packet
         assert dry_packet["boundary"]["spends_loopx_quota"] is False, dry_packet
         assert all(lane["reasoning_effort"] == "high" for lane in dry_packet["lanes"]), dry_packet
-        assert dry_run["launch_result"] is None, dry_run
+        assert any(lane["role_profile"].get("required_skill") == "loopx-planner-worker" for lane in dry_packet["lanes"]), dry_packet
         assert_public_safe(dry_packet, "dry-run packet")
 
-        executed = run_one_command(env, execute=True)
-        assert executed["chosen_launcher"] == "tmux", executed
-        assert executed["workspace_mode"] == "explicit_workspace", executed
-        exec_packet = executed["packet"]
-        launch = executed["launch_result"]
+        exec_packet = run_launch_command(
+            env,
+            spec_path=spec_path,
+            registry=registry,
+            runtime_root=runtime_root,
+            workspace=workspace,
+            execute=True,
+        )
+        assert exec_packet["chosen_launcher"] == "tmux", exec_packet
+        assert exec_packet["workspace_mode"] == "explicit_workspace", exec_packet
+        launch = exec_packet["launch_result"]
         assert exec_packet["mode"] == "execute", exec_packet
         assert exec_packet["boundary"]["starts_visible_processes"] is True, exec_packet
         assert exec_packet["boundary"]["writes_loopx_state"] is False, exec_packet
@@ -244,9 +228,12 @@ def main() -> int:
         assert all(
             item["interactive_codex_tui_script"] for item in launch["visible_acceptance"]["pane_checks"]
         ), launch
-        assert_public_safe(exec_packet, "execute packet")
+        skill_items = launch["worker_skill_materialization"]
+        assert skill_items and skill_items[0]["materialized"] is True, launch
+        assert (workspace / ".codex" / "skills" / "loopx-planner-worker" / "SKILL.md").is_file()
         assert_public_safe(
             {
+                "product_spec": exec_packet["product_spec"],
                 "schema_version": launch["schema_version"],
                 "launcher": launch["launcher"],
                 "started_lanes": launch["started_lanes"],

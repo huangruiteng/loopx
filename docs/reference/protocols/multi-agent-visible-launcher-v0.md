@@ -17,6 +17,59 @@ This contract intentionally sits between two existing surfaces:
 The visible launcher may plan or start panes, but it must not become a leader
 agent, hidden scheduler, promotion authority, or second source of truth.
 
+## User-Facing Spec
+
+Most callers should not author `multi_agent_visible_launcher_v0` packets by
+hand. They should provide a small `generic_multi_agent_launch_spec_v0` role
+spec and let `loopx multi-agent launch --spec <file>` expand it into the
+visible launcher packet.
+
+```json
+{
+  "schema_version": "generic_multi_agent_launch_spec_v0",
+  "goal_id": "loopx-meta",
+  "session_name": "loopx-custom-team",
+  "default_reasoning_effort": "high",
+  "roles": [
+    {
+      "lane_id": "planner",
+      "agent_id": "codex-main-control",
+      "role_id": "planner",
+      "scope": "Plan the next bounded step from the shared goal surface.",
+      "skill": {
+        "name": "loopx-planner-worker",
+        "source": "worker/SKILL.md"
+      },
+      "handoff_hints": [
+        "Create or update a LoopX todo for critic when a plan needs review."
+      ]
+    },
+    {
+      "lane_id": "critic",
+      "agent_id": "codex-side-bypass",
+      "role_id": "critic",
+      "scope": "Review the bounded step against the same todo and quota projection."
+    }
+  ]
+}
+```
+
+The spec is intentionally small:
+
+- `goal_id` selects the shared LoopX state surface;
+- each role names an `agent_id`, human role, and scope;
+- `skill.source` is resolved relative to the spec file and materialized as a
+  worker-local skill for that role;
+- `handoff_hints` describe how roles should use LoopX todos/evidence to pass
+  work, without creating a central workflow engine;
+- `--execute` starts visible Codex TUI panes, while the default mode only
+  previews the packet.
+
+This keeps product integration focused on role design and state-mediated
+handoff. The generated launcher packet still enforces artifact-only machine
+JSON, interactive Codex TUI windows, attach/stop controls, and public boundary
+fields.
+
 ## Ownership Split
 
 | Surface | Owns | Does not own |
