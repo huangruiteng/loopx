@@ -147,7 +147,7 @@ def main() -> int:
     for required in [
         "Start From A Clean Workspace",
         "loopx-auto-research-demo",
-        "auto-research quickstart",
+        "auto-research demo-e2e",
         "auto-research demo-supervisor",
         "auto-research worker-loop",
         "research-curator",

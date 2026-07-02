@@ -260,10 +260,8 @@ Already available:
 - `loopx auto-research frontier --goal-id <goal> --agent-id <agent>` now
   renders a live todo/quota-backed frontier for the current agent from LoopX
   status projection.
-- `examples/auto_research_knn_pack/` now provides a runnable public k-NN pack
-  with an editable candidate solver, protected evaluator, dev/held-out splits,
-  exactness guard, deterministic speedup metric, no-upload boundary, and smoke
-  coverage.
+- The auto-research worker path now uses a built-in lightweight metric kernel
+  for smoke/demo evidence instead of a shipped domain-specific starter pack.
 - `loopx auto-research evidence --contract <research_contract.json>
   --eval-result <eval.json>...` now builds an
   `auto_research_evidence_packet_v0` containing a public-safe
