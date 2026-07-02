@@ -1344,6 +1344,123 @@
       }
     },
     {
+      "analysis_id": "skillsbench-1.1__react-performance-debugging__xhigh-appserver-zero-attribution-20260702",
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "react-performance-debugging",
+      "classification": "xhigh_app_server_zero_attribution_asset",
+      "decision": "single_arm_xhigh_app_server_official_zero_attributed",
+      "evidence_status": "official_score_complete_public_safe_attribution",
+      "source_run_ids": [
+        "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z-01-react-performance-debugging"
+      ],
+      "source_run_count": 1,
+      "arms": {
+        "current": {
+          "arm_id": "codex_app_server_goal_xhigh",
+          "route": "codex-app-server-goal-baseline",
+          "model": "gpt-5.5",
+          "failure_class": "official_verifier_solution_failure",
+          "failure_scope": "solution_behavior",
+          "run_group_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z",
+          "run_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z-01-react-performance-debugging",
+          "job_name": "skillsbench_1_1_react_performance_debugging_codex_app_server_goal_baseline"
+        }
+      },
+      "scores": {
+        "baseline_official_score": null,
+        "treatment_official_score": 0.0,
+        "official_score_delta": null,
+        "claimable_uplift": false,
+        "single_arm_official_score": 0.0
+      },
+      "capability_signal": "The xhigh app-server attempt reached scoring but failed one performance-behavior check; the failure points at the produced solution rather than runner connectivity.",
+      "control_plane_signal": "The current app-server Goal route reached official scoring with xhigh observed, worker turn/action observed, and reverse-tunnel/proxy configuration recorded only as compact booleans; this row does not support a runner-drop attribution.",
+      "native_goal_route_observations": {
+        "schema_version": "skillsbench_native_goal_route_observation_v0",
+        "arm_id": "codex_app_server_goal_xhigh",
+        "route": "codex-app-server-goal-baseline",
+        "model": "gpt-5.5",
+        "reasoning_effort_requested": "xhigh",
+        "reasoning_effort_observed": "xhigh",
+        "run_group_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z",
+        "run_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z-01-react-performance-debugging",
+        "job_name": "skillsbench_1_1_react_performance_debugging_codex_app_server_goal_baseline",
+        "official_score": 0.0,
+        "official_score_status": "completed",
+        "score_failure_attribution": "official_verifier_solution_failure",
+        "failure_scope": "solution_behavior",
+        "derived_failure_category": "frontend performance behavior: checkout API behavior was too fast, consistent with bypassing the expected external API interaction.",
+        "verifier_result_summary": "10 checks passed and 1 check failed.",
+        "native_goal_mode_invoked": true,
+        "native_goal_worker_connected": true,
+        "native_goal_worker_trace_count": 4,
+        "round_count": 1,
+        "native_goal_worker_turn_start_count": 1,
+        "native_goal_worker_assistant_message_present_count": 1,
+        "native_goal_worker_first_action_observed_count": 1,
+        "native_goal_worker_effective_action_observed_count": 1,
+        "loopx_controller_trace_present": true,
+        "loopx_controller_trace_public_safe": true,
+        "loopx_lifecycle_observed": true,
+        "codex_api_reverse_tunnel_required": true,
+        "codex_api_reverse_tunnel_proxy_configured": true,
+        "codex_api_reverse_tunnel_proxy_url_recorded": false,
+        "benchmark_egress_proxy_configured": true,
+        "benchmark_egress_proxy_url_recorded": false,
+        "loopx_case_rollout_event_counts": {
+          "worker_turn_started": 1,
+          "worker_effective_action_observed": 1,
+          "official_verifier_completed": 1,
+          "official_score_zero": 1
+        }
+      },
+      "public_safe_failure_summary": {
+        "schema_version": "skillsbench_public_safe_failure_summary_v0",
+        "verifier_result_summary": "10 checks passed and 1 check failed.",
+        "derived_failure_category": "frontend performance behavior: checkout API behavior was too fast, consistent with bypassing the expected external API interaction.",
+        "failure_scope": "solution_behavior",
+        "raw_task_text_copied": false,
+        "raw_logs_copied": false,
+        "raw_trajectory_copied": false,
+        "raw_verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "optimization_guidance": [
+        "Do not rerun the same app-server xhigh setting as a retry-only experiment.",
+        "If revisiting this case, change the prompt or route to emphasize preserving the expected external API interaction while optimizing performance.",
+        "Keep this separate from the older blind-loop neutral row; it is single-arm xhigh attribution, not paired uplift evidence."
+      ],
+      "routing_guidance": {
+        "next_action": "repair Codex CLI canary connectivity before making app-vs-cli claims; otherwise change prompt or route before rerunning this same case",
+        "repeat_policy": "do_not_repeat_same_app_server_xhigh_without_prompt_route_or_validation_change"
+      },
+      "public_boundary": {
+        "artifact_reference_policy": "refer to compact run ids, run groups, and derived public-safe categories only",
+        "raw_logs_copied": false,
+        "task_text_copied": false,
+        "trajectory_copied": false,
+        "verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "stability_assessment": {
+        "current_protocol_comparability": "single_arm_current_app_server_goal_route",
+        "claimable_uplift": false,
+        "runner_gap_claim": "not_supported_by_this_run",
+        "solver_failure_claim": "high",
+        "main_confounds": [
+          "single trial only",
+          "not a paired high-vs-xhigh comparison",
+          "not a Codex CLI route comparison because remote CLI marker ping is not healthy yet"
+        ],
+        "stabilization_needed": [
+          "repair Codex CLI reverse-channel connectivity before app-vs-cli comparison",
+          "use independent reruns only after changing route, prompt, or validation policy"
+        ]
+      }
+    },
+    {
       "analysis_id": "skillsbench-1.1__react-performance-debugging__blind-loop-no-score-uplift",
       "arms": {
         "baseline": {
@@ -2541,6 +2658,123 @@
       "updated_at": "2026-06-18T12:27:07+08:00"
     },
     {
+      "analysis_id": "skillsbench-1.1__setup-fuzzing-py__xhigh-appserver-zero-attribution-20260702",
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "setup-fuzzing-py",
+      "classification": "xhigh_app_server_zero_attribution_asset",
+      "decision": "single_arm_xhigh_app_server_official_zero_attributed",
+      "evidence_status": "official_score_complete_public_safe_attribution",
+      "source_run_ids": [
+        "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-06-setup-fuzzing-py"
+      ],
+      "source_run_count": 1,
+      "arms": {
+        "current": {
+          "arm_id": "codex_app_server_goal_xhigh",
+          "route": "codex-app-server-goal-baseline",
+          "model": "gpt-5.5",
+          "failure_class": "official_verifier_solution_failure",
+          "failure_scope": "solution_artifact_failure_with_secondary_environment_warning",
+          "run_group_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z",
+          "run_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-06-setup-fuzzing-py",
+          "job_name": "skillsbench_1_1_setup_fuzzing_py_codex_app_server_goal_baseline"
+        }
+      },
+      "scores": {
+        "baseline_official_score": null,
+        "treatment_official_score": 0.0,
+        "official_score_delta": null,
+        "claimable_uplift": false,
+        "single_arm_official_score": 0.0
+      },
+      "capability_signal": "This is no longer the historical setup/bootstrap blocker row: the xhigh app-server attempt reached official scoring, but the generated fuzzing artifacts were incomplete. A secondary verifier-environment warning should be repaired before using this case as a clean solver-only measurement.",
+      "control_plane_signal": "The current app-server Goal route reached official scoring with xhigh observed, worker turn/action observed, and reverse-tunnel/proxy configuration recorded only as compact booleans; this row does not support a runner-drop attribution.",
+      "native_goal_route_observations": {
+        "schema_version": "skillsbench_native_goal_route_observation_v0",
+        "arm_id": "codex_app_server_goal_xhigh",
+        "route": "codex-app-server-goal-baseline",
+        "model": "gpt-5.5",
+        "reasoning_effort_requested": "xhigh",
+        "reasoning_effort_observed": "xhigh",
+        "run_group_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z",
+        "run_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-06-setup-fuzzing-py",
+        "job_name": "skillsbench_1_1_setup_fuzzing_py_codex_app_server_goal_baseline",
+        "official_score": 0.0,
+        "official_score_status": "completed",
+        "score_failure_attribution": "official_verifier_solution_failure",
+        "failure_scope": "solution_artifact_failure_with_secondary_environment_warning",
+        "derived_failure_category": "mixed solution artifact failure with secondary verifier-environment warning: required discovery/instrumentation artifacts were incomplete, while the verifier also emitted a tool-availability warning during driver execution.",
+        "verifier_result_summary": "Top-level discovery had 1 pass and 1 fail; each inspected library group had 2 passes and 2 failures.",
+        "native_goal_mode_invoked": true,
+        "native_goal_worker_connected": true,
+        "native_goal_worker_trace_count": 4,
+        "round_count": 1,
+        "native_goal_worker_turn_start_count": 1,
+        "native_goal_worker_assistant_message_present_count": 1,
+        "native_goal_worker_first_action_observed_count": 1,
+        "native_goal_worker_effective_action_observed_count": 1,
+        "loopx_controller_trace_present": true,
+        "loopx_controller_trace_public_safe": true,
+        "loopx_lifecycle_observed": true,
+        "codex_api_reverse_tunnel_required": true,
+        "codex_api_reverse_tunnel_proxy_configured": true,
+        "codex_api_reverse_tunnel_proxy_url_recorded": false,
+        "benchmark_egress_proxy_configured": true,
+        "benchmark_egress_proxy_url_recorded": false,
+        "loopx_case_rollout_event_counts": {
+          "worker_turn_started": 1,
+          "worker_effective_action_observed": 1,
+          "official_verifier_completed": 1,
+          "official_score_zero": 1
+        }
+      },
+      "public_safe_failure_summary": {
+        "schema_version": "skillsbench_public_safe_failure_summary_v0",
+        "verifier_result_summary": "Top-level discovery had 1 pass and 1 fail; each inspected library group had 2 passes and 2 failures.",
+        "derived_failure_category": "mixed solution artifact failure with secondary verifier-environment warning: required discovery/instrumentation artifacts were incomplete, while the verifier also emitted a tool-availability warning during driver execution.",
+        "failure_scope": "solution_artifact_failure_with_secondary_environment_warning",
+        "raw_task_text_copied": false,
+        "raw_logs_copied": false,
+        "raw_trajectory_copied": false,
+        "raw_verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "optimization_guidance": [
+        "Do not classify the current xhigh result as pure infra missing; official scoring completed and solution artifacts were materially incomplete.",
+        "Repair the verifier tool-availability warning separately so future setup-fuzzing-py results are easier to attribute.",
+        "Do not rerun the same case merely to sample variance until the artifact-contract and verifier-env signals are disentangled."
+      ],
+      "routing_guidance": {
+        "next_action": "repair Codex CLI canary connectivity before making app-vs-cli claims; otherwise change prompt or route before rerunning this same case",
+        "repeat_policy": "do_not_repeat_same_app_server_xhigh_without_prompt_route_or_validation_change"
+      },
+      "public_boundary": {
+        "artifact_reference_policy": "refer to compact run ids, run groups, and derived public-safe categories only",
+        "raw_logs_copied": false,
+        "task_text_copied": false,
+        "trajectory_copied": false,
+        "verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "stability_assessment": {
+        "current_protocol_comparability": "single_arm_current_app_server_goal_route",
+        "claimable_uplift": false,
+        "runner_gap_claim": "not_supported_by_this_run",
+        "solver_failure_claim": "medium_high",
+        "main_confounds": [
+          "single trial only",
+          "not a paired high-vs-xhigh comparison",
+          "not a Codex CLI route comparison because remote CLI marker ping is not healthy yet"
+        ],
+        "stabilization_needed": [
+          "repair Codex CLI reverse-channel connectivity before app-vs-cli comparison",
+          "use independent reruns only after changing route, prompt, or validation policy"
+        ]
+      }
+    },
+    {
       "analysis_id": "skillsbench-1.1__setup-fuzzing-py__codex-acp-focal-apt-setup-blocker",
       "arms": {
         "baseline": {
@@ -2611,6 +2845,122 @@
         ],
         "mechanism_hypothesis": "The blocker is runner/environment setup, not task-solving behavior. Repeating this case with the same Docker compose setup will not produce a meaningful treatment comparison.",
         "treatment_observed_behavior": []
+      }
+    },
+    {
+      "analysis_id": "skillsbench-1.1__adaptive-cruise-control__xhigh-appserver-zero-attribution-20260702",
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "adaptive-cruise-control",
+      "classification": "xhigh_app_server_zero_attribution_asset",
+      "decision": "single_arm_xhigh_app_server_official_zero_attributed",
+      "evidence_status": "official_score_complete_public_safe_attribution",
+      "source_run_ids": [
+        "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-08-adaptive-cruise-control"
+      ],
+      "source_run_count": 1,
+      "arms": {
+        "current": {
+          "arm_id": "codex_app_server_goal_xhigh",
+          "route": "codex-app-server-goal-baseline",
+          "model": "gpt-5.5",
+          "failure_class": "official_verifier_solution_failure",
+          "failure_scope": "solution_control_tuning_behavior",
+          "run_group_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z",
+          "run_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-08-adaptive-cruise-control",
+          "job_name": "skillsbench_1_1_adaptive_cruise_control_codex_app_server_goal_baseline"
+        }
+      },
+      "scores": {
+        "baseline_official_score": null,
+        "treatment_official_score": 0.0,
+        "official_score_delta": null,
+        "claimable_uplift": false,
+        "single_arm_official_score": 0.0
+      },
+      "capability_signal": "The xhigh app-server attempt reached scoring and produced controller artifacts, but failed one official control-threshold requirement.",
+      "control_plane_signal": "The current app-server Goal route reached official scoring with xhigh observed, worker turn/action observed, and reverse-tunnel/proxy configuration recorded only as compact booleans; this row does not support a runner-drop attribution.",
+      "native_goal_route_observations": {
+        "schema_version": "skillsbench_native_goal_route_observation_v0",
+        "arm_id": "codex_app_server_goal_xhigh",
+        "route": "codex-app-server-goal-baseline",
+        "model": "gpt-5.5",
+        "reasoning_effort_requested": "xhigh",
+        "reasoning_effort_observed": "xhigh",
+        "run_group_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z",
+        "run_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-08-adaptive-cruise-control",
+        "job_name": "skillsbench_1_1_adaptive_cruise_control_codex_app_server_goal_baseline",
+        "official_score": 0.0,
+        "official_score_status": "completed",
+        "score_failure_attribution": "official_verifier_solution_failure",
+        "failure_scope": "solution_control_tuning_behavior",
+        "derived_failure_category": "control tuning behavior: the produced controller was close enough for most checks but missed a distance-control threshold.",
+        "verifier_result_summary": "11 checks passed and 1 distance-control threshold check failed.",
+        "native_goal_mode_invoked": true,
+        "native_goal_worker_connected": true,
+        "native_goal_worker_trace_count": 4,
+        "round_count": 1,
+        "native_goal_worker_turn_start_count": 1,
+        "native_goal_worker_assistant_message_present_count": 1,
+        "native_goal_worker_first_action_observed_count": 1,
+        "native_goal_worker_effective_action_observed_count": 1,
+        "loopx_controller_trace_present": true,
+        "loopx_controller_trace_public_safe": true,
+        "loopx_lifecycle_observed": true,
+        "codex_api_reverse_tunnel_required": true,
+        "codex_api_reverse_tunnel_proxy_configured": true,
+        "codex_api_reverse_tunnel_proxy_url_recorded": false,
+        "benchmark_egress_proxy_configured": true,
+        "benchmark_egress_proxy_url_recorded": false,
+        "loopx_case_rollout_event_counts": {
+          "worker_turn_started": 1,
+          "worker_effective_action_observed": 1,
+          "official_verifier_completed": 1,
+          "official_score_zero": 1
+        }
+      },
+      "public_safe_failure_summary": {
+        "schema_version": "skillsbench_public_safe_failure_summary_v0",
+        "verifier_result_summary": "11 checks passed and 1 distance-control threshold check failed.",
+        "derived_failure_category": "control tuning behavior: the produced controller was close enough for most checks but missed a distance-control threshold.",
+        "failure_scope": "solution_control_tuning_behavior",
+        "raw_task_text_copied": false,
+        "raw_logs_copied": false,
+        "raw_trajectory_copied": false,
+        "raw_verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "optimization_guidance": [
+        "Do not treat this as the older setup-blocker asset; the current xhigh run reached official scoring.",
+        "If revisiting, change the prompt or local validation loop toward threshold-sensitive simulation/tuning rather than repeating the same single attempt."
+      ],
+      "routing_guidance": {
+        "next_action": "repair Codex CLI canary connectivity before making app-vs-cli claims; otherwise change prompt or route before rerunning this same case",
+        "repeat_policy": "do_not_repeat_same_app_server_xhigh_without_prompt_route_or_validation_change"
+      },
+      "public_boundary": {
+        "artifact_reference_policy": "refer to compact run ids, run groups, and derived public-safe categories only",
+        "raw_logs_copied": false,
+        "task_text_copied": false,
+        "trajectory_copied": false,
+        "verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "stability_assessment": {
+        "current_protocol_comparability": "single_arm_current_app_server_goal_route",
+        "claimable_uplift": false,
+        "runner_gap_claim": "not_supported_by_this_run",
+        "solver_failure_claim": "high",
+        "main_confounds": [
+          "single trial only",
+          "not a paired high-vs-xhigh comparison",
+          "not a Codex CLI route comparison because remote CLI marker ping is not healthy yet"
+        ],
+        "stabilization_needed": [
+          "repair Codex CLI reverse-channel connectivity before app-vs-cli comparison",
+          "use independent reruns only after changing route, prompt, or validation policy"
+        ]
       }
     },
     {
@@ -3393,6 +3743,238 @@
         "absolute_paths_recorded": false,
         "generated_case_analysis": true
       }
+    },
+    {
+      "analysis_id": "skillsbench-1.1__fix-build-agentops__xhigh-appserver-zero-attribution-20260702",
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "fix-build-agentops",
+      "classification": "xhigh_app_server_zero_attribution_asset",
+      "decision": "single_arm_xhigh_app_server_official_zero_attributed",
+      "evidence_status": "official_score_complete_public_safe_attribution",
+      "source_run_ids": [
+        "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z-02-fix-build-agentops"
+      ],
+      "source_run_count": 1,
+      "arms": {
+        "current": {
+          "arm_id": "codex_app_server_goal_xhigh",
+          "route": "codex-app-server-goal-baseline",
+          "model": "gpt-5.5",
+          "failure_class": "official_verifier_solution_failure",
+          "failure_scope": "solution_build_behavior",
+          "run_group_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z",
+          "run_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z-02-fix-build-agentops",
+          "job_name": "skillsbench_1_1_fix_build_agentops_codex_app_server_goal_baseline"
+        }
+      },
+      "scores": {
+        "baseline_official_score": null,
+        "treatment_official_score": 0.0,
+        "official_score_delta": null,
+        "claimable_uplift": false,
+        "single_arm_official_score": 0.0
+      },
+      "capability_signal": "The xhigh app-server attempt reached scoring and produced reviewable artifacts, but official verification rejected the build-success behavior.",
+      "control_plane_signal": "The current app-server Goal route reached official scoring with xhigh observed, worker turn/action observed, and reverse-tunnel/proxy configuration recorded only as compact booleans; this row does not support a runner-drop attribution.",
+      "native_goal_route_observations": {
+        "schema_version": "skillsbench_native_goal_route_observation_v0",
+        "arm_id": "codex_app_server_goal_xhigh",
+        "route": "codex-app-server-goal-baseline",
+        "model": "gpt-5.5",
+        "reasoning_effort_requested": "xhigh",
+        "reasoning_effort_observed": "xhigh",
+        "run_group_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z",
+        "run_id": "skillsbench-revtunnel-appgoal-xhigh-afterauth-proxy-rpfb-20260702T0816Z-02-fix-build-agentops",
+        "job_name": "skillsbench_1_1_fix_build_agentops_codex_app_server_goal_baseline",
+        "official_score": 0.0,
+        "official_score_status": "completed",
+        "score_failure_attribution": "official_verifier_solution_failure",
+        "failure_scope": "solution_build_behavior",
+        "derived_failure_category": "build-success behavior: artifacts were present, but the submitted repository state did not produce a passing build in the accepted job path.",
+        "verifier_result_summary": "2 checks passed and 1 build-success check failed.",
+        "native_goal_mode_invoked": true,
+        "native_goal_worker_connected": true,
+        "native_goal_worker_trace_count": 4,
+        "round_count": 1,
+        "native_goal_worker_turn_start_count": 1,
+        "native_goal_worker_assistant_message_present_count": 1,
+        "native_goal_worker_first_action_observed_count": 1,
+        "native_goal_worker_effective_action_observed_count": 1,
+        "loopx_controller_trace_present": true,
+        "loopx_controller_trace_public_safe": true,
+        "loopx_lifecycle_observed": true,
+        "codex_api_reverse_tunnel_required": true,
+        "codex_api_reverse_tunnel_proxy_configured": true,
+        "codex_api_reverse_tunnel_proxy_url_recorded": false,
+        "benchmark_egress_proxy_configured": true,
+        "benchmark_egress_proxy_url_recorded": false,
+        "loopx_case_rollout_event_counts": {
+          "worker_turn_started": 1,
+          "worker_effective_action_observed": 1,
+          "official_verifier_completed": 1,
+          "official_score_zero": 1
+        }
+      },
+      "public_safe_failure_summary": {
+        "schema_version": "skillsbench_public_safe_failure_summary_v0",
+        "verifier_result_summary": "2 checks passed and 1 build-success check failed.",
+        "derived_failure_category": "build-success behavior: artifacts were present, but the submitted repository state did not produce a passing build in the accepted job path.",
+        "failure_scope": "solution_build_behavior",
+        "raw_task_text_copied": false,
+        "raw_logs_copied": false,
+        "raw_trajectory_copied": false,
+        "raw_verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "optimization_guidance": [
+        "Do not repeat this case without a route or prompt change that forces end-to-end build validation before closeout.",
+        "Treat the failure as content-level build validation, not as evidence of app-server route breakage."
+      ],
+      "routing_guidance": {
+        "next_action": "repair Codex CLI canary connectivity before making app-vs-cli claims; otherwise change prompt or route before rerunning this same case",
+        "repeat_policy": "do_not_repeat_same_app_server_xhigh_without_prompt_route_or_validation_change"
+      },
+      "public_boundary": {
+        "artifact_reference_policy": "refer to compact run ids, run groups, and derived public-safe categories only",
+        "raw_logs_copied": false,
+        "task_text_copied": false,
+        "trajectory_copied": false,
+        "verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "stability_assessment": {
+        "current_protocol_comparability": "single_arm_current_app_server_goal_route",
+        "claimable_uplift": false,
+        "runner_gap_claim": "not_supported_by_this_run",
+        "solver_failure_claim": "high",
+        "main_confounds": [
+          "single trial only",
+          "not a paired high-vs-xhigh comparison",
+          "not a Codex CLI route comparison because remote CLI marker ping is not healthy yet"
+        ],
+        "stabilization_needed": [
+          "repair Codex CLI reverse-channel connectivity before app-vs-cli comparison",
+          "use independent reruns only after changing route, prompt, or validation policy"
+        ]
+      }
+    },
+    {
+      "analysis_id": "skillsbench-1.1__data-to-d3__xhigh-appserver-zero-attribution-20260702",
+      "benchmark_id": "skillsbench@1.1",
+      "case_id": "data-to-d3",
+      "classification": "xhigh_app_server_zero_attribution_asset",
+      "decision": "single_arm_xhigh_app_server_official_zero_attributed",
+      "evidence_status": "official_score_complete_public_safe_attribution",
+      "source_run_ids": [
+        "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-07-data-to-d3"
+      ],
+      "source_run_count": 1,
+      "arms": {
+        "current": {
+          "arm_id": "codex_app_server_goal_xhigh",
+          "route": "codex-app-server-goal-baseline",
+          "model": "gpt-5.5",
+          "failure_class": "official_verifier_solution_failure",
+          "failure_scope": "solution_ui_behavior",
+          "run_group_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z",
+          "run_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-07-data-to-d3",
+          "job_name": "skillsbench_1_1_data_to_d3_codex_app_server_goal_baseline"
+        }
+      },
+      "scores": {
+        "baseline_official_score": null,
+        "treatment_official_score": 0.0,
+        "official_score_delta": null,
+        "claimable_uplift": false,
+        "single_arm_official_score": 0.0
+      },
+      "capability_signal": "The xhigh app-server attempt reached scoring and produced a visualization, but failed concrete UI behavior checks.",
+      "control_plane_signal": "The current app-server Goal route reached official scoring with xhigh observed, worker turn/action observed, and reverse-tunnel/proxy configuration recorded only as compact booleans; this row does not support a runner-drop attribution.",
+      "native_goal_route_observations": {
+        "schema_version": "skillsbench_native_goal_route_observation_v0",
+        "arm_id": "codex_app_server_goal_xhigh",
+        "route": "codex-app-server-goal-baseline",
+        "model": "gpt-5.5",
+        "reasoning_effort_requested": "xhigh",
+        "reasoning_effort_observed": "xhigh",
+        "run_group_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z",
+        "run_id": "skillsbench-revtunnel-appgoal-xhigh8-afterauth-proxy-rpfb-20260702T0829Z-07-data-to-d3",
+        "job_name": "skillsbench_1_1_data_to_d3_codex_app_server_goal_baseline",
+        "official_score": 0.0,
+        "official_score_status": "completed",
+        "score_failure_attribution": "official_verifier_solution_failure",
+        "failure_scope": "solution_ui_behavior",
+        "derived_failure_category": "D3 interaction behavior: bubble labels exceeded the expected count and tooltip behavior did not appear under hover validation.",
+        "verifier_result_summary": "13 checks passed and 2 visualization checks failed.",
+        "native_goal_mode_invoked": true,
+        "native_goal_worker_connected": true,
+        "native_goal_worker_trace_count": 4,
+        "round_count": 1,
+        "native_goal_worker_turn_start_count": 1,
+        "native_goal_worker_assistant_message_present_count": 1,
+        "native_goal_worker_first_action_observed_count": 1,
+        "native_goal_worker_effective_action_observed_count": 1,
+        "loopx_controller_trace_present": true,
+        "loopx_controller_trace_public_safe": true,
+        "loopx_lifecycle_observed": true,
+        "codex_api_reverse_tunnel_required": true,
+        "codex_api_reverse_tunnel_proxy_configured": true,
+        "codex_api_reverse_tunnel_proxy_url_recorded": false,
+        "benchmark_egress_proxy_configured": true,
+        "benchmark_egress_proxy_url_recorded": false,
+        "loopx_case_rollout_event_counts": {
+          "worker_turn_started": 1,
+          "worker_effective_action_observed": 1,
+          "official_verifier_completed": 1,
+          "official_score_zero": 1
+        }
+      },
+      "public_safe_failure_summary": {
+        "schema_version": "skillsbench_public_safe_failure_summary_v0",
+        "verifier_result_summary": "13 checks passed and 2 visualization checks failed.",
+        "derived_failure_category": "D3 interaction behavior: bubble labels exceeded the expected count and tooltip behavior did not appear under hover validation.",
+        "failure_scope": "solution_ui_behavior",
+        "raw_task_text_copied": false,
+        "raw_logs_copied": false,
+        "raw_trajectory_copied": false,
+        "raw_verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "optimization_guidance": [
+        "Do not repeat this case without changing the prompt or validation loop to inspect label cardinality and hover behavior before closeout.",
+        "Treat this as a frontend interaction solution failure, not a runner or verifier setup gap."
+      ],
+      "routing_guidance": {
+        "next_action": "repair Codex CLI canary connectivity before making app-vs-cli claims; otherwise change prompt or route before rerunning this same case",
+        "repeat_policy": "do_not_repeat_same_app_server_xhigh_without_prompt_route_or_validation_change"
+      },
+      "public_boundary": {
+        "artifact_reference_policy": "refer to compact run ids, run groups, and derived public-safe categories only",
+        "raw_logs_copied": false,
+        "task_text_copied": false,
+        "trajectory_copied": false,
+        "verifier_output_copied": false,
+        "local_paths_recorded": false,
+        "proxy_values_recorded": false
+      },
+      "stability_assessment": {
+        "current_protocol_comparability": "single_arm_current_app_server_goal_route",
+        "claimable_uplift": false,
+        "runner_gap_claim": "not_supported_by_this_run",
+        "solver_failure_claim": "high",
+        "main_confounds": [
+          "single trial only",
+          "not a paired high-vs-xhigh comparison",
+          "not a Codex CLI route comparison because remote CLI marker ping is not healthy yet"
+        ],
+        "stabilization_needed": [
+          "repair Codex CLI reverse-channel connectivity before app-vs-cli comparison",
+          "use independent reruns only after changing route, prompt, or validation policy"
+        ]
+      }
     }
   ],
   "schema_version": "benchmark_case_analysis_v0",
@@ -4098,7 +4680,7 @@
     "trajectory_recorded": false,
     "update_rule": "add one case analysis record after compact result ingest and benchmark-run-ledger update"
   },
-  "updated_at": "2026-06-28T17:56:06+08:00",
+  "updated_at": "2026-07-02T17:38:24+08:00",
   "terminal_bench_current_protocol_coverage": {
     "schema_version": "terminal_bench_current_protocol_coverage_v0",
     "source_ledger": "benchmark-run-ledger.json",
