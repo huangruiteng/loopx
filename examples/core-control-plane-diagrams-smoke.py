@@ -48,9 +48,18 @@ def main() -> None:
     assert "State Definitions" in docs["state-definitions.md"]
     assert "Canonical State Bodies" in docs["state-definitions.md"]
     assert "Derived Runtime States" in docs["state-definitions.md"]
-    assert "Top-Level Machine" in docs["state-machine.md"]
-    assert "Gate Scope Submachine" in docs["state-machine.md"]
-    assert "Projection Sink Submachine" in docs["state-machine.md"]
+    assert "State Machines" in docs["state-machine.md"]
+    for section in (
+        "Todo Lifecycle Machine",
+        "Quota / Runtime Machine",
+        "Gate Decision Scope Machine",
+        "Owner Route / Multi-Agent Handoff Machine",
+        "Evidence / Rollout / Rollback Machine",
+        "Scheduler / Heartbeat Machine",
+        "Projection Sink Machine",
+        "Agent Onboarding / Automation Enablement Machine",
+    ):
+        assert section in docs["state-machine.md"], f"missing state machine: {section}"
     assert "```mermaid" in combined
 
 
