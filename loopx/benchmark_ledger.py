@@ -3147,6 +3147,39 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
     return summary
 
 
+def _current_aggregate_case_is_noncanonical_sanity_source(case: dict[str, Any]) -> bool:
+    runs = _active_ledger_runs(
+        [item for item in case.get("runs", []) if isinstance(item, dict)]
+    )
+    if not runs:
+        return False
+    saw_sanity_source_preflight = False
+    for run in runs:
+        if _ledger_score_value(run) is not None:
+            return False
+        if _compact_text(run.get("failure_class"), limit=120) != (
+            "skillsbench_task_source_preflight_blocked"
+        ):
+            return False
+        preflight = run.get("task_setup_preflight")
+        if not isinstance(preflight, dict):
+            return False
+        if preflight.get("canonical_task_present") is not False:
+            return False
+        if _compact_text(preflight.get("status"), limit=120) != (
+            "task_missing_from_canonical_tasks"
+        ):
+            return False
+        if _compact_text(preflight.get("alternate_source_kind"), limit=120) != (
+            "experiments_sanity_tasks"
+        ):
+            return False
+        if preflight.get("alternate_source_supported_by_runner") is not False:
+            return False
+        saw_sanity_source_preflight = True
+    return saw_sanity_source_preflight
+
+
 def build_benchmark_run_ledger_current_aggregate(
     ledger: dict[str, Any],
     *,
@@ -3165,13 +3198,21 @@ def build_benchmark_run_ledger_current_aggregate(
     cases = benchmark.get("cases") if isinstance(benchmark, dict) else {}
     if not isinstance(cases, dict):
         cases = {}
-    canonical_ids = [
-        _compact_text(case_id, limit=160)
-        for case_id in (canonical_case_ids or sorted(cases))
-        if _compact_text(case_id, limit=160)
-    ]
-    if not canonical_case_ids:
-        canonical_ids = sorted(cases)
+    if canonical_case_ids:
+        canonical_ids = [
+            _compact_text(case_id, limit=160)
+            for case_id in canonical_case_ids
+            if _compact_text(case_id, limit=160)
+        ]
+    else:
+        canonical_ids = sorted(
+            case_id
+            for case_id, case in cases.items()
+            if not (
+                isinstance(case, dict)
+                and _current_aggregate_case_is_noncanonical_sanity_source(case)
+            )
+        )
     distribution = {
         "missing": 0,
         "setup_runner_infra": 0,

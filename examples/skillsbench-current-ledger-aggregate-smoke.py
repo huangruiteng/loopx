@@ -41,6 +41,7 @@ def run_entry(
     failure_class: str,
     failure_scope: str,
     labels: list[str] | None = None,
+    task_setup_preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "run_id": run_id,
@@ -56,6 +57,8 @@ def run_entry(
         "failure_scope": failure_scope,
         "failure_labels": labels or [],
     }
+    if task_setup_preflight is not None:
+        entry["task_setup_preflight"] = task_setup_preflight
     if score is not None:
         entry["official_score"] = score
         entry["official_passed"] = score >= 1.0
@@ -135,6 +138,14 @@ def make_ledger(path: Path) -> None:
             score_status="missing",
             failure_class="skillsbench_task_source_preflight_blocked",
             failure_scope="score_missing",
+            task_setup_preflight={
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "status": "task_missing_from_canonical_tasks",
+                "task_id": "hello-world",
+                "canonical_task_present": False,
+                "alternate_source_kind": "experiments_sanity_tasks",
+                "alternate_source_supported_by_runner": False,
+            },
         ),
     ):
         ledger = upsert_benchmark_run_ledger_entry(ledger, entry)
@@ -176,6 +187,22 @@ def test_current_aggregate_prefers_countable_results() -> None:
             == "manufacturing-official-zero"
         ), aggregate["case_best"]["manufacturing-codebook-normalization"]
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
+
+
+def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-current-aggregate-default-") as tmp:
+        ledger_path = Path(tmp) / "benchmark-run-ledger.json"
+        make_ledger(ledger_path)
+        ledger = load_benchmark_run_ledger(ledger_path)
+        aggregate = build_benchmark_run_ledger_current_aggregate(
+            ledger,
+            benchmark_id=BENCHMARK_ID,
+        )
+        assert aggregate["canonical_total"] == 4, aggregate
+        assert aggregate["canonical_covered"] == 4, aggregate
+        assert aggregate["distribution"]["setup_runner_infra"] == 1, aggregate
+        assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
+        assert "hello-world" not in aggregate["cases_by_bucket"]["setup_runner_infra"]
 
 
 def test_current_aggregate_cli_writes_public_safe_json() -> None:
@@ -235,5 +262,6 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
 
 if __name__ == "__main__":
     test_current_aggregate_prefers_countable_results()
+    test_current_aggregate_default_inference_excludes_sanity_sources()
     test_current_aggregate_cli_writes_public_safe_json()
     print("skillsbench-current-ledger-aggregate-smoke: ok")
