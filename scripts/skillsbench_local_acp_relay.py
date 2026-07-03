@@ -104,6 +104,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--app-server-goal-followup-max",
+        type=int,
+        default=0,
+        help=(
+            "Experimental same-thread continuation budget for ordinary "
+            "completed app-server Goal worker turns. No verifier/reward "
+            "feedback is forwarded. 0 preserves the single-turn baseline."
+        ),
+    )
+    parser.add_argument(
         "--bridge-idle-timeout-sec",
         type=float,
         default=0.0,
@@ -198,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
             worker_script=args.worker_script,
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
             first_action_timeout_sec=args.first_action_timeout_sec,
+            app_server_goal_followup_max=args.app_server_goal_followup_max,
             bridge_idle_timeout_sec=args.bridge_idle_timeout_sec,
             task_output_quiet_timeout_sec=args.task_output_quiet_timeout_sec,
             worker_public_trace_dir=args.worker_public_trace_dir,

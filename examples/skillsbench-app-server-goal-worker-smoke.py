@@ -121,6 +121,79 @@ for line in sys.stdin:
     print(json.dumps({"id": mid, "result": result}), flush=True)
 """
 
+FAKE_CODEX_NORMAL_THEN_FOLLOWUP = """#!/usr/bin/env python3
+import json
+import sys
+
+turn_count = 0
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        turn_count += 1
+        prompt_text = msg.get("params", {}).get("input", [{}])[0].get("text", "")
+        if turn_count == 1:
+            turn_id = "turn-normal-first"
+            item_id = "item-normal-first"
+            answer = "private worker draft"
+        else:
+            if "Continue the same SkillsBench task" not in prompt_text:
+                print(json.dumps({
+                    "id": mid,
+                    "error": {"code": -32602, "message": "missing continuation prompt"},
+                }), flush=True)
+                continue
+            if "Private task instruction placeholder" in prompt_text:
+                print(json.dumps({
+                    "id": mid,
+                    "error": {"code": -32602, "message": "raw task prompt repeated"},
+                }), flush=True)
+                continue
+            turn_id = "turn-normal-followup"
+            item_id = "item-normal-followup"
+            answer = "private worker answer after normal followup"
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": turn_id, "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": turn_id, "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": turn_id,
+                "itemId": item_id,
+                "delta": answer,
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": turn_id, "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
 FAKE_CODEX_NO_COMPLETION = """#!/usr/bin/env python3
 import json
 import sys
@@ -1005,6 +1078,8 @@ def test_app_server_retry_relay_command_carries_attempt_scope() -> None:
                 "retry-job-attempt-01",
                 "--rollout-name",
                 "bike-rebalance__codex_app_server_goal_independent_attempt_01",
+                "--app-server-goal-followup-max",
+                "2",
                 "--plan-only",
             ]
         )
@@ -1024,6 +1099,8 @@ def test_app_server_retry_relay_command_carries_attempt_scope() -> None:
         command[command.index("--rollout-name") + 1]
         == "bike-rebalance__codex_app_server_goal_independent_attempt_01"
     ), command
+    assert "--app-server-goal-followup-max" in command, command
+    assert command[command.index("--app-server-goal-followup-max") + 1] == "2", command
 
 
 def test_host_local_attempt_cleanup_matches_scoped_relay_subtree() -> None:
@@ -1277,6 +1354,70 @@ def test_host_worker_recovers_when_first_turn_only_echoes_context() -> None:
         public_json = json.dumps(payload)
         assert "context preamble" not in public_json, payload
         assert "private worker answer after context retry" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
+def test_host_worker_can_run_normal_no_reward_followup() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-normal-followup-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_NORMAL_THEN_FOLLOWUP, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--normal-followup-max",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["error_type"] == "", payload
+        assert payload["turn"]["turn_attempt_count"] == 2, payload
+        assert payload["turn"]["context_only_turn_count"] == 0, payload
+        assert payload["turn"]["normal_followup_max"] == 1, payload
+        assert payload["turn"]["normal_followup_attempted"] is True, payload
+        assert payload["turn"]["normal_followup_succeeded"] is True, payload
+        assert payload["turn"]["normal_followup_start_attempted_count"] == 1, payload
+        assert payload["turn"]["normal_followup_start_succeeded_count"] == 1, payload
+        assert payload["normal_followup"]["enabled"] is True, payload
+        assert payload["normal_followup"]["verifier_feedback_provided"] is False, payload
+        assert payload["normal_followup"]["reward_feedback_provided"] is False, payload
+        assert len(payload["turn_attempts"]) == 2, payload
+        assert payload["turn_attempts"][0]["assistant_message_context_only"] is False, payload
+        assert payload["turn_attempts"][1]["selected_final_turn"] is True, payload
+        assert private_response.read_text(encoding="utf-8") == (
+            "private worker answer after normal followup"
+        )
+        public_json = json.dumps(payload)
+        assert "private worker draft" not in public_json, payload
+        assert "private worker answer after normal followup" not in public_json, payload
         assert "Private task instruction placeholder" not in public_json, payload
 
 
@@ -2838,6 +2979,7 @@ if __name__ == "__main__":
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
     test_host_worker_recovers_when_first_turn_only_echoes_context()
+    test_host_worker_can_run_normal_no_reward_followup()
     test_host_worker_reactivates_goal_for_context_only_followup()
     test_host_worker_reconnects_context_only_followup_transport()
     test_host_worker_fails_closed_on_first_action_timeout()

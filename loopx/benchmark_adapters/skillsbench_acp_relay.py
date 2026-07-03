@@ -518,6 +518,7 @@ class CodexExecConfig:
     worker_script: str | None = None
     stream_heartbeat_interval_sec: float = 120.0
     first_action_timeout_sec: float = 0.0
+    app_server_goal_followup_max: int = 0
     bridge_idle_timeout_sec: float = 0.0
     task_output_quiet_timeout_sec: float = 0.0
     reasoning_effort: str | None = None
@@ -2087,6 +2088,8 @@ raise SystemExit(proc.returncode)
                 str(self._config.timeout_sec),
                 "--first-action-timeout-sec",
                 str(worker_first_action_timeout_sec),
+                "--normal-followup-max",
+                str(max(0, int(self._config.app_server_goal_followup_max or 0))),
                 "--reasoning-effort",
                 str(self._config.reasoning_effort or "high"),
                 "--runner-integration-ready",
@@ -2464,6 +2467,12 @@ raise SystemExit(proc.returncode)
                     "context_only_followup_start_attempted",
                     "context_only_followup_start_succeeded",
                     "context_only_followup_start_error_type",
+                    "normal_followup_max",
+                    "normal_followup_attempted",
+                    "normal_followup_succeeded",
+                    "normal_followup_start_attempted_count",
+                    "normal_followup_start_succeeded_count",
+                    "normal_followup_start_error_type",
                     "transport_reconnect_attempted",
                     "transport_reconnect_succeeded",
                     "transport_reconnect_reason",
@@ -2488,6 +2497,21 @@ raise SystemExit(proc.returncode)
                     "followup_start_error_type",
                     "context_only_turn_count",
                     "turn_attempt_count",
+                ),
+            ),
+            "normal_followup": compact_dict(
+                payload.get("normal_followup"),
+                (
+                    "enabled",
+                    "max_followups",
+                    "attempted",
+                    "succeeded",
+                    "followup_start_attempted_count",
+                    "followup_start_succeeded_count",
+                    "followup_start_error_type",
+                    "turn_attempt_count",
+                    "reward_feedback_provided",
+                    "verifier_feedback_provided",
                 ),
             ),
             "worker_result": compact_dict(

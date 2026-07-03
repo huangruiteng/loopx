@@ -1095,6 +1095,13 @@ def _host_local_acp_launch_command(
                 "30",
                 "--stream-heartbeat-interval-sec",
                 str(args.app_server_acp_heartbeat_interval_sec),
+                "--app-server-goal-followup-max",
+                str(
+                    max(
+                        0,
+                        int(getattr(args, "app_server_goal_followup_max", 0) or 0),
+                    )
+                ),
             ]
         )
         if worker_trace_dir:
@@ -8036,6 +8043,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "app_server_reasoning_effort": (
             app_server_reasoning_effort if is_app_server_goal_route else ""
         ),
+        "app_server_goal_followup_max": (
+            max(0, int(args.app_server_goal_followup_max or 0))
+            if is_app_server_goal_route
+            else 0
+        ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "max_rounds": args.max_rounds,
@@ -8728,6 +8740,21 @@ def _app_server_goal_worker_observability(
         "reasoning_effort_matches_request": bool(
             requested_effort and observed_effort and requested_effort == observed_effort
         ),
+        "requested_normal_followup_max": max(
+            0, int(plan.get("app_server_goal_followup_max") or 0)
+        ),
+        "normal_followup_attempted_count": _int_field(
+            "native_goal_worker_normal_followup_attempted_count"
+        ),
+        "normal_followup_succeeded_count": _int_field(
+            "native_goal_worker_normal_followup_succeeded_count"
+        ),
+        "normal_followup_start_attempted_count": _int_field(
+            "native_goal_worker_normal_followup_start_attempted_count"
+        ),
+        "normal_followup_start_succeeded_count": _int_field(
+            "native_goal_worker_normal_followup_start_succeeded_count"
+        ),
         "trace_dir_configured": bool(plan.get("app_server_goal_worker_trace_dir")),
         "trace_dir_present": bool(
             trace_summary.get("native_goal_worker_trace_dir_present")
@@ -9359,6 +9386,10 @@ def _merge_app_server_goal_worker_trace_summary(
     context_only_recovery_succeeded_count = 0
     context_only_followup_start_attempted_count = 0
     context_only_followup_start_succeeded_count = 0
+    normal_followup_attempted_count = 0
+    normal_followup_succeeded_count = 0
+    normal_followup_start_attempted_count = 0
+    normal_followup_start_succeeded_count = 0
     transport_reconnect_attempted_count = 0
     transport_reconnect_succeeded_count = 0
     goal_reactivation_attempted_count = 0
@@ -9466,6 +9497,43 @@ def _merge_app_server_goal_worker_trace_summary(
             or recovery.get("followup_start_succeeded") is True
         ):
             context_only_followup_start_succeeded_count += 1
+        normal_followup = (
+            payload.get("normal_followup")
+            if isinstance(payload.get("normal_followup"), dict)
+            else {}
+        )
+        if (
+            turn.get("normal_followup_attempted") is True
+            or normal_followup.get("attempted") is True
+        ):
+            normal_followup_attempted_count += 1
+        if (
+            turn.get("normal_followup_succeeded") is True
+            or normal_followup.get("succeeded") is True
+        ):
+            normal_followup_succeeded_count += 1
+        normal_attempts = turn.get("normal_followup_start_attempted_count")
+        if isinstance(normal_attempts, int) and not isinstance(
+            normal_attempts, bool
+        ):
+            normal_followup_start_attempted_count += max(0, normal_attempts)
+        else:
+            normal_attempts = normal_followup.get("followup_start_attempted_count")
+            if isinstance(normal_attempts, int) and not isinstance(
+                normal_attempts, bool
+            ):
+                normal_followup_start_attempted_count += max(0, normal_attempts)
+        normal_successes = turn.get("normal_followup_start_succeeded_count")
+        if isinstance(normal_successes, int) and not isinstance(
+            normal_successes, bool
+        ):
+            normal_followup_start_succeeded_count += max(0, normal_successes)
+        else:
+            normal_successes = normal_followup.get("followup_start_succeeded_count")
+            if isinstance(normal_successes, int) and not isinstance(
+                normal_successes, bool
+            ):
+                normal_followup_start_succeeded_count += max(0, normal_successes)
         if turn.get("transport_reconnect_attempted") is True:
             transport_reconnect_attempted_count += 1
         if turn.get("transport_reconnect_succeeded") is True:
@@ -9553,6 +9621,18 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_context_only_followup_start_succeeded_count"] = (
         context_only_followup_start_succeeded_count
     )
+    trace["native_goal_worker_normal_followup_attempted_count"] = (
+        normal_followup_attempted_count
+    )
+    trace["native_goal_worker_normal_followup_succeeded_count"] = (
+        normal_followup_succeeded_count
+    )
+    trace["native_goal_worker_normal_followup_start_attempted_count"] = (
+        normal_followup_start_attempted_count
+    )
+    trace["native_goal_worker_normal_followup_start_succeeded_count"] = (
+        normal_followup_start_succeeded_count
+    )
     trace["native_goal_worker_transport_reconnect_attempted_count"] = (
         transport_reconnect_attempted_count
     )
@@ -9599,6 +9679,10 @@ def _merge_app_server_goal_worker_trace_summary(
         "native_goal_worker_context_only_recovery_succeeded_count",
         "native_goal_worker_context_only_followup_start_attempted_count",
         "native_goal_worker_context_only_followup_start_succeeded_count",
+        "native_goal_worker_normal_followup_attempted_count",
+        "native_goal_worker_normal_followup_succeeded_count",
+        "native_goal_worker_normal_followup_start_attempted_count",
+        "native_goal_worker_normal_followup_start_succeeded_count",
         "native_goal_worker_transport_reconnect_attempted_count",
         "native_goal_worker_transport_reconnect_succeeded_count",
         "native_goal_worker_goal_reactivation_attempted_count",
@@ -14607,6 +14691,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Public-safe ACP thought keepalive interval while a host "
             "app-server Goal worker is active. Must stay below "
             "--agent-idle-timeout for long-running native Goal cases."
+        ),
+    )
+    parser.add_argument(
+        "--app-server-goal-followup-max",
+        type=int,
+        default=0,
+        help=(
+            "Experimental same-thread continuation budget for ordinary "
+            "completed codex-app-server-goal-baseline turns. The follow-up "
+            "prompt provides no verifier/reward/pass-fail feedback to the "
+            "worker. 0 preserves the native single-turn baseline."
         ),
     )
     parser.add_argument("--max-verifier-output-chars", type=int, default=0)
