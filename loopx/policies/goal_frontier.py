@@ -209,6 +209,29 @@ def _is_monitor_only_lane(
     )
 
 
+def _blocking_handoff_gate_count(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> int:
+    if not agent_id or not isinstance(agent_todo_summary, dict):
+        return 0
+    gates = agent_todo_summary.get("current_agent_handoff_gates")
+    if not isinstance(gates, list):
+        gates = agent_todo_summary.get("handoff_gates")
+    if not isinstance(gates, list):
+        return 0
+    return len(
+        [
+            item
+            for item in gates
+            if isinstance(item, dict)
+            and str(item.get("blocks_agent") or "").strip() == agent_id
+            and str(item.get("gate_state") or "").strip() == "blocking"
+        ]
+    )
+
+
 def derive_goal_frontier_replan_obligation_from_summaries(
     *,
     user_todo_summary: dict[str, Any] | None,
@@ -228,6 +251,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     if autonomous_replan_is_required(existing_replan_obligation):
         return None
     if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
+        return None
+    if _blocking_handoff_gate_count(agent_todo_summary, agent_id=agent_id) > 0:
         return None
 
     user_counts = _summary_task_counts(user_todo_summary)

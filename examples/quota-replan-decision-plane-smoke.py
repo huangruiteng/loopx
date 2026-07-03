@@ -61,10 +61,26 @@ def primary_claimed_advancement() -> dict:
     }
 
 
+def blocking_handoff_review() -> dict:
+    return {
+        "index": 2,
+        "todo_id": "todo_fixture_review_gate",
+        "text": "[P1] Primary agent reviews the side-agent delivery PR.",
+        "role": "agent",
+        "status": "open",
+        "priority": "P1",
+        "task_class": "advancement_task",
+        "action_kind": "review_merge",
+        "claimed_by": PRIMARY_AGENT,
+        "blocks_agent": SIDE_AGENT,
+    }
+
+
 def status_payload(
     agent_todo_items: list[dict],
     *,
     replan_obligation: dict | None = REPLAN_OBLIGATION,
+    latest_runs: list[dict] | None = None,
 ) -> dict:
     agent_todos = compact_todo_group(
         agent_todo_items,
@@ -120,6 +136,7 @@ def status_payload(
                         "registered_agents": [PRIMARY_AGENT, SIDE_AGENT],
                         "primary_agent": PRIMARY_AGENT,
                     },
+                    "latest_runs": latest_runs or [],
                 }
             ]
         },
@@ -195,10 +212,79 @@ def assert_empty_monitor_frontier_derives_replan() -> None:
     assert scheduler["cadence_class"] == "active_work", guard
 
 
+def assert_agent_ack_survives_other_agent_run_and_monitor_poll() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                {
+                    "classification": "state_refreshed",
+                    "agent_id": PRIMARY_AGENT,
+                    "progress_scope": "agent_lane",
+                    "recommended_action": "Primary lane refreshed unrelated state.",
+                },
+                {
+                    "classification": "quota_monitor_poll",
+                    "agent_id": SIDE_AGENT,
+                    "recommended_action": "Fixture monitor stayed unchanged.",
+                    "monitor_target": {
+                        "schema_version": "quota_monitor_target_v0",
+                        "target_id": "fixture-monitor-target",
+                        "monitor_mode": "monitor_quiet_until_material_transition",
+                        "effective_action": "monitor_quiet_skip",
+                        "agent_id": SIDE_AGENT,
+                    },
+                },
+                {
+                    "classification": "monitor_poll_autonomous_replan_recorded_v0",
+                    "agent_id": SIDE_AGENT,
+                    "progress_scope": "agent_lane",
+                    "autonomous_replan_ack": {
+                        "schema_version": "autonomous_replan_ack_v0",
+                        "recorded": True,
+                        "source": "refresh_state",
+                        "delta_contract": {
+                            "schema_version": "repair_delta_contract_v0",
+                            "delta_present": True,
+                            "delta_kinds": ["watch_lane_continuation", "no_followup"],
+                        },
+                    },
+                },
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["should_run"] is False, guard
+    assert guard["interaction_contract"]["mode"] == "monitor_quiet_skip", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
+
+
+def assert_blocking_handoff_gate_beats_derived_monitor_replan() -> None:
+    guard = build_quota_should_run(
+        status_payload([monitor_item(), blocking_handoff_review()], replan_obligation=None),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["should_run"] is False, guard
+    assert guard["interaction_contract"]["mode"] == "monitor_quiet_skip", guard
+    assert guard["goal_route_hint"]["blocking_handoff_gates"][0]["todo_id"] == (
+        "todo_fixture_review_gate"
+    ), guard
+    assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert guard.get("autonomous_replan_obligation") is None, guard
+
+
 def main() -> None:
     assert_replan_beats_monitor_quiet_skip()
     assert_replan_beats_agent_scope_wait()
     assert_empty_monitor_frontier_derives_replan()
+    assert_agent_ack_survives_other_agent_run_and_monitor_poll()
+    assert_blocking_handoff_gate_beats_derived_monitor_replan()
     print("quota-replan-decision-plane-smoke ok")
 
 

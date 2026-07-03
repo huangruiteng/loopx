@@ -112,6 +112,12 @@ QUOTA_SLOT_SPENT_CLASSIFICATION = "quota_slot_spent"
 QUOTA_SLOT_VOIDED_CLASSIFICATION = "quota_slot_voided"
 QUOTA_MONITOR_POLL_CLASSIFICATION = "quota_monitor_poll"
 QUOTA_SCHEDULER_ACK_CLASSIFICATION = "quota_scheduler_ack"
+AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS = {
+    QUOTA_SLOT_SPENT_CLASSIFICATION,
+    QUOTA_SLOT_VOIDED_CLASSIFICATION,
+    QUOTA_SCHEDULER_ACK_CLASSIFICATION,
+    "delivery_completion_spend_accounted_v0",
+}
 DEFAULT_SLOT_SPEND_SOURCE = "heartbeat"
 VALID_SLOT_SPEND_SOURCES = {"heartbeat", "controller", "adapter"}
 USER_GATE_ACTION_KIND_HINTS = (
@@ -6883,6 +6889,81 @@ def _registry_goal_by_id(status_payload: dict[str, Any]) -> dict[str, dict[str, 
     }
 
 
+def _compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict):
+        return None
+    ack = run.get("autonomous_replan_ack")
+    if not isinstance(ack, dict) or ack.get("recorded") is not True:
+        return None
+    delta_contract = ack.get("delta_contract")
+    if not isinstance(delta_contract, dict) or delta_contract.get("delta_present") is not True:
+        return None
+    compact_delta = {
+        "schema_version": delta_contract.get("schema_version"),
+        "delta_present": True,
+        "delta_kinds": [
+            str(item)
+            for item in (delta_contract.get("delta_kinds") or [])
+            if str(item or "").strip()
+        ],
+    }
+    result = {
+        "schema_version": ack.get("schema_version"),
+        "recorded": True,
+        "source": ack.get("source"),
+        "delta_contract": compact_delta,
+    }
+    agent_id = str(run.get("agent_id") or "").strip()
+    if agent_id:
+        result["agent_id"] = agent_id
+    return result
+
+
+def _latest_autonomous_replan_ack_for_agent(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    if not agent_id:
+        return None
+    run_history = (
+        status_payload.get("run_history")
+        if isinstance(status_payload.get("run_history"), dict)
+        else {}
+    )
+    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
+    goal = next(
+        (
+            item
+            for item in goals
+            if isinstance(item, dict) and str(item.get("id") or "") == goal_id
+        ),
+        None,
+    )
+    latest_runs = goal.get("latest_runs") if isinstance(goal, dict) else None
+    if not isinstance(latest_runs, list):
+        return None
+    for run in latest_runs:
+        if not isinstance(run, dict):
+            continue
+        run_agent_id = str(run.get("agent_id") or "").strip()
+        if run_agent_id and run_agent_id != agent_id:
+            continue
+        replan_ack = _compact_autonomous_replan_ack(run)
+        if replan_ack:
+            return replan_ack
+        classification = str(run.get("classification") or "").strip()
+        if not classification:
+            continue
+        if classification in AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS:
+            continue
+        if classification == QUOTA_MONITOR_POLL_CLASSIFICATION:
+            continue
+        return None
+    return None
+
+
 def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
     return (
         bool(plan_ok)
@@ -7039,13 +7120,19 @@ def build_quota_should_run(
             if isinstance(agent_identity, dict)
             else None
         )
+        latest_agent_replan_ack = _latest_autonomous_replan_ack_for_agent(
+            status_payload,
+            goal_id=safe_goal_id,
+            agent_id=agent_frontier_id,
+        )
         frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
             agent_id=agent_frontier_id,
             existing_replan_obligation=replan_obligation,
-            latest_replan_ack=(
+            latest_replan_ack=latest_agent_replan_ack
+            or (
                 item.get("autonomous_replan_ack")
                 if isinstance(item.get("autonomous_replan_ack"), dict)
                 else project_asset.get("autonomous_replan_ack")
