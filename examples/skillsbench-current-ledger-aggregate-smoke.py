@@ -41,6 +41,8 @@ def run_entry(
     failure_class: str,
     failure_scope: str,
     labels: list[str] | None = None,
+    score_failure_attribution: str | None = None,
+    failure_attribution_labels: list[str] | None = None,
     task_setup_preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     entry: dict[str, Any] = {
@@ -57,6 +59,10 @@ def run_entry(
         "failure_scope": failure_scope,
         "failure_labels": labels or [],
     }
+    if score_failure_attribution is not None:
+        entry["score_failure_attribution"] = score_failure_attribution
+    if failure_attribution_labels is not None:
+        entry["failure_attribution_labels"] = failure_attribution_labels
     if task_setup_preflight is not None:
         entry["task_setup_preflight"] = task_setup_preflight
     if score is not None:
@@ -131,6 +137,48 @@ def make_ledger(path: Path) -> None:
             failure_scope="score_missing",
         ),
         run_entry(
+            run_id="verifier-infra-missing",
+            case_id="flink-query",
+            recorded_at="2026-07-02T01:42:00+08:00",
+            score=None,
+            score_status="missing",
+            failure_class="none",
+            failure_scope="score_missing",
+            score_failure_attribution="verifier_infrastructure_failure",
+        ),
+        run_entry(
+            run_id="task-source-preflight-missing",
+            case_id="canonical-task-source-preflight",
+            recorded_at="2026-07-02T01:44:00+08:00",
+            score=None,
+            score_status="missing",
+            failure_class="none",
+            failure_scope="score_missing",
+            score_failure_attribution="skillsbench_task_source_preflight_blocked",
+        ),
+        run_entry(
+            run_id="docker-compose-apt-missing",
+            case_id="pddl-tpp-planning",
+            recorded_at="2026-07-02T01:46:00+08:00",
+            score=None,
+            score_status="missing",
+            failure_class="none",
+            failure_scope="score_missing",
+            failure_attribution_labels=[
+                "skillsbench_docker_compose_apt_repository_failure",
+            ],
+        ),
+        run_entry(
+            run_id="reward-missing-attribution",
+            case_id="reward-artifact-missing",
+            recorded_at="2026-07-02T01:48:00+08:00",
+            score=None,
+            score_status="missing",
+            failure_class="none",
+            failure_scope="score_missing",
+            score_failure_attribution="verifier_reward_missing",
+        ),
+        run_entry(
             run_id="sanity-task-preflight",
             case_id="hello-world",
             recorded_at="2026-07-02T01:50:00+08:00",
@@ -166,17 +214,21 @@ def test_current_aggregate_prefers_countable_results() -> None:
                 "manufacturing-codebook-normalization",
                 "lab-unit-harmonization",
                 "fix-druid-loophole-cve",
+                "flink-query",
+                "canonical-task-source-preflight",
+                "pddl-tpp-planning",
+                "reward-artifact-missing",
                 "never-run-case",
             ],
         )
-        assert aggregate["canonical_covered"] == 4, aggregate
+        assert aggregate["canonical_covered"] == 8, aggregate
         assert aggregate["distribution"] == {
             "missing": 1,
             "official_zero": 2,
             "partial": 1,
             "pass": 0,
-            "setup_runner_infra": 1,
-            "verifier_no_reward": 0,
+            "setup_runner_infra": 4,
+            "verifier_no_reward": 1,
         }, aggregate
         assert (
             aggregate["case_best"]["latex-formula-extraction"]["run_id"]
@@ -186,6 +238,15 @@ def test_current_aggregate_prefers_countable_results() -> None:
             aggregate["case_best"]["manufacturing-codebook-normalization"]["run_id"]
             == "manufacturing-official-zero"
         ), aggregate["case_best"]["manufacturing-codebook-normalization"]
+        assert aggregate["case_best"]["flink-query"]["effective_failure_class"] == (
+            "verifier_infrastructure_failure"
+        )
+        assert aggregate["case_best"]["pddl-tpp-planning"]["effective_failure_class"] == (
+            "skillsbench_docker_compose_apt_repository_failure"
+        )
+        assert aggregate["case_best"]["reward-artifact-missing"]["bucket"] == (
+            "verifier_no_reward"
+        )
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
 
 
@@ -198,9 +259,10 @@ def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:
             ledger,
             benchmark_id=BENCHMARK_ID,
         )
-        assert aggregate["canonical_total"] == 4, aggregate
-        assert aggregate["canonical_covered"] == 4, aggregate
-        assert aggregate["distribution"]["setup_runner_infra"] == 1, aggregate
+        assert aggregate["canonical_total"] == 8, aggregate
+        assert aggregate["canonical_covered"] == 8, aggregate
+        assert aggregate["distribution"]["setup_runner_infra"] == 4, aggregate
+        assert aggregate["distribution"]["verifier_no_reward"] == 1, aggregate
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
         assert "hello-world" not in aggregate["cases_by_bucket"]["setup_runner_infra"]
 

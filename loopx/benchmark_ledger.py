@@ -3046,6 +3046,38 @@ def _ledger_score_value(run: dict[str, Any]) -> float | None:
     return None
 
 
+def _current_aggregate_failure_label_list(run: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for key in ("failure_labels", "failure_attribution_labels"):
+        for label in _compact_list(run.get(key), limit=16):
+            if label not in seen:
+                seen.add(label)
+                labels.append(label)
+    return labels
+
+
+def _current_aggregate_failure_labels(run: dict[str, Any]) -> set[str]:
+    return set(_current_aggregate_failure_label_list(run))
+
+
+def _current_aggregate_effective_failure_class(run: dict[str, Any]) -> str:
+    for key in (
+        "failure_class",
+        "score_failure_attribution",
+        "attempt_failure_class",
+        "attempt_failure_label",
+        "first_blocker",
+    ):
+        value = _compact_text(run.get(key), limit=120)
+        if value and value not in {"none", "None", "null"}:
+            return value
+    for label in _current_aggregate_failure_label_list(run):
+        if label and label not in {"none", "None", "null"}:
+            return label
+    return ""
+
+
 def _current_aggregate_bucket(run: dict[str, Any] | None) -> str:
     if not isinstance(run, dict):
         return "missing"
@@ -3056,8 +3088,8 @@ def _current_aggregate_bucket(run: dict[str, Any] | None) -> str:
         if score > 0.0:
             return "partial"
         return "official_zero"
-    labels = set(_compact_list(run.get("failure_labels"), limit=16))
-    failure_class = _compact_text(run.get("failure_class"), limit=120)
+    labels = _current_aggregate_failure_labels(run)
+    failure_class = _current_aggregate_effective_failure_class(run)
     failure_scope = _compact_text(run.get("failure_scope"), limit=120)
     score_status = _compact_text(run.get("score_status"), limit=120)
     if (
@@ -3072,8 +3104,17 @@ def _current_aggregate_bucket(run: dict[str, Any] | None) -> str:
         or failure_scope == "score_missing"
         or "infrastructure" in failure_class
         or "setup" in failure_class
+        or "preflight" in failure_class
+        or "compose" in failure_class
+        or "docker" in failure_class
         or "runner" in failure_class
-        or any("infra" in label or "setup" in label for label in labels)
+        or any(
+            "infra" in label
+            or "setup" in label
+            or "compose" in label
+            or "docker" in label
+            for label in labels
+        )
     ):
         return "setup_runner_infra"
     if score_status == "missing":
@@ -3128,6 +3169,8 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
         "failure_class",
         "failure_scope",
         "failure_labels",
+        "score_failure_attribution",
+        "failure_attribution_labels",
         "attempt_lifecycle_phase",
         "attempt_failure_label",
         "attempt_failure_class",
@@ -3144,6 +3187,9 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
     )
     summary = {key: run[key] for key in keys if key in run}
     summary["bucket"] = _current_aggregate_bucket(run)
+    effective_failure_class = _current_aggregate_effective_failure_class(run)
+    if effective_failure_class:
+        summary["effective_failure_class"] = effective_failure_class
     return summary
 
 
@@ -3157,7 +3203,7 @@ def _current_aggregate_case_is_noncanonical_sanity_source(case: dict[str, Any]) 
     for run in runs:
         if _ledger_score_value(run) is not None:
             return False
-        if _compact_text(run.get("failure_class"), limit=120) != (
+        if _current_aggregate_effective_failure_class(run) != (
             "skillsbench_task_source_preflight_blocked"
         ):
             return False
