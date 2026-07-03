@@ -202,6 +202,19 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert payload["result_source"] == "loopx_worker_loop_public_evidence", payload
     assert payload["route_contract"]["goal_surface_mode"] == "fresh_demo_goal", payload
 
+    user_contract = payload["user_contract"]
+    assert user_contract["mode"] == "user_contract", user_contract
+    assert user_contract["open_question"], user_contract
+    assert user_contract["one_click_start"]["uses_generic_kernel"] is True, user_contract
+    assert (
+        user_contract["one_click_start"]["command_template"]
+        == 'loopx auto-research start "<open question>" --execute'
+    ), user_contract
+    assert payload["contract_acceptance"]["accepted"] is True, payload
+    assert payload["contract_acceptance"]["checks"]["one_click_start_present"] is True, payload
+    assert "auto-research start" in payload["commands"]["one_question_start"], payload
+    assert "--execute" in payload["commands"]["one_question_start"], payload
+
     supervisor = payload["supervisor"]
     assert supervisor["uses_generic_runner"] is True, supervisor
     assert supervisor["domain_specific_runner_logic"] is False, supervisor

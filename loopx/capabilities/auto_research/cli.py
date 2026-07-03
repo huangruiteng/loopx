@@ -49,6 +49,7 @@ FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
 
 AUTO_RESEARCH_DEMO_GOAL_PREFIX = "loopx-auto-research-demo"
+AUTO_RESEARCH_START_AGENT_ID = "auto-research-operator"
 AUTO_RESEARCH_SUBCOMMANDS = frozenset(
     {
         "append-evidence",
@@ -58,6 +59,7 @@ AUTO_RESEARCH_SUBCOMMANDS = frozenset(
         "demo-supervisor",
         "evidence",
         "frontier",
+        "start",
         "worker-loop",
         "worker-turn",
     }
@@ -146,6 +148,106 @@ def register_auto_research_commands(
         type=int,
         default=5,
         help="Maximum action-plan todos, capped at 5.",
+    )
+
+    start_parser = auto_research_sub.add_parser(
+        "start",
+        help="Start visible multi-agent auto-research from one open question.",
+    )
+    add_subcommand_format(start_parser)
+    start_parser.add_argument("open_question", help="Quoted open research question.")
+    start_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help=(
+            "Create an isolated research goal and launch visible Codex TUI lanes. "
+            "Omit to preview the exact contract, commands, and runner packet."
+        ),
+    )
+    start_parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="With --execute, run the non-interactive worker-loop proof instead of visible panes.",
+    )
+    start_parser.add_argument(
+        "--wake-visible-after-launch",
+        action="store_true",
+        help="After launching visible panes, broadcast the fixed decentralized A2A wake prompt.",
+    )
+    start_parser.add_argument(
+        "--no-attach",
+        action="store_true",
+        help="With visible --execute, start tmux in the background instead of attaching.",
+    )
+    start_parser.add_argument(
+        "--attach",
+        action="store_true",
+        help="With visible --execute, attach to tmux after launch. This is the default unless --no-attach or --wake-visible-after-launch is set.",
+    )
+    start_parser.add_argument(
+        "--demo-run-id",
+        help="Optional public-safe suffix for the isolated goal id.",
+    )
+    start_parser.add_argument(
+        "--goal-id",
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument(
+        "--tracking-goal-id",
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument(
+        "--worker-loop-rounds",
+        type=int,
+        default=3,
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument(
+        "--session-name",
+        default="loopx-auto-research",
+        help="Public-safe tmux session name for visible lanes.",
+    )
+    start_parser.add_argument(
+        "--workspace",
+        help=(
+            "Directory where visible Codex lanes should start. "
+            "Omit to use a demo-owned clean workspace."
+        ),
+    )
+    start_parser.add_argument(
+        "--create-workspace",
+        action="store_true",
+        help="Create --workspace when it does not already exist.",
+    )
+    start_parser.add_argument(
+        "--keep-workspace",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument("--cli-bin", default="loopx", help=argparse.SUPPRESS)
+    start_parser.add_argument("--codex-bin", default="codex", help=argparse.SUPPRESS)
+    start_parser.add_argument("--tmux-bin", default="tmux", help=argparse.SUPPRESS)
+    start_parser.add_argument(
+        "--reasoning-effort",
+        default="high",
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument(
+        "--launcher",
+        choices=["auto", "tmux"],
+        default="auto",
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    start_parser.add_argument(
+        "--codex-trust-workspace",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=argparse.SUPPRESS,
     )
 
     frontier_parser = auto_research_sub.add_parser(
@@ -700,6 +802,111 @@ def handle_auto_research_command(
                 args.open_question,
                 max_todos=args.max_todos,
             )
+        elif args.auto_research_command == "start":
+            if args.headless and args.wake_visible_after_launch and args.execute:
+                raise ValueError("--headless cannot be combined with --wake-visible-after-launch")
+            if args.no_attach and args.attach:
+                raise ValueError("--attach cannot be combined with --no-attach")
+            if args.wake_visible_after_launch and args.attach:
+                raise ValueError(
+                    "--wake-visible-after-launch cannot be combined with --attach; "
+                    "wake evidence must be recorded before operator takeover"
+                )
+            goal_id, goal_surface_mode = _resolve_demo_goal_surface(
+                goal_id=args.goal_id,
+                demo_run_id=args.demo_run_id,
+                inherit_default_goal=False,
+            )
+
+            def append_start_evidence(packet_path: str) -> dict[str, object]:
+                return _append_auto_research_rollout_events(
+                    packet_path=packet_path,
+                    registry_path=registry_path,
+                    runtime_root_arg=runtime_root_arg,
+                    dry_run=False,
+                )
+
+            visible_launcher: Callable[[dict[str, object], Path, str | None, Path], dict[str, object]] | None = None
+            visible_wake: Callable[[str, list[str]], dict[str, object]] | None = None
+            launch_visible = bool(args.execute and not args.headless)
+            attach_visible = bool(
+                args.attach
+                or (
+                    launch_visible
+                    and not args.no_attach
+                    and not args.wake_visible_after_launch
+                )
+            )
+            if launch_visible:
+                def visible_launcher(
+                    supervisor: dict[str, object],
+                    visible_registry_path: Path,
+                    visible_runtime_root_arg: str | None,
+                    _default_workspace: Path,
+                ) -> dict[str, object]:
+                    demo_owned_workspace = args.workspace is None
+                    visible_workspace = (
+                        str(_default_workspace / "visible-user-workspace")
+                        if demo_owned_workspace
+                        else args.workspace
+                    )
+                    create_visible_workspace = True if demo_owned_workspace else args.create_workspace
+                    codex_trust_workspace = (
+                        demo_owned_workspace
+                        if args.codex_trust_workspace is None
+                        else bool(args.codex_trust_workspace)
+                    )
+                    return _execute_auto_research_demo_supervisor(
+                        supervisor,
+                        registry_path=visible_registry_path,
+                        runtime_root_arg=visible_runtime_root_arg,
+                        launcher=args.launcher,
+                        tmux_bin=args.tmux_bin,
+                        cli_bin=args.cli_bin,
+                        codex_bin=args.codex_bin,
+                        attach=attach_visible,
+                        replace_existing=args.replace_existing,
+                        workspace=visible_workspace,
+                        create_workspace=create_visible_workspace,
+                        codex_trust_workspace=codex_trust_workspace,
+                    )
+
+                def visible_wake(session: str, lanes: list[str]) -> dict[str, object]:
+                    return wake_visible_multi_agent_panes(
+                        session_name=session,
+                        tmux_bin=args.tmux_bin,
+                        lanes=lanes,
+                        execute=True,
+                    )
+
+            payload = run_auto_research_demo_e2e(
+                agent_id=AUTO_RESEARCH_START_AGENT_ID,
+                goal_id=goal_id,
+                goal_surface_mode=goal_surface_mode,
+                agent_specs=[],
+                tracking_goal_id=args.tracking_goal_id,
+                objective=args.open_question,
+                output_dir="auto_research_lightweight_kernel",
+                execute=args.execute,
+                run_worker_loop=bool(args.execute and args.headless),
+                worker_loop_rounds=args.worker_loop_rounds,
+                launch_visible=launch_visible,
+                keep_workspace=args.keep_workspace,
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root_arg,
+                session_name=args.session_name,
+                cli_bin=args.cli_bin,
+                codex_bin=args.codex_bin,
+                tmux_bin=args.tmux_bin,
+                reasoning_effort=args.reasoning_effort,
+                live_evidence_path=None,
+                append_evidence=append_start_evidence,
+                visible_launcher=visible_launcher,
+                visible_wake=visible_wake,
+                wake_visible_after_launch=bool(
+                    args.execute and args.wake_visible_after_launch
+                ),
+            )
         elif args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):
                 raise ValueError(f"auto-research {args.auto_research_command} requires exactly one of --fixture or --goal-id")
@@ -975,7 +1182,8 @@ def handle_auto_research_command(
             raise ValueError(
                 "auto-research requires the `contract`, `frontier`, `evidence`, "
                 "`append-evidence`, `capture-live-evidence`, "
-                "`worker-turn`, `worker-loop`, `demo-supervisor`, or `demo-e2e` subcommand"
+                "`worker-turn`, `worker-loop`, `demo-supervisor`, `demo-e2e`, "
+                "or `start` subcommand"
             )
     except Exception as exc:
         payload = {

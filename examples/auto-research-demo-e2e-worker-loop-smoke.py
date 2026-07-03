@@ -595,6 +595,7 @@ def main() -> int:
                 assert visible_readiness["coordination_pattern"] == "decentralized_state_a2a", visible_readiness
                 assert visible_readiness["leader_agent_required"] is False, visible_readiness
                 assert visible_readiness["checks"] == {
+                    "user_contract_accepted": True,
                     "visible_lanes_accepted": True,
                     "cadence_wake_verified": True,
                     "pane_local_multi_round_verified": True,
@@ -614,6 +615,7 @@ def main() -> int:
                 assert improvement["best_metric_source"] == "round_1_dev", improvement
                 assert improvement["improved_over_baseline"] is True, improvement
                 assert improvement["holdout_delta_over_dev"] is None, improvement
+                assert "auto-research start" in visible_readiness["one_command"], visible_readiness
                 assert "--wake-visible-after-launch" in visible_readiness["one_command"], visible_readiness
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload

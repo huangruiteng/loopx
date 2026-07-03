@@ -24,6 +24,11 @@ def _render_user_contract(payload: dict[str, object]) -> str:
     brief = payload.get("research_brief") if isinstance(payload.get("research_brief"), dict) else {}
     plan = payload.get("action_plan") if isinstance(payload.get("action_plan"), list) else []
     evidence = payload.get("evidence_refs") if isinstance(payload.get("evidence_refs"), dict) else {}
+    one_click_start = (
+        payload.get("one_click_start")
+        if isinstance(payload.get("one_click_start"), dict)
+        else {}
+    )
     next_step = (
         payload.get("next_executable_step")
         if isinstance(payload.get("next_executable_step"), dict)
@@ -65,6 +70,13 @@ def _render_user_contract(payload: dict[str, object]) -> str:
             f"- benchmarks: `{_join_or_none(evidence.get('benchmarks'))}`",
             f"- issues: `{_join_or_none(evidence.get('issues'))}`",
             f"- pull_requests: `{_join_or_none(evidence.get('pull_requests'))}`",
+            "",
+            "## One-Click Start",
+            "",
+            f"- command: `{one_click_start.get('command')}`",
+            f"- preview: `{one_click_start.get('preview_command')}`",
+            f"- starts: `{one_click_start.get('starts')}`",
+            f"- coordination_model: `{one_click_start.get('coordination_model')}`",
             "",
             "## Next Executable Step",
             "",
@@ -208,6 +220,12 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         if isinstance(payload.get("visible_readiness"), dict)
         else {}
     )
+    contract_acceptance = (
+        payload.get("contract_acceptance")
+        if isinstance(payload.get("contract_acceptance"), dict)
+        else {}
+    )
+    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
     improvement = (
         readiness.get("improvement_summary")
         if isinstance(readiness.get("improvement_summary"), dict)
@@ -224,6 +242,9 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- tracking_goal_id: `{payload.get('tracking_goal_id')}`",
         f"- frontier_goal_id: `{route.get('frontier_goal_id')}`",
         f"- agent_id: `{payload.get('agent_id')}`",
+        f"- user_contract_accepted: `{contract_acceptance.get('accepted')}`",
+        f"- one_question_contract: `{commands.get('one_question_contract')}`",
+        f"- one_question_start: `{commands.get('one_question_start')}`",
         f"- reasoning_effort: `{payload.get('reasoning_effort')}`",
         f"- worker_loop_executed_turns: `{worker_loop.get('executed_turn_count')}`",
         f"- worker_loop_completed_turns: `{worker_loop.get('completed_turn_count')}`",

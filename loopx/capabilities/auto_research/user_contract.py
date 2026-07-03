@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from typing import Any
 
 
@@ -42,6 +43,7 @@ def build_auto_research_user_contract(
             "owner_layer": "auto_research_preset",
         },
     ][:todo_limit]
+    start_command = f"loopx auto-research start {shlex.quote(question)} --execute"
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION,
@@ -56,6 +58,7 @@ def build_auto_research_user_contract(
         "command_contract": {
             "canonical_invocation": 'loopx auto-research "<open question>"',
             "explicit_invocation": 'loopx auto-research contract "<open question>"',
+            "one_click_start_invocation": 'loopx auto-research start "<open question>" --execute',
             "user_required_inputs": ["open_question"],
             "auto_research_required_outputs": [
                 "research_brief",
@@ -65,6 +68,23 @@ def build_auto_research_user_contract(
                 "gate",
             ],
             "max_action_plan_todos": 5,
+        },
+        "one_click_start": {
+            "schema_version": "auto_research_one_click_start_v0",
+            "command_template": 'loopx auto-research start "<open question>" --execute',
+            "command": start_command,
+            "preview_command_template": 'loopx auto-research start "<open question>"',
+            "preview_command": f"loopx auto-research start {shlex.quote(question)}",
+            "starts": "visible_codex_tui_lanes",
+            "uses_generic_kernel": True,
+            "coordination_model": "decentralized_state_a2a",
+            "user_does_not_choose": [
+                "agent_ids",
+                "tmux_layout",
+                "pane_tick_command",
+                "evidence_packet_schema",
+                "frontier_protocol",
+            ],
         },
         "research_brief": {
             "read": [],
