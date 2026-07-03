@@ -74,6 +74,29 @@ This is a lightweight GitHub release contract, not a PyPI publishing
 requirement. A future package registry can reuse the same version/tag contract
 instead of inventing a second release identity.
 
+## Public Release Timeline
+
+The public GitHub release timeline starts at `v0.1.3`. Earlier work should be
+treated as pre-public bootstrap for the local control plane, installer, update
+path, and canary route rather than as a user-facing release baseline.
+
+- `v0.1.3` on 2026-07-02 14:45 +08:00: initial public stable-channel release
+  at commit `10509b06`. This release made LoopX explainable as a no-clone,
+  local-first control plane for long-running AI agents: install, update,
+  doctor, named version reporting, and the first public status/quota/todo/gate
+  surfaces were ready to recommend together.
+- `v0.1.4` on 2026-07-03 00:24 +08:00: fast-follow release at commit
+  `07d0a753`. This release tightened product-capability monitor projection,
+  release-readiness checks, and canary evidence so the first public baseline
+  was easier to diagnose and refresh.
+- `v0.1.5` on 2026-07-03 13:28 +08:00: long-horizon execution hardening at
+  commit `c036d60e`. This release improved quota/status/runtime routing,
+  monitor and scheduler projection, release packaging coverage, and
+  outcome-floor recovery for stuck or low-progress loops.
+
+When a new public release is promoted, add it here only after the matching tag,
+release note, stable ref, update path, and focused release canary agree.
+
 ## Compatibility Gate
 
 Before a release snapshot is promoted or a public guide tells users to depend
