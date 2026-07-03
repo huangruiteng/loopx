@@ -61,6 +61,29 @@ def assert_module_preview_selects_matching_scripts() -> None:
     assert all("quota" in command for command in commands), payload
 
 
+def assert_module_preview_supports_exclusions() -> None:
+    payload = build_canary_smoke_suite_run(
+        suite="full-public",
+        modules=["status"],
+        exclude_modules=["benchmark", "skillsbench", "terminal-bench", "swe-marathon"],
+        execute=False,
+    )
+    assert payload["ok"] is True, payload
+    assert payload["warning_count"] == 0, payload
+    assert payload["selected_check_count"] > 0, payload
+    scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
+    assert all("status" in script for script in scripts), payload
+    assert all("benchmark" not in script for script in scripts), payload
+    assert all("skillsbench" not in script for script in scripts), payload
+    assert all("terminal-bench" not in script for script in scripts), payload
+    assert payload["selection_inputs"]["exclude_modules"] == [
+        "benchmark",
+        "skillsbench",
+        "terminal-bench",
+        "swe-marathon",
+    ], payload
+
+
 def assert_subdirectory_smoke_selection_is_supported() -> None:
     script = "examples/canary/smoke-suite-subdir-discovery-smoke.py"
     for selector in [script, "canary/smoke-suite-subdir-discovery-smoke.py", Path(script).name]:
@@ -126,7 +149,9 @@ def assert_cli_json_preview_works() -> None:
             "--suite",
             "default-public",
             "--module",
-            "canary",
+            "status",
+            "--exclude-module",
+            "benchmark",
             "--limit",
             "2",
             "--no-execute",
@@ -140,6 +165,7 @@ def assert_cli_json_preview_works() -> None:
     assert payload["ok"] is True, payload
     assert payload["schema_version"] == "canary_smoke_suite_run_v0", payload
     assert payload["selected_check_count"] == 2, payload
+    assert payload["selection_inputs"]["exclude_modules"] == ["benchmark"], payload
     assert payload["executes_checks"] is False, payload
 
 
@@ -327,6 +353,7 @@ def main() -> int:
     assert_default_public_preview_excludes_grouped_smokes()
     assert_full_public_preview_injects_safe_group_args()
     assert_module_preview_selects_matching_scripts()
+    assert_module_preview_supports_exclusions()
     assert_subdirectory_smoke_selection_is_supported()
     assert_legacy_root_script_selector_matches_moved_smokes()
     assert_catalog_profile_preview_is_supported()

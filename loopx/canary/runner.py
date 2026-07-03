@@ -298,10 +298,12 @@ def _discover_smoke_suite_checks(
     *,
     suite: str,
     modules: list[str] | None = None,
+    exclude_modules: list[str] | None = None,
     scripts: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     normalized_suite = suite if suite in SMOKE_SUITE_CHOICES else "default-public"
     modules = list(modules or [])
+    exclude_modules = list(exclude_modules or [])
     requested_scripts = {
         script for script in (_normalize_script_filter(item) for item in (scripts or [])) if script
     }
@@ -318,6 +320,9 @@ def _discover_smoke_suite_checks(
         if requested_scripts and requested_scripts.isdisjoint(script_filter_keys):
             continue
         if not _matches_modules(script, modules):
+            continue
+        if exclude_modules and _matches_modules(script, exclude_modules):
+            missing_scripts.difference_update(script_filter_keys)
             continue
         selected.append(script)
         missing_scripts.difference_update(script_filter_keys)
@@ -348,6 +353,7 @@ def build_canary_smoke_suite_run(
     *,
     suite: str = "default-public",
     modules: list[str] | None = None,
+    exclude_modules: list[str] | None = None,
     scripts: list[str] | None = None,
     catalog_path: Path | None = None,
     changed_files: list[str] | None = None,
@@ -373,6 +379,7 @@ def build_canary_smoke_suite_run(
 
     normalized_suite = suite if suite in SMOKE_SUITE_CHOICES else "default-public"
     modules = list(modules or [])
+    exclude_modules = list(exclude_modules or [])
     scripts = list(scripts or [])
     families = list(families or [])
     profiles = list(profiles or [])
@@ -390,6 +397,7 @@ def build_canary_smoke_suite_run(
         suite_checks, suite_warnings = _discover_smoke_suite_checks(
             suite=normalized_suite,
             modules=modules,
+            exclude_modules=exclude_modules,
             scripts=scripts,
         )
         selected.extend(suite_checks)
@@ -550,6 +558,7 @@ def build_canary_smoke_suite_run(
         "selection_inputs": {
             "suite": normalized_suite,
             "modules": modules,
+            "exclude_modules": exclude_modules,
             "scripts": scripts,
             "changed_files": changed_files,
             "surfaces": surfaces,

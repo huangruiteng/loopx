@@ -30,6 +30,14 @@ def pytest_addoption(parser) -> None:
         help="Module token filter passed through to the LoopX runner. Repeat or comma-separate.",
     )
     group.addoption(
+        "--loopx-smoke-exclude-module",
+        "--smoke-exclude-module",
+        action="append",
+        default=[],
+        dest="loopx_smoke_exclude_modules",
+        help="Module token exclusion passed through to the LoopX runner. Repeat or comma-separate.",
+    )
+    group.addoption(
         "--loopx-smoke-script",
         "--smoke-script",
         action="append",

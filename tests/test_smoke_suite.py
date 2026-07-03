@@ -21,6 +21,7 @@ def _build_preview(config: Any) -> dict[str, Any]:
     return build_canary_smoke_suite_run(
         suite=str(config.getoption("loopx_smoke_suite") or "default-public"),
         modules=_option_list(config, "loopx_smoke_modules"),
+        exclude_modules=_option_list(config, "loopx_smoke_exclude_modules"),
         scripts=_option_list(config, "loopx_smoke_scripts"),
         families=_option_list(config, "loopx_smoke_families"),
         profiles=_option_list(config, "loopx_smoke_profiles"),

@@ -291,6 +291,15 @@ def register_canary_commands(
         help="Filter suite scripts by module token, such as quota, status, or canary. Repeatable.",
     )
     smoke_parser.add_argument(
+        "--exclude-module",
+        action="append",
+        default=[],
+        help=(
+            "Exclude suite scripts by module token after positive --module/--script selection. "
+            "Useful for bounded non-benchmark sweeps."
+        ),
+    )
+    smoke_parser.add_argument(
         "--script",
         action="append",
         default=[],
@@ -399,6 +408,7 @@ def handle_canary_command(
         payload = build_canary_smoke_suite_run(
             suite=str(args.suite or "default-public"),
             modules=list(args.module or []),
+            exclude_modules=list(args.exclude_module or []),
             scripts=list(args.script or []),
             catalog_path=args.catalog,
             changed_files=changed_files,
