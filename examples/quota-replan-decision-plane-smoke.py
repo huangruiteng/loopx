@@ -141,12 +141,20 @@ def assert_replan_beats_monitor_quiet_skip() -> None:
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
     assert guard["goal_frontier_projection"]["replan_required"] is True, guard
     assert guard["goal_frontier_projection"]["monitor_only_lanes"]["present"] is True, guard
+    assert guard["goal_frontier_projection"]["deferred_successors"] == {
+        "ready_count": 0,
+        "blocked_count": 0,
+        "current_agent_ready_count": 0,
+        "ready_todo_ids": [],
+    }, guard
+    assert guard["goal_frontier_projection"]["acceptance_gaps"] == [], guard
     assert guard["autonomous_replan_decision"]["decision_plane"] == (
         "goal_frontier_before_lane_quiet_or_agent_scope_wait"
     ), guard
     assert "monitor_quiet_skip" in guard["autonomous_replan_decision"]["not_disturbed_by"], guard
     markdown = render_quota_should_run_markdown(guard)
     assert "goal_frontier_projection: replan_required=True" in markdown, markdown
+    assert "deferred_ready=0 acceptance_gaps=0" in markdown, markdown
     assert "autonomous_replan_decision: decision=autonomous_replan_required" in markdown, markdown
 
 
@@ -167,6 +175,8 @@ def assert_replan_beats_agent_scope_wait() -> None:
     assert frontier["current_agent_claimed_advancement_count"] == 0, guard
     assert frontier["unclaimed_advancement_count"] == 0, guard
     assert frontier["other_agent_claimed_advancement_count"] == 1, guard
+    assert guard["goal_frontier_projection"]["deferred_successors"]["ready_count"] == 0, guard
+    assert guard["goal_frontier_projection"]["acceptance_gaps"] == [], guard
     assert "agent_scope_wait" in guard["autonomous_replan_decision"]["not_disturbed_by"], guard
 
 

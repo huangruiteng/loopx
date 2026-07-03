@@ -9639,12 +9639,24 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
             else {}
         )
+        deferred_successors = (
+            goal_frontier.get("deferred_successors")
+            if isinstance(goal_frontier.get("deferred_successors"), dict)
+            else {}
+        )
+        acceptance_gaps = (
+            goal_frontier.get("acceptance_gaps")
+            if isinstance(goal_frontier.get("acceptance_gaps"), list)
+            else []
+        )
         lines.append(
             "- goal_frontier_projection: "
             f"replan_required={goal_frontier.get('replan_required')} "
             f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
             f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
-            f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')}"
+            f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')} "
+            f"deferred_ready={deferred_successors.get('ready_count')} "
+            f"acceptance_gaps={len(acceptance_gaps)}"
         )
     replan_decision = (
         payload.get("autonomous_replan_decision")

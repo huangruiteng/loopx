@@ -199,6 +199,58 @@ def _frontier_advancement_counts(
     }
 
 
+def _compact_todo_id(item: Any) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    todo_id = str(item.get("todo_id") or "").strip()
+    return todo_id or None
+
+
+def _deferred_successors(
+    summary: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {
+            "ready_count": 0,
+            "blocked_count": 0,
+            "current_agent_ready_count": 0,
+            "ready_todo_ids": [],
+        }
+
+    ready_items = [
+        item
+        for item in (summary.get("deferred_resume_candidates") or [])
+        if isinstance(item, dict)
+    ]
+    deferred_items = [
+        item for item in (summary.get("deferred_items") or []) if isinstance(item, dict)
+    ]
+    deferred_count = max(
+        safe_non_negative_int(summary.get("deferred_count")),
+        len(deferred_items),
+        len(ready_items),
+    )
+    current_agent_ready_items = [
+        item
+        for item in ready_items
+        if agent_id and str(item.get("claimed_by") or "").strip() == agent_id
+    ]
+    ready_todo_ids = [
+        todo_id for todo_id in (_compact_todo_id(item) for item in ready_items[:5]) if todo_id
+    ]
+    projection = {
+        "ready_count": len(ready_items),
+        "blocked_count": max(0, deferred_count - len(ready_items)),
+        "current_agent_ready_count": len(current_agent_ready_items),
+        "ready_todo_ids": ready_todo_ids,
+    }
+    if ready_todo_ids:
+        projection["top_ready_todo_id"] = ready_todo_ids[0]
+    return projection
+
+
 def _is_monitor_only_lane(
     work_lane_contract: dict[str, Any] | None,
 ) -> bool:
@@ -325,6 +377,10 @@ def build_goal_frontier_projection_from_summaries(
         ],
         monitor_only_lane=monitor_only_lane,
         replan_obligation=replan_obligation,
+        deferred_successors=_deferred_successors(
+            agent_todo_summary,
+            agent_id=agent_id,
+        ),
     )
 
 
@@ -396,6 +452,7 @@ def build_goal_frontier_projection(
     other_agent_claimed_advancement_count: int,
     monitor_only_lane: bool,
     replan_obligation: dict[str, Any] | None,
+    deferred_successors: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     replan_required = autonomous_replan_is_required(replan_obligation)
     blockers: list[str] = []
@@ -431,6 +488,15 @@ def build_goal_frontier_projection(
             "present": monitor_only_lane,
             "quiet_until_material_transition": monitor_only_lane,
         },
+        "deferred_successors": deferred_successors
+        if isinstance(deferred_successors, dict)
+        else {
+            "ready_count": 0,
+            "blocked_count": 0,
+            "current_agent_ready_count": 0,
+            "ready_todo_ids": [],
+        },
+        "acceptance_gaps": [],
         "autonomy_blockers": blockers,
         "replan_required": replan_required,
     }
