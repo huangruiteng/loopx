@@ -10,6 +10,15 @@ AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
+FRONTIER_REPLAN_ACK_DELTA_KINDS = {
+    "active_state_next_action",
+    "blocker",
+    "goal_vision_patch",
+    "no_followup",
+    "runnable_todo_set",
+    "successor_or_supersede",
+    "watch_lane_continuation",
+}
 
 
 def safe_non_negative_int(value: Any) -> int:
@@ -35,6 +44,20 @@ def select_autonomous_replan_obligation(
 
 def autonomous_replan_is_required(replan_obligation: dict[str, Any] | None) -> bool:
     return bool(replan_obligation and replan_obligation.get("required"))
+
+
+def autonomous_replan_ack_has_frontier_delta(ack: dict[str, Any] | None) -> bool:
+    if not isinstance(ack, dict) or ack.get("recorded") is not True:
+        return False
+    delta_contract = ack.get("delta_contract")
+    if not isinstance(delta_contract, dict) or delta_contract.get("delta_present") is not True:
+        return False
+    delta_kinds = {
+        str(item or "").strip()
+        for item in (delta_contract.get("delta_kinds") or [])
+        if str(item or "").strip()
+    }
+    return bool(delta_kinds & FRONTIER_REPLAN_ACK_DELTA_KINDS)
 
 
 def autonomous_replan_decision_allowed(
@@ -193,6 +216,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     work_lane_contract: dict[str, Any] | None,
     agent_id: str | None,
     existing_replan_obligation: dict[str, Any] | None,
+    latest_replan_ack: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Return a compact replan obligation when the goal frontier has no advancement.
 
@@ -202,6 +226,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     """
 
     if autonomous_replan_is_required(existing_replan_obligation):
+        return None
+    if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
         return None
 
     user_counts = _summary_task_counts(user_todo_summary)

@@ -7048,6 +7048,52 @@ def autonomous_replan_ack_recorded(run: dict[str, Any]) -> bool:
     return delta_contract.get("delta_present") is True
 
 
+def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict) or not autonomous_replan_ack_recorded(run):
+        return None
+    ack = run.get("autonomous_replan_ack")
+    delta_contract = ack.get("delta_contract") if isinstance(ack, dict) else {}
+    if not isinstance(delta_contract, dict):
+        return None
+    compact_delta = {
+        "schema_version": delta_contract.get("schema_version"),
+        "delta_present": bool(delta_contract.get("delta_present")),
+        "delta_kinds": [
+            str(item)
+            for item in (delta_contract.get("delta_kinds") or [])
+            if str(item or "").strip()
+        ],
+    }
+    return {
+        "schema_version": ack.get("schema_version"),
+        "recorded": True,
+        "source": ack.get("source"),
+        "delta_contract": compact_delta,
+    }
+
+
+def latest_autonomous_replan_ack_for_projection(
+    latest_runs: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Return the newest durable replan ACK, skipping neutral accounting runs."""
+
+    for run in latest_runs or []:
+        if not isinstance(run, dict):
+            continue
+        replan_ack = compact_autonomous_replan_ack(run)
+        if replan_ack:
+            return replan_ack
+        classification = str(run.get("classification") or "").strip()
+        if not classification:
+            continue
+        if classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
+            continue
+        if classification == "quota_monitor_poll":
+            continue
+        return None
+    return None
+
+
 def autonomous_replan_periodic_review_from_runs(
     latest_runs: list[dict[str, Any]] | None,
     *,
@@ -9583,6 +9629,7 @@ def build_attention_queue(
         active_state_fields: dict[str, Any] | None = None
         active_state_item: dict[str, Any] | None = None
         current_status_run = latest_run(goal)
+        goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
         if goal.get("registry_member"):
             active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
             active_state_item = active_state_todo_attention_item(goal, active_state_fields, current_status_run)
@@ -9616,10 +9663,16 @@ def build_attention_queue(
                         item["project_asset"][
                             "latest_run_recommended_action_source"
                         ] = latest_run_action_source
+            replan_ack = compact_autonomous_replan_ack(
+                current_status_run
+            ) or latest_autonomous_replan_ack_for_projection(goal_latest_runs)
+            if replan_ack:
+                item["autonomous_replan_ack"] = replan_ack
+                if isinstance(item.get("project_asset"), dict):
+                    item["project_asset"]["autonomous_replan_ack"] = replan_ack
             control_plane = compact_control_plane_policy(goal.get("control_plane"))
             if control_plane:
                 item["control_plane"] = control_plane
-            goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
             if agent_lane_recommendation:
                 item["agent_lane_recommendation"] = agent_lane_recommendation
             subagent_activity = subagent_activity_for_goal(goal)
@@ -9894,6 +9947,9 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     operator_gate = compact_operator_gate(run.get("operator_gate"))
     if operator_gate:
         compact["operator_gate"] = operator_gate
+    replan_ack = compact_autonomous_replan_ack(run)
+    if replan_ack:
+        compact["autonomous_replan_ack"] = replan_ack
     resume_contract = compact_operator_gate_resume_contract(run.get("operator_gate_resume_contract"))
     if resume_contract:
         compact["operator_gate_resume_contract"] = resume_contract

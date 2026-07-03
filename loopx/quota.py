@@ -7032,6 +7032,13 @@ def build_quota_should_run(
             work_lane_contract=work_lane_contract,
             agent_id=agent_frontier_id,
             existing_replan_obligation=replan_obligation,
+            latest_replan_ack=(
+                item.get("autonomous_replan_ack")
+                if isinstance(item.get("autonomous_replan_ack"), dict)
+                else project_asset.get("autonomous_replan_ack")
+                if isinstance(project_asset.get("autonomous_replan_ack"), dict)
+                else None
+            ),
         )
         if frontier_replan_obligation:
             replan_obligation = frontier_replan_obligation

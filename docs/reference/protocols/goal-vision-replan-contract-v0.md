@@ -48,6 +48,11 @@ Required write-path behavior:
 4. Keep the latest bounded packet visible in status/quota so agents can reason
    without reading private scratchpads or chat history.
 
+The first CLI write boundary is `loopx refresh-state --agent-vision-json
+<packet.json>`. When paired with `--autonomous-replan-recorded`, a valid packet
+counts as the machine-visible `goal_vision_patch` repair delta. An invalid or
+over-budget packet fails the command instead of recording a partial ACK.
+
 ## State Machine
 
 ```mermaid
@@ -122,6 +127,24 @@ A valid replan writes at least one bounded delta:
 An acknowledgement without a vision, todo, acceptance, or no-follow-up delta is
 a `replan_noop` and must not clear the obligation.
 
+### Bad Case: ACK Hidden By Scheduler Accounting
+
+Observed failure: a monitor-only lane correctly projected
+`autonomous_replan_required`, then a worker recorded a replan ACK with a
+frontier delta. The next quota check became quiet, but a later neutral spend or
+accounting run replaced the latest status record. Because quota only saw the
+latest run, the same monitor lane was projected as `autonomous_replan_required`
+again, causing a scheduler/replan loop.
+
+Root cause: replan ACK state was treated as latest-run detail instead of a
+durable goal-frontier projection. Scheduler/accounting records are useful
+history, but they are not material frontier changes.
+
+Repair rule: status must project the newest durable replan ACK across neutral
+accounting and monitor-poll runs until a real material transition appears.
+Quota then consumes that compact projection and does not duplicate the history
+scan or let scheduler backoff override the replan state machine.
+
 ## Projection Contract
 
 Status, quota, diagnose, and visible multi-agent panes should expose the same
@@ -146,6 +169,8 @@ A change satisfies this contract only when:
 - replan state is decided from goal-level projection before local quiet/wait
   classifications;
 - replan can clear an obligation only by writing a bounded delta;
+- durable replan ACKs survive neutral scheduler/accounting runs until material
+  frontier state changes;
 - `quota.py` consumes the resulting projection instead of storing vision logic;
 - auto-research remains a thin preset over the reusable kernel; and
 - public docs and smokes cover the budget, state machine, and `quota.py`
