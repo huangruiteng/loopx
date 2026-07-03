@@ -81,6 +81,11 @@ from .projections.autonomous_candidates import (
     autonomous_priority_rank as _autonomous_priority_rank,
     autonomous_todo_candidates as _autonomous_todo_candidates,
 )
+from .projections.monitor_display import (
+    attention_item_is_monitor_quiet_display_candidate as _attention_item_is_monitor_quiet_display_candidate,
+    todo_summary_lane_items as _todo_summary_lane_items,
+    todo_summary_open_count as _todo_summary_open_count,
+)
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
@@ -8316,55 +8321,25 @@ def active_state_todo_attention_item(
 
 
 def todo_summary_open_count(summary: dict[str, Any] | None) -> int:
-    if not isinstance(summary, dict):
-        return 0
-    for key in ("open_count", "open"):
-        value = summary.get(key)
-        if isinstance(value, int):
-            return max(0, value)
-    return len(
-        [
-            item
-            for item in open_todo_items(summary, limit=MAX_STATUS_TODOS_PER_ROLE)
-            if todo_item_is_actionable_open(item)
-        ]
+    return _todo_summary_open_count(
+        summary,
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        fallback_limit=MAX_STATUS_TODOS_PER_ROLE,
     )
 
 
 def todo_summary_lane_items(summary: dict[str, Any] | None, lane: str) -> list[dict[str, Any]]:
-    if not isinstance(summary, dict):
-        return []
-    raw_items = summary.get(lane)
-    if not isinstance(raw_items, list):
-        return []
-    return [item for item in raw_items if isinstance(item, dict)]
+    return _todo_summary_lane_items(summary, lane)
 
 
 def attention_item_is_monitor_quiet_display_candidate(item: dict[str, Any]) -> bool:
-    if item.get("waiting_on") != "codex" or item.get("severity") != "action":
-        return False
-    agent_todos = item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None
-    if not agent_todos:
-        return False
-    user_todos = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else None
-    if todo_summary_open_count(user_todos) > 0:
-        return False
-    open_count = todo_summary_open_count(agent_todos)
-    if open_count <= 0:
-        return False
-    monitor_items = [
-        item
-        for item in todo_summary_lane_items(agent_todos, "monitor_open_items")
-        if todo_item_is_actionable_open(item)
-    ]
-    executable_items = [
-        *todo_summary_lane_items(agent_todos, "first_executable_items"),
-        *todo_summary_lane_items(agent_todos, "executable_backlog_items"),
-        *todo_summary_lane_items(agent_todos, "claimed_advancement_open_items"),
-    ]
-    if any(todo_item_is_actionable_open(todo) for todo in executable_items):
-        return False
-    return len(monitor_items) == open_count
+    return _attention_item_is_monitor_quiet_display_candidate(
+        item,
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        fallback_limit=MAX_STATUS_TODOS_PER_ROLE,
+    )
 
 
 def quiet_monitor_display_action(raw_action: str | None) -> str:
