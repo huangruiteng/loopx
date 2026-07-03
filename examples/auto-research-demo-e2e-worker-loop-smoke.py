@@ -154,6 +154,50 @@ def main() -> int:
                 / "evidence_runner"
             )
             artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "pane-a2a-rounds.public.json").write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "schema_version": "pane_local_a2a_tick_rounds_v0",
+                        "source": "pane_local_a2a_tick",
+                        "goal_id": GOAL_ID,
+                        "agent_id": "codex-live-lane",
+                        "role_id": "evidence_runner",
+                        "coordination_model": "decentralized_state_a2a",
+                        "workflow_driver": False,
+                        "status": "completed",
+                        "rounds_requested": 2,
+                        "rounds_completed": 2,
+                        "worker_label": "worker-turn",
+                        "worker_configured": True,
+                        "rounds": [
+                            {
+                                "round_index": 1,
+                                "quota_status": 0,
+                                "worker_configured": True,
+                                "worker_executed": True,
+                                "worker_status": 0,
+                            },
+                            {
+                                "round_index": 2,
+                                "quota_status": 0,
+                                "worker_configured": True,
+                                "worker_executed": True,
+                                "worker_status": 0,
+                            },
+                        ],
+                        "public_boundary": {
+                            "raw_logs_recorded": False,
+                            "private_artifacts_recorded": False,
+                            "absolute_paths_recorded": False,
+                            "credentials_recorded": False,
+                            "local_workspace_path_redacted": True,
+                        },
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
             (artifact_dir / "live-codex-e2e-evidence.public.json").write_text(
                 json.dumps(
                     {
@@ -220,12 +264,20 @@ def main() -> int:
         )
         visible_loaded_proof = visible_loaded_payload["visible_worker_proof"]
         visible_loaded_evidence = visible_loaded_payload["live_worker_evidence"]
+        visible_loaded_rounds = visible_loaded_payload["visible_pane_a2a_rounds"]
         assert visible_loaded_proof["lane_authored_evidence_loaded"] is True, visible_loaded_payload
+        assert visible_loaded_proof["pane_local_a2a_rounds_loaded"] is True, visible_loaded_payload
+        assert visible_loaded_proof["pane_local_a2a_round_count"] == 2, visible_loaded_payload
+        assert visible_loaded_proof["decentralized_a2a_rounds_verified"] is True, visible_loaded_payload
         assert visible_loaded_proof["evidence_source"] == "visible_launcher_artifact", visible_loaded_payload
         assert visible_loaded_evidence["loaded"] is True, visible_loaded_payload
         assert visible_loaded_evidence["agent_id"] == "codex-live-lane", visible_loaded_payload
         assert visible_loaded_evidence["dev_metric"] == 4.0, visible_loaded_payload
         assert visible_loaded_evidence["holdout_metric"] == 4.5, visible_loaded_payload
+        assert visible_loaded_rounds["coordination_model"] == "decentralized_state_a2a", visible_loaded_rounds
+        assert visible_loaded_rounds["workflow_driver"] is False, visible_loaded_rounds
+        assert visible_loaded_rounds["max_rounds_completed"] == 2, visible_loaded_rounds
+        assert visible_loaded_rounds["multi_round_verified"] is True, visible_loaded_rounds
         assert_public_safe(visible_loaded_payload)
 
     loop_markdown = render_auto_research_markdown(
@@ -402,7 +454,7 @@ def main() -> int:
                         "--codex-bin",
                         "fake-codex-tui",
                         "--visible-live-evidence-wait-seconds",
-                        "0",
+                        "8",
                     ],
                     cwd=workspace,
                     env=env,
@@ -431,10 +483,19 @@ def main() -> int:
                 assert visible_proof["lane_authored_evidence_loaded"] is True, visible_proof
                 assert visible_proof["evidence_source"] == "visible_launcher_artifact", visible_proof
                 assert visible_proof["visible_lanes_launched"] is True, visible_proof
+                assert visible_proof["pane_local_a2a_rounds_loaded"] is True, visible_proof
+                assert visible_proof["pane_local_a2a_round_count"] >= 2, visible_proof
+                assert visible_proof["decentralized_a2a_rounds_verified"] is True, visible_proof
                 live_evidence = visible_payload["live_worker_evidence"]
                 assert live_evidence["loaded"] is True, live_evidence
                 assert live_evidence["source"] == "live_codex_lane_output", live_evidence
                 assert live_evidence["dev_metric"] == 4.0, live_evidence
+                visible_rounds = visible_payload["visible_pane_a2a_rounds"]
+                assert visible_rounds["source"] == "visible_launcher_artifact", visible_rounds
+                assert visible_rounds["coordination_model"] == "decentralized_state_a2a", visible_rounds
+                assert visible_rounds["workflow_driver"] is False, visible_rounds
+                assert visible_rounds["max_rounds_completed"] >= 2, visible_rounds
+                assert visible_rounds["multi_round_verified"] is True, visible_rounds
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload

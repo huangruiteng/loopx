@@ -198,6 +198,7 @@ def build_tui_multi_agent_runner_contract(
             "reads": ["quota should-run", "agent-scoped frontier"],
             "runs": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
             "bounded_rounds_env": "LOOPX_PANE_TICK_ROUNDS",
+            "rounds_artifact": "$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-rounds.public.json",
             "machine_json_policy": "file_or_explicit_machine_channel_only",
             "machine_json_destination": "$LOOPX_PANE_ARTIFACT_DIR/*.public.json",
             "human_default": "markdown_status_inside_codex_tui",

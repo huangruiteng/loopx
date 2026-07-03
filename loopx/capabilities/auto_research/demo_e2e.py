@@ -262,6 +262,9 @@ def _visible_worker_proof(*, launch_visible: bool) -> dict[str, object]:
     return {
         "schema_version": "auto_research_visible_worker_proof_v0",
         "lane_authored_evidence_loaded": False,
+        "pane_local_a2a_rounds_loaded": False,
+        "pane_local_a2a_round_count": 0,
+        "decentralized_a2a_rounds_verified": False,
         "visible_lanes_launched": bool(launch_visible),
         "visible_lanes_accepted": False,
         "evidence_source": "not_loaded",
@@ -324,6 +327,7 @@ def _supervisor_summary(supervisor: dict[str, object]) -> dict[str, object]:
             "tick_command": pane_local_a2a.get("tick_command"),
             "machine_json_policy": pane_local_a2a.get("machine_json_policy"),
             "machine_json_destination": pane_local_a2a.get("machine_json_destination"),
+            "rounds_artifact": pane_local_a2a.get("rounds_artifact"),
             "human_default": pane_local_a2a.get("human_default"),
         },
         "machine_json_policy": cli_contract.get("machine_json_policy"),
@@ -353,6 +357,103 @@ def _compact_live_worker_evidence(evidence: dict[str, object]) -> dict[str, obje
         "holdout_metric": evidence.get("holdout_metric"),
         "public_boundary": evidence.get("public_boundary"),
     }
+
+
+def _compact_visible_pane_a2a_rounds(artifacts: list[dict[str, object]]) -> dict[str, object]:
+    lanes = []
+    for artifact in artifacts:
+        rounds = artifact.get("rounds") if isinstance(artifact.get("rounds"), list) else []
+        completed = int(artifact.get("rounds_completed") or 0)
+        requested = int(artifact.get("rounds_requested") or 0)
+        lanes.append(
+            {
+                "agent_id": artifact.get("agent_id"),
+                "role_id": artifact.get("role_id"),
+                "status": artifact.get("status"),
+                "rounds_requested": requested,
+                "rounds_completed": completed,
+                "worker_label": artifact.get("worker_label"),
+                "worker_configured": bool(artifact.get("worker_configured")),
+                "round_count": len(rounds),
+            }
+        )
+    max_completed = max((int(lane.get("rounds_completed") or 0) for lane in lanes), default=0)
+    max_requested = max((int(lane.get("rounds_requested") or 0) for lane in lanes), default=0)
+    total_completed = sum(int(lane.get("rounds_completed") or 0) for lane in lanes)
+    return {
+        "schema_version": "auto_research_visible_pane_a2a_rounds_summary_v0",
+        "loaded": bool(lanes),
+        "source": "visible_launcher_artifact",
+        "coordination_model": "decentralized_state_a2a",
+        "workflow_driver": False,
+        "lane_count": len(lanes),
+        "rounds_completed_total": total_completed,
+        "max_rounds_requested": max_requested,
+        "max_rounds_completed": max_completed,
+        "multi_round_verified": max_completed >= 2,
+        "lanes": lanes,
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "credentials_recorded": False,
+            "local_workspace_path_redacted": True,
+        },
+    }
+
+
+def _discover_visible_pane_a2a_rounds(
+    *,
+    runtime_root_arg: str | None,
+    session_name: str,
+    goal_id: str,
+    wait_seconds: float,
+) -> dict[str, object] | None:
+    if not runtime_root_arg:
+        return None
+    runtime_root = Path(runtime_root_arg)
+    artifact_root = runtime_root / "visible-launcher-artifacts" / session_name
+
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    while True:
+        artifacts = []
+        if artifact_root.is_dir():
+            for candidate in sorted(artifact_root.glob("*/pane-a2a-rounds.public.json")):
+                try:
+                    raw = json.loads(candidate.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                if not isinstance(raw, dict):
+                    continue
+                if raw.get("schema_version") != "pane_local_a2a_tick_rounds_v0":
+                    continue
+                if raw.get("source") != "pane_local_a2a_tick":
+                    continue
+                if raw.get("goal_id") != goal_id:
+                    continue
+                boundary = raw.get("public_boundary") if isinstance(raw.get("public_boundary"), dict) else {}
+                if any(
+                    boundary.get(key) is not False
+                    for key in (
+                        "raw_logs_recorded",
+                        "private_artifacts_recorded",
+                        "absolute_paths_recorded",
+                        "credentials_recorded",
+                    )
+                ):
+                    continue
+                artifacts.append(raw)
+        if artifacts:
+            summary = _compact_visible_pane_a2a_rounds(artifacts)
+            if (
+                bool(summary.get("multi_round_verified"))
+                or int(summary.get("max_rounds_requested") or 0) < 2
+                or time.monotonic() >= deadline
+            ):
+                return summary
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.5)
 
 
 def _discover_visible_live_evidence(
@@ -413,6 +514,21 @@ def _load_live_worker_evidence_into_payload(
         visible_proof["visible_lanes_launched"] = True
         visible_proof["visible_lanes_accepted"] = True
         visible_proof["evidence_source"] = evidence_source
+
+
+def _load_visible_pane_a2a_rounds_into_payload(
+    *,
+    payload: dict[str, object],
+    rounds: dict[str, object],
+) -> None:
+    payload["visible_pane_a2a_rounds"] = rounds
+    visible_proof = payload["visible_worker_proof"]
+    if isinstance(visible_proof, dict):
+        visible_proof["pane_local_a2a_rounds_loaded"] = bool(rounds.get("loaded"))
+        visible_proof["pane_local_a2a_round_count"] = rounds.get("max_rounds_completed")
+        visible_proof["decentralized_a2a_rounds_verified"] = bool(
+            rounds.get("multi_round_verified")
+        )
 
 
 def run_auto_research_demo_e2e(
@@ -726,6 +842,17 @@ def run_auto_research_demo_e2e(
                 visible_proof["visible_lanes_launched"] = True
                 visible_proof["visible_lanes_accepted"] = bool(visible_acceptance.get("accepted"))
                 visible_proof["evidence_source"] = "visible_launcher"
+            pane_rounds = _discover_visible_pane_a2a_rounds(
+                runtime_root_arg=visible_runtime_root_arg,
+                session_name=str(launch_result.get("session_name") or session_name),
+                goal_id=goal_id,
+                wait_seconds=visible_live_evidence_wait_seconds,
+            )
+            if pane_rounds is not None:
+                _load_visible_pane_a2a_rounds_into_payload(
+                    payload=payload,
+                    rounds=pane_rounds,
+                )
             live_evidence = _discover_visible_live_evidence(
                 runtime_root_arg=visible_runtime_root_arg,
                 session_name=str(launch_result.get("session_name") or session_name),

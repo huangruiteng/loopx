@@ -173,6 +173,9 @@ def main() -> int:
     assert runner_contract["pane_local_a2a"]["machine_json_destination"] == (
         "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
     )
+    assert runner_contract["pane_local_a2a"]["rounds_artifact"] == (
+        "$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-rounds.public.json"
+    )
     assert runner_contract["role_prompt_and_skill"]["worker_local_skill_only"] is True
     assert runner_contract["debug_artifacts"]["machine_json"] == (
         "redirected_public_artifacts_only"
@@ -412,6 +415,23 @@ def main() -> int:
             assert "quota should-run" in tick.stdout, tick.stdout
             assert "--format markdown" in tick.stdout, tick.stdout
             assert "worker turn streamed" in tick.stdout, tick.stdout
+            rounds_artifact = (
+                workspace
+                / ".local"
+                / "pane-artifacts"
+                / "reviewer"
+                / "pane-a2a-rounds.public.json"
+            )
+            rounds_payload = json.loads(rounds_artifact.read_text(encoding="utf-8"))
+            assert rounds_payload["schema_version"] == "pane_local_a2a_tick_rounds_v0", rounds_payload
+            assert rounds_payload["coordination_model"] == "decentralized_state_a2a", rounds_payload
+            assert rounds_payload["workflow_driver"] is False, rounds_payload
+            assert rounds_payload["rounds_requested"] == 2, rounds_payload
+            assert rounds_payload["rounds_completed"] == 2, rounds_payload
+            assert rounds_payload["worker_configured"] is True, rounds_payload
+            assert [item["round_index"] for item in rounds_payload["rounds"]] == [1, 2], rounds_payload
+            assert rounds_payload["public_boundary"]["raw_logs_recorded"] is False, rounds_payload
+            assert "/" + "tmp/" not in json.dumps(rounds_payload, sort_keys=True), rounds_payload
 
             try:
                 execute_visible_multi_agent_launcher(

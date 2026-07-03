@@ -128,6 +128,11 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
     supervisor = payload.get("supervisor") if isinstance(payload.get("supervisor"), dict) else {}
     route = payload.get("route_contract") if isinstance(payload.get("route_contract"), dict) else {}
     live = payload.get("visible_worker_proof") if isinstance(payload.get("visible_worker_proof"), dict) else {}
+    pane_rounds = (
+        payload.get("visible_pane_a2a_rounds")
+        if isinstance(payload.get("visible_pane_a2a_rounds"), dict)
+        else {}
+    )
     lines = [
         "# LoopX Auto Research Minimal E2E Demo",
         "",
@@ -151,6 +156,8 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- tonight_positive_result: `{tonight.get('positive_result')}`",
         f"- visible_lanes_launched: `{live.get('visible_lanes_launched')}`",
         f"- visible_lanes_accepted: `{live.get('visible_lanes_accepted')}`",
+        f"- visible_pane_a2a_rounds: `{pane_rounds.get('max_rounds_completed')}`",
+        f"- decentralized_a2a_rounds_verified: `{pane_rounds.get('multi_round_verified')}`",
         f"- supervisor_lanes: `{supervisor.get('lane_count')}`",
     ]
     return "\n".join(lines) + "\n"
