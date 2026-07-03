@@ -296,11 +296,16 @@ def test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast() -> None:
         update = load_benchmark_run_ledger(ledger)
         case = update["benchmarks"]["skillsbench@1.1"]["cases"]["apt-bootstrap"]
         assert case["latest_decision"]["decision"] == (
-            "baseline_setup_preflight_selection_required"
+            "baseline_runner_or_setup_repair_required"
         ), case
-        assert case["runs"][0]["repair_class"] == (
-            "skillsbench_setup_preflight_selection"
+        assert case["runs"][0]["failure_class"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
         )
+        assert (
+            "skillsbench_docker_apt_setup_risk_preflight_blocked"
+            in case["runs"][0]["failure_labels"]
+        ), case
+        assert case["runs"][0]["task_staging"]["apt_risk_preflight_blocked"] is True
 
 
 def test_reverse_tunnel_app_goal_blocks_pip_bootstrap_light_risk() -> None:

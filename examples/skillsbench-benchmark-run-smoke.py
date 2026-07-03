@@ -11825,7 +11825,7 @@ def test_skillsbench_compact_runs_update_ledger_pair() -> None:
         assert "`1:0,2:1*`" in rendered, rendered
 
 
-def test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs() -> None:
+def test_skillsbench_repeat_same_mode_collapses_active_ledger_run() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-ledger-repeat-") as tmp:
         root = Path(tmp)
         ledger_path = root / "benchmark-run-ledger.json"
@@ -11858,7 +11858,9 @@ def test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs() -> None:
         case = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
             "software-dependency-audit"
         ]
-        assert len(case["runs"]) == 2, case
+        assert len(case["runs"]) == 1, case
+        assert case["active_run_count"] == 1, case
+        assert case["latest_decision"]["decision"] == "single_arm_recorded", case
         third = update_benchmark_run_ledger(
             ledger_path=ledger_path,
             benchmark_run=compact,
@@ -11878,7 +11880,8 @@ def test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs() -> None:
         case = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
             "software-dependency-audit"
         ]
-        assert len(case["runs"]) == 4, case
+        assert len(case["runs"]) == 3, case
+        assert case["active_run_count"] == 3, case
 
 
 def test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger() -> None:
@@ -14618,15 +14621,10 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
         assert round_trace["records"][1]["passed"] is True, compact
         ledger = load_benchmark_run_ledger(Path(tmp) / "ledger.json")
         run = ledger["benchmarks"]["skillsbench@1.1"]["cases"]["sample-task"]["runs"][0]
-        assert run["first_success_round"] == 2, run
-        assert run["final_round"] == 2, run
-        assert run["final_round_reward"] == 1.0, run
-        assert run["best_reward_round"] == 2, run
-        assert run["best_round_reward"] == 1.0, run
-        assert run["best_round_is_final"] is True, run
-        assert run["loop_score_policy"] == "best_round_for_offline_controller_analysis", run
-        assert run["official_score_policy"] == "final_workspace_official_result", run
-        assert run["round_rewards"][1]["passed"] is True, run
+        assert run["round_reward_count"] == 0, run
+        assert run["round_success_observed"] is False, run
+        assert "round_rewards" not in run, run
+        assert "first_success_round" not in run, run
 
 
 def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> None:
@@ -14873,7 +14871,7 @@ if __name__ == "__main__":
     test_skillsbench_single_task_ids_replaces_default_task_id()
     test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr()
     test_skillsbench_compact_runs_update_ledger_pair()
-    test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()
+    test_skillsbench_repeat_same_mode_collapses_active_ledger_run()
     test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger()
     test_skillsbench_runner_failure_compact_closeout()
     test_skillsbench_runner_failure_case_event_timeline_is_compacted()
