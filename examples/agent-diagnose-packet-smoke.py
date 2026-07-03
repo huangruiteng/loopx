@@ -76,13 +76,34 @@ def assert_diagnose_markdown_separates_status_and_packet_goal_counts() -> None:
             "goal_count": 24,
             "goal_packet_count": 1,
             "run_count": 42,
-            "selected": {"todo_evidence": {}, "quota_signals": {}},
+            "selected": {
+                "todo_evidence": {},
+                "quota_signals": {
+                    "scheduler_hint": {
+                        "action": "run_now",
+                        "cadence_class": "active_work",
+                        "codex_app": {
+                            "apply": "update_rrule",
+                            "apply_needed": True,
+                            "recommended_rrule": "FREQ=MINUTELY;INTERVAL=3",
+                            "current_rrule": "FREQ=MINUTELY;INTERVAL=10",
+                            "no_spend_for_cadence_change": True,
+                        },
+                        "unchanged_poll": {
+                            "final_quota_replan_check_enabled": True,
+                        },
+                    }
+                },
+            },
             "goals": [{"goal_id": "selected-goal", "todo_evidence": {}}],
         }
     )
     assert "- status_goals: `24`" in markdown, markdown
     assert "- goal_packets: `1`" in markdown, markdown
     assert "- goals: `24`" not in markdown, markdown
+    assert "- scheduler_hint: action=run_now cadence=active_work" in markdown, markdown
+    assert "apply_needed=True" in markdown, markdown
+    assert "final_replan_check=True" in markdown, markdown
 
 
 def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding: bool) -> dict:
@@ -220,6 +241,10 @@ def main() -> int:
         assert selected["quota_signals"]["goal_frontier_projection"]["replan_required"] is False, (
             selected
         )
+        scheduler_hint = selected["quota_signals"]["scheduler_hint"]
+        assert scheduler_hint["schema_version"] == "diagnose_scheduler_hint_summary_v0", selected
+        assert "local_scheduler" not in str(scheduler_hint), scheduler_hint
+        assert scheduler_hint["codex_app"]["no_spend_for_cadence_change"] is True, scheduler_hint
         assert selected["agent_reasoning_checklist"], selected
 
         markdown = run_markdown("--registry", str(registry), "diagnose", "--goal-id", GOAL_ID)
@@ -229,6 +254,8 @@ def main() -> int:
         assert "goal_frontier_projection: replan_required=False" in markdown, markdown
         assert "current_agent_advancement=0" in markdown, markdown
         assert "unclaimed_advancement=1" in markdown, markdown
+        assert "scheduler_hint: action=" in markdown, markdown
+        assert "no_spend_for_cadence_change=True" in markdown, markdown
 
         gated_project = write_project(root, "gated-project")
         gated_goal_id = "diagnose-smoke-gated"
