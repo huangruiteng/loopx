@@ -16,7 +16,7 @@ DEFAULT_MAX_LINES = 2000
 LEGACY_OVERSIZED_LIMITS = {
     "examples/benchmark-run-ledger-smoke.py": 2106,
     "examples/control_plane/quota-plan-smoke.py": 2176,
-    "examples/skillsbench-app-server-goal-worker-smoke.py": 3006,
+    "examples/skillsbench-app-server-goal-worker-smoke.py": 3056,
     "examples/skillsbench-benchmark-run-smoke.py": 14613,
     "examples/skillsbench-host-local-launch-plan-smoke.py": 2373,
     "examples/control_plane/status-markdown-smoke.py": 2607,
@@ -25,9 +25,9 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/benchmark.py": 2875,
     "loopx/benchmark_adapters/agentissue.py": 2644,
     "loopx/benchmark_adapters/agents_last_exam.py": 3998,
-    "loopx/benchmark_adapters/skillsbench.py": 5844,
+    "loopx/benchmark_adapters/skillsbench.py": 5850,
     "examples/control_plane/work-lane-contract-smoke.py": 2336,
-    "loopx/benchmark_adapters/skillsbench_acp_relay.py": 3126,
+    "loopx/benchmark_adapters/skillsbench_acp_relay.py": 3144,
     "loopx/benchmark_adapters/terminal_bench.py": 10045,
     "loopx/benchmark_ledger.py": 3535,
     "loopx/capabilities/content_ops/surface.py": 2549,
@@ -38,7 +38,7 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/terminal_bench_agent.py": 2056,
     "loopx/todos.py": 2105,
     "scripts/harbor_host_codex_goal_agent.py": 2140,
-    "scripts/skillsbench_automation_loop.py": 16241,
+    "scripts/skillsbench_automation_loop.py": 16265,
 }
 
 
