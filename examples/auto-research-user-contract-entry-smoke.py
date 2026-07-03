@@ -57,6 +57,10 @@ def assert_contract(payload: dict[str, Any]) -> None:
 
     command_contract = payload["command_contract"]
     assert command_contract["canonical_invocation"] == 'loopx auto-research "<open question>"'
+    assert (
+        command_contract["one_click_start_invocation"]
+        == 'loopx auto-research start "<open question>" --execute'
+    )
     assert command_contract["user_required_inputs"] == ["open_question"], command_contract
     assert command_contract["max_action_plan_todos"] == 5, command_contract
     assert command_contract["auto_research_required_outputs"] == [
@@ -66,6 +70,19 @@ def assert_contract(payload: dict[str, Any]) -> None:
         "next_executable_step",
         "gate",
     ], command_contract
+
+    one_click_start = payload["one_click_start"]
+    assert (
+        one_click_start["command_template"]
+        == 'loopx auto-research start "<open question>" --execute'
+    ), one_click_start
+    assert one_click_start["command"].startswith("loopx auto-research start "), one_click_start
+    assert one_click_start["command"].endswith(" --execute"), one_click_start
+    assert one_click_start["preview_command"].startswith("loopx auto-research start "), one_click_start
+    assert one_click_start["starts"] == "visible_codex_tui_lanes", one_click_start
+    assert one_click_start["uses_generic_kernel"] is True, one_click_start
+    assert one_click_start["coordination_model"] == "decentralized_state_a2a", one_click_start
+    assert "agent_ids" in one_click_start["user_does_not_choose"], one_click_start
 
     brief = payload["research_brief"]
     assert set(brief) == {"read", "not_read", "claim_boundary"}, brief
@@ -144,12 +161,55 @@ def main() -> None:
         explicit_payload = json.loads(explicit_json)
         assert len(explicit_payload["action_plan"]) == 3, explicit_payload
 
+        start_json = run_cli(
+            temp_dir,
+            "--format",
+            "json",
+            "auto-research",
+            "start",
+            QUESTION,
+        )
+        start_payload = json.loads(start_json)
+        assert start_payload["ok"] is True, start_payload
+        assert start_payload["mode"] == "dry_run", start_payload
+        assert start_payload["execution_kind"] == "worker_loop_preview", start_payload
+        assert start_payload["contract_acceptance"]["accepted"] is True, start_payload
+        assert_contract(start_payload["user_contract"])
+        assert (
+            start_payload["commands"]["one_question_contract"]
+            == f"loopx auto-research '{QUESTION}'"
+        ), start_payload
+        assert (
+            start_payload["commands"]["one_question_start"]
+            == f"loopx auto-research start '{QUESTION}' --execute"
+        ), start_payload
+        assert_public_boundary(start_payload)
+
+        start_headless_json = run_cli(
+            temp_dir,
+            "--format",
+            "json",
+            "auto-research",
+            "start",
+            QUESTION,
+            "--execute",
+            "--headless",
+        )
+        start_headless_payload = json.loads(start_headless_json)
+        assert start_headless_payload["ok"] is True, start_headless_payload
+        assert start_headless_payload["execution_kind"] == "loopx_worker_loop", start_headless_payload
+        assert start_headless_payload["contract_acceptance"]["accepted"] is True, start_headless_payload
+        assert start_headless_payload["worker_loop"]["executed_turn_count"] >= 5, start_headless_payload
+        assert "auto-research start" in start_headless_payload["commands"]["one_question_start"], start_headless_payload
+        assert_public_boundary(start_headless_payload)
+
         markdown = run_cli(temp_dir, "auto-research", QUESTION)
         assert "# LoopX Auto Research" in markdown, markdown
         for required in [
             "## Research Brief",
             "## Action Plan",
             "## Evidence Refs",
+            "## One-Click Start",
             "## Next Executable Step",
             "## Gate",
         ]:

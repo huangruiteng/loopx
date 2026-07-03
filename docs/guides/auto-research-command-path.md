@@ -61,8 +61,19 @@ It renders the fixed contract the visible multi-agent run must satisfy:
 This keeps the user layer and the auto-research preset thin. The user supplies
 one open question; auto-research supplies a fixed output contract; the generic
 kernel owns the runner, real Codex TUI panes, pane-local A2A tick, and
-todo/evidence/status protocol. Use `demo-e2e` when the next step is to launch
-the multi-round visible demo.
+todo/evidence/status protocol.
+
+The contract also includes the next one-command launch surface:
+
+```bash
+loopx auto-research start "<open question>" --execute
+```
+
+Without `--execute`, `start` returns the same contract-anchored runner packet as
+a dry-run preview. With `--execute`, it creates an isolated research frontier
+and starts the visible Codex TUI lanes through the generic multi-agent kernel.
+The user still only supplies one open question; agent ids, pane-local tick
+commands, evidence schemas, and runner wiring stay inside the kernel.
 
 ## Start From A Clean Workspace
 
@@ -90,32 +101,29 @@ loopx doctor
 
 ## 0. Prove The Worker-Loop Positive Path
 
-The fastest honest positive check is the worker-loop E2E path. It seeds a fresh
-demo-local LoopX goal, lets role-compatible workers read quota/frontier state,
-complete todo-backed turns, append public rollout evidence, and report the
-measured gain. It is intentionally small and still does not claim that visible
-Codex lanes authored the research result unless a compact live evidence packet
-is supplied.
+The fastest honest positive check is the one-question start path. It seeds a
+fresh demo-local LoopX goal, lets role-compatible workers read quota/frontier
+state, opens visible Codex TUI panes by default, and keeps the first output tied
+to the fixed user contract. It is intentionally small and still does not claim
+that visible Codex lanes authored the research result unless a compact live
+evidence packet is supplied.
 
-To run the multi-round path and open visible panes through the normal
-auto-research surface, use the human-facing command:
+To run the normal human-facing path and open visible panes:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  auto-research demo-e2e \
-  --agent-id codex-side-bypass \
-  --reasoning-effort high \
+  auto-research start "How should we evaluate autonomous research agents?" \
   --execute \
   --replace-existing
 ```
 
-That command is the user-facing UX for a multi-round visible demo. It creates a
-fresh isolated demo goal by default, runs the LoopX worker-loop, launches the
-visible tmux lanes, and attaches to the session. Each tmux window should open as
-a real interactive Codex CLI TUI role, not as a JSON/status stream. Generic
-launcher internals stay inside LoopX; the operator does not need to know the
-module or implementation path.
+That command is the user-facing UX for auto-research. It creates a fresh
+isolated demo goal by default, launches the visible tmux lanes, and attaches to
+the session. Each tmux window should open as a real interactive Codex CLI TUI
+role, not as a JSON/status stream. Generic launcher internals stay inside
+LoopX; the operator does not need to know `demo-e2e`, agent ids, or
+implementation paths.
 
 Visible Codex TUI panes default to the caller's current workspace, not to a
 demo-local git worktree. The demo registry, runtime root, queue, and evidence
@@ -138,9 +146,7 @@ multi-round positive path:
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  auto-research demo-e2e \
-  --agent-id codex-side-bypass \
-  --reasoning-effort high
+  auto-research start "How should we evaluate autonomous research agents?"
 ```
 
 When the dry-run looks right, run the multi-round positive path:
@@ -148,9 +154,7 @@ When the dry-run looks right, run the multi-round positive path:
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  auto-research demo-e2e \
-  --agent-id codex-side-bypass \
-  --reasoning-effort high \
+  auto-research start "How should we evaluate autonomous research agents?" \
   --execute
 ```
 
@@ -160,9 +164,7 @@ make the headless path explicit:
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research demo-e2e \
-  --agent-id codex-side-bypass \
-  --reasoning-effort high \
+  --format json auto-research start "How should we evaluate autonomous research agents?" \
   --execute \
   --headless
 ```
