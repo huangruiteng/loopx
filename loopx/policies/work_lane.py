@@ -174,6 +174,19 @@ def build_work_lane_contract(
                 return due_monitor_contract(
                     reason_codes=["monitor_todo_only", "monitor_due"]
                 )
+            if next_action_requires_advancement:
+                return {
+                    "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+                    "lane": "advancement_task",
+                    "next_lane": "advancement_task",
+                    "obligation": "materialize_advancement_todo_or_blocker",
+                    "must_attempt_work": True,
+                    "reason_codes": ["monitor_todo_only", "next_action_requires_advancement"],
+                    "monitor_policy": "material_transition_only",
+                    "action": (
+                        "materialize the planning/self-repair advancement todo or write a concrete blocker"
+                    ),
+                }
             if first_schedule_gap:
                 return {
                     "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
@@ -194,19 +207,6 @@ def build_work_lane_contract(
                         "repair the selected continuous_monitor todo by adding cadence/"
                         "next_due_at, superseding it, or recording an explicit no-schedule "
                         "policy; do not silently collapse it into monitor_quiet_skip"
-                    ),
-                }
-            if next_action_requires_advancement:
-                return {
-                    "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
-                    "lane": "advancement_task",
-                    "next_lane": "advancement_task",
-                    "obligation": "materialize_advancement_todo_or_blocker",
-                    "must_attempt_work": True,
-                    "reason_codes": ["monitor_todo_only", "next_action_requires_advancement"],
-                    "monitor_policy": "material_transition_only",
-                    "action": (
-                        "materialize the planning/self-repair advancement todo or write a concrete blocker"
                     ),
                 }
             return {

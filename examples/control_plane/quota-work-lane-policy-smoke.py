@@ -94,6 +94,34 @@ def main() -> int:
         must_attempt_work=False,
     )
 
+    explicit_next_action = build_work_lane_contract(
+        progress_scope="agent_lane",
+        external_poll_signal=False,
+        todo_counts={"open": 1, "advancement": 0, "monitor": 1},
+        monitor_due_count=0,
+        due_monitor_items=[],
+        first_advancement=None,
+        due_monitor_preempts_advancement=False,
+        outcome_followthrough=None,
+        next_action_requires_advancement=True,
+        monitor_due_item_limit=1,
+        monitor_schedule_gap_count=1,
+        monitor_schedule_gap_items=[{"todo_id": "todo_monitor_without_schedule"}],
+    )
+    assert_contract(
+        "explicit-next-action-over-monitor-schedule-gap",
+        explicit_next_action,
+        lane="advancement_task",
+        next_lane="advancement_task",
+        obligation="materialize_advancement_todo_or_blocker",
+        must_attempt_work=True,
+        monitor_policy="material_transition_only",
+    )
+    assert explicit_next_action["reason_codes"] == [
+        "monitor_todo_only",
+        "next_action_requires_advancement",
+    ], explicit_next_action
+
     resume_blocked_by_monitor = build_work_lane_contract(
         progress_scope="agent_lane",
         external_poll_signal=False,

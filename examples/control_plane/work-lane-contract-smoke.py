@@ -498,19 +498,18 @@ def assert_monitor_only_with_planning_next_action_materializes_advancement() -> 
     lane = guard["work_lane_contract"]
     assert lane["schema_version"] == "work_lane_contract_v1", lane
     assert lane["lane"] == "advancement_task", lane
-    assert lane["next_lane"] == "continuous_monitor", lane
-    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["obligation"] == "materialize_advancement_todo_or_blocker", lane
     assert lane["must_attempt_work"] is True, lane
-    assert lane["reason_codes"] == ["monitor_todo_only", "monitor_schedule_metadata_gap"], lane
-    assert lane["monitor_policy"] == "repair_schedule_metadata_before_quiet_wait", lane
-    assert lane["monitor_schedule_gap_count"] == 2, lane
-    assert "continuous_monitor todo" in lane["action"], lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "next_action_requires_advancement"], lane
+    assert lane["monitor_policy"] == "material_transition_only", lane
+    assert "materialize the planning/self-repair advancement todo" in lane["action"], lane
     assert guard["execution_obligation"]["contract_obligation"] == lane["obligation"], guard
     assert guard["execution_obligation"]["must_attempt_work"] is True, guard
     markdown = render_quota_should_run_markdown(guard)
-    assert "work_lane_contract: lane=advancement_task next=continuous_monitor" in markdown, markdown
-    assert "obligation=repair_monitor_schedule_metadata" in markdown, markdown
-    assert "work_lane_reason_codes: monitor_todo_only,monitor_schedule_metadata_gap" in markdown, markdown
+    assert "work_lane_contract: lane=advancement_task next=advancement_task" in markdown, markdown
+    assert "obligation=materialize_advancement_todo_or_blocker" in markdown, markdown
+    assert "work_lane_reason_codes: monitor_todo_only,next_action_requires_advancement" in markdown, markdown
 
 
 def assert_monitor_only_with_adapter_next_action_materializes_advancement() -> None:
@@ -543,12 +542,11 @@ def assert_monitor_only_with_adapter_next_action_materializes_advancement() -> N
     )
     lane = guard["work_lane_contract"]
     assert lane["lane"] == "advancement_task", lane
-    assert lane["next_lane"] == "continuous_monitor", lane
-    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["obligation"] == "materialize_advancement_todo_or_blocker", lane
     assert lane["must_attempt_work"] is True, lane
-    assert lane["reason_codes"] == ["monitor_todo_only", "monitor_schedule_metadata_gap"], lane
-    assert lane["monitor_policy"] == "repair_schedule_metadata_before_quiet_wait", lane
-    assert lane["monitor_schedule_gap_count"] == 2, lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "next_action_requires_advancement"], lane
+    assert lane["monitor_policy"] == "material_transition_only", lane
     assert guard["heartbeat_recommendation"]["recommended_mode"] == "steering_audit_then_one_step", guard
     assert guard["execution_obligation"]["must_attempt_work"] is True, guard
     assert guard["execution_obligation"]["contract_obligation"] == lane["obligation"], guard
@@ -622,11 +620,10 @@ def assert_monitor_todo_with_executable_next_action_materializes_advancement() -
     assert guard["should_run"] is True, guard
     assert guard["effective_action"] == "normal_run", guard
     assert lane["lane"] == "advancement_task", lane
-    assert lane["next_lane"] == "continuous_monitor", lane
-    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
-    assert lane["reason_codes"] == ["monitor_todo_only", "monitor_schedule_metadata_gap"], lane
-    assert lane["monitor_policy"] == "repair_schedule_metadata_before_quiet_wait", lane
-    assert lane["monitor_schedule_gap_count"] == 1, lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["obligation"] == "materialize_advancement_todo_or_blocker", lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "next_action_requires_advancement"], lane
+    assert lane["monitor_policy"] == "material_transition_only", lane
     assert guard["execution_obligation"]["must_attempt_work"] is True, guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert first_items[0]["task_class"] == "continuous_monitor", guard

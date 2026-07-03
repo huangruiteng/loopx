@@ -437,16 +437,19 @@ def assert_executable_recommended_action_overrides_monitor_todo() -> None:
     assert guard["effective_action"] == "normal_run", guard
     lane = guard["work_lane_contract"]
     assert lane["lane"] == "advancement_task", lane
-    assert lane["next_lane"] == "continuous_monitor", lane
-    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
-    assert lane["reason_codes"] == ["monitor_todo_only", "monitor_schedule_metadata_gap"], lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["obligation"] == "materialize_advancement_todo_or_blocker", lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "next_action_requires_advancement"], lane
     assert guard["execution_obligation"]["must_attempt_work"] is True, guard
     packet = guard["protocol_action_packet"]
     assert "agent_action_required=true" in packet["summary"], packet
-    assert "agent_action=repair the selected continuous_monitor todo" in packet["summary"], packet
+    assert "Collect or aggregate additional same-protocol" in packet["summary"], packet
     contract = guard["interaction_contract"]
     assert contract["agent_channel"]["must_attempt"] is True, contract
-    assert "repair the selected continuous_monitor todo" in contract["agent_channel"]["primary_action"], contract
+    assert (
+        "Collect or aggregate additional same-protocol"
+        in contract["agent_channel"]["primary_action"]
+    ), contract
 
 
 def assert_goal_scoped_primary_action_ignores_foreign_backlog() -> None:
