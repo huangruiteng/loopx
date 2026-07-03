@@ -67,6 +67,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     CODEX_ACP_RUNTIME_DEPS_SETUP_CMD,
     CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD,
     DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC,
+    DEFAULT_LEDGER,
     DEFAULT_MAX_ROUNDS,
     DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
     DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
@@ -94,6 +95,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     PRODUCT_MODE_MIN_FORMAL_MAX_ROUNDS,
     PRODUCT_MODE_CASE_STATE_PATH,
     PRODUCT_MODE_CASE_STATE_SCHEMA_VERSION,
+    PUBLIC_BENCHMARK_RUN_LEDGER,
     RUNNER_CONFIG_PUBLIC_FILENAME,
     RUNNER_PREREQUISITES_PUBLIC_FILENAME,
     SkillsBenchProductModeNoLifecycleRequests,
@@ -163,6 +165,36 @@ def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 16, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+
+
+def test_skillsbench_default_ledger_is_private_unless_published() -> None:
+    args = parse_args([])
+    assert Path(args.ledger_path) == DEFAULT_LEDGER, args
+    assert Path(args.global_ledger_path) == DEFAULT_LEDGER, args
+    assert ".local" in Path(args.ledger_path).parts, args
+    assert "docs" not in Path(args.ledger_path).parts, args
+
+    publish_args = parse_args(["--publish-public-ledger"])
+    assert (
+        Path(publish_args.ledger_path) == PUBLIC_BENCHMARK_RUN_LEDGER
+    ), publish_args
+    assert (
+        Path(publish_args.global_ledger_path) == PUBLIC_BENCHMARK_RUN_LEDGER
+    ), publish_args
+
+    explicit_args = parse_args(
+        [
+            "--publish-public-ledger",
+            "--ledger-path",
+            "explicit-run-group-ledger.json",
+        ]
+    )
+    assert Path(explicit_args.ledger_path) == Path(
+        "explicit-run-group-ledger.json"
+    ), explicit_args
+    assert (
+        Path(explicit_args.global_ledger_path) == PUBLIC_BENCHMARK_RUN_LEDGER
+    ), explicit_args
 
 
 def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() -> None:
