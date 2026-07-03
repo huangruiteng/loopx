@@ -13,6 +13,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _pytest_facade_available() -> bool:
+    return (
+        (REPO_ROOT / "tests" / "test_smoke_suite.py").is_file()
+        and (REPO_ROOT / "tests" / "conftest.py").is_file()
+    )
+
+
 def _pytest_command() -> list[str] | None:
     uvx = shutil.which("uvx")
     if uvx:
@@ -25,6 +32,13 @@ def _pytest_command() -> list[str] | None:
 
 
 def main() -> int:
+    if not _pytest_facade_available():
+        print(
+            "pytest-smoke-suite-facade-smoke skipped: pytest facade tests are "
+            "not packaged in this checkout"
+        )
+        return 0
+
     command_prefix = _pytest_command()
     if command_prefix is None:
         print("pytest-smoke-suite-facade-smoke skipped: pytest or uvx is unavailable")
