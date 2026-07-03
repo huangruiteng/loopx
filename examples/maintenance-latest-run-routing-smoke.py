@@ -12,7 +12,17 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import build_quota_should_run  # noqa: E402
-from loopx.status import autonomous_backlog_candidates, goal_attention  # noqa: E402
+from loopx.projections.autonomous_candidates import (  # noqa: E402
+    autonomous_todo_candidates as build_autonomous_todo_candidates,
+)
+from loopx.status import (  # noqa: E402
+    TODO_TASK_CLASS_ADVANCEMENT,
+    autonomous_backlog_candidates,
+    goal_attention,
+    normalize_todo_text,
+    open_todo_items,
+    todo_item_is_actionable_open,
+)
 
 
 GOAL_ID = "loopx-meta"
@@ -70,6 +80,15 @@ def main() -> int:
     item["project_asset"]["quota"] = goal["quota"]
 
     backlog = autonomous_backlog_candidates([item])
+    direct_backlog = build_autonomous_todo_candidates(
+        [item],
+        task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        normalize_todo_text=normalize_todo_text,
+        limit=6,
+    )
+    assert direct_backlog == backlog, (direct_backlog, backlog)
     status_payload = {
         "ok": True,
         "registry": "./fixtures/registry.json",
