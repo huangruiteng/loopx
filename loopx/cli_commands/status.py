@@ -356,6 +356,39 @@ def _current_claims_for_agent(item: dict[str, Any], *, agent_id: str) -> list[st
     return claims
 
 
+def _selected_claim_for_agent(guard: dict[str, Any], *, agent_id: str) -> str | None:
+    next_action = guard.get("agent_lane_next_action")
+    if not isinstance(next_action, dict):
+        return None
+    todo_id = str(next_action.get("todo_id") or "").strip()
+    if not todo_id:
+        return None
+    lane_agent = normalize_todo_claimed_by(next_action.get("agent_id"))
+    if lane_agent and lane_agent != agent_id:
+        return None
+    if next_action.get("claim_required_before_work") is True:
+        return None
+    claimed_by = normalize_todo_claimed_by(next_action.get("claimed_by"))
+    selected_by = str(next_action.get("selected_by") or "").strip()
+    if claimed_by == agent_id or selected_by == "current_agent_claimed_todo":
+        return todo_id
+    return None
+
+
+def _current_claims_with_selected_lane(
+    item: dict[str, Any],
+    *,
+    guard: dict[str, Any],
+    agent_id: str,
+) -> list[str]:
+    claims = _current_claims_for_agent(item, agent_id=agent_id)
+    selected_claim = _selected_claim_for_agent(guard, agent_id=agent_id)
+    if not selected_claim:
+        return claims
+    claims = [claim for claim in claims if claim != selected_claim]
+    return [selected_claim, *claims]
+
+
 def _build_agent_member_projection(
     item: dict[str, Any],
     *,
@@ -372,7 +405,7 @@ def _build_agent_member_projection(
         limit=80,
     )
     worktree_policy, requires_independent_worktree = _profile_worktree_policy(profile)
-    claims = _current_claims_for_agent(item, agent_id=agent_id)
+    claims = _current_claims_with_selected_lane(item, guard=guard, agent_id=agent_id)
     member: dict[str, Any] = {
         "schema_version": "agent_member_v0",
         "agent_id": agent_id,

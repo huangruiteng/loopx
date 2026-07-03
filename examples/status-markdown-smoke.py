@@ -1490,6 +1490,124 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert "authority=advisory_projection" in packet["project_agent_handoff"], packet
 
 
+def assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list() -> None:
+    goal_id = "agent-lane-truncated-claims-fixture"
+    selected_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_selected_lane",
+        "index": 116,
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "advancement_task",
+        "action_kind": "rapid_self_merge_kernel_iteration",
+        "claimed_by": "codex-side-bypass",
+        "text": "[P0] Continue the selected side-agent lane.",
+    }
+    visible_stale_claims = [
+        {
+            "schema_version": "todo_item_v0",
+            "todo_id": f"todo_visible_stale_claim_{offset}",
+            "index": 56 + offset,
+            "role": "agent",
+            "status": "blocked",
+            "priority": "P0",
+            "task_class": "advancement_task",
+            "action_kind": "old_side_lane",
+            "claimed_by": "codex-side-bypass",
+            "text": "[P0] Old side-agent claim kept in the visible status window.",
+        }
+        for offset in range(10)
+    ]
+    primary_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_primary_visible",
+        "index": 22,
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "blocker",
+        "claimed_by": "codex-main-control",
+        "text": "[P0] Primary visible item.",
+    }
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "open_count": 105,
+        "done_count": 0,
+        "total_count": 105,
+        "items": [primary_todo, *visible_stale_claims, selected_todo],
+        "first_open_items": [primary_todo, *visible_stale_claims[:2]],
+        "first_executable_items": [selected_todo],
+    }
+    coordination = {
+        "primary_agent": "codex-main-control",
+        "registered_agents": ["codex-main-control", "codex-side-bypass"],
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "contract": {"ok": True, "summary": {"errors": 0, "warnings": 0, "checks": 0}},
+        "global_registry": {"available": False, "summary": {}},
+        "attention_queue": {
+            "available": True,
+            "item_count": 1,
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "primary_route_active",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": primary_todo["text"],
+                    "source": "registry",
+                    "coordination": coordination,
+                    "quota": {
+                        "state": "eligible",
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                    "agent_todos": agent_todos,
+                    "project_asset": {
+                        "owner": "codex-main-control",
+                        "gate": "none",
+                        "stop_condition": "stop on unsafe workspace or user gate",
+                        "next_action": primary_todo["text"],
+                        "agent_todos": project_asset_todo_summary(agent_todos, role="agent"),
+                    },
+                }
+            ],
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "registry_member": True,
+                    "status": "primary_route_active",
+                    "coordination": coordination,
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                }
+            ]
+        },
+    }
+    attach_agent_lane_next_actions(payload, agent_id="codex-side-bypass")
+    item = payload["attention_queue"]["items"][0]
+    assert item["agent_lane_next_action"]["todo_id"] == "todo_selected_lane", item
+    member = item["agent_member"]
+    assert member["current_claims"][0] == "todo_selected_lane", member
+    assert "todo_visible_stale_claim_0" in member["current_claims"], member
+    markdown = render_status_markdown(payload)
+    assert "claims=todo_selected_lane,todo_visible_stale_claim_0" in markdown, markdown
+
+
 def assert_status_contract_health_projection() -> None:
     projection = build_contract_health_projection(
         {
@@ -2457,6 +2575,7 @@ def main() -> int:
     assert_promotion_readiness_full_scan_fallback()
     assert_promotion_readiness_warning_in_quota_guard()
     assert_status_agent_lane_next_action_projection()
+    assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list()
     assert_status_agent_lane_frontier_hint_projection()
     print("status-markdown-smoke ok")
     return 0
