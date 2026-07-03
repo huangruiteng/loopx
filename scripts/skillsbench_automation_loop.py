@@ -159,6 +159,7 @@ DEFAULT_PRIVATE_LEDGER = (
     / "skillsbench-current-global-ledger/benchmark-run-ledger.json"
 )
 DEFAULT_LEDGER = DEFAULT_PRIVATE_LEDGER
+DEFAULT_CURRENT_AGGREGATE_FILENAME = "current-aggregate-status.v3.json"
 TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS = {
     "official_score_zero_case_failure",
     "official_verifier_solution_failure",
@@ -7936,6 +7937,16 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         getattr(args, "app_server_goal_prompt_style", "bridge-only")
         or "bridge-only"
     )
+    app_server_goal_followup_budget = (
+        max(0, int(getattr(args, "app_server_goal_followup_max", 0) or 0))
+        if is_app_server_goal_route
+        else 0
+    )
+    independent_goal_attempt_budget = (
+        max(1, int(getattr(args, "independent_goal_retries", 1) or 1))
+        if is_app_server_goal_route
+        else 1
+    )
     codex_api_egress_preflight = _public_codex_api_egress_contract(
         args,
         status=(
@@ -8038,6 +8049,29 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         route=route,
         max_wall_time_minutes=max(480, (int(args.outer_timeout_sec) + 59) // 60),
     )
+    app_server_goal_round_semantics = (
+        {
+            "schema_version": "skillsbench_app_server_goal_round_semantics_v0",
+            "route": "codex-app-server-goal-baseline",
+            "session_policy": (
+                "single_thread_with_blinded_followups"
+                if app_server_goal_followup_budget
+                else "single_initial_goal_turn"
+            ),
+            "benchflow_max_rounds_budget": args.max_rounds,
+            "max_rounds_budget_applies_to": (
+                "benchflow_outer_controller_budget_not_native_goal_attempts"
+            ),
+            "initial_goal_turn_budget": 1,
+            "same_thread_followup_budget": app_server_goal_followup_budget,
+            "independent_attempt_budget": independent_goal_attempt_budget,
+            "fresh_goal_thread_per_independent_attempt": True,
+            "official_reward_feedback_forwarded_to_worker": False,
+            "verifier_output_forwarded_to_worker": False,
+        }
+        if is_app_server_goal_route
+        else {}
+    )
     launch_plan = {
         "schema_version": "skillsbench_runner_launch_plan_v0",
         "benchmark_id": args.dataset,
@@ -8056,11 +8090,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "app_server_reasoning_effort": (
             app_server_reasoning_effort if is_app_server_goal_route else ""
         ),
-        "app_server_goal_followup_max": (
-            max(0, int(args.app_server_goal_followup_max or 0))
-            if is_app_server_goal_route
-            else 0
-        ),
+        "app_server_goal_followup_max": app_server_goal_followup_budget,
+        "app_server_goal_round_semantics": app_server_goal_round_semantics,
         "app_server_goal_prompt_style": (
             app_server_goal_prompt_style
             if is_app_server_goal_route
@@ -8071,10 +8102,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "max_rounds": args.max_rounds,
         "independent_goal_retry": {
             "schema_version": "skillsbench_independent_goal_retry_config_v0",
-            "enabled": bool(int(getattr(args, "independent_goal_retries", 1) or 1) > 1),
-            "attempt_budget": max(
-                1, int(getattr(args, "independent_goal_retries", 1) or 1)
-            ),
+            "enabled": bool(independent_goal_attempt_budget > 1),
+            "attempt_budget": independent_goal_attempt_budget,
             "route_supported": route == "codex-app-server-goal-baseline",
             "fresh_goal_thread_per_attempt": True,
             "stop_policy": (
@@ -8753,6 +8782,39 @@ def _app_server_goal_worker_observability(
     summary: dict[str, Any] = {
         "schema_version": "skillsbench_app_server_goal_worker_observability_v0",
         "route": "codex-app-server-goal-baseline",
+        "session_policy": str(
+            trace_summary.get("native_goal_worker_session_policy")
+            or (
+                "single_thread_with_blinded_followups"
+                if max(0, int(plan.get("app_server_goal_followup_max") or 0))
+                else "single_initial_goal_turn"
+            )
+        )[:120],
+        "max_rounds_budget_applies_to": str(
+            trace_summary.get("native_goal_worker_max_rounds_budget_applies_to")
+            or "benchflow_outer_controller_budget_not_native_goal_attempts"
+        )[:120],
+        "initial_goal_turn_budget": _int_field(
+            "native_goal_worker_initial_goal_turn_budget"
+        )
+        or 1,
+        "same_thread_followup_budget": max(
+            0, int(plan.get("app_server_goal_followup_max") or 0)
+        ),
+        "independent_attempt_budget": (
+            max(
+                1,
+                int(
+                    (
+                        plan.get("independent_goal_retry")
+                        if isinstance(plan.get("independent_goal_retry"), dict)
+                        else {}
+                    ).get("attempt_budget")
+                    or 1
+                ),
+            )
+        ),
+        "fresh_goal_thread_per_independent_attempt": True,
         "requested_reasoning_effort": requested_effort,
         "observed_reasoning_effort": observed_effort,
         "reasoning_effort_observation_status": effort_status,
@@ -9334,6 +9396,26 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
         "loopx_case_state_reads": 0,
         "loopx_case_state_writes": 0,
         "native_goal_worker_route": route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
+        "native_goal_worker_session_policy": (
+            "single_initial_goal_turn"
+            if route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+            else ""
+        ),
+        "native_goal_worker_max_rounds_budget_applies_to": (
+            "benchflow_outer_controller_budget_not_native_goal_attempts"
+            if route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+            else ""
+        ),
+        "native_goal_worker_initial_goal_turn_budget": (
+            1 if route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE else 0
+        ),
+        "native_goal_worker_same_thread_followup_budget": 0,
+        "native_goal_worker_independent_attempt_budget": (
+            1 if route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE else 0
+        ),
+        "native_goal_worker_fresh_goal_thread_per_independent_attempt": (
+            route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+        ),
         "native_goal_worker_connected": False,
         "native_goal_worker_connect_count": 0,
         "native_goal_worker_trace_dir_present": False,
@@ -9604,7 +9686,63 @@ def _merge_app_server_goal_worker_trace_summary(
             turn.get("raw_transcript_recorded") is True
             or turn.get("raw_assistant_message_recorded") is True
         )
-    trace["native_goal_worker_route"] = plan.get("route") == "codex-app-server-goal-baseline"
+    is_native_goal_route = plan.get("route") == "codex-app-server-goal-baseline"
+    round_semantics = (
+        plan.get("app_server_goal_round_semantics")
+        if isinstance(plan.get("app_server_goal_round_semantics"), dict)
+        else {}
+    )
+    independent_retry = (
+        plan.get("independent_goal_retry")
+        if isinstance(plan.get("independent_goal_retry"), dict)
+        else {}
+    )
+    requested_followup_budget = max(
+        0,
+        int(
+            round_semantics.get("same_thread_followup_budget")
+            if isinstance(round_semantics.get("same_thread_followup_budget"), int)
+            and not isinstance(round_semantics.get("same_thread_followup_budget"), bool)
+            else plan.get("app_server_goal_followup_max")
+            or 0
+        ),
+    )
+    independent_attempt_budget = max(
+        1,
+        int(
+            round_semantics.get("independent_attempt_budget")
+            if isinstance(round_semantics.get("independent_attempt_budget"), int)
+            and not isinstance(round_semantics.get("independent_attempt_budget"), bool)
+            else independent_retry.get("attempt_budget")
+            or 1
+        ),
+    )
+    trace["native_goal_worker_route"] = is_native_goal_route
+    trace["native_goal_worker_session_policy"] = str(
+        round_semantics.get("session_policy")
+        or (
+            "single_thread_with_blinded_followups"
+            if requested_followup_budget
+            else "single_initial_goal_turn"
+        )
+    )[:120] if is_native_goal_route else ""
+    trace["native_goal_worker_max_rounds_budget_applies_to"] = str(
+        round_semantics.get("max_rounds_budget_applies_to")
+        or "benchflow_outer_controller_budget_not_native_goal_attempts"
+    )[:120] if is_native_goal_route else ""
+    trace["native_goal_worker_initial_goal_turn_budget"] = (
+        1 if is_native_goal_route else 0
+    )
+    trace["native_goal_worker_same_thread_followup_budget"] = (
+        requested_followup_budget if is_native_goal_route else 0
+    )
+    trace["native_goal_worker_independent_attempt_budget"] = (
+        independent_attempt_budget if is_native_goal_route else 0
+    )
+    trace["native_goal_worker_fresh_goal_thread_per_independent_attempt"] = bool(
+        is_native_goal_route
+        and round_semantics.get("fresh_goal_thread_per_independent_attempt") is not False
+    )
     trace["native_goal_worker_trace_dir_present"] = trace_dir.exists()
     trace["native_goal_worker_trace_count"] = worker_trace_count
     trace["native_goal_worker_lifecycle_trace_count"] = lifecycle_trace_count
@@ -14334,7 +14472,11 @@ def update_ledger(
     *,
     compact_path: Path | None = None,
 ) -> dict[str, Any]:
-    from loopx.benchmark_ledger import update_benchmark_run_ledger
+    from loopx.benchmark_ledger import (
+        build_benchmark_run_ledger_current_aggregate,
+        load_benchmark_run_ledger,
+        update_benchmark_run_ledger,
+    )
 
     note_route = (
         "LoopX prompt-driven polling test"
@@ -14390,6 +14532,51 @@ def update_ledger(
             dry_run=dry_run,
         )
 
+    current_aggregate_update: dict[str, Any] = {
+        "schema_version": "skillsbench_current_aggregate_update_v0",
+        "requested": bool(args.update_current_aggregate),
+        "updated": False,
+    }
+    if args.update_current_aggregate:
+        current_aggregate_path = _expanded_path(args.current_aggregate_path)
+        current_aggregate_update.update(
+            {
+                "output_path": str(current_aggregate_path),
+                "raw_logs_read": False,
+                "raw_task_text_read": False,
+                "raw_trajectory_read": False,
+            }
+        )
+        if dry_run:
+            current_aggregate_update["status"] = "dry_run"
+        else:
+            ledger_for_aggregate_path = (
+                global_ledger_path
+                if not args.skip_global_ledger_sync
+                else primary_ledger_path
+            )
+            ledger_for_aggregate = load_benchmark_run_ledger(ledger_for_aggregate_path)
+            aggregate = build_benchmark_run_ledger_current_aggregate(
+                ledger_for_aggregate,
+                benchmark_id="skillsbench@1.1",
+                source_ledger_count=1,
+            )
+            current_aggregate_path.parent.mkdir(parents=True, exist_ok=True)
+            current_aggregate_path.write_text(
+                json.dumps(aggregate, ensure_ascii=False, indent=2, sort_keys=True)
+                + "\n",
+                encoding="utf-8",
+            )
+            current_aggregate_update.update(
+                {
+                    "status": "updated",
+                    "updated": True,
+                    "canonical_total": aggregate.get("canonical_total"),
+                    "canonical_covered": aggregate.get("canonical_covered"),
+                    "distribution": aggregate.get("distribution"),
+                }
+            )
+
     result = dict(primary_update)
     result["ledger_scope"] = _ledger_scope_label(primary_ledger_path, global_ledger_path)
     result["primary_ledger_update"] = primary_update
@@ -14397,6 +14584,7 @@ def update_ledger(
     result["global_ledger_sync_enabled"] = not bool(args.skip_global_ledger_sync)
     result["global_ledger_update"] = global_update
     result["global_ledger_inheritance"] = ledger_inheritance
+    result["current_aggregate_update"] = current_aggregate_update
     return result
 
 
@@ -14796,6 +14984,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Do not initialize a missing run-group/local ledger from --global-ledger-path.",
     )
+    parser.add_argument(
+        "--current-aggregate-path",
+        default=None,
+        help=(
+            "Path for the public-safe current aggregate projection refreshed "
+            "after --update-ledger. Defaults to current-aggregate-status.v3.json "
+            "next to --global-ledger-path."
+        ),
+    )
+    parser.add_argument(
+        "--skip-current-aggregate-update",
+        dest="update_current_aggregate",
+        action="store_false",
+        help="Do not refresh the current aggregate projection after writing the run ledger.",
+    )
+    parser.set_defaults(update_current_aggregate=True)
     parser.add_argument("--goal-id", default=DEFAULT_GOAL_ID)
     parser.add_argument("--registry", default=str(REPO_ROOT / ".loopx/registry.json"))
     parser.add_argument("--runtime-root", default=str(REPO_ROOT / ".local"))
@@ -15180,6 +15384,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         args.ledger_path = str(default_ledger)
     if args.global_ledger_path is None:
         args.global_ledger_path = str(default_ledger)
+    if args.current_aggregate_path is None:
+        args.current_aggregate_path = str(
+            Path(args.global_ledger_path).expanduser().parent
+            / DEFAULT_CURRENT_AGGREGATE_FILENAME
+        )
     args.apt_risk_fail_fast_defaulted = False
     args.verifier_bootstrap_fail_fast_defaulted = False
     args.bootstrap_light_fail_fast_defaulted = False

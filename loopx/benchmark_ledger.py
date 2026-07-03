@@ -35,6 +35,15 @@ LEDGER_LOGICAL_BACKFILL_FIELDS = (
     "round_reward_count",
     "round_success_observed",
     "max_rounds_budget",
+    "app_server_goal_round_semantics",
+    "native_goal_session_policy",
+    "max_rounds_budget_applies_to",
+    "native_goal_initial_turn_budget",
+    "native_goal_same_thread_followup_budget",
+    "native_goal_independent_attempt_budget",
+    "native_goal_fresh_thread_per_independent_attempt",
+    "native_goal_official_reward_feedback_forwarded_to_worker",
+    "native_goal_verifier_output_forwarded_to_worker",
     "official_feedback_blinded",
     "reward_feedback_forwarded",
     "task_setup_preflight",
@@ -347,6 +356,12 @@ def _compact_positive_int(value: Any) -> int | None:
     return None
 
 
+def _compact_nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
 def _compact_number(value: Any) -> float | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
@@ -605,6 +620,38 @@ def _compact_product_mode_lifecycle_contract(value: Any) -> dict[str, Any]:
     execution_style = _compact_text(value.get("execution_style"), limit=120)
     if execution_style:
         compact["execution_style"] = execution_style
+    return compact
+
+
+def _compact_app_server_goal_round_semantics(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "route",
+        "session_policy",
+        "max_rounds_budget_applies_to",
+    ):
+        text = _compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    for field in (
+        "benchflow_max_rounds_budget",
+        "initial_goal_turn_budget",
+        "same_thread_followup_budget",
+        "independent_attempt_budget",
+    ):
+        number = _compact_nonnegative_int(value.get(field))
+        if number is not None:
+            compact[field] = number
+    for field in (
+        "fresh_goal_thread_per_independent_attempt",
+        "official_reward_feedback_forwarded_to_worker",
+        "verifier_output_forwarded_to_worker",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
     return compact
 
 
@@ -1614,6 +1661,36 @@ def build_benchmark_run_ledger_entry(
         best_round_passed = round_reward_stats.get("best_round_passed")
     if not isinstance(best_round_is_final, bool):
         best_round_is_final = round_reward_stats.get("best_round_is_final")
+    native_goal_worker_contract = (
+        benchmark_run.get("native_goal_worker_contract")
+        if isinstance(benchmark_run.get("native_goal_worker_contract"), dict)
+        else {}
+    )
+    raw_app_server_goal_round_semantics = (
+        benchmark_run.get("app_server_goal_round_semantics")
+        if isinstance(benchmark_run.get("app_server_goal_round_semantics"), dict)
+        else {}
+    )
+    if not raw_app_server_goal_round_semantics and (
+        benchmark_run.get("route") == "codex-app-server-goal-baseline"
+        or native_goal_worker_contract.get("required") is True
+    ):
+        raw_app_server_goal_round_semantics = native_goal_worker_contract
+    app_server_goal_round_semantics = _compact_app_server_goal_round_semantics(
+        raw_app_server_goal_round_semantics
+    )
+    if (
+        not isinstance(max_rounds_budget, int)
+        or isinstance(max_rounds_budget, bool)
+    ) and (
+        isinstance(app_server_goal_round_semantics.get("benchflow_max_rounds_budget"), int)
+        and not isinstance(
+            app_server_goal_round_semantics.get("benchflow_max_rounds_budget"), bool
+        )
+    ):
+        max_rounds_budget = app_server_goal_round_semantics.get(
+            "benchflow_max_rounds_budget"
+        )
     runner_prerequisites = (
         benchmark_run.get("runner_prerequisites")
         if isinstance(benchmark_run.get("runner_prerequisites"), dict)
@@ -1696,6 +1773,59 @@ def build_benchmark_run_ledger_entry(
         "max_rounds_budget": max_rounds_budget
         if isinstance(max_rounds_budget, int) and not isinstance(max_rounds_budget, bool)
         else None,
+        "app_server_goal_round_semantics": app_server_goal_round_semantics or None,
+        "native_goal_session_policy": _compact_text(
+            app_server_goal_round_semantics.get("session_policy"), limit=120
+        ),
+        "max_rounds_budget_applies_to": _compact_text(
+            app_server_goal_round_semantics.get("max_rounds_budget_applies_to"),
+            limit=140,
+        ),
+        "native_goal_initial_turn_budget": _compact_nonnegative_int(
+            app_server_goal_round_semantics.get("initial_goal_turn_budget")
+        ),
+        "native_goal_same_thread_followup_budget": _compact_nonnegative_int(
+            app_server_goal_round_semantics.get("same_thread_followup_budget")
+        ),
+        "native_goal_independent_attempt_budget": _compact_nonnegative_int(
+            app_server_goal_round_semantics.get("independent_attempt_budget")
+        ),
+        "native_goal_fresh_thread_per_independent_attempt": (
+            app_server_goal_round_semantics.get(
+                "fresh_goal_thread_per_independent_attempt"
+            )
+            if isinstance(
+                app_server_goal_round_semantics.get(
+                    "fresh_goal_thread_per_independent_attempt"
+                ),
+                bool,
+            )
+            else None
+        ),
+        "native_goal_official_reward_feedback_forwarded_to_worker": (
+            app_server_goal_round_semantics.get(
+                "official_reward_feedback_forwarded_to_worker"
+            )
+            if isinstance(
+                app_server_goal_round_semantics.get(
+                    "official_reward_feedback_forwarded_to_worker"
+                ),
+                bool,
+            )
+            else None
+        ),
+        "native_goal_verifier_output_forwarded_to_worker": (
+            app_server_goal_round_semantics.get(
+                "verifier_output_forwarded_to_worker"
+            )
+            if isinstance(
+                app_server_goal_round_semantics.get(
+                    "verifier_output_forwarded_to_worker"
+                ),
+                bool,
+            )
+            else None
+        ),
         "official_feedback_blinded": round_reward_trace.get("official_feedback_blinded")
         if isinstance(round_reward_trace, dict)
         and isinstance(round_reward_trace.get("official_feedback_blinded"), bool)
@@ -3164,6 +3294,15 @@ def _current_aggregate_run_summary(run: dict[str, Any] | None) -> dict[str, Any]
         "round_reward_count",
         "round_success_observed",
         "max_rounds_budget",
+        "app_server_goal_round_semantics",
+        "native_goal_session_policy",
+        "max_rounds_budget_applies_to",
+        "native_goal_initial_turn_budget",
+        "native_goal_same_thread_followup_budget",
+        "native_goal_independent_attempt_budget",
+        "native_goal_fresh_thread_per_independent_attempt",
+        "native_goal_official_reward_feedback_forwarded_to_worker",
+        "native_goal_verifier_output_forwarded_to_worker",
         "official_feedback_blinded",
         "reward_feedback_forwarded",
         "failure_class",
@@ -3232,6 +3371,7 @@ def build_benchmark_run_ledger_current_aggregate(
     benchmark_id: str = "skillsbench@1.1",
     canonical_case_ids: list[str] | None = None,
     source_ledger_count: int = 1,
+    exclude_noncanonical_sanity_sources: bool = True,
 ) -> dict[str, Any]:
     """Build a current-case aggregate, preferring countable results over missing rows."""
 
@@ -3250,6 +3390,17 @@ def build_benchmark_run_ledger_current_aggregate(
             for case_id in canonical_case_ids
             if _compact_text(case_id, limit=160)
         ]
+        if exclude_noncanonical_sanity_sources:
+            canonical_ids = [
+                case_id
+                for case_id in canonical_ids
+                if not (
+                    isinstance(cases.get(case_id), dict)
+                    and _current_aggregate_case_is_noncanonical_sanity_source(
+                        cases[case_id]
+                    )
+                )
+            ]
     else:
         canonical_ids = sorted(
             case_id

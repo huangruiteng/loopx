@@ -218,6 +218,7 @@ def test_current_aggregate_prefers_countable_results() -> None:
                 "canonical-task-source-preflight",
                 "pddl-tpp-planning",
                 "reward-artifact-missing",
+                "hello-world",
                 "never-run-case",
             ],
         )
@@ -248,6 +249,7 @@ def test_current_aggregate_prefers_countable_results() -> None:
             "verifier_no_reward"
         )
         assert "hello-world" not in aggregate["case_best"], aggregate["case_best"]
+        assert "hello-world" not in aggregate["cases_by_bucket"]["setup_runner_infra"]
 
 
 def test_current_aggregate_default_inference_excludes_sanity_sources() -> None:

@@ -8621,6 +8621,97 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         ] is True, review
 
 
+def test_app_server_goal_round_semantics_survive_compact_and_ledger() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-rounds-") as tmp:
+        root = Path(tmp)
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "max_rounds_budget": 16,
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_trace_dir_present": True,
+            "native_goal_worker_public_trace_read": True,
+            "native_goal_worker_trace_count": 1,
+            "native_goal_worker_ok_count": 1,
+            "native_goal_worker_goal_get_count": 1,
+            "native_goal_worker_turn_start_count": 1,
+            "native_goal_worker_turn_completed_observed_count": 1,
+            "native_goal_worker_assistant_message_present_count": 1,
+            "native_goal_worker_session_policy": "single_thread_with_blinded_followups",
+            "native_goal_worker_max_rounds_budget_applies_to": (
+                "benchflow_outer_controller_budget_not_native_goal_attempts"
+            ),
+            "native_goal_worker_initial_goal_turn_budget": 1,
+            "native_goal_worker_same_thread_followup_budget": 2,
+            "native_goal_worker_independent_attempt_budget": 3,
+            "native_goal_worker_fresh_goal_thread_per_independent_attempt": True,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "result",
+                    reward=0.0,
+                    task_id="bike-rebalance",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        round_semantics = compact["app_server_goal_round_semantics"]
+        assert round_semantics["session_policy"] == (
+            "single_thread_with_blinded_followups"
+        ), compact
+        assert round_semantics["benchflow_max_rounds_budget"] == 16, compact
+        assert round_semantics["max_rounds_budget_applies_to"] == (
+            "benchflow_outer_controller_budget_not_native_goal_attempts"
+        ), compact
+        assert round_semantics["initial_goal_turn_budget"] == 1, compact
+        assert round_semantics["same_thread_followup_budget"] == 2, compact
+        assert round_semantics["independent_attempt_budget"] == 3, compact
+        assert (
+            round_semantics["fresh_goal_thread_per_independent_attempt"] is True
+        ), compact
+
+        ledger_path = root / "ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            compact_artifact_ref="runs/public/compact-benchmark-run.json",
+        )
+        ledger = load_benchmark_run_ledger(ledger_path)
+        [run] = ledger["benchmarks"]["skillsbench@1.1"]["cases"]["bike-rebalance"][
+            "runs"
+        ]
+        assert run["max_rounds_budget"] == 16, run
+        assert run["native_goal_session_policy"] == (
+            "single_thread_with_blinded_followups"
+        ), run
+        assert run["max_rounds_budget_applies_to"] == (
+            "benchflow_outer_controller_budget_not_native_goal_attempts"
+        ), run
+        assert run["native_goal_initial_turn_budget"] == 1, run
+        assert run["native_goal_same_thread_followup_budget"] == 2, run
+        assert run["native_goal_independent_attempt_budget"] == 3, run
+        assert run["native_goal_fresh_thread_per_independent_attempt"] is True, run
+        from loopx.benchmark_ledger import build_benchmark_run_ledger_current_aggregate
+
+        current_aggregate = build_benchmark_run_ledger_current_aggregate(
+            ledger,
+            benchmark_id="skillsbench@1.1",
+            canonical_case_ids=["bike-rebalance"],
+        )
+        current = current_aggregate["case_best"]["bike-rebalance"]
+        assert current["max_rounds_budget_applies_to"] == (
+            "benchflow_outer_controller_budget_not_native_goal_attempts"
+        ), current
+
+
 def test_skillsbench_product_mode_declared_done_is_compacted() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-product-done-") as tmp:
         root = Path(tmp)
@@ -11656,6 +11747,9 @@ def test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger() -> None
         assert update["global_ledger_inheritance"]["inherited"] is True, update
         assert update["primary_ledger_update"]["updated"] is True, update
         assert update["global_ledger_update"]["updated"] is True, update
+        aggregate_update = update["current_aggregate_update"]
+        assert aggregate_update["updated"] is True, aggregate_update
+        assert aggregate_update["canonical_covered"] == 2, aggregate_update
 
         local_ledger = load_benchmark_run_ledger(run_group_ledger)
         global_payload = load_benchmark_run_ledger(global_ledger)
@@ -11664,6 +11758,13 @@ def test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger() -> None
         assert "3d-scan-calc" in local_cases, local_cases
         assert "tictoc-unnecessary-abort-detection" in local_cases, local_cases
         assert "tictoc-unnecessary-abort-detection" in global_cases, global_cases
+        aggregate_path = global_ledger.parent / "current-aggregate-status.v3.json"
+        assert aggregate_path.exists(), aggregate_path
+        aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+        assert aggregate["distribution"]["pass"] == 2, aggregate
+        assert aggregate["case_best"]["tictoc-unnecessary-abort-detection"][
+            "bucket"
+        ] == "pass", aggregate
         assert ".local" not in json.dumps(update, sort_keys=True), update
 
 
@@ -14493,6 +14594,7 @@ if __name__ == "__main__":
     test_product_mode_declared_done_requires_case_state_depth()
     test_product_mode_declared_done_requires_solver_activity_after_driver_lifecycle()
     test_product_mode_declared_done_stops_after_two_no_open_todo_rounds()
+    test_app_server_goal_round_semantics_survive_compact_and_ledger()
     test_product_mode_closeout_without_done_stops_after_two_low_score_rounds()
     test_product_mode_declared_done_missing_reward_continues()
     test_product_mode_missing_lifecycle_prompts_exact_checkpoint()

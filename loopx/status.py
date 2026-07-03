@@ -993,6 +993,12 @@ def _benchmark_positive_int(value: Any) -> int:
     return 0
 
 
+def _benchmark_nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
 def build_skillsbench_post_run_debug_gate(
     run: dict[str, Any],
 ) -> dict[str, Any]:
@@ -1839,10 +1845,20 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
     schema = public_safe_compact_text(value.get("schema_version"), limit=100)
     if schema:
         compact["schema_version"] = schema
-    for field in ("required", "countable_baseline"):
+    for field in (
+        "required",
+        "countable_baseline",
+        "fresh_goal_thread_per_independent_attempt",
+        "official_reward_feedback_forwarded_to_worker",
+        "verifier_output_forwarded_to_worker",
+    ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
     for field in (
+        "benchflow_max_rounds_budget",
+        "initial_goal_turn_budget",
+        "same_thread_followup_budget",
+        "independent_attempt_budget",
         "trace_count",
         "ok_count",
         "goal_get_count",
@@ -1868,6 +1884,8 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
         if isinstance(field_value, int) and not isinstance(field_value, bool):
             compact[field] = field_value
     for field in (
+        "session_policy",
+        "max_rounds_budget_applies_to",
         "countability_source",
         "trace_status",
         "reasoning_effort",
@@ -1878,6 +1896,39 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
         text = public_safe_compact_text(value.get(field), limit=140)
         if text:
             compact[field] = text
+    return compact
+
+
+def _compact_app_server_goal_round_semantics(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+
+    compact: dict[str, Any] = {}
+    for field in (
+        "schema_version",
+        "route",
+        "session_policy",
+        "max_rounds_budget_applies_to",
+    ):
+        text = public_safe_compact_text(value.get(field), limit=140)
+        if text:
+            compact[field] = text
+    for field in (
+        "benchflow_max_rounds_budget",
+        "initial_goal_turn_budget",
+        "same_thread_followup_budget",
+        "independent_attempt_budget",
+    ):
+        number = _benchmark_nonnegative_int(value.get(field))
+        if number is not None:
+            compact[field] = number
+    for field in (
+        "fresh_goal_thread_per_independent_attempt",
+        "official_reward_feedback_forwarded_to_worker",
+        "verifier_output_forwarded_to_worker",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
     return compact
 
 
@@ -4291,6 +4342,11 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if native_goal_worker_contract:
         compact["native_goal_worker_contract"] = native_goal_worker_contract
+    app_server_goal_round_semantics = _compact_app_server_goal_round_semantics(
+        source.get("app_server_goal_round_semantics")
+    )
+    if app_server_goal_round_semantics:
+        compact["app_server_goal_round_semantics"] = app_server_goal_round_semantics
 
     case_event_timeline = _compact_benchmark_case_event_timeline(
         source.get("case_event_timeline")

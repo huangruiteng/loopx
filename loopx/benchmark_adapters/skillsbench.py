@@ -2540,6 +2540,25 @@ def _skillsbench_controller_trace_counters(
         "loopx_case_state_writes": count("loopx_case_state_writes"),
         "native_goal_worker_route": controller_trace.get("native_goal_worker_route")
         is True,
+        "native_goal_worker_session_policy": text_value(
+            "native_goal_worker_session_policy"
+        ),
+        "native_goal_worker_max_rounds_budget_applies_to": text_value(
+            "native_goal_worker_max_rounds_budget_applies_to"
+        ),
+        "native_goal_worker_initial_goal_turn_budget": count(
+            "native_goal_worker_initial_goal_turn_budget"
+        ),
+        "native_goal_worker_same_thread_followup_budget": count(
+            "native_goal_worker_same_thread_followup_budget"
+        ),
+        "native_goal_worker_independent_attempt_budget": count(
+            "native_goal_worker_independent_attempt_budget"
+        ),
+        "native_goal_worker_fresh_goal_thread_per_independent_attempt": controller_trace.get(
+            "native_goal_worker_fresh_goal_thread_per_independent_attempt"
+        )
+        is True,
         "native_goal_worker_connected": controller_trace.get(
             "native_goal_worker_connected"
         )
@@ -3743,6 +3762,40 @@ def build_skillsbench_benchflow_result_benchmark_run(
     native_goal_worker_contract = {
         "schema_version": "skillsbench_native_goal_worker_contract_v0",
         "required": controller_counters.get("native_goal_worker_route") is True,
+        "session_policy": (
+            controller_counters.get("native_goal_worker_session_policy")
+            or (
+                "single_initial_goal_turn"
+                if controller_counters.get("native_goal_worker_route") is True
+                else ""
+            )
+        ),
+        "max_rounds_budget_applies_to": (
+            controller_counters.get("native_goal_worker_max_rounds_budget_applies_to")
+            or (
+                "benchflow_outer_controller_budget_not_native_goal_attempts"
+                if controller_counters.get("native_goal_worker_route") is True
+                else ""
+            )
+        ),
+        "benchflow_max_rounds_budget": controller_counters.get("max_rounds_budget"),
+        "initial_goal_turn_budget": (
+            controller_counters.get("native_goal_worker_initial_goal_turn_budget")
+            or (1 if controller_counters.get("native_goal_worker_route") is True else 0)
+        ),
+        "same_thread_followup_budget": controller_counters.get(
+            "native_goal_worker_same_thread_followup_budget"
+        ),
+        "independent_attempt_budget": (
+            controller_counters.get("native_goal_worker_independent_attempt_budget")
+            or (1 if controller_counters.get("native_goal_worker_route") is True else 0)
+        ),
+        "fresh_goal_thread_per_independent_attempt": controller_counters.get(
+            "native_goal_worker_fresh_goal_thread_per_independent_attempt"
+        )
+        is True,
+        "official_reward_feedback_forwarded_to_worker": False,
+        "verifier_output_forwarded_to_worker": False,
         "countable_baseline": native_goal_worker_countable,
         "countability_source": (
             "remote_command_file_bridge_task_facing_success"
@@ -3813,6 +3866,45 @@ def build_skillsbench_benchflow_result_benchmark_run(
         )[:120],
         "failure_label": native_goal_worker_failure_label,
     }
+    app_server_goal_round_semantics: dict[str, Any] = {}
+    if route == "codex-app-server-goal-baseline":
+        same_thread_followup_budget = native_goal_worker_contract.get(
+            "same_thread_followup_budget"
+        )
+        if not isinstance(same_thread_followup_budget, int) or isinstance(
+            same_thread_followup_budget, bool
+        ):
+            same_thread_followup_budget = 0
+        independent_attempt_budget = native_goal_worker_contract.get(
+            "independent_attempt_budget"
+        )
+        if not isinstance(independent_attempt_budget, int) or isinstance(
+            independent_attempt_budget, bool
+        ):
+            independent_attempt_budget = 1
+        app_server_goal_round_semantics = {
+            "schema_version": "skillsbench_app_server_goal_round_semantics_v0",
+            "route": route,
+            "session_policy": native_goal_worker_contract.get("session_policy")
+            or "single_initial_goal_turn",
+            "benchflow_max_rounds_budget": controller_max_rounds_budget,
+            "max_rounds_budget_applies_to": native_goal_worker_contract.get(
+                "max_rounds_budget_applies_to"
+            )
+            or "benchflow_outer_controller_budget_not_native_goal_attempts",
+            "initial_goal_turn_budget": native_goal_worker_contract.get(
+                "initial_goal_turn_budget"
+            )
+            or 1,
+            "same_thread_followup_budget": max(0, same_thread_followup_budget),
+            "independent_attempt_budget": max(1, independent_attempt_budget),
+            "fresh_goal_thread_per_independent_attempt": native_goal_worker_contract.get(
+                "fresh_goal_thread_per_independent_attempt"
+            )
+            is True,
+            "official_reward_feedback_forwarded_to_worker": False,
+            "verifier_output_forwarded_to_worker": False,
+        }
 
     product_mode_lifecycle_required = _is_skillsbench_loopx_product_mode_treatment_route(
         route
@@ -5628,6 +5720,7 @@ def build_skillsbench_benchflow_result_benchmark_run(
         },
         "product_mode_lifecycle_contract": product_mode_lifecycle_contract,
         "native_goal_worker_contract": native_goal_worker_contract,
+        "app_server_goal_round_semantics": app_server_goal_round_semantics,
         "trials": [
             {
                 "task_id": task_id,

@@ -498,6 +498,15 @@ def register_benchmark_run_ledger_maintenance_commands(
         ),
     )
     benchmark_run_ledger_aggregate_parser.add_argument(
+        "--include-noncanonical-sanity-sources",
+        action="store_true",
+        help=(
+            "Keep explicit canonical ids whose ledger rows prove they came from "
+            "sanity/noncanonical task sources. Formal SkillsBench aggregates "
+            "leave this off so sanity fixtures do not enter the denominator."
+        ),
+    )
+    benchmark_run_ledger_aggregate_parser.add_argument(
         "--output-json",
         help="Optional output JSON path for the aggregate.",
     )
@@ -783,6 +792,9 @@ def handle_benchmark_run_ledger_maintenance_command(
                 benchmark_id=args.benchmark_id,
                 canonical_case_ids=canonical_case_ids or None,
                 source_ledger_count=source_ledger_count,
+                exclude_noncanonical_sanity_sources=not bool(
+                    args.include_noncanonical_sanity_sources
+                ),
             )
             output_json = Path(args.output_json).expanduser() if args.output_json else None
             if args.execute:
