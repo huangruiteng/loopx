@@ -137,6 +137,23 @@ def _seed_visible_demo_control_plane(
         spawn_allowed=True,
         execute=True,
     )
+    registry_payload = json.loads(control_registry.read_text(encoding="utf-8"))
+    for goal in registry_payload.get("goals", []):
+        if isinstance(goal, dict) and str(goal.get("id")) == goal_id:
+            goal["workspace_guard_policy"] = {
+                "schema_version": "loopx_workspace_guard_policy_v0",
+                "side_agent_independent_worktree_required": False,
+                "reason": (
+                    "auto_research_demo_local_queue uses a demo-owned workspace and "
+                    "writes only demo-local LoopX state/evidence; repository edits still "
+                    "require an explicit lane-owned execution boundary"
+                ),
+            }
+            break
+    control_registry.write_text(
+        json.dumps(registry_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
     seeded_todos: list[dict[str, object]] = []
     for lane in lanes:
@@ -186,6 +203,10 @@ def _seed_visible_demo_control_plane(
         "seeded_todos": seeded_todos,
         "state_route": "visible_lanes_use_LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT",
         "workspace_route": workspace_route,
+        "workspace_guard_policy": {
+            "side_agent_independent_worktree_required": False,
+            "repository_edits_still_require_lane_boundary": True,
+        },
         "absolute_paths_recorded": False,
         "private_artifacts_recorded": False,
     }

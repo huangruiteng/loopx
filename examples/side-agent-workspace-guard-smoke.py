@@ -189,6 +189,7 @@ def main() -> int:
         side = root / "side-worktree"
         foreign = root / "foreign"
         registry = root / "registry.global.json"
+        exempt_registry = root / "registry-exempt.global.json"
         init_repo(primary, side)
         registry.write_text(
             json.dumps(
@@ -203,10 +204,30 @@ def main() -> int:
             ),
             encoding="utf-8",
         )
+        exempt_policy = {
+            "schema_version": "loopx_workspace_guard_policy_v0",
+            "side_agent_independent_worktree_required": False,
+            "reason": "fixture-controlled local state boundary",
+        }
+        exempt_registry.write_text(
+            json.dumps(
+                {
+                    "goals": [
+                        {
+                            "id": GOAL_ID,
+                            "repo": str(primary),
+                            "workspace_guard_policy": exempt_policy,
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
         foreign.mkdir(parents=True)
         run_git(foreign, "init")
 
         payload = status_payload(primary, registry)
+        exempt_payload = status_payload(primary, exempt_registry)
 
         with pushd(primary):
             guarded = build_quota_should_run(
@@ -244,6 +265,18 @@ def main() -> int:
         assert primary_agent["normal_delivery_allowed"] is True, primary_agent
         assert "workspace_guard" not in primary_agent, primary_agent
         assert primary_agent["recommended_action"] == PRIMARY_TODO, primary_agent
+
+        exempt_payload["run_history"]["goals"][0]["workspace_guard_policy"] = exempt_policy
+        exempt_payload["attention_queue"]["items"][0]["workspace_guard_policy"] = exempt_policy
+        guard_exempt = build_quota_should_run(
+            exempt_payload,
+            goal_id=GOAL_ID,
+            agent_id="codex-side-bypass",
+        )
+        assert guard_exempt["normal_delivery_allowed"] is True, guard_exempt
+        assert guard_exempt["effective_action"] == "normal_run", guard_exempt
+        assert "workspace_guard" not in guard_exempt, guard_exempt
+        assert guard_exempt["recommended_action"] == SIDE_TODO, guard_exempt
 
         with pushd(side):
             side_ok = build_quota_should_run(

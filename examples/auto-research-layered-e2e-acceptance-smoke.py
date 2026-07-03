@@ -266,6 +266,10 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
         "summarize_evidence",
     ], control
     assert control["workspace_route"]["primary_workspace"] == "visible_codex_tui_workspace", control
+    assert control["workspace_guard_policy"] == {
+        "side_agent_independent_worktree_required": False,
+        "repository_edits_still_require_lane_boundary": True,
+    }, control
     assert_public_safe(payload)
 
 
