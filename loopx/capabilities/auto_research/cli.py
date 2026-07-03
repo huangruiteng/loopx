@@ -480,6 +480,12 @@ def register_auto_research_commands(
         ),
     )
     demo_e2e_parser.add_argument(
+        "--visible-live-evidence-wait-seconds",
+        type=float,
+        default=30.0,
+        help=argparse.SUPPRESS,
+    )
+    demo_e2e_parser.add_argument(
         "--keep-workspace",
         action="store_true",
         help="Keep the temporary demo workspace after execution. The output payload still redacts its absolute path.",
@@ -864,6 +870,7 @@ def handle_auto_research_command(
                 live_evidence_path=args.live_evidence,
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,
+                visible_live_evidence_wait_seconds=args.visible_live_evidence_wait_seconds,
             )
         else:
             raise ValueError(

@@ -38,6 +38,7 @@ def assert_public_safe(payload: Any) -> None:
 
 def main() -> int:
     sys.path.insert(0, str(REPO_ROOT))
+    from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e
     from loopx.capabilities.auto_research.human_view import render_auto_research_markdown
 
     launcher_source = (REPO_ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
@@ -134,6 +135,98 @@ def main() -> int:
     assert "- mode: `blocked`" in blocked_markdown
     assert "- blocker: `waiting_for_dev_evidence`" in blocked_markdown
     assert "Traceback" not in blocked_markdown
+
+    with tempfile.TemporaryDirectory(prefix="loopx-visible-live-evidence-smoke.") as tmp:
+        tmp_root = Path(tmp)
+        session_name = "loopx-visible-live-evidence-smoke"
+
+        def visible_launcher(
+            _supervisor: dict[str, object],
+            _visible_registry_path: Path,
+            visible_runtime_root_arg: str | None,
+            _default_workspace: Path,
+        ) -> dict[str, object]:
+            assert visible_runtime_root_arg
+            artifact_dir = (
+                Path(visible_runtime_root_arg)
+                / "visible-launcher-artifacts"
+                / session_name
+                / "evidence_runner"
+            )
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "live_codex_e2e_evidence.public.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "auto_research_live_codex_lane_e2e_evidence_v0",
+                        "source": "live_codex_lane_output",
+                        "goal_id": GOAL_ID,
+                        "agent_id": "codex-live-lane",
+                        "visible_lanes": {
+                            "launched": True,
+                            "accepted": True,
+                            "lane_count": 1,
+                        },
+                        "lane_evidence": {
+                            "append_status": "appended_to_loopx_state",
+                            "dev_metric": 4.0,
+                            "holdout_metric": 4.5,
+                            "evidence_event_count": 2,
+                            "evidence_source": "live_codex_lane_output",
+                            "lane_authored": True,
+                            "protected_scope_clean": True,
+                            "result_status": "supported",
+                        },
+                        "public_boundary": {
+                            "raw_logs_recorded": False,
+                            "private_artifacts_recorded": False,
+                            "absolute_paths_recorded": False,
+                            "credentials_recorded": False,
+                            "local_workspace_path_redacted": True,
+                        },
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "mode": "executed_visible_launch",
+                "launch_result": {
+                    "session_name": session_name,
+                    "visible_acceptance": {"accepted": True},
+                },
+                "boundary": {"reads_raw_transcripts": False},
+            }
+
+        visible_loaded_payload = run_auto_research_demo_e2e(
+            agent_id=AGENT_ID,
+            goal_id=GOAL_ID,
+            tracking_goal_id=None,
+            objective="Smoke visible live evidence auto-load.",
+            output_dir=str(tmp_root / "out"),
+            execute=True,
+            launch_visible=True,
+            keep_workspace=False,
+            registry_path=tmp_root / "registry.json",
+            runtime_root_arg=str(tmp_root / "runtime"),
+            session_name=session_name,
+            cli_bin="loopx",
+            codex_bin="codex",
+            tmux_bin="tmux",
+            reasoning_effort="medium",
+            live_evidence_path=None,
+            append_evidence=lambda _path: {"ok": True},
+            visible_launcher=visible_launcher,
+            visible_live_evidence_wait_seconds=0,
+        )
+        visible_loaded_proof = visible_loaded_payload["visible_worker_proof"]
+        visible_loaded_evidence = visible_loaded_payload["live_worker_evidence"]
+        assert visible_loaded_proof["lane_authored_evidence_loaded"] is True, visible_loaded_payload
+        assert visible_loaded_proof["evidence_source"] == "visible_launcher_artifact", visible_loaded_payload
+        assert visible_loaded_evidence["loaded"] is True, visible_loaded_payload
+        assert visible_loaded_evidence["agent_id"] == "codex-live-lane", visible_loaded_payload
+        assert visible_loaded_evidence["dev_metric"] == 4.0, visible_loaded_payload
+        assert visible_loaded_evidence["holdout_metric"] == 4.5, visible_loaded_payload
+        assert_public_safe(visible_loaded_payload)
 
     loop_markdown = render_auto_research_markdown(
         {
@@ -308,6 +401,8 @@ def main() -> int:
                         session_name,
                         "--codex-bin",
                         "fake-codex-tui",
+                        "--visible-live-evidence-wait-seconds",
+                        "0",
                     ],
                     cwd=workspace,
                     env=env,
