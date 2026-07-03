@@ -108,6 +108,30 @@ def _default_auto_research_start_workspace(goal_id: str) -> str:
     )
 
 
+def _start_wake_visible_after_launch(args: argparse.Namespace) -> bool:
+    """Return whether `auto-research start` should wake visible lanes after launch."""
+
+    return bool(
+        args.execute
+        and not args.headless
+        and getattr(args, "wake_visible_after_launch", True)
+    )
+
+
+def _start_attach_visible(args: argparse.Namespace, *, wake_visible_after_launch: bool) -> bool:
+    """Return whether `auto-research start` should attach to visible lanes."""
+
+    launch_visible = bool(args.execute and not args.headless)
+    return bool(
+        args.attach
+        or (
+            launch_visible
+            and not args.no_attach
+            and not wake_visible_after_launch
+        )
+    )
+
+
 def _resolve_demo_goal_surface(
     *,
     goal_id: str | None,
@@ -181,7 +205,20 @@ def register_auto_research_commands(
     start_parser.add_argument(
         "--wake-visible-after-launch",
         action="store_true",
-        help="After launching visible panes, broadcast the fixed decentralized A2A wake prompt.",
+        default=True,
+        help=(
+            "After launching visible panes, broadcast the fixed decentralized A2A wake prompt. "
+            "This is the default for visible --execute and is kept for explicitness."
+        ),
+    )
+    start_parser.add_argument(
+        "--no-wake-visible-after-launch",
+        dest="wake_visible_after_launch",
+        action="store_false",
+        help=(
+            "Disable the default fixed-prompt wake after visible launch. "
+            "Use this when you want to attach immediately and let lanes wait for manual input."
+        ),
     )
     start_parser.add_argument(
         "--no-attach",
@@ -191,7 +228,10 @@ def register_auto_research_commands(
     start_parser.add_argument(
         "--attach",
         action="store_true",
-        help="With visible --execute, attach to tmux after launch. This is the default unless --no-attach or --wake-visible-after-launch is set.",
+        help=(
+            "With visible --execute, attach to tmux after launch. "
+            "Default wake records evidence first; pass --no-wake-visible-after-launch to attach immediately."
+        ),
     )
     start_parser.add_argument(
         "--demo-run-id",
@@ -812,14 +852,13 @@ def handle_auto_research_command(
                 max_todos=args.max_todos,
             )
         elif args.auto_research_command == "start":
-            if args.headless and args.wake_visible_after_launch and args.execute:
-                raise ValueError("--headless cannot be combined with --wake-visible-after-launch")
             if args.no_attach and args.attach:
                 raise ValueError("--attach cannot be combined with --no-attach")
-            if args.wake_visible_after_launch and args.attach:
+            wake_visible_after_launch = _start_wake_visible_after_launch(args)
+            if wake_visible_after_launch and args.attach:
                 raise ValueError(
-                    "--wake-visible-after-launch cannot be combined with --attach; "
-                    "wake evidence must be recorded before operator takeover"
+                    "--attach cannot be combined with the default visible wake; "
+                    "pass --no-wake-visible-after-launch when operator takeover should happen first"
                 )
             goal_id, goal_surface_mode = _resolve_demo_goal_surface(
                 goal_id=args.goal_id,
@@ -838,13 +877,9 @@ def handle_auto_research_command(
             visible_launcher: Callable[[dict[str, object], Path, str | None, Path], dict[str, object]] | None = None
             visible_wake: Callable[[str, list[str]], dict[str, object]] | None = None
             launch_visible = bool(args.execute and not args.headless)
-            attach_visible = bool(
-                args.attach
-                or (
-                    launch_visible
-                    and not args.no_attach
-                    and not args.wake_visible_after_launch
-                )
+            attach_visible = _start_attach_visible(
+                args,
+                wake_visible_after_launch=wake_visible_after_launch,
             )
             if launch_visible:
                 def visible_launcher(
@@ -912,9 +947,7 @@ def handle_auto_research_command(
                 append_evidence=append_start_evidence,
                 visible_launcher=visible_launcher,
                 visible_wake=visible_wake,
-                wake_visible_after_launch=bool(
-                    args.execute and args.wake_visible_after_launch
-                ),
+                wake_visible_after_launch=wake_visible_after_launch,
             )
         elif args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):

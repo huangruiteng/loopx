@@ -333,7 +333,8 @@ def main() -> int:
         assert loaded_improvement["round_2_holdout_metric"] == 4.5, loaded_improvement
         assert loaded_improvement["best_metric_source"] == "round_2_holdout", loaded_improvement
         assert loaded_improvement["holdout_delta_over_dev"] == 0.5, loaded_improvement
-        assert "--wake-visible-after-launch" in visible_loaded_readiness["one_command"], visible_loaded_readiness
+        assert visible_loaded_readiness["one_command"].endswith("--execute"), visible_loaded_readiness
+        assert "--wake-visible-after-launch" not in visible_loaded_readiness["one_command"], visible_loaded_readiness
         visible_loaded_markdown = render_auto_research_markdown(visible_loaded_payload)
         assert "- visible_readiness_ready: `True`" in visible_loaded_markdown, visible_loaded_markdown
         assert "- visible_best_metric: `4.5`" in visible_loaded_markdown, visible_loaded_markdown
@@ -616,7 +617,8 @@ def main() -> int:
                 assert improvement["improved_over_baseline"] is True, improvement
                 assert improvement["holdout_delta_over_dev"] is None, improvement
                 assert "auto-research start" in visible_readiness["one_command"], visible_readiness
-                assert "--wake-visible-after-launch" in visible_readiness["one_command"], visible_readiness
+                assert visible_readiness["one_command"].endswith("--execute"), visible_readiness
+                assert "--wake-visible-after-launch" not in visible_readiness["one_command"], visible_readiness
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload

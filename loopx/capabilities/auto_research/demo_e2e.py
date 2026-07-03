@@ -957,8 +957,6 @@ def run_auto_research_demo_e2e(
                 cli_bin=cli_bin,
                 objective=objective,
                 execute=True,
-                no_attach=True,
-                wake_visible_after_launch=True,
             ),
             "one_command_worker_loop": _command_text(
                 cli_bin=cli_bin,

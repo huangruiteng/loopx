@@ -72,8 +72,16 @@ loopx auto-research start "<open question>" --execute
 Without `--execute`, `start` returns the same contract-anchored runner packet as
 a dry-run preview. With `--execute`, it creates an isolated research frontier
 and starts the visible Codex TUI lanes through the generic multi-agent kernel.
+The launcher then broadcasts the fixed pane-local A2A wake prompt so each pane
+runs its own `$LOOPX_PANE_A2A_TICK` against LoopX quota/frontier state and writes
+compact public evidence before the operator takes over. This is still
+decentralized A2A, not a workflow driver: the broadcaster does not select todos,
+run worker turns, or write LoopX state.
+
 The user still only supplies one open question; agent ids, pane-local tick
-commands, evidence schemas, and runner wiring stay inside the kernel.
+commands, evidence schemas, and runner wiring stay inside the kernel. Pass
+`--no-wake-visible-after-launch --attach` only when you want to skip the default
+evidence-first wake and immediately enter the tmux session.
 By default, visible panes open in a stable user-owned workspace under
 `~/loopx-auto-research/<run>/visible-workspace` so the first screen does not
 land in a generated temp directory. Pass `--workspace` to choose a different
@@ -123,11 +131,12 @@ loopx --registry "$LOOPX_REGISTRY" \
 ```
 
 That command is the user-facing UX for auto-research. It creates a fresh
-isolated demo goal by default, launches the visible tmux lanes, and attaches to
-the session. Each tmux window should open as a real interactive Codex CLI TUI
-role, not as a JSON/status stream. Generic launcher internals stay inside
-LoopX; the operator does not need to know `demo-e2e`, agent ids, or
-implementation paths.
+isolated demo goal by default, launches the visible tmux lanes, broadcasts the
+fixed decentralized A2A wake prompt, and records compact wake/tick evidence
+before user takeover. Each tmux window should open as a real interactive Codex
+CLI TUI role, not as a JSON/status stream. Generic launcher internals stay
+inside LoopX; the operator does not need to know `demo-e2e`, agent ids, wake
+flags, or implementation paths.
 
 Visible Codex TUI panes default to a stable
 `~/loopx-auto-research/<run>/visible-workspace`, not to a demo-local git
@@ -163,8 +172,20 @@ loopx --registry "$LOOPX_REGISTRY" \
   --execute
 ```
 
-That command opens and attaches to tmux by default. For JSON-only automation,
-make the headless path explicit:
+That command starts visible panes, wakes each pane with the fixed
+decentralized A2A prompt, and keeps the current shell available for the compact
+JSON result. To attach immediately instead, opt out of the default wake first:
+
+```bash
+loopx --registry "$LOOPX_REGISTRY" \
+  --runtime-root "$LOOPX_RUNTIME_ROOT" \
+  auto-research start "How should we evaluate autonomous research agents?" \
+  --execute \
+  --no-wake-visible-after-launch \
+  --attach
+```
+
+For JSON-only automation, make the headless path explicit:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -174,9 +195,9 @@ loopx --registry "$LOOPX_REGISTRY" \
   --headless
 ```
 
-To start tmux panes but stay in the current shell, use `--no-attach`. Visible
-panes default to the Codex CLI TUI. The pane-local `$LOOPX_PANE_LOOPX` wrapper
-is for human-readable LoopX commands inside that TUI, and
+Visible panes default to the Codex CLI TUI and the product start path stays in
+the current shell after recording wake evidence. The pane-local
+`$LOOPX_PANE_LOOPX` wrapper is for human-readable LoopX commands inside that TUI, and
 `$LOOPX_PANE_LOOPX_JSON` is reserved for redirected machine artifacts. Raw JSON
 should not be dumped into the first visible screen; future control surfaces can
 render those artifacts separately.
@@ -255,8 +276,10 @@ and zero raw logs, private artifacts, credentials, or local absolute paths in
 the payload. With this packet, the E2E result includes `live_worker_evidence`
 and flips `visible_worker_proof.lane_authored_evidence_loaded=true`.
 
-For an explicit visible demo command, `--launch-visible --attach` is still
-accepted, but it is equivalent to the default `--execute` behavior:
+For maintainer-level rehearsal, `demo-e2e --launch-visible --attach` is still
+accepted as a lower-level command. It is not the user-facing product path; the
+short `auto-research start "<open question>" --execute` command owns the
+default evidence-first wake behavior.
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \

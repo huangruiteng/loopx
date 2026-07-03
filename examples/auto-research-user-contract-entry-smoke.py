@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,8 @@ from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
 )
 from loopx.capabilities.auto_research.cli import (  # noqa: E402
     _default_auto_research_start_workspace,
+    _start_attach_visible,
+    _start_wake_visible_after_launch,
 )
 
 
@@ -139,9 +142,76 @@ def run_cli(temp_dir: Path, *args: str) -> str:
     return result.stdout
 
 
+def assert_start_wake_contract() -> None:
+    default_visible = Namespace(
+        execute=True,
+        headless=False,
+        wake_visible_after_launch=True,
+        attach=False,
+        no_attach=False,
+    )
+    assert _start_wake_visible_after_launch(default_visible) is True
+    assert (
+        _start_attach_visible(
+            default_visible,
+            wake_visible_after_launch=_start_wake_visible_after_launch(default_visible),
+        )
+        is False
+    )
+
+    manual_takeover = Namespace(
+        execute=True,
+        headless=False,
+        wake_visible_after_launch=False,
+        attach=False,
+        no_attach=False,
+    )
+    assert _start_wake_visible_after_launch(manual_takeover) is False
+    assert (
+        _start_attach_visible(
+            manual_takeover,
+            wake_visible_after_launch=_start_wake_visible_after_launch(manual_takeover),
+        )
+        is True
+    )
+
+    background_manual = Namespace(
+        execute=True,
+        headless=False,
+        wake_visible_after_launch=False,
+        attach=False,
+        no_attach=True,
+    )
+    assert _start_wake_visible_after_launch(background_manual) is False
+    assert (
+        _start_attach_visible(
+            background_manual,
+            wake_visible_after_launch=_start_wake_visible_after_launch(background_manual),
+        )
+        is False
+    )
+
+    headless = Namespace(
+        execute=True,
+        headless=True,
+        wake_visible_after_launch=True,
+        attach=False,
+        no_attach=False,
+    )
+    assert _start_wake_visible_after_launch(headless) is False
+    assert (
+        _start_attach_visible(
+            headless,
+            wake_visible_after_launch=_start_wake_visible_after_launch(headless),
+        )
+        is False
+    )
+
+
 def main() -> None:
     payload = build_auto_research_user_contract(QUESTION)
     assert_contract(payload)
+    assert_start_wake_contract()
     default_workspace = Path(
         _default_auto_research_start_workspace("loopx-auto-research-demo-smoke")
     )
