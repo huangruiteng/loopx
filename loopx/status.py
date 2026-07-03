@@ -76,6 +76,11 @@ from .projections.project_asset import (
     project_asset_todo_projection_gap,
     project_asset_user_todo_open_count,
 )
+from .projections.autonomous_candidates import (
+    autonomous_priority_label as _autonomous_priority_label,
+    autonomous_priority_rank as _autonomous_priority_rank,
+    autonomous_todo_candidates as _autonomous_todo_candidates,
+)
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
@@ -480,7 +485,6 @@ AUTONOMOUS_REPLAN_STALL_THRESHOLD = 2
 DEAD_MONITOR_REPEAT_THRESHOLD = 6
 AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD = 20
 AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK = 30
-AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.IGNORECASE)
 BACKLOG_HYGIENE_SECTION_HEADINGS = ("Next Action", "Operating Lessons")
 BACKLOG_HYGIENE_BULLET_PATTERN = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$")
 ISSUE_META_SURFACE_SECTION_HEADINGS = ("Issue Meta Surface", "Issue/PR Meta Surface")
@@ -7439,19 +7443,11 @@ def first_open_todo_item(todos: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def autonomous_priority_label(text: str) -> str | None:
-    match = AUTONOMOUS_PRIORITY_PATTERN.match(text)
-    if not match:
-        return None
-    return match.group(1).strip().upper()
+    return _autonomous_priority_label(text)
 
 
 def autonomous_priority_rank(priority: str | None) -> int:
-    if not priority:
-        return 50
-    match = re.match(r"P([0-4])", priority)
-    if not match:
-        return 50
-    return int(match.group(1))
+    return _autonomous_priority_rank(priority)
 
 
 def autonomous_todo_candidates(
@@ -7461,60 +7457,15 @@ def autonomous_todo_candidates(
     allowed_waiting_on: set[str] | None = None,
     limit: int = MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
 ) -> dict[str, Any] | None:
-    allowed_waiting_on = allowed_waiting_on or {"codex"}
-    candidates: list[dict[str, Any]] = []
-    for item in items:
-        if not isinstance(item, dict) or item.get("waiting_on") not in allowed_waiting_on:
-            continue
-        quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
-        if quota.get("state") != "eligible":
-            continue
-        todos = item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None
-        for todo in open_todo_items(todos):
-            if not todo_item_is_actionable_open(todo):
-                continue
-            todo_class = normalize_todo_task_class(
-                todo.get("task_class"),
-                text=str(todo.get("text") or ""),
-                action_kind=todo.get("action_kind"),
-            )
-            if todo_class != task_class:
-                continue
-            text = normalize_todo_text(str(todo.get("text") or ""), limit=240)
-            if not text:
-                continue
-            priority = autonomous_priority_label(text)
-            candidates.append(
-                {
-                    "goal_id": item.get("goal_id"),
-                    "status": item.get("status"),
-                    "waiting_on": item.get("waiting_on"),
-                    "quota_state": quota.get("state"),
-                    "priority": priority,
-                    "todo_index": todo.get("index"),
-                    "task_class": todo_class,
-                    "text": text,
-                    "source": "agent_todos",
-                }
-            )
-            action_kind = normalize_todo_action_kind(todo.get("action_kind"))
-            if action_kind:
-                candidates[-1]["action_kind"] = action_kind
-    if not candidates:
-        return None
-    candidates.sort(
-        key=lambda candidate: (
-            autonomous_priority_rank(candidate.get("priority") if isinstance(candidate.get("priority"), str) else None),
-            str(candidate.get("goal_id") or ""),
-            int(candidate.get("todo_index") or 0),
-        )
+    return _autonomous_todo_candidates(
+        items,
+        task_class=task_class,
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        normalize_todo_text=normalize_todo_text,
+        allowed_waiting_on=allowed_waiting_on,
+        limit=limit,
     )
-    return {
-        "source": "attention_queue.agent_todos",
-        "open_count": len(candidates),
-        "task_class": task_class,
-        "items": candidates[:limit],
-    }
 
 
 def autonomous_backlog_candidates(
