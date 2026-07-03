@@ -41,6 +41,11 @@ def write_run(run_dir: Path, goal_id: str, *, duplicate_kind: str) -> None:
         )
     elif duplicate_kind == "plain_duplicate":
         lines.append(dict(record))
+    elif duplicate_kind == "artifact_identity_collision":
+        lines = [
+            {**record, "classification": "benchmark_run_v0"},
+            {**record, "classification": "state_refreshed"},
+        ]
     else:
         raise ValueError(f"unknown duplicate_kind: {duplicate_kind}")
     (run_dir / "index.jsonl").write_text(
@@ -55,10 +60,15 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     project.mkdir(parents=True)
     reward_state_file = project / ".codex" / "goals" / "reward-overlay-goal" / "ACTIVE_GOAL_STATE.md"
     duplicate_state_file = project / ".codex" / "goals" / "plain-duplicate-goal" / "ACTIVE_GOAL_STATE.md"
+    artifact_collision_state_file = (
+        project / ".codex" / "goals" / "artifact-collision-goal" / "ACTIVE_GOAL_STATE.md"
+    )
     reward_state_file.parent.mkdir(parents=True)
     duplicate_state_file.parent.mkdir(parents=True)
+    artifact_collision_state_file.parent.mkdir(parents=True)
     reward_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
     duplicate_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
+    artifact_collision_state_file.write_text("---\nupdated_at: 2026-01-01T00:00:00+00:00\n---\n", encoding="utf-8")
     local_private_doc = project / ".local" / "managed_doc" / "PRIVATE_DRAFT.md"
     local_private_doc.parent.mkdir(parents=True)
     private_host = "private-docs.example.invalid"
@@ -66,6 +76,11 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
 
     write_run(runtime_root / "goals" / "reward-overlay-goal" / "runs", "reward-overlay-goal", duplicate_kind="reward_overlay")
     write_run(runtime_root / "goals" / "plain-duplicate-goal" / "runs", "plain-duplicate-goal", duplicate_kind="plain_duplicate")
+    write_run(
+        runtime_root / "goals" / "artifact-collision-goal" / "runs",
+        "artifact-collision-goal",
+        duplicate_kind="artifact_identity_collision",
+    )
 
     registry = root / "registry.json"
     registry.write_text(
@@ -85,6 +100,14 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "id": "plain-duplicate-goal",
                         "repo": str(project),
                         "state_file": ".codex/goals/plain-duplicate-goal/ACTIVE_GOAL_STATE.md",
+                        "domain": "smoke",
+                        "status": "connected-read-only",
+                        "adapter": {"kind": "smoke", "status": "connected-read-only"},
+                    },
+                    {
+                        "id": "artifact-collision-goal",
+                        "repo": str(project),
+                        "state_file": ".codex/goals/artifact-collision-goal/ACTIVE_GOAL_STATE.md",
                         "domain": "smoke",
                         "status": "connected-read-only",
                         "adapter": {"kind": "smoke", "status": "connected-read-only"},
@@ -114,9 +137,15 @@ def main() -> None:
         assert payload["ok"] is True, payload
         assert "reward-overlay-goal: reward overlay rows raw=2 unique=1 overlays=1" in checks, payload
         assert "reward-overlay-goal: duplicate index rows" not in warnings, payload
-        assert "plain-duplicate-goal: duplicate index rows raw=2 unique=1 unexpected=1" in warnings, payload
+        assert "plain-duplicate-goal: duplicate index rows raw=2 unique=1 unexpected=1 auto_repairable=1" in warnings, payload
         assert "loopx history --goal-id plain-duplicate-goal inspect-index-duplicates" in warnings, payload
         assert "loopx history --goal-id plain-duplicate-goal repair-index-duplicates" in warnings, payload
+        assert (
+            "artifact-collision-goal: duplicate index rows raw=2 unique=1 unexpected=1 "
+            "artifact_identity_collisions=1 artifact_collision_rows=1"
+        ) in warnings, payload
+        assert "artifact identity collisions need reviewed merge semantics" in warnings, payload
+        assert "loopx history --goal-id artifact-collision-goal repair-index-duplicates" not in warnings, payload
         assert not any(".local/managed_doc" in item for item in payload["errors"]), payload
 
     print("contract-reward-overlay-smoke ok")
