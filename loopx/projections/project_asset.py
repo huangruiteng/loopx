@@ -9,6 +9,7 @@ DEFAULT_MONITOR_SIGNAL_WAITING_ON = "monitor_signal"
 DEFAULT_MONITOR_DISPLAY_STOP_CONDITION = (
     "stop until a material monitor transition, regression, or concrete blocker appears"
 )
+PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION = "project_asset_todo_projection_gap_v0"
 LOCAL_PATH_SURFACE_PATTERN = re.compile(
     r"(?<!<)/(?:Users|Volumes|var/folders|tmp|private/tmp)/[^\s`'\"<>]+"
 )
@@ -190,3 +191,27 @@ def project_asset_next_safe_command(agent_command: str | None) -> str | None:
     if not agent_command:
         return None
     return project_asset_public_safe_compact_text(agent_command, limit=320)
+
+
+def project_asset_todo_projection_gap(
+    *,
+    user_todos: dict[str, Any] | None,
+    agent_todos: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    missing_roles: list[str] = []
+    if not isinstance(user_todos, dict):
+        missing_roles.append("user")
+    if not isinstance(agent_todos, dict):
+        missing_roles.append("agent")
+    if not missing_roles:
+        return None
+    return {
+        "schema_version": PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
+        "kind": "project_asset_todo_projection_gap",
+        "missing_roles": missing_roles,
+        "source": "active_state_todo_projection",
+        "recommended_action": (
+            "add parseable User Todo / Agent Todo sections or repair the active state_file "
+            "before treating this project_asset as first-screen complete"
+        ),
+    }

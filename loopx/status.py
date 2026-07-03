@@ -61,6 +61,7 @@ from .projections.task_graph import (
 )
 from .projections.project_asset import (
     LOCAL_PATH_SURFACE_PATTERN,
+    PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
     SECRET_LIKE_SURFACE_PATTERN,
     completed_todo_archive_warning,
     project_asset_gate,
@@ -71,6 +72,7 @@ from .projections.project_asset import (
     project_asset_summary_is_public_safe,
     project_asset_stop_condition,
     project_asset_support_mode,
+    project_asset_todo_projection_gap,
 )
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
@@ -255,7 +257,6 @@ STATUS_CONTRACT_SCHEMA_VERSION = 2
 MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
 STATUS_CONTRACT_SIGNAL_LIMIT = 3
-PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION = "project_asset_todo_projection_gap_v0"
 MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
 TODO_INDEX_SCHEMA_VERSION = "todo_index_v0"
 TODO_INDEX_ITEM_SCHEMA_VERSION = "todo_index_item_v0"
@@ -7463,30 +7464,6 @@ def project_asset_todo_summary(
         if todos.get(count_key) is not None:
             summary[count_key] = todos.get(count_key)
     return summary
-
-
-def project_asset_todo_projection_gap(
-    *,
-    user_todos: dict[str, Any] | None,
-    agent_todos: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    missing_roles: list[str] = []
-    if not isinstance(user_todos, dict):
-        missing_roles.append("user")
-    if not isinstance(agent_todos, dict):
-        missing_roles.append("agent")
-    if not missing_roles:
-        return None
-    return {
-        "schema_version": PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
-        "kind": "project_asset_todo_projection_gap",
-        "missing_roles": missing_roles,
-        "source": "active_state_todo_projection",
-        "recommended_action": (
-            "add parseable User Todo / Agent Todo sections or repair the active state_file "
-            "before treating this project_asset as first-screen complete"
-        ),
-    }
 
 
 def dependency_blocker_summary(
