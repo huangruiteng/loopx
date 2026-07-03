@@ -66,7 +66,6 @@ from .projections.project_asset import (
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     build_project_asset,
-    build_project_asset_todo_summary,
     completed_todo_archive_warning,
     project_asset_handoff_check_projection,
     project_asset_latest_validation,
@@ -157,17 +156,23 @@ from .projections.stale_latest_run import (
 from .projections.todo_summary import (
     active_state_todo_attention_item as _active_state_todo_attention_item_read_model,
     active_next_action_todo_ids,
+    attach_dependency_blockers as _attach_dependency_blockers_read_model,
     apply_resume_conditions,
     claimed_visibility_items,
     compact_active_next_action_todo_item,
     compact_todo_group,
     compact_todo_item,
+    dependency_blocker_summary as _dependency_blocker_summary_read_model,
+    first_open_todo_text as _first_open_todo_text_read_model,
     normalize_todo_text,
     normalized_pr_ref_parts,
+    open_todo_items as _open_todo_items_read_model,
     pr_merged_condition,
+    project_asset_todo_summary as _project_asset_todo_summary_read_model,
     rollout_event_pr_refs,
     structured_todo_item,
     sync_connected_attention_action_from_todos as _sync_connected_attention_action_from_todos_read_model,
+    todo_lane_items as _todo_lane_items_read_model,
     todo_item_expires_at,
     todo_item_is_actionable_open,
     todo_item_is_deferred,
@@ -6240,31 +6245,12 @@ def open_todo_items(
     text_limit: int = 220,
     source_keys: tuple[str, ...] = ("first_open_items", "items"),
 ) -> list[dict[str, Any]]:
-    if not isinstance(todos, dict):
-        return []
-    result: list[dict[str, Any]] = []
-    seen: set[tuple[Any, str]] = set()
-    for source_key in source_keys:
-        source_items = todos.get(source_key)
-        if not isinstance(source_items, list):
-            continue
-        for item in source_items:
-            if not isinstance(item, dict) or item.get("done"):
-                continue
-            text = normalize_todo_text(str(item.get("text") or ""), limit=text_limit)
-            if not text:
-                continue
-            key = (item.get("index"), text)
-            if key in seen:
-                continue
-            seen.add(key)
-            compact = compact_todo_item(item)
-            compact["done"] = False
-            compact["text"] = text
-            result.append(compact)
-            if len(result) >= limit:
-                return sorted(result, key=todo_projection_sort_key)
-    return sorted(result, key=todo_projection_sort_key)
+    return _open_todo_items_read_model(
+        todos,
+        limit=limit,
+        text_limit=text_limit,
+        source_keys=source_keys,
+    )
 
 
 def todo_lane_items(
@@ -6274,19 +6260,16 @@ def todo_lane_items(
     limit: int = MAX_STATUS_TODOS_PER_ROLE,
     text_limit: int = 220,
 ) -> list[dict[str, Any]]:
-    return open_todo_items(
+    return _todo_lane_items_read_model(
         todos,
+        lane,
         limit=limit,
         text_limit=text_limit,
-        source_keys=(lane,),
     )
 
 
 def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
-    items = open_todo_items(todos, limit=1)
-    if not items:
-        return None
-    return str(items[0].get("text") or "") or None
+    return _first_open_todo_text_read_model(todos, item_limit=220)
 
 
 def project_asset_todo_summary(
@@ -6294,17 +6277,12 @@ def project_asset_todo_summary(
     *,
     role: str | None = None,
 ) -> dict[str, Any] | None:
-    return build_project_asset_todo_summary(
+    return _project_asset_todo_summary_read_model(
         todos,
         role=role,
         item_limit=MAX_PROJECT_ASSET_TODO_ITEMS,
         deferred_item_limit=MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
         advancement_task_class=TODO_TASK_CLASS_ADVANCEMENT,
-        open_todo_items=open_todo_items,
-        compact_todo_item=compact_todo_item,
-        todo_lane_items=todo_lane_items,
-        todo_item_is_actionable_open=todo_item_is_actionable_open,
-        todo_item_task_class=todo_item_task_class,
     )
 
 
@@ -6314,50 +6292,15 @@ def dependency_blocker_summary(
     current_goal_id: str,
     limit: int = MAX_DEPENDENCY_BLOCKERS,
 ) -> dict[str, Any] | None:
-    blockers: list[dict[str, Any]] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        goal_id = str(item.get("goal_id") or "")
-        if not goal_id or goal_id == current_goal_id:
-            continue
-        user_todos = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else {}
-        for todo in user_todos.get("items") or []:
-            if not isinstance(todo, dict) or todo.get("done"):
-                continue
-            text = normalize_todo_text(str(todo.get("text") or ""), limit=220)
-            if not text:
-                continue
-            blockers.append(
-                {
-                    "goal_id": goal_id,
-                    "status": item.get("status"),
-                    "waiting_on": item.get("waiting_on"),
-                    "severity": item.get("severity"),
-                    "index": todo.get("index"),
-                    "text": text,
-                    "source": "user_todos",
-                }
-            )
-    if not blockers:
-        return None
-    return {
-        "source": "attention_queue.user_todos",
-        "open_count": len(blockers),
-        "items": blockers[:limit],
-    }
+    return _dependency_blocker_summary_read_model(
+        items,
+        current_goal_id=current_goal_id,
+        limit=limit,
+    )
 
 
 def attach_dependency_blockers(items: list[dict[str, Any]]) -> None:
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        goal_id = str(item.get("goal_id") or "")
-        if not goal_id:
-            continue
-        blockers = dependency_blocker_summary(items, current_goal_id=goal_id)
-        if blockers:
-            item["dependency_blockers"] = blockers
+    _attach_dependency_blockers_read_model(items, limit=MAX_DEPENDENCY_BLOCKERS)
 
 
 def first_open_todo_item(todos: dict[str, Any] | None) -> dict[str, Any] | None:

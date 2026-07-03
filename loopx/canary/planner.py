@@ -58,6 +58,10 @@ FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
             "reason": "checks todo metadata shape consumed by status and quota",
         },
         {
+            "command": "python3 examples/control_plane/todo-readmodel-boundary-smoke.py",
+            "reason": "guards status wrapper parity for todo read-model extraction",
+        },
+        {
             "command": "python3 examples/control_plane/active-state-structured-projection-smoke.py",
             "reason": "guards active-state structured projection from Markdown drift",
         },

@@ -39,6 +39,7 @@ from ..todo_projection import (
     todo_priority_rank as projection_todo_priority_rank,
     todo_projection_sort_key as projection_todo_projection_sort_key,
 )
+from .project_asset import build_project_asset_todo_summary
 
 
 MAX_STATUS_TODOS_PER_ROLE = 12
@@ -355,6 +356,150 @@ def claimed_visibility_items(items: list[dict[str, Any]], *, limit: int) -> list
 
 def todo_item_is_deferred(item: dict[str, Any]) -> bool:
     return projection_todo_item_is_deferred(item)
+
+
+def open_todo_items(
+    todos: dict[str, Any] | None,
+    *,
+    limit: int,
+    text_limit: int,
+    source_keys: tuple[str, ...] = ("first_open_items", "items"),
+) -> list[dict[str, Any]]:
+    if not isinstance(todos, dict):
+        return []
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[Any, str]] = set()
+    for source_key in source_keys:
+        source_items = todos.get(source_key)
+        if not isinstance(source_items, list):
+            continue
+        for item in source_items:
+            if not isinstance(item, dict) or item.get("done"):
+                continue
+            text = normalize_todo_text(str(item.get("text") or ""), limit=text_limit)
+            if not text:
+                continue
+            key = (item.get("index"), text)
+            if key in seen:
+                continue
+            seen.add(key)
+            compact = compact_todo_item(item)
+            compact["done"] = False
+            compact["text"] = text
+            result.append(compact)
+            if len(result) >= limit:
+                return sorted(result, key=todo_projection_sort_key)
+    return sorted(result, key=todo_projection_sort_key)
+
+
+def todo_lane_items(
+    todos: dict[str, Any] | None,
+    lane: str,
+    *,
+    limit: int,
+    text_limit: int,
+) -> list[dict[str, Any]]:
+    return open_todo_items(
+        todos,
+        limit=limit,
+        text_limit=text_limit,
+        source_keys=(lane,),
+    )
+
+
+def first_open_todo_text(
+    todos: dict[str, Any] | None,
+    *,
+    item_limit: int,
+) -> str | None:
+    items = open_todo_items(todos, limit=1, text_limit=item_limit)
+    if not items:
+        return None
+    return str(items[0].get("text") or "") or None
+
+
+def project_asset_todo_summary(
+    todos: dict[str, Any] | None,
+    *,
+    role: str | None = None,
+    item_limit: int,
+    deferred_item_limit: int,
+    advancement_task_class: str = TODO_TASK_CLASS_ADVANCEMENT,
+) -> dict[str, Any] | None:
+    return build_project_asset_todo_summary(
+        todos,
+        role=role,
+        item_limit=item_limit,
+        deferred_item_limit=deferred_item_limit,
+        advancement_task_class=advancement_task_class,
+        open_todo_items=lambda value, **kwargs: open_todo_items(
+            value,
+            limit=kwargs.get("limit", item_limit),
+            text_limit=kwargs.get("text_limit", 220),
+            source_keys=kwargs.get("source_keys", ("first_open_items", "items")),
+        ),
+        compact_todo_item=compact_todo_item,
+        todo_lane_items=lambda value, lane, **kwargs: todo_lane_items(
+            value,
+            lane,
+            limit=kwargs.get("limit", MAX_STATUS_TODOS_PER_ROLE),
+            text_limit=kwargs.get("text_limit", 220),
+        ),
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        todo_item_task_class=todo_item_task_class,
+    )
+
+
+def dependency_blocker_summary(
+    items: list[dict[str, Any]],
+    *,
+    current_goal_id: str,
+    limit: int,
+) -> dict[str, Any] | None:
+    blockers: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        goal_id = str(item.get("goal_id") or "")
+        if not goal_id or goal_id == current_goal_id:
+            continue
+        user_todos = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else {}
+        for todo in user_todos.get("items") or []:
+            if not isinstance(todo, dict) or todo.get("done"):
+                continue
+            text = normalize_todo_text(str(todo.get("text") or ""), limit=220)
+            if not text:
+                continue
+            blockers.append(
+                {
+                    "goal_id": goal_id,
+                    "status": item.get("status"),
+                    "waiting_on": item.get("waiting_on"),
+                    "severity": item.get("severity"),
+                    "index": todo.get("index"),
+                    "text": text,
+                    "source": "user_todos",
+                }
+            )
+    if not blockers:
+        return None
+    return {
+        "source": "attention_queue.user_todos",
+        "open_count": len(blockers),
+        "items": blockers[:limit],
+    }
+
+
+def attach_dependency_blockers(items: list[dict[str, Any]], *, limit: int) -> None:
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        goal_id = str(item.get("goal_id") or "")
+        if not goal_id:
+            continue
+        blockers = dependency_blocker_summary(items, current_goal_id=goal_id, limit=limit)
+        if blockers:
+            item["dependency_blockers"] = blockers
 
 
 def normalized_pr_ref_parts(value: Any) -> dict[str, Any] | None:
