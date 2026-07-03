@@ -2624,6 +2624,39 @@ def _skillsbench_controller_trace_counters(
         "native_goal_worker_context_only_followup_start_succeeded_count": count(
             "native_goal_worker_context_only_followup_start_succeeded_count"
         ),
+        "native_goal_worker_normal_followup_attempted_count": count(
+            "native_goal_worker_normal_followup_attempted_count"
+        ),
+        "native_goal_worker_normal_followup_succeeded_count": count(
+            "native_goal_worker_normal_followup_succeeded_count"
+        ),
+        "native_goal_worker_normal_followup_start_attempted_count": count(
+            "native_goal_worker_normal_followup_start_attempted_count"
+        ),
+        "native_goal_worker_normal_followup_start_succeeded_count": count(
+            "native_goal_worker_normal_followup_start_succeeded_count"
+        ),
+        "native_goal_worker_finish_guard_followup_attempted_count": count(
+            "native_goal_worker_finish_guard_followup_attempted_count"
+        ),
+        "native_goal_worker_finish_guard_followup_succeeded_count": count(
+            "native_goal_worker_finish_guard_followup_succeeded_count"
+        ),
+        "native_goal_worker_finish_guard_followup_start_attempted_count": count(
+            "native_goal_worker_finish_guard_followup_start_attempted_count"
+        ),
+        "native_goal_worker_finish_guard_followup_start_succeeded_count": count(
+            "native_goal_worker_finish_guard_followup_start_succeeded_count"
+        ),
+        "native_goal_worker_incomplete_turn_status_count": count(
+            "native_goal_worker_incomplete_turn_status_count"
+        ),
+        "native_goal_worker_incomplete_after_completion_event_count": count(
+            "native_goal_worker_incomplete_after_completion_event_count"
+        ),
+        "native_goal_worker_incomplete_turn_statuses": text_list(
+            "native_goal_worker_incomplete_turn_statuses"
+        ),
         "native_goal_worker_transport_reconnect_attempted_count": count(
             "native_goal_worker_transport_reconnect_attempted_count"
         ),
@@ -3829,6 +3862,40 @@ def build_skillsbench_benchflow_result_benchmark_run(
         "context_only_followup_start_succeeded_count": _controller_public_count(
             "native_goal_worker_context_only_followup_start_succeeded_count"
         ),
+        "normal_followup_attempted_count": _controller_public_count(
+            "native_goal_worker_normal_followup_attempted_count"
+        ),
+        "normal_followup_succeeded_count": _controller_public_count(
+            "native_goal_worker_normal_followup_succeeded_count"
+        ),
+        "normal_followup_start_attempted_count": _controller_public_count(
+            "native_goal_worker_normal_followup_start_attempted_count"
+        ),
+        "normal_followup_start_succeeded_count": _controller_public_count(
+            "native_goal_worker_normal_followup_start_succeeded_count"
+        ),
+        "finish_guard_followup_attempted_count": _controller_public_count(
+            "native_goal_worker_finish_guard_followup_attempted_count"
+        ),
+        "finish_guard_followup_succeeded_count": _controller_public_count(
+            "native_goal_worker_finish_guard_followup_succeeded_count"
+        ),
+        "finish_guard_followup_start_attempted_count": _controller_public_count(
+            "native_goal_worker_finish_guard_followup_start_attempted_count"
+        ),
+        "finish_guard_followup_start_succeeded_count": _controller_public_count(
+            "native_goal_worker_finish_guard_followup_start_succeeded_count"
+        ),
+        "incomplete_turn_status_count": _controller_public_count(
+            "native_goal_worker_incomplete_turn_status_count"
+        ),
+        "incomplete_after_completion_event_count": _controller_public_count(
+            "native_goal_worker_incomplete_after_completion_event_count"
+        ),
+        "incomplete_turn_statuses": controller_counters.get(
+            "native_goal_worker_incomplete_turn_statuses"
+        )
+        or [],
         "transport_reconnect_attempted_count": _controller_public_count(
             "native_goal_worker_transport_reconnect_attempted_count"
         ),
@@ -5449,6 +5516,56 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "native_goal_worker_context_only_followup_start_succeeded_count": (
                 controller_counters.get(
                     "native_goal_worker_context_only_followup_start_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_normal_followup_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_normal_followup_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_normal_followup_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_normal_followup_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_normal_followup_start_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_normal_followup_start_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_normal_followup_start_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_normal_followup_start_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_finish_guard_followup_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_finish_guard_followup_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_finish_guard_followup_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_finish_guard_followup_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_finish_guard_followup_start_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_finish_guard_followup_start_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_finish_guard_followup_start_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_finish_guard_followup_start_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_incomplete_turn_status_count": (
+                controller_counters.get(
+                    "native_goal_worker_incomplete_turn_status_count", 0
+                )
+            ),
+            "native_goal_worker_incomplete_after_completion_event_count": (
+                controller_counters.get(
+                    "native_goal_worker_incomplete_after_completion_event_count", 0
                 )
             ),
             "native_goal_worker_transport_reconnect_attempted_count": (
