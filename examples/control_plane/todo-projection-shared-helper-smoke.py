@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.quota import (  # noqa: E402
     _claimed_visibility_items as quota_claimed_visibility_items,
+    _todo_item_claimed_by_agent_or_unclaimed as quota_todo_item_claimed_by_agent_or_unclaimed,
     _todo_item_is_deferred as quota_todo_item_is_deferred,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
     _todo_task_class as quota_todo_task_class,
@@ -31,6 +32,7 @@ from loopx.todo_contract import (  # noqa: E402
 )
 from loopx.todo_projection import (  # noqa: E402
     todo_claimed_visibility_items as shared_claimed_visibility_items,
+    todo_item_claimed_by_agent_or_unclaimed as shared_todo_item_claimed_by_agent_or_unclaimed,
     todo_item_is_deferred as shared_todo_item_is_deferred,
     todo_projection_sort_key as shared_todo_projection_sort_key,
 )
@@ -241,6 +243,16 @@ def assert_claimed_visibility_parity() -> None:
             "todo_a2",
             "todo_b1",
         ], selected_three
+    claimed_by_current = items[0]
+    claimed_by_other = items[2]
+    unclaimed = items[3]
+    for predicate in (
+        shared_todo_item_claimed_by_agent_or_unclaimed,
+        quota_todo_item_claimed_by_agent_or_unclaimed,
+    ):
+        assert predicate(claimed_by_current, agent_id="agent-a") is True, claimed_by_current
+        assert predicate(claimed_by_other, agent_id="agent-a") is False, claimed_by_other
+        assert predicate(unclaimed, agent_id="agent-a") is True, unclaimed
 
 
 def assert_deferred_helper_parity() -> None:
