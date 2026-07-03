@@ -139,6 +139,7 @@ def build_slash_command_catalog(
                         "我的整体评价",
                     ],
                     "evidence_before_filling": "Read each selected PR body/files/diff/checks before filling the sections.",
+                    "section_length_hint": "Each section should usually be 100-200 Chinese characters with concrete evidence and judgment.",
                 },
                 "manual_gh_policy": (
                     "Use gh only after the CLI packet selects a PR; do not reconstruct "

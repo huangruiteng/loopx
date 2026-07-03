@@ -166,7 +166,7 @@ def main() -> int:
     template = first["review_template"]
     assert template["schema_version"] == "pr_review_five_block_template_v0", template
     assert "Empty scaffold only" in template["purpose"], template
-    assert "100-200 Chinese characters" in template["output_hint"], template
+    assert "each section is usually 100-200 Chinese characters" in template["output_hint"], template
     labels = [section["label"] for section in template["sections"]]
     assert labels == ["动机", "改动思路", "具体改动", "对主干的风险", "我的整体评价"], template
     for section in template["sections"]:
@@ -294,11 +294,11 @@ def main() -> int:
     assert "template below is intentionally blank" in markdown, markdown
     assert "- 推荐阅读顺序:" in markdown, markdown
     assert "- 五块模板（留空给 agentloop 填写）:" in markdown, markdown
-    assert "动机（40-80字）" in markdown, markdown
-    assert "改动思路（40-100字）" in markdown, markdown
-    assert "具体改动（60-140字）" in markdown, markdown
-    assert "对主干的风险（40-100字）" in markdown, markdown
-    assert "我的整体评价（30-80字）" in markdown, markdown
+    assert "动机（100-200字）" in markdown, markdown
+    assert "改动思路（100-200字）" in markdown, markdown
+    assert "具体改动（100-200字）" in markdown, markdown
+    assert "对主干的风险（100-200字）" in markdown, markdown
+    assert "我的整体评价（100-200字）" in markdown, markdown
     assert "main regression risk:" not in markdown, markdown
     assert "## Combined Review Sequence" in markdown, markdown
     assert "PR #773" in markdown, markdown

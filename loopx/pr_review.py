@@ -573,28 +573,28 @@ def _review_template(item: dict[str, Any]) -> dict[str, Any]:
     sections = [
         _section(
             "动机",
-            "40-80字",
-            "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题。",
+            "100-200字",
+            "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题；说明触发背景和价值，不要只复述标题。",
         ),
         _section(
             "改动思路",
-            "40-100字",
-            "读关键 diff 后填写：作者采用什么路线解决问题，不要只复述文件名。",
+            "100-200字",
+            "读关键 diff 后填写：作者采用什么路线解决问题，关键设计取舍是什么，不要只复述文件名。",
         ),
         _section(
             "具体改动",
-            "60-140字",
-            "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试，只保留决策相关细节。",
+            "100-200字",
+            "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试；保留能支撑 review 决策的细节。",
         ),
         _section(
             "对主干的风险",
-            "40-100字",
-            "读 diff 和 checks 后填写：合入 main 可能破坏什么，哪些验证能覆盖。",
+            "100-200字",
+            "读 diff、checks 和 main_regression_analysis 后填写：合入 main 可能破坏什么，哪些验证已覆盖，哪些残余风险还需要关注。",
         ),
         _section(
             "我的整体评价",
-            "30-80字",
-            "读完整 PR 后填写：approve / request changes / defer / merge after checks，并给一句理由。",
+            "100-200字",
+            "读完整 PR 后填写：approve / request changes / defer / merge after checks；给出结论、理由和必要的后续条件。",
         ),
     ]
     return {
@@ -602,7 +602,7 @@ def _review_template(item: dict[str, Any]) -> dict[str, Any]:
         "purpose": "Empty scaffold only; agentloop fills it after reading PR body and diff.",
         "sections": sections,
         "review_order": _review_order(key_files),
-        "output_hint": "Keep each PR concise; the filled five-block review is usually 100-200 Chinese characters total for small PRs and longer only when risk demands it.",
+        "output_hint": "Write each of the five sections with concrete evidence and judgment; each section is usually 100-200 Chinese characters, shorter only for genuinely tiny PRs and longer when risk demands it.",
     }
 
 

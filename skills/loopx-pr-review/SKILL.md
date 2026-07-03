@@ -103,11 +103,14 @@ For each reviewed PR, use exactly these five headings:
 4. `对主干的风险`
 5. `我的整体评价`
 
-Use the packet's blank `review_template` only as structure and word-count hint.
-Do not copy fake/example content into the sections. Fill the content after
-reading PR body, files, checks, and diff. Small PRs usually fit in 100-200
-Chinese characters total; use more only when risk or diff complexity requires
-it.
+Use the packet's blank `review_template` as the required structure and minimum
+detail signal, not as fake/example content. Fill each section only after reading
+PR body, files, checks, and diff. Each of the five sections should usually be
+100-200 Chinese characters, with concrete evidence and judgment; go shorter
+only for genuinely tiny PRs and longer when risk or diff complexity requires it.
+Avoid title-only summaries such as "improves docs" or "low risk"; explain the
+background, implementation route, reviewer-relevant changes, main-branch risk,
+and final recommendation.
 
 ## Failure And Fallback
 

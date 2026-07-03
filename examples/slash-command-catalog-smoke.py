@@ -66,6 +66,7 @@ def main() -> int:
         "对主干的风险",
         "我的整体评价",
     ], final_contract
+    assert "100-200 Chinese characters" in final_contract["section_length_hint"], final_contract
     assert "do not reconstruct" in pr_review["agent_contract"]["manual_gh_policy"], pr_review
     assert "summary-only projection" in pr_review["agent_contract"]["json_projection_policy"], pr_review
     onboarding = payload["onboarding"]

@@ -149,37 +149,37 @@ absolute paths, private source bodies, or hidden CI artifacts.
         "sections": [
           {
             "label": "动机",
-            "word_hint": "40-80字",
+            "word_hint": "100-200字",
             "content": "",
-            "agent_instruction": "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题。"
+            "agent_instruction": "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题；说明触发背景和价值，不要只复述标题。"
           },
           {
             "label": "改动思路",
-            "word_hint": "40-100字",
+            "word_hint": "100-200字",
             "content": "",
-            "agent_instruction": "读关键 diff 后填写：作者采用什么路线解决问题，不要只复述文件名。"
+            "agent_instruction": "读关键 diff 后填写：作者采用什么路线解决问题，关键设计取舍是什么，不要只复述文件名。"
           },
           {
             "label": "具体改动",
-            "word_hint": "60-140字",
+            "word_hint": "100-200字",
             "content": "",
-            "agent_instruction": "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试，只保留决策相关细节。"
+            "agent_instruction": "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试；保留能支撑 review 决策的细节。"
           },
           {
             "label": "对主干的风险",
-            "word_hint": "40-100字",
+            "word_hint": "100-200字",
             "content": "",
-            "agent_instruction": "读 diff 和 checks 后填写：合入 main 可能破坏什么，哪些验证能覆盖。"
+            "agent_instruction": "读 diff、checks 和 main_regression_analysis 后填写：合入 main 可能破坏什么，哪些验证已覆盖，哪些残余风险还需要关注。"
           },
           {
             "label": "我的整体评价",
-            "word_hint": "30-80字",
+            "word_hint": "100-200字",
             "content": "",
-            "agent_instruction": "读完整 PR 后填写：approve / request changes / defer / merge after checks，并给一句理由。"
+            "agent_instruction": "读完整 PR 后填写：approve / request changes / defer / merge after checks；给出结论、理由和必要的后续条件。"
           }
         ],
         "review_order": ["docs/guides/newcomer-command-path.md", "docs/README.md"],
-        "output_hint": "Keep each PR concise; the filled five-block review is usually 100-200 Chinese characters total for small PRs and longer only when risk demands it."
+        "output_hint": "Write each of the five sections with concrete evidence and judgment; each section is usually 100-200 Chinese characters, shorter only for genuinely tiny PRs and longer when risk demands it."
       },
       "motivation": "Adds a newcomer command path...",
       "scale": {"changed_files": 3, "additions": 90, "deletions": 4},
@@ -256,6 +256,8 @@ The packet should let a reviewer move through PRs in order:
    focused validation.
 5. Let agentloop fill the blank five-block template:
    `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.
+   Each section should usually be 100-200 Chinese characters and include
+   concrete evidence and judgment after reading the selected PR.
 6. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
    copied as the final risk judgement.
 7. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
@@ -296,6 +298,9 @@ A first implementation is acceptable when:
   per-PR deep-read commands after the CLI packet selects a PR;
 - each PR includes `review_template.sections` for `动机`, `改动思路`,
   `具体改动`, `对主干的风险`, and `我的整体评价`;
+- each review template section carries a `100-200字` hint so the final chat
+  review explains evidence and judgment instead of collapsing the whole PR into
+  a single short paragraph;
 - template sections must leave `content` empty so agentloop reads the real PR
   before writing the review;
 - `metadata_risk_hint` must be repository-generic and must not special-case
