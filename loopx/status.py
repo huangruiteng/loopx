@@ -130,6 +130,10 @@ from .projections.lifecycle import (
 from .projections.session_runtime import (
     compact_session_runtime_projection_from_run as _compact_session_runtime_projection_from_run_read_model,
     compact_session_runtime_readonly_projection as _compact_session_runtime_readonly_projection_read_model,
+    attach_session_runtime_projection as _attach_session_runtime_projection_read_model,
+    session_runtime_projection_attention as _session_runtime_projection_attention_read_model,
+    session_runtime_status_label as _session_runtime_status_label_read_model,
+    session_runtime_status_waiting_on as _session_runtime_status_waiting_on_read_model,
 )
 from .projections.subagent_activity import (
     MAX_SUBAGENT_ACTIVITY_ITEMS,
@@ -7706,29 +7710,22 @@ def legacy_runtime_goal_attention(
 
 
 def session_runtime_status_waiting_on(value: Any, *, monitor_only: bool = False) -> str:
-    waiting_on = str(value or "").strip().lower()
-    if waiting_on in {"agent", "codex"}:
-        return "codex"
-    if waiting_on in {"controller", "human", "operator", "owner", "user", "user_or_controller"}:
-        return "user_or_controller"
-    if waiting_on in {"runtime", "external_evidence"}:
-        return "external_evidence"
-    if waiting_on in {"none", "monitor", MONITOR_SIGNAL_WAITING_ON} or monitor_only:
-        return MONITOR_SIGNAL_WAITING_ON
-    return "codex"
+    return _session_runtime_status_waiting_on_read_model(
+        value,
+        monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
+        monitor_only=monitor_only,
+    )
 
 
 def session_runtime_status_label(projection: dict[str, Any]) -> str:
-    work_lane = projection.get("work_lane_contract") if isinstance(projection.get("work_lane_contract"), dict) else {}
-    lane = public_safe_compact_text(work_lane.get("lane"), limit=80) or "projection"
-    return f"session_runtime_{lane}"
+    return _session_runtime_status_label_read_model(
+        projection,
+        public_safe_compact_text=public_safe_compact_text,
+    )
 
 
 def attach_session_runtime_projection(item: dict[str, Any], projection: dict[str, Any]) -> None:
-    item["session_runtime_projection"] = projection
-    project_asset = item.get("project_asset")
-    if isinstance(project_asset, dict):
-        project_asset["session_runtime_projection"] = projection
+    _attach_session_runtime_projection_read_model(item, projection)
 
 
 def session_runtime_projection_attention(
@@ -7736,32 +7733,15 @@ def session_runtime_projection_attention(
     current_run: dict[str, Any] | None,
     projection: dict[str, Any],
 ) -> dict[str, Any]:
-    first_screen = projection.get("first_screen") if isinstance(projection.get("first_screen"), dict) else {}
-    work_lane = projection.get("work_lane_contract") if isinstance(projection.get("work_lane_contract"), dict) else {}
-    boundary = projection.get("boundary") if isinstance(projection.get("boundary"), dict) else {}
-    monitor_only = bool(work_lane.get("monitor_only"))
-    waiting_on = session_runtime_status_waiting_on(
-        first_screen.get("waiting_on"),
-        monitor_only=monitor_only,
+    return _session_runtime_projection_attention_read_model(
+        goal,
+        current_run,
+        projection,
+        public_safe_compact_text=public_safe_compact_text,
+        attention_item=attention_item,
+        goal_lifecycle_fields=goal_lifecycle_fields,
+        monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
     )
-    recommended_action = public_safe_compact_text(
-        first_screen.get("recommended_action") or (current_run or {}).get("recommended_action"),
-        limit=320,
-    ) or "inspect the session-runtime projection and choose the next safe action"
-    severity = "watch" if waiting_on in {"external_evidence", MONITOR_SIGNAL_WAITING_ON} else "action"
-    if boundary.get("raw_material_detected"):
-        severity = "high"
-    item = attention_item(
-        goal_id=str(goal.get("id") or projection.get("goal_id") or "unknown-goal"),
-        status=session_runtime_status_label(projection),
-        waiting_on=waiting_on,
-        severity=severity,
-        recommended_action=recommended_action,
-        source="session_runtime_projection",
-        **goal_lifecycle_fields(goal, current_run),
-    )
-    attach_session_runtime_projection(item, projection)
-    return item
 
 
 def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
