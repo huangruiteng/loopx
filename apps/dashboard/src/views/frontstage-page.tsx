@@ -3168,7 +3168,7 @@ function FrontstageRoute({
     {
       label: "spend rule",
       value: stringifyScalar(projection.quota.spend_policy),
-      helper: "Cadence changes, final checks, and monitor-only polls are no-spend.",
+      helper: "Watch lanes stay monitor state; cadence changes, final checks, and monitor-only polls are no-spend.",
       tone: "success",
     },
     {

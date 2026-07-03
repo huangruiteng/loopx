@@ -102,7 +102,7 @@ includes(frontstageSource, "TanStack Query", "TanStack Query copy");
 includes(frontstageSource, 'data-testid="frontstage-operations-strip"', "operations signal strip");
 includes(frontstageSource, 'data-testid="frontstage-budget-governance"', "budget governance panel");
 includes(frontstageSource, "Budget & Governance", "budget governance panel title");
-includes(frontstageSource, "Cadence changes, final checks, and monitor-only polls are no-spend.", "no-spend governance copy");
+includes(frontstageSource, "Watch lanes stay monitor state; cadence changes, final checks, and monitor-only polls are no-spend.", "no-spend governance copy");
 includes(frontstageSource, "Audit through todo ids, run history, and quota spend events.", "budget evidence audit copy");
 includes(frontstageSource, 'data-testid="frontstage-goal-select"', "goal selector");
 includes(frontstageSource, "resolveFrontstageOpsStatusUrl", "ops status URL resolver");
