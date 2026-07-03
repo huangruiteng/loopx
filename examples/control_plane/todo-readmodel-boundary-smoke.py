@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from loopx import status as status_module  # noqa: E402
+from loopx.projections import autonomous_candidates as autonomous_read_model  # noqa: E402
 from loopx.projections import todo_summary as todo_read_model  # noqa: E402
 
 
@@ -81,6 +82,11 @@ def assert_wrapper_parity() -> None:
         todos,
         item_limit=220,
     )
+    assert status_module.first_open_todo_item(todos) == todo_read_model.first_open_todo_item(
+        todos,
+        item_limit=status_module.MAX_PROJECT_ASSET_TODO_ITEMS,
+        text_limit=220,
+    )
     assert status_module.project_asset_todo_summary(
         todos,
         role="agent",
@@ -140,9 +146,53 @@ def assert_dependency_blocker_parity() -> None:
     assert status_items == direct_items
 
 
+def assert_autonomous_candidate_parity() -> None:
+    items = [
+        {
+            "goal_id": "goal-b",
+            "status": "active",
+            "waiting_on": "codex",
+            "quota": {"state": "eligible"},
+            "agent_todos": fixture_todos(),
+        },
+        {
+            "goal_id": "goal-a",
+            "status": "watching",
+            "waiting_on": status_module.MONITOR_SIGNAL_WAITING_ON,
+            "quota": {"state": "eligible"},
+            "agent_todos": fixture_todos(),
+        },
+        {
+            "goal_id": "goal-c",
+            "status": "blocked",
+            "waiting_on": "controller",
+            "quota": {"state": "eligible"},
+            "agent_todos": fixture_todos(),
+        },
+    ]
+    assert status_module.autonomous_backlog_candidates(items) == autonomous_read_model.autonomous_backlog_candidates(
+        items,
+        open_todo_items=status_module.open_todo_items,
+        todo_item_is_actionable_open=status_module.todo_item_is_actionable_open,
+        normalize_todo_text=status_module.normalize_todo_text,
+        advancement_task_class=status_module.TODO_TASK_CLASS_ADVANCEMENT,
+        limit=status_module.MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
+    )
+    assert status_module.autonomous_monitor_candidates(items) == autonomous_read_model.autonomous_monitor_candidates(
+        items,
+        open_todo_items=status_module.open_todo_items,
+        todo_item_is_actionable_open=status_module.todo_item_is_actionable_open,
+        normalize_todo_text=status_module.normalize_todo_text,
+        monitor_task_class=status_module.TODO_TASK_CLASS_MONITOR,
+        monitor_signal_waiting_on=status_module.MONITOR_SIGNAL_WAITING_ON,
+        limit=status_module.MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
+    )
+
+
 def main() -> None:
     assert_wrapper_parity()
     assert_dependency_blocker_parity()
+    assert_autonomous_candidate_parity()
 
 
 if __name__ == "__main__":

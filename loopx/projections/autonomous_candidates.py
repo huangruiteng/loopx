@@ -91,3 +91,43 @@ def autonomous_todo_candidates(
         "task_class": task_class,
         "items": candidates[:limit],
     }
+
+
+def autonomous_backlog_candidates(
+    items: list[dict[str, Any]],
+    *,
+    open_todo_items: Callable[..., list[dict[str, Any]]],
+    todo_item_is_actionable_open: Callable[[dict[str, Any]], bool],
+    normalize_todo_text: Callable[..., str],
+    advancement_task_class: str,
+    limit: int,
+) -> dict[str, Any] | None:
+    return autonomous_todo_candidates(
+        items,
+        task_class=advancement_task_class,
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        normalize_todo_text=normalize_todo_text,
+        limit=limit,
+    )
+
+
+def autonomous_monitor_candidates(
+    items: list[dict[str, Any]],
+    *,
+    open_todo_items: Callable[..., list[dict[str, Any]]],
+    todo_item_is_actionable_open: Callable[[dict[str, Any]], bool],
+    normalize_todo_text: Callable[..., str],
+    monitor_task_class: str,
+    monitor_signal_waiting_on: str,
+    limit: int,
+) -> dict[str, Any] | None:
+    return autonomous_todo_candidates(
+        items,
+        task_class=monitor_task_class,
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        normalize_todo_text=normalize_todo_text,
+        allowed_waiting_on={"codex", monitor_signal_waiting_on},
+        limit=limit,
+    )

@@ -418,6 +418,19 @@ def first_open_todo_text(
     return str(items[0].get("text") or "") or None
 
 
+def first_open_todo_item(
+    todos: dict[str, Any] | None,
+    *,
+    item_limit: int,
+    text_limit: int,
+) -> dict[str, Any] | None:
+    for todo in open_todo_items(todos, limit=item_limit, text_limit=text_limit):
+        if not isinstance(todo, dict) or todo.get("done"):
+            continue
+        return todo
+    return None
+
+
 def project_asset_todo_summary(
     todos: dict[str, Any] | None,
     *,

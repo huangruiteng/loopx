@@ -76,9 +76,10 @@ from .projections.project_asset import (
     project_asset_user_todo_open_count,
 )
 from .projections.autonomous_candidates import (
+    autonomous_backlog_candidates as _autonomous_backlog_candidates_read_model,
+    autonomous_monitor_candidates as _autonomous_monitor_candidates_read_model,
     autonomous_priority_label as _autonomous_priority_label,
     autonomous_priority_rank as _autonomous_priority_rank,
-    autonomous_todo_candidates as _autonomous_todo_candidates,
 )
 from .projections.agent_lane_recommendation import (
     compact_agent_lane_recommendation as _compact_agent_lane_recommendation_read_model,
@@ -163,6 +164,7 @@ from .projections.todo_summary import (
     compact_todo_group,
     compact_todo_item,
     dependency_blocker_summary as _dependency_blocker_summary_read_model,
+    first_open_todo_item as _first_open_todo_item_read_model,
     first_open_todo_text as _first_open_todo_text_read_model,
     normalize_todo_text,
     normalized_pr_ref_parts,
@@ -6304,11 +6306,11 @@ def attach_dependency_blockers(items: list[dict[str, Any]]) -> None:
 
 
 def first_open_todo_item(todos: dict[str, Any] | None) -> dict[str, Any] | None:
-    for todo in open_todo_items(todos):
-        if not isinstance(todo, dict) or todo.get("done"):
-            continue
-        return todo
-    return None
+    return _first_open_todo_item_read_model(
+        todos,
+        item_limit=MAX_PROJECT_ASSET_TODO_ITEMS,
+        text_limit=220,
+    )
 
 
 def autonomous_priority_label(text: str) -> str | None:
@@ -6319,32 +6321,17 @@ def autonomous_priority_rank(priority: str | None) -> int:
     return _autonomous_priority_rank(priority)
 
 
-def autonomous_todo_candidates(
-    items: list[dict[str, Any]],
-    *,
-    task_class: str,
-    allowed_waiting_on: set[str] | None = None,
-    limit: int = MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
-) -> dict[str, Any] | None:
-    return _autonomous_todo_candidates(
-        items,
-        task_class=task_class,
-        open_todo_items=open_todo_items,
-        todo_item_is_actionable_open=todo_item_is_actionable_open,
-        normalize_todo_text=normalize_todo_text,
-        allowed_waiting_on=allowed_waiting_on,
-        limit=limit,
-    )
-
-
 def autonomous_backlog_candidates(
     items: list[dict[str, Any]],
     *,
     limit: int = MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
 ) -> dict[str, Any] | None:
-    return autonomous_todo_candidates(
+    return _autonomous_backlog_candidates_read_model(
         items,
-        task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        normalize_todo_text=normalize_todo_text,
+        advancement_task_class=TODO_TASK_CLASS_ADVANCEMENT,
         limit=limit,
     )
 
@@ -6354,10 +6341,13 @@ def autonomous_monitor_candidates(
     *,
     limit: int = MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
 ) -> dict[str, Any] | None:
-    return autonomous_todo_candidates(
+    return _autonomous_monitor_candidates_read_model(
         items,
-        task_class=TODO_TASK_CLASS_MONITOR,
-        allowed_waiting_on={"codex", MONITOR_SIGNAL_WAITING_ON},
+        open_todo_items=open_todo_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        normalize_todo_text=normalize_todo_text,
+        monitor_task_class=TODO_TASK_CLASS_MONITOR,
+        monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
         limit=limit,
     )
 
