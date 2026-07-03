@@ -36,6 +36,9 @@ def build_auto_research_layer_contract() -> dict[str, object]:
             "pane_local_a2a_tick",
             "todo_evidence_status_protocol",
             "compact_human_status",
+            "default_loopx_skill_bootstrap",
+            "fixed_a2a_wake_prompt",
+            "kernel_default_skill_prompting",
         ],
         extension_points=[
             "role_overrides",

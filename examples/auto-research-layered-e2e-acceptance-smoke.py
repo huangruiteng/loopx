@@ -144,6 +144,10 @@ def assert_three_layer_minimality() -> None:
     assert "real_codex_tui_panes" in preset["forbidden"], preset
     assert "decentralized_a2a_driver" in preset["forbidden"], preset
     assert "pane_local_a2a_tick" in preset["forbidden"], preset
+    assert "default_loopx_skill_bootstrap" in preset["forbidden"], preset
+    assert "fixed_a2a_wake_prompt" in preset["forbidden"], preset
+    assert preset["worker_skill_scope"] == "role_specific_semantics_and_successor_todos_only", preset
+    assert preset["successor_routing"] == "role_profile_successor_todos_with_target_agent", preset
 
     auto_research = supervisor["auto_research"]
     assert auto_research["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, auto_research

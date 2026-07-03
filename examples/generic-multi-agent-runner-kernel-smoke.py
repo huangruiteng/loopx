@@ -66,6 +66,20 @@ def main() -> int:
     assert runner["coordination_model"]["leader_required"] is False, runner
     assert runner["pane_local_a2a"]["machine_json_policy"] == "file_or_explicit_machine_channel_only", runner
     assert runner["boundaries"]["domain_specific_research_logic"] is False, runner
+    role_prompt = runner["role_prompt_and_skill"]
+    assert role_prompt["default_kernel_skills"] == ["loopx-project", "loopx-doc-registry"], runner
+    assert (
+        role_prompt["default_kernel_skill_policy"]["owner_layer"]
+        == "generic_multi_agent_kernel"
+    ), runner
+    assert role_prompt["default_kernel_skill_policy"][
+        "preset_should_not_repeat_skill_playbooks"
+    ] is True, runner
+    assert role_prompt["fixed_wake_prompt_owner"] == "generic_multi_agent_kernel", runner
+    assert (
+        runner["decentralized_a2a_driver"]["prompt"]["owner_layer"]
+        == "generic_multi_agent_kernel"
+    ), runner
 
     compact = build_compact_human_status(
         {
@@ -112,7 +126,18 @@ def main() -> int:
     ), layering
     assert layering["user_layer"]["fields"] == ["inbox", "rounds"], layering
     assert "multi_agent_runner" in layering["kernel_layer"]["owns"], layering
+    assert layering["kernel_layer"]["default_skills"] == [
+        "loopx-project",
+        "loopx-doc-registry",
+    ], layering
+    assert layering["kernel_layer"]["fixed_wake_prompt"] == (
+        "PANE_LOCAL_A2A_WAKEUP_PROMPT"
+    ), layering
     assert "pane_local_a2a_tick" in layering["preset_layer"]["forbidden"], layering
+    assert (
+        layering["preset_layer"]["role_skill_limit"]
+        == "role_specific_semantics_and_successor_declarations_only"
+    ), layering
     assert layering["acceptance"]["other_multi_agent_products_can_reuse_kernel"] is True, layering
     assert "LoopX machine JSON hidden" in SCOPED_LOOPX_WRAPPER_PY
     assert "loopx-pane-a2a-tick" in SCOPED_LOOPX_WRAPPER_PY

@@ -64,8 +64,8 @@ def main() -> int:
         "not a global LoopX skill",
         "Identity comes from LoopX control-plane metadata",
         "Pane Tick Contract",
-        "$loopx-project",
-        "$loopx-doc-registry",
+        "generic multi-agent kernel owns the default LoopX project/doc-registry skills",
+        "fixed A2A wake prompt",
         "auto_research_role_profile_v0",
         'loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"',
         "No role owns the full graph",
@@ -95,6 +95,8 @@ def main() -> int:
         "coordinator owns the graph",
         "promote without evidence",
         "First Commands",
+        "$loopx-project",
+        "$loopx-doc-registry",
     ]
     lowered = compact_skill.lower()
     for term in forbidden_skill_terms:

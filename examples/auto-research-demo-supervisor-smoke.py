@@ -76,8 +76,14 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "multi_agent_runner" in layering["preset_layer"]["forbidden"], layering
     assert "decentralized_a2a_driver" in layering["preset_layer"]["forbidden"], layering
     assert "pane_local_a2a_tick" in layering["preset_layer"]["forbidden"], layering
+    assert "default_loopx_skill_bootstrap" in layering["preset_layer"]["forbidden"], layering
+    assert "fixed_a2a_wake_prompt" in layering["preset_layer"]["forbidden"], layering
     assert "decentralized_a2a_driver" in layering["kernel_layer"]["owns"], layering
     assert "compact_human_status" in layering["kernel_layer"]["owns"], layering
+    assert layering["kernel_layer"]["default_skills"] == [
+        "loopx-project",
+        "loopx-doc-registry",
+    ], layering
     assert layering["acceptance"]["preset_has_no_runner_process_logic"] is True, layering
 
     preset = payload["preset"]
@@ -92,6 +98,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "multi_agent_runner" in preset["forbidden"], preset
     assert "decentralized_a2a_driver" in preset["forbidden"], preset
     assert "pane_local_a2a_tick" in preset["forbidden"], preset
+    assert "default_loopx_skill_bootstrap" in preset["forbidden"], preset
+    assert "fixed_a2a_wake_prompt" in preset["forbidden"], preset
+    assert preset["worker_skill_scope"] == "role_specific_semantics_and_successor_todos_only", preset
+    assert preset["successor_routing"] == "role_profile_successor_todos_with_target_agent", preset
 
     kernel = payload["auto_research"]
     assert kernel["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, payload
@@ -169,6 +179,12 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert profile["role_id"] == lane["role_id"], profile
         assert profile["required_skill"] == "loopx-auto-research", profile
         assert profile["skill_distribution"] == "worker_local", profile
+        assert (
+            profile["worker_skill_scope"]
+            == "role_specific_semantics_and_successor_todos_only"
+        ), profile
+        assert profile["default_kernel_skills_owner"] == "generic_multi_agent_kernel", profile
+        assert profile["fixed_a2a_wake_prompt_owner"] == "generic_multi_agent_kernel", profile
         assert profile["worker_skill_source"].endswith("auto_research/worker_skill/SKILL.md"), profile
         assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile

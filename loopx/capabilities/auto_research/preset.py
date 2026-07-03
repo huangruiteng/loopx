@@ -255,6 +255,9 @@ def auto_research_role_profile(*, role_id: str, goal_id: str, agent_id: str) -> 
         "required_skill": AUTO_RESEARCH_REQUIRED_SKILL,
         "worker_skill_source": AUTO_RESEARCH_WORKER_SKILL_SOURCE,
         "skill_distribution": "worker_local",
+        "worker_skill_scope": "role_specific_semantics_and_successor_todos_only",
+        "default_kernel_skills_owner": "generic_multi_agent_kernel",
+        "fixed_a2a_wake_prompt_owner": "generic_multi_agent_kernel",
         "stop_conditions": [
             "quota says should_run=false or user_action_required=true",
             "frontier has no selected todo for this agent",
@@ -364,7 +367,12 @@ def build_auto_research_preset_summary(*, role_count: int) -> dict[str, object]:
             "pane_local_a2a_tick",
             "todo_evidence_status_protocol",
             "compact_human_status",
+            "default_loopx_skill_bootstrap",
+            "fixed_a2a_wake_prompt",
+            "kernel_default_skill_prompting",
         ],
+        "worker_skill_scope": "role_specific_semantics_and_successor_todos_only",
+        "successor_routing": "role_profile_successor_todos_with_target_agent",
         "role_count": role_count,
         "default_agent_specs": default_auto_research_agent_specs(),
     }

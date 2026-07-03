@@ -29,9 +29,10 @@ tmux window name, or the section of this skill that happens to be visible.
 
 ## Pane Tick Contract
 
-The generic multi-agent kernel prompt already points panes at `$loopx-project`
-and `$loopx-doc-registry`. This skill should stay role-specific: use it after
-the pane-local tick has resolved identity, quota, and frontier from LoopX.
+The generic multi-agent kernel owns the default LoopX project/doc-registry
+skills and the fixed A2A wake prompt. This skill should stay role-specific:
+use it after the pane-local tick has resolved identity, quota, and frontier
+from LoopX.
 
 Compact frontier command: `loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"`. Also honor `quota should-run`.
 

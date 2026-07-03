@@ -169,6 +169,7 @@ def build_decentralized_a2a_driver_contract(
         "driver_model": "fixed_prompt_broadcast_plus_pane_local_state_tick",
         "coordination_pattern": "decentralized_state_a2a",
         "prompt": {
+            "owner_layer": "generic_multi_agent_kernel",
             "trigger": PANE_LOCAL_A2A_WAKEUP_PROMPT,
             "instruction_only": True,
             "frontier_embedded": False,
@@ -290,6 +291,13 @@ def build_tui_multi_agent_runner_contract(
             "bootstrap_prompt": "written_to_public_artifact_for_fixed_wake_context",
             "role_profile": "role-local public json artifact",
             "default_kernel_skills": list(GENERIC_MULTI_AGENT_DEFAULT_KERNEL_SKILLS),
+            "default_kernel_skill_policy": {
+                "owner_layer": "generic_multi_agent_kernel",
+                "injected_via": "generic_role_prompt",
+                "preset_should_not_repeat_skill_playbooks": True,
+                "worker_skill_scope": "role_specific_semantics_and_successor_declarations",
+            },
+            "fixed_wake_prompt_owner": "generic_multi_agent_kernel",
             "skill_materialization": ".codex/skills/<skill>/SKILL.md",
             "worker_local_skill_scope": "role_specific_semantics_only",
         },
@@ -379,10 +387,13 @@ def build_three_layer_minimality_contract(
         "preset_layer": {
             "owns": preset_owns,
             "forbidden": forbidden,
+            "role_skill_limit": "role_specific_semantics_and_successor_declarations_only",
             "must_remain_reusable": True,
         },
         "kernel_layer": {
             "owns": kernel_owns,
+            "default_skills": list(GENERIC_MULTI_AGENT_DEFAULT_KERNEL_SKILLS),
+            "fixed_wake_prompt": "PANE_LOCAL_A2A_WAKEUP_PROMPT",
             "cross_product_reuse_required": True,
         },
         "extension_points": extensions,
