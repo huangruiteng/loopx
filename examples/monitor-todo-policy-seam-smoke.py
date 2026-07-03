@@ -16,12 +16,14 @@ from loopx.policies.monitor_todo import (  # noqa: E402
     monitor_todo_is_actionable_open,
     monitor_todo_is_due,
     monitor_todo_is_expired,
+    monitor_todo_missing_schedule,
     monitor_todo_next_due_at,
 )
 from loopx.status import (  # noqa: E402
     todo_item_is_actionable_open,
     todo_item_is_due_monitor,
     todo_item_is_expired_monitor,
+    todo_item_missing_monitor_schedule,
     todo_item_next_due_at,
 )
 
@@ -54,6 +56,14 @@ def assert_policy_matches_wrappers(item: dict[str, object], *, due: bool, expire
     assert monitor_todo_next_due_at(item) == quota_module._todo_item_next_due_at(item), item
     assert monitor_todo_is_actionable_open(item) == todo_item_is_actionable_open(item), item
     assert monitor_todo_is_actionable_open(item) == quota_module._todo_item_is_actionable_open(item), item
+    assert monitor_todo_missing_schedule(item, now=NOW) == todo_item_missing_monitor_schedule(
+        item,
+        now=NOW,
+    ), item
+    assert monitor_todo_missing_schedule(item, now=NOW) == quota_module._todo_item_missing_monitor_schedule(
+        item,
+        now=NOW,
+    ), item
 
 
 def main() -> int:
@@ -79,6 +89,10 @@ def main() -> int:
         due=False,
         expired=False,
     )
+    unscheduled = monitor_item()
+    unscheduled.pop("next_due_at")
+    assert_policy_matches_wrappers(unscheduled, due=False, expired=False)
+    assert monitor_todo_missing_schedule(unscheduled, now=NOW) is True, unscheduled
     assert monitor_todo_next_due_at({"next_due_at": "2026-01-01T00:00:00"}) == NOW
     print("monitor-todo-policy-seam-smoke ok")
     return 0

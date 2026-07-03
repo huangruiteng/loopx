@@ -88,11 +88,19 @@ from .todo_projection import (
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
     todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
     todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
+    todo_item_missing_monitor_schedule as projection_todo_item_missing_monitor_schedule,
     todo_item_next_due_at as projection_todo_item_next_due_at,
     todo_item_task_class as projection_todo_item_task_class,
     todo_priority_label as projection_todo_priority_label,
     todo_priority_rank as projection_todo_priority_rank,
     todo_projection_sort_key as projection_todo_projection_sort_key,
+    todo_summary_claim_scope_agent_id as projection_todo_summary_claim_scope_agent_id,
+    todo_summary_monitor_due_count as projection_todo_summary_monitor_due_count,
+    todo_summary_monitor_due_items as projection_todo_summary_monitor_due_items,
+    todo_summary_monitor_schedule_gap_count as projection_todo_summary_monitor_schedule_gap_count,
+    todo_summary_monitor_schedule_gap_items as projection_todo_summary_monitor_schedule_gap_items,
+    todo_summary_monitor_writeback_contract as projection_todo_summary_monitor_writeback_contract,
+    todo_summary_monitor_writeback_supported as projection_todo_summary_monitor_writeback_supported,
 )
 
 
@@ -623,6 +631,11 @@ def _work_lane_contract(
         agent_todo_summary,
         due_items=due_monitor_items,
     )
+    monitor_schedule_gap_items = _todo_summary_monitor_schedule_gap_items(agent_todo_summary)
+    monitor_schedule_gap_count = _todo_summary_monitor_schedule_gap_count(
+        agent_todo_summary,
+        gap_items=monitor_schedule_gap_items,
+    )
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None
     first_advancement = _first_executable_todo_item(agent_todo_summary)
     agent_id = _todo_summary_claim_scope_agent_id(agent_todo_summary or {})
@@ -643,6 +656,8 @@ def _work_lane_contract(
         todo_counts=todo_counts,
         monitor_due_count=due_monitor_count,
         due_monitor_items=due_monitor_items,
+        monitor_schedule_gap_count=monitor_schedule_gap_count,
+        monitor_schedule_gap_items=monitor_schedule_gap_items,
         first_advancement=first_advancement,
         due_monitor_preempts_advancement=due_monitor_preempts_advancement,
         outcome_followthrough=_outcome_followthrough_hint(item),
@@ -2118,25 +2133,11 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _todo_summary_monitor_writeback_contract(value: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    contract = value.get("monitor_writeback")
-    if not isinstance(contract, dict):
-        return None
-    if contract.get("supported") is not False:
-        return None
-    compact: dict[str, Any] = {"supported": False}
-    source = str(contract.get("source") or "").strip()
-    if source:
-        compact["source"] = source
-    return compact
+    return projection_todo_summary_monitor_writeback_contract(value)
 
 
 def _todo_summary_monitor_writeback_supported(value: dict[str, Any] | None) -> bool:
-    contract = _todo_summary_monitor_writeback_contract(value)
-    if not contract:
-        return True
-    return contract.get("supported") is not False
+    return projection_todo_summary_monitor_writeback_supported(value)
 
 
 def _handoff_ready_successor_todo_ids(value: dict[str, Any]) -> set[str]:
@@ -2268,6 +2269,12 @@ def _summarize_user_todos(
         if monitor_writeback_supported
         else []
     )
+    monitor_schedule_gap_items = projection_todo_summary_monitor_schedule_gap_items(
+        {
+            "monitor_open_items": monitor_items,
+            "monitor_writeback": value.get("monitor_writeback"),
+        }
+    )
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     gate_items = [
         item
@@ -2303,6 +2310,8 @@ def _summarize_user_todos(
         "monitor_open_items": monitor_items,
         "monitor_due_count": len(monitor_due_items),
         "monitor_due_items": monitor_due_items[:MONITOR_DUE_ITEM_LIMIT],
+        "monitor_schedule_gap_count": len(monitor_schedule_gap_items),
+        "monitor_schedule_gap_items": monitor_schedule_gap_items[:MONITOR_DUE_ITEM_LIMIT],
         "active_next_action_items": active_next_action_items,
         "active_next_action_executable_items": active_next_action_executable_items,
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
@@ -5639,41 +5648,20 @@ def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = No
     return projection_todo_item_is_due_monitor(item, now=now)
 
 
+def _todo_item_missing_monitor_schedule(
+    item: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    return projection_todo_item_missing_monitor_schedule(item, now=now)
+
+
 def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
-    claim_scope = summary.get("claim_scope") if isinstance(summary.get("claim_scope"), dict) else {}
-    return normalize_todo_claimed_by(claim_scope.get("agent_id"))
+    return projection_todo_summary_claim_scope_agent_id(summary)
 
 
 def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not isinstance(summary, dict):
-        return []
-    if not _todo_summary_monitor_writeback_supported(summary):
-        return []
-    projected_items = summary.get("monitor_due_items")
-    if isinstance(projected_items, list):
-        due_items = [
-            item
-            for item in projected_items
-            if isinstance(item, dict)
-            if _todo_item_is_actionable_open(item)
-            if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-        ]
-    else:
-        raw_items = summary.get("monitor_open_items")
-        due_items = [
-            item
-            for item in (raw_items if isinstance(raw_items, list) else [])
-            if isinstance(item, dict)
-            if _todo_item_is_due_monitor(item)
-        ]
-    agent_id = _todo_summary_claim_scope_agent_id(summary)
-    if agent_id:
-        due_items = [
-            item
-            for item in due_items
-            if _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
-        ]
-    return sorted(due_items, key=_todo_projection_sort_key)
+    return projection_todo_summary_monitor_due_items(summary)
 
 
 def _todo_summary_monitor_due_count(
@@ -5681,28 +5669,24 @@ def _todo_summary_monitor_due_count(
     *,
     due_items: list[dict[str, Any]] | None = None,
 ) -> int:
-    if not isinstance(summary, dict):
-        return 0
-    if not _todo_summary_monitor_writeback_supported(summary):
-        return 0
-    agent_id = _todo_summary_claim_scope_agent_id(summary)
-    if agent_id:
-        raw_items = summary.get("monitor_open_items")
-        if isinstance(raw_items, list):
-            return len(
-                [
-                    item
-                    for item in raw_items
-                    if isinstance(item, dict)
-                    if _todo_item_is_due_monitor(item)
-                    if _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
-                ]
-            )
-        return len(due_items if due_items is not None else _todo_summary_monitor_due_items(summary))
-    projected_count = summary.get("monitor_due_count")
-    if isinstance(projected_count, int):
-        return max(0, projected_count)
-    return len(due_items if due_items is not None else _todo_summary_monitor_due_items(summary))
+    return projection_todo_summary_monitor_due_count(summary, due_items=due_items)
+
+
+def _todo_summary_monitor_schedule_gap_items(
+    summary: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    return projection_todo_summary_monitor_schedule_gap_items(summary)
+
+
+def _todo_summary_monitor_schedule_gap_count(
+    summary: dict[str, Any] | None,
+    *,
+    gap_items: list[dict[str, Any]] | None = None,
+) -> int:
+    return projection_todo_summary_monitor_schedule_gap_count(
+        summary,
+        gap_items=gap_items,
+    )
 
 
 def _first_executable_todo_item(agent_todo_summary: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -5791,12 +5775,14 @@ def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
             and _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
         )
     monitor_due_count = _todo_summary_monitor_due_count(summary)
+    monitor_schedule_gap_count = _todo_summary_monitor_schedule_gap_count(summary)
     hidden_count = max(0, open_count - len(classified_items))
     return {
         "open": open_count,
         "advancement": advancement_count,
         "monitor": monitor_visible_count,
         "monitor_due": monitor_due_count,
+        "monitor_schedule_gap": monitor_schedule_gap_count,
         "hidden": hidden_count,
     }
 

@@ -18,6 +18,23 @@ AGENT_ID = "codex-product-capability"
 PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
 EXPIRED_AT = "2000-01-01T00:05:00+00:00"
+FRONTIER_REPLAN_ACK_RUNS = [
+    {
+        "classification": "monitor_scheduler_replan_ack",
+        "agent_id": AGENT_ID,
+        "progress_scope": "agent_lane",
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "fixture",
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": ["watch_lane_continuation"],
+            },
+        },
+    }
+]
 
 
 def status_payload(
@@ -25,6 +42,7 @@ def status_payload(
     agent_todo_items: list[dict],
     status: str = "monitor_scheduler_fixture",
     coordination: dict | None = None,
+    latest_runs: list[dict] | None = None,
 ) -> dict:
     agent_todos = compact_todo_group(
         agent_todo_items,
@@ -78,6 +96,9 @@ def status_payload(
                         "registered_agents": [AGENT_ID],
                         "primary_agent": AGENT_ID,
                     },
+                    "latest_runs": latest_runs
+                    if latest_runs is not None
+                    else FRONTIER_REPLAN_ACK_RUNS,
                 }
             ]
         },
@@ -89,8 +110,9 @@ def monitor_item(
     index: int,
     todo_id: str,
     priority: str,
-    next_due_at: str,
     target_key: str,
+    next_due_at: str | None = None,
+    cadence: str | None = "15m",
     claimed_by: str = AGENT_ID,
     expires_at: str | None = None,
 ) -> dict:
@@ -105,9 +127,11 @@ def monitor_item(
         "action_kind": "monitor",
         "claimed_by": claimed_by,
         "target_key": target_key,
-        "cadence": "15m",
-        "next_due_at": next_due_at,
     }
+    if cadence:
+        item["cadence"] = cadence
+    if next_due_at:
+        item["next_due_at"] = next_due_at
     if expires_at:
         item["expires_at"] = expires_at
     return item
@@ -131,9 +155,14 @@ def guard_for(
     *,
     agent_id: str = AGENT_ID,
     coordination: dict | None = None,
+    latest_runs: list[dict] | None = None,
 ) -> dict:
     return build_quota_should_run(
-        status_payload(agent_todo_items=items, coordination=coordination),
+        status_payload(
+            agent_todo_items=items,
+            coordination=coordination,
+            latest_runs=latest_runs,
+        ),
         goal_id=GOAL_ID,
         agent_id=agent_id,
     )
@@ -157,6 +186,36 @@ def assert_not_due_monitor_waits_quietly() -> None:
     assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
     assert lane["must_attempt_work"] is False, lane
     assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
+
+
+def assert_unscheduled_monitor_requires_metadata_repair() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_monitor_unscheduled",
+                priority="P1",
+                target_key="update-note-draft-pr",
+                cadence=None,
+                next_due_at=None,
+            )
+        ]
+    )
+    lane = guard["work_lane_contract"]
+    summary = guard["agent_todo_summary"]
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["monitor_kind"] == "todo_monitor_schedule_gap", lane
+    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["selected_todo_id"] == "todo_monitor_unscheduled", lane
+    assert summary["monitor_due_count"] == 0, summary
+    assert summary["monitor_schedule_gap_count"] == 1, summary
+    assert summary["monitor_schedule_gap_items"][0]["todo_id"] == "todo_monitor_unscheduled", summary
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+    assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, guard
+    assert guard["scheduler_hint"]["cadence_class"] == "active_work", guard
 
 
 def assert_due_monitor_requires_explicit_attempt() -> None:
@@ -401,6 +460,7 @@ def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> N
 
 def main() -> int:
     assert_not_due_monitor_waits_quietly()
+    assert_unscheduled_monitor_requires_metadata_repair()
     assert_due_monitor_requires_explicit_attempt()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()

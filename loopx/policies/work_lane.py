@@ -18,6 +18,8 @@ def build_work_lane_contract(
     outcome_followthrough: dict[str, Any] | None,
     next_action_requires_advancement: bool,
     monitor_due_item_limit: int,
+    monitor_schedule_gap_count: int = 0,
+    monitor_schedule_gap_items: list[dict[str, Any]] | None = None,
     resume_blocked_by_monitor_count: int = 0,
     resume_blocked_by_monitor_items: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
@@ -38,6 +40,8 @@ def build_work_lane_contract(
     monitor_only_todos = has_agent_todos and has_monitor_todos and not has_advancement_todos
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None
     blocked_by_monitor_items = resume_blocked_by_monitor_items or []
+    schedule_gap_items = monitor_schedule_gap_items or []
+    first_schedule_gap = schedule_gap_items[0] if schedule_gap_items else None
 
     def due_monitor_contract(*, reason_codes: list[str]) -> dict[str, Any]:
         selected = first_due_monitor or {}
@@ -144,6 +148,28 @@ def build_work_lane_contract(
                 return due_monitor_contract(
                     reason_codes=["monitor_todo_only", "monitor_due"]
                 )
+            if first_schedule_gap:
+                return {
+                    "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
+                    "lane": "advancement_task",
+                    "monitor_kind": "todo_monitor_schedule_gap",
+                    "next_lane": "continuous_monitor",
+                    "obligation": "repair_monitor_schedule_metadata",
+                    "must_attempt_work": True,
+                    "reason_codes": [
+                        "monitor_todo_only",
+                        "monitor_schedule_metadata_gap",
+                    ],
+                    "monitor_policy": "repair_schedule_metadata_before_quiet_wait",
+                    "monitor_schedule_gap_count": max(0, int(monitor_schedule_gap_count)),
+                    "monitor_schedule_gap_items": schedule_gap_items[:monitor_due_item_limit],
+                    "selected_todo_id": first_schedule_gap.get("todo_id"),
+                    "action": (
+                        "repair the selected continuous_monitor todo by adding cadence/"
+                        "next_due_at, superseding it, or recording an explicit no-schedule "
+                        "policy; do not silently collapse it into monitor_quiet_skip"
+                    ),
+                }
             if next_action_requires_advancement:
                 return {
                     "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
