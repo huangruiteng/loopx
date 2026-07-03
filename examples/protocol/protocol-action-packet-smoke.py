@@ -6,7 +6,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
@@ -299,17 +299,19 @@ def assert_monitor_only_packet_keeps_user_todo_pending() -> None:
     )
     packet = guard["protocol_action_packet"]
     contract = guard["interaction_contract"]
-    assert "actor=user" in packet["summary"], packet
+    assert "actor=agent_with_user_gate" in packet["summary"], packet
     assert "user_action_required=true" in packet["summary"], packet
-    assert "agent_action_required=false" in packet["summary"], packet
+    assert "agent_action_required=true" in packet["summary"], packet
     assert "quiet_noop_allowed=false" in packet["summary"], packet
-    assert "user_action_pending=true" not in packet["summary"], packet
+    assert "user_action_pending=true" in packet["summary"], packet
+    assert "agent_action=repair the selected continuous_monitor todo" in packet["summary"], packet
     assert f"user_action={USER_TODO}" in packet["summary"], packet
     assert USER_TODO in packet["summary"], packet
     assert guard.get("notify_user_on_open_todo") is None, guard
-    assert contract["mode"] == "user_action_required", contract
+    assert contract["mode"] == "bounded_delivery_with_user_notice", contract
     assert contract["user_channel"]["action_required"] is True, contract
     assert contract["user_channel"]["notify"] == "NOTIFY", contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
 
 
@@ -347,12 +349,16 @@ def assert_agent_scoped_user_gate_stays_diagnostic_only() -> None:
     assert user_summary["other_agent_scoped_open_count"] == 1, user_summary
     assert "gate_prompt" not in guard, guard
     assert guard["state"] == "eligible", guard
-    assert guard["effective_action"] == "monitor_quiet_skip", guard
-    assert guard["should_run"] is False, guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert guard["should_run"] is True, guard
+    lane = guard["work_lane_contract"]
+    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert lane["monitor_policy"] == "repair_schedule_metadata_before_quiet_wait", lane
     contract = guard["interaction_contract"]
-    assert contract["mode"] == "monitor_quiet_skip", contract
+    assert contract["mode"] == "bounded_delivery", contract
     assert contract["user_channel"]["action_required"] is False, contract
-    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
 
 
 def assert_explicit_non_gating_user_todo_stays_quiet() -> None:
@@ -377,14 +383,16 @@ def assert_explicit_non_gating_user_todo_stays_quiet() -> None:
     contract = guard["interaction_contract"]
     assert "actor=agent" in packet["summary"], packet
     assert "user_action_required=false" in packet["summary"], packet
-    assert "agent_action_required=false" in packet["summary"], packet
-    assert "quiet_noop_allowed=true" in packet["summary"], packet
+    assert "agent_action_required=true" in packet["summary"], packet
+    assert "quiet_noop_allowed=false" in packet["summary"], packet
     assert "user_action_pending=true" in packet["summary"], packet
-    assert contract["mode"] == "monitor_quiet_skip", contract
+    assert "agent_action=repair the selected continuous_monitor todo" in packet["summary"], packet
+    assert contract["mode"] == "bounded_delivery", contract
     assert contract["user_channel"]["action_required"] is False, contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
 
 
-def assert_monitor_only_packet_allows_quiet_noop() -> None:
+def assert_monitor_only_packet_requires_schedule_metadata_repair() -> None:
     guard = build_quota_should_run(
         status_payload(
             status="monitor_fixture",
@@ -397,10 +405,13 @@ def assert_monitor_only_packet_allows_quiet_noop() -> None:
     packet = guard["protocol_action_packet"]
     assert "actor=agent" in packet["summary"], packet
     assert "user_action_required=false" in packet["summary"], packet
-    assert "agent_action_required=false" in packet["summary"], packet
-    assert "quiet_noop_allowed=true" in packet["summary"], packet
-    assert "lane=continuous_monitor" in packet["summary"], packet
-    assert "material monitor transition" in packet["summary"], packet
+    assert "agent_action_required=true" in packet["summary"], packet
+    assert "quiet_noop_allowed=false" in packet["summary"], packet
+    assert "lane=advancement_task" in packet["summary"], packet
+    assert "agent_action=repair the selected continuous_monitor todo" in packet["summary"], packet
+    lane = guard["work_lane_contract"]
+    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert lane["monitor_policy"] == "repair_schedule_metadata_before_quiet_wait", lane
 
 
 def assert_executable_recommended_action_overrides_monitor_todo() -> None:
@@ -424,18 +435,18 @@ def assert_executable_recommended_action_overrides_monitor_todo() -> None:
     )
     assert guard["should_run"] is True, guard
     assert guard["effective_action"] == "normal_run", guard
-    assert guard["work_lane_contract"]["lane"] == "advancement_task", guard
-    assert "next_action_requires_advancement" in guard["work_lane_contract"]["reason_codes"], guard
+    lane = guard["work_lane_contract"]
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["next_lane"] == "continuous_monitor", lane
+    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert lane["reason_codes"] == ["monitor_todo_only", "monitor_schedule_metadata_gap"], lane
     assert guard["execution_obligation"]["must_attempt_work"] is True, guard
     packet = guard["protocol_action_packet"]
     assert "agent_action_required=true" in packet["summary"], packet
-    assert "Collect or aggregate additional same-protocol" in packet["summary"], packet
+    assert "agent_action=repair the selected continuous_monitor todo" in packet["summary"], packet
     contract = guard["interaction_contract"]
     assert contract["agent_channel"]["must_attempt"] is True, contract
-    assert (
-        "Collect or aggregate additional same-protocol"
-        in contract["agent_channel"]["primary_action"]
-    ), contract
+    assert "repair the selected continuous_monitor todo" in contract["agent_channel"]["primary_action"], contract
 
 
 def assert_goal_scoped_primary_action_ignores_foreign_backlog() -> None:
@@ -478,7 +489,7 @@ def main() -> None:
     assert_monitor_only_packet_keeps_user_todo_pending()
     assert_agent_scoped_user_gate_stays_diagnostic_only()
     assert_explicit_non_gating_user_todo_stays_quiet()
-    assert_monitor_only_packet_allows_quiet_noop()
+    assert_monitor_only_packet_requires_schedule_metadata_repair()
     assert_executable_recommended_action_overrides_monitor_todo()
     assert_goal_scoped_primary_action_ignores_foreign_backlog()
     print("ok: protocol action packet smoke")

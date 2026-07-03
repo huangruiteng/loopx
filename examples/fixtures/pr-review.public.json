@@ -105,7 +105,7 @@
       "deletions": 8,
       "files": [
         {"path": "src/gate_prompt.py", "additions": 42, "deletions": 6},
-        {"path": "examples/protocol-action-packet-smoke.py", "additions": 18, "deletions": 2}
+        {"path": "examples/protocol/protocol-action-packet-smoke.py", "additions": 18, "deletions": 2}
       ],
       "commits": [
         {"messageHeadline": "runtime: align gate prompt with scoped todos"}

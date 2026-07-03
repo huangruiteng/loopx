@@ -22,7 +22,7 @@ touch leaderboard paths.
 An explicit local probe can opt into real Codex CLI execution:
 
 ```bash
-python3 examples/protocol-action-packet-codex-cli-wrapper-smoke.py --real-codex-cli
+python3 examples/protocol/protocol-action-packet-codex-cli-wrapper-smoke.py --real-codex-cli
 ```
 
 That mode still uses an isolated temporary project, `--ephemeral`,

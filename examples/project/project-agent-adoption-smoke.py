@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 GOAL_ID = "adoption-main-control"
 USER_TODO = "Review the P0 owner-risk checklist before approving delivery."
 AGENT_TODO = "Run the read-only map dry-run after the operator approval is recorded."

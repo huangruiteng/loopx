@@ -40,7 +40,7 @@ FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
             "reason": "checks scoped user-gate projection instead of global prose gates",
         },
         {
-            "command": "python3 examples/operator-gate-resume-contract-smoke.py",
+            "command": "python3 examples/project/operator-gate-resume-contract-smoke.py",
             "reason": "exercises operator gate preview and resume behavior",
         },
         {
@@ -278,12 +278,12 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks update planning, check-only behavior, rollback planning, and rollback execution fixtures",
             },
             {
-                "command": "python3 examples/rollback-packet-protocol-smoke.py",
+                "command": "python3 examples/protocol/rollback-packet-protocol-smoke.py",
                 "tier": "deep",
                 "reason": "validates the public rollback packet protocol and fixture boundary",
             },
             {
-                "command": "python3 examples/project-uninstall-smoke.py",
+                "command": "python3 examples/project/project-uninstall-smoke.py",
                 "tier": "deep",
                 "reason": "samples project-local uninstall safety with isolated fixture registries",
             },
@@ -408,7 +408,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "checks operator-facing markdown status rendering",
             },
             {
-                "command": "python3 examples/goal-channel-status-export-smoke.py",
+                "command": "python3 examples/project/goal-channel-status-export-smoke.py",
                 "tier": "deep",
                 "reason": "guards goal-channel status export consumed by non-hot-path readers",
             },
@@ -784,7 +784,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards Codex App host command routing and fail-closed slash-command help",
             },
             {
-                "command": "python3 examples/global-manager-command-protocol-smoke.py",
+                "command": "python3 examples/project/global-manager-command-protocol-smoke.py",
                 "tier": "default",
                 "reason": "checks read-only global manager command protocol and aliases",
             },

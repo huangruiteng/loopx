@@ -6,9 +6,9 @@ from __future__ import annotations
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DECISION_DOC = REPO_ROOT / "docs" / "reference" / "protocols" / "protocol-action-packet-decision-v0.md"
-WRAPPER_SMOKE = REPO_ROOT / "examples" / "protocol-action-packet-codex-cli-wrapper-smoke.py"
+WRAPPER_SMOKE = REPO_ROOT / "examples" / "protocol" / "protocol-action-packet-codex-cli-wrapper-smoke.py"
 
 
 def main() -> None:

@@ -603,7 +603,7 @@ IP-003 scope metadata being ignored by the user-todo blocking summary.
 **Validation**
 
 - `regression/scoped-user-gate-fallback-contract.py`
-- `examples/protocol-action-packet-smoke.py`
+- `examples/protocol/protocol-action-packet-smoke.py`
 - `examples/control_plane/work-lane-contract-smoke.py`
 - `examples/control_plane/quota-agent-scoped-user-gate-smoke.py` for `blocks_agent` scoped
   user gates that block only the target agent while preserving other-agent
@@ -1056,7 +1056,7 @@ decision-point re-read.
 - `examples/reward-gate-direct-write-contract-smoke.py`
 - `examples/reward-append-api-smoke.py`
 - `examples/dashboard-reward-append-browser-smoke.mjs`
-- `examples/operator-gate-resume-contract-smoke.py`
+- `examples/project/operator-gate-resume-contract-smoke.py`
 
 #### IP-017 User Reward Lesson Promotion
 
@@ -1261,7 +1261,7 @@ the checkpointed decision.
 **Validation**
 
 - `examples/control_plane/quota-action-scope-guard-smoke.py`;
-- `examples/configure-goal-smoke.py`;
+- `examples/project/configure-goal-smoke.py`;
 - `docs/state-interaction-model.md` checkpointed decision sections.
 
 #### IP-011 Authority Material Intake

@@ -192,5 +192,5 @@ A valid packet or implementation must prove:
 The durable smoke is:
 
 ```bash
-python3 examples/rollback-packet-protocol-smoke.py
+python3 examples/protocol/rollback-packet-protocol-smoke.py
 ```

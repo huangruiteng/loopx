@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PRIVATE_PATTERNS = [
     re.compile(r"/" + r"Users/[A-Za-z0-9._-]+/"),
     re.compile(r"/" + r"private/"),

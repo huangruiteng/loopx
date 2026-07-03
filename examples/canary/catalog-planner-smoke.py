@@ -333,7 +333,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     host_command_commands = [check["command"] for check in host_command_profile["checks"]]
     assert "python3 examples/slash-command-catalog-smoke.py" in host_command_commands
     assert "python3 examples/codex-app-host-command-registry-smoke.py" in host_command_commands
-    assert "python3 examples/global-manager-command-protocol-smoke.py" in host_command_commands
+    assert "python3 examples/project/global-manager-command-protocol-smoke.py" in host_command_commands
     assert all(check["tier"] == "default" for check in host_command_profile["checks"])
     assert host_command_profile["deep_checks_available"] is False, host_command_profile
     assert host_command_profile["deep_checks_included"] is False, host_command_profile

@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL = ROOT / "docs" / "reference" / "protocols" / "goal-vision-replan-contract-v0.md"
 PROTOCOL_INDEX = ROOT / "docs" / "reference" / "protocols" / "README.md"
 DOCS_INDEX = ROOT / "docs" / "README.md"
