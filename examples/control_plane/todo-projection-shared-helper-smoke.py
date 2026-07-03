@@ -16,6 +16,7 @@ from loopx.quota import (  # noqa: E402
     _claimed_visibility_items as quota_claimed_visibility_items,
     _todo_item_claimed_by_agent_or_unclaimed as quota_todo_item_claimed_by_agent_or_unclaimed,
     _todo_item_is_deferred as quota_todo_item_is_deferred,
+    _todo_summary_monitor_items as quota_todo_summary_monitor_items,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
     _todo_task_class as quota_todo_task_class,
     build_quota_should_run,
@@ -35,6 +36,7 @@ from loopx.todo_projection import (  # noqa: E402
     todo_item_claimed_by_agent_or_unclaimed as shared_todo_item_claimed_by_agent_or_unclaimed,
     todo_item_is_deferred as shared_todo_item_is_deferred,
     todo_projection_sort_key as shared_todo_projection_sort_key,
+    todo_summary_monitor_items as shared_todo_summary_monitor_items,
 )
 
 
@@ -278,6 +280,23 @@ def assert_deferred_helper_parity() -> None:
         assert predicate(open_item) is False, open_item
 
 
+def assert_monitor_item_collection_parity(summary: dict[str, Any]) -> None:
+    # Preserve legacy object-identity de-duplication: projected copies of the
+    # same todo_id can appear more than once across monitor summary lanes.
+    expected_ids = [
+        "todo_monitor_p0",
+        "todo_monitor_p0",
+        "todo_monitor_unscheduled",
+        "todo_monitor_p0",
+    ]
+    for selector in (
+        shared_todo_summary_monitor_items,
+        quota_todo_summary_monitor_items,
+    ):
+        selected_ids = [item["todo_id"] for item in selector(summary)]
+        assert selected_ids == expected_ids, selected_ids
+
+
 def assert_quota_uses_executable_advancement(summary: dict[str, Any]) -> None:
     payload = build_quota_should_run(
         status_payload(summary),
@@ -307,6 +326,7 @@ def main() -> int:
     assert_shared_ordering_parity(summary)
     assert_claimed_visibility_parity()
     assert_deferred_helper_parity()
+    assert_monitor_item_collection_parity(summary)
     assert_quota_uses_executable_advancement(summary)
     return 0
 
