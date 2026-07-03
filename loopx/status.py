@@ -159,6 +159,7 @@ from .projections.todo_summary import (
     pr_merged_condition,
     rollout_event_pr_refs,
     structured_todo_item,
+    sync_connected_attention_action_from_todos as _sync_connected_attention_action_from_todos_read_model,
     todo_item_expires_at,
     todo_item_is_actionable_open,
     todo_item_is_deferred,
@@ -7158,17 +7159,10 @@ def attention_item(
 
 
 def sync_connected_attention_action_from_todos(item: dict[str, Any]) -> None:
-    if item.get("status") != "connected_without_run":
-        return
-    agent_action = first_open_todo_text(
-        item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None
+    _sync_connected_attention_action_from_todos_read_model(
+        item,
+        first_open_todo_text=first_open_todo_text,
     )
-    if not agent_action:
-        return
-    item["recommended_action"] = agent_action
-    project_asset = item.get("project_asset")
-    if isinstance(project_asset, dict):
-        project_asset["next_action"] = agent_action
 
 
 def active_state_todo_attention_item(

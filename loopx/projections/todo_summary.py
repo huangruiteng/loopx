@@ -149,6 +149,24 @@ def active_state_todo_attention_item(
     return None
 
 
+def sync_connected_attention_action_from_todos(
+    item: dict[str, Any],
+    *,
+    first_open_todo_text: FirstOpenTodoText,
+) -> None:
+    if item.get("status") != "connected_without_run":
+        return
+    agent_action = first_open_todo_text(
+        item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None
+    )
+    if not agent_action:
+        return
+    item["recommended_action"] = agent_action
+    project_asset = item.get("project_asset")
+    if isinstance(project_asset, dict):
+        project_asset["next_action"] = agent_action
+
+
 def todo_priority_parts(text: str) -> tuple[str | None, str]:
     return projection_todo_priority_parts(text)
 
