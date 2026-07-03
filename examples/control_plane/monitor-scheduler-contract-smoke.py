@@ -205,6 +205,30 @@ def assert_not_due_monitor_waits_quietly() -> None:
     assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
 
 
+def assert_not_due_monitor_scheduler_honors_monitor_cadence() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_monitor_wait_fast",
+                priority="P0",
+                cadence="3m",
+                next_due_at=FUTURE_DUE_AT,
+                target_key="auto-research-vision-monitor",
+            )
+        ]
+    )
+    scheduler = guard["scheduler_hint"]
+    codex_app = scheduler["codex_app"]
+    stateful = codex_app["stateful_backoff"]
+    assert guard["decision"] == "skip", guard
+    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert scheduler["cadence_class"] == "monitor_wait", scheduler
+    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
+    assert codex_app["example_progression_minutes"] == [3, 3, 3], scheduler
+    assert stateful["current_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
+
+
 def assert_unscheduled_monitor_requires_metadata_repair() -> None:
     guard = guard_for(
         [
@@ -507,6 +531,7 @@ def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> N
 
 def main() -> int:
     assert_not_due_monitor_waits_quietly()
+    assert_not_due_monitor_scheduler_honors_monitor_cadence()
     assert_unscheduled_monitor_requires_metadata_repair()
     assert_unscheduled_monitor_repair_survives_handoff_gates()
     assert_due_monitor_requires_explicit_attempt()

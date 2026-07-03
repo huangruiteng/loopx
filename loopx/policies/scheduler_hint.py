@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import re
 from collections.abc import Collection
+from datetime import datetime, timezone
 from typing import Any
 
 from ..delivery_outcome import DeliveryOutcome
@@ -18,6 +21,7 @@ SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
+MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 
 
 def normalize_scheduler_rrule(value: Any) -> str:
@@ -53,6 +57,76 @@ def _int_number(value: Any, *, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _parse_monitor_timestamp(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _monitor_cadence_minutes(value: Any) -> int | None:
+    match = MONITOR_CADENCE_PATTERN.match(str(value or ""))
+    if not match:
+        return None
+    amount = max(1, int(match.group(1)))
+    unit = match.group(2).lower()
+    if unit == "h":
+        return amount * 60
+    if unit == "d":
+        return amount * 24 * 60
+    return amount
+
+
+def _monitor_wait_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    summary = payload.get("agent_todo_summary")
+    if not isinstance(summary, dict):
+        return []
+    items: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for key in ("current_agent_claimed_monitor_items", "monitor_open_items"):
+        values = summary.get(key)
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            todo_id = str(value.get("todo_id") or "")
+            if todo_id and todo_id in seen_ids:
+                continue
+            if todo_id:
+                seen_ids.add(todo_id)
+            items.append(value)
+    return items
+
+
+def _monitor_wait_cadence_progression(payload: dict[str, Any]) -> list[int] | None:
+    """Cap monitor quiet backoff so the host does not sleep past monitor due."""
+
+    current_time = datetime.now(timezone.utc)
+    caps: list[int] = []
+    for item in _monitor_wait_items(payload):
+        item_caps: list[int] = []
+        cadence_minutes = _monitor_cadence_minutes(item.get("cadence"))
+        if cadence_minutes is not None:
+            item_caps.append(cadence_minutes)
+        next_due_at = _parse_monitor_timestamp(item.get("next_due_at"))
+        if next_due_at is not None:
+            seconds_until_due = (next_due_at.astimezone(timezone.utc) - current_time).total_seconds()
+            item_caps.append(max(1, int(math.ceil(seconds_until_due / 60))))
+        if item_caps:
+            caps.append(min(item_caps))
+    if not caps:
+        return None
+    cap = max(1, min(caps))
+    return [min(interval, cap) for interval in (15, 30, 60)]
 
 
 def build_codex_app_scheduler_ack_event(
@@ -220,6 +294,7 @@ def build_scheduler_hint(
             min(codex_interval * (multiplier**step), codex_max)
             for step in range(3)
         ]
+        codex_initial_interval = cadence_progression[0] if cadence_progression else codex_interval
         final_replan_check = {
             "enabled": cli_limit is not None or claude_limit is not None,
             "trigger": "before_unchanged_poll_after_limit",
@@ -230,12 +305,13 @@ def build_scheduler_hint(
             "spend_policy": "no quota spend for final replan check or loop stop",
         }
         identity_snapshot = {key: identity_value(key) for key in identity_keys}
-        codex_rrule = rrule_for_minutes(codex_interval)
+        codex_rrule = rrule_for_minutes(codex_initial_interval)
         profile_snapshot = {
             "cadence_class": cadence_class,
-            "codex_app_initial_interval_minutes": codex_interval,
+            "codex_app_initial_interval_minutes": codex_initial_interval,
             "codex_app_initial_rrule": codex_rrule,
             "codex_app_max_interval_minutes": codex_max,
+            "codex_app_progression_minutes": cadence_progression,
             "unchanged_poll_backoff_multiplier": multiplier,
             "local_scheduler_unchanged_poll_limit": cli_limit,
             "claude_code_loop_unchanged_poll_limit": claude_limit,
@@ -276,9 +352,9 @@ def build_scheduler_hint(
             "profile_action": action,
             "reset_token": reset_token,
             "host_state_key": "scheduler_hint.reset_policy.reset_token",
-            "codex_app_initial_interval_minutes": codex_interval,
+            "codex_app_initial_interval_minutes": codex_initial_interval,
             "codex_app_initial_rrule": codex_rrule,
-            "local_scheduler_initial_interval_minutes": codex_interval,
+            "local_scheduler_initial_interval_minutes": codex_initial_interval,
             "clear_unchanged_poll_state": True,
             "identity_key_count": len(identity_keys),
             "identity_signature": identity_signature,
@@ -292,12 +368,12 @@ def build_scheduler_hint(
         reset_policy = {
             "reset_token": reset_token,
             "host_state_key": "scheduler_hint.reset_policy.reset_token",
-            "codex_app_initial_interval_minutes": codex_interval,
+            "codex_app_initial_interval_minutes": codex_initial_interval,
             "codex_app_initial_rrule": codex_rrule,
             "identity_signature": identity_signature,
         }
         local_scheduler = {
-            "recommended_interval_minutes": codex_interval,
+            "recommended_interval_minutes": codex_initial_interval,
             "max_interval_minutes": codex_max,
             "unchanged_poll_backoff_multiplier": multiplier,
             "example_progression_minutes": cadence_progression,
@@ -534,6 +610,7 @@ def build_scheduler_hint(
         effective_action == "monitor_quiet_skip"
         or recommended_mode == "monitor_quiet_until_material_transition"
     ):
+        monitor_progression = _monitor_wait_cadence_progression(payload)
         return hint(
             action="backoff_until_material_transition",
             cadence_class="monitor_wait",
@@ -545,6 +622,7 @@ def build_scheduler_hint(
             codex_max=60,
             cli_limit=3,
             claude_limit=3,
+            cadence_progression_override=monitor_progression,
         )
 
     if payload.get("should_run") is False:
