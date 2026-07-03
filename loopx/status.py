@@ -87,6 +87,10 @@ from .projections.agent_lane_recommendation import (
     latest_agent_lane_run as _latest_agent_lane_run_read_model,
     latest_run_recommended_action_for_projection as _latest_run_recommended_action_for_projection_read_model,
 )
+from .projections.active_state_sections import (
+    active_state_section_entries as _active_state_section_entries_read_model,
+    active_state_sections as _active_state_sections_read_model,
+)
 from .projections.attention_fields import (
     operator_gate_attention_fields as _operator_gate_attention_fields_read_model,
     readiness_attention_fields as _readiness_attention_fields_read_model,
@@ -6058,18 +6062,11 @@ def active_state_event_projection_fields(
 
 
 def active_state_sections(state_text: str, headings: tuple[str, ...]) -> dict[str, list[str]]:
-    wanted = {heading.lower(): heading for heading in headings}
-    current: str | None = None
-    sections: dict[str, list[str]] = {heading: [] for heading in headings}
-    for line in state_text.splitlines():
-        match = SECTION_HEADING_PATTERN.match(line)
-        if match:
-            normalized = match.group(1).strip().lower()
-            current = wanted.get(normalized)
-            continue
-        if current:
-            sections[current].append(line)
-    return sections
+    return _active_state_sections_read_model(
+        state_text,
+        headings,
+        section_heading_pattern=SECTION_HEADING_PATTERN,
+    )
 
 
 def parse_issue_meta_surface(state_text: str) -> dict[str, Any] | None:
@@ -6081,29 +6078,11 @@ def parse_issue_meta_surface(state_text: str) -> dict[str, Any] | None:
 
 
 def active_state_section_entries(lines: list[str]) -> list[str]:
-    entries: list[str] = []
-    current: list[str] = []
-    for line in lines:
-        bullet_match = BACKLOG_HYGIENE_BULLET_PATTERN.match(line)
-        if bullet_match:
-            if current:
-                entries.append(normalize_todo_text(" ".join(current)))
-            current = [bullet_match.group(1)]
-            continue
-        if current and line.startswith((" ", "\t")):
-            continuation = line.strip()
-            if continuation:
-                current.append(continuation)
-            continue
-        if current:
-            entries.append(normalize_todo_text(" ".join(current)))
-            current = []
-        stripped = line.strip()
-        if stripped:
-            entries.append(stripped)
-    if current:
-        entries.append(normalize_todo_text(" ".join(current)))
-    return entries
+    return _active_state_section_entries_read_model(
+        lines,
+        bullet_pattern=BACKLOG_HYGIENE_BULLET_PATTERN,
+        normalize_text=normalize_todo_text,
+    )
 
 
 def backlog_hygiene_warning(state_text: str, *, agent_todos: dict[str, Any] | None) -> dict[str, Any] | None:
