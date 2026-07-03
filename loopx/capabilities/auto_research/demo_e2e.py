@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 import tempfile
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -354,6 +355,63 @@ def _compact_live_worker_evidence(evidence: dict[str, object]) -> dict[str, obje
     }
 
 
+def _discover_visible_live_evidence(
+    *,
+    runtime_root_arg: str | None,
+    session_name: str,
+    goal_id: str,
+    wait_seconds: float,
+) -> dict[str, object] | None:
+    if not runtime_root_arg:
+        return None
+    runtime_root = Path(runtime_root_arg)
+    artifact_root = runtime_root / "visible-launcher-artifacts" / session_name
+
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    while True:
+        candidates = (
+            sorted(artifact_root.glob("*/live_codex_e2e_evidence.public.json"))
+            if artifact_root.is_dir()
+            else []
+        )
+        for candidate in candidates:
+            try:
+                raw = json.loads(candidate.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(raw, dict) or raw.get("goal_id") != goal_id:
+                continue
+            lane_agent_id = str(raw.get("agent_id") or "").strip()
+            if not lane_agent_id:
+                continue
+            try:
+                return load_live_codex_e2e_evidence(
+                    evidence_path=str(candidate),
+                    goal_id=goal_id,
+                    agent_id=lane_agent_id,
+                )
+            except ValueError:
+                continue
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.5)
+
+
+def _load_live_worker_evidence_into_payload(
+    *,
+    payload: dict[str, object],
+    evidence: dict[str, object],
+    evidence_source: str,
+) -> None:
+    payload["live_worker_evidence"] = _compact_live_worker_evidence(evidence)
+    visible_proof = payload["visible_worker_proof"]
+    if isinstance(visible_proof, dict):
+        visible_proof["lane_authored_evidence_loaded"] = True
+        visible_proof["visible_lanes_launched"] = True
+        visible_proof["visible_lanes_accepted"] = True
+        visible_proof["evidence_source"] = evidence_source
+
+
 def run_auto_research_demo_e2e(
     *,
     agent_id: str,
@@ -378,6 +436,7 @@ def run_auto_research_demo_e2e(
     agent_specs: Sequence[str] | None = None,
     run_worker_loop: bool = False,
     worker_loop_rounds: int = 3,
+    visible_live_evidence_wait_seconds: float = 30.0,
 ) -> dict[str, object]:
     if launch_visible and not execute:
         raise ValueError("--launch-visible requires --execute")
@@ -664,6 +723,18 @@ def run_auto_research_demo_e2e(
                 visible_proof["visible_lanes_launched"] = True
                 visible_proof["visible_lanes_accepted"] = bool(visible_acceptance.get("accepted"))
                 visible_proof["evidence_source"] = "visible_launcher"
+            live_evidence = _discover_visible_live_evidence(
+                runtime_root_arg=visible_runtime_root_arg,
+                session_name=str(launch_result.get("session_name") or session_name),
+                goal_id=goal_id,
+                wait_seconds=visible_live_evidence_wait_seconds,
+            )
+            if live_evidence is not None:
+                _load_live_worker_evidence_into_payload(
+                    payload=payload,
+                    evidence=live_evidence,
+                    evidence_source="visible_launcher_artifact",
+                )
         payload["workspace_retained"] = keep_workspace or launch_visible
         if live_evidence_path:
             live_evidence = load_live_codex_e2e_evidence(
@@ -671,13 +742,11 @@ def run_auto_research_demo_e2e(
                 goal_id=goal_id,
                 agent_id=agent_id,
             )
-            payload["live_worker_evidence"] = _compact_live_worker_evidence(live_evidence)
-            visible_proof = payload["visible_worker_proof"]
-            if isinstance(visible_proof, dict):
-                visible_proof["lane_authored_evidence_loaded"] = True
-                visible_proof["visible_lanes_launched"] = True
-                visible_proof["visible_lanes_accepted"] = True
-                visible_proof["evidence_source"] = "live_worker_evidence"
+            _load_live_worker_evidence_into_payload(
+                payload=payload,
+                evidence=live_evidence,
+                evidence_source="live_worker_evidence",
+            )
         return payload
     finally:
         if tmp_obj is not None:
