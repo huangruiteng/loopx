@@ -228,6 +228,13 @@ AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
 SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = AGENT_CLAIM_SCOPE_SCHEMA_VERSION
 AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
 QUOTA_MONITOR_TARGET_SCHEMA_VERSION = "quota_monitor_target_v0"
+PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES = {
+    "private_boundary_no_authorized_read",
+}
+PRIVATE_BOUNDARY_MONITOR_ACTION_KIND_HINTS = (
+    "private",
+    "local_department_doc",
+)
 
 
 DEFAULT_AVAILABLE_CAPABILITIES = (
@@ -610,6 +617,7 @@ def _work_lane_contract(
     )
     due_monitor_preempts_advancement = bool(
         first_due_monitor
+        and _due_monitor_can_preempt_advancement(first_due_monitor)
         and (
             first_advancement is None
             or _todo_priority_rank(first_due_monitor) < _todo_priority_rank(first_advancement)
@@ -1235,6 +1243,26 @@ def _todo_priority_label(item: dict[str, Any]) -> str | None:
 
 def _todo_priority_rank(item: dict[str, Any]) -> int:
     return projection_todo_priority_rank(item)
+
+
+def _due_monitor_can_preempt_advancement(item: dict[str, Any]) -> bool:
+    """Return false for monitor work that requires private/local material.
+
+    A due monitor can remain visible as context, but it must not outrank a
+    public executable advancement slice when the monitor's own last writeback
+    says the agent has no authorized private read path.
+    """
+
+    result_hash = str(item.get("result_hash") or "").strip().lower()
+    if result_hash in PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES:
+        return False
+    action_kind = str(item.get("action_kind") or "").strip().lower()
+    if any(hint in action_kind for hint in PRIVATE_BOUNDARY_MONITOR_ACTION_KIND_HINTS):
+        return False
+    priority = str(_todo_priority_label(item) or "").strip().upper()
+    if "LOCAL" in priority:
+        return False
+    return True
 
 
 def _todo_index_rank(item: dict[str, Any]) -> int:
