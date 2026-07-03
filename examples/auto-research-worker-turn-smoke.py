@@ -257,6 +257,10 @@ def main() -> int:
         assert executed["live_evidence"]["written"] is True, executed
         assert executed["live_evidence"]["evidence_source"] == "live_codex_lane_output", executed
         assert executed["live_evidence"]["dev_metric"] == 4.0, executed
+        assert executed["continuation_projection"]["source"] == "loopx_state_todo_frontier", executed
+        assert executed["followup"]["needed"] is True, executed
+        assert executed["followup"]["action_kind"] == "run_holdout_eval", executed
+        assert executed["followup"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
         assert executed["frontier"]["frontier"]["selected"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
         assert payload["visible_launch"]["launch_result"]["worker_turn_executed"] is True, payload
         assert payload["visible_launch"]["launch_result"]["worker_turn_count"] == 3, payload
@@ -307,14 +311,33 @@ def main() -> int:
                 ), turn
                 assert turn["frontier"]["frontier"]["selected"]["allowed_action"] == "run_dev_eval", turn
                 assert turn["live_evidence"]["written"] is True, turn
-        alias_evidence = run_worker_turn(
+        projected_holdout = run_worker_turn(
             registry=four_registry,
             runtime_root=four_runtime_root,
             workspace=four_workspace,
             agent_id=EVIDENCE_AGENT_ID,
             execute=False,
         )
-        assert alias_evidence["mode"] == "no_action", alias_evidence
+        assert projected_holdout["mode"] == "dry_run", projected_holdout
+        assert projected_holdout["selected_action"] == "run_holdout_eval", projected_holdout
+        assert projected_holdout["frontier"]["frontier"]["selected"]["claimed_by"] == (
+            EVIDENCE_AGENT_ID
+        ), projected_holdout
+        assert projected_holdout["frontier"]["frontier"]["selected"]["todo_id"] == (
+            turn["followup"]["todo_id"]
+        ), projected_holdout
+        holdout = run_worker_turn(
+            registry=four_registry,
+            runtime_root=four_runtime_root,
+            workspace=four_workspace,
+            agent_id=EVIDENCE_AGENT_ID,
+            execute=True,
+            complete=True,
+        )
+        assert holdout["mode"] == "execute", holdout
+        assert holdout["selected_action"] == "run_holdout_eval", holdout
+        assert holdout["holdout_metric"] == 4.5, holdout
+        assert holdout["completion"]["status"] == "done", holdout
         verifier = run_worker_turn(
             registry=four_registry,
             runtime_root=four_runtime_root,
@@ -328,25 +351,15 @@ def main() -> int:
         assert verifier["selected_action"] == "summarize_evidence", verifier
         assert verifier["artifact"]["kind"] == "evaluation_summary", verifier
         assert verifier["artifact_status"] == "evaluation_summary_written", verifier
-        assert verifier["claim_allowed"] is False, verifier
+        assert verifier["claim_allowed"] is True, verifier
         assert verifier["promotion_decision_made"] is False, verifier
-        assert verifier["followup"]["needed"] is True, verifier
-        assert verifier["followup"]["action_kind"] == "run_holdout_eval", verifier
-        assert verifier["followup"]["claimed_by"] == EVIDENCE_AGENT_ID, verifier
+        assert verifier["followup"]["needed"] is False, verifier
+        assert verifier["followup"]["reason"] in {
+            "holdout_already_validated",
+            "no_dev_promotion_candidate",
+        }, verifier
         assert verifier["completion"]["status"] == "done", verifier
         assert_public_safe(verifier)
-        holdout = run_worker_turn(
-            registry=four_registry,
-            runtime_root=four_runtime_root,
-            workspace=four_workspace,
-            agent_id=EVIDENCE_AGENT_ID,
-            execute=True,
-            complete=True,
-        )
-        assert holdout["mode"] == "execute", holdout
-        assert holdout["selected_action"] == "run_holdout_eval", holdout
-        assert holdout["holdout_metric"] == 4.5, holdout
-        assert holdout["completion"]["status"] == "done", holdout
         generic = add_goal_todo(
             registry_path=four_registry,
             goal_id=GOAL_ID,

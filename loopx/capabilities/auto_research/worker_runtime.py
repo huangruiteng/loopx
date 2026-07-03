@@ -414,6 +414,47 @@ def _maybe_add_holdout_followup_todo(
     }
 
 
+def _project_holdout_followup_after_dev_evidence(
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    output_path: Path,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+    execute: bool,
+) -> dict[str, object]:
+    """Project a dev-supported candidate into ordinary LoopX todo/frontier state."""
+
+    artifact = _write_evaluation_summary_artifact(
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+        output_path=output_path,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        agent_id=agent_id,
+    )
+    followup = _maybe_add_holdout_followup_todo(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        source_todo_id=todo_id,
+        agent_id=agent_id,
+        decision_summary=artifact["decision_summary"],
+        execute=execute,
+    )
+    return {
+        "schema_version": "auto_research_continuation_projection_v0",
+        "source": "loopx_state_todo_frontier",
+        "candidate_kind": "holdout_validation",
+        "decision_summary": artifact["decision_summary"],
+        "followup": followup,
+        "artifact": _artifact_summary(
+            "evaluation_summary",
+            filename="evaluation-summary.public.json",
+        ),
+    }
+
+
 def _generic_handoff_is_satisfied(
     *,
     selected: dict[str, object],
@@ -993,6 +1034,15 @@ def run_auto_research_worker_turn(
     _write_json(evidence_packet_path, packet)
     append_result = append_evidence(str(evidence_packet_path))
     _write_json(append_result_path, append_result)
+    continuation = _project_holdout_followup_after_dev_evidence(
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+        output_path=evaluation_summary_path,
+        goal_id=goal_id,
+        todo_id=todo_id,
+        agent_id=agent_id,
+        execute=True,
+    )
 
     live_evidence: dict[str, object] | None = None
     if visible_lanes_accepted:
@@ -1048,6 +1098,8 @@ def run_auto_research_worker_turn(
             "evidence_source": live_evidence.get("source") if live_evidence else None,
             "dev_metric": live_lane_evidence.get("dev_metric"),
         },
+        "continuation_projection": continuation,
+        "followup": continuation["followup"],
         "artifacts": {
             "paths_are_local_only": True,
             "evidence_packet": "evidence.public.json",
