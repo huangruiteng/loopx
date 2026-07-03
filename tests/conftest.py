@@ -81,6 +81,14 @@ def pytest_addoption(parser) -> None:
         help="Maximum selected checks to run. Defaults to all selected checks.",
     )
     group.addoption(
+        "--loopx-smoke-offset",
+        "--smoke-offset",
+        type=int,
+        default=0,
+        dest="loopx_smoke_offset",
+        help="Skip this many matched checks before applying the smoke-suite limit.",
+    )
+    group.addoption(
         "--loopx-smoke-timeout",
         "--smoke-timeout",
         type=float,

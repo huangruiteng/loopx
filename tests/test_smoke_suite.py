@@ -26,6 +26,7 @@ def _build_preview(config: Any) -> dict[str, Any]:
         families=_option_list(config, "loopx_smoke_families"),
         profiles=_option_list(config, "loopx_smoke_profiles"),
         include_deep_checks=bool(config.getoption("loopx_smoke_include_deep_checks")),
+        offset=int(config.getoption("loopx_smoke_offset") or 0),
         limit=int(config.getoption("loopx_smoke_limit") or 0),
         execute=False,
         timeout_seconds=float(config.getoption("loopx_smoke_timeout") or 120.0),

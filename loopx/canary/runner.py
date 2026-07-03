@@ -386,6 +386,7 @@ def build_canary_smoke_suite_run(
     include_deep_checks: bool = False,
     max_checks_per_family: int = 3,
     max_checks_per_profile: int = 3,
+    offset: int = 0,
     limit: int = 0,
     execute: bool = True,
     timeout_seconds: float = 120.0,
@@ -457,6 +458,10 @@ def build_canary_smoke_suite_run(
         selected.extend(flatten_catalog_canary_checks(plan))
 
     selected = _dedupe_checks(selected)
+    matched_check_count = len(selected)
+    normalized_offset = max(0, int(offset or 0))
+    if normalized_offset:
+        selected = selected[normalized_offset:]
     if limit and limit > 0:
         selected = selected[:limit]
     normalized = [
@@ -587,7 +592,9 @@ def build_canary_smoke_suite_run(
         "timeout_seconds": max(1.0, timeout_seconds),
         "fail_fast": fail_fast,
         "side_effect_guard": side_effect_guard,
+        "offset": normalized_offset,
         "limit": max(0, limit),
+        "matched_check_count": matched_check_count,
         "selected_check_count": len(selected),
         "executed_check_count": len(results),
         "failure_count": len(failures),
@@ -611,6 +618,8 @@ def build_canary_smoke_suite_run(
             "include_deep_checks": include_deep_checks,
             "max_checks_per_family": max_checks_per_family,
             "max_checks_per_profile": max_checks_per_profile,
+            "offset": normalized_offset,
+            "limit": max(0, limit),
         },
         "catalog_plan": {
             "schema_version": plan.get("schema_version"),
@@ -625,7 +634,8 @@ def build_canary_smoke_suite_run(
             "shell-free argv, per-check timeouts, and continue-on-failure reporting. "
             "Use --suite full-public for a full sweep, --module/--script for local "
             "development, recognized --profile values for named smoke-suite profiles, "
-            "or catalog selectors such as --profile for canary-plan modules."
+            "or catalog selectors such as --profile for canary-plan modules. Use "
+            "--offset with --limit to sweep large profiles in stable windows."
         ),
     }
 
@@ -758,6 +768,9 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
         f"- mode: `{mode}`",
         f"- ok: `{str(payload.get('ok')).lower()}`",
         f"- suite: `{payload.get('suite')}`",
+        f"- matched_checks: `{payload.get('matched_check_count')}`",
+        f"- offset: `{payload.get('offset')}`",
+        f"- limit: `{payload.get('limit')}`",
         f"- selected_checks: `{payload.get('selected_check_count')}`",
         f"- executed_checks: `{payload.get('executed_check_count')}`",
         f"- failures: `{payload.get('failure_count')}`",

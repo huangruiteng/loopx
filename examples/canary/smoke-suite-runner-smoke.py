@@ -160,6 +160,43 @@ def assert_named_smoke_profile_expands_to_suite_selection() -> None:
     assert all("skillsbench" not in script for script in scripts), payload
 
 
+def assert_smoke_profile_offset_windows_selection() -> None:
+    first_window = build_canary_smoke_suite_run(
+        suite="default-public",
+        profiles=["core-control-plane"],
+        execute=False,
+        limit=5,
+    )
+    second_window = build_canary_smoke_suite_run(
+        suite="default-public",
+        profiles=["core-control-plane"],
+        execute=False,
+        offset=5,
+        limit=5,
+    )
+    assert first_window["ok"] is True, first_window
+    assert second_window["ok"] is True, second_window
+    assert first_window["matched_check_count"] >= 10, first_window
+    assert second_window["matched_check_count"] == first_window["matched_check_count"], second_window
+    assert first_window["offset"] == 0, first_window
+    assert second_window["offset"] == 5, second_window
+    assert first_window["limit"] == 5, first_window
+    assert second_window["limit"] == 5, second_window
+    assert first_window["selected_check_count"] == 5, first_window
+    assert second_window["selected_check_count"] == 5, second_window
+    assert second_window["selection_inputs"]["offset"] == 5, second_window
+    first_scripts = [
+        check["normalized"]["script"] for check in first_window["selected_checks"]
+    ]
+    second_scripts = [
+        check["normalized"]["script"] for check in second_window["selected_checks"]
+    ]
+    assert set(first_scripts).isdisjoint(second_scripts), {
+        "first": first_scripts,
+        "second": second_scripts,
+    }
+
+
 def assert_named_smoke_profiles_are_discoverable() -> None:
     payload = build_canary_smoke_suite_profiles()
     assert payload["ok"] is True, payload
@@ -238,6 +275,8 @@ def assert_cli_named_smoke_profile_preview_works() -> None:
             "smoke-suite",
             "--profile",
             "canary-runner",
+            "--offset",
+            "1",
             "--limit",
             "3",
             "--no-execute",
@@ -250,7 +289,9 @@ def assert_cli_named_smoke_profile_preview_works() -> None:
     payload = json.loads(completed.stdout)
     assert payload["ok"] is True, payload
     assert payload["suite"] == "full-public", payload
+    assert payload["offset"] == 1, payload
     assert payload["selected_check_count"] == 3, payload
+    assert payload["matched_check_count"] >= 4, payload
     assert payload["selection_inputs"]["smoke_profiles"] == ["canary-runner"], payload
     assert payload["selection_inputs"]["catalog_profiles"] == [], payload
     scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
@@ -293,6 +334,8 @@ def assert_run_smokes_profile_preview_matches_runner_selection() -> None:
             "core-control-plane",
             "--exclude-module",
             "status",
+            "--offset",
+            "1",
             "--limit",
             "2",
             "--no-execute",
@@ -304,6 +347,7 @@ def assert_run_smokes_profile_preview_matches_runner_selection() -> None:
     )
     payload = json.loads(completed.stdout)
     assert payload["ok"] is True, payload
+    assert payload["offset"] == 1, payload
     assert payload["selection_inputs"]["smoke_profiles"] == ["core-control-plane"], payload
     assert "status" in payload["selection_inputs"]["exclude_modules"], payload
     scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
@@ -502,6 +546,7 @@ def main() -> int:
     assert_catalog_profile_preview_is_supported()
     assert_named_smoke_profiles_are_discoverable()
     assert_named_smoke_profile_expands_to_suite_selection()
+    assert_smoke_profile_offset_windows_selection()
     assert_named_smoke_profile_can_mix_with_catalog_profile()
     assert_cli_json_preview_works()
     assert_cli_named_smoke_profile_preview_works()

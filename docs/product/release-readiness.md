@@ -177,9 +177,13 @@ hand-curated script lists. Profiles expand to the same runner payload as
 ```bash
 loopx canary smoke-profiles
 loopx canary smoke-suite --profile core-control-plane --no-execute
+loopx canary smoke-suite --profile core-control-plane --offset 20 --limit 20 --timeout-seconds 60
 loopx canary smoke-suite --profile canary-runner --timeout-seconds 60
 python3 examples/run-smokes.py --profile public-entry-install-release --no-execute
 ```
+
+Use `--offset` with `--limit` to sweep large profiles in stable windows without
+rerunning the same prefix batch on every heartbeat.
 
 CI may wrap the same runner selection in pytest when JUnit reporting is useful.
 The pytest facade still executes each `examples/**/*-smoke.py` through a
@@ -189,6 +193,7 @@ subprocess; it is not a migration of legacy smokes into pytest unit tests:
 python3 -m pytest tests/test_smoke_suite.py \
   --loopx-smoke-suite default-public \
   --loopx-smoke-profile canary-runner \
+  --loopx-smoke-offset 0 \
   --junitxml smoke-suite.xml
 ```
 

@@ -329,6 +329,15 @@ def register_canary_commands(
         help="Maximum selected checks to execute or preview. Defaults to all selected checks.",
     )
     smoke_parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help=(
+            "Skip this many matched checks before applying --limit. Useful for "
+            "sweeping large smoke profiles in stable batches."
+        ),
+    )
+    smoke_parser.add_argument(
         "--timeout-seconds",
         type=float,
         default=120.0,
@@ -433,6 +442,7 @@ def handle_canary_command(
             include_deep_checks=bool(args.include_deep_checks),
             max_checks_per_family=int(args.max_checks_per_family or 3),
             max_checks_per_profile=int(args.max_checks_per_profile or 3),
+            offset=int(args.offset or 0),
             limit=int(args.limit or 0),
             execute=not bool(args.no_execute),
             timeout_seconds=float(args.timeout_seconds or 120.0),

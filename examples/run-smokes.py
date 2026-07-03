@@ -71,6 +71,12 @@ def parse_args() -> argparse.Namespace:
         help="Maximum selected checks to execute or preview. Defaults to all selected checks.",
     )
     parser.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        help="Skip this many matched checks before applying --limit.",
+    )
+    parser.add_argument(
         "--timeout-seconds",
         type=float,
         default=120.0,
@@ -104,6 +110,7 @@ def main() -> int:
         families=list(args.family or []),
         profiles=list(args.profile or []),
         include_deep_checks=bool(args.include_deep_checks),
+        offset=int(args.offset or 0),
         limit=int(args.limit or 0),
         execute=not bool(args.no_execute),
         timeout_seconds=float(args.timeout_seconds or 120.0),
