@@ -263,7 +263,18 @@ def main() -> int:
         ), driver
         assert driver["broadcaster"]["decides_work"] is False, driver
         assert driver["pane"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", driver
+        assert driver["prompt"]["pre_tick_summary_ref"] == "$LOOPX_PANE_TICK_SUMMARY", driver
+        assert "launcher_pre_tick_summary" in driver["pane"]["reads"], driver
+        assert driver["pane"]["cadence_action"] == (
+            "fixed_prompt_wakeup_then_pre_tick_review_or_local_tick"
+        ), driver
         assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["pre_tick_summary"] == (
+            "$LOOPX_PANE_TICK_SUMMARY"
+        ), dry_packet
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["pre_tick_output"] == (
+            "$LOOPX_PANE_TICK_OUTPUT_ARTIFACT"
+        ), dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["machine_json_destination"] == (
             "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
         ), dry_packet
@@ -271,7 +282,9 @@ def main() -> int:
         compact = dry_packet["compact_human_status"]
         assert compact["schema_version"] == "generic_multi_agent_compact_status_v0", compact
         assert compact["role_count"] == 2, compact
-        assert compact["first_action"] == "$LOOPX_PANE_A2A_TICK", compact
+        assert compact["first_action"] == (
+            "pre_tick_summary_then_$LOOPX_PANE_A2A_TICK_when_needed"
+        ), compact
         assert compact["driver_model"] == (
             "fixed_prompt_broadcast_plus_pane_local_state_tick"
         ), compact
@@ -333,6 +346,8 @@ def main() -> int:
         assert dry_wake["broadcaster_reads_frontier"] is False, dry_wake
         assert dry_wake["broadcaster_selects_todo"] is False, dry_wake
         assert "$LOOPX_PANE_A2A_TICK" in dry_wake["prompt"], dry_wake
+        assert "$LOOPX_PANE_TICK_SUMMARY" in dry_wake["prompt"], dry_wake
+        assert "only run $LOOPX_PANE_A2A_TICK" in dry_wake["prompt"], dry_wake
         assert "\n" not in dry_wake["prompt"], dry_wake
         exec_wake = run_wake_command(
             env,
@@ -388,6 +403,11 @@ def main() -> int:
         assert all("LOOPX_CODEX_REASONING_EFFORT=high" in command for command in start_payloads), start_payloads
         assert all("exec python3 -c" in command for command in start_payloads), start_payloads
         assert all("LOOPX_PANE_ARTIFACT_DIR" in command for command in start_payloads), start_payloads
+        assert all("LOOPX_PANE_TICK_SUMMARY" in command for command in start_payloads), start_payloads
+        assert all(
+            "LOOPX_PANE_TICK_OUTPUT_ARTIFACT" in command
+            for command in start_payloads
+        ), start_payloads
         assert all("codex exec" not in command for command in start_payloads), start_payloads
         wake_entries = [entry["argv"] for entry in log_entries if entry["argv"][:1] in (["set-buffer"], ["paste-buffer"], ["send-keys"])]
         assert any(entry[:1] == ["set-buffer"] for entry in wake_entries), wake_entries

@@ -251,7 +251,10 @@ def main() -> int:
                 "mode": "execute",
                 "session_name": session,
                 "target_lanes": target_lanes,
-                "prompt": "LoopX pane-local A2A wakeup: run $LOOPX_PANE_A2A_TICK now.",
+                "prompt": (
+                    "LoopX pane-local A2A wakeup: inspect $LOOPX_PANE_TICK_SUMMARY, "
+                    "then run $LOOPX_PANE_A2A_TICK only when another round is needed."
+                ),
                 "prompt_hash": "wakehash",
                 "coordination_model": "decentralized_state_a2a",
                 "wakeup_model": "fixed_prompt_broadcast",

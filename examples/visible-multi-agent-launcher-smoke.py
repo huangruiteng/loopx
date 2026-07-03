@@ -108,7 +108,11 @@ def main() -> int:
     assert "loopx-pane-a2a-tick" in launcher_source
     assert "LOOPX_PANE_WORKER_TURN" in launcher_source
     assert "LOOPX_PANE_TICK_ROUNDS" in launcher_source
+    assert "LOOPX_PANE_TICK_SUMMARY" in launcher_source
+    assert "LOOPX_PANE_TICK_OUTPUT_ARTIFACT" in launcher_source
     assert "The launcher runs `$LOOPX_PANE_A2A_TICK` before this Codex TUI opens." in contract_source
+    assert "First inspect `$LOOPX_PANE_TICK_SUMMARY`" in contract_source
+    assert "instead of immediately rerunning the tick" in contract_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
     assert "machine_json_command=$LOOPX_PANE_LOOPX_JSON artifact_dir=$LOOPX_PANE_ARTIFACT_DIR" in runtime_source
     assert "$LOOPX_PANE_LOOPX_JSON is a command path, not an output file." in runtime_source
@@ -180,20 +184,37 @@ def main() -> int:
     assert driver["broadcaster"]["selects_todo"] is False, driver
     assert driver["broadcaster"]["runs_worker_turn"] is False, driver
     assert driver["pane"]["decision_owner"] == "codex_tui_agent_via_loopx_state", driver
+    assert driver["prompt"]["pre_tick_summary_ref"] == "$LOOPX_PANE_TICK_SUMMARY", driver
+    assert "launcher_pre_tick_summary" in driver["pane"]["reads"], driver
+    assert driver["pane"]["cadence_action"] == (
+        "fixed_prompt_wakeup_then_pre_tick_review_or_local_tick"
+    ), driver
     assert driver["acceptance"]["each_pane_decides_from_state"] is True, driver
     assert runner_contract["pane_local_a2a"]["first_action"] == (
-        "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens"
+        "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens; "
+        "live wake reviews $LOOPX_PANE_TICK_SUMMARY before rerun"
     )
     assert runner_contract["pane_local_a2a"]["bounded_rounds_env"] == (
         "LOOPX_PANE_TICK_ROUNDS"
     )
     assert "LOOPX_PANE_WORKER_TURN" in runner_contract["lane_runtime_env"]["pane_tools"]
     assert "LOOPX_PANE_ARTIFACT_DIR" in runner_contract["lane_runtime_env"]["pane_tools"]
+    assert "LOOPX_PANE_TICK_SUMMARY" in runner_contract["lane_runtime_env"]["pane_tools"]
+    assert (
+        "LOOPX_PANE_TICK_OUTPUT_ARTIFACT"
+        in runner_contract["lane_runtime_env"]["pane_tools"]
+    )
     assert runner_contract["pane_local_a2a"]["machine_json_destination"] == (
         "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
     )
     assert runner_contract["pane_local_a2a"]["rounds_artifact"] == (
         "$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-rounds.public.json"
+    )
+    assert runner_contract["pane_local_a2a"]["pre_tick_summary"] == (
+        "$LOOPX_PANE_TICK_SUMMARY"
+    )
+    assert runner_contract["pane_local_a2a"]["pre_tick_output"] == (
+        "$LOOPX_PANE_TICK_OUTPUT_ARTIFACT"
     )
     assert runner_contract["role_prompt_and_skill"]["worker_local_skill_only"] is True
     assert runner_contract["debug_artifacts"]["machine_json"] == (
@@ -248,6 +269,8 @@ def main() -> int:
     assert "LOOPX_PANE_A2A_TICK" in generic_lane["visible_launch_command"], generic_lane
     assert "LOOPX_PANE_WORKER_TURN" in generic_lane["visible_launch_command"], generic_lane
     assert "LOOPX_PANE_ARTIFACT_DIR" in generic_lane["visible_launch_command"], generic_lane
+    assert "LOOPX_PANE_TICK_SUMMARY" in generic_lane["visible_launch_command"], generic_lane
+    assert "LOOPX_PANE_TICK_OUTPUT_ARTIFACT" in generic_lane["visible_launch_command"], generic_lane
     assert "$LOOPX_PANE_ARTIFACT_DIR/quota.public.json" in generic_lane["quota_guard"], generic_lane
     assert "LOOPX_PANE_TICK_ROUNDS=2" in generic_lane["visible_launch_command"], generic_lane
     assert "LOOPX_PANE_TICK_SLEEP_SECONDS=1" in generic_lane["visible_launch_command"], generic_lane
@@ -533,6 +556,8 @@ def main() -> int:
             assert wake["schema_version"] == "multi_agent_pane_a2a_wakeup_v0", wake
             assert wake["mode"] == "execute", wake
             assert wake["wakeup_model"] == "fixed_prompt_broadcast", wake
+            assert "$LOOPX_PANE_TICK_SUMMARY" in wake["prompt"], wake
+            assert "only run $LOOPX_PANE_A2A_TICK" in wake["prompt"], wake
             assert wake["pane_input_ready_verified"] is True, wake
             assert wake["prompt_delivery"] == (
                 "tmux_paste_buffer_after_codex_tui_first_turn_ready"

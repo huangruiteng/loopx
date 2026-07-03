@@ -19,9 +19,11 @@ THREE_LAYER_MINIMALITY_CONTRACT_SCHEMA_VERSION = (
 )
 
 PANE_LOCAL_A2A_WAKEUP_PROMPT = (
-    "LoopX pane-local A2A wakeup: read $LOOPX_CODEX_TUI_PROMPT_ARTIFACT for role/scope if needed, then run $LOOPX_PANE_A2A_TICK now. "
+    "LoopX pane-local A2A wakeup: read $LOOPX_CODEX_TUI_PROMPT_ARTIFACT for role/scope if needed. "
+    "First inspect $LOOPX_PANE_TICK_SUMMARY and summarize completed launcher pre-tick evidence when present; "
+    "only run $LOOPX_PANE_A2A_TICK if that summary is missing, the user asked for another round, or a fresh own-frontier check shows runnable work. "
     "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
-    "if no runnable frontier, stay quiet with a brief no-action note; "
+    "if no runnable frontier remains, stay quiet with a brief no-action note; "
     "if advanced, summarize public evidence and next handoff. "
     "Do not ask the broadcaster for direction; LoopX state is the source of truth."
 )
@@ -125,7 +127,8 @@ def generic_role_prompt(
             "How to work:",
             "- Treat LoopX state as the shared A2A surface.",
             "- The launcher runs `$LOOPX_PANE_A2A_TICK` before this Codex TUI opens.",
-            "- If the tick artifact is missing or the user asks, rerun `$LOOPX_PANE_A2A_TICK` in this TUI.",
+            "- First inspect `$LOOPX_PANE_TICK_SUMMARY`; if it shows completed launcher rounds, summarize that evidence instead of immediately rerunning the tick.",
+            "- Rerun `$LOOPX_PANE_A2A_TICK` only when the summary is missing, the user asks for another round, or a fresh own-frontier check shows runnable work.",
             "- The tick reads your quota/frontier and then runs this role's worker-turn when configured.",
             "- When the tick completes, summarize what changed, what remains blocked, and stay interactive for user takeover.",
             "- For machine reads, run `$LOOPX_PANE_LOOPX_JSON` as the command and redirect output into `$LOOPX_PANE_ARTIFACT_DIR/<name>.public.json`; it defaults to `--format json`.",
@@ -159,6 +162,7 @@ def build_decentralized_a2a_driver_contract(
             "todo_embedded": False,
             "target_role_embedded": False,
             "target_role_artifact_ref": "$LOOPX_CODEX_TUI_PROMPT_ARTIFACT",
+            "pre_tick_summary_ref": "$LOOPX_PANE_TICK_SUMMARY",
         },
         "broadcaster": {
             "command": wake_command,
@@ -174,12 +178,13 @@ def build_decentralized_a2a_driver_contract(
             "decision_owner": "codex_tui_agent_via_loopx_state",
             "tick_command": "$LOOPX_PANE_A2A_TICK",
             "first_action": "launcher_pre_tui_tick",
-            "cadence_action": "fixed_prompt_wakeup_then_local_tick",
+            "cadence_action": "fixed_prompt_wakeup_then_pre_tick_review_or_local_tick",
             "reads": [
                 "own_LOOPX_GOAL_ID",
                 "own_LOOPX_AGENT_ID",
                 "quota_should_run",
                 "agent_scoped_frontier",
+                "launcher_pre_tick_summary",
             ],
             "may_run": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
             "writes": ["public_safe_evidence", "todo_completion_when_worker_turn_configured"],
@@ -255,6 +260,8 @@ def build_tui_multi_agent_runner_contract(
                 "LOOPX_PANE_LOOPX_JSON",
                 "LOOPX_PANE_ARTIFACT_DIR",
                 "LOOPX_PANE_A2A_TICK",
+                "LOOPX_PANE_TICK_SUMMARY",
+                "LOOPX_PANE_TICK_OUTPUT_ARTIFACT",
                 "LOOPX_PANE_WORKER_TURN",
                 "LOOPX_PANE_WORKER_LOOP",
             ],
@@ -272,14 +279,19 @@ def build_tui_multi_agent_runner_contract(
         "decentralized_a2a_driver": driver_contract,
         "pane_local_a2a": {
             "tick_command": driver_contract["pane"]["tick_command"],
-            "first_action": "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens",
+            "first_action": (
+                "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens; "
+                "live wake reviews $LOOPX_PANE_TICK_SUMMARY before rerun"
+            ),
             "cadence_wakeup_command": driver_contract["broadcaster"]["command"],
             "cadence_wakeup_model": driver_contract["broadcaster"]["model"],
             "cadence_broadcaster_decides_work": driver_contract["broadcaster"]["decides_work"],
-            "reads": ["quota should-run", "agent-scoped frontier"],
+            "reads": ["pre-tick summary", "quota should-run", "agent-scoped frontier"],
             "runs": driver_contract["pane"]["may_run"],
             "bounded_rounds_env": driver_contract["pane"]["rounds_env"],
             "rounds_artifact": driver_contract["pane"]["rounds_artifact"],
+            "pre_tick_summary": "$LOOPX_PANE_TICK_SUMMARY",
+            "pre_tick_output": "$LOOPX_PANE_TICK_OUTPUT_ARTIFACT",
             "machine_json_policy": "file_or_explicit_machine_channel_only",
             "machine_json_destination": "$LOOPX_PANE_ARTIFACT_DIR/*.public.json",
             "human_default": "markdown_status_inside_codex_tui",
@@ -405,7 +417,7 @@ def build_compact_human_status(payload: dict[str, object]) -> dict[str, object]:
         "roles": role_summaries,
         "attach": commands.get("attach"),
         "stop": commands.get("stop"),
-        "first_action": "$LOOPX_PANE_A2A_TICK",
+        "first_action": "pre_tick_summary_then_$LOOPX_PANE_A2A_TICK_when_needed",
         "driver_model": driver.get("driver_model")
         or "fixed_prompt_broadcast_plus_pane_local_state_tick",
         "coordination_pattern": driver.get("coordination_pattern")

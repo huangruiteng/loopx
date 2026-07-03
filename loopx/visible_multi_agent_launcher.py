@@ -473,12 +473,13 @@ def build_visible_lane_command(
         "printf 'bootstrap_command_failed exit=%s\\n' \"$BOOTSTRAP_STATUS\"; "
         "exec /bin/sh -i; "
         "fi; "
-        'PANE_A2A_TICK_ARTIFACT="$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-tick.output.txt"; '
-        '"$LOOPX_PANE_A2A_TICK" > "$PANE_A2A_TICK_ARTIFACT" 2>&1; '
+        'export LOOPX_PANE_TICK_SUMMARY="$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-rounds.public.json"; '
+        'export LOOPX_PANE_TICK_OUTPUT_ARTIFACT="$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-tick.output.txt"; '
+        '"$LOOPX_PANE_A2A_TICK" > "$LOOPX_PANE_TICK_OUTPUT_ARTIFACT" 2>&1; '
         "PANE_A2A_TICK_STATUS=$?; "
         "if [ \"$PANE_A2A_TICK_STATUS\" -ne 0 ]; then "
         "printf '\\n[LoopX pane A2A blocked]\\n'; "
-        "printf 'tick_exit=%s artifact=%s\\n' \"$PANE_A2A_TICK_STATUS\" \"$PANE_A2A_TICK_ARTIFACT\"; "
+        "printf 'tick_exit=%s artifact=%s\\n' \"$PANE_A2A_TICK_STATUS\" \"$LOOPX_PANE_TICK_OUTPUT_ARTIFACT\"; "
         "fi; "
         "export LOOPX_CODEX_TUI_MODE=interactive; "
         "export LOOPX_CODEX_TUI_PROMPT_ARTIFACT=\"$BOOTSTRAP_ARTIFACT\"; "
