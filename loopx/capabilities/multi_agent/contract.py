@@ -19,7 +19,7 @@ THREE_LAYER_MINIMALITY_CONTRACT_SCHEMA_VERSION = (
 )
 
 PANE_LOCAL_A2A_WAKEUP_PROMPT = (
-    "LoopX pane-local A2A wakeup: run $LOOPX_PANE_A2A_TICK now. "
+    "LoopX pane-local A2A wakeup: read $LOOPX_CODEX_TUI_PROMPT_ARTIFACT for role/scope if needed, then run $LOOPX_PANE_A2A_TICK now. "
     "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
     "if no runnable frontier, stay quiet with a brief no-action note; "
     "if advanced, summarize public evidence and next handoff. "
@@ -158,6 +158,7 @@ def build_decentralized_a2a_driver_contract(
             "frontier_embedded": False,
             "todo_embedded": False,
             "target_role_embedded": False,
+            "target_role_artifact_ref": "$LOOPX_CODEX_TUI_PROMPT_ARTIFACT",
         },
         "broadcaster": {
             "command": wake_command,
@@ -263,7 +264,7 @@ def build_tui_multi_agent_runner_contract(
             "all_lane_workspace_isolation": all_lane_workspace_isolation,
         },
         "role_prompt_and_skill": {
-            "bootstrap_prompt": "written_to_public_artifact_then_passed_to_codex_tui",
+            "bootstrap_prompt": "written_to_public_artifact_for_fixed_wake_context",
             "role_profile": "role-local public json artifact",
             "skill_materialization": ".codex/skills/<skill>/SKILL.md",
             "worker_local_skill_only": True,

@@ -170,7 +170,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "quota should-run" in lane["quota_guard"], lane
         assert f"--agent-id {lane['agent_id']}" in lane["quota_guard"], lane
         assert lane["frontier"] == "agent-scoped LoopX todo/quota/frontier projection", lane
-        assert lane["bootstrap_message"] == "role_prompt_inside_codex_tui", lane
+        assert lane["bootstrap_message"] == "role_prompt_public_artifact_for_fixed_wake", lane
         assert lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", lane
         assert lane["pane_local_a2a"]["worker_turn_configured"] is True, lane
         assert lane["pane_local_a2a"]["auto_start"] is True, lane

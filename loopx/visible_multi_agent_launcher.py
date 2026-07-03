@@ -37,6 +37,7 @@ def _q(value: object) -> str:
 
 PANE_A2A_WAKEUP_SCHEMA_VERSION = "multi_agent_pane_a2a_wakeup_v0"
 PANE_A2A_WAKEUP_PROMPT = PANE_LOCAL_A2A_WAKEUP_PROMPT
+PANE_A2A_INPUT_READY_TIMEOUT_SECONDS = 90.0
 
 
 def require_executable(command: str, *, field: str) -> str:
@@ -50,6 +51,128 @@ def build_pane_a2a_wakeup_prompt() -> str:
     """Return the fixed prompt broadcast to live Codex TUI panes."""
 
     return PANE_A2A_WAKEUP_PROMPT
+
+
+def _codex_tui_input_ready(capture: str) -> bool:
+    if "OpenAI Codex" not in capture:
+        return False
+    model_lines = [line for line in capture.splitlines() if "model:" in line]
+    if not model_lines or "loading" in model_lines[-1]:
+        return False
+    marker_index = capture.rfind(model_lines[-1])
+    current_view = capture[marker_index:] if marker_index >= 0 else capture
+    if "Queued follow-up inputs" in current_view or "Working (" in current_view:
+        return False
+    if "Starting MCP servers" in current_view:
+        return False
+    return "\n› " in current_view or "\r\n› " in current_view
+
+
+def _wait_for_tmux_pane_input_ready(
+    *,
+    tmux_bin: str,
+    session: str,
+    lane: str,
+    env: dict[str, str],
+    timeout_seconds: float = PANE_A2A_INPUT_READY_TIMEOUT_SECONDS,
+) -> dict[str, object]:
+    deadline = time.monotonic() + max(0.25, timeout_seconds)
+    attempts = 0
+    target = f"{session}:{lane}"
+    while True:
+        attempts += 1
+        capture = subprocess.run(
+            [tmux_bin, "capture-pane", "-pt", target, "-S", "-80"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        ready = capture.returncode == 0 and _codex_tui_input_ready(capture.stdout)
+        if ready:
+            return {
+                "lane": lane,
+                "ready": True,
+                "attempt_count": attempts,
+                "capture_ok": True,
+                "ready_marker": "codex_tui_first_turn_ready",
+            }
+        if time.monotonic() >= deadline:
+            return {
+                "lane": lane,
+                "ready": False,
+                "attempt_count": attempts,
+                "capture_ok": capture.returncode == 0,
+                "ready_marker": None,
+            }
+        time.sleep(0.25)
+
+
+def _prompt_still_waiting_for_submit(capture: str, prompt: str) -> bool:
+    if not capture or not prompt:
+        return False
+    model_lines = [line for line in capture.splitlines() if "model:" in line]
+    marker_index = capture.rfind(model_lines[-1]) if model_lines else -1
+    current_view = capture[marker_index:] if marker_index >= 0 else capture
+    if "Working (" in current_view or "Queued follow-up inputs" in current_view:
+        return False
+    words = [part for part in prompt.split()[:4] if part]
+    return bool(words) and all(word in current_view for word in words)
+
+
+def _paste_and_submit_tmux_prompt(
+    *,
+    tmux_bin: str,
+    target: str,
+    buffer_name: str,
+    prompt: str,
+    env: dict[str, str],
+) -> dict[str, object]:
+    subprocess.run(
+        [tmux_bin, "paste-buffer", "-b", buffer_name, "-t", target],
+        check=True,
+        env=env,
+    )
+    subprocess.run(
+        [tmux_bin, "send-keys", "-t", target, "Enter"],
+        check=True,
+        env=env,
+    )
+    retry = False
+    capture_ok = False
+    observation_count = 0
+    for _ in range(20):
+        time.sleep(0.25)
+        observation_count += 1
+        capture = subprocess.run(
+            [tmux_bin, "capture-pane", "-pt", target, "-S", "-80"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        capture_ok = capture.returncode == 0
+        if not capture_ok:
+            continue
+        if _prompt_still_waiting_for_submit(capture.stdout, prompt):
+            retry = True
+            break
+        if "Working (" in capture.stdout or "Queued follow-up inputs" in capture.stdout:
+            break
+    if retry:
+        subprocess.run(
+            [tmux_bin, "send-keys", "-t", target, "Enter"],
+            check=True,
+            env=env,
+        )
+    return {
+        "target": target,
+        "initial_submit_key": "Enter",
+        "retry_submit_key": "Enter" if retry else None,
+        "retry_count": 1 if retry else 0,
+        "capture_ok": capture_ok,
+        "observation_count": observation_count,
+    }
 
 
 def wake_visible_multi_agent_panes(
@@ -71,6 +194,8 @@ def wake_visible_multi_agent_panes(
     prompt_hash = sha256(prompt_text.encode("utf-8")).hexdigest()[:16]
     target_lanes = [str(lane).strip() for lane in lanes or [] if str(lane).strip()]
     driver_contract = build_decentralized_a2a_driver_contract()
+    input_ready_checks: list[dict[str, object]] = []
+    prompt_submit_checks: list[dict[str, object]] = []
 
     if execute:
         require_executable(tmux_bin, field="tmux_bin")
@@ -86,6 +211,25 @@ def wake_visible_multi_agent_panes(
             target_lanes = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
         if not target_lanes:
             raise ValueError("multi-agent wake found no target panes")
+        input_ready_checks = [
+            _wait_for_tmux_pane_input_ready(
+                tmux_bin=tmux_bin,
+                session=session,
+                lane=lane,
+                env=env,
+            )
+            for lane in target_lanes
+        ]
+        not_ready = [
+            str(check.get("lane"))
+            for check in input_ready_checks
+            if check.get("ready") is not True
+        ]
+        if not_ready:
+            raise ValueError(
+                "multi-agent wake target pane input was not ready: "
+                + ", ".join(not_ready)
+            )
         buffer_name = f"loopx-pane-a2a-wakeup-{prompt_hash}"
         subprocess.run(
             [tmux_bin, "set-buffer", "-b", buffer_name, "--", prompt_text],
@@ -94,15 +238,14 @@ def wake_visible_multi_agent_panes(
         )
         for lane in target_lanes:
             target = f"{session}:{lane}"
-            subprocess.run(
-                [tmux_bin, "paste-buffer", "-b", buffer_name, "-t", target],
-                check=True,
-                env=env,
-            )
-            subprocess.run(
-                [tmux_bin, "send-keys", "-t", target, "Enter"],
-                check=True,
-                env=env,
+            prompt_submit_checks.append(
+                _paste_and_submit_tmux_prompt(
+                    tmux_bin=tmux_bin,
+                    target=target,
+                    buffer_name=buffer_name,
+                    prompt=prompt_text,
+                    env=env,
+                )
             )
 
     return {
@@ -120,6 +263,17 @@ def wake_visible_multi_agent_panes(
         "broadcaster_reads_frontier": driver_contract["broadcaster"]["reads_frontier"],
         "broadcaster_selects_todo": driver_contract["broadcaster"]["selects_todo"],
         "pane_decision_owner": driver_contract["pane"]["decision_owner"],
+        "pane_input_ready_verified": (
+            bool(input_ready_checks)
+            and all(check.get("ready") is True for check in input_ready_checks)
+        )
+        if execute
+        else False,
+        "pane_input_ready_checks": input_ready_checks,
+        "prompt_submit_checks": prompt_submit_checks,
+        "prompt_delivery": (
+            "tmux_paste_buffer_after_codex_tui_first_turn_ready" if execute else "dry_run"
+        ),
         "boundary": {
             "writes_loopx_state": False,
             "spends_loopx_quota": False,
@@ -567,7 +721,7 @@ def build_visible_multi_agent_payload_from_spec(
                 "tick_rounds": tick_rounds,
                 "tick_sleep_seconds": tick_sleep_seconds,
             },
-            "bootstrap_message": "role_prompt_inside_codex_tui",
+            "bootstrap_message": "role_prompt_public_artifact_for_fixed_wake",
             "visible_launch_command": build_visible_lane_command(
                 role_id=role_id,
                 role_profile_ref=role_profile_ref,

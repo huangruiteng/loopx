@@ -182,7 +182,6 @@ import subprocess
 codex = os.environ["LOOPX_CODEX_BIN"]
 project = os.environ["LOOPX_PROJECT"]
 reasoning_effort = os.environ["LOOPX_CODEX_REASONING_EFFORT"]
-prompt = os.environ["BOOTSTRAP_PROMPT"]
 
 args = [codex]
 if os.environ.get("LOOPX_CODEX_TRUST_WORKSPACE") == "1":
@@ -202,6 +201,6 @@ if os.environ.get("LOOPX_CODEX_TRUST_WORKSPACE") == "1":
         seen.add(path)
         args.extend(["-c", f"projects.{json.dumps(path)}.trust_level=\"trusted\""])
 
-args.extend(["-c", f"model_reasoning_effort={reasoning_effort}", "-C", project, prompt])
+args.extend(["-c", f"model_reasoning_effort={reasoning_effort}", "-C", project])
 os.execvp(codex, args)
 """

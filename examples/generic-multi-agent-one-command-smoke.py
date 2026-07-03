@@ -148,6 +148,14 @@ def fake_tmux_script() -> str:
             "if len(sys.argv) > 1 and sys.argv[1] == 'list-windows':",
             "    print('planner\\ncritic')",
             "    raise SystemExit(0)",
+            "if len(sys.argv) > 1 and sys.argv[1] == 'capture-pane':",
+            "    print('╭────────────────────────╮')",
+            "    print('│ >_ OpenAI Codex        │')",
+            "    print('│ model: gpt-5.5 high    │')",
+            "    print('╰────────────────────────╯')",
+            "    print()",
+            "    print('› Implement {feature}')",
+            "    raise SystemExit(0)",
             "raise SystemExit(0)",
             "",
         ]
@@ -335,6 +343,10 @@ def main() -> int:
         )
         assert exec_wake["mode"] == "execute", exec_wake
         assert exec_wake["target_lanes"] == ["planner", "critic"], exec_wake
+        assert [item["retry_count"] for item in exec_wake["prompt_submit_checks"]] == [
+            0,
+            0,
+        ], exec_wake
         assert exec_wake["boundary"]["writes_loopx_state"] is False, exec_wake
         assert exec_wake["boundary"]["runs_worker_turn_directly"] is False, exec_wake
         assert_public_safe(

@@ -61,7 +61,7 @@ def main() -> int:
     assert "$LOOPX_PANE_LOOPX_JSON is a command path, not an output file." in runtime_scripts_source
     assert "LOOPX_PANE_WORKER_TURN" in launcher_source
     assert "loopx-pane-a2a-tick" in runtime_scripts_source
-    assert "role_prompt_inside_codex_tui" in launcher_source
+    assert "role_prompt_public_artifact_for_fixed_wake" in launcher_source
     assert "model_reasoning_effort" in launcher_source
     assert "codex_stream_filter" not in launcher_source
     assert "build_auto_research_quickstart" not in demo_e2e_source
@@ -259,6 +259,28 @@ def main() -> int:
                 "broadcaster_reads_frontier": False,
                 "broadcaster_selects_todo": False,
                 "pane_decision_owner": "codex_tui_agent_via_loopx_state",
+                "pane_input_ready_verified": True,
+                "pane_input_ready_checks": [
+                    {
+                        "lane": lane,
+                        "ready": True,
+                        "attempt_count": 1,
+                        "capture_ok": True,
+                        "ready_marker": "codex_tui_first_turn_ready",
+                    }
+                    for lane in target_lanes
+                ],
+                "prompt_submit_checks": [
+                    {
+                        "target": f"{session}:{lane}",
+                        "initial_submit_key": "Enter",
+                        "retry_submit_key": None,
+                        "retry_count": 0,
+                        "capture_ok": True,
+                    }
+                    for lane in target_lanes
+                ],
+                "prompt_delivery": "tmux_paste_buffer_after_codex_tui_first_turn_ready",
                 "boundary": {
                     "writes_loopx_state": False,
                     "spends_loopx_quota": False,
@@ -313,6 +335,12 @@ def main() -> int:
         assert visible_loaded_rounds["multi_round_verified"] is True, visible_loaded_rounds
         assert visible_loaded_wake["wakeup_model"] == "fixed_prompt_broadcast", visible_loaded_wake
         assert visible_loaded_wake["coordination_model"] == "decentralized_state_a2a", visible_loaded_wake
+        assert visible_loaded_wake["pane_input_ready_verified"] is True, visible_loaded_wake
+        assert (
+            visible_loaded_wake["prompt_delivery"]
+            == "tmux_paste_buffer_after_codex_tui_first_turn_ready"
+        ), visible_loaded_wake
+        assert visible_loaded_wake["prompt_submit_checks"], visible_loaded_wake
         assert visible_loaded_wake["workflow_driver"] is False, visible_loaded_wake
         assert visible_loaded_wake["broadcaster_reads_frontier"] is False, visible_loaded_wake
         assert visible_loaded_wake["broadcaster_selects_todo"] is False, visible_loaded_wake
@@ -382,8 +410,12 @@ def main() -> int:
         fake_codex.write_text(
             "#!/usr/bin/env sh\n"
             f"{{ printf 'PWD=%s\\n' \"$PWD\"; printf 'ARGS=%s\\n' \"$*\"; }} >> {shlex.quote(str(codex_invocations))}\n"
-            "printf 'Fake Codex TUI ready\\n'\n"
-            "sleep 8\n",
+            "printf '╭────────────────────────╮\\n'\n"
+            "printf '│ >_ OpenAI Codex        │\\n'\n"
+            "printf '│ model: gpt-5.5 high    │\\n'\n"
+            "printf '╰────────────────────────╯\\n\\n'\n"
+            "printf '› Implement {feature}\\n'\n"
+            "sleep 30\n",
             encoding="utf-8",
         )
         fake_codex.chmod(0o755)
@@ -397,6 +429,13 @@ def main() -> int:
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PYTHONPATH"] = str(REPO_ROOT)
         env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+        env["FAKE_TMUX_CAPTURE_TEXT"] = (
+            "╭────────────────────────╮\n"
+            "│ >_ OpenAI Codex        │\n"
+            "│ model: gpt-5.5 high    │\n"
+            "╰────────────────────────╯\n\n"
+            "› Implement {feature}\n"
+        )
         result = subprocess.run(
             [
                 sys.executable,
@@ -581,6 +620,12 @@ def main() -> int:
                 assert visible_wake["workflow_driver"] is False, visible_wake
                 assert visible_wake["broadcaster_reads_frontier"] is False, visible_wake
                 assert visible_wake["broadcaster_selects_todo"] is False, visible_wake
+                assert visible_wake["pane_input_ready_verified"] is True, visible_wake
+                assert (
+                    visible_wake["prompt_delivery"]
+                    == "tmux_paste_buffer_after_codex_tui_first_turn_ready"
+                ), visible_wake
+                assert visible_wake["prompt_submit_checks"], visible_wake
                 visible_readiness = visible_payload["visible_readiness"]
                 assert visible_readiness["schema_version"] == "auto_research_visible_readiness_v0", visible_readiness
                 assert visible_readiness["ready"] is True, visible_readiness

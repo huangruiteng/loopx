@@ -691,6 +691,10 @@ def _load_visible_wake_into_payload(
         "broadcaster_reads_frontier": bool(wake.get("broadcaster_reads_frontier")),
         "broadcaster_selects_todo": bool(wake.get("broadcaster_selects_todo")),
         "pane_decision_owner": wake.get("pane_decision_owner"),
+        "pane_input_ready_verified": wake.get("pane_input_ready_verified") is True,
+        "pane_input_ready_checks": wake.get("pane_input_ready_checks") or [],
+        "prompt_submit_checks": wake.get("prompt_submit_checks") or [],
+        "prompt_delivery": wake.get("prompt_delivery"),
         "driver_contract_schema": driver.get("schema_version"),
         "driver_owner_layer": driver.get("owner_layer"),
         "boundary": wake.get("boundary"),
@@ -705,6 +709,7 @@ def _load_visible_wake_into_payload(
             and wake.get("workflow_driver") is False
             and wake.get("broadcaster_reads_frontier") is False
             and wake.get("broadcaster_selects_todo") is False
+            and wake.get("pane_input_ready_verified") is True
         )
 
 

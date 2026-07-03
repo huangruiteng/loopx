@@ -25,6 +25,7 @@ from loopx.visible_multi_agent_launcher import (  # noqa: E402
     build_visible_multi_agent_payload,
     build_visible_multi_agent_payload_from_spec,
     execute_visible_multi_agent_launcher,
+    wake_visible_multi_agent_panes,
 )
 
 
@@ -125,6 +126,9 @@ def main() -> int:
     assert "LOOPX_CODEX_BIN" in launcher_source
     assert "LOOPX_CODEX_REASONING_EFFORT" in launcher_source
     assert "export BOOTSTRAP_PROMPT" in launcher_source
+    assert "pane_input_ready_verified" in launcher_source
+    assert "tmux_paste_buffer_after_codex_tui_first_turn_ready" in launcher_source
+    assert "prompt_submit_checks" in launcher_source
     assert "_persist_codex_workspace_trust" in launcher_source
     assert "rev-parse\", \"--show-toplevel" in runtime_source
     assert "trust_level=" in runtime_source and "trusted" in runtime_source
@@ -513,6 +517,38 @@ def main() -> int:
                 cwd=temp,
                 codex_trust_workspace=True,
             )
+            os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
+                "╭────────────────────────╮\n"
+                "│ >_ OpenAI Codex        │\n"
+                "│ model: gpt-5.5 high    │\n"
+                "╰────────────────────────╯\n\n"
+                "› Write tests for @filename\n"
+            )
+            wake = wake_visible_multi_agent_panes(
+                session_name="loopx-visible-launcher-smoke",
+                tmux_bin="tmux",
+                lanes=["planner", "reviewer"],
+                execute=True,
+            )
+            assert wake["schema_version"] == "multi_agent_pane_a2a_wakeup_v0", wake
+            assert wake["mode"] == "execute", wake
+            assert wake["wakeup_model"] == "fixed_prompt_broadcast", wake
+            assert wake["pane_input_ready_verified"] is True, wake
+            assert wake["prompt_delivery"] == (
+                "tmux_paste_buffer_after_codex_tui_first_turn_ready"
+            ), wake
+            assert [item["lane"] for item in wake["pane_input_ready_checks"]] == [
+                "planner",
+                "reviewer",
+            ], wake
+            assert all(
+                item["ready_marker"] == "codex_tui_first_turn_ready"
+                for item in wake["pane_input_ready_checks"]
+            ), wake
+            assert [item["retry_count"] for item in wake["prompt_submit_checks"]] == [
+                0,
+                0,
+            ], wake
 
             git_root_workspace = temp / "git-root" / "lanes" / "planner"
             git_root_workspace.mkdir(parents=True, exist_ok=True)
@@ -538,7 +574,8 @@ def main() -> int:
             )
             codex_args = json.loads(codex_argv_log.read_text(encoding="utf-8"))
             assert "-C" in codex_args and str(git_root_workspace) in codex_args, codex_args
-            assert codex_args[-1] == "planner prompt", codex_args
+            assert "planner prompt" not in codex_args, codex_args
+            assert codex_args[-1] == str(git_root_workspace), codex_args
             trust_args = [
                 item
                 for index, item in enumerate(codex_args)
