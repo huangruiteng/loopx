@@ -86,6 +86,7 @@ from .todo_handoff_gate import HandoffGateState, build_todo_handoff_gate_states
 from .todo_projection import (
     todo_claimed_visibility_items as projection_todo_claimed_visibility_items,
     todo_index_rank as projection_todo_index_rank,
+    todo_item_claimed_by_agent_or_unclaimed as projection_todo_item_claimed_by_agent_or_unclaimed,
     todo_item_expires_at as projection_todo_item_expires_at,
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
     todo_item_is_deferred as projection_todo_item_is_deferred,
@@ -1451,8 +1452,7 @@ def _agent_claim_scoped_open_items(
 
 
 def _todo_item_claimed_by_agent_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> bool:
-    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
-    return not claimed_by or claimed_by == agent_id
+    return projection_todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
 
 
 def _agent_scope_selectable_todo_item(
