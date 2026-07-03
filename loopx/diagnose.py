@@ -10,6 +10,7 @@ from .status import collect_status
 
 DIAGNOSIS_SCHEMA_VERSION = "loopx_agent_diagnosis_packet_v0"
 PACKET_KIND = "agent_reasoning_evidence_packet"
+STATUS_CONTRACT_SIGNAL_LIMIT = 3
 
 
 USER_DIAGNOSE_PROMPT = (
@@ -36,6 +37,16 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _compact_text_signals(value: Any, *, limit: int = STATUS_CONTRACT_SIGNAL_LIMIT) -> dict[str, Any]:
+    items = [str(item).strip() for item in _as_list(value) if str(item).strip()]
+    bounded = items[: max(0, limit)]
+    return {
+        "items": bounded,
+        "truncated": len(items) > len(bounded),
+        "total_count": len(items),
+    }
 
 
 def _first_text(summary: dict[str, Any]) -> str | None:
@@ -427,6 +438,9 @@ def collect_diagnosis(
             limit=limit,
             agent_id=agent_id,
         )
+    contract = _as_dict(status_payload.get("contract"))
+    contract_errors = _compact_text_signals(contract.get("errors"))
+    contract_warnings = _compact_text_signals(contract.get("warnings"))
     return {
         "ok": bool(status_payload.get("ok")),
         "schema_version": DIAGNOSIS_SCHEMA_VERSION,
@@ -445,7 +459,13 @@ def collect_diagnosis(
         "selected": selected,
         "goals": goal_packets,
         "status_summary": {
-            "contract": _as_dict(status_payload.get("contract")).get("summary"),
+            "contract": contract.get("summary"),
+            "contract_errors": contract_errors["items"],
+            "contract_errors_total_count": contract_errors["total_count"],
+            "contract_errors_truncated": contract_errors["truncated"],
+            "contract_warnings": contract_warnings["items"],
+            "contract_warnings_total_count": contract_warnings["total_count"],
+            "contract_warnings_truncated": contract_warnings["truncated"],
             "global_registry": _as_dict(_as_dict(status_payload.get("global_registry")).get("summary")),
         },
         "user_prompt": USER_DIAGNOSE_PROMPT,
@@ -456,6 +476,7 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
     selected = _as_dict(payload.get("selected"))
     todo_evidence = _as_dict(selected.get("todo_evidence"))
     quota = _as_dict(selected.get("quota_signals"))
+    status_summary = _as_dict(payload.get("status_summary"))
     lines = [
         "# LoopX Diagnosis Packet",
         "",
@@ -507,6 +528,23 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
         scheduler_hint_line = _scheduler_hint_line(_as_dict(quota.get("scheduler_hint")))
         if scheduler_hint_line:
             lines.append(scheduler_hint_line)
+
+    contract_errors = _as_list(status_summary.get("contract_errors"))
+    contract_warnings = _as_list(status_summary.get("contract_warnings"))
+    if contract_errors or contract_warnings:
+        lines.extend(["", "## Status Contract Signals", ""])
+        for item in contract_errors:
+            lines.append(f"- contract_error: {item}")
+        if status_summary.get("contract_errors_truncated"):
+            lines.append(
+                f"- contract_errors_truncated: total={status_summary.get('contract_errors_total_count')}"
+            )
+        for item in contract_warnings:
+            lines.append(f"- contract_warning: {item}")
+        if status_summary.get("contract_warnings_truncated"):
+            lines.append(
+                f"- contract_warnings_truncated: total={status_summary.get('contract_warnings_total_count')}"
+            )
 
     checklist = _as_list(selected.get("agent_reasoning_checklist"))
     if checklist:

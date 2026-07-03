@@ -95,6 +95,18 @@ def assert_diagnose_markdown_separates_status_and_packet_goal_counts() -> None:
                     }
                 },
             },
+            "status_summary": {
+                "contract_warnings": [
+                    "fixture-goal: duplicate index rows raw=2 unique=1 unexpected=1",
+                    "fixture-goal: stale projection warning A",
+                    "fixture-goal: stale projection warning B",
+                ],
+                "contract_warnings_total_count": 4,
+                "contract_warnings_truncated": True,
+                "contract_errors": [],
+                "contract_errors_total_count": 0,
+                "contract_errors_truncated": False,
+            },
             "goals": [{"goal_id": "selected-goal", "todo_evidence": {}}],
         }
     )
@@ -104,6 +116,9 @@ def assert_diagnose_markdown_separates_status_and_packet_goal_counts() -> None:
     assert "- scheduler_hint: action=run_now cadence=active_work" in markdown, markdown
     assert "apply_needed=True" in markdown, markdown
     assert "final_replan_check=True" in markdown, markdown
+    assert "Status Contract Signals" in markdown, markdown
+    assert "duplicate index rows raw=2 unique=1 unexpected=1" in markdown, markdown
+    assert "contract_warnings_truncated: total=4" in markdown, markdown
 
 
 def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding: bool) -> dict:
