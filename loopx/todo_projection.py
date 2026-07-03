@@ -16,6 +16,7 @@ from .policies.monitor_todo import (
 )
 from .todo_contract import (
     TODO_STATUS_DEFERRED,
+    TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
     normalize_todo_claimed_by,
     normalize_todo_id,
@@ -465,3 +466,24 @@ def todo_summary_monitor_schedule_gap_count(
             text_mode=text_mode,
         )
     )
+
+
+def todo_summary_first_executable_item(
+    summary: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(summary, dict):
+        return None
+    items = (
+        summary.get("first_executable_items")
+        if isinstance(summary.get("first_executable_items"), list)
+        else []
+    )
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not todo_item_is_actionable_open(item):
+            continue
+        if todo_item_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        return item
+    return None
