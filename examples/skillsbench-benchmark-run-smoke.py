@@ -773,6 +773,34 @@ def test_skillsbench_plan_only_batch_parallel_case_contract() -> None:
         ] is True, result
 
 
+def test_skillsbench_batch_case_cli_filters_internal_aggregate_flag() -> None:
+    args = parse_args(
+        [
+            "--task-ids",
+            "citation-check,3d-scan-calc",
+            "--parallel-cases",
+            "2",
+            "--route",
+            "codex-app-server-goal-baseline",
+            "--update-ledger",
+            "--plan-only",
+        ]
+    )
+    case_args = skillsbench_loop._clone_args_for_batch_case(
+        args,
+        task_id="citation-check",
+        index=0,
+        total=2,
+        run_group_id="skillsbench-batch-cli-fixture",
+    )
+    child_cli = skillsbench_loop._batch_case_args_to_cli(case_args)
+
+    assert "--update-current-aggregate" not in child_cli, child_cli
+    assert "--skip-current-aggregate-update" not in child_cli, child_cli
+    assert "--current-aggregate-path" in child_cli, child_cli
+    assert child_cli[child_cli.index("--parallel-cases") + 1] == "1", child_cli
+
+
 def test_skillsbench_formal_product_mode_rejects_tiny_round_budget() -> None:
     try:
         with contextlib.redirect_stderr(io.StringIO()):
@@ -14706,6 +14734,7 @@ if __name__ == "__main__":
     test_benchmark_egress_proxy_require_mode_blocks_without_proxy()
     test_benchmark_egress_proxy_auto_falls_back_to_direct_without_leaking_proxy()
     test_skillsbench_plan_only_batch_parallel_case_contract()
+    test_skillsbench_batch_case_cli_filters_internal_aggregate_flag()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
     test_reverse_channel_first_action_timeout_stops_codex_process()
