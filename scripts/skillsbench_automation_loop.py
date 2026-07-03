@@ -16073,6 +16073,7 @@ BATCH_CASE_INTERNAL_ARG_KEYS = frozenset(
     {
         "apt_risk_fail_fast_defaulted",
         "bootstrap_light_fail_fast_defaulted",
+        "update_current_aggregate",
         "verifier_bootstrap_fail_fast_defaulted",
     }
 )
