@@ -295,6 +295,7 @@ def main() -> int:
         visible_loaded_evidence = visible_loaded_payload["live_worker_evidence"]
         visible_loaded_rounds = visible_loaded_payload["visible_pane_a2a_rounds"]
         visible_loaded_wake = visible_loaded_payload["visible_wake"]
+        visible_loaded_readiness = visible_loaded_payload["visible_readiness"]
         assert visible_loaded_proof["lane_authored_evidence_loaded"] is True, visible_loaded_payload
         assert visible_loaded_proof["pane_local_a2a_rounds_loaded"] is True, visible_loaded_payload
         assert visible_loaded_proof["pane_local_a2a_round_count"] == 2, visible_loaded_payload
@@ -315,6 +316,23 @@ def main() -> int:
         assert visible_loaded_wake["workflow_driver"] is False, visible_loaded_wake
         assert visible_loaded_wake["broadcaster_reads_frontier"] is False, visible_loaded_wake
         assert visible_loaded_wake["broadcaster_selects_todo"] is False, visible_loaded_wake
+        assert visible_loaded_readiness["ready"] is True, visible_loaded_readiness
+        assert visible_loaded_readiness["manual_artifact_inspection_required"] is False, visible_loaded_readiness
+        assert visible_loaded_readiness["wake_model"] == "fixed_prompt_broadcast", visible_loaded_readiness
+        assert visible_loaded_readiness["workflow_model"] == (
+            "fixed_prompt_wakeup_plus_pane_local_state_tick"
+        ), visible_loaded_readiness
+        assert visible_loaded_readiness["checks"]["workflow_driver_false"] is True, visible_loaded_readiness
+        loaded_improvement = visible_loaded_readiness["improvement_summary"]
+        assert loaded_improvement["baseline_metric"] == 1.0, loaded_improvement
+        assert loaded_improvement["round_1_dev_metric"] == 4.0, loaded_improvement
+        assert loaded_improvement["round_2_holdout_metric"] == 4.5, loaded_improvement
+        assert loaded_improvement["best_metric_source"] == "round_2_holdout", loaded_improvement
+        assert loaded_improvement["holdout_delta_over_dev"] == 0.5, loaded_improvement
+        assert "--wake-visible-after-launch" in visible_loaded_readiness["one_command"], visible_loaded_readiness
+        visible_loaded_markdown = render_auto_research_markdown(visible_loaded_payload)
+        assert "- visible_readiness_ready: `True`" in visible_loaded_markdown, visible_loaded_markdown
+        assert "- visible_best_metric: `4.5`" in visible_loaded_markdown, visible_loaded_markdown
         assert_public_safe(visible_loaded_payload)
 
     loop_markdown = render_auto_research_markdown(
@@ -509,6 +527,7 @@ def main() -> int:
                 assert visible_payload["result_source"] == "visible_worker_launcher", visible_payload
                 assert "worker_loop" not in visible_payload, visible_payload
                 assert "tonight_experience" not in visible_payload, visible_payload
+                assert "visible_readiness" in visible_payload, visible_payload
                 visible_supervisor = visible_payload["supervisor"]
                 assert visible_supervisor["uses_generic_runner"] is True, visible_supervisor
                 assert visible_supervisor["machine_json_policy"] == "artifact_only_in_visible_panes", visible_supervisor
@@ -550,6 +569,34 @@ def main() -> int:
                 assert visible_wake["workflow_driver"] is False, visible_wake
                 assert visible_wake["broadcaster_reads_frontier"] is False, visible_wake
                 assert visible_wake["broadcaster_selects_todo"] is False, visible_wake
+                visible_readiness = visible_payload["visible_readiness"]
+                assert visible_readiness["schema_version"] == "auto_research_visible_readiness_v0", visible_readiness
+                assert visible_readiness["ready"] is True, visible_readiness
+                assert visible_readiness["readiness_level"] == "ready", visible_readiness
+                assert visible_readiness["manual_artifact_inspection_required"] is False, visible_readiness
+                assert visible_readiness["wake_model"] == "fixed_prompt_broadcast", visible_readiness
+                assert visible_readiness["coordination_pattern"] == "decentralized_state_a2a", visible_readiness
+                assert visible_readiness["leader_agent_required"] is False, visible_readiness
+                assert visible_readiness["checks"] == {
+                    "visible_lanes_accepted": True,
+                    "cadence_wake_verified": True,
+                    "pane_local_multi_round_verified": True,
+                    "lane_authored_evidence_loaded": True,
+                    "protected_scope_clean": True,
+                    "positive_metric_over_baseline": True,
+                    "workflow_driver_false": True,
+                }, visible_readiness
+                assert visible_readiness["missing_requirements"] == [], visible_readiness
+                assert visible_readiness["rounds"]["max_completed"] >= 2, visible_readiness
+                improvement = visible_readiness["improvement_summary"]
+                assert improvement["baseline_metric"] == 1.0, improvement
+                assert improvement["round_1_dev_metric"] == 4.0, improvement
+                assert improvement["round_2_holdout_metric"] is None, improvement
+                assert improvement["best_metric"] == 4.0, improvement
+                assert improvement["best_metric_source"] == "round_1_dev", improvement
+                assert improvement["improved_over_baseline"] is True, improvement
+                assert improvement["holdout_delta_over_dev"] is None, improvement
+                assert "--wake-visible-after-launch" in visible_readiness["one_command"], visible_readiness
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload
