@@ -60,7 +60,7 @@ private evidence migration, production actions, or public first-screen copy.
 ## Proposed Extraction Order
 
 1. Characterize the current behavior.
-   Keep `examples/control-plane-risk-characterization-smoke.py` green and add
+   Keep `examples/control_plane/control-plane-risk-characterization-smoke.py` green and add
    focused parity fixtures before moving rules.
 2. Extract active-state and todo read models.
    This reduces Markdown parsing risk while preserving Markdown as the work

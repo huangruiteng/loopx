@@ -251,7 +251,7 @@ CASE_DETAILS = {
                 ("todo ownership", "`event_sourced_state_contract_v0` 把 `todo_claimed` 定义为 canonical event，记录 ownership、lease 或 `claimed_by`。"),
                 ("review packet", "`loopx/review_packet.py` 在 open-todo rendering 和 handoff ranking 路径中保留 `claimed_by`，让 review packet 能显示 owner。"),
                 ("side-agent contract", "`docs/heartbeat-automation-prompt.md` 规定 side-agent 小变更可带 evidence 自合并，否则创建 claimed-by handoff todo。"),
-                ("CLI smokes", "`examples/todo-lifecycle-cli-smoke.py` 和 `examples/todo-cli-smoke.py` 覆盖 claim、handoff successor、side-agent self-merge、review handoff 和 same-agent handoff rejection。"),
+                ("CLI smokes", "`examples/control_plane/todo-lifecycle-cli-smoke.py` 和 `examples/control_plane/todo-cli-smoke.py` 覆盖 claim、handoff successor、side-agent self-merge、review handoff 和 same-agent handoff rejection。"),
             ],
             "mechanism": [
                 "PR feedback 先成为一个有 owner 的 todo，而不是 chat reminder。",
@@ -267,7 +267,7 @@ CASE_DETAILS = {
                 ("event-sourced todo claim", "docs/reference/protocols/event-sourced-state-contract-v0.md"),
                 ("review packet code", "loopx/review_packet.py"),
                 ("side-agent prompt contract", "docs/heartbeat-automation-prompt.md"),
-                ("todo lifecycle smoke", "examples/todo-lifecycle-cli-smoke.py"),
+                ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
             ],
         },
         "en": {
@@ -279,7 +279,7 @@ CASE_DETAILS = {
                 ("Todo ownership", "`event_sourced_state_contract_v0` defines `todo_claimed` as a canonical event for ownership, lease, or `claimed_by`."),
                 ("Review packet", "`loopx/review_packet.py` preserves `claimed_by` in open-todo rendering and handoff ranking so review packets can show ownership."),
                 ("Side-agent contract", "`docs/heartbeat-automation-prompt.md` requires side agents to self-merge only small validated evidence-backed work or create a claimed handoff todo."),
-                ("CLI smokes", "`examples/todo-lifecycle-cli-smoke.py` and `examples/todo-cli-smoke.py` cover claim, handoff successor, side-agent self-merge, review handoff, and same-agent handoff rejection."),
+                ("CLI smokes", "`examples/control_plane/todo-lifecycle-cli-smoke.py` and `examples/control_plane/todo-cli-smoke.py` cover claim, handoff successor, side-agent self-merge, review handoff, and same-agent handoff rejection."),
             ],
             "mechanism": [
                 "PR feedback becomes an owned todo rather than a chat reminder.",
@@ -295,7 +295,7 @@ CASE_DETAILS = {
                 ("event-sourced todo claim", "docs/reference/protocols/event-sourced-state-contract-v0.md"),
                 ("review packet code", "loopx/review_packet.py"),
                 ("side-agent prompt contract", "docs/heartbeat-automation-prompt.md"),
-                ("todo lifecycle smoke", "examples/todo-lifecycle-cli-smoke.py"),
+                ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
             ],
         },
     },
@@ -308,7 +308,7 @@ CASE_DETAILS = {
             "evidence": [
                 ("successor path", "`docs/lark-kanban-control-plane-adapter.md` 明确 real successor 使用 `todo complete --next-*`，replacement 或 narrower split 使用 `todo supersede --next-agent-todo`。"),
                 ("side-agent completion", "`docs/heartbeat-automation-prompt.md` 要求非平凡完成创建 successor todo 或写 no-follow-up rationale。"),
-                ("CLI validation", "`examples/todo-lifecycle-cli-smoke.py` 覆盖 `--next-agent-todo` successor、`todo supersede`、claim 继承、handoff successor、same-agent handoff rejection 和 side-agent self-merge evidence。"),
+                ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` 覆盖 `--next-agent-todo` successor、`todo supersede`、claim 继承、handoff successor、same-agent handoff rejection 和 side-agent self-merge evidence。"),
                 ("review shape", "`loopx review-packet` 把当前 open todo、claimed_by 和 handoff 状态打包成 reviewer 可读的 packet。"),
             ],
             "mechanism": [
@@ -324,7 +324,7 @@ CASE_DETAILS = {
             "source_refs": [
                 ("kanban control-plane adapter", "docs/lark-kanban-control-plane-adapter.md"),
                 ("heartbeat prompt contract", "docs/heartbeat-automation-prompt.md"),
-                ("todo lifecycle smoke", "examples/todo-lifecycle-cli-smoke.py"),
+                ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
                 ("case narrative", "docs/showcases/cases/0623-overnight-project-refactor.md"),
             ],
         },
@@ -336,7 +336,7 @@ CASE_DETAILS = {
             "evidence": [
                 ("Successor path", "`docs/lark-kanban-control-plane-adapter.md` says real successors use `todo complete --next-*`, while replacements or narrower splits use `todo supersede --next-agent-todo`."),
                 ("Side-agent completion", "`docs/heartbeat-automation-prompt.md` requires nontrivial completion to create a successor todo or a no-follow-up rationale."),
-                ("CLI validation", "`examples/todo-lifecycle-cli-smoke.py` covers `--next-agent-todo` successors, `todo supersede`, claim inheritance, handoff successors, same-agent handoff rejection, and side-agent self-merge evidence."),
+                ("CLI validation", "`examples/control_plane/todo-lifecycle-cli-smoke.py` covers `--next-agent-todo` successors, `todo supersede`, claim inheritance, handoff successors, same-agent handoff rejection, and side-agent self-merge evidence."),
                 ("Review shape", "`loopx review-packet` packages open todos, claimed_by, and handoff state for reviewer consumption."),
             ],
             "mechanism": [
@@ -352,7 +352,7 @@ CASE_DETAILS = {
             "source_refs": [
                 ("kanban control-plane adapter", "docs/lark-kanban-control-plane-adapter.md"),
                 ("heartbeat prompt contract", "docs/heartbeat-automation-prompt.md"),
-                ("todo lifecycle smoke", "examples/todo-lifecycle-cli-smoke.py"),
+                ("todo lifecycle smoke", "examples/control_plane/todo-lifecycle-cli-smoke.py"),
                 ("case narrative", "docs/showcases/cases/0623-overnight-project-refactor.md"),
             ],
         },

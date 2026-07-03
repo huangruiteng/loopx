@@ -12,7 +12,7 @@ README = TOPIC_DIR / "README.md"
 DECISION_DOC = TOPIC_DIR / "mini-control-plane-interrupt-projection-decision-v0.md"
 STATUS = REPO_ROOT / "loopx" / "status.py"
 REVIEW_PACKET = REPO_ROOT / "loopx" / "review_packet.py"
-HOT_PATH_SMOKE = REPO_ROOT / "examples" / "hot-path-interface-budget-smoke.py"
+HOT_PATH_SMOKE = REPO_ROOT / "examples" / "control_plane" / "hot-path-interface-budget-smoke.py"
 
 SUMMARY_SCHEMA = "benchmark_interrupt_comparison_summary_v0"
 DECISION_DOC_NAME = "mini-control-plane-interrupt-projection-decision-v0.md"

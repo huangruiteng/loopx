@@ -470,7 +470,7 @@ request. It records the latest clean hot-path budget check, the tightest
 headroom observed, and when the next check is due. Fresh clean checks can
 support a quiet skip for the ongoing interface-budget guard; overdue or
 out-of-budget checks should prompt `python3
-examples/hot-path-interface-budget-smoke.py` or an equivalent explicit
+examples/control_plane/hot-path-interface-budget-smoke.py` or an equivalent explicit
 drift-check run.
 
 Stable fields:
@@ -540,7 +540,7 @@ Missing or stale shape:
   "can_promote": false,
   "should_warn": true,
   "non_blocking": true,
-  "recommended_action": "python3 examples/canary-promotion-readiness-smoke.py",
+  "recommended_action": "python3 examples/canary/canary-promotion-readiness-smoke.py",
   "warning_message": "promotion-readiness evidence is stale; ...",
   "readiness": {
     "freshness_status": "stale",

@@ -474,8 +474,8 @@ without a validated artifact or blocker.
 
 **Validation**
 
-- `examples/work-lane-contract-smoke.py`
-- `examples/heartbeat-quota-flow-smoke.py`
+- `examples/control_plane/work-lane-contract-smoke.py`
+- `examples/control_plane/heartbeat-quota-flow-smoke.py`
 - `loopx check`
 
 #### IP-002 Blocked Priority With Safe Fallback
@@ -523,7 +523,7 @@ of the P0 blocker.
 
 **Validation**
 
-- `examples/todo-first-open-summary-smoke.py`
+- `examples/control_plane/todo-first-open-summary-smoke.py`
 - `docs/heartbeat-automation-prompt.md`
 
 #### IP-003 Scoped Gate With Safe Fallback
@@ -604,8 +604,8 @@ IP-003 scope metadata being ignored by the user-todo blocking summary.
 
 - `regression/scoped-user-gate-fallback-contract.py`
 - `examples/protocol-action-packet-smoke.py`
-- `examples/work-lane-contract-smoke.py`
-- `examples/quota-agent-scoped-user-gate-smoke.py` for `blocks_agent` scoped
+- `examples/control_plane/work-lane-contract-smoke.py`
+- `examples/control_plane/quota-agent-scoped-user-gate-smoke.py` for `blocks_agent` scoped
   user gates that block only the target agent while preserving other-agent
   delivery.
 - `docs/archive/incidents/agent-scoped-user-gate-overreach-incident-20260624.md`
@@ -709,7 +709,7 @@ runnable set for the agent to choose from.
 - `docs/project-agent-todo-contract.md`
 - `docs/quota-allocation.md`
 - `examples/capability-gate-smoke.py`
-- `examples/todo-cli-smoke.py`
+- `examples/control_plane/todo-cli-smoke.py`
 
 #### IP-007 Outcome Floor Recovery
 
@@ -746,7 +746,7 @@ the evidence needed to decide whether the goal is working.
 **Validation**
 
 - `docs/archive/incidents/outcome-floor-safe-bypass-incident-20260606.md`
-- `examples/quota-plan-smoke.py`
+- `examples/control_plane/quota-plan-smoke.py`
 - `examples/upgrade-plan-smoke.py`
 
 #### IP-008 Monitor Quiet Skip
@@ -797,8 +797,8 @@ watch lane instead of staying quiet or writing a concrete blocker.
 
 **Validation**
 
-- `examples/heartbeat-quota-flow-smoke.py`
-- `examples/quota-plan-smoke.py`
+- `examples/control_plane/heartbeat-quota-flow-smoke.py`
+- `examples/control_plane/quota-plan-smoke.py`
 - `docs/heartbeat-automation-prompt.md`
 - `docs/archive/incidents/monitor-only-replan-stall-incident-20260621.md`
 
@@ -844,8 +844,8 @@ needed.
 **Validation**
 
 - `docs/heartbeat-automation-prompt.md`
-- `examples/quota-plan-smoke.py`
-- `examples/heartbeat-quota-flow-smoke.py`
+- `examples/control_plane/quota-plan-smoke.py`
+- `examples/control_plane/heartbeat-quota-flow-smoke.py`
 
 #### IP-027 Deferred Gate Resume
 
@@ -921,9 +921,9 @@ step, so stale or future work outranks live open tasks.
 
 **Validation**
 
-- `examples/work-lane-contract-smoke.py` covers a ready deferred successor
+- `examples/control_plane/work-lane-contract-smoke.py` covers a ready deferred successor
   returning `successor_replan_required` instead of a quiet no-op.
-- `examples/todo-durability-fixture-smoke.py` covers parsing
+- `examples/control_plane/todo-durability-fixture-smoke.py` covers parsing
   `resume_when=todo_done:<todo_id>` and projecting ready deferred candidates
   after open items.
 - `docs/project-agent-todo-contract.md`
@@ -996,7 +996,7 @@ state-machine bugs, not prompt wording bugs.
 **Validation**
 
 - `loopx/todo_handoff_gate.py` owns the `todo_handoff_gate_v0` projection.
-- `examples/quota-cleared-blocker-successor-gate-smoke.py` covers
+- `examples/control_plane/quota-cleared-blocker-successor-gate-smoke.py` covers
   `blocking`, `cleared_without_successor`, `cleared_with_successor`, and
   `superseded` gate states.
 - `docs/quota-allocation.md`
@@ -1260,7 +1260,7 @@ the checkpointed decision.
 
 **Validation**
 
-- `examples/quota-action-scope-guard-smoke.py`;
+- `examples/control_plane/quota-action-scope-guard-smoke.py`;
 - `examples/configure-goal-smoke.py`;
 - `docs/state-interaction-model.md` checkpointed decision sections.
 
@@ -1479,10 +1479,10 @@ looks like a stale automation prompt instead of the completed scoped turn.
 - `docs/project-agent-todo-contract.md`
 - `docs/codex-subagent-orchestration.md`
 - `docs/heartbeat-automation-prompt.md`
-- `examples/todo-lifecycle-cli-smoke.py`
-- `examples/todo-cli-smoke.py`
-- `examples/todo-concurrent-write-lock-smoke.py`
-- `examples/heartbeat-prompt-smoke.py`
+- `examples/control_plane/todo-lifecycle-cli-smoke.py`
+- `examples/control_plane/todo-cli-smoke.py`
+- `examples/control_plane/todo-concurrent-write-lock-smoke.py`
+- `examples/control_plane/heartbeat-prompt-smoke.py`
 - `examples/side-agent-workspace-guard-smoke.py`
 
 #### IP-020 Todo Claim / Supersede / Successor Lifecycle
@@ -1576,9 +1576,9 @@ permission to ignore gates and boundaries.
 **Validation**
 
 - `docs/project-agent-todo-contract.md`
-- `examples/todo-lifecycle-cli-smoke.py`
-- `examples/todo-cli-smoke.py`
-- `examples/todo-concurrent-write-lock-smoke.py`
+- `examples/control_plane/todo-lifecycle-cli-smoke.py`
+- `examples/control_plane/todo-cli-smoke.py`
+- `examples/control_plane/todo-concurrent-write-lock-smoke.py`
 - future status/quota smoke that verifies first executable successor projection
   after `todo supersede` and `todo complete --next-agent-todo`.
 
@@ -1690,11 +1690,11 @@ monitor through status/quota/todo projection.
 **Validation**
 
 - `docs/status-data-contract.md`
-- `examples/todo-first-open-summary-smoke.py`
-- `examples/work-lane-contract-smoke.py` for `agent_lane_next_action_v0`
+- `examples/control_plane/todo-first-open-summary-smoke.py`
+- `examples/control_plane/work-lane-contract-smoke.py` for `agent_lane_next_action_v0`
   preserving the primary/global `Next Action` while surfacing the side-agent
   TUI slice.
-- `examples/status-markdown-smoke.py` for `status --agent-id` rendering the same
+- `examples/control_plane/status-markdown-smoke.py` for `status --agent-id` rendering the same
   agent-lane pointer without replacing the project route.
 - PR #262 / commit `292a2c8`: additive status/quota visibility lanes with a
   16-item agent-facing cap.
@@ -1797,15 +1797,15 @@ or future work outranks live open tasks.
 - future quota/status regression with two registered agents where all runnable
   work is claimed by the primary and the side-agent `--agent-id` call returns
   `scope_exhausted` or `agent_scope_wait`;
-- `examples/work-lane-contract-smoke.py` should cover that an empty
+- `examples/control_plane/work-lane-contract-smoke.py` should cover that an empty
   current-agent frontier cannot produce `delivery_allowed=true`;
 - `docs/project-agent-todo-contract.md`
 - `docs/quota-allocation.md`
 - `docs/status-data-contract.md`
-- `examples/quota-agent-scoped-user-gate-smoke.py` for the nearby case where
+- `examples/control_plane/quota-agent-scoped-user-gate-smoke.py` for the nearby case where
   a user gate is real but scoped to a different agent and therefore must not
   create current-agent scope exhaustion.
-- `examples/quota-cleared-blocker-successor-gate-smoke.py` for the nearby
+- `examples/control_plane/quota-cleared-blocker-successor-gate-smoke.py` for the nearby
   case where a `blocks_agent` handoff todo directly controls the scoped gate.
 - `skills/loopx-self-repair/references/repair-patterns.md` records
   `agent_scoped_no_candidate_gap` and `handoff_gate_state_projection_gap` for
@@ -2241,7 +2241,7 @@ resolved repair; it is an unclosed control-plane loop with better narration.
 
 - `docs/archive/incidents/monitor-only-replan-stall-incident-20260621.md`
 - `skills/loopx-self-repair/references/repair-patterns.md`
-- `examples/heartbeat-quota-flow-smoke.py`
+- `examples/control_plane/heartbeat-quota-flow-smoke.py`
 - future regression that compares before/after frontier fields for repair and
   replan closeout runs.
 
@@ -2337,7 +2337,7 @@ successor work. The next automation then behaves as if the plan never existed.
 
 - `skills/loopx-project/SKILL.md`
 - `skills/loopx-self-repair/references/repair-patterns.md`
-- `examples/heartbeat-prompt-smoke.py`
+- `examples/control_plane/heartbeat-prompt-smoke.py`
 - future status/quota smoke that flags user-facing plans without todo or
   refresh-state writeback.
 

@@ -176,7 +176,7 @@ def main() -> int:
         assert "loopx installed locally" in install.stdout, install.stdout
         assert "promotion-readiness evidence is missing" in install.stderr, install.stderr
         assert "non-blocking" in install.stderr, install.stderr
-        assert "examples/canary-promotion-readiness-smoke.py" in install.stderr, install.stderr
+        assert "examples/canary/canary-promotion-readiness-smoke.py" in install.stderr, install.stderr
         assert f"- executable: {bin_dir / 'loopx'}" in install.stdout, install.stdout
         assert "- release: " in install.stdout, install.stdout
         assert f"- canary executable: {bin_dir / 'loopx-canary'}" in install.stdout, install.stdout

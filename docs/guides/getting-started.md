@@ -752,10 +752,10 @@ Run the focused CLI and contract smokes from the repository root:
 ```bash
 python3 -m py_compile loopx/*.py
 python3 examples/demo-cli-smoke.py
-python3 examples/todo-cli-smoke.py
-python3 examples/todo-lifecycle-cli-smoke.py
-python3 examples/quota-contract-smoke.py
-python3 examples/review-packet-cli-smoke.py
+python3 examples/control_plane/todo-cli-smoke.py
+python3 examples/control_plane/todo-lifecycle-cli-smoke.py
+python3 examples/control_plane/quota-contract-smoke.py
+python3 examples/control_plane/review-packet-cli-smoke.py
 python3 examples/benchmark-run-v0-append-cli-smoke.py
 git diff --check
 ```
@@ -772,7 +772,7 @@ npm run smoke:demo-readiness
 For release-promotion readiness:
 
 ```bash
-python3 examples/canary-promotion-readiness-smoke.py
+python3 examples/canary/canary-promotion-readiness-smoke.py
 loopx promotion-gate --format json
 loopx upgrade-plan --format json
 ```

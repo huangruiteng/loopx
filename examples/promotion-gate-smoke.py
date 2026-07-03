@@ -83,7 +83,7 @@ def assert_missing_gate(registry_path: Path) -> None:
     assert payload["can_promote"] is False, payload
     assert payload["should_warn"] is True, payload
     assert payload["non_blocking"] is True, payload
-    assert payload["recommended_action"] == "python3 examples/canary-promotion-readiness-smoke.py", payload
+    assert payload["recommended_action"] == "python3 examples/canary/canary-promotion-readiness-smoke.py", payload
     assert payload["readiness"]["freshness_status"] == "missing", payload
     assert payload["readiness"]["requires_readiness_run"] is True, payload
     assert "warning_message" in payload, payload

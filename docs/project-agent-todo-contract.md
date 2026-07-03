@@ -550,10 +550,10 @@ execution blocker.
 Two dependency-free public fixtures cover this contract:
 
 ```bash
-python3 examples/todo-cli-smoke.py
-python3 examples/todo-lifecycle-cli-smoke.py
+python3 examples/control_plane/todo-cli-smoke.py
+python3 examples/control_plane/todo-lifecycle-cli-smoke.py
 python3 examples/project-agent-adoption-smoke.py
-python3 examples/todo-concurrent-write-lock-smoke.py
+python3 examples/control_plane/todo-concurrent-write-lock-smoke.py
 python3 examples/capability-gate-smoke.py
 ```
 

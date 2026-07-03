@@ -88,7 +88,7 @@ assert(
 );
 includes(
   promotionGateWarningFixture,
-  "python3 examples/canary-promotion-readiness-smoke.py",
+  "python3 examples/canary/canary-promotion-readiness-smoke.py",
   "promotion gate warning fixture recommended action",
 );
 

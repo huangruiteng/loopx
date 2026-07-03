@@ -68,7 +68,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
     state_write_commands = [
         check["command"] for check in domain_profiles["state-write-correctness"]["checks"]
     ]
-    assert "python3 examples/todo-write-correctness-smoke.py" in state_write_commands
+    assert "python3 examples/control_plane/todo-write-correctness-smoke.py" in state_write_commands
 
 
 def assert_plan_selects_minimal_profiles_from_changed_surfaces() -> None:
@@ -141,7 +141,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     release_commands = [
         check["command"] for check in release_profiles["release-promotion"]["checks"]
     ]
-    assert "python3 examples/canary-promotion-readiness-boundary-smoke.py" in release_commands
+    assert "python3 examples/canary/canary-promotion-readiness-boundary-smoke.py" in release_commands
 
     install_payload = build_catalog_canary_plan(
         changed_files=["scripts/install-local.sh", "loopx/self_update.py"],
@@ -169,7 +169,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         if profile["id"] == "repo-architecture-budget"
     )
     architecture_commands = [check["command"] for check in architecture_profile["checks"]]
-    assert "python3 examples/repo-python-line-budget-smoke.py" in architecture_commands, (
+    assert "python3 examples/control_plane/repo-python-line-budget-smoke.py" in architecture_commands, (
         architecture_profile
     )
 
@@ -185,10 +185,10 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     work_lane_commands = [
         check["command"] for check in work_lane_profiles["control-plane-refactor"]["checks"]
     ]
-    assert "python3 examples/quota-resume-gated-open-todo-smoke.py" in work_lane_commands, (
+    assert "python3 examples/control_plane/quota-resume-gated-open-todo-smoke.py" in work_lane_commands, (
         work_lane_profiles["control-plane-refactor"]
     )
-    assert "python3 examples/quota-cleared-blocker-successor-gate-smoke.py" in work_lane_commands, (
+    assert "python3 examples/control_plane/quota-cleared-blocker-successor-gate-smoke.py" in work_lane_commands, (
         work_lane_profiles["control-plane-refactor"]
     )
     assert all(
@@ -203,8 +203,8 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     status_profiles = {profile["id"]: profile for profile in status_payload["domain_profiles"]}
     assert "status-read-path" in status_profiles, status_payload
     status_commands = [check["command"] for check in status_profiles["status-read-path"]["checks"]]
-    assert "python3 examples/status-goal-filter-smoke.py" in status_commands, status_payload
-    assert "python3 examples/status-quota-review-packet-parity-smoke.py" in status_commands, status_payload
+    assert "python3 examples/control_plane/status-goal-filter-smoke.py" in status_commands, status_payload
+    assert "python3 examples/control_plane/status-quota-review-packet-parity-smoke.py" in status_commands, status_payload
     assert all(check["tier"] == "default" for check in status_profiles["status-read-path"]["checks"]), status_payload
     assert status_profiles["status-read-path"]["deep_checks_available"] is True, status_payload
     assert status_profiles["status-read-path"]["deep_checks_included"] is False, status_payload
@@ -219,8 +219,8 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "review-packet-read-path" in review_packet_profiles, review_packet_payload
     review_packet_profile = review_packet_profiles["review-packet-read-path"]
     review_packet_commands = [check["command"] for check in review_packet_profile["checks"]]
-    assert "python3 examples/review-packet-cli-smoke.py" in review_packet_commands, review_packet_profile
-    assert "python3 examples/review-packet-smoke.py" in review_packet_commands, review_packet_profile
+    assert "python3 examples/control_plane/review-packet-cli-smoke.py" in review_packet_commands, review_packet_profile
+    assert "python3 examples/control_plane/review-packet-smoke.py" in review_packet_commands, review_packet_profile
     assert all(check["tier"] == "default" for check in review_packet_profile["checks"]), review_packet_profile
     assert review_packet_profile["deep_checks_available"] is True, review_packet_profile
     assert review_packet_profile["deep_checks_included"] is False, review_packet_profile
@@ -235,9 +235,9 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "event-sourced-read-path" in event_read_profiles, event_read_payload
     event_read_profile = event_read_profiles["event-sourced-read-path"]
     event_read_commands = [check["command"] for check in event_read_profile["checks"]]
-    assert "python3 examples/event-sourced-state-api-smoke.py" in event_read_commands, event_read_profile
-    assert "python3 examples/event-sourced-status-read-path-smoke.py" in event_read_commands, event_read_profile
-    assert "python3 examples/event-sourced-downstream-read-path-smoke.py" in event_read_commands, event_read_profile
+    assert "python3 examples/control_plane/event-sourced-state-api-smoke.py" in event_read_commands, event_read_profile
+    assert "python3 examples/control_plane/event-sourced-status-read-path-smoke.py" in event_read_commands, event_read_profile
+    assert "python3 examples/control_plane/event-sourced-downstream-read-path-smoke.py" in event_read_commands, event_read_profile
     assert all(check["tier"] == "default" for check in event_read_profile["checks"]), event_read_profile
     assert event_read_profile["deep_checks_available"] is True, event_read_profile
     assert event_read_profile["deep_checks_included"] is False, event_read_profile
@@ -260,7 +260,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     assert "todo-lifecycle" in todo_profiles, todo_payload
     todo_profile = todo_profiles["todo-lifecycle"]
     todo_commands = [check["command"] for check in todo_profile["checks"]]
-    assert "python3 examples/todo-lifecycle-cli-smoke.py" in todo_commands, todo_profile
+    assert "python3 examples/control_plane/todo-lifecycle-cli-smoke.py" in todo_commands, todo_profile
     assert all(check["tier"] == "default" for check in todo_profile["checks"]), todo_profile
     assert todo_profile["deep_checks_available"] is True, todo_profile
 
@@ -354,7 +354,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     runtime_connector_commands = [
         check["command"] for check in runtime_connector_profile["checks"]
     ]
-    assert "python3 examples/heartbeat-prompt-smoke.py" in runtime_connector_commands
+    assert "python3 examples/control_plane/heartbeat-prompt-smoke.py" in runtime_connector_commands
     assert (
         "python3 examples/codex-cli-tui-bootstrap-smoke-bundle-smoke.py"
         in runtime_connector_commands
@@ -439,7 +439,7 @@ def assert_explicit_catalog_profile_id_selects_family_profile() -> None:
     assert profile["selection_reasons"] == [
         "selected because this catalog profile was explicitly requested",
     ], profile
-    assert "python3 examples/todo-contract-smoke.py" in payload["commands"], payload
+    assert "python3 examples/control_plane/todo-contract-smoke.py" in payload["commands"], payload
     assert all(
         check["source"] == "catalog_family"
         for check in payload["suggested_checks"]
@@ -689,7 +689,7 @@ def assert_cli_profile_accepts_catalog_profile_id() -> None:
     assert payload["profile_count"] == 1, payload
     assert payload["domain_profile_count"] == 0, payload
     assert payload["profiles"][0]["id"] == "state-and-boundary", payload
-    assert payload["commands"] == ["python3 examples/todo-contract-smoke.py"], payload
+    assert payload["commands"] == ["python3 examples/control_plane/todo-contract-smoke.py"], payload
 
 
 def assert_cli_json_coverage_audit_is_dry_run() -> None:

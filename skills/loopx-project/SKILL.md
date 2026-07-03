@@ -408,8 +408,8 @@ obey that payload and stop when useful work falls outside it.
 
 When a LoopX client/prompt contract changes, update the matching smoke
 coverage in the same patch. Interface-budget and regression constraints belong
-in lightweight smoke scripts such as `examples/heartbeat-prompt-smoke.py`,
-`examples/quota-plan-smoke.py`, or `examples/quota-contract-smoke.py`; heavier
+in lightweight smoke scripts such as `examples/control_plane/heartbeat-prompt-smoke.py`,
+`examples/control_plane/quota-plan-smoke.py`, or `examples/control_plane/quota-contract-smoke.py`; heavier
 Codex CLI plus LoopX end-to-end checks should stay explicit or
 low-frequency instead of becoming the default heartbeat path.
 

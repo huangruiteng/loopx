@@ -143,7 +143,7 @@ new IPs solely to describe a validation bundle:
 The default promotion canary is:
 
 ```bash
-python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
+python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence
 ```
 
 The default dashboard policy is `--dashboard-mode=auto`: source checkouts run
@@ -158,7 +158,7 @@ Use the writeback form only when you intentionally want to append fresh
 promotion-readiness evidence:
 
 ```bash
-python3 examples/canary-promotion-readiness-smoke.py
+python3 examples/canary/canary-promotion-readiness-smoke.py
 ```
 
 For broader source-checkout regressions, keep `loopx canary smoke-suite` as the

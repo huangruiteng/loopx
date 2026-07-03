@@ -43,7 +43,7 @@ function baseStatusFixture(promotionReadinessSummary) {
     should_warn: shouldWarn,
     non_blocking: true,
     recommended_action: shouldWarn
-      ? "python3 examples/canary-promotion-readiness-smoke.py"
+      ? "python3 examples/canary/canary-promotion-readiness-smoke.py"
       : "promotion readiness is fresh",
     readiness: promotionReadinessSummary,
   };
@@ -392,7 +392,7 @@ async function main() {
         "CAN PROMOTE",
         "no",
         "should_warn=true",
-        "python3 examples/canary-promotion-readiness-smoke.py",
+        "python3 examples/canary/canary-promotion-readiness-smoke.py",
         "promotion-readiness evidence is stale; fixture guard",
         "25.5h",
         "goal=loopx-meta",

@@ -359,7 +359,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 ),
             }
         ],
-        "next_validation_command": "python3 examples/quota-replan-decision-plane-smoke.py",
+        "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
         "stop_condition": (
             "stop if the replan requires private material, credentials, destructive git, "
             "production actions, or owner-only decisions"

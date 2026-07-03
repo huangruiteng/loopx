@@ -34,7 +34,7 @@ def assert_full_public_preview_injects_safe_group_args() -> None:
     payload = build_canary_smoke_suite_run(
         suite="full-public",
         scripts=[
-            "examples/canary-promotion-readiness-smoke.py",
+            "examples/canary/canary-promotion-readiness-smoke.py",
             "dashboard-demo-readiness-smoke.py",
         ],
         execute=False,
@@ -44,7 +44,7 @@ def assert_full_public_preview_injects_safe_group_args() -> None:
         check["normalized"]["script"]: check["normalized"]
         for check in payload["selected_checks"]
     }
-    assert "--no-write-evidence" in by_script["examples/canary-promotion-readiness-smoke.py"]["argv"], payload
+    assert "--no-write-evidence" in by_script["examples/canary/canary-promotion-readiness-smoke.py"]["argv"], payload
     assert "--skip-browser" in by_script["examples/dashboard-demo-readiness-smoke.py"]["argv"], payload
 
 
@@ -109,7 +109,7 @@ def assert_catalog_profile_preview_is_supported() -> None:
     )
     assert payload["ok"] is True, payload
     assert payload["selected_check_count"] == 1, payload
-    assert payload["selected_checks"][0]["command"] == "python3 examples/repo-python-line-budget-smoke.py", payload
+    assert payload["selected_checks"][0]["command"] == "python3 examples/control_plane/repo-python-line-budget-smoke.py", payload
     assert payload["catalog_plan"]["planned_check_count"] == 1, payload
 
 

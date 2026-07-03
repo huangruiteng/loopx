@@ -98,7 +98,7 @@ points for contributors who are still learning the repository.
 | ID | Area | Task | Validation |
 | --- | --- | --- | --- |
 | GH-C01 | docs | Add a short "first goal" walkthrough that starts with `loopx demo`, inspects status/history, completes one todo, and shows the next todo. | `loopx check --scan-path README.md --scan-path docs/ --scan-path examples/` |
-| GH-C02 | tests | Add or extend a focused smoke test around todo archive/completion behavior. Prefer copying the style of `examples/todo-lifecycle-cli-smoke.py`. | `python3 examples/todo-lifecycle-cli-smoke.py` and `python3 -m py_compile loopx/*.py` |
+| GH-C02 | tests | Add or extend a focused smoke test around todo archive/completion behavior. Prefer copying the style of `examples/control_plane/todo-lifecycle-cli-smoke.py`. | `python3 examples/control_plane/todo-lifecycle-cli-smoke.py` and `python3 -m py_compile loopx/*.py` |
 | GH-C04 | docs | Improve README troubleshooting for install, PATH setup, canary/default wrappers, and `loopx doctor`. | `loopx check --scan-path README.md --scan-path CONTRIBUTING.md` |
 | GH-C09 | release docs | Add a contributor-safe canary planner walkthrough: how to use the shipped catalog planner, how fixed-path vs existing-contract selection works, and how to stop before touching local `.loopx` or maintainer-only rollout state. | `loopx check --scan-path docs/interaction-pattern-catalog.md --scan-path docs/ --scan-path CONTRIBUTOR_TASKS.md` |
 | GH-C10 | docs | Add a public "what counts as a good smoke" guide using `CONTRIBUTING.md` and recent benchmark-smoke cleanup as source material. | `loopx check --scan-path CONTRIBUTING.md --scan-path CONTRIBUTOR_TASKS.md` |

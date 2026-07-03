@@ -68,7 +68,7 @@ def main() -> None:
         "catalog-informed readiness slice",
         "near-E2E",
         "do not add new IPs solely to describe a validation bundle",
-        "examples/canary-promotion-readiness-smoke.py --no-write-evidence",
+        "examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence",
         "## What Is Safe To Depend On",
         "loopx doctor",
         "quota should-run",

@@ -278,7 +278,18 @@ def _matches_modules(script: Path, modules: list[str]) -> bool:
         needle = module.strip().lower()
         if not needle:
             continue
-        if needle in haystack or needle in stem_tokens:
+        needle_variants = {
+            needle,
+            needle.replace("-", "_"),
+            needle.replace("_", "-"),
+        }
+        needle_tokens = {
+            token for token in re.split(r"[-_./]+", needle) if token
+        }
+        if (
+            any(variant in haystack or variant in stem_tokens for variant in needle_variants)
+            or (needle_tokens and needle_tokens.issubset(stem_tokens))
+        ):
             return True
     return False
 

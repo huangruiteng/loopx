@@ -110,7 +110,7 @@ python3 regression/automation-loop-heartbeat-poll-contract.py
 ```
 
 Runs the automation-loop heartbeat poll contract by reusing
-`examples/heartbeat-quota-flow-smoke.py`. It checks that bounded heartbeat
+`examples/control_plane/heartbeat-quota-flow-smoke.py`. It checks that bounded heartbeat
 delivery only spends after validated state writeback, repeated monitor polls
 stay quiet and do not spend, compact external-evidence observation remains
 bounded, and projection warnings route stale `Next Action` text behind the

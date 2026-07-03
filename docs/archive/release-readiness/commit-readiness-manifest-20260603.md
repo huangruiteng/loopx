@@ -48,12 +48,12 @@ Candidate files:
 - `docs/heartbeat-automation-prompt.md`
 - `loopx/heartbeat_prompt.py`
 - `skills/loopx-project/SKILL.md`
-- `examples/heartbeat-prompt-smoke.py`
+- `examples/control_plane/heartbeat-prompt-smoke.py`
 
 Validation already run in this slice:
 
-- `python3 examples/heartbeat-prompt-smoke.py`
-- `python3 -m py_compile loopx/heartbeat_prompt.py examples/heartbeat-prompt-smoke.py`
+- `python3 examples/control_plane/heartbeat-prompt-smoke.py`
+- `python3 -m py_compile loopx/heartbeat_prompt.py examples/control_plane/heartbeat-prompt-smoke.py`
 - `python3 -m compileall -q loopx`
 
 Remaining before commit:
@@ -79,12 +79,12 @@ Candidate files:
 - `loopx/history.py`
 - `loopx/status.py` (runtime/status hunks)
 - `loopx/contract.py`
-- `examples/status-markdown-smoke.py`
+- `examples/control_plane/status-markdown-smoke.py`
 - `examples/contract-reward-overlay-smoke.py`
 
 Validation already run in prior slices or this slice:
 
-- `python3 examples/status-markdown-smoke.py`
+- `python3 examples/control_plane/status-markdown-smoke.py`
 - `python3 examples/contract-reward-overlay-smoke.py`
 - `loopx --format json check --scan-root .`
 
@@ -200,8 +200,8 @@ Before any commit or PR, run:
 
 ```bash
 python3 examples/run-smokes.py
-python3 examples/heartbeat-prompt-smoke.py
-python3 examples/status-markdown-smoke.py
+python3 examples/control_plane/heartbeat-prompt-smoke.py
+python3 examples/control_plane/status-markdown-smoke.py
 python3 examples/user-todo-review-material-smoke.py
 python3 examples/contract-reward-overlay-smoke.py
 npm --prefix apps/dashboard run build
@@ -220,8 +220,8 @@ Status: passed.
 Commands run:
 
 - `python3 examples/run-smokes.py`
-- `python3 examples/heartbeat-prompt-smoke.py`
-- `python3 examples/status-markdown-smoke.py`
+- `python3 examples/control_plane/heartbeat-prompt-smoke.py`
+- `python3 examples/control_plane/status-markdown-smoke.py`
 - `python3 examples/user-todo-review-material-smoke.py`
 - `python3 examples/contract-reward-overlay-smoke.py`
 - `npm --prefix apps/dashboard run build`
@@ -306,8 +306,8 @@ Status: passed; safe to publish the current public LoopX dirty tree.
 Commands run:
 
 - `python3 examples/run-smokes.py`
-- `python3 examples/heartbeat-prompt-smoke.py`
-- `python3 examples/status-markdown-smoke.py`
+- `python3 examples/control_plane/heartbeat-prompt-smoke.py`
+- `python3 examples/control_plane/status-markdown-smoke.py`
 - `python3 examples/user-todo-review-material-smoke.py`
 - `python3 examples/contract-reward-overlay-smoke.py`
 - `npm --prefix apps/dashboard run build`

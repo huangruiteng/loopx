@@ -62,10 +62,10 @@ Common focused checks:
 python3 -m py_compile loopx/*.py
 python3 examples/demo-cli-smoke.py
 python3 examples/fresh-clone-quickstart-smoke.py
-python3 examples/todo-cli-smoke.py
-python3 examples/todo-lifecycle-cli-smoke.py
-python3 examples/quota-contract-smoke.py
-python3 examples/review-packet-cli-smoke.py
+python3 examples/control_plane/todo-cli-smoke.py
+python3 examples/control_plane/todo-lifecycle-cli-smoke.py
+python3 examples/control_plane/quota-contract-smoke.py
+python3 examples/control_plane/review-packet-cli-smoke.py
 loopx check --scan-root .
 git diff --check
 ```

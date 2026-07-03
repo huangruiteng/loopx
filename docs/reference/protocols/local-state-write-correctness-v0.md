@@ -164,7 +164,7 @@ path. The gate is a public-safe fixture contract, not a permission grant.
   "promotion_target": "shadow_validate",
   "allowed_to_change_write_behavior": false,
   "required_evidence": {
-    "dry_run_packet_smoke": "examples/todo-write-correctness-smoke.py",
+    "dry_run_packet_smoke": "examples/control_plane/todo-write-correctness-smoke.py",
     "idempotency_key_stability": "same logical input produces the same idempotency_key",
     "expected_revision_fixture": "expected_revision is computed from the active state before mutation",
     "revision_conflict_fixture": "stale expected_revision returns revision_conflict before mutation",

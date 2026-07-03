@@ -40,7 +40,7 @@ readiness with other current dirty-tree surfaces:
   dependency blockers, autonomous backlog candidates, event-ledger summaries,
   decision freshness, quota/handoff helpers, and status contract changes.
 - `README.md`, `docs/status-data-contract.md`,
-  `examples/status-markdown-smoke.py`, and `examples/status.example.json`
+  `examples/control_plane/status-markdown-smoke.py`, and `examples/status.example.json`
   carry promotion-gate documentation or fixtures alongside broader
   control-plane and status-contract updates.
 - `apps/dashboard/src/views/dashboard-page.tsx` is not part of Batch 1, but it
@@ -61,7 +61,7 @@ No files were staged by this decision. The Git index remains available for a
 clean follow-up staging pass.
 
 Validation after this decision: `python3 examples/promotion-gate-smoke.py`,
-`python3 examples/status-markdown-smoke.py`, `loopx-canary check`, and
+`python3 examples/control_plane/status-markdown-smoke.py`, `loopx-canary check`, and
 `git diff --check` passed.
 
 ## Hunk-Level Staging Map - 2026-06-06T05:38:30+08:00
@@ -79,9 +79,9 @@ batch:
 
 - `loopx/promotion_gate.py`
 - `examples/promotion-gate-smoke.py`
-- `examples/canary-promotion-readiness-smoke.py`
-- `examples/canary-promotion-readiness-writeback-smoke.py`
-- `examples/canary-promotion-no-write-contract-smoke.py`
+- `examples/canary/canary-promotion-readiness-smoke.py`
+- `examples/canary/canary-promotion-readiness-writeback-smoke.py`
+- `examples/canary/canary-promotion-no-write-contract-smoke.py`
 - `examples/dashboard-promotion-readiness-browser-smoke.mjs`
 - `examples/dashboard-promotion-gate-warning-status.json`
 
@@ -138,7 +138,7 @@ unless choosing the larger combined release-readiness batch.
     paragraph;
   - avoid unrelated top-4 todo, dependency blocker, operator gate, or freshness
     contract hunks unless choosing the combined batch.
-- `examples/status-markdown-smoke.py`
+- `examples/control_plane/status-markdown-smoke.py`
   - stage the import for `build_promotion_readiness_summary`;
   - stage `assert_promotion_readiness_summary_markdown()`;
   - stage `assert_promotion_gate_summary_markdown()`;
@@ -174,7 +174,7 @@ validation passes:
 
 ```bash
 python3 examples/run-smokes.py
-python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
+python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence
 npm --prefix apps/dashboard run smoke:demo-readiness
 npm --prefix apps/dashboard run build
 loopx-canary check
@@ -186,7 +186,7 @@ combined release-readiness batch or write back the exact file/hunk that blocks
 staging.
 
 Validation after adding this map: `python3 examples/promotion-gate-smoke.py`,
-`python3 examples/status-markdown-smoke.py`, `loopx-canary check`, and
+`python3 examples/control_plane/status-markdown-smoke.py`, `loopx-canary check`, and
 `git diff --check` passed.
 
 ## Staging Applied - 2026-06-06T05:43:51+08:00
@@ -203,7 +203,7 @@ split would add review overhead without reducing the validated product risk.
 Validation before staging:
 
 - `python3 examples/run-smokes.py`: passed with 31 smoke scripts.
-- `python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence`:
+- `python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence`:
   passed.
 - `npm --prefix apps/dashboard run smoke:demo-readiness`: passed, including
   browser smokes.
@@ -267,20 +267,20 @@ Candidate files:
 - `README.md` (canary-promotion and promotion-gate operator path)
 - `docs/status-data-contract.md`
 - `examples/promotion-gate-smoke.py`
-- `examples/canary-promotion-readiness-smoke.py`
-- `examples/canary-promotion-readiness-writeback-smoke.py`
-- `examples/canary-promotion-no-write-contract-smoke.py`
+- `examples/canary/canary-promotion-readiness-smoke.py`
+- `examples/canary/canary-promotion-readiness-writeback-smoke.py`
+- `examples/canary/canary-promotion-no-write-contract-smoke.py`
 - `examples/install-local-smoke.py`
-- `examples/status-markdown-smoke.py`
+- `examples/control_plane/status-markdown-smoke.py`
 - `examples/status.example.json`
 
 Validation already observed in recent slices:
 
 - `python3 examples/promotion-gate-smoke.py`
-- `python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence`
-- `python3 examples/canary-promotion-readiness-writeback-smoke.py`
+- `python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence`
+- `python3 examples/canary/canary-promotion-readiness-writeback-smoke.py`
 - `python3 examples/install-local-smoke.py`
-- `python3 examples/status-markdown-smoke.py`
+- `python3 examples/control_plane/status-markdown-smoke.py`
 - live status readback showing `promotion_gate.gate_state=ready`,
   `can_promote=True`, `should_warn=False`, and readiness `fresh`.
 
@@ -360,21 +360,21 @@ Candidate files:
 - `loopx/project_prompt.py`
 - `examples/blocker-push-runtime-smoke.py`
 - `examples/global-registry-sync-smoke.py`
-- `examples/heartbeat-prompt-smoke.py`
+- `examples/control_plane/heartbeat-prompt-smoke.py`
 - `examples/operator-gate-resume-contract-smoke.py`
-- `examples/quota-contract-smoke.py`
-- `examples/quota-plan-smoke.py`
-- `examples/review-packet-cli-smoke.py`
-- `examples/review-packet-smoke.py`
+- `examples/control_plane/quota-contract-smoke.py`
+- `examples/control_plane/quota-plan-smoke.py`
+- `examples/control_plane/review-packet-cli-smoke.py`
+- `examples/control_plane/review-packet-smoke.py`
 
 Validation already observed in recent slices:
 
-- `python3 examples/heartbeat-prompt-smoke.py`
+- `python3 examples/control_plane/heartbeat-prompt-smoke.py`
 - `python3 examples/operator-gate-resume-contract-smoke.py`
-- `python3 examples/quota-contract-smoke.py`
-- `python3 examples/quota-plan-smoke.py`
-- `python3 examples/review-packet-cli-smoke.py`
-- `python3 examples/review-packet-smoke.py`
+- `python3 examples/control_plane/quota-contract-smoke.py`
+- `python3 examples/control_plane/quota-plan-smoke.py`
+- `python3 examples/control_plane/review-packet-cli-smoke.py`
+- `python3 examples/control_plane/review-packet-smoke.py`
 - `python3 examples/global-registry-sync-smoke.py`
 
 Review notes:
@@ -457,7 +457,7 @@ Run this set after final staging or immediately before canary promotion:
 
 ```bash
 python3 examples/run-smokes.py
-python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
+python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence
 npm --prefix apps/dashboard run smoke:demo-readiness
 npm --prefix apps/dashboard run build
 loopx-canary check
@@ -467,7 +467,7 @@ git diff --check
 For a release-promotion evidence writeback, run:
 
 ```bash
-python3 examples/canary-promotion-readiness-smoke.py
+python3 examples/canary/canary-promotion-readiness-smoke.py
 loopx-canary promotion-gate --format json
 ```
 
@@ -481,7 +481,7 @@ Recent heartbeat slices observed the following on this dirty tree or direct
 subsets of it:
 
 - `python3 examples/run-smokes.py`: passed with 31 smoke scripts.
-- `python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence`:
+- `python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence`:
   passed and showed dashboard demo-readiness before evidence writeback.
 - `npm --prefix apps/dashboard run smoke:demo-readiness`: passed, including
   browser smokes.

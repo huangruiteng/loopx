@@ -8,7 +8,7 @@ from .history import load_registry
 from .paths import resolve_runtime_root
 
 
-PROMOTION_GATE_ACTION = "python3 examples/canary-promotion-readiness-smoke.py"
+PROMOTION_GATE_ACTION = "python3 examples/canary/canary-promotion-readiness-smoke.py"
 
 
 def promotion_gate_message(readiness: dict[str, Any]) -> str:

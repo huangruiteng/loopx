@@ -19,7 +19,7 @@ from loopx.canary.runner import (  # noqa: E402
 
 
 def assert_release_readiness_gets_no_write_argument() -> None:
-    normalized = normalize_canary_command("python3 examples/canary-promotion-readiness-smoke.py")
+    normalized = normalize_canary_command("python3 examples/canary/canary-promotion-readiness-smoke.py")
     assert normalized["ok"] is True, normalized
     assert "--no-write-evidence" in normalized["argv"], normalized
     assert normalized["injected_args"] == ["--no-write-evidence"], normalized
@@ -91,9 +91,9 @@ def assert_domain_checks_precede_family_checks() -> None:
     assert payload["ok"] is True, payload
     commands = [check["command"] for check in payload["selected_checks"]]
     assert commands == [
-        "python3 examples/control-plane-risk-characterization-smoke.py",
-        "python3 examples/hot-path-interface-budget-smoke.py",
-        "python3 examples/quota-resume-gated-open-todo-smoke.py",
+        "python3 examples/control_plane/control-plane-risk-characterization-smoke.py",
+        "python3 examples/control_plane/hot-path-interface-budget-smoke.py",
+        "python3 examples/control_plane/quota-resume-gated-open-todo-smoke.py",
     ], payload
     assert all(check["source"] == "domain_profile" for check in payload["selected_checks"]), payload
 

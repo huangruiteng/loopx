@@ -84,14 +84,14 @@ The durable repair landed in PR #629:
 
 ## Validation
 
-- `examples/quota-agent-scoped-user-gate-smoke.py` covers:
+- `examples/control_plane/quota-agent-scoped-user-gate-smoke.py` covers:
   - non-target agent can run;
   - target agent remains user-gated;
   - unscoped user gates remain global gates.
-- `examples/work-lane-contract-smoke.py`
-- `examples/quota-action-scope-guard-smoke.py`
+- `examples/control_plane/work-lane-contract-smoke.py`
+- `examples/control_plane/quota-action-scope-guard-smoke.py`
 - `examples/protocol-action-packet-smoke.py`
-- `examples/quota-plan-smoke.py`
+- `examples/control_plane/quota-plan-smoke.py`
 - a real active-state quota check confirmed the non-target agent returned
   `decision=run`, `requires_user_action=false`, and `delivery_allowed=true`
   while the target agent remained `user_gate`.

@@ -18,25 +18,25 @@ DEFAULT_CATALOG_PATH = REPO_ROOT / "docs" / "interaction-pattern-catalog.md"
 FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
     "Work Routing": [
         {
-            "command": "python3 examples/quota-plan-smoke.py",
+            "command": "python3 examples/control_plane/quota-plan-smoke.py",
             "reason": "exercises quota should-run routing, fallback, and execution obligation projection",
         },
         {
-            "command": "python3 examples/quota-work-lane-policy-smoke.py",
+            "command": "python3 examples/control_plane/quota-work-lane-policy-smoke.py",
             "reason": "checks advancement, monitor, and no-work lane policy selection",
         },
         {
-            "command": "python3 examples/monitor-scheduler-contract-smoke.py",
+            "command": "python3 examples/control_plane/monitor-scheduler-contract-smoke.py",
             "reason": "guards due-monitor routing without requiring real external polling",
         },
         {
-            "command": "python3 examples/heartbeat-prompt-smoke.py",
+            "command": "python3 examples/control_plane/heartbeat-prompt-smoke.py",
             "reason": "checks heartbeat prompt and scheduler guidance for controller loops",
         },
     ],
     "Human Decision": [
         {
-            "command": "python3 examples/todo-user-gate-scope-smoke.py",
+            "command": "python3 examples/control_plane/todo-user-gate-scope-smoke.py",
             "reason": "checks scoped user-gate projection instead of global prose gates",
         },
         {
@@ -48,25 +48,25 @@ FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
             "reason": "guards reward/gate write boundaries before agent continuation",
         },
         {
-            "command": "python3 examples/quota-agent-scoped-user-gate-smoke.py",
+            "command": "python3 examples/control_plane/quota-agent-scoped-user-gate-smoke.py",
             "reason": "checks that agent-scoped user gates do not block unrelated lanes",
         },
     ],
     "State And Boundary": [
         {
-            "command": "python3 examples/todo-contract-smoke.py",
+            "command": "python3 examples/control_plane/todo-contract-smoke.py",
             "reason": "checks todo metadata shape consumed by status and quota",
         },
         {
-            "command": "python3 examples/active-state-structured-projection-smoke.py",
+            "command": "python3 examples/control_plane/active-state-structured-projection-smoke.py",
             "reason": "guards active-state structured projection from Markdown drift",
         },
         {
-            "command": "python3 examples/task-graph-projection-fixture-smoke.py",
+            "command": "python3 examples/control_plane/task-graph-projection-fixture-smoke.py",
             "reason": "checks task graph projection and lineage without private sources",
         },
         {
-            "command": "python3 examples/check-public-boundary-smoke.py",
+            "command": "python3 examples/control_plane/check-public-boundary-smoke.py",
             "reason": "guards public/private boundary scanning for touched files",
         },
     ],
@@ -94,11 +94,11 @@ FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
             "reason": "guards stalled-turn autonomous replan obligations",
         },
         {
-            "command": "python3 examples/monitor-poll-writeback-smoke.py",
+            "command": "python3 examples/control_plane/monitor-poll-writeback-smoke.py",
             "reason": "checks monitor poll writeback and no-spend replan triggers",
         },
         {
-            "command": "python3 examples/refresh-state-write-correctness-smoke.py",
+            "command": "python3 examples/control_plane/refresh-state-write-correctness-smoke.py",
             "reason": "checks refresh-state writeback correctness and projection updates",
         },
         {
@@ -198,7 +198,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards public GitHub issue/PR metadata probes without raw body capture",
             },
             {
-                "command": "python3 examples/check-public-boundary-smoke.py",
+                "command": "python3 examples/control_plane/check-public-boundary-smoke.py",
                 "tier": "deep",
                 "reason": "runs broader public/private boundary checks when review artifacts are promoted",
             },
@@ -218,22 +218,22 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/canary-promotion-readiness-smoke.py",
+                "command": "python3 examples/canary/canary-promotion-readiness-smoke.py",
                 "tier": "default",
                 "reason": "checks promotion readiness from compact run history",
             },
             {
-                "command": "python3 examples/canary-promotion-readiness-boundary-smoke.py",
+                "command": "python3 examples/canary/canary-promotion-readiness-boundary-smoke.py",
                 "tier": "default",
                 "reason": "guards dashboard release-boundary planning for source checkouts and release snapshots",
             },
             {
-                "command": "python3 examples/canary-promotion-no-write-contract-smoke.py",
+                "command": "python3 examples/canary/canary-promotion-no-write-contract-smoke.py",
                 "tier": "default",
                 "reason": "guards no-write promotion readiness behavior",
             },
             {
-                "command": "python3 examples/canary-promotion-readiness-writeback-smoke.py",
+                "command": "python3 examples/canary/canary-promotion-readiness-writeback-smoke.py",
                 "tier": "deep",
                 "reason": "exercises promotion readiness writeback after explicit opt-in",
             },
@@ -317,27 +317,27 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/control-plane-risk-characterization-smoke.py",
+                "command": "python3 examples/control_plane/control-plane-risk-characterization-smoke.py",
                 "tier": "default",
                 "reason": "characterizes shared control-plane routing, scheduler, and review-packet risks",
             },
             {
-                "command": "python3 examples/hot-path-interface-budget-smoke.py",
+                "command": "python3 examples/control_plane/hot-path-interface-budget-smoke.py",
                 "tier": "default",
                 "reason": "keeps hot-path payload and module growth bounded",
             },
             {
-                "command": "python3 examples/quota-resume-gated-open-todo-smoke.py",
+                "command": "python3 examples/control_plane/quota-resume-gated-open-todo-smoke.py",
                 "tier": "default",
                 "reason": "guards resume_when-gated open todos from entering executable quota lanes early",
             },
             {
-                "command": "python3 examples/quota-cleared-blocker-successor-gate-smoke.py",
+                "command": "python3 examples/control_plane/quota-cleared-blocker-successor-gate-smoke.py",
                 "tier": "default",
                 "reason": "guards cleared handoff gates waking the blocked agent through a concrete successor todo",
             },
             {
-                "command": "python3 examples/work-lane-contract-smoke.py",
+                "command": "python3 examples/control_plane/work-lane-contract-smoke.py",
                 "tier": "deep",
                 "reason": "covers broad work-lane policy interactions after larger refactors",
             },
@@ -369,7 +369,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/repo-python-line-budget-smoke.py",
+                "command": "python3 examples/control_plane/repo-python-line-budget-smoke.py",
                 "tier": "default",
                 "reason": (
                     "fails when a Python source file grows beyond the default limit or "
@@ -393,17 +393,17 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/status-goal-filter-smoke.py",
+                "command": "python3 examples/control_plane/status-goal-filter-smoke.py",
                 "tier": "default",
                 "reason": "guards scoped status projection and global default status behavior",
             },
             {
-                "command": "python3 examples/status-quota-review-packet-parity-smoke.py",
+                "command": "python3 examples/control_plane/status-quota-review-packet-parity-smoke.py",
                 "tier": "default",
                 "reason": "guards scoped status, agent quota, review-packet handoff, and scheduler_hint parity on one fixture",
             },
             {
-                "command": "python3 examples/status-markdown-smoke.py",
+                "command": "python3 examples/control_plane/status-markdown-smoke.py",
                 "tier": "default",
                 "reason": "checks operator-facing markdown status rendering",
             },
@@ -413,7 +413,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards goal-channel status export consumed by non-hot-path readers",
             },
             {
-                "command": "python3 examples/status-quota-perf-budget-smoke.py",
+                "command": "python3 examples/control_plane/status-quota-perf-budget-smoke.py",
                 "tier": "deep",
                 "reason": "runs the broader status/quota performance budget sample when explicitly requested",
             },
@@ -436,27 +436,27 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/review-packet-cli-smoke.py",
+                "command": "python3 examples/control_plane/review-packet-cli-smoke.py",
                 "tier": "default",
                 "reason": "guards CLI-visible review-packet and handoff-only JSON contracts",
             },
             {
-                "command": "python3 examples/review-packet-smoke.py",
+                "command": "python3 examples/control_plane/review-packet-smoke.py",
                 "tier": "default",
                 "reason": "checks dashboard/operator packet copy and public-safe handoff text",
             },
             {
-                "command": "python3 examples/task-graph-projection-fixture-smoke.py",
+                "command": "python3 examples/control_plane/task-graph-projection-fixture-smoke.py",
                 "tier": "default",
                 "reason": "guards task-graph lineage consumed by review packets without private sources",
             },
             {
-                "command": "python3 examples/control-plane-integrated-canary-smoke.py",
+                "command": "python3 examples/control_plane/control-plane-integrated-canary-smoke.py",
                 "tier": "deep",
                 "reason": "samples the bounded status -> quota -> review-packet event read path",
             },
             {
-                "command": "python3 examples/hot-path-interface-budget-smoke.py",
+                "command": "python3 examples/control_plane/hot-path-interface-budget-smoke.py",
                 "tier": "deep",
                 "reason": "checks review-packet handoff interface budgets after hot-path changes",
             },
@@ -481,27 +481,27 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/event-sourced-state-api-smoke.py",
+                "command": "python3 examples/control_plane/event-sourced-state-api-smoke.py",
                 "tier": "default",
                 "reason": "guards event append/replay API behavior used by read-path projections",
             },
             {
-                "command": "python3 examples/event-sourced-status-read-path-smoke.py",
+                "command": "python3 examples/control_plane/event-sourced-status-read-path-smoke.py",
                 "tier": "default",
                 "reason": "checks status consumption of event projection with Markdown fallback",
             },
             {
-                "command": "python3 examples/event-sourced-downstream-read-path-smoke.py",
+                "command": "python3 examples/control_plane/event-sourced-downstream-read-path-smoke.py",
                 "tier": "default",
                 "reason": "checks downstream read surfaces consume event projection without private state",
             },
             {
-                "command": "python3 examples/event-store-migration-bridge-smoke.py",
+                "command": "python3 examples/control_plane/event-store-migration-bridge-smoke.py",
                 "tier": "deep",
                 "reason": "samples the migration bridge gates before bounded event read-path canaries",
             },
             {
-                "command": "python3 examples/event-sourced-replay-compaction-smoke.py",
+                "command": "python3 examples/control_plane/event-sourced-replay-compaction-smoke.py",
                 "tier": "deep",
                 "reason": "checks replay compaction when broader event-store changes are promoted",
             },
@@ -551,32 +551,32 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/todo-contract-smoke.py",
+                "command": "python3 examples/control_plane/todo-contract-smoke.py",
                 "tier": "default",
                 "reason": "guards the public todo status and metadata helper contract",
             },
             {
-                "command": "python3 examples/todo-cli-smoke.py",
+                "command": "python3 examples/control_plane/todo-cli-smoke.py",
                 "tier": "default",
                 "reason": "checks agent-facing todo add/update/list behavior on fixture state",
             },
             {
-                "command": "python3 examples/todo-lifecycle-cli-smoke.py",
+                "command": "python3 examples/control_plane/todo-lifecycle-cli-smoke.py",
                 "tier": "default",
                 "reason": "exercises claim, completion, successor, and handoff lifecycle transitions by todo_id",
             },
             {
-                "command": "python3 examples/todo-list-event-projection-smoke.py",
+                "command": "python3 examples/control_plane/todo-list-event-projection-smoke.py",
                 "tier": "default",
                 "reason": "guards event-sourced todo list projection with Markdown fallback",
             },
             {
-                "command": "python3 examples/todo-concurrent-write-lock-smoke.py",
+                "command": "python3 examples/control_plane/todo-concurrent-write-lock-smoke.py",
                 "tier": "deep",
                 "reason": "samples lock behavior for concurrent todo writes",
             },
             {
-                "command": "python3 examples/todo-detail-cold-path-contract-smoke.py",
+                "command": "python3 examples/control_plane/todo-detail-cold-path-contract-smoke.py",
                 "tier": "deep",
                 "reason": "checks the cold-path todo detail contract when detail surfaces are promoted",
             },
@@ -590,17 +590,17 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "trigger_hints": ("monitor", "scheduler", "next_due_at", "monitor-poll", "continuous_monitor"),
         "checks": [
             {
-                "command": "python3 examples/monitor-scheduler-contract-smoke.py",
+                "command": "python3 examples/control_plane/monitor-scheduler-contract-smoke.py",
                 "tier": "default",
                 "reason": "checks due monitor selection, expiry, and priority behavior",
             },
             {
-                "command": "python3 examples/monitor-poll-writeback-smoke.py",
+                "command": "python3 examples/control_plane/monitor-poll-writeback-smoke.py",
                 "tier": "default",
                 "reason": "guards no-spend monitor poll writeback and replan triggers",
             },
             {
-                "command": "python3 examples/heartbeat-quota-flow-smoke.py",
+                "command": "python3 examples/control_plane/heartbeat-quota-flow-smoke.py",
                 "tier": "deep",
                 "reason": "runs a broader heartbeat/quota control-flow sample",
             },
@@ -614,22 +614,22 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "trigger_hints": ("state write", "refresh-state", "todo write", "idempotency", "revision", "lease"),
         "checks": [
             {
-                "command": "python3 examples/local-state-write-correctness-contract-smoke.py",
+                "command": "python3 examples/control_plane/local-state-write-correctness-contract-smoke.py",
                 "tier": "default",
                 "reason": "checks local state write correctness contract fixtures",
             },
             {
-                "command": "python3 examples/refresh-state-write-correctness-smoke.py",
+                "command": "python3 examples/control_plane/refresh-state-write-correctness-smoke.py",
                 "tier": "default",
                 "reason": "guards refresh-state update behavior and projection writes",
             },
             {
-                "command": "python3 examples/todo-write-correctness-smoke.py",
+                "command": "python3 examples/control_plane/todo-write-correctness-smoke.py",
                 "tier": "default",
                 "reason": "guards todo dry-run write correctness and shadow revision/lease validation",
             },
             {
-                "command": "python3 examples/todo-concurrent-write-lock-smoke.py",
+                "command": "python3 examples/control_plane/todo-concurrent-write-lock-smoke.py",
                 "tier": "deep",
                 "reason": "samples lock behavior for concurrent todo writes",
             },
@@ -820,7 +820,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/heartbeat-prompt-smoke.py",
+                "command": "python3 examples/control_plane/heartbeat-prompt-smoke.py",
                 "tier": "default",
                 "reason": "guards Codex App heartbeat identity, scheduler hints, and no-spend cadence behavior",
             },

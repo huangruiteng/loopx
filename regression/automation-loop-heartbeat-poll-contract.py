@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression wrapper for automation-loop heartbeat poll contracts.
 
-The durable behavior lives in `examples/heartbeat-quota-flow-smoke.py`.
+The durable behavior lives in `examples/control_plane/heartbeat-quota-flow-smoke.py`.
 This wrapper makes the default regression suite cover it without duplicating
 fixtures or pulling in real Codex/Docker/model execution.
 """
