@@ -127,6 +127,7 @@ def assert_three_layer_minimality() -> None:
         "multi_agent_runner",
         "real_codex_tui_panes",
         "workspace_and_trust_safe_launch",
+        "decentralized_a2a_driver",
         "pane_local_a2a_tick",
         "todo_evidence_status_protocol",
         "compact_human_status",
@@ -140,17 +141,22 @@ def assert_three_layer_minimality() -> None:
     assert preset["owns"] == layering["preset_layer"]["owns"], preset
     assert "multi_agent_runner" in preset["forbidden"], preset
     assert "real_codex_tui_panes" in preset["forbidden"], preset
+    assert "decentralized_a2a_driver" in preset["forbidden"], preset
     assert "pane_local_a2a_tick" in preset["forbidden"], preset
 
     auto_research = supervisor["auto_research"]
     assert auto_research["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, auto_research
     assert auto_research["uses_generic_runner"] is True, auto_research
     assert auto_research["presentation_layers_in_kernel"] is False, auto_research
-    assert auto_research["worker_turn"] == "pane_local_a2a_tick", auto_research
+    assert auto_research["kernel_driver"] == "decentralized_a2a_driver", auto_research
+    assert auto_research["worker_turn_owner"] == "generic_multi_agent_kernel", auto_research
+    assert "pane_local_a2a_tick" in auto_research["delegated_kernel_mechanics"], auto_research
 
     runner = supervisor["runner_contract"]
     assert runner["runner_surface"] == "tmux_codex_cli_tui", runner
     assert runner["coordination_model"]["leader_required"] is False, runner
+    assert runner["decentralized_a2a_driver"]["owner_layer"] == "generic_multi_agent_kernel", runner
+    assert runner["decentralized_a2a_driver"]["broadcaster"]["decides_work"] is False, runner
     assert runner["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", runner
     assert runner["pane_local_a2a"]["human_default"] == "markdown_status_inside_codex_tui", runner
     assert runner["pane_local_a2a"]["machine_json_destination"] == "$LOOPX_PANE_ARTIFACT_DIR/*.public.json", runner

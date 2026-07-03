@@ -85,7 +85,8 @@ def main() -> int:
     runtime_source = (ROOT / "loopx/capabilities/multi_agent/runtime_scripts.py").read_text(
         encoding="utf-8"
     )
-    assert "from ...visible_multi_agent_launcher import execute_visible_multi_agent_launcher" in auto_research_cli
+    assert "from ...visible_multi_agent_launcher import" in auto_research_cli
+    assert "execute_visible_multi_agent_launcher" in auto_research_cli
     forbidden_defs = [
         "def _launch_auto_research_with_tmux",
         "def _tmux_visible_launch_acceptance",
@@ -167,6 +168,15 @@ def main() -> int:
     )
     assert runner_contract["pane_local_a2a"]["cadence_wakeup_model"] == "fixed_prompt_broadcast"
     assert runner_contract["pane_local_a2a"]["cadence_broadcaster_decides_work"] is False
+    driver = runner_contract["decentralized_a2a_driver"]
+    assert driver["schema_version"] == "multi_agent_decentralized_a2a_driver_contract_v0", driver
+    assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
+    assert driver["driver_model"] == "fixed_prompt_broadcast_plus_pane_local_state_tick", driver
+    assert driver["broadcaster"]["reads_frontier"] is False, driver
+    assert driver["broadcaster"]["selects_todo"] is False, driver
+    assert driver["broadcaster"]["runs_worker_turn"] is False, driver
+    assert driver["pane"]["decision_owner"] == "codex_tui_agent_via_loopx_state", driver
+    assert driver["acceptance"]["each_pane_decides_from_state"] is True, driver
     assert runner_contract["pane_local_a2a"]["first_action"] == (
         "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens"
     )

@@ -13,9 +13,11 @@ from pathlib import Path
 from .capabilities.multi_agent.contract import (
     GENERIC_MULTI_AGENT_ROLE_PROFILE_SCHEMA_VERSION,
     INTERACTIVE_TUI_CONTRACT_SCHEMA_VERSION,
+    PANE_LOCAL_A2A_WAKEUP_PROMPT,
     TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
     VISIBLE_LAUNCHER_ACCEPTANCE_CONTRACT_SCHEMA_VERSION,
     as_string_list as _as_string_list,
+    build_decentralized_a2a_driver_contract,
     build_compact_human_status,
     build_generic_role_profile,
     build_tui_multi_agent_runner_contract,
@@ -34,13 +36,7 @@ def _q(value: object) -> str:
 
 
 PANE_A2A_WAKEUP_SCHEMA_VERSION = "multi_agent_pane_a2a_wakeup_v0"
-PANE_A2A_WAKEUP_PROMPT = (
-    "LoopX pane-local A2A wakeup: run $LOOPX_PANE_A2A_TICK now. "
-    "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
-    "if no runnable frontier, stay quiet with a brief no-action note; "
-    "if advanced, summarize public evidence and next handoff. "
-    "Do not ask the broadcaster for direction; LoopX state is the source of truth."
-)
+PANE_A2A_WAKEUP_PROMPT = PANE_LOCAL_A2A_WAKEUP_PROMPT
 
 
 def require_executable(command: str, *, field: str) -> str:
@@ -74,6 +70,7 @@ def wake_visible_multi_agent_panes(
         raise ValueError("multi-agent wake prompt must not be empty")
     prompt_hash = sha256(prompt_text.encode("utf-8")).hexdigest()[:16]
     target_lanes = [str(lane).strip() for lane in lanes or [] if str(lane).strip()]
+    driver_contract = build_decentralized_a2a_driver_contract()
 
     if execute:
         require_executable(tmux_bin, field="tmux_bin")
@@ -118,10 +115,11 @@ def wake_visible_multi_agent_panes(
         "prompt_hash": prompt_hash,
         "coordination_model": "decentralized_state_a2a",
         "wakeup_model": "fixed_prompt_broadcast",
+        "driver_contract": driver_contract,
         "workflow_driver": False,
-        "broadcaster_reads_frontier": False,
-        "broadcaster_selects_todo": False,
-        "pane_decision_owner": "codex_tui_agent_via_loopx_state",
+        "broadcaster_reads_frontier": driver_contract["broadcaster"]["reads_frontier"],
+        "broadcaster_selects_todo": driver_contract["broadcaster"]["selects_todo"],
+        "pane_decision_owner": driver_contract["pane"]["decision_owner"],
         "boundary": {
             "writes_loopx_state": False,
             "spends_loopx_quota": False,

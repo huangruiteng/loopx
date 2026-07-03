@@ -257,6 +257,7 @@ def build_auto_research_preset_summary(*, role_count: int) -> dict[str, object]:
             "multi_agent_runner",
             "real_codex_tui_panes",
             "workspace_and_trust_safe_launch",
+            "decentralized_a2a_driver",
             "pane_local_a2a_tick",
             "todo_evidence_status_protocol",
             "compact_human_status",

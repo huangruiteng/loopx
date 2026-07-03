@@ -58,6 +58,16 @@ def build_auto_research_demo_supervisor_plan(
         codex_bin=codex_bin,
     )
     payload.pop("acceptance", None)
+    runner_contract = (
+        payload.get("runner_contract")
+        if isinstance(payload.get("runner_contract"), dict)
+        else {}
+    )
+    driver_contract = (
+        runner_contract.get("decentralized_a2a_driver")
+        if isinstance(runner_contract.get("decentralized_a2a_driver"), dict)
+        else {}
+    )
     payload.update(
         {
             "schema_version": AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION,
@@ -69,7 +79,14 @@ def build_auto_research_demo_supervisor_plan(
                 "uses_generic_runner": True,
                 "surface_count": len(roles),
                 "state_bus": "loopx_registry_runtime_todo_quota_frontier",
-                "worker_turn": "pane_local_a2a_tick",
+                "kernel_driver": "decentralized_a2a_driver",
+                "kernel_driver_schema": driver_contract.get("schema_version"),
+                "delegated_kernel_mechanics": [
+                    "fixed_prompt_wakeup",
+                    "pane_local_a2a_tick",
+                    "todo_evidence_status_protocol",
+                ],
+                "worker_turn_owner": "generic_multi_agent_kernel",
                 "presentation_layers_in_kernel": False,
             },
             "coordination_model": {

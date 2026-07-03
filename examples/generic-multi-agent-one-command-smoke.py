@@ -247,6 +247,15 @@ def main() -> int:
             "fixed_prompt_broadcast"
         ), dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["cadence_broadcaster_decides_work"] is False, dry_packet
+        driver = dry_packet["runner_contract"]["decentralized_a2a_driver"]
+        assert driver["schema_version"] == "multi_agent_decentralized_a2a_driver_contract_v0", driver
+        assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
+        assert driver["driver_model"] == (
+            "fixed_prompt_broadcast_plus_pane_local_state_tick"
+        ), driver
+        assert driver["broadcaster"]["decides_work"] is False, driver
+        assert driver["pane"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", driver
+        assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
         assert dry_packet["runner_contract"]["pane_local_a2a"]["machine_json_destination"] == (
             "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
         ), dry_packet
@@ -255,6 +264,9 @@ def main() -> int:
         assert compact["schema_version"] == "generic_multi_agent_compact_status_v0", compact
         assert compact["role_count"] == 2, compact
         assert compact["first_action"] == "$LOOPX_PANE_A2A_TICK", compact
+        assert compact["driver_model"] == (
+            "fixed_prompt_broadcast_plus_pane_local_state_tick"
+        ), compact
         assert compact["user_takeover"] == "attach to the session and type into any role pane", compact
         assert dry_packet["interactive_tui_contract"]["schema_version"] == "multi_agent_visible_interactive_tui_contract_v0", dry_packet
         assert dry_packet["interactive_tui_contract"]["runner_contract"] == RUNNER_CONTRACT_SCHEMA_VERSION, dry_packet
@@ -307,6 +319,8 @@ def main() -> int:
         assert dry_wake["target_lanes"] == ["planner"], dry_wake
         assert dry_wake["coordination_model"] == "decentralized_state_a2a", dry_wake
         assert dry_wake["wakeup_model"] == "fixed_prompt_broadcast", dry_wake
+        assert dry_wake["driver_contract"]["owner_layer"] == "generic_multi_agent_kernel", dry_wake
+        assert dry_wake["driver_contract"]["broadcaster"]["selects_todo"] is False, dry_wake
         assert dry_wake["workflow_driver"] is False, dry_wake
         assert dry_wake["broadcaster_reads_frontier"] is False, dry_wake
         assert dry_wake["broadcaster_selects_todo"] is False, dry_wake

@@ -23,6 +23,7 @@ from loopx.visible_multi_agent_launcher import (  # noqa: E402
     build_visible_multi_agent_payload_from_spec,
 )
 from loopx.capabilities.multi_agent.contract import (  # noqa: E402
+    DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION,
     GENERIC_MULTI_AGENT_COMPACT_STATUS_SCHEMA_VERSION,
     GENERIC_MULTI_AGENT_ROLE_PROFILE_SCHEMA_VERSION,
     build_tui_multi_agent_runner_contract,
@@ -132,6 +133,14 @@ def main() -> int:
     assert runner["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", runner
     assert runner["pane_local_a2a"]["machine_json_policy"] == "file_or_explicit_machine_channel_only", runner
     assert runner["pane_local_a2a"]["machine_json_destination"] == "$LOOPX_PANE_ARTIFACT_DIR/*.public.json", runner
+    driver = runner["decentralized_a2a_driver"]
+    assert driver["schema_version"] == DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION, driver
+    assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
+    assert driver["coordination_pattern"] == "decentralized_state_a2a", driver
+    assert driver["broadcaster"]["model"] == "fixed_prompt_broadcast", driver
+    assert driver["broadcaster"]["decides_work"] is False, driver
+    assert driver["pane"]["decision_owner"] == "codex_tui_agent_via_loopx_state", driver
+    assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
     assert runner["role_prompt_and_skill"]["worker_local_skill_only"] is True, runner
     assert runner["boundaries"]["domain_specific_research_logic"] is False, runner
     direct_runner = build_tui_multi_agent_runner_contract(
@@ -144,6 +153,9 @@ def main() -> int:
     )
     assert direct_runner["schema_version"] == TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION
     assert direct_runner["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK"
+    assert direct_runner["decentralized_a2a_driver"]["schema_version"] == (
+        DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION
+    )
     assert direct_runner["boundaries"]["domain_specific_research_logic"] is False
 
     tui = payload["interactive_tui_contract"]
@@ -190,6 +202,8 @@ def main() -> int:
     assert compact["schema_version"] == GENERIC_MULTI_AGENT_COMPACT_STATUS_SCHEMA_VERSION, compact
     assert compact["role_count"] == 2, compact
     assert compact["first_action"] == "$LOOPX_PANE_A2A_TICK", compact
+    assert compact["driver_model"] == "fixed_prompt_broadcast_plus_pane_local_state_tick", compact
+    assert compact["coordination_pattern"] == "decentralized_state_a2a", compact
     assert compact["machine_json_policy"] == "artifact_only_in_visible_panes", compact
     assert [role["lane_id"] for role in compact["roles"]] == ["planner", "builder"], compact
     assert payload["boundary"]["starts_visible_processes"] is False, payload

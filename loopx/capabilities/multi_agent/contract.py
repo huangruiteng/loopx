@@ -9,16 +9,28 @@ INTERACTIVE_TUI_CONTRACT_SCHEMA_VERSION = "multi_agent_visible_interactive_tui_c
 VISIBLE_LAUNCHER_ACCEPTANCE_CONTRACT_SCHEMA_VERSION = (
     "multi_agent_visible_launcher_acceptance_contract_v0"
 )
+DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION = (
+    "multi_agent_decentralized_a2a_driver_contract_v0"
+)
 GENERIC_MULTI_AGENT_ROLE_PROFILE_SCHEMA_VERSION = "generic_multi_agent_role_profile_v0"
 GENERIC_MULTI_AGENT_COMPACT_STATUS_SCHEMA_VERSION = "generic_multi_agent_compact_status_v0"
 THREE_LAYER_MINIMALITY_CONTRACT_SCHEMA_VERSION = (
     "multi_agent_three_layer_minimality_contract_v0"
 )
 
+PANE_LOCAL_A2A_WAKEUP_PROMPT = (
+    "LoopX pane-local A2A wakeup: run $LOOPX_PANE_A2A_TICK now. "
+    "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
+    "if no runnable frontier, stay quiet with a brief no-action note; "
+    "if advanced, summarize public evidence and next handoff. "
+    "Do not ask the broadcaster for direction; LoopX state is the source of truth."
+)
+
 GENERIC_MULTI_AGENT_KERNEL_MECHANICS = (
     "multi_agent_runner",
     "real_codex_tui_panes",
     "workspace_and_trust_safe_launch",
+    "decentralized_a2a_driver",
     "pane_local_a2a_tick",
     "todo_evidence_status_protocol",
     "compact_human_status",
@@ -129,6 +141,69 @@ def generic_role_prompt(
     return "\n".join(lines)
 
 
+def build_decentralized_a2a_driver_contract(
+    *,
+    wake_command: str = "loopx multi-agent wake --session-name <session>",
+) -> dict[str, object]:
+    """Describe the reusable fixed-prompt driver for live Codex TUI agents."""
+
+    return {
+        "schema_version": DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION,
+        "owner_layer": "generic_multi_agent_kernel",
+        "driver_model": "fixed_prompt_broadcast_plus_pane_local_state_tick",
+        "coordination_pattern": "decentralized_state_a2a",
+        "prompt": {
+            "trigger": PANE_LOCAL_A2A_WAKEUP_PROMPT,
+            "instruction_only": True,
+            "frontier_embedded": False,
+            "todo_embedded": False,
+            "target_role_embedded": False,
+        },
+        "broadcaster": {
+            "command": wake_command,
+            "model": "fixed_prompt_broadcast",
+            "reads_frontier": False,
+            "selects_todo": False,
+            "runs_worker_turn": False,
+            "writes_loopx_state": False,
+            "spends_quota": False,
+            "decides_work": False,
+        },
+        "pane": {
+            "decision_owner": "codex_tui_agent_via_loopx_state",
+            "tick_command": "$LOOPX_PANE_A2A_TICK",
+            "first_action": "launcher_pre_tui_tick",
+            "cadence_action": "fixed_prompt_wakeup_then_local_tick",
+            "reads": [
+                "own_LOOPX_GOAL_ID",
+                "own_LOOPX_AGENT_ID",
+                "quota_should_run",
+                "agent_scoped_frontier",
+            ],
+            "may_run": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
+            "writes": ["public_safe_evidence", "todo_completion_when_worker_turn_configured"],
+            "rounds_env": "LOOPX_PANE_TICK_ROUNDS",
+            "rounds_artifact": "$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-rounds.public.json",
+        },
+        "layer_budget": {
+            "user_layer": ["goal_id", "roles", "optional_overrides"],
+            "preset_layer": ["domain_roles", "handoff_hints", "worker_turn_command"],
+            "kernel_layer": [
+                "tmux_codex_tui_lifecycle",
+                "fixed_prompt_wakeup",
+                "pane_local_tick_runtime",
+                "loopx_state_protocol",
+            ],
+        },
+        "acceptance": {
+            "broadcaster_is_not_workflow": True,
+            "no_leader_frontier_scan": True,
+            "each_pane_decides_from_state": True,
+            "user_and_preset_do_not_own_tick_driver": True,
+        },
+    }
+
+
 def build_tui_multi_agent_runner_contract(
     *,
     session_name: str,
@@ -140,6 +215,7 @@ def build_tui_multi_agent_runner_contract(
 ) -> dict[str, object]:
     """Describe the reusable visible-TUI runner without domain-specific steps."""
 
+    driver_contract = build_decentralized_a2a_driver_contract()
     return {
         "schema_version": TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
         "runner_surface": "tmux_codex_cli_tui",
@@ -192,16 +268,17 @@ def build_tui_multi_agent_runner_contract(
             "skill_materialization": ".codex/skills/<skill>/SKILL.md",
             "worker_local_skill_only": True,
         },
+        "decentralized_a2a_driver": driver_contract,
         "pane_local_a2a": {
-            "tick_command": "$LOOPX_PANE_A2A_TICK",
+            "tick_command": driver_contract["pane"]["tick_command"],
             "first_action": "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens",
-            "cadence_wakeup_command": "loopx multi-agent wake --session-name <session>",
-            "cadence_wakeup_model": "fixed_prompt_broadcast",
-            "cadence_broadcaster_decides_work": False,
+            "cadence_wakeup_command": driver_contract["broadcaster"]["command"],
+            "cadence_wakeup_model": driver_contract["broadcaster"]["model"],
+            "cadence_broadcaster_decides_work": driver_contract["broadcaster"]["decides_work"],
             "reads": ["quota should-run", "agent-scoped frontier"],
-            "runs": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
-            "bounded_rounds_env": "LOOPX_PANE_TICK_ROUNDS",
-            "rounds_artifact": "$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-rounds.public.json",
+            "runs": driver_contract["pane"]["may_run"],
+            "bounded_rounds_env": driver_contract["pane"]["rounds_env"],
+            "rounds_artifact": driver_contract["pane"]["rounds_artifact"],
             "machine_json_policy": "file_or_explicit_machine_channel_only",
             "machine_json_destination": "$LOOPX_PANE_ARTIFACT_DIR/*.public.json",
             "human_default": "markdown_status_inside_codex_tui",
@@ -293,6 +370,12 @@ def build_compact_human_status(payload: dict[str, object]) -> dict[str, object]:
 
     lanes = [lane for lane in payload.get("lanes", []) if isinstance(lane, dict)]
     commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
+    runner = payload.get("runner_contract") if isinstance(payload.get("runner_contract"), dict) else {}
+    driver = (
+        runner.get("decentralized_a2a_driver")
+        if isinstance(runner.get("decentralized_a2a_driver"), dict)
+        else {}
+    )
     session = str(payload.get("session_name") or "")
     role_summaries = []
     for lane in lanes:
@@ -322,6 +405,10 @@ def build_compact_human_status(payload: dict[str, object]) -> dict[str, object]:
         "attach": commands.get("attach"),
         "stop": commands.get("stop"),
         "first_action": "$LOOPX_PANE_A2A_TICK",
+        "driver_model": driver.get("driver_model")
+        or "fixed_prompt_broadcast_plus_pane_local_state_tick",
+        "coordination_pattern": driver.get("coordination_pattern")
+        or "decentralized_state_a2a",
         "machine_json_policy": "artifact_only_in_visible_panes",
         "user_takeover": "attach to the session and type into any role pane",
     }

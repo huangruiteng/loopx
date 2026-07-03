@@ -303,6 +303,11 @@ def _supervisor_summary(supervisor: dict[str, object]) -> dict[str, object]:
         if isinstance(runner_contract.get("pane_local_a2a"), dict)
         else {}
     )
+    decentralized_a2a_driver = (
+        runner_contract.get("decentralized_a2a_driver")
+        if isinstance(runner_contract.get("decentralized_a2a_driver"), dict)
+        else {}
+    )
     cli_contract = (
         supervisor.get("cli_contract")
         if isinstance(supervisor.get("cli_contract"), dict)
@@ -335,6 +340,29 @@ def _supervisor_summary(supervisor: dict[str, object]) -> dict[str, object]:
             "machine_json_destination": pane_local_a2a.get("machine_json_destination"),
             "rounds_artifact": pane_local_a2a.get("rounds_artifact"),
             "human_default": pane_local_a2a.get("human_default"),
+        },
+        "decentralized_a2a_driver": {
+            "schema_version": decentralized_a2a_driver.get("schema_version"),
+            "owner_layer": decentralized_a2a_driver.get("owner_layer"),
+            "driver_model": decentralized_a2a_driver.get("driver_model"),
+            "coordination_pattern": decentralized_a2a_driver.get("coordination_pattern"),
+            "broadcaster_decides_work": (
+                decentralized_a2a_driver.get("broadcaster", {}).get("decides_work")
+                if isinstance(decentralized_a2a_driver.get("broadcaster"), dict)
+                else None
+            ),
+            "pane_decision_owner": (
+                decentralized_a2a_driver.get("pane", {}).get("decision_owner")
+                if isinstance(decentralized_a2a_driver.get("pane"), dict)
+                else None
+            ),
+            "user_and_preset_do_not_own_tick_driver": (
+                decentralized_a2a_driver.get("acceptance", {}).get(
+                    "user_and_preset_do_not_own_tick_driver"
+                )
+                if isinstance(decentralized_a2a_driver.get("acceptance"), dict)
+                else None
+            ),
         },
         "machine_json_policy": cli_contract.get("machine_json_policy"),
         "domain_specific_runner_logic": bool(product_spec.get("domain_specific")),
@@ -542,6 +570,11 @@ def _load_visible_wake_into_payload(
     payload: dict[str, object],
     wake: dict[str, object],
 ) -> None:
+    driver = (
+        wake.get("driver_contract")
+        if isinstance(wake.get("driver_contract"), dict)
+        else {}
+    )
     payload["visible_wake"] = {
         "schema_version": wake.get("schema_version"),
         "mode": wake.get("mode"),
@@ -554,6 +587,8 @@ def _load_visible_wake_into_payload(
         "broadcaster_reads_frontier": bool(wake.get("broadcaster_reads_frontier")),
         "broadcaster_selects_todo": bool(wake.get("broadcaster_selects_todo")),
         "pane_decision_owner": wake.get("pane_decision_owner"),
+        "driver_contract_schema": driver.get("schema_version"),
+        "driver_owner_layer": driver.get("owner_layer"),
         "boundary": wake.get("boundary"),
     }
     visible_proof = payload["visible_worker_proof"]
@@ -594,6 +629,12 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         else {}
     )
     wake = payload.get("visible_wake") if isinstance(payload.get("visible_wake"), dict) else {}
+    supervisor = payload.get("supervisor") if isinstance(payload.get("supervisor"), dict) else {}
+    driver = (
+        supervisor.get("decentralized_a2a_driver")
+        if isinstance(supervisor.get("decentralized_a2a_driver"), dict)
+        else {}
+    )
     baseline = 1.0
     dev_metric = _numeric_metric(evidence.get("dev_metric"))
     holdout_metric = _numeric_metric(evidence.get("holdout_metric"))
@@ -618,6 +659,10 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         "workflow_driver_false": (
             rounds.get("workflow_driver") is False and wake.get("workflow_driver") is False
         ),
+        "kernel_driver_contract_loaded": (
+            driver.get("owner_layer") == "generic_multi_agent_kernel"
+            and driver.get("user_and_preset_do_not_own_tick_driver") is True
+        ),
     }
     ready = all(checks.values())
     return {
@@ -629,7 +674,10 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         else None,
         "coordination_pattern": "decentralized_state_a2a",
         "wake_model": wake.get("wakeup_model"),
-        "workflow_model": "fixed_prompt_wakeup_plus_pane_local_state_tick",
+        "workflow_model": driver.get("driver_model")
+        or "fixed_prompt_broadcast_plus_pane_local_state_tick",
+        "driver_owner_layer": driver.get("owner_layer"),
+        "auto_research_preset_role": "thin_domain_defaults_only",
         "leader_agent_required": False,
         "manual_artifact_inspection_required": not ready,
         "checks": checks,

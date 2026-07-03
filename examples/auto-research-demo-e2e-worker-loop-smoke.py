@@ -320,8 +320,12 @@ def main() -> int:
         assert visible_loaded_readiness["manual_artifact_inspection_required"] is False, visible_loaded_readiness
         assert visible_loaded_readiness["wake_model"] == "fixed_prompt_broadcast", visible_loaded_readiness
         assert visible_loaded_readiness["workflow_model"] == (
-            "fixed_prompt_wakeup_plus_pane_local_state_tick"
+            "fixed_prompt_broadcast_plus_pane_local_state_tick"
         ), visible_loaded_readiness
+        assert visible_loaded_readiness["driver_owner_layer"] == (
+            "generic_multi_agent_kernel"
+        ), visible_loaded_readiness
+        assert visible_loaded_readiness["checks"]["kernel_driver_contract_loaded"] is True, visible_loaded_readiness
         assert visible_loaded_readiness["checks"]["workflow_driver_false"] is True, visible_loaded_readiness
         loaded_improvement = visible_loaded_readiness["improvement_summary"]
         assert loaded_improvement["baseline_metric"] == 1.0, loaded_improvement
@@ -535,6 +539,12 @@ def main() -> int:
                     visible_supervisor["pane_local_a2a"]["human_default"]
                     == "markdown_status_inside_codex_tui"
                 ), visible_supervisor
+                visible_driver = visible_supervisor["decentralized_a2a_driver"]
+                assert visible_driver["owner_layer"] == "generic_multi_agent_kernel", visible_driver
+                assert visible_driver["broadcaster_decides_work"] is False, visible_driver
+                assert (
+                    visible_driver["user_and_preset_do_not_own_tick_driver"] is True
+                ), visible_driver
                 visible_proof = visible_payload["visible_worker_proof"]
                 assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
                 assert visible_proof["lane_authored_evidence_loaded"] is True, visible_proof
@@ -566,6 +576,7 @@ def main() -> int:
                 ], visible_wake
                 assert visible_wake["wakeup_model"] == "fixed_prompt_broadcast", visible_wake
                 assert visible_wake["coordination_model"] == "decentralized_state_a2a", visible_wake
+                assert visible_wake["driver_owner_layer"] == "generic_multi_agent_kernel", visible_wake
                 assert visible_wake["workflow_driver"] is False, visible_wake
                 assert visible_wake["broadcaster_reads_frontier"] is False, visible_wake
                 assert visible_wake["broadcaster_selects_todo"] is False, visible_wake
@@ -575,6 +586,12 @@ def main() -> int:
                 assert visible_readiness["readiness_level"] == "ready", visible_readiness
                 assert visible_readiness["manual_artifact_inspection_required"] is False, visible_readiness
                 assert visible_readiness["wake_model"] == "fixed_prompt_broadcast", visible_readiness
+                assert visible_readiness["workflow_model"] == (
+                    "fixed_prompt_broadcast_plus_pane_local_state_tick"
+                ), visible_readiness
+                assert visible_readiness["driver_owner_layer"] == (
+                    "generic_multi_agent_kernel"
+                ), visible_readiness
                 assert visible_readiness["coordination_pattern"] == "decentralized_state_a2a", visible_readiness
                 assert visible_readiness["leader_agent_required"] is False, visible_readiness
                 assert visible_readiness["checks"] == {
@@ -585,6 +602,7 @@ def main() -> int:
                     "protected_scope_clean": True,
                     "positive_metric_over_baseline": True,
                     "workflow_driver_false": True,
+                    "kernel_driver_contract_loaded": True,
                 }, visible_readiness
                 assert visible_readiness["missing_requirements"] == [], visible_readiness
                 assert visible_readiness["rounds"]["max_completed"] >= 2, visible_readiness

@@ -74,7 +74,9 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "research_roles" in layering["preset_layer"]["owns"], layering
     assert "metric_evidence_loop" in layering["preset_layer"]["owns"], layering
     assert "multi_agent_runner" in layering["preset_layer"]["forbidden"], layering
+    assert "decentralized_a2a_driver" in layering["preset_layer"]["forbidden"], layering
     assert "pane_local_a2a_tick" in layering["preset_layer"]["forbidden"], layering
+    assert "decentralized_a2a_driver" in layering["kernel_layer"]["owns"], layering
     assert "compact_human_status" in layering["kernel_layer"]["owns"], layering
     assert layering["acceptance"]["preset_has_no_runner_process_logic"] is True, layering
 
@@ -88,6 +90,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         "domain_defaults",
     ], preset
     assert "multi_agent_runner" in preset["forbidden"], preset
+    assert "decentralized_a2a_driver" in preset["forbidden"], preset
     assert "pane_local_a2a_tick" in preset["forbidden"], preset
 
     kernel = payload["auto_research"]
@@ -95,7 +98,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert kernel["uses_generic_runner"] is True, payload
     assert kernel["surface_count"] == 4, payload
     assert kernel["state_bus"] == "loopx_registry_runtime_todo_quota_frontier", payload
-    assert kernel["worker_turn"] == "pane_local_a2a_tick", payload
+    assert kernel["kernel_driver"] == "decentralized_a2a_driver", payload
+    assert kernel["kernel_driver_schema"] == "multi_agent_decentralized_a2a_driver_contract_v0", payload
+    assert kernel["worker_turn_owner"] == "generic_multi_agent_kernel", payload
+    assert "pane_local_a2a_tick" in kernel["delegated_kernel_mechanics"], payload
     assert kernel["presentation_layers_in_kernel"] is False, payload
 
     coordination = payload["coordination_model"]
@@ -117,6 +123,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert runner["coordination_model"]["state_bus"] == "loopx_registry_runtime_todo_quota_frontier", runner
     assert runner["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", runner
     assert runner["pane_local_a2a"]["human_default"] == "markdown_status_inside_codex_tui", runner
+    driver = runner["decentralized_a2a_driver"]
+    assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
+    assert driver["broadcaster"]["decides_work"] is False, driver
+    assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
     assert runner["role_prompt_and_skill"]["worker_local_skill_only"] is True, runner
 
     tui = payload["interactive_tui_contract"]
