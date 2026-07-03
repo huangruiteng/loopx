@@ -1382,8 +1382,11 @@ standard proxy variables only to the private BenchFlow subprocess and agent
 environment, runs a bounded HTTP CONNECT preflight, and records only
 source/scheme/endpoint-kind/port plus `proxy_url_recorded=false` in public
 artifacts. Use `--benchmark-egress-proxy-mode require` when the run must fail
-fast without that private proxy, and `--benchmark-egress-proxy-mode off` only
-for explicit no-proxy debugging.
+fast without that private proxy. The default `auto` mode validates a configured
+proxy first, but if that proxy is unavailable and direct egress to the public
+test host is reachable, the runner records a direct fallback and does not inject
+the stale proxy into the benchmark runtime. Use `--benchmark-egress-proxy-mode
+off` only for explicit no-proxy debugging.
 
 Keep upstream benchmark sources clean:
 

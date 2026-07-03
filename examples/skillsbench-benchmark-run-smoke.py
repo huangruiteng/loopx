@@ -541,6 +541,70 @@ def test_benchmark_egress_proxy_require_mode_blocks_without_proxy() -> None:
                 os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = previous
 
 
+def test_benchmark_egress_proxy_auto_falls_back_to_direct_without_leaking_proxy() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-auto-direct-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        proxy_url = "http://benchmark-proxy.example.invalid:18080"
+        previous = os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY")
+        previous_proxy_probe = skillsbench_loop._probe_http_connect_proxy
+        previous_direct_probe = skillsbench_loop._probe_direct_tcp_egress
+        os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
+        try:
+            skillsbench_loop._probe_http_connect_proxy = (  # type: ignore[assignment]
+                lambda **_kwargs: "proxy_connect_rejected"
+            )
+            skillsbench_loop._probe_direct_tcp_egress = (  # type: ignore[assignment]
+                lambda **_kwargs: "direct_tcp_ready"
+            )
+            args = parse_args(
+                [
+                    "--task-id",
+                    "citation-check",
+                    "--benchmark-egress-proxy-mode",
+                    "auto",
+                    "--skillsbench-root",
+                    str(skillsbench_root),
+                    "--jobs-dir",
+                    str(root / "jobs"),
+                ]
+            )
+            plan = build_plan(args)
+            egress = skillsbench_loop._run_benchmark_egress_proxy_preflight(args, plan)
+
+            assert egress["ready"] is True, egress
+            assert egress["status"] == "direct_tcp_ready_after_proxy_failure", egress
+            assert egress["effective_mode"] == "direct", egress
+            assert egress["direct_fallback_allowed"] is True, egress
+            assert egress["direct_fallback_active"] is True, egress
+            assert egress["proxy_url_recorded"] is False, egress
+            assert egress["raw_proxy_url_recorded"] is False, egress
+            assert proxy_url not in json.dumps(plan, sort_keys=True), plan
+
+            private_env = skillsbench_loop._benchmark_egress_proxy_env(args)
+            assert private_env == {}, private_env
+            target_env = skillsbench_loop._host_local_acp_target_env({}, args=args)
+            for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+                assert target_env.get(key) != proxy_url, target_env
+
+            prereqs = plan["runner_prerequisites"]
+            assert prereqs["benchmark_egress_proxy_ready"] is True, prereqs
+            assert prereqs["benchmark_egress_proxy_mode_requested"] == "auto", prereqs
+            assert prereqs["benchmark_egress_proxy_mode_effective"] == "direct", prereqs
+            assert prereqs["benchmark_egress_direct_fallback_active"] is True, prereqs
+        finally:
+            skillsbench_loop._probe_http_connect_proxy = previous_proxy_probe  # type: ignore[assignment]
+            skillsbench_loop._probe_direct_tcp_egress = previous_direct_probe  # type: ignore[assignment]
+            if previous is None:
+                os.environ.pop("LOOPX_SKILLSBENCH_EGRESS_PROXY", None)
+            else:
+                os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = previous
+
+
 def test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-codex-api-proxy-scheme-") as tmp:
         root = Path(tmp)
@@ -14640,6 +14704,7 @@ if __name__ == "__main__":
     test_codex_app_server_goal_blocks_without_codex_api_egress()
     test_benchmark_egress_proxy_env_is_public_safe_and_forwarded()
     test_benchmark_egress_proxy_require_mode_blocks_without_proxy()
+    test_benchmark_egress_proxy_auto_falls_back_to_direct_without_leaking_proxy()
     test_skillsbench_plan_only_batch_parallel_case_contract()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()

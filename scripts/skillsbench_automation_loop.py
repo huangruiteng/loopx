@@ -1592,6 +1592,17 @@ def _probe_http_connect_proxy(
     return "proxy_connect_rejected"
 
 
+def _probe_direct_tcp_egress(
+    *,
+    host: str,
+    port: int,
+    timeout_sec: float,
+) -> str:
+    with socket.create_connection((host, port), timeout=timeout_sec):
+        pass
+    return "direct_tcp_ready"
+
+
 def _run_codex_api_egress_preflight(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -1640,12 +1651,11 @@ def _run_codex_api_egress_preflight(
                     status = "unsupported_proxy_scheme"
                     ready = False
         elif mode == "direct":
-            with socket.create_connection(
-                (CODEX_API_EGRESS_TEST_HOST, CODEX_API_EGRESS_TEST_PORT),
-                timeout=timeout_sec,
-            ):
-                pass
-            status = "direct_tcp_ready"
+            status = _probe_direct_tcp_egress(
+                host=CODEX_API_EGRESS_TEST_HOST,
+                port=CODEX_API_EGRESS_TEST_PORT,
+                timeout_sec=timeout_sec,
+            )
             ready = True
         else:
             status = "unsupported_egress_mode"
@@ -1753,6 +1763,11 @@ def _public_benchmark_egress_proxy_contract(
     return {
         "schema_version": "skillsbench_benchmark_egress_proxy_v0",
         "requested_mode": proxy_mode,
+        "effective_mode": (
+            "direct"
+            if status == "direct_tcp_ready_after_proxy_failure"
+            else ("proxy" if ready and configured and proxy_mode != "off" else proxy_mode)
+        ),
         "ready": bool(ready),
         "status": status,
         "error_kind": error_kind or parse_error,
@@ -1775,6 +1790,8 @@ def _public_benchmark_egress_proxy_contract(
         "proxy_url_recorded": False,
         "raw_proxy_url_recorded": False,
         "raw_probe_output_recorded": False,
+        "direct_fallback_allowed": proxy_mode == "auto",
+        "direct_fallback_active": status == "direct_tcp_ready_after_proxy_failure",
         "test_host": BENCHMARK_EGRESS_TEST_HOST,
         "test_host_public_only": True,
     }
@@ -1800,6 +1817,7 @@ def _run_benchmark_egress_proxy_preflight(
     status = "pending"
     ready = False
     error_kind = ""
+    direct_fallback_active = False
     try:
         if proxy_mode == "off":
             status = "disabled"
@@ -1827,10 +1845,38 @@ def _run_benchmark_egress_proxy_preflight(
                     target_port=BENCHMARK_EGRESS_TEST_PORT,
                 )
                 ready = status == "http_connect_ready"
+                if not ready and proxy_mode == "auto":
+                    fallback_status = _probe_direct_tcp_egress(
+                        host=BENCHMARK_EGRESS_TEST_HOST,
+                        port=BENCHMARK_EGRESS_TEST_PORT,
+                        timeout_sec=timeout_sec,
+                    )
+                    if fallback_status == "direct_tcp_ready":
+                        status = "direct_tcp_ready_after_proxy_failure"
+                        ready = True
+                        direct_fallback_active = True
     except Exception as exc:
         status = "failed"
         ready = False
         error_kind = type(exc).__name__
+        if proxy_mode == "auto":
+            try:
+                fallback_status = _probe_direct_tcp_egress(
+                    host=BENCHMARK_EGRESS_TEST_HOST,
+                    port=BENCHMARK_EGRESS_TEST_PORT,
+                    timeout_sec=timeout_sec,
+                )
+                if fallback_status == "direct_tcp_ready":
+                    status = "direct_tcp_ready_after_proxy_failure"
+                    ready = True
+                    direct_fallback_active = True
+            except Exception:
+                pass
+    setattr(
+        args,
+        "_benchmark_egress_proxy_direct_fallback_active",
+        direct_fallback_active,
+    )
     contract = _public_benchmark_egress_proxy_contract(
         args,
         status=status,
@@ -1867,6 +1913,15 @@ def _sync_benchmark_egress_proxy_contract(
     target["benchmark_egress_proxy_mode_requested"] = str(
         contract.get("requested_mode") or ""
     )
+    target["benchmark_egress_proxy_mode_effective"] = str(
+        contract.get("effective_mode") or ""
+    )
+    target["benchmark_egress_direct_fallback_allowed"] = bool(
+        contract.get("direct_fallback_allowed")
+    )
+    target["benchmark_egress_direct_fallback_active"] = bool(
+        contract.get("direct_fallback_active")
+    )
     target["benchmark_egress_proxy_source"] = str(
         contract.get("proxy_source") or ""
     )
@@ -1900,6 +1955,8 @@ def _sync_benchmark_egress_proxy_contract(
 
 def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, str]:
     if args is None or _benchmark_egress_proxy_requested_mode(args) == "off":
+        return {}
+    if getattr(args, "_benchmark_egress_proxy_direct_fallback_active", False):
         return {}
     proxy_url, _source = _benchmark_egress_proxy(args)
     if not proxy_url:
@@ -2715,6 +2772,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchmark_egress_proxy_status",
         "benchmark_egress_proxy_error_kind",
         "benchmark_egress_proxy_mode_requested",
+        "benchmark_egress_proxy_mode_effective",
         "benchmark_egress_proxy_source",
         "benchmark_egress_proxy_env_key",
         "benchmark_egress_proxy_scheme",
@@ -2754,6 +2812,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchmark_egress_proxy_configured",
         "benchmark_egress_proxy_required",
         "benchmark_egress_proxy_url_recorded",
+        "benchmark_egress_direct_fallback_allowed",
+        "benchmark_egress_direct_fallback_active",
         "benchmark_egress_no_proxy_configured",
         "benchmark_egress_no_proxy_raw_value_recorded",
         "benchmark_egress_proxy_agent_env_injected",
@@ -8976,6 +9036,8 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "benchmark_egress_proxy_configured",
             "benchmark_egress_proxy_required",
             "benchmark_egress_proxy_url_recorded",
+            "benchmark_egress_direct_fallback_allowed",
+            "benchmark_egress_direct_fallback_active",
             "benchmark_egress_no_proxy_configured",
             "benchmark_egress_no_proxy_raw_value_recorded",
             "benchmark_egress_proxy_agent_env_injected",
@@ -8997,6 +9059,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "benchmark_egress_proxy_status",
             "benchmark_egress_proxy_error_kind",
             "benchmark_egress_proxy_mode_requested",
+            "benchmark_egress_proxy_mode_effective",
             "benchmark_egress_proxy_source",
             "benchmark_egress_proxy_env_key",
             "benchmark_egress_proxy_scheme",
