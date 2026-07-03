@@ -161,6 +161,29 @@ def assert_contract_doc() -> None:
     assert_public_safe({"contract": text})
 
 
+def assert_baseline_pair_contract(
+    baseline: dict[str, Any],
+    without: dict[str, Any],
+    baseline_rows: list[dict[str, Any]],
+) -> None:
+    """Keep this smoke focused on the interrupt summary, not strict uplift scoring."""
+
+    assert baseline["scenario_id"] == "with_loopx", baseline
+    assert without["scenario_id"] == "without_loopx", without
+    assert baseline["terminal_state"] == "success", baseline
+    assert without["terminal_state"] == "success", without
+    assert baseline["official_task_score"]["value"] == 1.0, baseline
+    assert without["official_task_score"]["value"] == 1.0, without
+    assert baseline["writeback_count"] >= 1, baseline
+    assert baseline["spend_before_validation_count"] == 0, baseline
+    assert without["writeback_count"] == 0, without
+    assert without["spend_count"] == 0, without
+    assert baseline["control_plane_score"]["kind"] == "core_v0", baseline
+    assert without["control_plane_score"]["kind"] == "core_v0", without
+    assert len(baseline_rows) == baseline["step_count"], baseline_rows
+    assert_public_safe({"baseline": baseline, "without": without, "rows": baseline_rows})
+
+
 def main() -> int:
     module = load_benchmark_smoke()
     with tempfile.TemporaryDirectory(prefix="mini-control-plane-interrupt-comparison-") as raw_tmp:
@@ -171,7 +194,7 @@ def main() -> int:
         baseline, baseline_rows = module.run_harness_scenario(baseline_fixture)
         without = module.run_without_harness_scenario(without_fixture)
         interrupt, interrupt_rows = module.run_interrupt_harness_scenario(interrupt_fixture)
-        module.assert_result_contract([baseline, without], baseline_rows, module.comparison([baseline, without]))
+        assert_baseline_pair_contract(baseline, without, baseline_rows)
         module.assert_interrupt_contract(interrupt, interrupt_rows)
         summary = comparison_summary(module, baseline, interrupt)
 
