@@ -86,6 +86,14 @@ from .projections.autonomous_replan_ack import (
     compact_autonomous_replan_ack as _compact_autonomous_replan_ack_read_model,
     latest_autonomous_replan_ack_for_projection as _latest_autonomous_replan_ack_for_projection_read_model,
 )
+from .projections.autonomous_replan_obligation import (
+    autonomous_replan_obligation_from_runs as _autonomous_replan_obligation_from_runs_read_model,
+    autonomous_replan_periodic_review_from_runs as _autonomous_replan_periodic_review_from_runs_read_model,
+    normalized_run_history_stall_signature as _normalized_run_history_stall_signature_read_model,
+    run_history_monitor_target as _run_history_monitor_target_read_model,
+    run_history_monitor_wait_already_acknowledged as _run_history_monitor_wait_already_acknowledged_read_model,
+    run_history_stall_signal as _run_history_stall_signal_read_model,
+)
 from .projections.monitor_display import (
     attention_item_is_monitor_quiet_display_candidate as _attention_item_is_monitor_quiet_display_candidate,
     normalize_monitor_quiet_attention_display as _normalize_monitor_quiet_attention_display,
@@ -6267,59 +6275,23 @@ def build_autonomous_replan_obligation(
 
 
 def _normalized_run_history_stall_signature(value: str) -> str:
-    return re.sub(r"\s+", " ", value.strip().lower())
+    return _normalized_run_history_stall_signature_read_model(value)
 
 
 def _run_history_monitor_target(run: dict[str, Any]) -> dict[str, Any] | None:
-    target = run.get("monitor_target")
-    if isinstance(target, dict):
-        return target
-    event = run.get("monitor_event")
-    if isinstance(event, dict) and isinstance(event.get("monitor_target"), dict):
-        return event.get("monitor_target")
-    return None
+    return _run_history_monitor_target_read_model(run)
 
 
 def _run_history_stall_signal(run: dict[str, Any]) -> dict[str, Any] | None:
-    if autonomous_replan_ack_recorded(run):
-        return None
-    classification = str(run.get("classification") or "").strip()
-    if not classification or classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
-        return None
-    delivery_outcome = normalize_delivery_outcome(run.get("delivery_outcome"))
-    if delivery_outcome in AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES:
-        return None
-    recommended_action = public_safe_compact_text(run.get("recommended_action"), limit=140)
-    health_check = public_safe_compact_text(run.get("health_check"), limit=140)
-    combined = " ".join(
-        value
-        for value in (
-            classification,
-            recommended_action,
-            health_check,
-            delivery_outcome.value if delivery_outcome else "",
-        )
-        if value
+    return _run_history_stall_signal_read_model(
+        run,
+        autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
+        neutral_classifications=AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS,
+        progress_outcomes=AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES,
+        stall_pattern=AUTONOMOUS_RUN_HISTORY_STALL_PATTERN,
+        public_safe_compact_text=public_safe_compact_text,
+        normalize_delivery_outcome=normalize_delivery_outcome,
     )
-    if not combined or not AUTONOMOUS_RUN_HISTORY_STALL_PATTERN.search(combined):
-        return None
-    action_or_classification = recommended_action or classification
-    signal = {
-        "classification": classification,
-        "generated_at": str(run.get("generated_at") or ""),
-        "recommended_action": recommended_action,
-        "delivery_outcome": delivery_outcome.value if delivery_outcome else None,
-        "signature": _normalized_run_history_stall_signature(action_or_classification),
-    }
-    monitor_target = _run_history_monitor_target(run)
-    if monitor_target:
-        signal["monitor_target_id"] = str(monitor_target.get("target_id") or "")
-        signal["monitor_target"] = {
-            key: monitor_target.get(key)
-            for key in ("schema_version", "target_id", "monitor_mode", "effective_action", "agent_id")
-            if monitor_target.get(key)
-        }
-    return signal
 
 
 def run_history_monitor_wait_already_acknowledged(
@@ -6327,22 +6299,12 @@ def run_history_monitor_wait_already_acknowledged(
     *,
     signal_count: int,
 ) -> bool:
-    """Return true when newer monitor-poll stalls already have a compact ack run behind them."""
-
-    for run in (latest_runs or [])[signal_count:]:
-        if not isinstance(run, dict):
-            continue
-        if autonomous_replan_ack_recorded(run):
-            return True
-        classification = str(run.get("classification") or "").strip()
-        if not classification:
-            continue
-        if classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
-            continue
-        if classification == "quota_monitor_poll":
-            continue
-        return False
-    return False
+    return _run_history_monitor_wait_already_acknowledged_read_model(
+        latest_runs,
+        signal_count=signal_count,
+        autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
+        neutral_classifications=AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS,
+    )
 
 
 def autonomous_replan_ack_recorded(run: dict[str, Any]) -> bool:
@@ -6367,39 +6329,14 @@ def autonomous_replan_periodic_review_from_runs(
     *,
     agent_todos: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    durable_runs: list[dict[str, Any]] = []
-    for run in latest_runs or []:
-        if not isinstance(run, dict):
-            continue
-        if autonomous_replan_ack_recorded(run):
-            break
-        classification = str(run.get("classification") or "").strip()
-        if not classification:
-            continue
-        if classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
-            continue
-        durable_runs.append(run)
-        if len(durable_runs) >= AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD:
-            break
-
-    if len(durable_runs) < AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD:
-        return None
-
-    evidence: list[dict[str, Any]] = [
-        {
-            "kind": "periodic_review_due",
-            "section": "run_history",
-            "text": (
-                f"latest {len(durable_runs)} durable public run records since last autonomous "
-                f"replan reached periodic review threshold {AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD}"
-            ),
-            "run_count": len(durable_runs),
-            "threshold": AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD,
-            "latest_generated_at": str(durable_runs[0].get("generated_at") or ""),
-            "oldest_counted_generated_at": str(durable_runs[-1].get("generated_at") or ""),
-        }
-    ]
-    return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
+    return _autonomous_replan_periodic_review_from_runs_read_model(
+        latest_runs,
+        agent_todos=agent_todos,
+        autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
+        neutral_classifications=AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS,
+        periodic_run_threshold=AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD,
+        build_autonomous_replan_obligation=build_autonomous_replan_obligation,
+    )
 
 
 def autonomous_replan_obligation_from_runs(
@@ -6407,99 +6344,21 @@ def autonomous_replan_obligation_from_runs(
     *,
     agent_todos: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    signals: list[dict[str, Any]] = []
-    signal_scan_limit = max(AUTONOMOUS_REPLAN_STALL_THRESHOLD, DEAD_MONITOR_REPEAT_THRESHOLD)
-    for run in latest_runs or []:
-        if not isinstance(run, dict):
-            continue
-        classification = str(run.get("classification") or "").strip()
-        if classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
-            continue
-        signal = _run_history_stall_signal(run)
-        if not signal:
-            break
-        signals.append(signal)
-        if len(signals) >= signal_scan_limit:
-            break
-
-    stall_signals = signals[:AUTONOMOUS_REPLAN_STALL_THRESHOLD]
-    if len(stall_signals) < AUTONOMOUS_REPLAN_STALL_THRESHOLD:
-        return autonomous_replan_periodic_review_from_runs(
-            latest_runs,
-            agent_todos=agent_todos,
-        )
-
-    signatures = {str(signal.get("signature") or "") for signal in stall_signals if signal.get("signature")}
-    classifications = {
-        str(signal.get("classification") or "")
-        for signal in stall_signals
-        if signal.get("classification")
-    }
-    periodic_review = autonomous_replan_periodic_review_from_runs(
+    return _autonomous_replan_obligation_from_runs_read_model(
         latest_runs,
         agent_todos=agent_todos,
+        autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
+        neutral_classifications=AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS,
+        progress_outcomes=AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES,
+        stall_pattern=AUTONOMOUS_RUN_HISTORY_STALL_PATTERN,
+        public_safe_compact_text=public_safe_compact_text,
+        normalize_delivery_outcome=normalize_delivery_outcome,
+        build_autonomous_replan_obligation=build_autonomous_replan_obligation,
+        autonomous_replan_stall_threshold=AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+        dead_monitor_repeat_threshold=DEAD_MONITOR_REPEAT_THRESHOLD,
+        dead_monitor_repeat_schema_version=DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
+        periodic_run_threshold=AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD,
     )
-    if len(signatures) > 1 and len(classifications) > 1:
-        return periodic_review
-    if classifications == {"quota_monitor_poll"}:
-        monitor_signals = signals[:DEAD_MONITOR_REPEAT_THRESHOLD]
-        if len(monitor_signals) < DEAD_MONITOR_REPEAT_THRESHOLD:
-            return periodic_review
-        monitor_classifications = {
-            str(signal.get("classification") or "")
-            for signal in monitor_signals
-            if signal.get("classification")
-        }
-        if monitor_classifications != {"quota_monitor_poll"}:
-            return periodic_review
-        if run_history_monitor_wait_already_acknowledged(
-            latest_runs,
-            signal_count=len(monitor_signals),
-        ):
-            return periodic_review
-        monitor_target_ids = {
-            str(signal.get("monitor_target_id") or "")
-            for signal in monitor_signals
-            if signal.get("monitor_target_id")
-        }
-        if len(monitor_target_ids) != 1:
-            return periodic_review
-        monitor_target_id = next(iter(monitor_target_ids))
-        evidence = [
-            {
-                "kind": "dead_monitor_repeat",
-                "schema_version": DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
-                "section": "run_history",
-                "text": (
-                    f"latest {DEAD_MONITOR_REPEAT_THRESHOLD} monitor polls repeated "
-                    "the same monitor target without a material transition"
-                ),
-                "run_count": len(monitor_signals),
-                "threshold": DEAD_MONITOR_REPEAT_THRESHOLD,
-                "monitor_target_id": monitor_target_id,
-                "latest_generated_at": signals[0].get("generated_at"),
-            }
-        ]
-        return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
-
-    action = public_safe_compact_text(
-        stall_signals[0].get("recommended_action") or stall_signals[0].get("classification"),
-        limit=120,
-    )
-    evidence_text = (
-        f"latest {AUTONOMOUS_REPLAN_STALL_THRESHOLD} public run records repeated "
-        f"{action or 'the same monitor/no-progress action'}"
-    )
-    evidence: list[dict[str, Any]] = [
-        {
-            "kind": "run_history_no_progress_repeat",
-            "section": "run_history",
-            "text": evidence_text,
-            "run_count": len(stall_signals),
-            "latest_generated_at": stall_signals[0].get("generated_at"),
-        }
-    ]
-    return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
 
 
 def open_todo_items(
