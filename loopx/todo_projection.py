@@ -14,7 +14,12 @@ from .policies.monitor_todo import (
     monitor_todo_next_due_at,
     monitor_todo_task_class,
 )
-from .todo_contract import TODO_TASK_CLASS_MONITOR, normalize_todo_claimed_by
+from .todo_contract import (
+    TODO_STATUS_DEFERRED,
+    TODO_TASK_CLASS_MONITOR,
+    normalize_todo_claimed_by,
+    normalize_todo_status,
+)
 
 
 TODO_MISSING_PRIORITY_RANK = 50
@@ -161,6 +166,10 @@ def todo_item_task_class(
 
 def todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
     return monitor_todo_is_actionable_open(item)
+
+
+def todo_item_is_deferred(item: dict[str, Any]) -> bool:
+    return (normalize_todo_status(item.get("status")) or "") == TODO_STATUS_DEFERRED
 
 
 def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:

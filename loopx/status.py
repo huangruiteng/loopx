@@ -116,6 +116,7 @@ from .todo_projection import (
     todo_claimed_visibility_items as projection_todo_claimed_visibility_items,
     todo_item_expires_at as projection_todo_item_expires_at,
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
+    todo_item_is_deferred as projection_todo_item_is_deferred,
     todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
     todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
     todo_item_missing_monitor_schedule as projection_todo_item_missing_monitor_schedule,
@@ -6029,7 +6030,7 @@ def claimed_visibility_items(items: list[dict[str, Any]], *, limit: int) -> list
 
 
 def todo_item_is_deferred(item: dict[str, Any]) -> bool:
-    return (normalize_todo_status(item.get("status")) or TODO_STATUS_OPEN) == "deferred"
+    return projection_todo_item_is_deferred(item)
 
 
 def normalized_pr_ref_parts(value: Any) -> dict[str, Any] | None:

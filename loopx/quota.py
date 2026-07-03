@@ -88,6 +88,7 @@ from .todo_projection import (
     todo_index_rank as projection_todo_index_rank,
     todo_item_expires_at as projection_todo_item_expires_at,
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
+    todo_item_is_deferred as projection_todo_item_is_deferred,
     todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
     todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
     todo_item_missing_monitor_schedule as projection_todo_item_missing_monitor_schedule,
@@ -1619,7 +1620,7 @@ def _todo_summary_visibility_lanes(
 
 
 def _todo_item_is_deferred(item: dict[str, Any]) -> bool:
-    return (normalize_todo_status(item.get("status")) or "") == TODO_STATUS_DEFERRED
+    return projection_todo_item_is_deferred(item)
 
 
 def _todo_summary_deferred_items(value: dict[str, Any], key: str) -> list[dict[str, Any]]:

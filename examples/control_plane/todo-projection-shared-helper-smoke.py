@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.quota import (  # noqa: E402
     _claimed_visibility_items as quota_claimed_visibility_items,
+    _todo_item_is_deferred as quota_todo_item_is_deferred,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
     _todo_task_class as quota_todo_task_class,
     build_quota_should_run,
@@ -21,6 +22,7 @@ from loopx.quota import (  # noqa: E402
 from loopx.status import (  # noqa: E402
     claimed_visibility_items as status_claimed_visibility_items,
     compact_todo_group,
+    todo_item_is_deferred as status_todo_item_is_deferred,
     todo_projection_sort_key,
 )
 from loopx.todo_contract import (  # noqa: E402
@@ -29,6 +31,7 @@ from loopx.todo_contract import (  # noqa: E402
 )
 from loopx.todo_projection import (  # noqa: E402
     todo_claimed_visibility_items as shared_claimed_visibility_items,
+    todo_item_is_deferred as shared_todo_item_is_deferred,
     todo_projection_sort_key as shared_todo_projection_sort_key,
 )
 
@@ -240,6 +243,29 @@ def assert_claimed_visibility_parity() -> None:
         ], selected_three
 
 
+def assert_deferred_helper_parity() -> None:
+    deferred = todo(
+        6,
+        "[P2] Resume after dependency lands.",
+        task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        todo_id="todo_deferred",
+        status="deferred",
+    )
+    open_item = todo(
+        7,
+        "[P2] Still executable.",
+        task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        todo_id="todo_open",
+    )
+    for predicate in (
+        shared_todo_item_is_deferred,
+        status_todo_item_is_deferred,
+        quota_todo_item_is_deferred,
+    ):
+        assert predicate(deferred) is True, deferred
+        assert predicate(open_item) is False, open_item
+
+
 def assert_quota_uses_executable_advancement(summary: dict[str, Any]) -> None:
     payload = build_quota_should_run(
         status_payload(summary),
@@ -268,6 +294,7 @@ def main() -> int:
     assert_status_summary_lanes(summary)
     assert_shared_ordering_parity(summary)
     assert_claimed_visibility_parity()
+    assert_deferred_helper_parity()
     assert_quota_uses_executable_advancement(summary)
     return 0
 
