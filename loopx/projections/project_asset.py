@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 
 DEFAULT_MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = 12
@@ -361,3 +361,104 @@ def project_asset_todo_projection_gap(
             "before treating this project_asset as first-screen complete"
         ),
     }
+
+
+def build_project_asset_todo_summary(
+    todos: dict[str, Any] | None,
+    *,
+    role: str | None = None,
+    item_limit: int,
+    deferred_item_limit: int,
+    advancement_task_class: str,
+    open_todo_items: Callable[..., list[dict[str, Any]]],
+    compact_todo_item: Callable[[dict[str, Any]], dict[str, Any]],
+    todo_lane_items: Callable[..., list[dict[str, Any]]],
+    todo_item_is_actionable_open: Callable[[dict[str, Any]], bool],
+    todo_item_task_class: Callable[[dict[str, Any]], str],
+) -> dict[str, Any] | None:
+    if not isinstance(todos, dict):
+        return None
+    open_count = todos.get("open_count", 0)
+    done_count = todos.get("done_count", 0)
+    total_count = todos.get("total_count", 0)
+    todo_role = str(role or todos.get("role") or "").strip().lower()
+    metadata = project_asset_todo_projection_metadata(
+        role=todo_role,
+        item_limit=item_limit,
+        deferred_item_limit=deferred_item_limit,
+    )
+    summary: dict[str, Any] = {
+        "schema_version": todos.get("schema_version") or "todo_summary_v0",
+        "source_section": "project_asset",
+        "open": open_count,
+        "done": done_count,
+        "total": total_count,
+        **metadata,
+    }
+    open_items = open_todo_items(todos, limit=item_limit)
+    claimed_open_count = sum(1 for item in open_items if item.get("claimed_by"))
+    if claimed_open_count or todos.get("claimed_open_count"):
+        summary["claimed_open_count"] = todos.get("claimed_open_count", claimed_open_count)
+        summary["unclaimed_open_count"] = todos.get(
+            "unclaimed_open_count",
+            max(0, int(summary.get("open") or 0) - int(summary["claimed_open_count"] or 0)),
+        )
+    if open_items:
+        summary["items"] = open_items
+        summary["next"] = open_items[0]["text"]
+        if open_items[0].get("index") is not None:
+            summary["next_index"] = open_items[0].get("index")
+        if open_items[0].get("claimed_by"):
+            summary["next_claimed_by"] = open_items[0].get("claimed_by")
+    monitor_writeback = todos.get("monitor_writeback")
+    if isinstance(monitor_writeback, dict):
+        summary["monitor_writeback"] = dict(monitor_writeback)
+    deferred_items = [
+        compact_todo_item(item)
+        for item in todos.get("deferred_items", [])
+        if isinstance(item, dict)
+    ][:deferred_item_limit]
+    deferred_resume_candidates = [
+        compact_todo_item(item)
+        for item in todos.get("deferred_resume_candidates", [])
+        if isinstance(item, dict)
+    ][:deferred_item_limit]
+    if todos.get("deferred_count") is not None:
+        summary["deferred_count"] = todos.get("deferred_count")
+        summary["deferred_visibility_limit"] = deferred_item_limit
+    if deferred_items:
+        summary["deferred_items"] = deferred_items
+    if deferred_resume_candidates:
+        summary["deferred_resume_candidates"] = deferred_resume_candidates
+    executable_items = [
+        item
+        for item in open_todo_items(
+            todos,
+            limit=item_limit,
+            source_keys=("first_executable_items", "executable_backlog_items", "items"),
+        )
+        if todo_item_is_actionable_open(item)
+        if todo_item_task_class(item) == advancement_task_class
+    ]
+    if executable_items:
+        summary["first_executable_items"] = executable_items[:item_limit]
+    for lane in (
+        "gate_open_items",
+        "current_agent_claimed_open_items",
+        "active_next_action_items",
+        "active_next_action_executable_items",
+    ):
+        lane_items = todo_lane_items(
+            todos,
+            lane,
+            limit=item_limit,
+        )
+        if lane_items:
+            summary[lane] = lane_items
+    for count_key in (
+        "claimed_advancement_open_count",
+        "claimed_monitor_open_count",
+    ):
+        if todos.get(count_key) is not None:
+            summary[count_key] = todos.get(count_key)
+    return summary

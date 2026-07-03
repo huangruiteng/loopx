@@ -66,13 +66,13 @@ from .projections.project_asset import (
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     build_project_asset,
+    build_project_asset_todo_summary,
     completed_todo_archive_warning,
     project_asset_handoff_check_projection,
     project_asset_latest_validation,
     project_asset_quota_state,
     project_asset_quota_summary,
     project_asset_summary_is_public_safe,
-    project_asset_todo_projection_metadata,
     project_asset_todo_projection_gap,
     project_asset_user_todo_open_count,
 )
@@ -7364,92 +7364,18 @@ def project_asset_todo_summary(
     *,
     role: str | None = None,
 ) -> dict[str, Any] | None:
-    if not isinstance(todos, dict):
-        return None
-    open_count = todos.get("open_count", 0)
-    done_count = todos.get("done_count", 0)
-    total_count = todos.get("total_count", 0)
-    todo_role = str(role or todos.get("role") or "").strip().lower()
-    metadata = project_asset_todo_projection_metadata(
-        role=todo_role,
+    return build_project_asset_todo_summary(
+        todos,
+        role=role,
         item_limit=MAX_PROJECT_ASSET_TODO_ITEMS,
         deferred_item_limit=MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
+        advancement_task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        open_todo_items=open_todo_items,
+        compact_todo_item=compact_todo_item,
+        todo_lane_items=todo_lane_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        todo_item_task_class=todo_item_task_class,
     )
-    summary: dict[str, Any] = {
-        "schema_version": todos.get("schema_version") or "todo_summary_v0",
-        "source_section": "project_asset",
-        "open": open_count,
-        "done": done_count,
-        "total": total_count,
-        **metadata,
-    }
-    open_items = open_todo_items(todos, limit=MAX_PROJECT_ASSET_TODO_ITEMS)
-    claimed_open_count = sum(1 for item in open_items if item.get("claimed_by"))
-    if claimed_open_count or todos.get("claimed_open_count"):
-        summary["claimed_open_count"] = todos.get("claimed_open_count", claimed_open_count)
-        summary["unclaimed_open_count"] = todos.get(
-            "unclaimed_open_count",
-            max(0, int(summary.get("open") or 0) - int(summary["claimed_open_count"] or 0)),
-        )
-    if open_items:
-        summary["items"] = open_items
-        summary["next"] = open_items[0]["text"]
-        if open_items[0].get("index") is not None:
-            summary["next_index"] = open_items[0].get("index")
-        if open_items[0].get("claimed_by"):
-            summary["next_claimed_by"] = open_items[0].get("claimed_by")
-    monitor_writeback = todos.get("monitor_writeback")
-    if isinstance(monitor_writeback, dict):
-        summary["monitor_writeback"] = dict(monitor_writeback)
-    deferred_items = [
-        compact_todo_item(item)
-        for item in todos.get("deferred_items", [])
-        if isinstance(item, dict)
-    ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
-    deferred_resume_candidates = [
-        compact_todo_item(item)
-        for item in todos.get("deferred_resume_candidates", [])
-        if isinstance(item, dict)
-    ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
-    if todos.get("deferred_count") is not None:
-        summary["deferred_count"] = todos.get("deferred_count")
-        summary["deferred_visibility_limit"] = MAX_DEFERRED_TODO_VISIBILITY_ITEMS
-    if deferred_items:
-        summary["deferred_items"] = deferred_items
-    if deferred_resume_candidates:
-        summary["deferred_resume_candidates"] = deferred_resume_candidates
-    executable_items = [
-        item
-        for item in open_todo_items(
-            todos,
-            limit=MAX_PROJECT_ASSET_TODO_ITEMS,
-            source_keys=("first_executable_items", "executable_backlog_items", "items"),
-        )
-        if todo_item_is_actionable_open(item)
-        if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    ]
-    if executable_items:
-        summary["first_executable_items"] = executable_items[:MAX_PROJECT_ASSET_TODO_ITEMS]
-    for lane in (
-        "gate_open_items",
-        "current_agent_claimed_open_items",
-        "active_next_action_items",
-        "active_next_action_executable_items",
-    ):
-        lane_items = todo_lane_items(
-            todos,
-            lane,
-            limit=MAX_PROJECT_ASSET_TODO_ITEMS,
-        )
-        if lane_items:
-            summary[lane] = lane_items
-    for count_key in (
-        "claimed_advancement_open_count",
-        "claimed_monitor_open_count",
-    ):
-        if todos.get(count_key) is not None:
-            summary[count_key] = todos.get(count_key)
-    return summary
 
 
 def dependency_blocker_summary(

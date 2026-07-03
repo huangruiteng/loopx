@@ -12,13 +12,22 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.projections.project_asset import build_project_asset_todo_summary  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.status import (  # noqa: E402
+    MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
+    MAX_PROJECT_ASSET_TODO_ITEMS,
+    TODO_TASK_CLASS_ADVANCEMENT,
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
+    compact_todo_item,
     compact_todo_group,
+    open_todo_items,
     parse_active_state_todos,
     project_asset_todo_summary,
+    todo_item_is_actionable_open,
+    todo_item_task_class,
+    todo_lane_items,
 )
 
 
@@ -44,6 +53,21 @@ FRONTSTAGE_CLAIMED_TODO = (
 FRONTSTAGE_MONITOR_TODO = (
     "[P2] Repository quality monitor: watch README and dashboard demo freshness."
 )
+
+
+def direct_project_asset_todo_summary(todos: dict, *, role: str | None = None) -> dict | None:
+    return build_project_asset_todo_summary(
+        todos,
+        role=role,
+        item_limit=MAX_PROJECT_ASSET_TODO_ITEMS,
+        deferred_item_limit=MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
+        advancement_task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        open_todo_items=open_todo_items,
+        compact_todo_item=compact_todo_item,
+        todo_lane_items=todo_lane_items,
+        todo_item_is_actionable_open=todo_item_is_actionable_open,
+        todo_item_task_class=todo_item_task_class,
+    )
 
 
 def build_truncated_todo_group() -> dict:
@@ -133,6 +157,8 @@ def build_blocked_priority_fallback_status_payload() -> dict:
     assert agent_todos["first_executable_items"][0]["text"] == FALLBACK_TODO, agent_todos
     asset_summary = project_asset_todo_summary(agent_todos, role="agent")
     assert asset_summary is not None, agent_todos
+    direct_summary = direct_project_asset_todo_summary(agent_todos, role="agent")
+    assert direct_summary == asset_summary, (direct_summary, asset_summary)
     attention_item = {
         "goal_id": GOAL_ID,
         "status": "eligible_with_blocked_priority_fallback",
