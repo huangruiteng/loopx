@@ -99,6 +99,7 @@ from .todo_projection import (
     todo_priority_rank as projection_todo_priority_rank,
     todo_projection_sort_key as projection_todo_projection_sort_key,
     todo_summary_claim_scope_agent_id as projection_todo_summary_claim_scope_agent_id,
+    todo_summary_monitor_items as projection_todo_summary_monitor_items,
     todo_summary_monitor_due_count as projection_todo_summary_monitor_due_count,
     todo_summary_monitor_due_items as projection_todo_summary_monitor_due_items,
     todo_summary_monitor_schedule_gap_count as projection_todo_summary_monitor_schedule_gap_count,
@@ -540,33 +541,7 @@ def _external_evidence_poll_signal(
 
 
 def _todo_summary_monitor_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not isinstance(summary, dict):
-        return []
-    items: list[dict[str, Any]] = []
-    seen: set[tuple[str, int]] = set()
-    for key in (
-        "monitor_due_items",
-        "current_agent_claimed_monitor_items",
-        "monitor_open_items",
-        "claimed_monitor_open_items",
-        "first_open_items",
-    ):
-        values = summary.get(key)
-        if not isinstance(values, list):
-            continue
-        for value in values:
-            if not isinstance(value, dict):
-                continue
-            if not _todo_item_is_actionable_open(value):
-                continue
-            if _todo_task_class(value) != TODO_TASK_CLASS_MONITOR:
-                continue
-            identity = (normalize_todo_id(value.get("todo_id")) or "", id(value))
-            if identity in seen:
-                continue
-            seen.add(identity)
-            items.append(value)
-    return items
+    return projection_todo_summary_monitor_items(summary)
 
 
 def _projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:

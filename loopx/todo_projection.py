@@ -18,6 +18,7 @@ from .todo_contract import (
     TODO_STATUS_DEFERRED,
     TODO_TASK_CLASS_MONITOR,
     normalize_todo_claimed_by,
+    normalize_todo_id,
     normalize_todo_status,
 )
 
@@ -257,6 +258,36 @@ def todo_summary_monitor_writeback_supported(summary: dict[str, Any] | None) -> 
     if not contract:
         return True
     return contract.get("supported") is not False
+
+
+def todo_summary_monitor_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return []
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for key in (
+        "monitor_due_items",
+        "current_agent_claimed_monitor_items",
+        "monitor_open_items",
+        "claimed_monitor_open_items",
+        "first_open_items",
+    ):
+        values = summary.get(key)
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            if not todo_item_is_actionable_open(value):
+                continue
+            if todo_item_task_class(value) != TODO_TASK_CLASS_MONITOR:
+                continue
+            identity = (normalize_todo_id(value.get("todo_id")) or "", id(value))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            items.append(value)
+    return items
 
 
 def _summary_monitor_items(
