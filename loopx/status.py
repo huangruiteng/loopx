@@ -11000,6 +11000,38 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"reason_code={_markdown_scalar(agent_lane_frontier_hint.get('reason_code') or '')} "
                     f"target_todo_id={_markdown_scalar(agent_lane_frontier_hint.get('target_todo_id') or '')}"
                 )
+            goal_frontier = (
+                project_asset.get("goal_frontier_projection")
+                if isinstance(project_asset.get("goal_frontier_projection"), dict)
+                else item.get("goal_frontier_projection")
+                if isinstance(item.get("goal_frontier_projection"), dict)
+                else {}
+            )
+            if goal_frontier:
+                remaining = (
+                    goal_frontier.get("remaining_advancement_frontier")
+                    if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
+                    else {}
+                )
+                deferred_successors = (
+                    goal_frontier.get("deferred_successors")
+                    if isinstance(goal_frontier.get("deferred_successors"), dict)
+                    else {}
+                )
+                acceptance_gaps = (
+                    goal_frontier.get("acceptance_gaps")
+                    if isinstance(goal_frontier.get("acceptance_gaps"), list)
+                    else []
+                )
+                lines.append(
+                    "    - goal_frontier_projection: "
+                    f"replan_required={goal_frontier.get('replan_required')} "
+                    f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
+                    f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
+                    f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')} "
+                    f"deferred_ready={deferred_successors.get('ready_count')} "
+                    f"acceptance_gaps={len(acceptance_gaps)}"
+                )
             dreaming_lane_badge = (
                 project_asset.get("dreaming_lane_badge")
                 if isinstance(project_asset.get("dreaming_lane_badge"), dict)
