@@ -108,6 +108,9 @@ from .projections.autonomous_replan_obligation import (
     run_history_monitor_wait_already_acknowledged as _run_history_monitor_wait_already_acknowledged_read_model,
     run_history_stall_signal as _run_history_stall_signal_read_model,
 )
+from .projections.backlog_hygiene import (
+    backlog_hygiene_warning as _backlog_hygiene_warning_read_model,
+)
 from .projections.dreaming import (
     compact_dreaming_lane_badge as _compact_dreaming_lane_badge_read_model,
     compact_dreaming_proposal as _compact_dreaming_proposal_read_model,
@@ -6086,42 +6089,16 @@ def active_state_section_entries(lines: list[str]) -> list[str]:
 
 
 def backlog_hygiene_warning(state_text: str, *, agent_todos: dict[str, Any] | None) -> dict[str, Any] | None:
-    try:
-        agent_open_count = int(agent_todos.get("open_count") or 0) if isinstance(agent_todos, dict) else 0
-    except (TypeError, ValueError):
-        agent_open_count = 0
-    if agent_open_count > 0:
-        return None
-
-    evidence: list[dict[str, Any]] = []
-    sections = active_state_sections(state_text, BACKLOG_HYGIENE_SECTION_HEADINGS)
-    for section, lines in sections.items():
-        for line in lines:
-            bullet_match = BACKLOG_HYGIENE_BULLET_PATTERN.match(line)
-            if not bullet_match:
-                continue
-            text = public_safe_compact_text(bullet_match.group(1), limit=220)
-            if not text:
-                continue
-            if section.lower() == "next action" or BACKLOG_HYGIENE_HINT_PATTERN.search(text):
-                evidence.append({"section": section, "text": text})
-
-    if not evidence:
-        return None
-
-    source_sections = sorted({str(item.get("section") or "") for item in evidence if item.get("section")})
-    return {
-        "kind": "hidden_backlog_without_agent_todo",
-        "requires_agent_todo": True,
-        "source_sections": source_sections,
-        "agent_open_count": agent_open_count,
-        "evidence_count": len(evidence),
-        "first_evidence": evidence[:MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS],
-        "recommended_action": (
-            "mirror durable follow-up work into Agent Todo before heartbeat scheduling relies on "
-            "Next Action or Operating Lessons"
-        ),
-    }
+    return _backlog_hygiene_warning_read_model(
+        state_text,
+        agent_todos=agent_todos,
+        section_headings=BACKLOG_HYGIENE_SECTION_HEADINGS,
+        section_parser=active_state_sections,
+        bullet_pattern=BACKLOG_HYGIENE_BULLET_PATTERN,
+        hint_pattern=BACKLOG_HYGIENE_HINT_PATTERN,
+        public_safe_compact_text=public_safe_compact_text,
+        max_evidence_items=MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS,
+    )
 
 
 def autonomous_replan_obligation(
