@@ -19,6 +19,9 @@ from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
     AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION,
     build_auto_research_user_contract,
 )
+from loopx.capabilities.auto_research.cli import (  # noqa: E402
+    _default_auto_research_start_workspace,
+)
 
 
 QUESTION = "How should LoopX make visible multi-agent auto research useful?"
@@ -139,6 +142,17 @@ def run_cli(temp_dir: Path, *args: str) -> str:
 def main() -> None:
     payload = build_auto_research_user_contract(QUESTION)
     assert_contract(payload)
+    default_workspace = Path(
+        _default_auto_research_start_workspace("loopx-auto-research-demo-smoke")
+    )
+    assert default_workspace.parts[-3:] == (
+        "loopx-auto-research",
+        "loopx-auto-research-demo-smoke",
+        "visible-workspace",
+    ), default_workspace
+    assert default_workspace.is_absolute(), default_workspace
+    assert "/private/" not in str(default_workspace), default_workspace
+    assert "/tmp/" not in str(default_workspace), default_workspace
 
     with tempfile.TemporaryDirectory() as raw_temp_dir:
         temp_dir = Path(raw_temp_dir)

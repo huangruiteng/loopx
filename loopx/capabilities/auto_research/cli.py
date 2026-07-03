@@ -99,6 +99,15 @@ def _demo_goal_suffix(value: object, *, fallback: str = "run") -> str:
     return text[:40] or fallback
 
 
+def _default_auto_research_start_workspace(goal_id: str) -> str:
+    return str(
+        Path.home()
+        / "loopx-auto-research"
+        / _demo_goal_suffix(goal_id, fallback="run")
+        / "visible-workspace"
+    )
+
+
 def _resolve_demo_goal_surface(
     *,
     goal_id: str | None,
@@ -211,7 +220,7 @@ def register_auto_research_commands(
         "--workspace",
         help=(
             "Directory where visible Codex lanes should start. "
-            "Omit to use a demo-owned clean workspace."
+            "Omit to use ~/loopx-auto-research/<run>/visible-workspace."
         ),
     )
     start_parser.add_argument(
@@ -844,15 +853,15 @@ def handle_auto_research_command(
                     visible_runtime_root_arg: str | None,
                     _default_workspace: Path,
                 ) -> dict[str, object]:
-                    demo_owned_workspace = args.workspace is None
+                    default_start_workspace = args.workspace is None
                     visible_workspace = (
-                        str(_default_workspace / "visible-user-workspace")
-                        if demo_owned_workspace
+                        _default_auto_research_start_workspace(goal_id)
+                        if default_start_workspace
                         else args.workspace
                     )
-                    create_visible_workspace = True if demo_owned_workspace else args.create_workspace
+                    create_visible_workspace = True if default_start_workspace else args.create_workspace
                     codex_trust_workspace = (
-                        demo_owned_workspace
+                        default_start_workspace
                         if args.codex_trust_workspace is None
                         else bool(args.codex_trust_workspace)
                     )

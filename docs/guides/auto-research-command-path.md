@@ -74,6 +74,10 @@ a dry-run preview. With `--execute`, it creates an isolated research frontier
 and starts the visible Codex TUI lanes through the generic multi-agent kernel.
 The user still only supplies one open question; agent ids, pane-local tick
 commands, evidence schemas, and runner wiring stay inside the kernel.
+By default, visible panes open in a stable user-owned workspace under
+`~/loopx-auto-research/<run>/visible-workspace` so the first screen does not
+land in a generated temp directory. Pass `--workspace` to choose a different
+scratch directory.
 
 ## Start From A Clean Workspace
 
@@ -125,10 +129,11 @@ role, not as a JSON/status stream. Generic launcher internals stay inside
 LoopX; the operator does not need to know `demo-e2e`, agent ids, or
 implementation paths.
 
-Visible Codex TUI panes default to the caller's current workspace, not to a
-demo-local git worktree. The demo registry, runtime root, queue, and evidence
-state stay isolated, but the first screen should not be a generated worktree
-trust prompt. If you want an explicit scratch location, pass
+Visible Codex TUI panes default to a stable
+`~/loopx-auto-research/<run>/visible-workspace`, not to a demo-local git
+worktree or generated temp directory. The demo registry, runtime root, queue,
+and evidence state stay isolated, but the first screen should not be a
+generated worktree trust prompt. If you want an explicit scratch location, pass
 `--workspace "$HOME/loopx-auto-research-demo" --create-workspace`; avoid
 pointing `--workspace` at the demo-local control-plane directory.
 
