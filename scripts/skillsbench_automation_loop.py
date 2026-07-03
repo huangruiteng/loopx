@@ -149,10 +149,16 @@ class SkillsBenchProductModeNoLifecycleRequests(RuntimeError):
 
 
 DEFAULT_SKILLSBENCH_ROOT = REPO_ROOT / ".local/benchmark/externals/skillsbench"
-DEFAULT_LEDGER = (
+PUBLIC_BENCHMARK_RUN_LEDGER = (
     REPO_ROOT
     / "docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json"
 )
+DEFAULT_PRIVATE_LEDGER = (
+    REPO_ROOT
+    / ".local/private-benchmark-jobs"
+    / "skillsbench-current-global-ledger/benchmark-run-ledger.json"
+)
+DEFAULT_LEDGER = DEFAULT_PRIVATE_LEDGER
 TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS = {
     "official_score_zero_case_failure",
     "official_verifier_solution_failure",
@@ -14735,14 +14741,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--run-group-id",
         default=None,
     )
-    parser.add_argument("--ledger-path", default=str(DEFAULT_LEDGER))
+    parser.add_argument("--ledger-path", default=None)
     parser.add_argument(
         "--global-ledger-path",
-        default=str(DEFAULT_LEDGER),
+        default=None,
         help=(
-            "Canonical benchmark_run_ledger_v0 JSON. When --ledger-path points "
-            "to a run-group/local ledger, the runner inherits this ledger first "
-            "and syncs the new row back here unless --skip-global-ledger-sync is set."
+            "Canonical benchmark_run_ledger_v0 JSON. Defaults to a private "
+            ".local ledger unless --publish-public-ledger is set. When "
+            "--ledger-path points to a run-group/local ledger, the runner "
+            "inherits this ledger first and syncs the new row back here unless "
+            "--skip-global-ledger-sync is set."
+        ),
+    )
+    parser.add_argument(
+        "--publish-public-ledger",
+        action="store_true",
+        help=(
+            "Use the repository research ledger as the default --ledger-path "
+            "and --global-ledger-path. Without this explicit publish intent, "
+            "benchmark update-ledger writes default to a private .local ledger."
         ),
     )
     parser.add_argument(
@@ -15132,6 +15149,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
     verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
     args = parser.parse_args(raw_argv)
+    default_ledger = (
+        PUBLIC_BENCHMARK_RUN_LEDGER if args.publish_public_ledger else DEFAULT_LEDGER
+    )
+    if args.ledger_path is None:
+        args.ledger_path = str(default_ledger)
+    if args.global_ledger_path is None:
+        args.global_ledger_path = str(default_ledger)
     args.apt_risk_fail_fast_defaulted = False
     args.verifier_bootstrap_fail_fast_defaulted = False
     args.bootstrap_light_fail_fast_defaulted = False
