@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.status import (  # noqa: E402
     build_promotion_readiness_summary,
+    build_contract_health_projection,
     collect_status,
     delivery_batch_scale_for_run,
     delivery_outcome_for_run,
@@ -1489,6 +1490,44 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert "authority=advisory_projection" in packet["project_agent_handoff"], packet
 
 
+def assert_status_contract_health_projection() -> None:
+    projection = build_contract_health_projection(
+        {
+            "summary": {"errors": 0, "warnings": 4, "checks": 8},
+            "errors": [],
+            "warnings": [
+                "fixture-goal: duplicate index rows raw=2 unique=1 unexpected=1",
+                "fixture-goal: stale projection warning A",
+                "fixture-goal: stale projection warning B",
+                "fixture-goal: stale projection warning C",
+            ],
+        }
+    )
+    assert projection["contract_summary"] == {"errors": 0, "warnings": 4, "checks": 8}, projection
+    assert projection["contract_warnings_total_count"] == 4, projection
+    assert projection["contract_warnings_truncated"] is True, projection
+    assert len(projection["contract_warnings"]) == 3, projection
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "status_contract": {
+            "schema_version": 2,
+            "minimum_dashboard_schema_version": 2,
+            "producer": "loopx status",
+        },
+        "contract": {"ok": True, "summary": {"errors": 0, "warnings": 4, "checks": 8}},
+        **projection,
+        "global_registry": {"available": False, "summary": {}},
+    }
+    markdown = render_status_markdown(payload)
+    assert "Status Contract Signals" in markdown, markdown
+    assert "duplicate index rows raw=2 unique=1 unexpected=1" in markdown, markdown
+    assert "contract_warnings_truncated: total=4" in markdown, markdown
+
+
 def assert_status_agent_lane_frontier_hint_projection() -> None:
     goal_id = "agent-lane-frontier-status-fixture"
     primary_action = "[P0] Continue the primary controller benchmark route."
@@ -2228,6 +2267,7 @@ def main() -> int:
     assert_promotion_readiness_summary_markdown()
     assert_promotion_gate_summary_markdown()
     assert_decision_freshness_summary_markdown()
+    assert_status_contract_health_projection()
     with tempfile.TemporaryDirectory(prefix="loopx-status-smoke-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)

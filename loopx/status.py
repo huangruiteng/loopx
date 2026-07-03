@@ -238,6 +238,7 @@ MAX_BENCHMARK_RUN_LIST_ITEMS = 5
 STATUS_CONTRACT_SCHEMA_VERSION = 2
 MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
+STATUS_CONTRACT_SIGNAL_LIMIT = 3
 PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION = "project_asset_todo_projection_gap_v0"
 MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
 TODO_INDEX_SCHEMA_VERSION = "todo_index_v0"
@@ -10344,6 +10345,34 @@ def build_status_contract() -> dict[str, Any]:
     }
 
 
+def _compact_status_contract_signals(
+    value: Any,
+    *,
+    limit: int = STATUS_CONTRACT_SIGNAL_LIMIT,
+) -> dict[str, Any]:
+    items = [str(item).strip() for item in value or [] if str(item).strip()]
+    bounded = items[: max(0, limit)]
+    return {
+        "items": bounded,
+        "total_count": len(items),
+        "truncated": len(items) > len(bounded),
+    }
+
+
+def build_contract_health_projection(contract: dict[str, Any]) -> dict[str, Any]:
+    errors = _compact_status_contract_signals(contract.get("errors"))
+    warnings = _compact_status_contract_signals(contract.get("warnings"))
+    return {
+        "contract_summary": contract.get("summary"),
+        "contract_errors": errors["items"],
+        "contract_errors_total_count": errors["total_count"],
+        "contract_errors_truncated": errors["truncated"],
+        "contract_warnings": warnings["items"],
+        "contract_warnings_total_count": warnings["total_count"],
+        "contract_warnings_truncated": warnings["truncated"],
+    }
+
+
 def decision_event_kinds(run: dict[str, Any]) -> list[str]:
     kinds: list[str] = []
     if isinstance(run.get("human_reward"), dict):
@@ -10774,6 +10803,7 @@ def collect_status(
         "run_count": history.get("run_count"),
         "status_contract": build_status_contract(),
         "goal_filter": goal_filter,
+        **build_contract_health_projection(contract),
         "contract": {
             "ok": contract.get("ok"),
             "summary": contract.get("summary"),
@@ -10828,6 +10858,26 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         f"warnings={summary.get('warnings')}, "
         f"checks={summary.get('checks')}"
     )
+    contract_errors = (
+        payload.get("contract_errors") if isinstance(payload.get("contract_errors"), list) else []
+    )
+    contract_warnings = (
+        payload.get("contract_warnings") if isinstance(payload.get("contract_warnings"), list) else []
+    )
+    if contract_errors or contract_warnings:
+        lines.extend(["", "## Status Contract Signals"])
+        for item in contract_errors:
+            lines.append(f"- error: {item}")
+        if payload.get("contract_errors_truncated"):
+            lines.append(
+                f"- contract_errors_truncated: total={payload.get('contract_errors_total_count')}"
+            )
+        for item in contract_warnings:
+            lines.append(f"- warning: {item}")
+        if payload.get("contract_warnings_truncated"):
+            lines.append(
+                f"- contract_warnings_truncated: total={payload.get('contract_warnings_total_count')}"
+            )
 
     global_registry = payload.get("global_registry") if isinstance(payload.get("global_registry"), dict) else {}
     global_summary = (
