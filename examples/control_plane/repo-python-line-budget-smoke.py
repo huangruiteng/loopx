@@ -13,11 +13,22 @@ DEFAULT_MAX_LINES = 2000
 # Existing oversized files are pinned to their current line count. When this
 # smoke fails, first split ownership or extract a module; only raise a legacy
 # budget with an explicit follow-up plan for retiring that whitelist entry.
+LEGACY_OVERSIZED_RETIREMENT_PLANS = {
+    "examples/skillsbench-benchmark-run-smoke.py": (
+        "Extract SkillsBench ledger/reduce-only fixture groups into narrower "
+        "smokes, then lower this pin back below 14808."
+    ),
+    "scripts/skillsbench_automation_loop.py": (
+        "Extract native app-server Goal/reduce-only closeout helpers into "
+        "scripts or benchmark adapter modules, then lower this pin below 16791."
+    ),
+}
+
 LEGACY_OVERSIZED_LIMITS = {
     "examples/benchmark-run-ledger-smoke.py": 2106,
     "examples/control_plane/quota-plan-smoke.py": 2176,
     "examples/skillsbench-app-server-goal-worker-smoke.py": 3056,
-    "examples/skillsbench-benchmark-run-smoke.py": 14808,
+    "examples/skillsbench-benchmark-run-smoke.py": 14900,
     "examples/skillsbench-host-local-launch-plan-smoke.py": 2373,
     "examples/control_plane/status-markdown-smoke.py": 2607,
     "examples/terminal-bench-harbor-runner-ingest-smoke.py": 2759,
@@ -38,7 +49,7 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/terminal_bench_agent.py": 2056,
     "loopx/todos.py": 2105,
     "scripts/harbor_host_codex_goal_agent.py": 2140,
-    "scripts/skillsbench_automation_loop.py": 16791,
+    "scripts/skillsbench_automation_loop.py": 16855,
 }
 
 
@@ -72,6 +83,22 @@ def main() -> None:
 
     missing_budgets = sorted(set(LEGACY_OVERSIZED_LIMITS) - set(counts))
     require(not missing_budgets, f"line budgets reference missing files: {missing_budgets}")
+
+    missing_retirement_plans = sorted(
+        path
+        for path, limit in LEGACY_OVERSIZED_LIMITS.items()
+        if limit > DEFAULT_MAX_LINES
+        and path in {
+            "examples/skillsbench-benchmark-run-smoke.py",
+            "scripts/skillsbench_automation_loop.py",
+        }
+        and not LEGACY_OVERSIZED_RETIREMENT_PLANS.get(path)
+    )
+    require(
+        not missing_retirement_plans,
+        "legacy line-budget increases require retirement plans: "
+        + ", ".join(missing_retirement_plans),
+    )
 
     failures: list[str] = []
     for path, count in sorted(counts.items()):
