@@ -99,8 +99,10 @@ def assert_installed_release(
     assert "ok: `True`" in doctor.stdout, doctor.stdout
 
     help_text = run([str(installed), "--help"], env=runtime_env, cwd=fresh_repo).stdout
+    assert "loopx commands" in help_text, help_text
+    commands_text = run([str(installed), "commands"], env=runtime_env, cwd=fresh_repo).stdout
     for command in FIRST_RUN_COMMANDS:
-        assert command in help_text, help_text
+        assert command in commands_text, commands_text
 
     assert (release_dir / "docs" / "product" / "codex-cli-first-run-rehearsal.md").exists()
     assert (release_dir / "docs" / "product" / "codex-cli-no-clone-release-verification.md").exists()
