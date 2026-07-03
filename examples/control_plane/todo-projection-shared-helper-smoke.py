@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.quota import (  # noqa: E402
     _claimed_visibility_items as quota_claimed_visibility_items,
+    _first_executable_todo_item as quota_first_executable_todo_item,
     _todo_item_claimed_by_agent_or_unclaimed as quota_todo_item_claimed_by_agent_or_unclaimed,
     _todo_item_is_deferred as quota_todo_item_is_deferred,
     _todo_summary_monitor_items as quota_todo_summary_monitor_items,
@@ -36,6 +37,7 @@ from loopx.todo_projection import (  # noqa: E402
     todo_item_claimed_by_agent_or_unclaimed as shared_todo_item_claimed_by_agent_or_unclaimed,
     todo_item_is_deferred as shared_todo_item_is_deferred,
     todo_projection_sort_key as shared_todo_projection_sort_key,
+    todo_summary_first_executable_item as shared_first_executable_todo_item,
     todo_summary_monitor_items as shared_todo_summary_monitor_items,
 )
 
@@ -297,6 +299,16 @@ def assert_monitor_item_collection_parity(summary: dict[str, Any]) -> None:
         assert selected_ids == expected_ids, selected_ids
 
 
+def assert_first_executable_item_parity(summary: dict[str, Any]) -> None:
+    for selector in (
+        shared_first_executable_todo_item,
+        quota_first_executable_todo_item,
+    ):
+        selected = selector(summary)
+        assert isinstance(selected, dict), summary
+        assert selected["todo_id"] == "todo_advancement_p0", selected
+
+
 def assert_quota_uses_executable_advancement(summary: dict[str, Any]) -> None:
     payload = build_quota_should_run(
         status_payload(summary),
@@ -327,6 +339,7 @@ def main() -> int:
     assert_claimed_visibility_parity()
     assert_deferred_helper_parity()
     assert_monitor_item_collection_parity(summary)
+    assert_first_executable_item_parity(summary)
     assert_quota_uses_executable_advancement(summary)
     return 0
 

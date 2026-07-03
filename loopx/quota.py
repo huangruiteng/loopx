@@ -99,6 +99,7 @@ from .todo_projection import (
     todo_priority_rank as projection_todo_priority_rank,
     todo_projection_sort_key as projection_todo_projection_sort_key,
     todo_summary_claim_scope_agent_id as projection_todo_summary_claim_scope_agent_id,
+    todo_summary_first_executable_item as projection_todo_summary_first_executable_item,
     todo_summary_monitor_items as projection_todo_summary_monitor_items,
     todo_summary_monitor_due_count as projection_todo_summary_monitor_due_count,
     todo_summary_monitor_due_items as projection_todo_summary_monitor_due_items,
@@ -5644,22 +5645,7 @@ def _todo_summary_monitor_schedule_gap_count(
 
 
 def _first_executable_todo_item(agent_todo_summary: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(agent_todo_summary, dict):
-        return None
-    items = (
-        agent_todo_summary.get("first_executable_items")
-        if isinstance(agent_todo_summary.get("first_executable_items"), list)
-        else []
-    )
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if not _todo_item_is_actionable_open(item):
-            continue
-        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
-            continue
-        return item
-    return None
+    return projection_todo_summary_first_executable_item(agent_todo_summary)
 
 
 def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
