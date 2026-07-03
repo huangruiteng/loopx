@@ -14,6 +14,10 @@ AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
 )
 AUTO_RESEARCH_DEMO_TICK_ROUNDS = 3
 AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS = 3
+AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = (
+    "[P0-auto-research-live] Run held-out validation for the dev-supported "
+    "hypothesis, append public-safe evidence, and summarize promotion readiness."
+)
 
 AUTO_RESEARCH_DEFAULT_LANES = (
     (
@@ -77,16 +81,51 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
     },
     "evidence_runner": {
         "phase": "evidence",
-        "allowed_actions": ["run_dev_eval"],
+        "allowed_actions": ["run_dev_eval", "run_holdout_eval"],
         "write_scope": ["auto_research_evidence_packet_v0", "rollout_event_log"],
-        "handoff": ["Append scored evidence, complete the selected todo, and leave verifier context."],
+        "handoff": [
+            "Append scored evidence, complete the selected todo, and create the declared successor todo when the role profile says another split is due."
+        ],
+        "successor_todos": [
+            {
+                "after_action": "run_dev_eval",
+                "when": "dev_supported_without_holdout",
+                "target_agent_id": "codex-main-control",
+                "target_role_id": "evidence_runner",
+                "task_class": "advancement_task",
+                "action_kind": "run_holdout_eval",
+                "text": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT,
+            }
+        ],
     },
     "evidence_verifier": {
         "phase": "verify",
         "allowed_actions": ["summarize_evidence"],
         "write_scope": ["research_evidence_graph_v0", "todo_item_v0"],
-        "handoff": ["Add a next-round hypothesis todo when evidence is incomplete."],
+        "handoff": ["Add a role-declared successor todo when evidence needs another bounded split."],
+        "successor_todos": [
+            {
+                "after_action": "summarize_evidence",
+                "when": "dev_supported_without_holdout",
+                "target_agent_id": "codex-main-control",
+                "target_role_id": "evidence_runner",
+                "task_class": "advancement_task",
+                "action_kind": "run_holdout_eval",
+                "text": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT,
+            }
+        ],
     },
+}
+
+AUTO_RESEARCH_ACTION_ROLE_IDS = {
+    "write_research_contract": "research_curator",
+    "propose_hypothesis": "hypothesis_mapper",
+    "run_dev_eval": "evidence_runner",
+    "run_holdout_eval": "evidence_runner",
+    "write_evidence": "evidence_runner",
+    "classify_evidence": "evidence_verifier",
+    "summarize_evidence": "evidence_verifier",
+    "write_evaluation_summary": "evidence_verifier",
 }
 
 AUTO_RESEARCH_SEED_TITLES = {
@@ -176,6 +215,22 @@ def auto_research_role_profile(*, role_id: str, goal_id: str, agent_id: str) -> 
         ],
         **base,
     }
+
+
+def auto_research_role_id_for_action(action: str) -> str:
+    return AUTO_RESEARCH_ACTION_ROLE_IDS.get(action, "")
+
+
+def auto_research_successor_specs_for_action(*, role_id: str, action: str) -> list[dict[str, object]]:
+    profile = AUTO_RESEARCH_ROLE_PROFILES.get(role_id) or {}
+    specs = profile.get("successor_todos") if isinstance(profile, dict) else []
+    if not isinstance(specs, list):
+        return []
+    return [
+        dict(spec)
+        for spec in specs
+        if isinstance(spec, dict) and str(spec.get("after_action") or "") == action
+    ]
 
 
 def auto_research_worker_turn_command(*, goal_id: str, agent_id: str, objective: str) -> str:

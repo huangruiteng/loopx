@@ -29,6 +29,7 @@ CURATOR_AGENT_ID = "codex-product-capability"
 MAPPER_AGENT_ID = "codex-side-bypass"
 EVIDENCE_AGENT_ID = "codex-main-control"
 VERIFIER_AGENT_ID = "codex-value-explorer"
+ALT_EVIDENCE_AGENT_ID = "codex-alt-evidence"
 FOUR_LANES = [
     "codex-product-capability:research-curator:research_curator",
     "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
@@ -62,6 +63,30 @@ def run_worker_turn(
     execute: bool,
     complete: bool = False,
 ) -> dict[str, Any]:
+    result = run_worker_turn_process(
+        registry=registry,
+        runtime_root=runtime_root,
+        workspace=workspace,
+        agent_id=agent_id,
+        execute=execute,
+        complete=complete,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"worker-turn failed rc={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
+        )
+    return json.loads(result.stdout)
+
+
+def run_worker_turn_process(
+    *,
+    registry: Path,
+    runtime_root: str | None,
+    workspace: Path,
+    agent_id: str,
+    execute: bool,
+    complete: bool = False,
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{env.get('PYTHONPATH', '')}"
@@ -89,7 +114,7 @@ def run_worker_turn(
         args.append("--execute")
     if complete:
         args.append("--complete-selected-todo")
-    result = subprocess.run(
+    return subprocess.run(
         args,
         cwd=workspace,
         env=env,
@@ -97,11 +122,6 @@ def run_worker_turn(
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0:
-        raise AssertionError(
-            f"worker-turn failed rc={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-        )
-    return json.loads(result.stdout)
 
 
 def main() -> int:
@@ -257,10 +277,14 @@ def main() -> int:
         assert executed["live_evidence"]["written"] is True, executed
         assert executed["live_evidence"]["evidence_source"] == "live_codex_lane_output", executed
         assert executed["live_evidence"]["dev_metric"] == 4.0, executed
-        assert executed["continuation_projection"]["source"] == "loopx_state_todo_frontier", executed
+        assert executed["successor_todos"]["source"] == "role_profile_successor_todos", executed
+        assert executed["successor_todos"]["role_id"] == "evidence_runner", executed
+        assert executed["successor_todos"]["action"] == "run_dev_eval", executed
+        assert executed["successor_todos"]["successors"][0]["target_role_id"] == "evidence_runner", executed
         assert executed["followup"]["needed"] is True, executed
         assert executed["followup"]["action_kind"] == "run_holdout_eval", executed
         assert executed["followup"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
+        assert executed["followup"]["source"] == "role_profile_successor_todos", executed
         assert executed["frontier"]["frontier"]["selected"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
         assert payload["visible_launch"]["launch_result"]["worker_turn_executed"] is True, payload
         assert payload["visible_launch"]["launch_result"]["worker_turn_count"] == 3, payload
@@ -385,6 +409,47 @@ def main() -> int:
         assert cleanup["decision_summary"]["validated_promotion_candidate_count"] == 1, cleanup
         assert_public_safe(holdout)
         assert_public_safe(cleanup)
+
+        alt_supervisor = build_auto_research_demo_supervisor_plan(
+            goal_id=GOAL_ID,
+            agent_specs=[
+                "codex-alt-curator:research-curator:research_curator",
+                "codex-alt-mapper:hypothesis-mapper:hypothesis_mapper",
+                f"{ALT_EVIDENCE_AGENT_ID}:evidence-runner:evidence_runner",
+                "codex-alt-verifier:evidence-verifier:evidence_verifier",
+            ],
+            reasoning_effort="high",
+        )
+        alt_root = temp / "missing-successor-target"
+        _alt_summary, alt_registry, alt_runtime_root = _seed_visible_demo_control_plane(
+            demo_root=alt_root,
+            goal_id=GOAL_ID,
+            objective="Prove role-declared successor targets fail closed when the target agent is not registered.",
+            supervisor=alt_supervisor,
+        )
+        alt_workspace = alt_root / "visible-control-plane"
+        for agent in ["codex-alt-curator", "codex-alt-mapper"]:
+            turn = run_worker_turn(
+                registry=alt_registry,
+                runtime_root=alt_runtime_root,
+                workspace=alt_workspace,
+                agent_id=agent,
+                execute=True,
+                complete=True,
+            )
+            assert turn["mode"] == "execute", turn
+        missing_target = run_worker_turn_process(
+            registry=alt_registry,
+            runtime_root=alt_runtime_root,
+            workspace=alt_workspace,
+            agent_id=ALT_EVIDENCE_AGENT_ID,
+            execute=True,
+            complete=True,
+        )
+        assert missing_target.returncode != 0, missing_target.stdout
+        assert "successor target_agent_id 'codex-main-control' is not registered" in (
+            missing_target.stdout + missing_target.stderr
+        ), missing_target
 
     print("auto-research-worker-turn-smoke ok")
     return 0

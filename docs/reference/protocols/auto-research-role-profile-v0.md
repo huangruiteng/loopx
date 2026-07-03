@@ -61,6 +61,17 @@ frontier item, bootstrap prompt, or future kernel API.
     "research_evidence_event_v0",
     "branch_or_artifact_ref",
     "retry_or_retirement_rationale"
+  ],
+  "successor_todos": [
+    {
+      "after_action": "run_dev_eval",
+      "when": "dev_supported_without_holdout",
+      "target_agent_id": "codex-main-control",
+      "target_role_id": "evidence_runner",
+      "task_class": "advancement_task",
+      "action_kind": "run_holdout_eval",
+      "text": "Run held-out validation for the dev-supported hypothesis."
+    }
   ]
 }
 ```
@@ -76,8 +87,13 @@ Required fields:
 - `required_skill` and `skill_section` route the worker to the correct how-to
   instructions after identity is resolved.
 
-Optional fields such as `hypothesis_id`, `agents_overlay`, and
-`handoff_outputs` make the profile more ergonomic but do not grant authority.
+Optional fields such as `hypothesis_id`, `agents_overlay`, `handoff_outputs`,
+and `successor_todos` make the profile more ergonomic but do not grant
+authority. A successor todo declaration is a small role-local handoff rule: when
+the worker completes `after_action` and the `when` condition is satisfied, the
+pane-local tick may write the named LoopX todo for `target_agent_id`. It is not a
+graph-wide planner, and it must still pass quota, todo metadata, and
+public/private boundary checks before another agent can run it.
 
 ## Resolution Order
 
@@ -92,7 +108,7 @@ order:
 4. Load the required skill and only the section named by `skill_section`.
 5. Read applicable `AGENTS.md` overlays for repository and workspace rules.
 6. Act within `allowed_actions` and `write_scope`, then write only the listed
-   handoff outputs.
+   handoff outputs and role-declared successor todos.
 
 If any source conflicts, the worker fails closed in this order:
 
@@ -112,7 +128,7 @@ records still name the role that produced each transition.
 | --- | --- | --- | --- | --- |
 | `research_curator` | Research curator | `contract_ready`, `promotion_gate` | `research_contract_v0`, owner gate todos, protected-boundary notes. | The next step would select a winner, run an experiment, or publish unsupported evidence. |
 | `hypothesis_mapper` | Hypothesis mapper | `hypothesis_proposed`, `retired` | `research_hypothesis_v0`, successor todos, no-follow-up rationale. | Novelty requires the same source that inspired the idea, or negative evidence would be hidden. |
-| `evidence_runner` | Evidence runner | `frontier_selected`, `attempt_running` | Branch refs, dev eval evidence, retry packets. | Protected scope changes, promotion decisions, or private/raw artifacts are needed. |
+| `evidence_runner` | Evidence runner | `frontier_selected`, `attempt_running` | Branch refs, dev/holdout eval evidence, retry packets, role-declared successor todos. | Protected scope changes, promotion decisions, or private/raw artifacts are needed. |
 | `evidence_verifier` | Evidence verifier | `evidence_recorded`, `evaluated`, `promotion_gate` | Held-out validation evidence, evaluation summary, promotion/retirement candidates, gate todos. | Evidence is dev-only but would be presented as promoted, or held-out data is missing when required. |
 
 Future roles such as gate steward, synthesis narrator, and frontier janitor are

@@ -80,6 +80,14 @@ The graph can be rendered as a tree, but it is not owned by a tree manager. A
 lane appends or updates the smallest source record it is authorized to touch;
 projection builders derive frontiers and product views afterward.
 
+Successor work should stay equally small. A role profile may declare a
+`successor_todos` rule such as "after `run_dev_eval`, if dev evidence is
+supported and no holdout exists, add `run_holdout_eval` for
+`codex-main-control`." The pane-local tick applies that declaration by writing a
+normal LoopX todo with `claimed_by`, `action_kind`, and `unblocks_todo_id`.
+The next agent still re-enters through its own `quota should-run` and frontier;
+there is no separate continuation projector or central research manager.
+
 ## Capability Rules
 
 1. A `research_curator` may create or amend `research_contract_v0` only inside
@@ -88,7 +96,7 @@ projection builders derive frontiers and product views afterward.
    agent todo and has `claimed_by`, `todo_id`, `mechanism_family`, and
    grounding refs or a clear no-grounding reason.
 3. A `research_executor` may run only the hypothesis selected by current
-   agent-scoped quota or an explicitly claimed successor todo.
+   agent-scoped quota or an explicitly claimed role-declared successor todo.
 4. An `evaluator_promoter` may promote only when dev evidence, held-out
    evidence, clean boundary, and required gates are present.
 5. A `product_narrator` may publish only from `research_evidence_graph_v0`

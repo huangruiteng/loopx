@@ -47,6 +47,12 @@ If the launcher exported `LOOPX_ROLE_ID`, `LOOPX_ROLE_PROFILE_REF`,
 `LOOPX_ROLE_PHASE`, or a profile JSON path, compare those values with the quota
 and frontier packets. Stop when they disagree. Do not guess the intended role.
 
+If the role profile includes `successor_todos`, treat those declarations as the
+only role-local way to create the next agent todo. The worker-turn/tick may
+write the declared LoopX todo after a successful action and condition check.
+Do not invent an extra continuation plan in prose, and do not ask a leader pane
+to pick the next role.
+
 For a visible demo rehearsal, inspect the dry-run supervisor before execution:
 
 ```bash
@@ -158,7 +164,9 @@ Allowed actions:
 - claim the current frontier item selected for this agent;
 - edit only allowed solution or experiment scope;
 - run dev or holdout evaluation only when the contract permits it;
-- build an `auto_research_evidence_packet_v0` or equivalent public-safe event.
+- build an `auto_research_evidence_packet_v0` or equivalent public-safe event;
+- create only the role-declared successor todo, such as a holdout validation
+  todo, when the profile's `successor_todos` condition is satisfied.
 
 Useful command after a protected eval result exists:
 
@@ -221,7 +229,9 @@ Allowed actions:
   evidence;
 - request retry with a bounded reason and resumable ref;
 - create promotion, retirement, or gate candidates;
-- write compact validation notes for the next worker.
+- write compact validation notes for the next worker;
+- add only the role-declared successor todo when evidence needs another bounded
+  split.
 
 Verification checklist:
 

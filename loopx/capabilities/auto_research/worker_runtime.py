@@ -25,6 +25,10 @@ from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
     build_live_codex_e2e_evidence_from_packet,
 )
+from .preset import (
+    auto_research_role_id_for_action,
+    auto_research_successor_specs_for_action,
+)
 from .research_state import (
     build_live_auto_research_projection,
     build_research_decision_candidates,
@@ -53,10 +57,6 @@ SUPPORTED_WORKER_ACTIONS = {
     "write_evaluation_summary",
 }
 DEFAULT_EVIDENCE_RUNNER_AGENT_ID = "codex-main-control"
-HOLDOUT_FOLLOWUP_TEXT = (
-    "[P0-auto-research-live] Run held-out validation for the dev-supported "
-    "hypothesis, append public-safe evidence, and summarize promotion readiness."
-)
 GENERIC_VERIFIER_HANDOFF_KEYWORDS = (
     "verify",
     "verifier",
@@ -350,108 +350,151 @@ def _select_holdout_candidate(graph: dict[str, object]) -> dict[str, object]:
     )[0]
 
 
-def _evidence_runner_agent_id(*, registry_path: Path, goal_id: str, current_agent_id: str) -> str:
+def _successor_condition_met(condition: str, *, decision_summary: dict[str, object]) -> tuple[bool, str]:
+    if condition == "always":
+        return True, "always"
+    if condition == "dev_supported_without_holdout":
+        dev_candidate_count = int(decision_summary.get("dev_promotion_candidate_count") or 0)
+        validated_candidate_count = int(
+            decision_summary.get("validated_promotion_candidate_count") or 0
+        )
+        if not dev_candidate_count:
+            return False, "no_dev_promotion_candidate"
+        if validated_candidate_count:
+            return False, "holdout_already_validated"
+        return True, condition
+    return False, f"unsupported_successor_condition:{condition or 'missing'}"
+
+
+def _resolve_successor_target_agent(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    current_agent_id: str,
+    spec: dict[str, object],
+) -> str:
     registered = registered_agent_ids_from_registry(registry_path, goal_id)
-    if DEFAULT_EVIDENCE_RUNNER_AGENT_ID in registered:
-        return DEFAULT_EVIDENCE_RUNNER_AGENT_ID
+    target = str(spec.get("target_agent_id") or "").strip()
+    if target == "$current_agent":
+        return current_agent_id
+    if target and target in registered:
+        return target
+    if target:
+        raise ValueError(f"successor target_agent_id {target!r} is not registered for goal {goal_id!r}")
+    target_role_id = str(spec.get("target_role_id") or "").strip()
+    if target_role_id:
+        raise ValueError(
+            f"successor target_role_id {target_role_id!r} requires an explicit registered target_agent_id"
+        )
     for agent_id in registered:
         if agent_id != current_agent_id:
             return agent_id
     return current_agent_id
 
 
-def _maybe_add_holdout_followup_todo(
+def _maybe_add_role_successor_todos(
     *,
     registry_path: Path,
     goal_id: str,
     source_todo_id: str,
     agent_id: str,
+    role_id: str,
+    action: str,
     decision_summary: dict[str, object],
     execute: bool,
 ) -> dict[str, object]:
-    dev_candidate_count = int(decision_summary.get("dev_promotion_candidate_count") or 0)
-    validated_candidate_count = int(decision_summary.get("validated_promotion_candidate_count") or 0)
-    if not dev_candidate_count:
-        return {"needed": False, "reason": "no_dev_promotion_candidate"}
-    if validated_candidate_count:
-        return {"needed": False, "reason": "holdout_already_validated"}
-
-    claimed_by = _evidence_runner_agent_id(
-        registry_path=registry_path,
-        goal_id=goal_id,
-        current_agent_id=agent_id,
-    )
-    if not execute:
+    specs = auto_research_successor_specs_for_action(role_id=role_id, action=action)
+    if not specs:
         return {
-            "needed": True,
-            "executed": False,
-            "action_kind": "run_holdout_eval",
-            "claimed_by": claimed_by,
-            "unblocks_todo_id": source_todo_id,
+            "schema_version": "auto_research_role_successor_todos_v0",
+            "source": "role_profile_successor_todos",
+            "needed": False,
+            "reason": "no_role_successor_spec",
+            "role_id": role_id,
+            "action": action,
+            "successors": [],
         }
 
-    result = add_goal_todo(
-        registry_path=registry_path,
-        goal_id=goal_id,
-        role="agent",
-        text=HOLDOUT_FOLLOWUP_TEXT,
-        task_class="advancement_task",
-        action_kind="run_holdout_eval",
-        claimed_by=claimed_by,
-        unblocks_todo_id=source_todo_id,
-        dry_run=False,
-    )
+    successors: list[dict[str, object]] = []
+    skipped: list[dict[str, object]] = []
+    for index, spec in enumerate(specs):
+        condition = str(spec.get("when") or "always")
+        condition_met, reason = _successor_condition_met(
+            condition,
+            decision_summary=decision_summary,
+        )
+        action_kind = str(spec.get("action_kind") or "advance_todo")
+        claimed_by = _resolve_successor_target_agent(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            current_agent_id=agent_id,
+            spec=spec,
+        )
+        successor_preview = {
+            "index": index,
+            "needed": condition_met,
+            "executed": False,
+            "condition": condition,
+            "reason": reason,
+            "target_agent_id": claimed_by,
+            "target_role_id": spec.get("target_role_id"),
+            "action_kind": action_kind,
+            "task_class": spec.get("task_class") or "advancement_task",
+            "unblocks_todo_id": source_todo_id,
+            "source": "role_profile_successor_todos",
+        }
+        if not condition_met:
+            skipped.append(successor_preview)
+            continue
+        if not execute:
+            successors.append(successor_preview)
+            continue
+        result = add_goal_todo(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            role="agent",
+            text=str(spec.get("text") or f"Run {action_kind}."),
+            task_class=str(spec.get("task_class") or "advancement_task"),
+            action_kind=action_kind,
+            claimed_by=claimed_by,
+            unblocks_todo_id=source_todo_id,
+            dry_run=False,
+        )
+        successors.append(
+            successor_preview
+            | {
+                "executed": True,
+                "added": bool(result.get("added")),
+                "already_exists": bool(result.get("already_exists")),
+                "metadata_updated": bool(result.get("metadata_updated")),
+                "todo_id": result.get("todo_id"),
+                "claimed_by": result.get("claimed_by") or claimed_by,
+                "action_kind": result.get("action_kind") or action_kind,
+                "unblocks_todo_id": result.get("unblocks_todo_id") or source_todo_id,
+            }
+        )
     return {
-        "needed": True,
-        "executed": True,
-        "added": bool(result.get("added")),
-        "already_exists": bool(result.get("already_exists")),
-        "metadata_updated": bool(result.get("metadata_updated")),
-        "todo_id": result.get("todo_id"),
-        "action_kind": result.get("action_kind") or "run_holdout_eval",
-        "claimed_by": result.get("claimed_by") or claimed_by,
-        "unblocks_todo_id": result.get("unblocks_todo_id") or source_todo_id,
+        "schema_version": "auto_research_role_successor_todos_v0",
+        "source": "role_profile_successor_todos",
+        "needed": bool(successors),
+        "executed": bool(execute and successors),
+        "role_id": role_id,
+        "action": action,
+        "successors": successors,
+        "skipped": skipped,
+        "reason": None if successors else (skipped[0]["reason"] if skipped else "no_role_successor_spec"),
     }
 
 
-def _project_holdout_followup_after_dev_evidence(
-    *,
-    registry_path: Path,
-    runtime_root_arg: str | None,
-    output_path: Path,
-    goal_id: str,
-    todo_id: str,
-    agent_id: str,
-    execute: bool,
-) -> dict[str, object]:
-    """Project a dev-supported candidate into ordinary LoopX todo/frontier state."""
-
-    artifact = _write_evaluation_summary_artifact(
-        registry_path=registry_path,
-        runtime_root_arg=runtime_root_arg,
-        output_path=output_path,
-        goal_id=goal_id,
-        todo_id=todo_id,
-        agent_id=agent_id,
-    )
-    followup = _maybe_add_holdout_followup_todo(
-        registry_path=registry_path,
-        goal_id=goal_id,
-        source_todo_id=todo_id,
-        agent_id=agent_id,
-        decision_summary=artifact["decision_summary"],
-        execute=execute,
-    )
+def _legacy_followup_from_successor_todos(successor_todos: dict[str, object]) -> dict[str, object]:
+    successors = successor_todos.get("successors") if isinstance(successor_todos, dict) else []
+    if isinstance(successors, list) and successors:
+        first = dict(successors[0])
+        first["needed"] = True
+        return first
     return {
-        "schema_version": "auto_research_continuation_projection_v0",
-        "source": "loopx_state_todo_frontier",
-        "candidate_kind": "holdout_validation",
-        "decision_summary": artifact["decision_summary"],
-        "followup": followup,
-        "artifact": _artifact_summary(
-            "evaluation_summary",
-            filename="evaluation-summary.public.json",
-        ),
+        "needed": False,
+        "reason": successor_todos.get("reason") if isinstance(successor_todos, dict) else "no_successor",
     }
 
 
@@ -830,14 +873,18 @@ def run_auto_research_worker_turn(
             todo_id=todo_id,
             agent_id=agent_id,
         )
-        followup = _maybe_add_holdout_followup_todo(
+        role_id = auto_research_role_id_for_action(action)
+        successor_todos = _maybe_add_role_successor_todos(
             registry_path=registry_path,
             goal_id=goal_id,
             source_todo_id=todo_id,
             agent_id=agent_id,
+            role_id=role_id,
+            action=action,
             decision_summary=artifact["decision_summary"],
             execute=True,
         )
+        followup = _legacy_followup_from_successor_todos(successor_todos)
         completion = (
             _complete_selected_todo(
                 registry_path=registry_path,
@@ -864,6 +911,8 @@ def run_auto_research_worker_turn(
             "artifact_status": artifact["summary"]["status"],
             "claim_allowed": artifact["summary"]["claim_allowed"],
             "promotion_decision_made": artifact["summary"]["promotion_decision_made"],
+            "role_id": role_id,
+            "successor_todos": successor_todos,
             "followup": followup,
             "completion": completion,
             "frontier": frontier_packet,
@@ -1034,15 +1083,26 @@ def run_auto_research_worker_turn(
     _write_json(evidence_packet_path, packet)
     append_result = append_evidence(str(evidence_packet_path))
     _write_json(append_result_path, append_result)
-    continuation = _project_holdout_followup_after_dev_evidence(
+    summary_artifact = _write_evaluation_summary_artifact(
         registry_path=registry_path,
         runtime_root_arg=runtime_root_arg,
         output_path=evaluation_summary_path,
         goal_id=goal_id,
         todo_id=todo_id,
         agent_id=agent_id,
+    )
+    role_id = auto_research_role_id_for_action(action)
+    successor_todos = _maybe_add_role_successor_todos(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        source_todo_id=todo_id,
+        agent_id=agent_id,
+        role_id=role_id,
+        action=action,
+        decision_summary=summary_artifact["decision_summary"],
         execute=True,
     )
+    followup = _legacy_followup_from_successor_todos(successor_todos)
 
     live_evidence: dict[str, object] | None = None
     if visible_lanes_accepted:
@@ -1093,13 +1153,22 @@ def run_auto_research_worker_turn(
             "appended_count": append_result.get("appended_count"),
             "counts_by_kind": append_result.get("counts_by_kind"),
         },
+        "evaluation_summary": {
+            "claim_allowed": summary_artifact["summary"]["claim_allowed"],
+            "best_dev_metric": summary_artifact["evidence_graph_summary"]["best_dev_metric"],
+            "best_holdout_metric": summary_artifact["evidence_graph_summary"]["best_holdout_metric"],
+            "validated_promotion_candidate_count": summary_artifact["decision_summary"][
+                "validated_promotion_candidate_count"
+            ],
+        },
         "live_evidence": {
             "written": live_evidence is not None,
             "evidence_source": live_evidence.get("source") if live_evidence else None,
             "dev_metric": live_lane_evidence.get("dev_metric"),
         },
-        "continuation_projection": continuation,
-        "followup": continuation["followup"],
+        "role_id": role_id,
+        "successor_todos": successor_todos,
+        "followup": followup,
         "artifacts": {
             "paths_are_local_only": True,
             "evidence_packet": "evidence.public.json",

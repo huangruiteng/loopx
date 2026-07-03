@@ -166,6 +166,16 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile
         assert profile["stop_conditions"], profile
+        if lane["role_id"] == "evidence_runner":
+            successors = profile["successor_todos"]
+            assert successors[0]["after_action"] == "run_dev_eval", profile
+            assert successors[0]["target_agent_id"] == "codex-main-control", profile
+            assert successors[0]["action_kind"] == "run_holdout_eval", profile
+            assert "run_holdout_eval" in profile["allowed_actions"], profile
+        if lane["role_id"] == "evidence_verifier":
+            successors = profile["successor_todos"]
+            assert successors[0]["after_action"] == "summarize_evidence", profile
+            assert successors[0]["target_role_id"] == "evidence_runner", profile
 
         assert "quota should-run" in lane["quota_guard"], lane
         assert f"--agent-id {lane['agent_id']}" in lane["quota_guard"], lane
