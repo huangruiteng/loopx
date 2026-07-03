@@ -17,6 +17,7 @@ from .capabilities.issue_fix.cli import (
 from .capabilities.auto_research.cli import (
     handle_auto_research_command,
     register_auto_research_commands,
+    rewrite_auto_research_question_argv,
 )
 from .capabilities.value_connectors.cli import (
     handle_value_connector_command,
@@ -119,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     if top_level_help_requested(raw_argv):
         print(render_concise_help(sys.argv[0] if argv is None else "loopx"), end="")
         return 0
+    raw_argv = rewrite_auto_research_question_argv(raw_argv)
 
     parser = argparse.ArgumentParser(description="LoopX control-plane helper.")
     parser.add_argument("--version", action="version", version=f"loopx {__version__}")
@@ -178,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     register_todo_command(sub)
     register_quota_command(sub)
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
     registry_path = Path(args.registry).expanduser()
     if (
         args.command
@@ -211,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
             "uninstall-project",
             "version",
         }
-        and not user_supplied_registry(argv)
+        and not user_supplied_registry(raw_argv)
         and not registry_path.exists()
     ):
         runtime_root = Path(args.runtime_root).expanduser() if args.runtime_root else DEFAULT_RUNTIME_ROOT
@@ -257,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     support_control_result = handle_support_control_command(
         args,
         registry_path=registry_path,
-        registry_was_supplied=user_supplied_registry(argv),
+        registry_was_supplied=user_supplied_registry(raw_argv),
         print_payload=print_payload,
         output_format=output_format,
     )
@@ -362,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
             args,
             registry_path=registry_path,
             runtime_root_arg=args.runtime_root,
-            allow_missing_registry=not user_supplied_registry(argv),
+            allow_missing_registry=not user_supplied_registry(raw_argv),
             print_payload=print_payload,
         )
 

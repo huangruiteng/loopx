@@ -40,6 +40,30 @@ artifacts, and any live evidence packet is compact and public-safe. The proof
 must not depend on raw logs, private artifacts, credentials, local absolute
 paths, or a product-specific launcher hidden inside the auto-research preset.
 
+## User Contract Entrypoint
+
+The smallest user-facing auto-research contract is one open question:
+
+```bash
+loopx auto-research "<open question>"
+```
+
+This command does not launch panes or claim that research has been completed.
+It renders the fixed contract the visible multi-agent run must satisfy:
+
+- `research_brief`: what has been read, what has not been read, and the claim
+  boundary;
+- `action_plan`: P0/P1/P2 work, capped at five todos;
+- `evidence_refs`: code, docs, benchmarks, issues, and pull requests;
+- `next_executable_step`: whether the next step can run automatically;
+- `gate`: the exact user judgment needed before crossing a boundary.
+
+This keeps the user layer and the auto-research preset thin. The user supplies
+one open question; auto-research supplies a fixed output contract; the generic
+kernel owns the runner, real Codex TUI panes, pane-local A2A tick, and
+todo/evidence/status protocol. Use `demo-e2e` when the next step is to launch
+the multi-round visible demo.
+
 ## Start From A Clean Workspace
 
 Use a user-owned directory for the visible demo, while keeping LoopX state in

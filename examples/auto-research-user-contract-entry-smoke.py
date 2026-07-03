@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Smoke-test the one-question auto-research user contract entrypoint."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
+    AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION,
+    build_auto_research_user_contract,
+)
+
+
+QUESTION = "How should LoopX make visible multi-agent auto research useful?"
+
+
+def assert_public_boundary(payload: dict[str, Any]) -> None:
+    text = json.dumps(payload, sort_keys=True)
+    forbidden = [
+        "/" + "Users/",
+        "/" + "private/",
+        "/" + "tmp/",
+        "lark" + "office",
+        "byte" + "dance",
+        "http" + "://",
+        "https" + "://",
+        "api" + "_key",
+        "pass" + "word",
+        "sec" + "ret",
+    ]
+    leaked = [needle for needle in forbidden if needle.lower() in text.lower()]
+    assert not leaked, leaked
+
+
+def assert_contract(payload: dict[str, Any]) -> None:
+    assert payload["ok"] is True, payload
+    assert payload["schema_version"] == AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION, payload
+    assert payload["mode"] == "user_contract", payload
+    assert payload["product_id"] == "auto-research", payload
+    assert payload["open_question"] == QUESTION, payload
+
+    layering = payload["layering"]
+    assert layering["user_layer"] == "one open question", layering
+    assert layering["auto_research_layer"] == "fixed output contract only", layering
+    assert "multi-agent runner" in layering["kernel_layer"], layering
+    assert "pane-local tick" in layering["kernel_layer"], layering
+
+    command_contract = payload["command_contract"]
+    assert command_contract["canonical_invocation"] == 'loopx auto-research "<open question>"'
+    assert command_contract["user_required_inputs"] == ["open_question"], command_contract
+    assert command_contract["max_action_plan_todos"] == 5, command_contract
+    assert command_contract["auto_research_required_outputs"] == [
+        "research_brief",
+        "action_plan",
+        "evidence_refs",
+        "next_executable_step",
+        "gate",
+    ], command_contract
+
+    brief = payload["research_brief"]
+    assert set(brief) == {"read", "not_read", "claim_boundary"}, brief
+    assert brief["read"] == [], brief
+    assert "source code" in brief["not_read"], brief
+    assert "evidence ref" in brief["claim_boundary"], brief
+
+    action_plan = payload["action_plan"]
+    assert 1 <= len(action_plan) <= 5, action_plan
+    assert [item["priority"] for item in action_plan][:2] == ["P0", "P0"], action_plan
+    assert all(item["owner_layer"] != "user_layer" for item in action_plan), action_plan
+
+    evidence = payload["evidence_refs"]
+    assert set(evidence) == {"code", "docs", "benchmarks", "issues", "pull_requests"}, evidence
+    assert all(value == [] for value in evidence.values()), evidence
+
+    step = payload["next_executable_step"]
+    assert step["can_run_automatically"] is True, step
+    assert "read-only evidence discovery" in step["step"], step
+
+    gate = payload["gate"]
+    assert gate["user_judgment_needed"], gate
+    assert "public/read-only discovery" in gate["default_without_user_gate"], gate
+
+    boundary = payload["public_boundary"]
+    assert boundary == {
+        "raw_logs": False,
+        "private_material": False,
+        "credentials": False,
+        "destructive_git": False,
+        "production_actions": False,
+    }, boundary
+    assert_public_boundary(payload)
+
+
+def run_cli(temp_dir: Path, *args: str) -> str:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(temp_dir / "registry.json"),
+            *args,
+        ],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return result.stdout
+
+
+def main() -> None:
+    payload = build_auto_research_user_contract(QUESTION)
+    assert_contract(payload)
+
+    with tempfile.TemporaryDirectory() as raw_temp_dir:
+        temp_dir = Path(raw_temp_dir)
+        shorthand_json = run_cli(temp_dir, "--format", "json", "auto-research", QUESTION)
+        assert_contract(json.loads(shorthand_json))
+
+        group_format_json = run_cli(temp_dir, "auto-research", "--format", "json", QUESTION)
+        assert_contract(json.loads(group_format_json))
+
+        explicit_json = run_cli(
+            temp_dir,
+            "--format",
+            "json",
+            "auto-research",
+            "contract",
+            QUESTION,
+            "--max-todos",
+            "3",
+        )
+        explicit_payload = json.loads(explicit_json)
+        assert len(explicit_payload["action_plan"]) == 3, explicit_payload
+
+        markdown = run_cli(temp_dir, "auto-research", QUESTION)
+        assert "# LoopX Auto Research" in markdown, markdown
+        for required in [
+            "## Research Brief",
+            "## Action Plan",
+            "## Evidence Refs",
+            "## Next Executable Step",
+            "## Gate",
+        ]:
+            assert required in markdown, markdown
+
+        supervisor_json = run_cli(
+            temp_dir,
+            "--format",
+            "json",
+            "auto-research",
+            "demo-supervisor",
+            "--goal-id",
+            "loopx-auto-research-contract-entry-smoke",
+        )
+        supervisor_payload = json.loads(supervisor_json)
+        assert supervisor_payload["schema_version"] == "auto_research_demo_supervisor_plan_v0"
+
+    print("auto-research-user-contract-entry-smoke ok")
+
+
+if __name__ == "__main__":
+    main()

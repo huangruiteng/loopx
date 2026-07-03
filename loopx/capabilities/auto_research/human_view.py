@@ -8,9 +8,79 @@ on legacy presentation helpers.
 from __future__ import annotations
 
 from .evidence_packet import AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION
+from .user_contract import AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION
 
 
 AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION = "auto_research_demo_e2e_result_v0"
+
+
+def _join_or_none(values: object) -> str:
+    if isinstance(values, list) and values:
+        return ", ".join(str(item) for item in values)
+    return "none"
+
+
+def _render_user_contract(payload: dict[str, object]) -> str:
+    brief = payload.get("research_brief") if isinstance(payload.get("research_brief"), dict) else {}
+    plan = payload.get("action_plan") if isinstance(payload.get("action_plan"), list) else []
+    evidence = payload.get("evidence_refs") if isinstance(payload.get("evidence_refs"), dict) else {}
+    next_step = (
+        payload.get("next_executable_step")
+        if isinstance(payload.get("next_executable_step"), dict)
+        else {}
+    )
+    gate = payload.get("gate") if isinstance(payload.get("gate"), dict) else {}
+    gates = gate.get("user_judgment_needed") if isinstance(gate.get("user_judgment_needed"), list) else []
+    lines = [
+        "# LoopX Auto Research",
+        "",
+        f"- schema: `{payload.get('schema_version')}`",
+        f"- question: {payload.get('open_question')}",
+        "",
+        "## Research Brief",
+        "",
+        f"- read: `{_join_or_none(brief.get('read'))}`",
+        f"- not_read: `{_join_or_none(brief.get('not_read'))}`",
+        f"- claim_boundary: {brief.get('claim_boundary')}",
+        "",
+        "## Action Plan",
+        "",
+    ]
+    if not plan:
+        lines.append("- none")
+    for item in plan:
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            f"- {item.get('priority')}: {item.get('todo')} "
+            f"(`{item.get('owner_layer')}`)"
+        )
+    lines.extend(
+        [
+            "",
+            "## Evidence Refs",
+            "",
+            f"- code: `{_join_or_none(evidence.get('code'))}`",
+            f"- docs: `{_join_or_none(evidence.get('docs'))}`",
+            f"- benchmarks: `{_join_or_none(evidence.get('benchmarks'))}`",
+            f"- issues: `{_join_or_none(evidence.get('issues'))}`",
+            f"- pull_requests: `{_join_or_none(evidence.get('pull_requests'))}`",
+            "",
+            "## Next Executable Step",
+            "",
+            f"- can_run_automatically: `{next_step.get('can_run_automatically')}`",
+            f"- step: {next_step.get('step')}",
+            "",
+            "## Gate",
+            "",
+        ]
+    )
+    if not gates:
+        lines.append("- none")
+    for item in gates:
+        lines.append(f"- {item}")
+    lines.append(f"- default_without_user_gate: {gate.get('default_without_user_gate')}")
+    return "\n".join(lines) + "\n"
 
 
 def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
@@ -339,6 +409,8 @@ def render_auto_research_markdown(payload: dict[str, object]) -> str:
     schema = payload.get("schema_version")
     if schema == "auto_research_worker_turn_v0":
         return _render_worker_turn(payload)
+    if schema == AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION:
+        return _render_user_contract(payload)
     if schema == "auto_research_worker_loop_v0":
         return _render_worker_loop(payload)
     if schema == AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION:

@@ -29,6 +29,7 @@ from .worker_runtime import run_auto_research_worker_turn
 from .rollout_append import (
     append_auto_research_rollout_events as _append_auto_research_rollout_events,
 )
+from .user_contract import build_auto_research_user_contract
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
@@ -48,6 +49,47 @@ FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
 
 AUTO_RESEARCH_DEMO_GOAL_PREFIX = "loopx-auto-research-demo"
+AUTO_RESEARCH_SUBCOMMANDS = frozenset(
+    {
+        "append-evidence",
+        "capture-live-evidence",
+        "contract",
+        "demo-e2e",
+        "demo-supervisor",
+        "evidence",
+        "frontier",
+        "worker-loop",
+        "worker-turn",
+    }
+)
+
+
+def rewrite_auto_research_question_argv(argv: list[str]) -> list[str]:
+    """Map `loopx auto-research "<question>"` to the explicit contract command."""
+
+    values = list(argv)
+    try:
+        command_index = values.index("auto-research")
+    except ValueError:
+        return values
+
+    cursor = command_index + 1
+    while cursor < len(values):
+        token = values[cursor]
+        if token == "--format" and cursor + 1 < len(values):
+            cursor += 2
+            continue
+        if token.startswith("--format="):
+            cursor += 1
+            continue
+        break
+    if cursor >= len(values):
+        return values
+
+    token = values[cursor]
+    if token.startswith("-") or token in AUTO_RESEARCH_SUBCOMMANDS:
+        return values
+    return values[:cursor] + ["contract"] + values[cursor:]
 
 
 def _demo_goal_suffix(value: object, *, fallback: str = "run") -> str:
@@ -83,10 +125,29 @@ def register_auto_research_commands(
         "auto-research",
         help="Project public-safe decentralized auto-research frontiers.",
     )
+    auto_research_parser.add_argument(
+        "--format",
+        dest="auto_research_format",
+        choices=["markdown", "json"],
+        help="Output format for the auto-research command group.",
+    )
     auto_research_sub = auto_research_parser.add_subparsers(
         dest="auto_research_command",
         required=True,
     )
+    contract_parser = auto_research_sub.add_parser(
+        "contract",
+        help="Render the fixed user-facing auto-research contract for one open question.",
+    )
+    add_subcommand_format(contract_parser)
+    contract_parser.add_argument("open_question", help="Quoted open research question.")
+    contract_parser.add_argument(
+        "--max-todos",
+        type=int,
+        default=5,
+        help="Maximum action-plan todos, capped at 5.",
+    )
+
     frontier_parser = auto_research_sub.add_parser(
         "frontier",
         help="Render a per-agent decentralized research frontier from a public fixture or live LoopX state.",
@@ -634,7 +695,12 @@ def handle_auto_research_command(
     print_payload: PrintPayload,
 ) -> int:
     try:
-        if args.auto_research_command == "frontier":
+        if args.auto_research_command == "contract":
+            payload = build_auto_research_user_contract(
+                args.open_question,
+                max_todos=args.max_todos,
+            )
+        elif args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):
                 raise ValueError(f"auto-research {args.auto_research_command} requires exactly one of --fixture or --goal-id")
             if args.fixture:
@@ -907,7 +973,7 @@ def handle_auto_research_command(
             )
         else:
             raise ValueError(
-                "auto-research requires the `frontier`, `evidence`, "
+                "auto-research requires the `contract`, `frontier`, `evidence`, "
                 "`append-evidence`, `capture-live-evidence`, "
                 "`worker-turn`, `worker-loop`, `demo-supervisor`, or `demo-e2e` subcommand"
             )
@@ -917,5 +983,5 @@ def handle_auto_research_command(
             "mode": "auto-research",
             "error": str(exc),
         }
-    print_payload(payload, output_format(args), render_auto_research_markdown)
+    print_payload(payload, output_format(args, "auto_research_format"), render_auto_research_markdown)
     return 0 if payload.get("ok") else 1
