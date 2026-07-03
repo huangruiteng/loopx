@@ -170,6 +170,17 @@ python3 examples/run-smokes.py --suite default-public --module canary
 loopx canary smoke-suite --suite default-public --module canary
 ```
 
+For repeatable canary/refactor batches, prefer named smoke-suite profiles over
+hand-curated script lists. Profiles expand to the same runner payload as
+`--module`, `--script`, catalog selectors, and the pytest facade:
+
+```bash
+loopx canary smoke-profiles
+loopx canary smoke-suite --profile core-control-plane --no-execute
+loopx canary smoke-suite --profile canary-runner --timeout-seconds 60
+python3 examples/run-smokes.py --profile public-entry-install-release --no-execute
+```
+
 CI may wrap the same runner selection in pytest when JUnit reporting is useful.
 The pytest facade still executes each `examples/**/*-smoke.py` through a
 subprocess; it is not a migration of legacy smokes into pytest unit tests:
@@ -177,7 +188,7 @@ subprocess; it is not a migration of legacy smokes into pytest unit tests:
 ```bash
 python3 -m pytest tests/test_smoke_suite.py \
   --loopx-smoke-suite default-public \
-  --loopx-smoke-module canary \
+  --loopx-smoke-profile canary-runner \
   --junitxml smoke-suite.xml
 ```
 

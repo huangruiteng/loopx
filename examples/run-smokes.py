@@ -36,6 +36,12 @@ def parse_args() -> argparse.Namespace:
         help="Filter suite scripts by module token, such as quota, status, or canary.",
     )
     parser.add_argument(
+        "--exclude-module",
+        action="append",
+        default=[],
+        help="Exclude suite scripts by module token after positive selection.",
+    )
+    parser.add_argument(
         "--script",
         action="append",
         default=[],
@@ -93,6 +99,7 @@ def main() -> int:
     payload = build_canary_smoke_suite_run(
         suite=args.suite,
         modules=list(args.module or []),
+        exclude_modules=list(args.exclude_module or []),
         scripts=list(args.script or []),
         families=list(args.family or []),
         profiles=list(args.profile or []),

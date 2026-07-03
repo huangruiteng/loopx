@@ -68,6 +68,31 @@ SMOKE_SUITE_PROFILE_MANIFEST: dict[str, dict[str, Any]] = {
 }
 
 
+def list_smoke_suite_profiles() -> list[dict[str, Any]]:
+    """Return stable, machine-readable smoke-suite profile metadata."""
+
+    profiles: list[dict[str, Any]] = []
+    for profile_id, profile_spec in sorted(SMOKE_SUITE_PROFILE_MANIFEST.items()):
+        profiles.append(
+            {
+                "id": profile_id,
+                "suite": str(profile_spec.get("suite") or "default-public"),
+                "modules": [
+                    str(item)
+                    for item in profile_spec.get("modules", [])
+                    if str(item).strip()
+                ],
+                "exclude_modules": [
+                    str(item)
+                    for item in profile_spec.get("exclude_modules", [])
+                    if str(item).strip()
+                ],
+                "description": str(profile_spec.get("description") or ""),
+            }
+        )
+    return profiles
+
+
 def _append_unique(values: list[str], additions: list[str]) -> list[str]:
     seen = {value for value in values if value}
     expanded = list(values)

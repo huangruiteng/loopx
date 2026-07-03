@@ -15,8 +15,10 @@ from ..canary.planner import (
     render_catalog_canary_profiles_markdown,
 )
 from ..canary.runner import (
+    build_canary_smoke_suite_profiles,
     build_canary_smoke_suite_run,
     build_catalog_canary_run,
+    render_canary_smoke_suite_profiles_markdown,
     render_canary_smoke_suite_run_markdown,
     render_catalog_canary_run_markdown,
 )
@@ -241,6 +243,12 @@ def register_canary_commands(
         help="Override the interaction-pattern catalog path.",
     )
 
+    smoke_profiles_parser = canary_sub.add_parser(
+        "smoke-profiles",
+        help="List named smoke-suite profiles used by CLI, pytest facade, and automation.",
+    )
+    add_subcommand_format(smoke_profiles_parser)
+
     plan_parser = canary_sub.add_parser(
         "plan",
         help="Select the smallest useful canary profiles for changed surfaces.",
@@ -376,6 +384,9 @@ def handle_canary_command(
     if args.canary_command == "profiles":
         payload = build_catalog_canary_profiles(catalog_path=args.catalog)
         renderer = render_catalog_canary_profiles_markdown
+    elif args.canary_command == "smoke-profiles":
+        payload = build_canary_smoke_suite_profiles()
+        renderer = render_canary_smoke_suite_profiles_markdown
     elif args.canary_command == "plan":
         changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_catalog_canary_plan(

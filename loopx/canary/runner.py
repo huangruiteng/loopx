@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .planner import REPO_ROOT, build_catalog_canary_plan, flatten_catalog_canary_checks
-from .smoke_profiles import resolve_smoke_suite_profiles
+from .smoke_profiles import list_smoke_suite_profiles, resolve_smoke_suite_profiles
 
 
 CANARY_RUN_SCHEMA_VERSION = "catalog_canary_run_v0"
 CANARY_SMOKE_SUITE_RUN_SCHEMA_VERSION = "canary_smoke_suite_run_v0"
+CANARY_SMOKE_SUITE_PROFILE_SCHEMA_VERSION = "canary_smoke_suite_profiles_v0"
 NO_WRITE_ARGS_BY_SCRIPT = {
     "canary-promotion-readiness-smoke.py": ["--no-write-evidence"],
     "dashboard-demo-readiness-smoke.py": ["--skip-browser"],
@@ -27,6 +28,27 @@ NODE_BINARIES = {"node"}
 SHELL_TOKENS = {"&&", "||", ";", "|", ">", "<", ">>", "2>", "2>>"}
 SMOKE_SUITE_CHOICES = {"default-public", "full-public", "catalog-plan"}
 ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def build_canary_smoke_suite_profiles() -> dict[str, Any]:
+    """List named smoke-suite profiles without reading catalog plans or running checks."""
+
+    profiles = list_smoke_suite_profiles()
+    return {
+        "ok": True,
+        "schema_version": CANARY_SMOKE_SUITE_PROFILE_SCHEMA_VERSION,
+        "source": "loopx.canary.smoke_profiles.SMOKE_SUITE_PROFILE_MANIFEST",
+        "profile_count": len(profiles),
+        "profiles": profiles,
+        "executes_checks": False,
+        "writes_evidence": False,
+        "creates_runtime_contract": False,
+        "note": (
+            "Named smoke-suite profiles expand to the same canary smoke-suite "
+            "runner payload used by CLI, pytest facade, and automation. Unknown "
+            "profile ids continue to route to catalog-profile selection."
+        ),
+    }
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -793,4 +815,34 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
         if check.get("stderr_tail"):
             lines.append(f"- stderr_tail: `{str(check.get('stderr_tail')).strip()[-300:]}`")
         lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_canary_smoke_suite_profiles_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        "# Canary Smoke Suite Profiles",
+        "",
+        f"- source: `{payload.get('source')}`",
+        f"- profiles: `{payload.get('profile_count')}`",
+        "- dry_run: `true`",
+        "- executes_checks: `false`",
+        "- writes_evidence: `false`",
+        "- creates_runtime_contract: `false`",
+        "",
+        str(payload.get("note") or ""),
+        "",
+    ]
+    for profile in payload.get("profiles", []):
+        if not isinstance(profile, dict):
+            continue
+        lines.extend(
+            [
+                f"## {profile.get('id')}",
+                f"- suite: `{profile.get('suite')}`",
+                f"- modules: `{', '.join(profile.get('modules') or [])}`",
+                f"- exclude_modules: `{', '.join(profile.get('exclude_modules') or [])}`",
+                f"- description: {profile.get('description')}",
+                "",
+            ]
+        )
     return "\n".join(lines).rstrip() + "\n"
