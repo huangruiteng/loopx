@@ -4554,7 +4554,13 @@ def _protocol_action_packet(payload: dict[str, Any]) -> dict[str, Any]:
     elif must_attempt_work:
         primary_actor = "agent"
         agent_action_required = True
-        agent_action = _protocol_first_candidate_action(payload) or "advance one bounded segment"
+        if str(execution_obligation.get("kind") or "") == "outcome_floor_recovery":
+            agent_action = (
+                "produce the required outcome-floor evidence artifact or write "
+                "the concrete blocker"
+            )
+        else:
+            agent_action = _protocol_first_candidate_action(payload) or "advance one bounded segment"
     else:
         primary_actor = "agent"
         agent_action_required = False
@@ -7506,6 +7512,11 @@ def build_quota_should_run(
             selected_recommended_action=selected_recommended_action,
         )
         agent_scope_action = _agent_scope_frontier_action(effective_action)
+        payload_work_lane_contract = (
+            None
+            if recovery_allowed and effective_action == "outcome_floor_recovery"
+            else work_lane_contract
+        )
         payload = {
             "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
             "status_health_ok": bool(plan.get("ok")),
@@ -7590,7 +7601,7 @@ def build_quota_should_run(
                 should_run=should_run,
                 effective_action=effective_action,
                 heartbeat_recommendation=heartbeat_recommendation,
-                work_lane_contract=work_lane_contract,
+                work_lane_contract=payload_work_lane_contract,
                 external_evidence_observation=external_evidence_observation,
             ),
             "goal_boundary": goal_boundary,
@@ -7617,8 +7628,8 @@ def build_quota_should_run(
             payload["automation_prompt_upgrade"] = automation_prompt_upgrade
         if agent_scoped_user_gate_override:
             payload["agent_scoped_user_gate_override"] = agent_scoped_user_gate_override
-        if work_lane_contract:
-            payload["work_lane_contract"] = work_lane_contract
+        if payload_work_lane_contract:
+            payload["work_lane_contract"] = payload_work_lane_contract
         if capability_gate:
             payload["capability_gate"] = capability_gate
             if capability_gate.get("action") == "ask_owner":

@@ -145,6 +145,24 @@ def build_execution_obligation(
                 "goal_boundary does not project"
             ),
         }
+    if should_run and recommended_mode == "outcome_floor_recovery":
+        return {
+            "must_attempt_work": True,
+            "kind": "outcome_floor_recovery",
+            "minimum": "one_outcome_floor_evidence_or_blocker_segment",
+            "delivery_allowed": True,
+            "notify_is_execution_gate": False,
+            "contract": "delivery_outcome_floor",
+            "contract_obligation": (
+                "produce the required outcome-floor evidence artifact or write "
+                "the concrete blocker; do not spend for another surface-only report"
+            ),
+            "spend_policy": heartbeat_recommendation.get("spend_policy"),
+            "reason": (
+                "outcome-floor recovery is the selected safe-bypass execution "
+                "contract and must stay aligned with interaction_contract.mode"
+            ),
+        }
     if should_run and recommended_mode == "repair_capability_bridge":
         return {
             "must_attempt_work": True,

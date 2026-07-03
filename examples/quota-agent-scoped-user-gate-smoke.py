@@ -27,6 +27,8 @@ def todo_item(
     claimed_by: str | None = None,
     action_kind: str | None = None,
     blocks_agent: str | None = None,
+    cadence: str | None = None,
+    next_due_at: str | None = None,
 ) -> dict:
     item = {
         "todo_id": todo_id,
@@ -43,6 +45,10 @@ def todo_item(
         item["action_kind"] = action_kind
     if blocks_agent:
         item["blocks_agent"] = blocks_agent
+    if cadence:
+        item["cadence"] = cadence
+    if next_due_at:
+        item["next_due_at"] = next_due_at
     return item
 
 
@@ -146,6 +152,8 @@ def scoped_no_candidate_status_payload() -> dict:
         text="[P2] Monitor product-capability rollout evidence.",
         task_class="continuous_monitor",
         claimed_by="codex-product-capability",
+        cadence="15m",
+        next_due_at="2099-01-01T00:00:00Z",
     )
     agent_todos = {
         "schema_version": "todo_summary_v0",
@@ -236,6 +244,8 @@ def other_agent_gate_with_non_due_monitor_payload() -> dict:
         text="[P1-monitor] Monitor value-lane external signal when it becomes due.",
         task_class="continuous_monitor",
         claimed_by="codex-value-explorer",
+        cadence="1h",
+        next_due_at="2099-01-01T00:00:00Z",
     )
     return {
         "ok": True,
@@ -490,6 +500,8 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
         task_class="continuous_monitor",
         claimed_by="codex-main-control",
         action_kind="corrected_x_launch_timing_monitor",
+        cadence="1h",
+        next_due_at="2099-01-01T00:00:00Z",
     )
     agent_items = [unavailable_auto_research, blocked_benchmark]
     if include_fallback:

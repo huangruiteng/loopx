@@ -195,7 +195,8 @@ def write_monitor_fixture(root: Path) -> tuple[Path, Path, Path]:
         "## User Todo / Owner Review Reading Queue\n\n"
         "- [x] [P1] Approve the private one-instance execution boundary before any real run.\n\n"
         "## Agent Todo\n\n"
-        "- [ ] [P2] Meta canary/readiness observation lane: keep status observable and repair only material transitions.\n",
+        "- [ ] [P2] Meta canary/readiness observation lane: keep status observable and repair only material transitions.\n"
+        "  <!-- loopx:todo todo_id=todo_77fad979d712 task_class=continuous_monitor cadence=15m next_due_at=2099-01-01T00:00:00Z -->\n",
         encoding="utf-8",
     )
     registry_path.parent.mkdir(parents=True, exist_ok=True)
