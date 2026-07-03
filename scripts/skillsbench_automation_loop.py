@@ -497,6 +497,12 @@ DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN = (
 DOCKER_NETWORK_DOWNLOAD_RETRY_END = (
     "# END LOOPX_SKILLSBENCH_NETWORK_DOWNLOAD_RETRY"
 )
+DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_DOCKER_UV_BOOTSTRAP_MIRROR"
+)
+DOCKER_UV_BOOTSTRAP_MIRROR_END = (
+    "# END LOOPX_SKILLSBENCH_DOCKER_UV_BOOTSTRAP_MIRROR"
+)
 DOCKER_MAVEN_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_MAVEN_MIRROR"
 DOCKER_MAVEN_MIRROR_END = "# END LOOPX_SKILLSBENCH_MAVEN_MIRROR"
 DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_BASE = "https://mirrors.huaweicloud.com/apache"
@@ -5733,6 +5739,10 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_wget_gpg_key_retry_patch_applied",
         "dockerfile_network_download_retry_patch_required",
         "dockerfile_network_download_retry_patch_applied",
+        "dockerfile_uv_bootstrap_risk_detected",
+        "dockerfile_uv_bootstrap_mirror_patch_required",
+        "dockerfile_uv_bootstrap_mirror_patch_applied",
+        "dockerfile_uv_bootstrap_pip_fallback_patch_applied",
         "dockerfile_apache_archive_mirror_patch_required",
         "dockerfile_apache_archive_mirror_patch_applied",
         "dockerfile_apache_archive_raw_url_recorded",
@@ -5753,6 +5763,10 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "benchmark_egress_proxy_verifier_env_patch_required",
         "benchmark_egress_proxy_verifier_env_patch_applied",
         "benchmark_egress_proxy_verifier_env_raw_proxy_recorded",
+        "benchmark_egress_proxy_dockerfile_env_patch_required",
+        "benchmark_egress_proxy_dockerfile_env_patch_applied",
+        "benchmark_egress_proxy_dockerfile_java_opts_patch_applied",
+        "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded",
         "verifier_bootstrap_risk_preflight_blocked",
         "verifier_bootstrap_fail_fast_defaulted",
         "codex_acp_runtime_tools_patch_applied",
@@ -5764,6 +5778,8 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
     for field in (
         "dockerfile_pip_index_host",
         "bootstrap_light_blocker_kind",
+        "dockerfile_uv_bootstrap_version",
+        "dockerfile_uv_bootstrap_mirror_host",
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
         "dockerfile_apache_archive_mirror_host",
@@ -5778,6 +5794,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
     key_count = value.get("benchmark_egress_proxy_verifier_env_key_count")
     if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
         compact["benchmark_egress_proxy_verifier_env_key_count"] = key_count
+    key_count = value.get("benchmark_egress_proxy_dockerfile_env_key_count")
+    if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
+        compact["benchmark_egress_proxy_dockerfile_env_key_count"] = key_count
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -5852,6 +5871,19 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "dockerfile_network_download_retry_patch_applied": (
             DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN in dockerfile_text
         ),
+        "dockerfile_uv_bootstrap_mirror_patch_applied": (
+            DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN in dockerfile_text
+        ),
+        "dockerfile_uv_bootstrap_pip_fallback_patch_applied": (
+            DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN in dockerfile_text
+            and "python3 -m pip install" in dockerfile_text
+            and "uv==${LOOPX_SKILLSBENCH_UV_VERSION}" in dockerfile_text
+        ),
+        "dockerfile_uv_bootstrap_mirror_host": (
+            DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+            if DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN in dockerfile_text
+            else ""
+        ),
         "dockerfile_apache_archive_mirror_patch_applied": (
             DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST in dockerfile_text
         ),
@@ -5876,12 +5908,27 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "benchmark_egress_proxy_dockerfile_env_patch_applied": (
             DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN in dockerfile_text
         ),
+        "benchmark_egress_proxy_dockerfile_java_opts_patch_applied": (
+            "COURSIER_OPTS=${LOOPX_SKILLSBENCH_JAVA_PROXY_OPTS}"
+            in dockerfile_text
+        ),
         "task_skills_removed": (
             not include_task_skills
             and not (prepared_task / "environment" / "skills").exists()
         ),
         "original_task_mutated": False,
     }
+    dockerfile_uv_versions = _dockerfile_uv_bootstrap_versions(dockerfile_text)
+    if DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN in dockerfile_text:
+        discovered.update(
+            {
+                "dockerfile_uv_bootstrap_risk_detected": True,
+                "dockerfile_uv_bootstrap_mirror_patch_required": True,
+                "dockerfile_uv_bootstrap_mirror_patch_applied": True,
+            }
+        )
+        if dockerfile_uv_versions:
+            discovered["dockerfile_uv_bootstrap_version"] = dockerfile_uv_versions[0]
     if VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in verifier_text:
         discovered.update(
             {
@@ -6482,6 +6529,140 @@ def patch_dockerfile_gcr_mirror(
     return True
 
 
+def _dockerfile_uv_bootstrap_versions(text: str) -> list[str]:
+    versions: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(
+        r"https?://astral\.sh/uv/(?P<version>[0-9A-Za-z][0-9A-Za-z._+-]*)/install\.sh",
+        text,
+    ):
+        version = match.group("version")
+        if version and version not in seen:
+            versions.append(version)
+            seen.add(version)
+    for match in re.finditer(
+        r"\bLOOPX_SKILLSBENCH_UV_VERSION=(?P<version>[0-9A-Za-z][0-9A-Za-z._+-]*)",
+        text,
+    ):
+        version = match.group("version")
+        if version and version not in seen:
+            versions.append(version)
+            seen.add(version)
+    return versions
+
+
+def dockerfile_needs_uv_bootstrap_mirror_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        text,
+        DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN,
+        DOCKER_UV_BOOTSTRAP_MIRROR_END,
+    )
+    return bool(_dockerfile_uv_bootstrap_versions(text))
+
+
+def _dockerfile_instruction_block_end(lines: list[str], start: int) -> int:
+    """Return the exclusive end offset for a possibly continued instruction."""
+
+    end = start + 1
+    while end < len(lines) and lines[end - 1].rstrip().endswith("\\"):
+        end += 1
+    return end
+
+
+def patch_dockerfile_uv_bootstrap_mirror(dockerfile: Path) -> dict[str, Any]:
+    """Make staged Dockerfile uv bootstraps tolerate installer egress failures."""
+
+    metadata: dict[str, Any] = {
+        "dockerfile_uv_bootstrap_risk_detected": False,
+        "dockerfile_uv_bootstrap_mirror_patch_required": False,
+        "dockerfile_uv_bootstrap_mirror_patch_applied": False,
+        "dockerfile_uv_bootstrap_pip_fallback_patch_applied": False,
+        "dockerfile_uv_bootstrap_version": "",
+        "dockerfile_uv_bootstrap_mirror_host": "",
+    }
+    if not dockerfile.exists():
+        return metadata
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN,
+        DOCKER_UV_BOOTSTRAP_MIRROR_END,
+    )
+    versions = _dockerfile_uv_bootstrap_versions(text)
+    if not versions:
+        return metadata
+    version = versions[0]
+    block = (
+        f"{DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
+        "# Prefer the PyPI uv wheel for Docker build bootstrap; keep the\n"
+        "# official uv installer as a bounded mirror-backed fallback.\n"
+        f"ARG LOOPX_SKILLSBENCH_UV_RELEASE_MIRROR={DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE}\n"
+        f"ARG LOOPX_SKILLSBENCH_UV_VERSION={version}\n"
+        "RUN set -eux; \\\n"
+        "    if command -v python3 >/dev/null 2>&1; then \\\n"
+        "      loopx_pip_break_system_packages=''; \\\n"
+        "      if python3 -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then \\\n"
+        "        loopx_pip_break_system_packages='--break-system-packages'; \\\n"
+        "      fi; \\\n"
+        "      python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
+        "        --no-cache-dir --timeout 120 --retries 5 \\\n"
+        f"        --index-url {DEFAULT_DOCKER_PIP_INDEX_URL} \\\n"
+        f"        --extra-index-url {DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL} \\\n"
+        "        \"uv==${LOOPX_SKILLSBENCH_UV_VERSION}\" || true; \\\n"
+        "    fi; \\\n"
+        "    if ! command -v uvx >/dev/null 2>&1; then \\\n"
+        "      export INSTALLER_DOWNLOAD_URL=\"${LOOPX_SKILLSBENCH_UV_RELEASE_MIRROR}/${LOOPX_SKILLSBENCH_UV_VERSION}\"; \\\n"
+        "      curl -LsSf --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 30 \\\n"
+        "        \"https://astral.sh/uv/${LOOPX_SKILLSBENCH_UV_VERSION}/install.sh\" | sh; \\\n"
+        "    fi; \\\n"
+        "    if [ -x \"${HOME}/.local/bin/uv\" ]; then install -m 0755 \"${HOME}/.local/bin/uv\" /usr/local/bin/uv; fi; \\\n"
+        "    if [ -x \"${HOME}/.local/bin/uvx\" ]; then install -m 0755 \"${HOME}/.local/bin/uvx\" /usr/local/bin/uvx; fi; \\\n"
+        "    command -v uv >/dev/null 2>&1; \\\n"
+        "    command -v uvx >/dev/null 2>&1\n"
+        f"{DOCKER_UV_BOOTSTRAP_MIRROR_END}"
+    )
+    lines = text.splitlines()
+    patched_lines: list[str] = []
+    index = 0
+    replaced = False
+    while index < len(lines):
+        line = lines[index]
+        if (
+            not replaced
+            and re.match(r"^\s*RUN\b", line, flags=re.IGNORECASE)
+            and "astral.sh/uv/" in line
+            and "install.sh" in line
+        ):
+            block_end = _dockerfile_instruction_block_end(lines, index)
+            patched_lines.extend(block.splitlines())
+            index = block_end
+            replaced = True
+            continue
+        patched_lines.append(line)
+        index += 1
+    if not replaced:
+        patched_lines = [*block.splitlines(), "", *lines]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(dockerfile, patched)
+    metadata.update(
+        {
+            "dockerfile_uv_bootstrap_risk_detected": True,
+            "dockerfile_uv_bootstrap_mirror_patch_required": True,
+            "dockerfile_uv_bootstrap_mirror_patch_applied": True,
+            "dockerfile_uv_bootstrap_pip_fallback_patch_applied": True,
+            "dockerfile_uv_bootstrap_version": version,
+            "dockerfile_uv_bootstrap_mirror_host": (
+                DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+            ),
+        }
+    )
+    return metadata
+
+
 def dockerfile_needs_elan_toolchain_retry_patch(dockerfile: Path) -> bool:
     if not dockerfile.exists():
         return False
@@ -6547,6 +6728,10 @@ def dockerfile_needs_wget_gpg_key_retry_patch(dockerfile: Path) -> bool:
             r"https?://[^\s|]+\s*\|\s*gpg\s+--dearmor",
             text,
         )
+        or re.search(
+            r"\bcurl\s+[^|\n]*https?://[^\s|]+\s*\|\s*gpg\s+--dearmor",
+            text,
+        )
     )
 
 
@@ -6560,15 +6745,26 @@ def patch_dockerfile_wget_gpg_key_retry(dockerfile: Path) -> bool:
         r"\bwget\s+(?:-qO\s+-|-q\s+-O\s+-|-O\s+-\s+-q)\s+"
         r"(?P<url>https?://[^\s|]+)\s*\|\s*gpg\s+--dearmor",
     )
+    curl_pattern = re.compile(
+        r"\bcurl\s+(?P<args>[^|\n]*?)"
+        r"(?P<url>https?://[^\s|]+)\s*\|\s*gpg\s+--dearmor"
+    )
 
-    def replace(match: re.Match[str]) -> str:
+    def gpg_key_curl_command(url: str) -> str:
         return (
-            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
-            f"{match.group('url')} | gpg --dearmor"
+            "curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 "
+            f"--connect-timeout 60 --max-time 300 {url} | gpg --dearmor"
         )
 
+    def replace(match: re.Match[str]) -> str:
+        return gpg_key_curl_command(match.group("url"))
+
     patched, count = pattern.subn(replace, original)
-    if count == 0 or patched == original:
+    patched, curl_count = curl_pattern.subn(
+        lambda match: gpg_key_curl_command(match.group("url")),
+        patched,
+    )
+    if (count + curl_count) == 0 or patched == original:
         return False
     _write_text_atomic(dockerfile, patched)
     return True
@@ -6682,6 +6878,7 @@ def dockerfile_needs_network_download_retry_patch(dockerfile: Path) -> bool:
     text = dockerfile.read_text(encoding="utf-8", errors="replace")
     return bool(
         re.search(r"\bwget\s+[^;\n]*https?://", text)
+        or re.search(r"\bcurl\s+[^;\n|]*https?://", text)
         or re.search(r"\bgit\s+clone\s+https?://", text)
         or re.search(r"\bmvn\s+", text)
     )
@@ -6702,6 +6899,10 @@ def patch_dockerfile_network_download_retry(dockerfile: Path) -> bool:
         r"\bwget(?P<args>(?:\s+(?!https?://)[^\s\\;&|]+)*)\s+"
         r"(?P<url>https?://[^\s\\;&|]+)"
     )
+    curl_pattern = re.compile(
+        r"\bcurl(?P<args>(?:\s+(?!https?://)[^\s\\;&|]+)*)\s+"
+        r"(?P<url>https?://[^\s\\;&|]+)"
+    )
 
     def replace_wget(match: re.Match[str]) -> str:
         args = match.group("args") or ""
@@ -6712,7 +6913,18 @@ def patch_dockerfile_network_download_retry(dockerfile: Path) -> bool:
             f"--retry-connrefused {match.group('url')}"
         )
 
+    def replace_curl(match: re.Match[str]) -> str:
+        args = match.group("args") or ""
+        if "--retry" in args or "--connect-timeout" in args:
+            return match.group(0)
+        return (
+            "curl"
+            f"{args} --retry 5 --retry-all-errors --retry-delay 2 "
+            f"--connect-timeout 60 --max-time 600 {match.group('url')}"
+        )
+
     text = wget_pattern.sub(replace_wget, text)
+    text = curl_pattern.sub(replace_curl, text)
     block = (
         f"{DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN}\n"
         "ENV GIT_HTTP_LOW_SPEED_LIMIT=1000 \\\n"
@@ -7294,6 +7506,7 @@ def patch_dockerfile_benchmark_egress_proxy_env(
     metadata: dict[str, Any] = {
         "benchmark_egress_proxy_dockerfile_env_patch_required": bool(proxy_url),
         "benchmark_egress_proxy_dockerfile_env_patch_applied": False,
+        "benchmark_egress_proxy_dockerfile_java_opts_patch_applied": False,
         "benchmark_egress_proxy_dockerfile_env_key_count": len(exports),
         "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded": False,
     }
@@ -7308,24 +7521,49 @@ def patch_dockerfile_benchmark_egress_proxy_env(
         DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
         DOCKER_BENCHMARK_EGRESS_PROXY_END,
     )
-    block = "\n".join(
-        [
-            DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
-            "# Forward the runtime benchmark egress proxy into Docker build steps.",
-            "# The concrete proxy is staged only in the private prepared task copy.",
-            f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY={proxy_url}",
-            f"ARG LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY={no_proxy}",
-            "ENV HTTPS_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
-            "    HTTP_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
-            "    ALL_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
-            "    https_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
-            "    http_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
-            "    all_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
-            "    NO_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY} \\",
-            "    no_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY}",
-            DOCKER_BENCHMARK_EGRESS_PROXY_END,
-        ]
-    )
+    proxy_host = ""
+    proxy_port = 0
+    try:
+        _, proxy_host, proxy_port = _parse_proxy_endpoint(proxy_url)
+    except Exception:
+        proxy_host = ""
+        proxy_port = 0
+    block_lines = [
+        DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        "# Forward the runtime benchmark egress proxy into Docker build steps.",
+        "# The concrete proxy is staged only in the private prepared task copy.",
+        f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY={proxy_url}",
+        f"ARG LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY={no_proxy}",
+        "ENV HTTPS_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+        "    HTTP_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+        "    ALL_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+        "    https_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+        "    http_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+        "    all_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+        "    NO_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY} \\",
+        "    no_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY}",
+    ]
+    if proxy_host and proxy_port:
+        java_proxy_opts = (
+            "-Dhttp.proxyHost=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_HOST} "
+            "-Dhttp.proxyPort=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_PORT} "
+            "-Dhttps.proxyHost=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_HOST} "
+            "-Dhttps.proxyPort=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_PORT}"
+        )
+        block_lines.extend(
+            [
+                f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_HOST={proxy_host}",
+                f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_PORT={proxy_port}",
+                "ENV LOOPX_SKILLSBENCH_JAVA_PROXY_OPTS=\""
+                f"{java_proxy_opts}\" \\",
+                "    JAVA_TOOL_OPTIONS=${LOOPX_SKILLSBENCH_JAVA_PROXY_OPTS} \\",
+                "    COURSIER_OPTS=${LOOPX_SKILLSBENCH_JAVA_PROXY_OPTS} \\",
+                "    SBT_OPTS=${LOOPX_SKILLSBENCH_JAVA_PROXY_OPTS}",
+            ]
+        )
+        metadata["benchmark_egress_proxy_dockerfile_java_opts_patch_applied"] = True
+    block_lines.append(DOCKER_BENCHMARK_EGRESS_PROXY_END)
+    block = "\n".join(block_lines)
     patched_lines: list[str] = []
     inserted = False
     heredoc_delimiter: str | None = None
@@ -7599,6 +7837,10 @@ def stage_task_for_sandbox(
         "dockerfile_wget_gpg_key_retry_patch_applied": False,
         "dockerfile_network_download_retry_patch_required": False,
         "dockerfile_network_download_retry_patch_applied": False,
+        "dockerfile_uv_bootstrap_risk_detected": False,
+        "dockerfile_uv_bootstrap_mirror_patch_required": False,
+        "dockerfile_uv_bootstrap_mirror_patch_applied": False,
+        "dockerfile_uv_bootstrap_pip_fallback_patch_applied": False,
         "dockerfile_apache_archive_mirror_patch_required": False,
         "dockerfile_apache_archive_mirror_patch_applied": False,
         "dockerfile_apache_archive_mirror_host": "",
@@ -7620,6 +7862,7 @@ def stage_task_for_sandbox(
         "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
         "benchmark_egress_proxy_dockerfile_env_patch_required": False,
         "benchmark_egress_proxy_dockerfile_env_patch_applied": False,
+        "benchmark_egress_proxy_dockerfile_java_opts_patch_applied": False,
         "benchmark_egress_proxy_dockerfile_env_key_count": 0,
         "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded": False,
         "task_skills_removed": False,
@@ -7656,6 +7899,9 @@ def stage_task_for_sandbox(
         task_path / "environment" / "Dockerfile"
     )
     needs_network_download_retry_patch = dockerfile_needs_network_download_retry_patch(
+        task_path / "environment" / "Dockerfile"
+    )
+    needs_dockerfile_uv_mirror_patch = dockerfile_needs_uv_bootstrap_mirror_patch(
         task_path / "environment" / "Dockerfile"
     )
     needs_apache_archive_mirror_patch = (
@@ -7698,6 +7944,24 @@ def stage_task_for_sandbox(
     metadata["dockerfile_network_download_retry_patch_required"] = (
         needs_network_download_retry_patch
     )
+    metadata["dockerfile_uv_bootstrap_risk_detected"] = (
+        needs_dockerfile_uv_mirror_patch
+    )
+    metadata["dockerfile_uv_bootstrap_mirror_patch_required"] = (
+        needs_dockerfile_uv_mirror_patch
+    )
+    if needs_dockerfile_uv_mirror_patch:
+        metadata["dockerfile_uv_bootstrap_mirror_host"] = (
+            DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+        )
+        versions = _dockerfile_uv_bootstrap_versions(
+            (task_path / "environment" / "Dockerfile").read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        )
+        if versions:
+            metadata["dockerfile_uv_bootstrap_version"] = versions[0]
     metadata["dockerfile_apache_archive_mirror_patch_required"] = (
         needs_apache_archive_mirror_patch
     )
@@ -7743,6 +8007,7 @@ def stage_task_for_sandbox(
         and not needs_elan_toolchain_retry_patch
         and not needs_wget_gpg_key_retry_patch
         and not needs_network_download_retry_patch
+        and not needs_dockerfile_uv_mirror_patch
         and not needs_apache_archive_mirror_patch
         and not needs_maven_mirror_patch
         and not needs_runtime_tools_patch
@@ -7803,6 +8068,9 @@ def stage_task_for_sandbox(
     wget_gpg_key_retry_patched = patch_dockerfile_wget_gpg_key_retry(
         staged_path / "environment" / "Dockerfile"
     )
+    dockerfile_uv_mirror_metadata = patch_dockerfile_uv_bootstrap_mirror(
+        staged_path / "environment" / "Dockerfile"
+    )
     apache_archive_mirror_patched = patch_dockerfile_apache_archive_mirror(
         staged_path / "environment" / "Dockerfile"
     )
@@ -7847,6 +8115,28 @@ def stage_task_for_sandbox(
             "dockerfile_network_download_retry_patch_applied": (
                 network_download_retry_patched
             ),
+            "dockerfile_uv_bootstrap_mirror_patch_applied": (
+                bool(
+                    dockerfile_uv_mirror_metadata.get(
+                        "dockerfile_uv_bootstrap_mirror_patch_applied"
+                    )
+                )
+            ),
+            "dockerfile_uv_bootstrap_pip_fallback_patch_applied": (
+                bool(
+                    dockerfile_uv_mirror_metadata.get(
+                        "dockerfile_uv_bootstrap_pip_fallback_patch_applied"
+                    )
+                )
+            ),
+            "dockerfile_uv_bootstrap_mirror_host": (
+                str(
+                    dockerfile_uv_mirror_metadata.get(
+                        "dockerfile_uv_bootstrap_mirror_host"
+                    )
+                    or ""
+                )
+            ),
             "dockerfile_apache_archive_mirror_patch_applied": (
                 apache_archive_mirror_patched
             ),
@@ -7876,6 +8166,16 @@ def stage_task_for_sandbox(
             and value is False
             and metadata.get(key) is True
         ):
+            continue
+        metadata[key] = value
+    for key, value in dockerfile_uv_mirror_metadata.items():
+        if (
+            key == "dockerfile_uv_bootstrap_risk_detected"
+            and value is False
+            and metadata.get(key) is True
+        ):
+            continue
+        if value in ("", False) and metadata.get(key) not in ("", False, None):
             continue
         metadata[key] = value
     metadata.update(dockerfile_proxy_metadata)

@@ -2541,6 +2541,10 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_pip_bootstrap_patch_required",
         "dockerfile_pip_bootstrap_patch_applied",
         "dockerfile_package_bootstrap_risk_preflight_blocked",
+        "dockerfile_uv_bootstrap_risk_detected",
+        "dockerfile_uv_bootstrap_mirror_patch_required",
+        "dockerfile_uv_bootstrap_mirror_patch_applied",
+        "dockerfile_uv_bootstrap_pip_fallback_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
         "bootstrap_light_preflight_blocked",
@@ -2555,6 +2559,10 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_maven_mirror_patch_required",
         "dockerfile_maven_mirror_patch_applied",
         "dockerfile_maven_mirror_raw_url_recorded",
+        "benchmark_egress_proxy_dockerfile_env_patch_required",
+        "benchmark_egress_proxy_dockerfile_env_patch_applied",
+        "benchmark_egress_proxy_dockerfile_java_opts_patch_applied",
+        "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded",
         "verifier_bootstrap_risk_preflight_blocked",
         "verifier_bootstrap_fail_fast_defaulted",
         "app_skills_mount_patch_applied",
@@ -2567,6 +2575,8 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     for field in (
         "dockerfile_pip_index_host",
         "bootstrap_light_blocker_kind",
+        "dockerfile_uv_bootstrap_version",
+        "dockerfile_uv_bootstrap_mirror_host",
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
         "dockerfile_apache_archive_mirror_host",
@@ -2578,6 +2588,9 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     count = value.get("bootstrap_light_blocking_field_count")
     if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
         compact["bootstrap_light_blocking_field_count"] = count
+    count = value.get("benchmark_egress_proxy_dockerfile_env_key_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["benchmark_egress_proxy_dockerfile_env_key_count"] = count
 
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):

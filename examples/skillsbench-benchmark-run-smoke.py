@@ -89,6 +89,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DOCKER_MAVEN_MIRROR_END,
     DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN,
     DOCKER_PIP_BOOTSTRAP_BEGIN,
+    DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN,
     DOCKER_HOST_CPU_ENV,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
     LOCAL_CODEX_PARTICIPANT_MATERIALIZATION_SCHEMA_VERSION,
@@ -6098,6 +6099,9 @@ def test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download() -> Non
             "FROM python:3.12-slim\n"
             "RUN wget -qO - https://example.invalid/public.key | "
             "gpg --dearmor -o /usr/share/keyrings/example.gpg\n"
+            "RUN curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
+            "https://aquasecurity.github.io/trivy-repo/deb/public.key | "
+            "gpg --dearmor -o /usr/share/keyrings/trivy.gpg\n"
         )
         dockerfile.write_text(original_text, encoding="utf-8")
         (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
@@ -6122,8 +6126,15 @@ def test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download() -> Non
         )
         assert "wget -qO -" not in staged_text, staged_text
         assert (
-            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
+            "curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 "
+            "--connect-timeout 60 --max-time 300 "
             "https://example.invalid/public.key | gpg --dearmor"
+        ) in staged_text, staged_text
+        assert (
+            "curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 "
+            "--connect-timeout 60 --max-time 300 "
+            "https://aquasecurity.github.io/trivy-repo/deb/public.key | "
+            "gpg --dearmor"
         ) in staged_text, staged_text
 
 
@@ -6138,6 +6149,8 @@ def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
             "RUN wget "
             "https://archive.apache.org/dist/druid/0.20.0/"
             "apache-druid-0.20.0-bin.tar.gz && \\\n"
+            "    curl -fL https://github.com/coursier/coursier/releases/download/"
+            "v2.1.25-M23/cs-x86_64-pc-linux.gz -o cs.gz && \\\n"
             "    git clone https://github.com/example/project.git && \\\n"
             "    mvn dependency:resolve -DskipTests\n"
         )
@@ -6205,6 +6218,68 @@ def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
             "https://mirrors.huaweicloud.com/apache/druid/0.20.0/"
             "apache-druid-0.20.0-bin.tar.gz"
         ) in staged_text, staged_text
+        assert (
+            "curl -fL --retry 5 --retry-all-errors --retry-delay 2 "
+            "--connect-timeout 60 --max-time 600 "
+            "https://github.com/coursier/coursier/releases/download/"
+            "v2.1.25-M23/cs-x86_64-pc-linux.gz"
+        ) in staged_text, staged_text
+
+
+def test_skillsbench_docker_task_staging_patches_dockerfile_uv_bootstrap() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-dockerfile-uv-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "pddl-tpp-planning"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM python:3.12-slim\n"
+            "RUN python3 -m pip install --upgrade pip\n"
+            "RUN curl -LsSf https://astral.sh/uv/0.9.22/install.sh | sh && \\\n"
+            "    install -m 0755 ${HOME}/.local/bin/uv /usr/local/bin/uv && \\\n"
+            "    install -m 0755 ${HOME}/.local/bin/uvx /usr/local/bin/uvx\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="pddl-tpp-planning-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_uv_bootstrap_risk_detected"] is True, metadata
+        assert (
+            metadata["dockerfile_uv_bootstrap_mirror_patch_required"] is True
+        ), metadata
+        assert (
+            metadata["dockerfile_uv_bootstrap_mirror_patch_applied"] is True
+        ), metadata
+        assert (
+            metadata["dockerfile_uv_bootstrap_pip_fallback_patch_applied"] is True
+        ), metadata
+        assert metadata["dockerfile_uv_bootstrap_version"] == "0.9.22", metadata
+        assert metadata["dockerfile_uv_bootstrap_mirror_host"] == (
+            DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
+        ), metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_UV_BOOTSTRAP_MIRROR_BEGIN in staged_text, staged_text
+        assert "ARG LOOPX_SKILLSBENCH_UV_VERSION=0.9.22" in staged_text, staged_text
+        assert "python3 -m pip install ${loopx_pip_break_system_packages}" in (
+            staged_text
+        ), staged_text
+        assert "uv==${LOOPX_SKILLSBENCH_UV_VERSION}" in staged_text, staged_text
+        assert "INSTALLER_DOWNLOAD_URL" in staged_text, staged_text
+        assert "--retry-all-errors" in staged_text, staged_text
+        assert (
+            "curl -LsSf https://astral.sh/uv/0.9.22/install.sh | sh &&"
+            not in staged_text
+        ), staged_text
 
 
 def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
@@ -6478,6 +6553,9 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
             "benchmark_egress_proxy_dockerfile_env_patch_applied"
         ] is True, metadata
         assert metadata[
+            "benchmark_egress_proxy_dockerfile_java_opts_patch_applied"
+        ] is True, metadata
+        assert metadata[
             "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded"
         ] is False, metadata
         assert proxy_url not in json.dumps(metadata, sort_keys=True), metadata
@@ -6515,6 +6593,20 @@ def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() 
             "localhost,127.0.0.1,::1,hifis-storage.desy.de"
         ) in staged_dockerfile, staged_dockerfile
         assert "ENV HTTPS_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY}" in (
+            staged_dockerfile
+        ), staged_dockerfile
+        assert (
+            "ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_HOST="
+            "benchmark-proxy.example.invalid"
+        ) in staged_dockerfile, staged_dockerfile
+        assert (
+            "ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY_PORT=18080"
+            in staged_dockerfile
+        ), staged_dockerfile
+        assert "JAVA_TOOL_OPTIONS=${LOOPX_SKILLSBENCH_JAVA_PROXY_OPTS}" in (
+            staged_dockerfile
+        ), staged_dockerfile
+        assert "COURSIER_OPTS=${LOOPX_SKILLSBENCH_JAVA_PROXY_OPTS}" in (
             staged_dockerfile
         ), staged_dockerfile
         heredoc_start = staged_dockerfile.index("RUN python3 - <<'PY'")
@@ -14629,6 +14721,7 @@ if __name__ == "__main__":
     test_skillsbench_docker_task_staging_hardens_elan_toolchain_install()
     test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download()
     test_skillsbench_docker_task_staging_hardens_build_downloads()
+    test_skillsbench_docker_task_staging_patches_dockerfile_uv_bootstrap()
     test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults()
     test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror()
     test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap()
