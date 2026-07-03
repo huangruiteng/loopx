@@ -39,6 +39,7 @@ def todo_item(
     blocks_agent: str | None = None,
     index: int = 1,
     next_due_at: str | None = None,
+    cadence: str | None = None,
     resume_when: str | None = None,
 ) -> dict[str, Any]:
     item: dict[str, Any] = {
@@ -58,6 +59,8 @@ def todo_item(
         item["blocks_agent"] = blocks_agent
     if next_due_at:
         item["next_due_at"] = next_due_at
+    if cadence:
+        item["cadence"] = cadence
     if resume_when:
         item["resume_when"] = resume_when
     return item
@@ -352,7 +355,7 @@ def assert_higher_priority_due_monitor_preempts_advancement() -> None:
     assert quota["recommended_action"] == "[P0] Poll the due monitor first.", quota
 
 
-def assert_monitor_quiet_skip_scheduler_and_packet_contract() -> None:
+def assert_monitor_only_frontier_replans_before_quiet_skip() -> None:
     payload = status_payload(
         [
             todo_item(
@@ -360,31 +363,39 @@ def assert_monitor_quiet_skip_scheduler_and_packet_contract() -> None:
                 title="Watch unchanged monitor.",
                 task_class="continuous_monitor",
                 claimed_by=AGENT_ID,
+                cadence="15m",
+                next_due_at="2099-01-01T00:00:00+00:00",
             )
         ]
     )
     quota = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
-    assert quota["decision"] == "skip", quota
-    assert quota["should_run"] is False, quota
-    assert quota["effective_action"] == "monitor_quiet_skip", quota
+    assert quota["decision"] == "autonomous_replan_required", quota
+    assert quota["should_run"] is True, quota
+    assert quota["effective_action"] == "autonomous_replan_required", quota
+    assert quota["autonomous_replan_decision"]["required"] is True, quota
+
+    lane = quota["work_lane_contract"]
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
+    assert lane["must_attempt_work"] is False, lane
 
     contract = quota["interaction_contract"]
-    assert contract["mode"] == "monitor_quiet_skip", contract
+    assert contract["mode"] == "autonomous_replan", contract
     assert contract["user_channel"]["action_required"] is False, contract
     assert contract["user_channel"]["notify"] == "DONT_NOTIFY", contract
-    assert contract["agent_channel"]["must_attempt"] is False, contract
-    assert contract["agent_channel"]["delivery_allowed"] is False, contract
-    assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    assert contract["agent_channel"]["delivery_allowed"] is True, contract
+    assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
     assert contract["cli_channel"]["spend_allowed_now"] is False, contract
-    assert contract["cli_channel"]["spend_after_validation"] is False, contract
+    assert contract["cli_channel"]["spend_after_validation"] is True, contract
 
     scheduler = quota["scheduler_hint"]
-    assert scheduler["action"] == "backoff_until_material_transition", scheduler
-    assert scheduler["cadence_class"] == "monitor_wait", scheduler
+    assert scheduler["action"] == "run_now", scheduler
+    assert scheduler["cadence_class"] == "active_work", scheduler
     assert scheduler["codex_app"]["recommended_rrule"] == (
-        "FREQ=MINUTELY;INTERVAL=15"
+        "FREQ=MINUTELY;INTERVAL=3"
     ), scheduler
-    assert scheduler["codex_app"]["recommended_interval_minutes"] == 15, scheduler
+    assert scheduler["codex_app"]["recommended_interval_minutes"] == 3, scheduler
     assert scheduler["codex_app"]["stateful_backoff"]["apply_needed"] is True, scheduler
     assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
 
@@ -434,9 +445,9 @@ def assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement() -> None
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
     )
-    assert quota["decision"] == "successor_replan_required", quota
+    assert quota["decision"] == "run", quota
     assert quota["should_run"] is True, quota
-    assert quota["effective_action"] == "successor_replan_required", quota
+    assert quota["effective_action"] == "normal_run", quota
 
     summary = quota["agent_todo_summary"]
     assert summary["current_agent_monitor_blocked_resume_count"] == 1, summary
@@ -447,16 +458,14 @@ def assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement() -> None
     assert contract["lane"] == "advancement_task", contract
     assert contract["obligation"] == "repair_resume_gate_or_close_standing_monitor", contract
     assert "resume_blocked_by_open_monitor" in contract["reason_codes"], contract
+    assert quota.get("agent_scope_frontier") is None, quota
 
-    frontier = quota["agent_scope_frontier"]
-    assert frontier["action"] == "successor_replan_required", frontier
-    assert frontier["quiet_noop_allowed"] is False, frontier
-    top = frontier["monitor_blocked_resume_candidates"][0]
+    top = contract["resume_blocked_by_monitor_items"][0]
     assert top["todo_id"] == "todo_gated_refactor", top
     assert top["blocking_monitor_todo_id"] == "todo_standing_gate", top
 
     interaction = quota["interaction_contract"]
-    assert interaction["mode"] == "successor_replan_required", interaction
+    assert interaction["mode"] == "bounded_delivery", interaction
     assert interaction["agent_channel"]["must_attempt"] is True, interaction
     assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
 
@@ -515,7 +524,7 @@ def main() -> None:
     assert_due_monitor_context_does_not_steal_advancement()
     assert_current_agent_claimed_advancement_beats_other_agent_frontier()
     assert_higher_priority_due_monitor_preempts_advancement()
-    assert_monitor_quiet_skip_scheduler_and_packet_contract()
+    assert_monitor_only_frontier_replans_before_quiet_skip()
     assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement()
     assert_agent_scope_wait_scheduler_contract()
     print("control-plane-risk-characterization-smoke ok")
