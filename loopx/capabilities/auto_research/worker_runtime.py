@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -56,7 +57,6 @@ SUPPORTED_WORKER_ACTIONS = {
     "summarize_evidence",
     "write_evaluation_summary",
 }
-DEFAULT_EVIDENCE_RUNNER_AGENT_ID = "codex-main-control"
 GENERIC_VERIFIER_HANDOFF_KEYWORDS = (
     "verify",
     "verifier",
@@ -350,20 +350,72 @@ def _select_holdout_candidate(graph: dict[str, object]) -> dict[str, object]:
     )[0]
 
 
-def _successor_condition_met(condition: str, *, decision_summary: dict[str, object]) -> tuple[bool, str]:
+def _value_at_path(payload: dict[str, object], path: str) -> object:
+    current: object = payload
+    for part in [part for part in path.split(".") if part]:
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _compare_condition_value(actual: object, *, op: str, expected: object) -> bool:
+    if op in {"truthy", "exists"}:
+        return bool(actual)
+    if op in {"falsy", "missing"}:
+        return not bool(actual)
+    if op in {"eq", "=="}:
+        return actual == expected
+    if op in {"ne", "!="}:
+        return actual != expected
+    if op in {"gt", "gte", "lt", "lte", ">", ">=", "<", "<="}:
+        try:
+            actual_number = float(actual)  # type: ignore[arg-type]
+            expected_number = float(expected)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+        return {
+            "gt": actual_number > expected_number,
+            ">": actual_number > expected_number,
+            "gte": actual_number >= expected_number,
+            ">=": actual_number >= expected_number,
+            "lt": actual_number < expected_number,
+            "<": actual_number < expected_number,
+            "lte": actual_number <= expected_number,
+            "<=": actual_number <= expected_number,
+        }[op]
+    return False
+
+
+def _successor_condition_met(
+    condition: object,
+    *,
+    decision_summary: dict[str, object],
+) -> tuple[bool, str]:
+    if not condition:
+        return True, "always"
     if condition == "always":
         return True, "always"
-    if condition == "dev_supported_without_holdout":
-        dev_candidate_count = int(decision_summary.get("dev_promotion_candidate_count") or 0)
-        validated_candidate_count = int(
-            decision_summary.get("validated_promotion_candidate_count") or 0
-        )
-        if not dev_candidate_count:
-            return False, "no_dev_promotion_candidate"
-        if validated_candidate_count:
-            return False, "holdout_already_validated"
-        return True, condition
-    return False, f"unsupported_successor_condition:{condition or 'missing'}"
+    if not isinstance(condition, dict):
+        return False, "unsupported_successor_condition_shape"
+
+    context: dict[str, object] = {"decision_summary": decision_summary}
+    predicates = condition.get("all")
+    if not isinstance(predicates, list):
+        return False, "unsupported_successor_condition_shape"
+    if not predicates:
+        return True, "all"
+
+    for raw_predicate in predicates:
+        if not isinstance(raw_predicate, dict):
+            return False, "unsupported_successor_predicate_shape"
+        path = str(raw_predicate.get("path") or "")
+        op = str(raw_predicate.get("op") or "truthy")
+        expected = raw_predicate.get("value")
+        actual = _value_at_path(context, path)
+        if not _compare_condition_value(actual, op=op, expected=expected):
+            return False, str(raw_predicate.get("fail_reason") or f"condition_failed:{path}")
+    return True, "condition_met"
 
 
 def _resolve_successor_target_agent(
@@ -392,6 +444,42 @@ def _resolve_successor_target_agent(
     return current_agent_id
 
 
+class _SafeFormatDict(dict[str, object]):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+def _render_successor_command_template(
+    *,
+    template: object,
+    goal_id: str,
+    source_todo_id: str,
+    target_agent_id: str,
+    task_class: str,
+    action_kind: str,
+    text: str,
+) -> str | None:
+    if not template:
+        return None
+    if not isinstance(template, str):
+        raise ValueError("successor todo_command_template must be a string")
+    values: dict[str, object] = {
+        "goal_id": goal_id,
+        "goal_id_shell": shlex.quote(goal_id),
+        "source_todo_id": source_todo_id,
+        "source_todo_id_shell": shlex.quote(source_todo_id),
+        "target_agent_id": target_agent_id,
+        "target_agent_id_shell": shlex.quote(target_agent_id),
+        "task_class": task_class,
+        "task_class_shell": shlex.quote(task_class),
+        "action_kind": action_kind,
+        "action_kind_shell": shlex.quote(action_kind),
+        "text": text,
+        "text_shell": shlex.quote(text),
+    }
+    return template.format_map(_SafeFormatDict(values))
+
+
 def _maybe_add_role_successor_todos(
     *,
     registry_path: Path,
@@ -407,7 +495,7 @@ def _maybe_add_role_successor_todos(
     if not specs:
         return {
             "schema_version": "auto_research_role_successor_todos_v0",
-            "source": "role_profile_successor_todos",
+            "source": "role_profile_todo_command_template",
             "needed": False,
             "reason": "no_role_successor_spec",
             "role_id": role_id,
@@ -418,17 +506,28 @@ def _maybe_add_role_successor_todos(
     successors: list[dict[str, object]] = []
     skipped: list[dict[str, object]] = []
     for index, spec in enumerate(specs):
-        condition = str(spec.get("when") or "always")
+        condition = spec.get("condition") or spec.get("when") or "always"
         condition_met, reason = _successor_condition_met(
             condition,
             decision_summary=decision_summary,
         )
         action_kind = str(spec.get("action_kind") or "advance_todo")
+        task_class = str(spec.get("task_class") or "advancement_task")
+        text = str(spec.get("text") or f"Run {action_kind}.")
         claimed_by = _resolve_successor_target_agent(
             registry_path=registry_path,
             goal_id=goal_id,
             current_agent_id=agent_id,
             spec=spec,
+        )
+        todo_command = _render_successor_command_template(
+            template=spec.get("todo_command_template"),
+            goal_id=goal_id,
+            source_todo_id=source_todo_id,
+            target_agent_id=claimed_by,
+            task_class=task_class,
+            action_kind=action_kind,
+            text=text,
         )
         successor_preview = {
             "index": index,
@@ -439,9 +538,10 @@ def _maybe_add_role_successor_todos(
             "target_agent_id": claimed_by,
             "target_role_id": spec.get("target_role_id"),
             "action_kind": action_kind,
-            "task_class": spec.get("task_class") or "advancement_task",
+            "task_class": task_class,
             "unblocks_todo_id": source_todo_id,
-            "source": "role_profile_successor_todos",
+            "todo_command": todo_command,
+            "source": "role_profile_todo_command_template",
         }
         if not condition_met:
             skipped.append(successor_preview)
@@ -453,8 +553,8 @@ def _maybe_add_role_successor_todos(
             registry_path=registry_path,
             goal_id=goal_id,
             role="agent",
-            text=str(spec.get("text") or f"Run {action_kind}."),
-            task_class=str(spec.get("task_class") or "advancement_task"),
+            text=text,
+            task_class=task_class,
             action_kind=action_kind,
             claimed_by=claimed_by,
             unblocks_todo_id=source_todo_id,
@@ -475,7 +575,7 @@ def _maybe_add_role_successor_todos(
         )
     return {
         "schema_version": "auto_research_role_successor_todos_v0",
-        "source": "role_profile_successor_todos",
+        "source": "role_profile_todo_command_template",
         "needed": bool(successors),
         "executed": bool(execute and successors),
         "role_id": role_id,

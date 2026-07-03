@@ -277,14 +277,20 @@ def main() -> int:
         assert executed["live_evidence"]["written"] is True, executed
         assert executed["live_evidence"]["evidence_source"] == "live_codex_lane_output", executed
         assert executed["live_evidence"]["dev_metric"] == 4.0, executed
-        assert executed["successor_todos"]["source"] == "role_profile_successor_todos", executed
+        assert executed["successor_todos"]["source"] == "role_profile_todo_command_template", executed
         assert executed["successor_todos"]["role_id"] == "evidence_runner", executed
         assert executed["successor_todos"]["action"] == "run_dev_eval", executed
-        assert executed["successor_todos"]["successors"][0]["target_role_id"] == "evidence_runner", executed
+        successor = executed["successor_todos"]["successors"][0]
+        assert successor["target_role_id"] == "evidence_runner", executed
+        assert successor["condition"]["all"][0]["path"] == (
+            "decision_summary.dev_promotion_candidate_count"
+        ), executed
+        assert successor["todo_command"].startswith("loopx todo add "), executed
+        assert "--claimed-by codex-main-control" in successor["todo_command"], executed
         assert executed["followup"]["needed"] is True, executed
         assert executed["followup"]["action_kind"] == "run_holdout_eval", executed
         assert executed["followup"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
-        assert executed["followup"]["source"] == "role_profile_successor_todos", executed
+        assert executed["followup"]["source"] == "role_profile_todo_command_template", executed
         assert executed["frontier"]["frontier"]["selected"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
         assert payload["visible_launch"]["launch_result"]["worker_turn_executed"] is True, payload
         assert payload["visible_launch"]["launch_result"]["worker_turn_count"] == 3, payload

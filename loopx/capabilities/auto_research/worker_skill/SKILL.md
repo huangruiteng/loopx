@@ -48,10 +48,12 @@ If the launcher exported `LOOPX_ROLE_ID`, `LOOPX_ROLE_PROFILE_REF`,
 and frontier packets. Stop when they disagree. Do not guess the intended role.
 
 If the role profile includes `successor_todos`, treat those declarations as the
-only role-local way to create the next agent todo. The worker-turn/tick may
-write the declared LoopX todo after a successful action and condition check.
-Do not invent an extra continuation plan in prose, and do not ask a leader pane
-to pick the next role.
+only role-local way to create the next agent todo. A successor declaration must
+name the target agent and include a `todo_command_template` such as
+`loopx todo add ... --claimed-by {target_agent_id_shell}`. The worker-turn/tick
+may render and run that declared command after a successful action and generic
+condition check. Do not invent an extra continuation plan in prose, and do not
+ask a leader pane to pick the next role.
 
 For a visible demo rehearsal, inspect the dry-run supervisor before execution:
 
@@ -166,7 +168,21 @@ Allowed actions:
 - run dev or holdout evaluation only when the contract permits it;
 - build an `auto_research_evidence_packet_v0` or equivalent public-safe event;
 - create only the role-declared successor todo, such as a holdout validation
-  todo, when the profile's `successor_todos` condition is satisfied.
+  todo, when the profile's `successor_todos.condition` is satisfied.
+
+Successor todo command example:
+
+```bash
+loopx todo add --goal-id "$LOOPX_GOAL_ID" --role agent \
+  --text "$LOOPX_SUCCESSOR_TODO_TEXT" \
+  --task-class advancement_task \
+  --action-kind run_holdout_eval \
+  --claimed-by codex-main-control \
+  --unblocks-todo-id "$LOOPX_SELECTED_TODO_ID"
+```
+
+This skill owns the role-local routing intent; the kernel only validates the
+target agent and executes the normal LoopX todo writer.
 
 Useful command after a protected eval result exists:
 
@@ -231,7 +247,7 @@ Allowed actions:
 - create promotion, retirement, or gate candidates;
 - write compact validation notes for the next worker;
 - add only the role-declared successor todo when evidence needs another bounded
-  split.
+  split, using the profile's `todo_command_template`.
 
 Verification checklist:
 

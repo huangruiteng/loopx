@@ -18,6 +18,28 @@ AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = (
     "[P0-auto-research-live] Run held-out validation for the dev-supported "
     "hypothesis, append public-safe evidence, and summarize promotion readiness."
 )
+AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION = {
+    "all": [
+        {
+            "path": "decision_summary.dev_promotion_candidate_count",
+            "op": "gt",
+            "value": 0,
+            "fail_reason": "no_dev_promotion_candidate",
+        },
+        {
+            "path": "decision_summary.validated_promotion_candidate_count",
+            "op": "eq",
+            "value": 0,
+            "fail_reason": "holdout_already_validated",
+        },
+    ]
+}
+AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE = (
+    "loopx todo add --goal-id {goal_id_shell} --role agent "
+    "--text {text_shell} --task-class {task_class_shell} "
+    "--action-kind {action_kind_shell} --claimed-by {target_agent_id_shell} "
+    "--unblocks-todo-id {source_todo_id_shell}"
+)
 
 AUTO_RESEARCH_DEFAULT_LANES = (
     (
@@ -89,12 +111,13 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
         "successor_todos": [
             {
                 "after_action": "run_dev_eval",
-                "when": "dev_supported_without_holdout",
+                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
                 "target_agent_id": "codex-main-control",
                 "target_role_id": "evidence_runner",
                 "task_class": "advancement_task",
                 "action_kind": "run_holdout_eval",
                 "text": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT,
+                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
             }
         ],
     },
@@ -106,12 +129,13 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
         "successor_todos": [
             {
                 "after_action": "summarize_evidence",
-                "when": "dev_supported_without_holdout",
+                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
                 "target_agent_id": "codex-main-control",
                 "target_role_id": "evidence_runner",
                 "task_class": "advancement_task",
                 "action_kind": "run_holdout_eval",
                 "text": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT,
+                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
             }
         ],
     },
