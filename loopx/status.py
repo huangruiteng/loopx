@@ -104,6 +104,12 @@ from .projections.autonomous_replan_obligation import (
     run_history_monitor_wait_already_acknowledged as _run_history_monitor_wait_already_acknowledged_read_model,
     run_history_stall_signal as _run_history_stall_signal_read_model,
 )
+from .projections.dreaming import (
+    compact_dreaming_lane_badge as _compact_dreaming_lane_badge_read_model,
+    compact_dreaming_proposal as _compact_dreaming_proposal_read_model,
+    compact_server_planning_contract as _compact_server_planning_contract_read_model,
+    dreaming_attention_fields as _dreaming_attention_fields_read_model,
+)
 from .projections.monitor_display import (
     attention_item_is_monitor_quiet_display_candidate as _attention_item_is_monitor_quiet_display_candidate,
     normalize_monitor_quiet_attention_display as _normalize_monitor_quiet_attention_display,
@@ -7611,116 +7617,37 @@ def operator_gate_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]
 
 
 def compact_server_planning_contract(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    compact: dict[str, Any] = {}
-    for field in ("schema_version", "lane", "authority"):
-        text = public_safe_compact_text(value.get(field), limit=120)
-        if text:
-            compact[field] = text
-    for field in (
-        "may_rank_candidate_todos",
-        "may_suggest_evidence_probes",
-        "may_emit_refactor_warnings",
-        "may_execute_protected_actions",
-        "may_read_private_material",
-        "may_mutate_active_state",
-        "may_append_delivery_history",
-        "may_spend_delivery_quota",
-        "promotion_required",
-    ):
-        if isinstance(value.get(field), bool):
-            compact[field] = value[field]
-    for field in ("promotion_requirements", "allowed_outputs", "forbidden_outputs"):
-        items = public_safe_compact_list(value.get(field), limit=8)
-        if items:
-            compact[field] = items
-    return compact
+    return _compact_server_planning_contract_read_model(
+        value,
+        public_safe_compact_text=public_safe_compact_text,
+        public_safe_compact_list=public_safe_compact_list,
+    )
 
 
 def compact_dreaming_proposal(run: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(run, dict):
-        return None
-    classification = str(run.get("classification") or "")
-    if classification not in DREAMING_ADVISORY_CLASSIFICATIONS:
-        return None
-    raw = run.get("dreaming") if isinstance(run.get("dreaming"), dict) else {}
-    proposal: dict[str, Any] = {
-        "schema_version": "dreaming_proposal_v0",
-        "classification": classification,
-        "advisory": True,
-        "promoted_to_delivery": False,
-        "execution_allowed": False,
-        "delivery_spend_allowed": False,
-    }
-    for key in ("proposal_id", "lane", "evidence_window", "proposal_type", "confidence"):
-        value = public_safe_compact_text(raw.get(key), limit=80)
-        if value:
-            proposal[key] = value
-    server_planning_contract = compact_server_planning_contract(raw.get("server_planning_contract"))
-    if server_planning_contract:
-        proposal["server_planning_contract"] = server_planning_contract
-    if raw.get("requires_project_controller") is not None:
-        proposal["requires_project_controller"] = bool(raw.get("requires_project_controller"))
-    question = public_safe_compact_text(
-        run.get("operator_question") or raw.get("operator_question"),
-        limit=220,
+    return _compact_dreaming_proposal_read_model(
+        run,
+        dreaming_advisory_classifications=DREAMING_ADVISORY_CLASSIFICATIONS,
+        public_safe_compact_text=public_safe_compact_text,
+        public_safe_compact_list=public_safe_compact_list,
     )
-    if question:
-        proposal["operator_question"] = question
-    return proposal
 
 
 def compact_dreaming_lane_badge(proposal: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(proposal, dict):
-        return None
-    classification = public_safe_compact_text(proposal.get("classification"), limit=80)
-    badge: dict[str, Any] = {
-        "schema_version": "dreaming_lane_badge_v0",
-        "lane": "dreaming",
-        "label": "Dreaming",
-        "advisory": bool(proposal.get("advisory", True)),
-        "interrupts_delivery": False,
-        "review_required": True,
-        "execution_allowed": False,
-        "delivery_spend_allowed": False,
-        "promoted_to_delivery": False,
-    }
-    if classification:
-        badge["status"] = classification
-    for field in ("proposal_id", "proposal_type", "confidence", "evidence_window"):
-        value = public_safe_compact_text(proposal.get(field), limit=80)
-        if value:
-            badge[field] = value
-    server_contract = proposal.get("server_planning_contract")
-    if isinstance(server_contract, dict):
-        lane = public_safe_compact_text(server_contract.get("lane"), limit=80)
-        authority = public_safe_compact_text(server_contract.get("authority"), limit=120)
-        if lane or authority:
-            badge["server_planning"] = {
-                key: value
-                for key, value in {
-                    "lane": lane,
-                    "authority": authority,
-                }.items()
-                if value
-            }
-    return badge
+    return _compact_dreaming_lane_badge_read_model(
+        proposal,
+        public_safe_compact_text=public_safe_compact_text,
+    )
 
 
 def dreaming_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]:
-    proposal = compact_dreaming_proposal(run)
-    if not proposal:
-        return {}
-    fields: dict[str, Any] = {"dreaming_proposal": proposal}
-    question = proposal.get("operator_question")
-    if question:
-        fields["operator_question"] = normalize_operator_question(
-            str(question),
-            goal_id=str((run or {}).get("goal_id") or ""),
-            gate="dreaming_proposal_review",
-        )
-    return fields
+    return _dreaming_attention_fields_read_model(
+        run,
+        dreaming_advisory_classifications=DREAMING_ADVISORY_CLASSIFICATIONS,
+        public_safe_compact_text=public_safe_compact_text,
+        public_safe_compact_list=public_safe_compact_list,
+        normalize_operator_question=normalize_operator_question,
+    )
 
 
 def legacy_runtime_goal_attention(
