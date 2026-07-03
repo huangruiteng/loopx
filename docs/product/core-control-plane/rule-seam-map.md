@@ -71,7 +71,9 @@ or whether automation reports quiet wait versus required progress.
 
 The next module-boundary PR should therefore:
 
-1. add agent-scope/user-gate/frontier characterization fixtures first;
+1. add agent-scope/user-gate/frontier characterization fixtures first,
+   starting with
+   `examples/control_plane/agent-scope-projection-characterization-smoke.py`;
 2. extract a small read-only projection module only after parity is pinned;
 3. keep `quota.py` as the policy/orchestration layer until the new module is
    covered by the focused smoke profile;
