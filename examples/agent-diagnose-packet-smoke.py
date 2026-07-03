@@ -13,7 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.diagnose import _first_agent_todo_text  # noqa: E402
+from loopx.diagnose import _first_agent_todo_text, render_diagnosis_markdown  # noqa: E402
 
 GOAL_ID = "diagnose-smoke-goal"
 SCOPED_GOAL_ID = "diagnose-smoke-agent-scoped"
@@ -62,6 +62,27 @@ def assert_selected_agent_todo_preferred() -> None:
         )
         == selected
     )
+
+
+def assert_diagnose_markdown_separates_status_and_packet_goal_counts() -> None:
+    markdown = render_diagnosis_markdown(
+        {
+            "ok": True,
+            "packet_kind": "agent_reasoning_evidence_packet",
+            "agent_must_reason": True,
+            "registry": "fixture-registry.json",
+            "runtime_root": "fixture-runtime",
+            "selected_goal_id": "selected-goal",
+            "goal_count": 24,
+            "goal_packet_count": 1,
+            "run_count": 42,
+            "selected": {"todo_evidence": {}, "quota_signals": {}},
+            "goals": [{"goal_id": "selected-goal", "todo_evidence": {}}],
+        }
+    )
+    assert "- status_goals: `24`" in markdown, markdown
+    assert "- goal_packets: `1`" in markdown, markdown
+    assert "- goals: `24`" not in markdown, markdown
 
 
 def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding: bool) -> dict:
@@ -159,6 +180,7 @@ def write_agent_scoped_registry(root: Path, runtime: Path) -> Path:
 
 def main() -> int:
     assert_selected_agent_todo_preferred()
+    assert_diagnose_markdown_separates_status_and_packet_goal_counts()
     with tempfile.TemporaryDirectory(prefix="loopx-agent-diagnose-smoke-") as tmp:
         root = Path(tmp)
         runtime = root / "runtime"
