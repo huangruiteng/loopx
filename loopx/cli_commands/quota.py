@@ -8,8 +8,10 @@ from ..quota import (
     build_quota_plan,
     build_quota_should_run,
     record_quota_monitor_poll,
+    record_quota_scheduler_ack,
     render_quota_markdown,
     render_quota_monitor_poll_markdown,
+    render_quota_scheduler_ack_markdown,
     render_quota_should_run_markdown,
     render_quota_slot_preview_markdown,
     spend_quota_slot,
@@ -42,19 +44,20 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
             "plan",
             "should-run",
             "monitor-poll",
+            "scheduler-ack",
             "spend-slot",
             "void-slot",
         ],
         default="status",
-        help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, spend-slot for accounting, or void-slot for a non-destructive accounting correction.",
+        help="Use status for all groups, plan for next-turn groups, should-run for one goal, monitor-poll for no-spend quiet poll evidence, scheduler-ack for no-spend Codex App RRULE state, spend-slot for accounting, or void-slot for a non-destructive accounting correction.",
     )
-    quota_parser.add_argument("--goal-id", help="Goal id to check. Required for `quota should-run`, `quota monitor-poll`, `quota spend-slot`, and `quota void-slot`.")
+    quota_parser.add_argument("--goal-id", help="Goal id to check. Required for `quota should-run`, `quota monitor-poll`, `quota scheduler-ack`, `quota spend-slot`, and `quota void-slot`.")
     quota_parser.add_argument(
         "--agent-id",
         help=(
             "Registered agent id for `quota should-run` and scoped quota accounting "
             "commands; suppresses identity-upgrade warnings and records the identity "
-            "on appended monitor/spend/void events."
+            "on appended monitor/scheduler/spend/void events."
         ),
     )
     quota_parser.add_argument(
@@ -88,8 +91,13 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
     quota_parser.add_argument("--next-agent-todo", help="Agent follow-up todo to add when `--material-change` is set.")
     quota_parser.add_argument("--next-user-todo", help="User gate todo to add when `--material-change` is set.")
     quota_parser.add_argument("--next-claimed-by", help="Registered agent id to claim the `--next-agent-todo` follow-up.")
-    quota_parser.add_argument("--dry-run", action="store_true", help="Keep quota accounting writes as preview-only. This is the default.")
-    quota_parser.add_argument("--execute", action="store_true", help="Append the compact quota accounting runtime event for spend-slot or void-slot.")
+    quota_parser.add_argument("--surface", default="codex_app", help="Scheduler surface for `quota scheduler-ack`; defaults to codex_app.")
+    quota_parser.add_argument("--state-key", default="scheduler_hint.codex_app.stateful_backoff", help="Scheduler state key for `quota scheduler-ack`.")
+    quota_parser.add_argument("--applied-rrule", help="RRULE successfully applied by the host before `quota scheduler-ack --execute`.")
+    quota_parser.add_argument("--reset-token", help="Optional reset token to validate before scheduler ack.")
+    quota_parser.add_argument("--identity-signature", help="Optional identity signature to validate before scheduler ack.")
+    quota_parser.add_argument("--dry-run", action="store_true", help="Keep quota accounting or scheduler-state writes as preview-only. This is the default.")
+    quota_parser.add_argument("--execute", action="store_true", help="Execute the quota accounting write or no-spend scheduler-state ack.")
     quota_parser.add_argument(
         "--scan-root",
         default=default_public_scan_root(),
@@ -117,7 +125,7 @@ def handle_quota_command(
         if not scan_roots:
             scan_roots = [Path(args.scan_root).expanduser()]
         status_limit = max(0, args.limit)
-        if args.quota_command == "should-run":
+        if args.quota_command in {"should-run", "scheduler-ack"}:
             status_limit = max(status_limit, AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK)
         status_payload = collect_status(
             registry_path=registry_path,
@@ -158,6 +166,25 @@ def handle_quota_command(
                 next_user_todo=args.next_user_todo,
                 next_claimed_by=args.next_claimed_by,
             )
+        elif args.quota_command == "scheduler-ack":
+            if not args.goal_id:
+                raise ValueError("`loopx quota scheduler-ack` requires --goal-id")
+            if not args.agent_id:
+                raise ValueError("`loopx quota scheduler-ack` requires --agent-id")
+            if args.dry_run and args.execute:
+                raise ValueError("`loopx quota scheduler-ack` accepts only one of --dry-run or --execute")
+            payload = record_quota_scheduler_ack(
+                status_payload,
+                goal_id=args.goal_id,
+                execute=bool(args.execute),
+                agent_id=args.agent_id,
+                surface=args.surface,
+                state_key=args.state_key,
+                applied_rrule=args.applied_rrule,
+                reset_token=args.reset_token,
+                identity_signature=args.identity_signature,
+                reason_summary=args.reason_summary,
+            )
         elif args.quota_command == "spend-slot":
             if not args.goal_id:
                 raise ValueError("`loopx quota spend-slot` requires --goal-id")
@@ -191,7 +218,7 @@ def handle_quota_command(
         else:
             payload = build_quota_plan(status_payload, mode=args.quota_command)
     except Exception as exc:
-        if args.quota_command in {"should-run", "monitor-poll", "spend-slot", "void-slot"}:
+        if args.quota_command in {"should-run", "monitor-poll", "scheduler-ack", "spend-slot", "void-slot"}:
             payload = {
                 "ok": False,
                 "mode": args.quota_command,
@@ -214,6 +241,15 @@ def handle_quota_command(
                         "target_key": args.target_key,
                         "result_hash": args.result_hash,
                         "material_change": bool(args.material_change),
+                    }
+                )
+            if args.quota_command == "scheduler-ack":
+                payload.update(
+                    {
+                        "agent_id": args.agent_id,
+                        "surface": args.surface,
+                        "state_key": args.state_key,
+                        "applied_rrule": args.applied_rrule,
                     }
                 )
         else:
@@ -244,6 +280,7 @@ def handle_quota_command(
     quota_event_kinds = {
         "should-run": "quota_should_run",
         "monitor-poll": "quota_monitor_poll",
+        "scheduler-ack": "quota_scheduler_ack",
         "spend-slot": "quota_spend",
         "void-slot": "quota_void",
     }
@@ -282,6 +319,7 @@ def handle_quota_command(
                 "source": payload.get("source") or "",
                 "todo_id": payload.get("todo_id") or "",
                 "target_key": payload.get("target_key") or "",
+                "applied_rrule": payload.get("applied_rrule") or "",
             },
             allow_failed=args.quota_command == "should-run",
         )
@@ -290,6 +328,8 @@ def handle_quota_command(
         if args.quota_command == "should-run"
         else render_quota_monitor_poll_markdown
         if args.quota_command == "monitor-poll"
+        else render_quota_scheduler_ack_markdown
+        if args.quota_command == "scheduler-ack"
         else render_quota_slot_preview_markdown
         if args.quota_command in {"spend-slot", "void-slot"}
         else render_quota_markdown

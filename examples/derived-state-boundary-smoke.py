@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.status import (  # noqa: E402
+    MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
     MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS,
     MAX_PROJECT_ASSET_TODO_ITEMS,
     MAX_STATUS_TODOS_PER_ROLE,
@@ -87,6 +88,7 @@ def main() -> int:
         "truth": "derived",
         "canonical_source": "attention_queue.items[].agent_todos",
         "item_limit": MAX_PROJECT_ASSET_TODO_ITEMS,
+        "deferred_item_limit": MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
     }, asset_summary
     assert asset_summary["detail_pointer"] == {
         "schema_version": TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
@@ -95,6 +97,16 @@ def main() -> int:
         "full_list_included": False,
     }, asset_summary
     assert len(asset_summary["items"]) == MAX_PROJECT_ASSET_TODO_ITEMS, asset_summary
+    assert asset_summary["claimed_open_count"] == 24, asset_summary
+    assert asset_summary["unclaimed_open_count"] == 6, asset_summary
+    assert len(asset_summary["first_executable_items"]) == MAX_PROJECT_ASSET_TODO_ITEMS, (
+        asset_summary
+    )
+    assert asset_summary["first_executable_items"][0]["todo_id"] == "todo_derived_01", (
+        asset_summary
+    )
+    assert asset_summary["claimed_advancement_open_count"] == 24, asset_summary
+    assert asset_summary["claimed_monitor_open_count"] == 0, asset_summary
     assert "backlog_items" not in asset_summary, asset_summary
     assert "claimed_open_items" not in asset_summary, asset_summary
 

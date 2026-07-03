@@ -245,6 +245,12 @@ def build_update_plan(
             "loopx_command": path.get("loopx"),
             "loopx_realpath": path.get("loopx_realpath"),
             "current_version": install_freshness.get("current_version"),
+            "current_version_tag": install_freshness.get("current_version_tag"),
+            "manifest_package_version": install_freshness.get("manifest_package_version"),
+            "manifest_package_version_tag": install_freshness.get("manifest_package_version_tag"),
+            "manifest_package_version_matches_runtime": install_freshness.get(
+                "manifest_package_version_matches_runtime"
+            ),
             "release_id": install_freshness.get("release_id"),
             "install_freshness_status": install_freshness.get("status"),
             "requires_upgrade": requires_upgrade,
@@ -423,6 +429,10 @@ def render_update_plan_markdown(payload: dict[str, Any]) -> str:
         f"- Dry run: `{payload.get('dry_run')}`",
         f"- Source: `{source.get('repo')}` @ `{source.get('ref')}`",
         f"- Current version: `{current.get('current_version')}`",
+        f"- Current version tag: `{current.get('current_version_tag')}`",
+        f"- Manifest package version: `{current.get('manifest_package_version')}`",
+        f"- Manifest package version tag: `{current.get('manifest_package_version_tag')}`",
+        f"- Manifest package matches runtime: `{current.get('manifest_package_version_matches_runtime')}`",
         f"- Freshness: `{current.get('install_freshness_status')}`",
         f"- Requires upgrade: `{current.get('requires_upgrade')}`",
         f"- Runtime state mutation: `{plan.get('mutates_loopx_runtime_state')}`",

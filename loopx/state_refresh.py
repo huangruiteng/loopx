@@ -15,6 +15,7 @@ from .global_registry import sync_project_registry_to_global
 from .history import load_registry, reserve_unique_run_paths, unique_run_paths
 from .local_state_write_correctness import build_local_state_write_correctness_dry_run_packet
 from .paths import resolve_runtime_root
+from .policies.goal_vision import normalize_goal_vision_packet
 from .registry import registry_goals, resolve_state_file
 from .runtime import validate_goal_id_path_segment
 from .state_projection import state_projection_gap_warning
@@ -52,7 +53,9 @@ REPAIR_DELTA_KIND_CHOICES = (
     "capability_gate",
     "monitor_target",
     "active_state_next_action",
+    "goal_vision_patch",
     "goal_boundary_projection",
+    "no_followup",
     "watch_lane_continuation",
 )
 
@@ -194,6 +197,7 @@ def build_repair_delta_contract(
     *,
     requested_delta_kinds: list[str],
     active_state_next_action_update: dict[str, Any] | None,
+    agent_vision: dict[str, Any] | None,
     dry_run: bool,
 ) -> dict[str, Any]:
     delta_kinds = list(requested_delta_kinds)
@@ -216,6 +220,22 @@ def build_repair_delta_contract(
                 "source": "refresh_state_next_action_update",
                 "would_update": True,
                 "dry_run": bool(dry_run),
+            }
+        )
+    if agent_vision:
+        if "goal_vision_patch" not in delta_kinds:
+            delta_kinds.append("goal_vision_patch")
+        evidence.append(
+            {
+                "kind": "goal_vision_patch",
+                "source": "refresh_state_agent_vision",
+                "state": agent_vision.get("state"),
+                "agent_id": agent_vision.get("agent_id"),
+                "budget_status": (
+                    agent_vision.get("vision_budget", {}).get("status")
+                    if isinstance(agent_vision.get("vision_budget"), dict)
+                    else None
+                ),
             }
         )
 
@@ -447,6 +467,7 @@ def build_state_refresh_record(
     agent_lane: str | None = None,
     autonomous_replan_recorded: bool = False,
     repair_delta_contract: dict[str, Any] | None = None,
+    agent_vision: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     frontmatter = parse_frontmatter(state_text)
     next_action = extract_section_lines(state_text, "Next Action")
@@ -497,6 +518,8 @@ def build_state_refresh_record(
         }
         if repair_delta_contract:
             record["autonomous_replan_ack"]["delta_contract"] = repair_delta_contract
+    if agent_vision:
+        record["agent_vision"] = agent_vision
     if progress_scope:
         record["progress_scope"] = progress_scope
     if agent_id:
@@ -543,6 +566,23 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
             "- repair_delta_contract: "
             f"delta_present={repair_delta.get('delta_present')} "
             f"kinds={','.join(repair_delta.get('delta_kinds') or [])}"
+        )
+    agent_vision = (
+        payload.get("agent_vision")
+        if isinstance(payload.get("agent_vision"), dict)
+        else {}
+    )
+    if agent_vision:
+        budget = (
+            agent_vision.get("vision_budget")
+            if isinstance(agent_vision.get("vision_budget"), dict)
+            else {}
+        )
+        lines.append(
+            "- agent_vision: "
+            f"state={agent_vision.get('state')} "
+            f"agent_id={agent_vision.get('agent_id')} "
+            f"budget={budget.get('total_usage')}/{budget.get('total_limit')}"
         )
 
     projection_gap = (
@@ -645,6 +685,7 @@ def refresh_state_run(
     progress_scope: str | None = None,
     autonomous_replan_recorded: bool = False,
     repair_delta_kinds: list[str] | None = None,
+    agent_vision_packet: dict[str, Any] | None = None,
     dry_run: bool,
     sync_global: bool = True,
 ) -> dict[str, Any]:
@@ -713,6 +754,13 @@ def refresh_state_run(
                 "goal-scope refresh-state requires the primary agent "
                 f"{primary_agent!r}; got {normalized_agent_id!r}"
             )
+    agent_vision: dict[str, Any] | None = None
+    if agent_vision_packet is not None:
+        agent_vision = normalize_goal_vision_packet(
+            agent_vision_packet,
+            goal_id=safe_goal_id,
+            agent_id=normalized_agent_id or None,
+        )
     generated_at = now_local()
     active_state_next_action_update: dict[str, Any] | None = None
     if normalized_next_action:
@@ -750,6 +798,7 @@ def refresh_state_run(
         repair_delta_contract = build_repair_delta_contract(
             requested_delta_kinds=normalized_repair_delta_kinds,
             active_state_next_action_update=active_state_next_action_update,
+            agent_vision=agent_vision,
             dry_run=dry_run,
         )
         if not repair_delta_contract["delta_present"]:
@@ -773,6 +822,7 @@ def refresh_state_run(
         agent_lane=normalized_agent_lane or None,
         autonomous_replan_recorded=effective_autonomous_replan_recorded,
         repair_delta_contract=repair_delta_contract,
+        agent_vision=agent_vision,
     )
     if autonomous_replan_recorded:
         if "autonomous_replan_ack" not in record:
@@ -793,6 +843,8 @@ def refresh_state_run(
             }
     if active_state_next_action_update:
         record["active_state_next_action_update"] = active_state_next_action_update
+    if agent_vision:
+        record["agent_vision"] = agent_vision
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     json_path, markdown_path = unique_run_paths(runs_dir, generated_at)
@@ -827,6 +879,13 @@ def refresh_state_run(
         index_record["autonomous_replan_ack"] = record["autonomous_replan_ack"]
         if requested_classification != classification:
             index_record["requested_classification"] = requested_classification
+    if agent_vision:
+        index_record["agent_vision"] = {
+            "schema_version": agent_vision.get("schema_version"),
+            "agent_id": agent_vision.get("agent_id"),
+            "state": agent_vision.get("state"),
+            "vision_budget": agent_vision.get("vision_budget"),
+        }
     if normalized_progress_scope:
         index_record["progress_scope"] = normalized_progress_scope
     if normalized_agent_id:
@@ -848,6 +907,7 @@ def refresh_state_run(
         "autonomous_replan_recorded": effective_autonomous_replan_recorded,
         "autonomous_replan_recorded_requested": bool(autonomous_replan_recorded),
         "repair_delta_contract": repair_delta_contract,
+        "agent_vision": agent_vision,
         "recommended_action": action,
         "recommended_action_source": recommended_action_source,
         "active_state_next_action_update": active_state_next_action_update,

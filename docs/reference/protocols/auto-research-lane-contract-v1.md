@@ -22,11 +22,11 @@ research loop while LoopX stays decentralized?
 
 | Role | Capability token | Primary contribution | Writes | Must not |
 | --- | --- | --- | --- | --- |
-| Curator | `research_curator` | Defines or refreshes the public-safe research contract, benchmark pack, metric, protected scope, and novelty boundary. | `research_contract_v0`, domain pack metadata, grounding refs. | Select winners, edit protected evaluators, or own executor queues. |
+| Curator | `research_curator` | Defines or refreshes the public-safe research contract, metric, protected scope, and novelty boundary. | `research_contract_v0`, grounding refs. | Select winners, edit protected evaluators, or own executor queues. |
 | Hypothesis proposer | `hypothesis_proposer` | Proposes grounded, todo-backed hypotheses and parent-child refinements. | `research_hypothesis_v0`, agent todos, grounding refs. | Claim novelty from the same material used for ideation. |
 | Executor | `research_executor` | Runs one claimed hypothesis in an isolated worktree and produces split-aware results. | branch refs, eval result projections, `auto_research_evidence_packet_v0`. | Mutate protected scope, promote results, or hide failed attempts. |
 | Evaluator / promoter | `evaluator_promoter` | Converts scored attempts into promotion, retry, or retirement candidates under the contract policy. | `research_evidence_event_v0`, promotion or retirement candidate projections, gate todos. | Treat dev-only lift as promoted evidence or bypass owner gates. |
-| Product narrator | `product_narrator` | Renders the public-safe case story from projections for Frontstage/showcase surfaces. | `research_showcase_projection_v0`, public docs, screenshots after first-screen review when needed. | Invent metrics, read private source bodies, or mutate source state. |
+| Product narrator | `product_narrator` | Renders the public-safe case story from projections for downstream product surfaces. | `research_evidence_graph_v0`, public docs, screenshots after first-screen review when needed. | Invent metrics, read private source bodies, or mutate source state. |
 
 No lane is privileged. A single Codex session may implement more than one role
 when it has the matching todo claim and boundary, but the graph must still show
@@ -41,14 +41,14 @@ kernel API, but it must remain public-safe.
 ```json
 {
   "schema_version": "auto_research_lane_claim_v1",
-  "goal_id": "loopx-auto-research-knn",
+  "goal_id": "loopx-auto-research-demo",
   "lane_role": "research_executor",
   "agent_id": "codex-side-bypass",
-  "todo_id": "todo_auto_research_pack_001",
-  "hypothesis_id": "hyp_pack_partial_selection",
+  "todo_id": "todo_auto_research_demo_001",
+  "hypothesis_id": "hyp_state_a2a_round",
   "capability_token": "research_executor",
   "allowed_actions": ["run_dev_attempt", "run_holdout_attempt", "write_evidence_packet"],
-  "write_scope": ["examples/auto_research_knn_pack/**"],
+  "write_scope": ["auto_research_evidence_packet_v0", "rollout_event_log"],
   "blocked_by": []
 }
 ```
@@ -66,7 +66,7 @@ flowchart LR
   Evidence["research_evidence_event_v0"]
   Graph["research_evidence_graph_v0"]
   Frontier["decentralized_research_frontier_v0"]
-  Showcase["research_showcase_projection_v0"]
+  Showcase["research_evidence_graph_v0"]
 
   Contract --> Hypothesis
   Todo --> Hypothesis
@@ -91,7 +91,7 @@ projection builders derive frontiers and product views afterward.
    agent-scoped quota or an explicitly claimed successor todo.
 4. An `evaluator_promoter` may promote only when dev evidence, held-out
    evidence, clean boundary, and required gates are present.
-5. A `product_narrator` may publish only from `research_showcase_projection_v0`
+5. A `product_narrator` may publish only from `research_evidence_graph_v0`
    and related public-safe refs; first-screen public surface changes still obey
    the first-screen review gate.
 

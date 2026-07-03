@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.status import (  # noqa: E402
     build_promotion_readiness_summary,
+    build_contract_health_projection,
     collect_status,
     delivery_batch_scale_for_run,
     delivery_outcome_for_run,
@@ -29,7 +30,7 @@ from loopx.status import (  # noqa: E402
     render_status_markdown,
 )
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from loopx.cli_commands.status import attach_agent_lane_next_actions  # noqa: E402
+from loopx.cli_commands.status import attach_agent_lane_next_actions, _review_handoff_agent  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 
@@ -1450,6 +1451,9 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert next_action["todo_id"] == "todo_side_tui", next_action
     assert next_action["agent_id"] == "codex-side-bypass", next_action
     assert next_action["preserves_goal_next_action"] is True, next_action
+    goal_frontier = item["goal_frontier_projection"]
+    assert goal_frontier["deferred_successors"]["ready_count"] == 0, goal_frontier
+    assert goal_frontier["acceptance_gaps"] == [], goal_frontier
     assert item["recommended_action"] == primary_action, item
     assert item["project_asset"]["next_action"] == primary_action, item
     member = item["agent_member"]
@@ -1475,6 +1479,8 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert "claims=todo_side_tui" in markdown, markdown
     assert "current_agent_todo: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
     assert "source=agent_lane_next_action" in markdown, markdown
+    assert "goal_frontier_projection: replan_required=False" in markdown, markdown
+    assert "deferred_ready=0 acceptance_gaps=0" in markdown, markdown
     assert side_action in markdown, markdown
     assert f"next_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
     assert f"asset_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
@@ -1482,6 +1488,183 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert packet["agent_member"]["agent_id"] == "codex-side-bypass", packet
     assert "Agent 成员：agent=codex-side-bypass role=side-agent" in packet["project_agent_handoff"], packet
     assert "authority=advisory_projection" in packet["project_agent_handoff"], packet
+
+
+def assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list() -> None:
+    goal_id = "agent-lane-truncated-claims-fixture"
+    selected_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_selected_lane",
+        "index": 116,
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "advancement_task",
+        "action_kind": "rapid_self_merge_kernel_iteration",
+        "claimed_by": "codex-side-bypass",
+        "text": "[P0] Continue the selected side-agent lane.",
+    }
+    visible_stale_claims = [
+        {
+            "schema_version": "todo_item_v0",
+            "todo_id": f"todo_visible_stale_claim_{offset}",
+            "index": 56 + offset,
+            "role": "agent",
+            "status": "blocked",
+            "priority": "P0",
+            "task_class": "advancement_task",
+            "action_kind": "old_side_lane",
+            "claimed_by": "codex-side-bypass",
+            "text": "[P0] Old side-agent claim kept in the visible status window.",
+        }
+        for offset in range(10)
+    ]
+    primary_todo = {
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_primary_visible",
+        "index": 22,
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "blocker",
+        "claimed_by": "codex-main-control",
+        "text": "[P0] Primary visible item.",
+    }
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "open_count": 105,
+        "done_count": 0,
+        "total_count": 105,
+        "items": [primary_todo, *visible_stale_claims, selected_todo],
+        "first_open_items": [primary_todo, *visible_stale_claims[:2]],
+        "first_executable_items": [selected_todo],
+    }
+    coordination = {
+        "primary_agent": "codex-main-control",
+        "registered_agents": ["codex-main-control", "codex-side-bypass"],
+    }
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "contract": {"ok": True, "summary": {"errors": 0, "warnings": 0, "checks": 0}},
+        "global_registry": {"available": False, "summary": {}},
+        "attention_queue": {
+            "available": True,
+            "item_count": 1,
+            "items": [
+                {
+                    "goal_id": goal_id,
+                    "status": "primary_route_active",
+                    "waiting_on": "codex",
+                    "severity": "action",
+                    "recommended_action": primary_todo["text"],
+                    "source": "registry",
+                    "coordination": coordination,
+                    "quota": {
+                        "state": "eligible",
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                    "agent_todos": agent_todos,
+                    "project_asset": {
+                        "owner": "codex-main-control",
+                        "gate": "none",
+                        "stop_condition": "stop on unsafe workspace or user gate",
+                        "next_action": primary_todo["text"],
+                        "agent_todos": project_asset_todo_summary(agent_todos, role="agent"),
+                    },
+                }
+            ],
+        },
+        "run_history": {
+            "goals": [
+                {
+                    "id": goal_id,
+                    "registry_member": True,
+                    "status": "primary_route_active",
+                    "coordination": coordination,
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                }
+            ]
+        },
+    }
+    attach_agent_lane_next_actions(payload, agent_id="codex-side-bypass")
+    item = payload["attention_queue"]["items"][0]
+    assert item["agent_lane_next_action"]["todo_id"] == "todo_selected_lane", item
+    member = item["agent_member"]
+    assert member["current_claims"][0] == "todo_selected_lane", member
+    assert "todo_visible_stale_claim_0" in member["current_claims"], member
+    markdown = render_status_markdown(payload)
+    assert "claims=todo_selected_lane,todo_visible_stale_claim_0" in markdown, markdown
+
+
+def assert_status_agent_member_handoff_uses_quota_identity() -> None:
+    assert (
+        _review_handoff_agent(
+            coordination={},
+            profile={},
+            identity={"handoff_agent": "codex-product-capability"},
+            role="side-agent",
+        )
+        == "codex-product-capability"
+    )
+    assert (
+        _review_handoff_agent(
+            coordination={"side_agent_handoff_agent": "codex-main-control"},
+            profile={},
+            identity={"handoff_agent": "codex-product-capability"},
+            role="side-agent",
+        )
+        == "codex-product-capability"
+    )
+
+
+def assert_status_contract_health_projection() -> None:
+    projection = build_contract_health_projection(
+        {
+            "summary": {"errors": 0, "warnings": 4, "checks": 8},
+            "errors": [],
+            "warnings": [
+                "fixture-goal: duplicate index rows raw=2 unique=1 unexpected=1",
+                "fixture-goal: stale projection warning A",
+                "fixture-goal: stale projection warning B",
+                "fixture-goal: stale projection warning C",
+            ],
+        }
+    )
+    assert projection["contract_summary"] == {"errors": 0, "warnings": 4, "checks": 8}, projection
+    assert projection["contract_warnings_total_count"] == 4, projection
+    assert projection["contract_warnings_truncated"] is True, projection
+    assert len(projection["contract_warnings"]) == 3, projection
+    payload = {
+        "ok": True,
+        "registry": "./fixtures/registry.json",
+        "runtime_root": "./fixtures/runtime",
+        "goal_count": 1,
+        "run_count": 1,
+        "status_contract": {
+            "schema_version": 2,
+            "minimum_dashboard_schema_version": 2,
+            "producer": "loopx status",
+        },
+        "contract": {"ok": True, "summary": {"errors": 0, "warnings": 4, "checks": 8}},
+        **projection,
+        "global_registry": {"available": False, "summary": {}},
+    }
+    markdown = render_status_markdown(payload)
+    assert "Status Contract Signals" in markdown, markdown
+    assert "duplicate index rows raw=2 unique=1 unexpected=1" in markdown, markdown
+    assert "contract_warnings_truncated: total=4" in markdown, markdown
 
 
 def assert_status_agent_lane_frontier_hint_projection() -> None:
@@ -1570,6 +1753,14 @@ def assert_status_agent_lane_frontier_hint_projection() -> None:
     assert "agent_lane_next_action" not in item, item
     frontier = item["agent_scope_frontier"]
     assert frontier["action"] == "agent_scope_wait", frontier
+    goal_frontier = item["goal_frontier_projection"]
+    assert goal_frontier["remaining_advancement_frontier"] == {
+        "current_agent_claimed_advancement_count": 0,
+        "unclaimed_advancement_count": 0,
+        "other_agent_claimed_advancement_count": 1,
+    }, goal_frontier
+    assert goal_frontier["deferred_successors"]["ready_count"] == 0, goal_frontier
+    assert goal_frontier["acceptance_gaps"] == [], goal_frontier
     hint = item["agent_lane_frontier_hint"]
     assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
     assert hint["decision"] == "quiet_noop_blocker", hint
@@ -1583,6 +1774,8 @@ def assert_status_agent_lane_frontier_hint_projection() -> None:
     assert "agent_lane_frontier_hint: agent=codex-side-bypass" in markdown, markdown
     assert "decision=quiet_noop_blocker" in markdown, markdown
     assert "target_todo_id=todo_primary_route" in markdown, markdown
+    assert "goal_frontier_projection: replan_required=False" in markdown, markdown
+    assert "other_agent_advancement=1 deferred_ready=0 acceptance_gaps=0" in markdown, markdown
 
 
 def assert_quota_should_run(
@@ -2213,6 +2406,7 @@ def main() -> int:
     assert_promotion_readiness_summary_markdown()
     assert_promotion_gate_summary_markdown()
     assert_decision_freshness_summary_markdown()
+    assert_status_contract_health_projection()
     with tempfile.TemporaryDirectory(prefix="loopx-status-smoke-") as tmp:
         root = Path(tmp)
         registry_path = write_planned_registry(root)
@@ -2402,6 +2596,8 @@ def main() -> int:
     assert_promotion_readiness_full_scan_fallback()
     assert_promotion_readiness_warning_in_quota_guard()
     assert_status_agent_lane_next_action_projection()
+    assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list()
+    assert_status_agent_member_handoff_uses_quota_identity()
     assert_status_agent_lane_frontier_hint_projection()
     print("status-markdown-smoke ok")
     return 0

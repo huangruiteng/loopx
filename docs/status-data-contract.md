@@ -251,6 +251,7 @@ goals must stay out of the eligible lane even when they have a high
   "runtime_root": "./runtime",
   "goal_count": 3,
   "run_count": 2,
+  "goal_filter": null,
   "status_contract": {
     "schema_version": 2,
     "minimum_dashboard_schema_version": 2,
@@ -438,6 +439,13 @@ goals must stay out of the eligible lane even when they have a high
   }
 }
 ```
+
+By default `loopx status` is the multi-goal dashboard/control-plane view.
+`loopx status --goal-id <goal-id>` keeps global health fields such as
+`contract` and `global_registry`, but focuses goal-scoped sections such as
+`attention_queue`, `run_history`, `event_ledger_summary`, `usage_summary`, and
+`todo_index` on the requested goal. Use `loopx diagnose --goal-id <goal-id>`
+when an agent needs the richer reasoning packet for one goal.
 
 Consumers should treat unknown fields as additive. Required fields for a
 first-screen UI are `ok`, `contract`, and `attention_queue`.
@@ -933,6 +941,10 @@ Item fields:
   `unclaimed_deferred_resume_candidates`, and
   `other_agent_deferred_resume_candidates`, where only the first two can wake
   the current side agent before an agent-scoped no-candidate wait is allowed.
+  Open todos may also carry `resume_when`; status should attach
+  `resume_condition` / `resume_ready` but keep the item out of executable
+  backlog until `resume_ready=true`. This lets agents see not-yet-unlocked
+  successors without accidentally selecting them as current work.
   Optional future fields such as `created_at`, lease TTLs, dependencies, or
   evidence links should extend this item shape rather than inventing another
   todo surface.
@@ -1125,6 +1137,13 @@ render it as an agent-lane pointer, not as `recommended_action` replacement.
 Human markdown should label this pointer as the current agent's todo and mark
 co-displayed global agent todo rows as goal-wide, so `--agent-id` is not
 mistaken for a filter that replaces the primary/global queue.
+The same scoped guard may include
+`goal_route_hint.schema_version=goal_route_hint_v0`. This is a goal-level
+read-path synthesis over the current `agent_lane_next_action`,
+`agent_scope_frontier`, and compact per-agent todo lanes. It carries
+`preserves_goal_next_action=true` and `goal_next_action_mutation=none` so hosts
+can explain the lane decision without mutating shared `## Next Action` or
+collapsing other agents' queues into the current agent's route.
 Within a candidate source, selection is ordered by current-agent claim first,
 then `capability_repair_mode=true`, then priority/index. A repair-mode item
 therefore stays visible as the suggested agent-lane slice even when an older
@@ -1230,6 +1249,13 @@ todos remain visible, as long as the selected slice stays outside private,
 destructive, production, or owner-only authority and honors `stop_condition`.
 This is intended to keep monitor-only work from consuming the primary
 executable backlog, not to bypass real gates.
+`quota should-run` and `status --agent-id` may also expose
+`goal_frontier_projection.schema_version=goal_frontier_projection_v0`. This
+projection is owned by `loopx.policies.goal_frontier`: it is a compact per-goal
+progress/frontier view, not another quota sub-state. When it contains
+`autonomous_replan_decision`, that decision is made before lane-local
+`monitor_quiet_skip`, `agent_scope_wait`, or `agent_scope_exhausted` projection,
+so those local no-candidate states cannot mask a required bounded replan.
 The payload includes `interaction_contract.schema_version =
 loopx_interaction_contract_v0`, which is the primary user/agent/CLI
 protocol for a selected goal. It groups the current turn into a stable
@@ -1254,24 +1280,29 @@ changes, final checks, and loop self-stop never spend quota. Host schedulers
 apply `recommended_interval_minutes` as the next target interval and multiply
 subsequent unchanged intervals by `unchanged_poll_backoff_multiplier` until
 `max_interval_minutes`; `example_progression_minutes` exposes the compact
-human-readable sequence. The hint also includes
-`reset_policy.schema_version=scheduler_reset_policy_v0`: hosts compare its
-`reset_token` between polls and clear the unchanged/backoff streak when that
-token changes, or when a user reply, new/reassigned todo, resolved gate, or
-material transition makes the goal actionable again. The token is derived from
-scheduler action plus identity/profile inputs, while the hot path carries only
-short identity/profile signatures instead of full snapshots. The reset moves
-Codex App/local cadence back to the current profile's initial interval before
+human-readable sequence. The hint also includes a compact `reset_policy`:
+hosts compare `reset_token` between polls and clear the unchanged/backoff
+streak when that token changes, or when a user reply, new/reassigned todo,
+resolved gate, or material transition makes the goal actionable again. The
+token is derived from scheduler action plus identity/profile inputs, while the
+hot path carries only action fields plus a short `identity_signature`; the
+profile signature, reset-condition summary, and full stateful-backoff policy are
+available from `scheduler_hint.cold_path_detail` when callers request
+`loopx quota should-run --include-scheduler-detail`. The reset moves Codex
+App/local cadence back to the current profile's initial interval before
 unchanged backoff resumes, and does not spend quota.
-Codex App heartbeats should use `automation_update` to apply
-`codex_app.recommended_rrule` for ordinary cadence updates. They should cache only
-`reset_policy.reset_token` plus the automation id when possible; when that token
-changes, or when user feedback/new work/reassignment/material evidence makes the
-goal active again, update the heartbeat RRULE through `automation_update` to
-`reset_policy.codex_app_initial_rrule` and clear unchanged-poll state before
-starting a new backoff progression. The token is generated from scheduler
-action plus identity/profile inputs, so hosts do not need to diff the whole
-payload to notice an initial-RRULE/profile generation change.
+Codex App heartbeats should use `automation_update` only when
+`codex_app.stateful_backoff.apply_needed=true` and
+`codex_app.recommended_rrule` is present. If that update succeeds, the agent
+must call `quota scheduler-ack --applied-rrule <recommended_rrule> --execute`;
+LoopX then persists `reset_token`, `identity_signature`, `progression_index`,
+and `last_applied_rrule` under the runtime root. When the same identity repeats,
+LoopX advances the progression until the max interval; when the reset token
+changes, the next projected RRULE returns to
+`reset_policy.codex_app_initial_rrule`. If the current desired RRULE is already
+applied, `recommended_rrule` is omitted and the host update should be skipped.
+`scheduler-ack` only records the applied host cadence; the next RRULE, if any,
+is projected by a future `quota should-run`, not by the ack response.
 The payload also includes `execution_obligation`, which is the compatibility
 entry point for older workers deciding whether a quiet no-op is allowed.
 `heartbeat_recommendation.notify` is only a user-facing notification policy. It

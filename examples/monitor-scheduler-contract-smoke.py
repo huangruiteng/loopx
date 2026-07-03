@@ -225,6 +225,42 @@ def assert_due_monitor_priority_does_not_steal_advancement_lane() -> None:
     assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
 
 
+def assert_read_only_projected_due_monitor_does_not_force_writeback() -> None:
+    status = status_payload(
+        agent_todo_items=[
+            monitor_item(
+                index=1,
+                todo_id="todo_projected_due_monitor",
+                priority="P0",
+                next_due_at=PAST_DUE_AT,
+                target_key="event-projected-watch",
+            ),
+            advancement_item(index=2, priority="P1"),
+        ]
+    )
+    agent_todos = status["attention_queue"]["items"][0]["project_asset"]["agent_todos"]
+    agent_todos["monitor_writeback"] = {
+        "schema_version": "monitor_writeback_contract_v0",
+        "supported": False,
+        "source": "event_projection_read_model",
+    }
+
+    guard = build_quota_should_run(
+        status,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+    assert lane.get("obligation") != "attempt_due_monitor", lane
+    summary = guard["agent_todo_summary"]
+    assert summary["monitor_due_count"] == 0, summary
+    assert summary["monitor_open_items"][0]["todo_id"] == "todo_projected_due_monitor", summary
+    assert summary["monitor_writeback"]["supported"] is False, summary
+
+
 def assert_due_monitor_is_not_overridden_by_side_agent_scope_wait() -> None:
     other_agent = "codex-main-control"
     guard = guard_for(
@@ -368,6 +404,7 @@ def main() -> int:
     assert_due_monitor_requires_explicit_attempt()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()
+    assert_read_only_projected_due_monitor_does_not_force_writeback()
     assert_due_monitor_is_not_overridden_by_side_agent_scope_wait()
     assert_multiple_due_monitor_cap_and_order()
     assert_other_agent_due_monitor_does_not_preempt_current_agent_lane()

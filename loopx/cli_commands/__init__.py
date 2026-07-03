@@ -83,6 +83,7 @@ from .dreaming import handle_dreaming_command, register_dreaming_commands
 from .history import handle_history_command, register_history_command
 from .lark_kanban import handle_lark_kanban_command, register_lark_kanban_commands
 from .ml_experiment import handle_ml_experiment_command, register_ml_experiment_commands
+from .multi_agent import handle_multi_agent_command, register_multi_agent_commands
 from .project_lifecycle import (
     handle_project_lifecycle_command,
     register_project_lifecycle_commands,
@@ -158,6 +159,7 @@ from .terminal_bench_environment_result import (
     register_terminal_bench_environment_result_commands,
 )
 from .todo import handle_todo_command, register_todo_command
+from .version import handle_version_command, register_version_command
 from .worker_bridge import handle_worker_bridge_command, register_worker_bridge_commands
 
 __all__ = [
@@ -205,6 +207,7 @@ __all__ = [
     "handle_history_command",
     "handle_lark_kanban_command",
     "handle_ml_experiment_command",
+    "handle_multi_agent_command",
     "handle_new_project_prompt_command",
     "handle_project_lifecycle_command",
     "handle_pr_review_command",
@@ -224,6 +227,7 @@ __all__ = [
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",
     "handle_todo_command",
+    "handle_version_command",
     "handle_worker_bridge_command",
     "register_agents_last_exam_commands",
     "register_agents_last_exam_baked_input_commands",
@@ -249,6 +253,7 @@ __all__ = [
     "register_history_command",
     "register_lark_kanban_commands",
     "register_ml_experiment_commands",
+    "register_multi_agent_commands",
     "register_project_lifecycle_commands",
     "register_pr_review_command",
     "register_quota_command",
@@ -266,5 +271,6 @@ __all__ = [
     "register_terminal_bench_adapter_commands",
     "register_terminal_bench_environment_result_commands",
     "register_todo_command",
+    "register_version_command",
     "register_worker_bridge_commands",
 ]

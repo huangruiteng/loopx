@@ -202,6 +202,13 @@ Deferred todos may carry a machine-readable resume condition with
   `resume_when=pr_merged:owner/repo#532`: the deferred todo becomes a successor
   candidate after a structured rollout event records that PR merge.
 
+Open todos may also carry `resume_when` when they are visible but not yet
+executable. Until the parsed `resume_condition.satisfied` value is true, status
+and quota keep the todo out of `first_executable_items`,
+`executable_backlog_items`, `capability_gate.runnable_candidates`, and
+`agent_lane_next_action`. When `resume_ready=true`, the open todo may enter the
+normal executable lane for its claimed agent.
+
 Status and quota expose deferred todos as a visibility lane after sorted open
 todo lanes. This is a deferred gate-resume lane: it is not runnable work, and
 it is not evidence that the current agent has no todo, until an agent reopens,

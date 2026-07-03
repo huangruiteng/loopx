@@ -149,7 +149,7 @@ def main() -> int:
 
         status_after_todo = run_cli(root, registry_path, "status", "--scan-root", str(project))
         item_after_todo = attention_item(status_after_todo)
-        assert item_after_todo["waiting_on"] == "user_or_controller", item_after_todo
+        assert item_after_todo["waiting_on"] == "controller", item_after_todo
         assert item_after_todo["user_todos"]["open_count"] == 1, item_after_todo
         assert item_after_todo["user_todos"]["items"][0]["text"] == USER_TODO, item_after_todo
         assert item_after_todo["agent_todos"]["open_count"] == 1, item_after_todo
@@ -184,6 +184,35 @@ def main() -> int:
         assert gate_payload["ok"] is True, gate_payload
         assert gate_payload["appended"] is True, gate_payload
         assert gate_payload["operator_gate"]["agent_command"] == APPROVED_COMMAND, gate_payload
+
+        pending_quota = run_cli(
+            root,
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-root",
+            str(project),
+        )
+        assert pending_quota["should_run"] is False, pending_quota
+        assert pending_quota["state"] == "operator_gate", pending_quota
+        assert pending_quota["user_todo_summary"]["open_count"] == 1, pending_quota
+        assert pending_quota["effective_action"] == "operator_gate_notify", pending_quota
+
+        complete_payload = run_cli(
+            root,
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            todo_payload["todo_id"],
+            "--evidence",
+            "operator approval recorded for read-only dry-run",
+        )
+        assert complete_payload["changed"] is True, complete_payload
 
         approved_quota = run_cli(
             root,

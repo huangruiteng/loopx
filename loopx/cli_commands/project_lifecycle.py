@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -106,6 +107,13 @@ def register_project_lifecycle_commands(
             "Machine-visible frontier changed by this repair/replan ACK. Repeat for "
             "multiple deltas. Without a delta, --autonomous-replan-recorded is stored "
             "as replan_noop/repair_noop and does not clear the obligation."
+        ),
+    )
+    refresh_state_parser.add_argument(
+        "--agent-vision-json",
+        help=(
+            "Path to a goal_vision_replan_contract_v0 JSON packet. The CLI enforces "
+            "per-field and total vision budgets before recording it."
         ),
     )
     refresh_state_parser.add_argument(
@@ -279,6 +287,25 @@ def handle_project_lifecycle_command(
 
     fmt = output_format(args)
     if args.command == "refresh-state":
+        agent_vision_packet: dict[str, object] | None = None
+        if args.agent_vision_json:
+            try:
+                agent_vision_packet = json.loads(
+                    Path(args.agent_vision_json).expanduser().read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                payload = {
+                    "ok": False,
+                    "registry": str(registry_path),
+                    "runtime_root": args.runtime_root,
+                    "goal_id": args.goal_id,
+                    "classification": args.classification,
+                    "appended": False,
+                    "dry_run": bool(args.dry_run),
+                    "error": str(exc),
+                }
+                print_payload(payload, fmt, render_state_refresh_markdown)
+                return 1
         try:
             payload = refresh_state_run(
                 registry_path=registry_path,
@@ -296,6 +323,7 @@ def handle_project_lifecycle_command(
                 progress_scope=args.progress_scope,
                 autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
                 repair_delta_kinds=args.repair_delta_kinds,
+                agent_vision_packet=agent_vision_packet,
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),
             )

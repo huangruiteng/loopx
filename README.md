@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="720">
+<img src="docs/assets/loopx-social-preview.png" alt="LoopX loop engineering social preview banner" width="480">
 
 **Loop engineering for long-running AI agents.**
 
@@ -31,14 +31,19 @@ next actions, evidence, cost, and handoff state. The agent still needs a CLI,
 goal mode, automation hook, or loop scheduler; LoopX supplies the control
 plane, not hidden autonomy.
 
-[How It Works](#how-it-works) · [Quick Start](#quick-start) · [See It In Action](#see-it-in-action) ·
-[Capability Surface](#capability-surface) ·
-[Getting Started](docs/guides/getting-started.md) · [Showcases](docs/showcases/README.md) ·
-[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) ·
-[Release Readiness](docs/product/release-readiness.md) ·
-[Update Notes](docs/update-notes/README.md) ·
-[Community](#community--feedback) · [Product Vision](docs/product/vision.md) · [Architecture](docs/architecture.md) ·
-[Dashboard](apps/dashboard/README.md) · [简体中文](README.zh-CN.md)
+[Quick Start](#quick-start) · [How It Works](#how-it-works) · [See It In Action](#see-it-in-action) ·
+[Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) · [Architecture](docs/architecture.md) ·
+[简体中文](README.zh-CN.md)
+
+<details>
+<summary>More docs and project links</summary>
+
+[Capability Surface](#capability-surface) · [Getting Started](docs/guides/getting-started.md) ·
+[Showcases](docs/showcases/README.md) · [Release Readiness](docs/product/release-readiness.md) ·
+[Update Notes](docs/update-notes/README.md) · [Community](#community--feedback) ·
+[Product Vision](docs/product/vision.md) · [Dashboard](apps/dashboard/README.md)
+
+</details>
 
 > Keep the loop moving. Keep the judgment human.
 
@@ -121,22 +126,27 @@ Requirements: Python 3.11+, `curl`, `tar`, macOS or Linux shell. Git is only
 needed for contributor clone/canary workflows. The Python package has no
 runtime dependencies outside the standard library.
 
-The easiest start is agent-first: ask the agent you already use to install,
-connect, diagnose, and show the next safe action before doing longer work.
+Start agent-first: paste one setup message for the surface you already use,
+then start real work with `/loopx <complex task>`.
 
-Pick the surface you already use:
+Choose your surface:
 
-| Surface | Best when | Start with |
-| --- | --- | --- |
-| Codex App | You want recurring heartbeats and scheduler backoff inside Codex App. | Paste the setup message below, then use `loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"`. |
-| Codex CLI | You want the visible TUI to stay primary. | Run `codex`, paste the setup message, then set `/goal <thin task_body>`. |
-| Claude Code | You want Claude Code's native `/loop` to drive each tick. | Install the opt-in adapter, run `/loopx <task>`, then `/loop`. |
-| Manual shell / other agents | You want LoopX state without a supported runtime bridge. | `curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh \| bash`, then `loopx doctor` and `loopx bootstrap`. |
+- **Codex App**: best for a long-running agent that can wake up, re-check gates,
+  and keep moving. Paste the setup message below, then ask
+  `/loopx <complex task>`.
+- **Codex CLI**: best when the visible TUI should stay primary while LoopX keeps
+  the state. Run `codex`, paste the setup message, then ask
+  `/loopx <complex task>`.
+- **Claude Code**: best when Claude Code's native `/loop` should drive each tick.
+  Install the opt-in adapter, run `/loopx <task>`, then `/loop`.
+- **Manual shell / other agents**: best when you want LoopX state without a
+  supported runtime bridge. Install from the no-clone installer, then run
+  `loopx doctor` and `loopx bootstrap`.
 
 ### Codex App
 
-Best when you want LoopX to keep working through Codex App heartbeats. Paste
-this in the current project thread:
+Best when you want a long-running or decentralized multi-agent workflow without
+hand-writing scheduler prompts. Paste this in the current project thread:
 
 ```text
 Connect the current project to LoopX.
@@ -149,24 +159,47 @@ Then run `loopx doctor`. Work only from the current project root: if LoopX state
 already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
-and `.local/` are ignored. After the project is connected, set or refresh this
-thread's heartbeat automation to start at 3 minutes using the task body from
-`loopx heartbeat-prompt --thin`, then follow `quota should-run.scheduler_hint`
-for backoff and loop self-stop. Then stop and report the goal id, current user
-gate, top agent todo, and next safe action.
+and `.local/` are ignored. If this is Codex App, set the heartbeat automation to start at 3 minutes.
+Automatically refresh it from the LoopX generated task body; do not ask me to
+manually run `heartbeat-prompt`. Then stop and report the project connection
+status, current user gate, top agent todo, and next safe action.
 ```
 
-The generated heartbeat body is the recurring Codex App work surface:
+Then start a real E2E exploration in normal language:
 
-```bash
-loopx heartbeat-prompt --thin --goal-id <goal-id> --agent-id <agent-id> --agent-scope "<scope>"
+```text
+/loopx Explore an LLM semantic rerank slice for a recommendation or search
+system: build an offline eval set, implement a minimal candidate -> semantic
+feature -> rerank -> eval path, add trace/cache/fallback/cost guardrails,
+compare baseline vs treatment, and stop for production traffic, private data,
+credentials, or AB/canary gates.
 ```
 
-The 3-minute interval is only the bootstrap cadence. On long waits,
-`quota should-run` returns `scheduler_hint`: Codex App automations should back
-off toward the recommended interval, while Codex CLI TUI and Claude Code loops
-should run a final quota/replan check after the unchanged-poll limit and then
-exit/stop if the guard is still unchanged instead of polling forever.
+LoopX will plan before writing state, then create ordered P0/P1/P2 todos that
+make the algorithm, infra, validation, and human gates visible.
+
+<details>
+<summary>Example visible todos</summary>
+
+```text
+[P0] Build the offline eval set: samples, labels, baseline, metrics, leakage check.
+[P0] Implement the vertical slice: candidate input -> semantic feature -> rerank -> eval.
+[P0] Add infra guardrails: trace schema, cache/fallback, rate limit, latency/cost budget.
+[P0] Ask before production traffic, private data, credentials, or AB/canary decisions.
+[P1] Compare baseline vs treatment with effect, cost, latency, and failure cases.
+[P2] Write the promotion handoff: canary evidence, rollback plan, and next experiment.
+```
+
+</details>
+
+After that, each tick reads `quota should-run`: if a user gate blocks the chosen
+path, the agent asks a concrete question; if a safe fallback exists, it keeps
+working; if nothing material changed, it backs off or quiet-stops instead of
+spending compute forever. The agent may use `heartbeat-prompt --thin`
+internally to wire Codex App, but users do not need to run that command in the
+recommended path. After the 3-minute bootstrap cadence, Codex App cadence
+should follow `quota should-run.scheduler_hint` for backoff and reset-to-initial
+updates.
 
 ### Codex CLI
 
@@ -192,16 +225,16 @@ already exists, reuse it and do not create or overwrite a goal; if the project
 is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
 goal state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
-execution. After the project is connected, generate the thin heartbeat prompt
-and set the current Codex CLI goal to `/goal <thin task_body>`. Then stop and
-report the goal id, current user gate, top agent todo, and next safe action.
+execution. Then stop and report the project connection status, current user
+gate, top agent todo, and next safe action. After that I will start work with
+`/loopx <complex task>`.
 ```
 
-That one message is the install, connect, heartbeat setup, and status check.
-The first useful TUI response should show the current goal, any concrete user
-gate, top todos, and next safe action. Hidden `codex exec` is not the default
-bootstrap path. Details for generated messages, later same-TUI automation, and
-proof capture live in [Getting Started](docs/guides/getting-started.md).
+That one message is the install, connect, and status check. The first useful
+TUI response should show the current goal, any concrete user gate, top todos,
+and next safe action. Hidden `codex exec` is not the default bootstrap path.
+Details for generated messages, later same-TUI automation, and proof capture
+live in [Getting Started](docs/guides/getting-started.md).
 
 A successful connection looks like this:
 
@@ -246,6 +279,26 @@ loopx bootstrap \
   --goal-doc GOAL.md
 ```
 
+### Advanced: Dynamic Workflow Scripts
+
+For teams that already have their own agent runner, custom workflow runtime,
+tool harness, or multi-agent scheduler, LoopX can be used as the control-plane
+API inside that workflow. Your script or supervisor owns the executor loop;
+LoopX owns the state contract:
+
+```text
+loopx quota should-run      # should any agent act now?
+loopx todo claim/update     # who owns this slice, and what changed?
+loopx refresh-state         # what evidence or blocker should the next turn see?
+loopx quota spend-slot      # account for a completed automatic slice
+```
+
+This is the shape used by advanced showcases such as
+[dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
+your agents can orchestrate external tools, devices, domain-specific runners,
+or side agents, while LoopX keeps goals, gates, todos, evidence, quota, and
+handoff state reviewable.
+
 Clone-based install is only for contributors who want the live canary wrapper:
 
 ```bash
@@ -269,9 +322,9 @@ points:
   a reproducible synthetic demo where a human gate stays visible while safe
   fallback work continues.
 - [LoopX self-iteration](docs/showcases/cases/0619-loopx-self-iteration.md)
-  and the [hardware-agent workflow](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
-  public-safe evidence that one control plane can coordinate primary and side
-  agents without hiding ownership or scope.
+  and [dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
+  public-safe evidence that one control plane can coordinate primary agents,
+  side agents, and external tools without hiding ownership or scope.
 
 For more cases, open the [showcase catalog](docs/showcases/README.md). For a
 full presenter material, see the experimental notes below.
@@ -465,6 +518,27 @@ loopx quota should-run --goal-id your-project-goal
 loopx heartbeat-prompt --thin --goal-id your-project-goal
 loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat --execute
 ```
+
+The `next_automatic_turn` reported by `quota plan` is only an advisory
+scheduling hint: it chooses the highest-compute eligible goal, while
+operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked
+goals stay out of the eligible lane.
+
+For stalled control-plane repair, `control_plane.self_repair.enabled=true` lets
+`quota should-run` return a bounded `decision=self_repair` contract; missing
+policy defaults off. When the payload includes a `gate_prompt` or
+`operator_question`, the target heartbeat should proactively ask that concrete
+user/controller gate and do not call the turn "no new user action" while they
+remain open. Even after a bounded safe-bypass step, its report still has to
+list existing open user todos. When `notify_user_on_open_todo=true`, skip
+delivery work and quota spend for that blocker-push turn.
+
+When `should_run=false` but `safe_bypass_allowed=true`, the heartbeat may still
+do one bounded read-only steering or analysis step. See
+`docs/quota-allocation.md` for the full allocation contract. After an automatic
+turn actually spends delivery compute, append one spend event. Do not append
+spend for quiet `should_run=false` skips, preflight failures, or pure dry-run
+previews.
 
 Three rules matter in daily use:
 

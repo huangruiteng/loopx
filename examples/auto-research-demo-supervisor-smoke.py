@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the dry-run auto-research demo supervisor packet."""
+"""Smoke-test the thin auto-research visible TUI supervisor packet."""
 
 from __future__ import annotations
 
@@ -14,13 +14,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.auto_research import (  # noqa: E402
+from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
     AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION,
     build_auto_research_demo_supervisor_plan,
 )
+from loopx.capabilities.auto_research.preset import (  # noqa: E402
+    AUTO_RESEARCH_PRESET_SCHEMA_VERSION,
+)
 
 
-GOAL_ID = "loopx-auto-research-knn"
+GOAL_ID = "loopx-auto-research-demo"
 LANES = [
     "codex-product-capability:research-curator:research_curator",
     "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
@@ -52,25 +55,75 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert payload["schema_version"] == AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION, payload
     assert payload["mode"] == "dry_run", payload
     assert payload["goal_id"] == GOAL_ID, payload
-    assert payload["coordination_model"]["leader_agent_required"] is False, payload
-    assert payload["coordination_model"]["supervisor_role"] == "host_shell_layout_only", payload
-    assert "quota_should_run" in payload["coordination_model"]["source_of_truth"], payload
-    surface = payload["goal_surface"]
-    assert surface["schema_version"] == "auto_research_shared_goal_surface_v0", surface
-    assert surface["shared_goal_id"] == GOAL_ID, surface
-    assert surface["lane_count"] == 4, surface
-    assert surface["lane_ids"] == [
-        "research-curator",
-        "hypothesis-mapper",
-        "evidence-runner",
-        "evidence-verifier",
-    ], surface
-    assert surface["uses_default_lanes"] is False, surface
-    assert surface["default_lane_count"] == 3, surface
-    assert surface["shared_frontier"] is True, surface
-    assert surface["all_lane_workspace_isolation"] is False, surface
-    assert "mutating evidence-runner attempts" in surface["mutation_isolation_policy"], surface
-    assert surface["explicit_agent_override"] is True, surface
+
+    layering = payload["layer_minimality_contract"]
+    assert (
+        layering["schema_version"] == "multi_agent_three_layer_minimality_contract_v0"
+    ), layering
+    assert layering["product_id"] == "auto-research", layering
+    assert layering["preset_id"] == "auto_research_thin_preset", layering
+    assert layering["principle"] == (
+        "user_and_preset_stay_thin_kernel_owns_reusable_mechanics"
+    ), layering
+    assert layering["user_layer"]["fields"] == [
+        "topic_or_objective",
+        "rounds",
+        "role_overrides",
+        "data_or_eval_entrypoint",
+    ], layering
+    assert "research_roles" in layering["preset_layer"]["owns"], layering
+    assert "metric_evidence_loop" in layering["preset_layer"]["owns"], layering
+    assert "multi_agent_runner" in layering["preset_layer"]["forbidden"], layering
+    assert "pane_local_a2a_tick" in layering["preset_layer"]["forbidden"], layering
+    assert "compact_human_status" in layering["kernel_layer"]["owns"], layering
+    assert layering["acceptance"]["preset_has_no_runner_process_logic"] is True, layering
+
+    preset = payload["preset"]
+    assert preset["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, preset
+    assert preset["role_count"] == 4, preset
+    assert preset["owns"] == [
+        "research_roles",
+        "handoff_hints",
+        "metric_evidence_loop",
+        "domain_defaults",
+    ], preset
+    assert "multi_agent_runner" in preset["forbidden"], preset
+    assert "pane_local_a2a_tick" in preset["forbidden"], preset
+
+    kernel = payload["auto_research"]
+    assert kernel["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, payload
+    assert kernel["uses_generic_runner"] is True, payload
+    assert kernel["surface_count"] == 4, payload
+    assert kernel["state_bus"] == "loopx_registry_runtime_todo_quota_frontier", payload
+    assert kernel["worker_turn"] == "pane_local_a2a_tick", payload
+    assert kernel["presentation_layers_in_kernel"] is False, payload
+
+    coordination = payload["coordination_model"]
+    assert coordination["leader_agent_required"] is False, payload
+    assert coordination["pattern"] == "decentralized_state_a2a", payload
+    assert "quota_should_run" in coordination["source_of_truth"], payload
+    assert "agent_scoped_frontier" in coordination["source_of_truth"], payload
+
+    shared = payload["shared_goal_surface"]
+    assert shared["shared_goal_id"] == GOAL_ID, shared
+    assert shared["shared_state_route"] == "LOOPX_REGISTRY_and_LOOPX_RUNTIME_ROOT", shared
+    assert shared["shared_frontier"] is True, shared
+    assert shared["all_lane_workspace_isolation"] is False, shared
+    assert "agent-scoped todo/frontier" in shared["mutation_isolation_policy"], shared
+
+    runner = payload["runner_contract"]
+    assert runner["runner_surface"] == "tmux_codex_cli_tui", runner
+    assert runner["coordination_model"]["leader_required"] is False, runner
+    assert runner["coordination_model"]["state_bus"] == "loopx_registry_runtime_todo_quota_frontier", runner
+    assert runner["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", runner
+    assert runner["pane_local_a2a"]["human_default"] == "markdown_status_inside_codex_tui", runner
+    assert runner["role_prompt_and_skill"]["worker_local_skill_only"] is True, runner
+
+    tui = payload["interactive_tui_contract"]
+    assert tui["codex_surface"] == "interactive_cli_tui", tui
+    assert tui["visible_json_policy"] == "not_printed_before_tui", tui
+    assert "pre_codex_character_stream" in tui["forbidden_visible_content"], tui
+    assert "raw_frontier_json" in tui["forbidden_visible_content"], tui
 
     lanes = payload["lanes"]
     assert [lane["lane_id"] for lane in lanes] == [
@@ -85,98 +138,104 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         "evidence_runner",
         "evidence_verifier",
     ], payload
+    expected_action_hints = {
+        "research_curator": "write_research_contract",
+        "hypothesis_mapper": "propose_hypothesis",
+        "evidence_runner": "run_dev_eval",
+        "evidence_verifier": "summarize_evidence",
+    }
     for lane in lanes:
         profile = lane["role_profile"]
         assert profile["schema_version"] == "auto_research_role_profile_v0", profile
         assert profile["goal_id"] == GOAL_ID, profile
         assert profile["agent_id"] == lane["agent_id"], profile
-        assert profile["lane_id"] == lane["lane_id"], profile
         assert profile["role_id"] == lane["role_id"], profile
         assert profile["required_skill"] == "loopx-auto-research", profile
-        assert profile["phase"], profile
-        assert profile["allowed_actions"], profile
-        assert profile["skill_section"], profile
+        assert profile["skill_distribution"] == "worker_local", profile
+        assert profile["worker_skill_source"].endswith("auto_research/worker_skill/SKILL.md"), profile
+        assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile
-        assert profile["protected_scope"], profile
         assert profile["stop_conditions"], profile
-        assert profile["takeover_controls"], profile
-        assert profile["pane_title_is_authority"] is False, profile
+
         assert "quota should-run" in lane["quota_guard"], lane
         assert f"--agent-id {lane['agent_id']}" in lane["quota_guard"], lane
-        assert "auto-research frontier" in lane["frontier"], lane
-        assert "codex-cli-bootstrap-message" in lane["bootstrap_message"], lane
-        assert "[LoopX role profile]" in lane["visible_launch_command"], lane
-        assert "[LoopX visible acceptance]" in lane["visible_launch_command"], lane
-        assert "LOOPX_VISIBLE_BOOTSTRAP_PAUSE_SECONDS" in lane["visible_launch_command"], lane
-        assert "LOOPX_ROLE_PROFILE_JSON" in lane["visible_launch_command"], lane
-        assert "LOOPX_REQUIRED_SKILL" in lane["visible_launch_command"], lane
-        assert "bootstrap-or-stop" in lane["visible_launch_command"], lane
-        assert lane["visible_codex_tui"] == "codex", lane
-        phases = [item["phase"] for item in lane["lane_timeline"]]
-        assert phases == [
+        assert lane["frontier"] == "agent-scoped LoopX todo/quota/frontier projection", lane
+        assert lane["bootstrap_message"] == "role_prompt_inside_codex_tui", lane
+        assert lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", lane
+        assert lane["pane_local_a2a"]["worker_turn_configured"] is True, lane
+        assert lane["pane_local_a2a"]["auto_start"] is True, lane
+        assert lane["pane_local_a2a"]["tick_rounds"] == 3, lane
+        assert lane["pane_local_a2a"]["tick_sleep_seconds"] == 3, lane
+        assert lane["lane_timeline"] == [
             "role_profile",
-            "quota_guard",
-            "frontier_projection",
-            "bootstrap_prompt",
-            "visible_codex",
+            "codex_tui",
+            "auto_start_pane_local_a2a_tick",
+            "frontier",
         ], lane
-        assert lane["lane_timeline"][0]["command_ref"] == "role_profile", lane
-        assert lane["lane_timeline"][1]["command_ref"] == "quota_guard", lane
-        assert "operator is attached" in lane["lane_timeline"][-1]["continue_when"], lane
+
+        command = lane["visible_launch_command"]
+        assert "LOOPX_PANE_A2A_TICK" in command, lane
+        assert "LOOPX_PANE_WORKER_TURN" in command, lane
+        assert "LOOPX_PANE_TICK_ROUNDS=3" in command, lane
+        assert "LOOPX_PANE_TICK_SLEEP_SECONDS=3" in command, lane
+        assert "auto-research worker-turn" in command, lane
+        assert "--complete-selected-todo" in command, lane
+        assert "LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1" in command, lane
+        assert "LOOPX_CODEX_TUI_MODE=interactive" in command, lane
+        assert "LOOPX_CODEX_TUI_PROMPT_ARTIFACT" in command, lane
+        assert "LOOPX_CODEX_BIN=codex" in command, lane
+        assert "LOOPX_CODEX_REASONING_EFFORT=high" in command, lane
+        assert "exec python3 -c" in command, lane
+        assert "codex exec" not in command, lane
+        assert "codex_stream_filter" not in command, lane
+        assert "[LoopX auto-research frontier]" not in command, lane
+        assert "BOOTSTRAP_ARTIFACT" in command, lane
+        assert "bootstrap-or-stop" not in command, lane
 
     start_script = "\n".join(payload["commands"]["start_script"])
     assert "tmux new-session" in start_script, start_script
     assert "tmux new-window" in start_script, start_script
     assert "LOOPX_PROJECT" in start_script, start_script
-    assert "codex-cli-bootstrap-message" in start_script, start_script
-    assert "auto-research frontier" in start_script, start_script
+    assert "LOOPX_CODEX_TUI_MODE=interactive" in start_script, start_script
+    assert "LOOPX_CODEX_BIN=codex" in start_script, start_script
+    assert "LOOPX_CODEX_REASONING_EFFORT=high" in start_script, start_script
+    assert "exec python3 -c" in start_script, start_script
+    assert "[Codex bootstrap]" not in start_script, start_script
+    assert "[Codex bootstrap prompt]" not in start_script, start_script
     assert payload["commands"]["attach"] == "tmux attach -t loopx-auto-research", payload
 
     one_click = payload["one_click_demo"]
-    assert one_click["schema_version"] == "auto_research_one_click_demo_v0", payload
-    assert one_click["mode"] == "copy_paste_dry_run_rehearsal", payload
+    assert one_click["schema_version"] == "auto_research_one_click_demo_v1", payload
+    assert one_click["mode"] == "visible_codex_tui_lanes", payload
     assert one_click["default_safe"] is True, payload
-    rehearsal = "\n".join(one_click["script"])
-    assert "dry-run rehearsal only" in rehearsal, rehearsal
-    assert "does not start tmux" in rehearsal, rehearsal
-    assert "LOOPX_PROJECT" in rehearsal, rehearsal
-    assert "start script - inspect before pasting" in rehearsal, rehearsal
-    assert "tmux new-session" in rehearsal, rehearsal
-    assert "tmux attach -t loopx-auto-research" in rehearsal, rehearsal
-    assert "tmux kill-session -t loopx-auto-research" in rehearsal, rehearsal
-    assert "start tmux" in one_click["does_not"], one_click
-    assert "launch Codex" in one_click["does_not"], one_click
-
-    acceptance = payload["demo_acceptance"]
-    assert acceptance["schema_version"] == "auto_research_demo_acceptance_v0", payload
-    assert "lanes[].role_profile" in acceptance["required_visible_fields"], acceptance
-    assert "lanes[].lane_timeline" in acceptance["required_visible_fields"], acceptance
-    assert any("role_profile_v0" in item for item in acceptance["operator_can_accept_when"]), acceptance
-    assert any("without executing it" in item for item in acceptance["operator_can_accept_when"]), acceptance
-    assert any("role_profile_v0" in item for item in acceptance["operator_must_reject_when"]), acceptance
-    assert any("hides attach/stop" in item for item in acceptance["operator_must_reject_when"]), acceptance
-
-    takeover = payload["user_takeover"]
-    assert takeover["schema_version"] == "auto_research_user_takeover_v0", payload
-    assert any("rehearsal script first" in item for item in takeover["operator_controls"]), takeover
-    assert any("attach to tmux" in item for item in takeover["operator_controls"]), takeover
-    assert any("role_profile_v0" in item for item in takeover["visible_status_cues"]), takeover
-    assert any("quota guard" in item for item in takeover["visible_status_cues"]), takeover
+    assert "each window starts a real interactive Codex CLI TUI" in " ".join(
+        one_click["expected_visible_result"]
+    ), one_click
+    assert "starts by running $LOOPX_PANE_A2A_TICK" in " ".join(
+        one_click["expected_visible_result"]
+    ), one_click
 
     boundary = payload["boundary"]
-    assert boundary["dry_run_plan_only"] is True, payload
-    assert boundary["starts_tmux"] is False, payload
-    assert boundary["runs_codex"] is False, payload
+    assert boundary["starts_visible_processes"] is False, payload
+    assert boundary["runs_agent_processes"] is False, payload
+    assert boundary["writes_loopx_state"] is False, payload
+    assert boundary["spends_loopx_quota"] is False, payload
     assert boundary["reads_raw_transcripts"] is False, payload
     assert boundary["reads_session_files"] is False, payload
     assert boundary["reads_credentials"] is False, payload
-    assert boundary["mutates_codex_session"] is False, payload
-    assert boundary["writes_loopx_state"] is False, payload
-    assert boundary["spends_loopx_quota"] is False, payload
     assert boundary["shared_goal_surface"] is True, payload
-    assert boundary["all_lane_workspace_isolation"] is False, payload
-    assert "mutating evidence-runner attempts" in boundary["mutation_isolation_policy"], payload
-    assert payload["future_gates"][0]["capability"] == "execute_start_script", payload
+    assert boundary["public_safe_redaction"] is True, payload
+
+    for removed_key in [
+        "acceptance",
+        "demo_acceptance",
+        "launch_checks",
+        "board",
+        "showcase_projection",
+        "artifact_packet",
+        "public_claim_boundary",
+    ]:
+        assert removed_key not in payload, payload
     assert_no_private_surface(payload)
 
 
@@ -210,33 +269,21 @@ def run_cli_json() -> dict[str, Any]:
 
 
 def main() -> int:
-    default_payload = build_auto_research_demo_supervisor_plan(
-        goal_id=GOAL_ID,
-    )
+    default_payload = build_auto_research_demo_supervisor_plan(goal_id=GOAL_ID)
     assert [lane["agent_id"] for lane in default_payload["lanes"]] == [
         "codex-product-capability",
         "codex-side-bypass",
         "codex-main-control",
+        "codex-value-explorer",
     ], default_payload
     assert [lane["lane_id"] for lane in default_payload["lanes"]] == [
         "research-curator",
         "hypothesis-mapper",
         "evidence-runner",
+        "evidence-verifier",
     ], default_payload
-    assert default_payload["goal_surface"]["lane_count"] == 3, default_payload
-    assert default_payload["goal_surface"]["lane_ids"] == [
-        "research-curator",
-        "hypothesis-mapper",
-        "evidence-runner",
-    ], default_payload
-    assert default_payload["goal_surface"]["uses_default_lanes"] is True, default_payload
-    assert default_payload["goal_surface"]["default_lane_count"] == 3, default_payload
-    assert default_payload["goal_surface"]["default_lane_ids"] == [
-        "research-curator",
-        "hypothesis-mapper",
-        "evidence-runner",
-    ], default_payload
-    assert "codex-value-explorer" not in json.dumps(default_payload), default_payload
+    assert default_payload["auto_research"]["surface_count"] == 4, default_payload
+    assert default_payload["shared_goal_surface"]["shared_goal_id"] == GOAL_ID, default_payload
 
     payload = build_auto_research_demo_supervisor_plan(
         goal_id=GOAL_ID,
@@ -250,7 +297,7 @@ def main() -> int:
             agent_specs=["codex-main-control:evidence-runner:not_a_role"],
         )
     except ValueError as exc:
-        assert "role_id must be one of" in str(exc), exc
+        assert "unknown auto-research role_id" in str(exc), exc
     else:
         raise AssertionError("explicit invalid role_id must not silently fallback")
 
@@ -279,16 +326,18 @@ def main() -> int:
     assert "## Role Profiles" in markdown, markdown
     assert "loopx-auto-research" in markdown, markdown
     assert "## Lane Timeline" in markdown, markdown
-    assert "required_skill: `loopx-auto-research`" in markdown, markdown
-    assert "`role_profile` via `role_profile`" in markdown, markdown
-    assert "`quota_guard` via `quota_guard`" in markdown, markdown
+    assert "required_worker_playbook: `loopx-auto-research`" in markdown, markdown
+    assert "skill_distribution: `worker_local`" in markdown, markdown
+    assert "worker_skill_source: `loopx/capabilities/auto_research/worker_skill/SKILL.md`" in markdown, markdown
     assert "## One-Click Dry Run" in markdown, markdown
-    assert "copy_paste_dry_run_rehearsal" in markdown, markdown
-    assert "## User Takeover" in markdown, markdown
-    assert "## Visible Status Cues" in markdown, markdown
-    assert "## Demo Acceptance" in markdown, markdown
-    assert "accept when:" in markdown, markdown
+    assert "visible_codex_tui_lanes" in markdown, markdown
+    assert "## Demo Acceptance" not in markdown, markdown
+    assert "accept when:" not in markdown, markdown
     assert "tmux attach -t loopx-auto-research" in markdown, markdown
+    assert "start_script: `machine_json_only`" in markdown, markdown
+    assert "loopx auto-research demo-e2e --execute" in markdown, markdown
+    assert "tmux new-session" not in markdown, markdown
+    assert "LOOPX_ROLE_PROFILE_JSON" not in markdown, markdown
 
     print("auto-research-demo-supervisor-smoke ok")
     return 0

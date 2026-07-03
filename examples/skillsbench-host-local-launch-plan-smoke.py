@@ -30,6 +30,7 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     build_skillsbench_remote_command_file_bridge_probe_request,
 )
 from scripts.skillsbench_automation_loop import (  # noqa: E402
+    DEFAULT_TIMEOUT_SEC,
     DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
     _apply_agent_message_only_no_tool_calls_attribution,
@@ -40,7 +41,9 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _host_local_acp_launch_command,
     _host_local_proxy_endpoint_probe,
     _host_local_acp_target_env,
+    _merge_app_server_goal_worker_trace_summary,
     _merge_host_local_acp_relay_trace_summary,
+    _public_runner_config,
     _public_runner_prerequisites,
     _replace_option_value,
     _run_host_local_acp_codex_exec_preflight,
@@ -183,6 +186,7 @@ print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
         agent_idle_timeout=7200,
         host_local_acp_launch=True,
         local_codex_exec_timeout_sec=21600,
+        route="loopx-product-mode",
     )
     assert _effective_local_codex_exec_timeout_sec(timeout_args) == 21600
     assert _effective_benchflow_agent_timeout_sec(timeout_args) == (
@@ -193,6 +197,7 @@ print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
         host_local_acp_launch=True,
         local_codex_bridge_idle_timeout_sec=None,
         local_codex_exec_timeout_sec=None,
+        route="loopx-product-mode",
     )
     assert _effective_local_codex_exec_timeout_sec(
         default_host_local_timeout_args
@@ -204,8 +209,34 @@ print(json.dumps({"ok": True, "stdout": "", "stderr": "", "exit_code": 0}))
         agent_idle_timeout=7200,
         host_local_acp_launch=False,
         local_codex_exec_timeout_sec=21600,
+        route="loopx-product-mode",
     )
     assert _effective_benchflow_agent_timeout_sec(non_host_local_timeout_args) == 7200
+    app_server_goal_timeout_args = SimpleNamespace(
+        agent_idle_timeout=900,
+        host_local_acp_launch=True,
+        local_codex_bridge_idle_timeout_sec=None,
+        local_codex_exec_timeout_sec=None,
+        outer_timeout_sec=3600,
+        route="codex-app-server-goal-baseline",
+    )
+    assert _effective_local_codex_exec_timeout_sec(app_server_goal_timeout_args) == (
+        DEFAULT_TIMEOUT_SEC
+    )
+    assert _effective_benchflow_agent_timeout_sec(app_server_goal_timeout_args) == (
+        DEFAULT_TIMEOUT_SEC + HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC
+    )
+    app_server_goal_outer_timeout_args = SimpleNamespace(
+        agent_idle_timeout=900,
+        host_local_acp_launch=True,
+        local_codex_bridge_idle_timeout_sec=None,
+        local_codex_exec_timeout_sec=None,
+        outer_timeout_sec=21600,
+        route="codex-app-server-goal-baseline",
+    )
+    assert _effective_local_codex_exec_timeout_sec(
+        app_server_goal_outer_timeout_args
+    ) == 21600
     replaced = _replace_option_value(
         ["relay", "--remote-command-file-bridge-command", "old", "--keep", "x"],
         "--remote-command-file-bridge-command",
@@ -415,6 +446,110 @@ if out:
         assert prerequisites["container_codex_acp_install_skipped"] is False
         assert plan["public_boundary"]["leaderboard_upload"] is False
         assert plan["public_boundary"]["public_submission"] is False
+        app_trace_dir = Path(tmp) / "app-server-goal-trace"
+        app_trace_dir.mkdir()
+        (app_trace_dir / "turn.compact.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": (
+                        "skillsbench_host_codex_goal_worker_public_trace_v0"
+                    ),
+                    "trace_kind": "turn",
+                    "ok": True,
+                    "turn": {
+                        "reasoning_effort": "xhigh",
+                        "goal_get_present": True,
+                        "turn_id_present": True,
+                        "turn_completed_observed": True,
+                        "assistant_message_present": True,
+                        "first_action_observed": True,
+                        "effective_action_observed": True,
+                    },
+                    "worker_adapter": {"reasoning_effort": "xhigh"},
+                    "boundary": {
+                        "raw_task_text_recorded": False,
+                        "raw_logs_recorded": False,
+                        "raw_trajectory_recorded": False,
+                        "credential_values_recorded": False,
+                        "host_paths_recorded": False,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        app_server_plan = {
+            "route": "codex-app-server-goal-baseline",
+            "app_server_reasoning_effort": "xhigh",
+            "app_server_goal_worker_trace_dir": str(app_trace_dir),
+            "runner_prerequisites": {
+                "schema_version": "skillsbench_runner_prerequisites_v0",
+                "codex_api_egress_preflight_required": True,
+                "codex_api_egress_preflight_ready": True,
+                "codex_api_egress_preflight_status": "ready",
+                "codex_api_egress_mode_resolved": "reverse-tunnel",
+                "codex_api_reverse_tunnel_required": True,
+                "codex_api_reverse_tunnel_proxy_configured": True,
+                "codex_api_reverse_tunnel_proxy_source": "env",
+                "codex_api_reverse_tunnel_proxy_scheme": "http",
+                "codex_api_reverse_tunnel_proxy_endpoint_kind": "ipv4",
+                "codex_api_reverse_tunnel_proxy_endpoint_port": 3128,
+                "codex_api_reverse_tunnel_proxy_url_recorded": False,
+            },
+        }
+        app_controller_trace: dict[str, object] = {}
+        _merge_app_server_goal_worker_trace_summary(
+            app_server_plan,
+            app_controller_trace,
+        )
+        app_server_config = _public_runner_config(app_server_plan)
+        app_server_observability = app_server_config[
+            "app_server_goal_worker_observability"
+        ]
+        assert app_server_observability["requested_reasoning_effort"] == "xhigh"
+        assert app_server_observability["observed_reasoning_effort"] == "xhigh"
+        assert app_server_observability["reasoning_effort_matches_request"] is True
+        assert app_server_observability["public_trace_read"] is True
+        assert app_server_observability["raw_material_recorded"] is False
+        assert (
+            app_server_observability[
+                "codex_api_egress_preflight_observation_status"
+            ]
+            == "executed_ready"
+        )
+        assert app_server_observability[
+            "codex_api_reverse_tunnel_proxy_url_recorded"
+        ] is False
+        app_failure_trace = Path(tmp) / "app-server-controller-trace.json"
+        app_failure_trace.write_text("{}", encoding="utf-8")
+        app_failure_compact = build_runner_failure_compact(
+            SimpleNamespace(
+                build_stall_timeout_sec=0,
+                dataset="skillsbench-v1.1",
+                model=None,
+                run_group_id=None,
+                route="codex-app-server-goal-baseline",
+                task_id="demo-task",
+            ),
+            {
+                "app_server_goal_worker_trace_dir": str(app_trace_dir),
+                "app_server_reasoning_effort": "xhigh",
+                "compact_benchmark_run_json": str(
+                    Path(tmp) / "app-server-failure-compact.json"
+                ),
+                "controller_trace_json": str(app_failure_trace),
+                "route": "codex-app-server-goal-baseline",
+                "runner_prerequisites": dict(
+                    app_server_plan["runner_prerequisites"]
+                ),
+            },
+            RuntimeError("app-server worker failed before result"),
+        )
+        assert app_failure_compact["runner_config"][
+            "app_server_goal_worker_observability"
+        ]["observed_reasoning_effort"] == "xhigh"
+        assert app_failure_compact["app_server_goal_worker_observability"][
+            "reasoning_effort_matches_request"
+        ] is True
         launch_args = SimpleNamespace(
             agent_idle_timeout=7200,
             app_server_acp_heartbeat_interval_sec=120.0,
@@ -478,6 +613,7 @@ if out:
                 local_codex_bin="/unused/when-explicit-client-is-configured",
                 local_codex_sandbox="workspace-write",
                 model="gpt-5.5",
+                reasoning_effort="xhigh",
                 route="loopx-product-mode",
                 task_id="demo-task",
             ),
@@ -493,6 +629,13 @@ if out:
                 explicit_preflight_command.index("--codex-bin") + 1
             ]
             == "/unused/when-explicit-client-is-configured"
+        )
+        assert "--reasoning-effort" in explicit_preflight_command
+        assert (
+            explicit_preflight_command[
+                explicit_preflight_command.index("--reasoning-effort") + 1
+            ]
+            == "xhigh"
         )
         bridge_preflight_command = _host_local_acp_codex_exec_preflight_command(
             SimpleNamespace(
@@ -511,6 +654,7 @@ if out:
                 remote_command_file_bridge_probe_timeout_sec=5.0,
                 remote_command_file_bridge_ready=True,
                 remote_command_file_bridge_solver_command="/tmp/remote-solver-bridge",
+                reasoning_effort="xhigh",
                 route="loopx-product-mode",
                 task_id="demo-task",
             ),
@@ -2035,6 +2179,95 @@ output.write_text({SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER!r}, encod
             "remote_command_file_bridge_agent_task_facing_operation_count"
             not in bridge_preflight_prereqs
         ), bridge_preflight_prereqs
+        captured_preflight: dict[str, object] = {}
+        original_relay_probe = _run_host_local_acp_codex_exec_preflight.__globals__[
+            "run_skillsbench_local_acp_relay_probe"
+        ]
+
+        def fake_relay_probe(command, **kwargs):
+            captured_preflight["command"] = list(command)
+            captured_preflight["env"] = dict(kwargs.get("env") or {})
+            return {
+                "ready": True,
+                "stage": "complete",
+                "first_blocker": "skillsbench_local_acp_relay_ready",
+                "response_marker_observed": True,
+            }
+
+        _run_host_local_acp_codex_exec_preflight.__globals__[
+            "run_skillsbench_local_acp_relay_probe"
+        ] = fake_relay_probe
+        try:
+            env_preflight_plan = {
+                "host_local_acp_relay_trace_dir": str(
+                    Path(tmp) / "env-preflight-traces"
+                ),
+                "runner_prerequisites": {},
+            }
+            env_preflight_args = SimpleNamespace(
+                codex_api_egress_mode="reverse-tunnel",
+                codex_api_reverse_tunnel_proxy=(
+                    "http://reverse-proxy.example.invalid:18080"
+                ),
+                dataset="skillsbench-v1.1",
+                host_local_acp_codex_exec_preflight_attempts=1,
+                host_local_acp_codex_exec_preflight_timeout_sec=20,
+                host_local_acp_launch=True,
+                local_acp_relay_command=None,
+                local_codex_bin=str(bridge_preflight_codex),
+                local_codex_first_action_timeout_sec=0,
+                local_codex_sandbox="workspace-write",
+                model="gpt-5.5",
+                remote_command_file_bridge_agent_command="",
+                remote_command_file_bridge_probe=False,
+                remote_command_file_bridge_probe_timeout_sec=5.0,
+                remote_command_file_bridge_ready=False,
+                remote_command_file_bridge_solver_command="",
+                reasoning_effort="xhigh",
+                route="codex-acp-blind-loop-baseline",
+                task_id="demo-task",
+            )
+            _run_host_local_acp_codex_exec_preflight(
+                env_preflight_args,
+                env_preflight_plan,
+            )
+        finally:
+            _run_host_local_acp_codex_exec_preflight.__globals__[
+                "run_skillsbench_local_acp_relay_probe"
+            ] = original_relay_probe
+        env_preflight_prereqs = env_preflight_plan["runner_prerequisites"]
+        assert (
+            env_preflight_prereqs["host_local_acp_codex_exec_preflight_status"]
+            == "passed"
+        ), env_preflight_prereqs
+        assert (
+            env_preflight_prereqs["host_local_acp_target_env_forwarded"] is True
+        ), env_preflight_prereqs
+        assert "HTTPS_PROXY" in env_preflight_prereqs["host_local_acp_target_env_keys"]
+        assert (
+            "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY"
+            in env_preflight_prereqs["host_local_acp_target_env_keys"]
+        )
+        assert (
+            env_preflight_prereqs["host_local_acp_proxy_endpoint_status"]
+            == "non_loopback_proxy"
+        ), env_preflight_prereqs
+        assert (
+            env_preflight_prereqs["host_local_acp_proxy_endpoint_raw_url_recorded"]
+            is False
+        ), env_preflight_prereqs
+        captured_env = captured_preflight["env"]
+        assert isinstance(captured_env, dict)
+        assert (
+            captured_env["HTTPS_PROXY"]
+            == "http://reverse-proxy.example.invalid:18080"
+        )
+        captured_command = captured_preflight["command"]
+        assert isinstance(captured_command, list)
+        assert "--reasoning-effort" in captured_command
+        assert captured_command[captured_command.index("--reasoning-effort") + 1] == (
+            "xhigh"
+        )
         preflight_plan = {
             "host_local_acp_relay_trace_dir": str(Path(tmp) / "preflight-traces"),
             "runner_prerequisites": {},
@@ -2052,6 +2285,7 @@ output.write_text({SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER!r}, encod
             remote_command_file_bridge_probe=False,
             remote_command_file_bridge_ready=False,
             remote_command_file_bridge_solver_command=None,
+            reasoning_effort="xhigh",
             route="loopx-product-mode",
             task_id="demo-task",
         )

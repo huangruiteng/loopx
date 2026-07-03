@@ -244,7 +244,13 @@ def main() -> None:
                 limit=5,
             )
             goal = history["goals"][0]
-            assert goal["latest_runs"][0]["classification"] == "side_lane_review_handoff", goal
+            latest_run = goal["latest_runs"][0]
+            assert latest_run["classification"] == "side_lane_review_handoff", goal
+            assert latest_run["progress_scope"] == "agent_lane", latest_run
+            assert latest_run["agent_id"] == "codex-side-bypass", latest_run
+            assert latest_run["agent_lane"] == "codex-side-bypass", latest_run
+            assert latest_run["delivery_batch_scale"] == "single_surface", latest_run
+            assert latest_run["delivery_outcome"] == "outcome_progress", latest_run
             assert goal["latest_status_run"]["classification"] == "terminal_bench_primary_ready", goal
 
             status = collect_status(

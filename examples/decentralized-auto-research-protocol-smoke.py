@@ -77,13 +77,7 @@ def main() -> None:
         "research_hypothesis_v0",
         "research_evidence_event_v0",
         "decentralized_research_frontier_v0",
-        "auto_research_artifact_packet_v0",
-        "source_map",
-        "claim_ledger",
-        "contradiction_review",
-        "citation_packet",
-        "decision_packet",
-        "rollout_backed",
+        "research_evidence_graph_v0",
         "agent_lane_next_action_v0",
         "claimed_by",
         "todo_id",
@@ -95,6 +89,12 @@ def main() -> None:
     ]
     for term in required_protocol_terms:
         assert term in protocol, f"protocol missing {term!r}"
+    for removed_term in (
+        "auto_research_artifact_packet_v0",
+        "research_showcase_projection_v0",
+        "auto_research_public_claim_boundary_v0",
+    ):
+        assert removed_term not in protocol, f"protocol kept removed projection {removed_term!r}"
     assert "No agent owns the whole research tree" in compact_protocol
     assert "auto_research_lane_contract_v1" in protocol
     assert "auto_research_role_state_machine_v0" in protocol
@@ -115,7 +115,6 @@ def main() -> None:
         "auto_research_evidence_packet_v0",
         "research_evidence_event_v0",
         "research_evidence_graph_v0",
-        "research_showcase_projection_v0",
         "quota should-run --agent-id",
         "first-screen review gate",
     ]
@@ -146,7 +145,6 @@ def main() -> None:
         "evidence_recorded",
         "evaluated",
         "promotion_gate",
-        "research_showcase_projection_v0",
         "quota should-run --agent-id",
         "operator_gate",
         "todo_id",
@@ -167,7 +165,7 @@ def main() -> None:
     required_role_profile_terms = [
         "auto_research_role_profile_v0",
         "LoopX control plane",
-        "Role-aware skill",
+        "worker-local role playbooks",
         "AGENTS.md",
         "Host launcher",
         "agent_id",
@@ -190,7 +188,7 @@ def main() -> None:
     ]
     for term in required_role_profile_terms:
         assert term in role_profile, f"role profile missing {term!r}"
-    assert "skills useful without letting them become a second source of identity" in compact_role_profile
+    assert "playbooks useful without letting them become a second source of identity" in compact_role_profile
     assert "identity comes from the profile and quota/frontier" in compact_role_profile
 
     required_blueprint_terms = [

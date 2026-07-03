@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .registry import read_json, registry_goals
 from .todo_contract import normalize_todo_claimed_by
 
 
@@ -127,6 +126,8 @@ def agent_profile_for_goal(goal: dict[str, Any] | None, agent_id: str | None) ->
 
 
 def load_goal_from_registry(registry_path: Path, goal_id: str) -> dict[str, Any] | None:
+    from .registry import read_json, registry_goals
+
     if not registry_path.exists():
         return None
     registry = read_json(registry_path)

@@ -7,6 +7,9 @@ from pathlib import Path
 import re
 from typing import Any
 
+from .benchmark_adapters.skillsbench_signals import (
+    build_skillsbench_solution_quality_signals,
+)
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .contract import check_contract
 from .delivery_batch_scale import (
@@ -50,14 +53,6 @@ from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .paths import global_registry_path, resolve_runtime_root
-from .policies.monitor_todo import (
-    monitor_todo_expires_at,
-    monitor_todo_is_actionable_open,
-    monitor_todo_is_due,
-    monitor_todo_is_expired,
-    monitor_todo_next_due_at,
-    monitor_todo_task_class,
-)
 from .projections.task_graph import (
     TASK_GRAPH_MAX_USER_GATE_NODES,
     TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
@@ -117,6 +112,17 @@ from .todo_contract import (
     todo_status_from_marker,
 )
 from .todo_handoff_gate import build_todo_handoff_gate_states
+from .todo_projection import (
+    todo_item_expires_at as projection_todo_item_expires_at,
+    todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
+    todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
+    todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
+    todo_item_next_due_at as projection_todo_item_next_due_at,
+    todo_item_task_class as projection_todo_item_task_class,
+    todo_priority_parts as projection_todo_priority_parts,
+    todo_priority_rank as projection_todo_priority_rank,
+    todo_projection_sort_key as projection_todo_projection_sort_key,
+)
 
 
 CODEX_READY_CLASSIFICATIONS = {
@@ -232,7 +238,9 @@ MAX_BENCHMARK_RUN_LIST_ITEMS = 5
 STATUS_CONTRACT_SCHEMA_VERSION = 2
 MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
+STATUS_CONTRACT_SIGNAL_LIMIT = 3
 PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION = "project_asset_todo_projection_gap_v0"
+MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
 TODO_INDEX_SCHEMA_VERSION = "todo_index_v0"
 TODO_INDEX_ITEM_SCHEMA_VERSION = "todo_index_item_v0"
 DECISION_FRESHNESS_WINDOW_DAYS = 7
@@ -322,6 +330,11 @@ RUN_COMPACT_FIELDS = (
     "spawned_by_goal_id",
     "agent_role",
     "classification",
+    "agent_id",
+    "agent_lane",
+    "progress_scope",
+    "delivery_batch_scale",
+    "delivery_outcome",
     "lifecycle_phase",
     "lifecycle_flags",
     "recommended_action",
@@ -1205,6 +1218,7 @@ def build_skillsbench_post_run_debug_gate(
         run.get("failure_attribution_labels"),
         limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
     )
+    solution_quality = build_skillsbench_solution_quality_signals(run)
     gate: dict[str, Any] = {
         "schema_version": "skillsbench_post_run_debug_gate_v0",
         "source": "compact_public_signals",
@@ -1373,6 +1387,8 @@ def build_skillsbench_post_run_debug_gate(
             "verifier_output_tail_public": False,
         },
     }
+    if solution_quality:
+        gate["solution_quality"] = solution_quality
     if labels:
         gate["failure_attribution_labels"] = labels
     if runner_failure:
@@ -1576,6 +1592,18 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_assistant_context_only_count",
+        "native_goal_worker_context_only_recovery_attempted_count",
+        "native_goal_worker_context_only_recovery_succeeded_count",
+        "native_goal_worker_context_only_followup_start_attempted_count",
+        "native_goal_worker_context_only_followup_start_succeeded_count",
+        "native_goal_worker_transport_reconnect_attempted_count",
+        "native_goal_worker_transport_reconnect_succeeded_count",
+        "native_goal_worker_goal_reactivation_attempted_count",
+        "native_goal_worker_goal_reactivation_succeeded_count",
+        "native_goal_worker_post_context_assistant_chars_total",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -1639,6 +1667,7 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_agent_operation_trace_status",
         "remote_command_file_bridge_consumption_decision",
         "remote_command_file_bridge_driver_lifecycle_execution_style",
+        "native_goal_worker_reasoning_effort",
         "host_local_acp_codex_exec_failure_category",
         "host_local_acp_bridge_progress_status",
         "host_local_acp_bridge_progress_signal_source",
@@ -1816,6 +1845,18 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
         "goal_get_count",
         "turn_start_count",
         "assistant_message_present_count",
+        "assistant_context_only_count",
+        "context_only_recovery_attempted_count",
+        "context_only_recovery_succeeded_count",
+        "context_only_followup_start_attempted_count",
+        "context_only_followup_start_succeeded_count",
+        "transport_reconnect_attempted_count",
+        "transport_reconnect_succeeded_count",
+        "goal_reactivation_attempted_count",
+        "goal_reactivation_succeeded_count",
+        "post_context_assistant_chars_total",
+        "first_action_observed_count",
+        "effective_action_observed_count",
         "failure_trace_count",
         "bridge_task_facing_operation_count",
         "bridge_task_facing_success_count",
@@ -1826,6 +1867,7 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
     for field in (
         "countability_source",
         "trace_status",
+        "reasoning_effort",
         "failure_category",
         "first_blocker",
         "failure_label",
@@ -2441,13 +2483,26 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
         "include_task_skills",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+        "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
+        "dockerfile_apache_archive_mirror_patch_required",
+        "dockerfile_apache_archive_mirror_patch_applied",
+        "dockerfile_apache_archive_raw_url_recorded",
+        "dockerfile_maven_mirror_patch_required",
+        "dockerfile_maven_mirror_patch_applied",
+        "dockerfile_maven_mirror_raw_url_recorded",
         "verifier_bootstrap_risk_preflight_blocked",
+        "verifier_bootstrap_fail_fast_defaulted",
         "app_skills_mount_patch_applied",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
@@ -2455,10 +2510,20 @@ def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    for field in ("verifier_uv_bootstrap_version", "verifier_uv_bootstrap_mirror_host"):
+    for field in (
+        "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
+        "verifier_uv_bootstrap_version",
+        "verifier_uv_bootstrap_mirror_host",
+        "dockerfile_apache_archive_mirror_host",
+        "dockerfile_maven_mirror_host",
+    ):
         text = public_safe_compact_text(value.get(field), limit=180)
         if text:
             compact[field] = text
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
 
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
@@ -2502,6 +2567,8 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
         "verifier_present",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
@@ -2512,6 +2579,7 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -2533,6 +2601,12 @@ def _compact_benchmark_task_setup_preflight(value: Any) -> dict[str, Any]:
     )
     if verifier_risk_categories:
         compact["verifier_bootstrap_risk_categories"] = verifier_risk_categories
+    bootstrap_light_blocking_fields = public_safe_compact_list(
+        value.get("bootstrap_light_blocking_fields"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if bootstrap_light_blocking_fields:
+        compact["bootstrap_light_blocking_fields"] = bootstrap_light_blocking_fields
     return compact
 
 
@@ -2601,6 +2675,128 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     if patterns:
         compact["fingerprint_matched_patterns"] = patterns
     return compact
+
+
+_SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
+    "compose_setup_blocked_before_agent_rounds": (
+        "skillsbench_compose_setup_blocked_before_agent_rounds"
+    ),
+    "runner_setup_blocked_before_agent_rounds": (
+        "skillsbench_runner_setup_blocked_before_agent_rounds"
+    ),
+}
+
+
+def _skillsbench_compact_official_score_missing(compact: dict[str, Any]) -> bool:
+    official = (
+        compact.get("official_task_score")
+        if isinstance(compact.get("official_task_score"), dict)
+        else {}
+    )
+    value = official.get("value")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return False
+    value = compact.get("official_score")
+    return not (isinstance(value, (int, float)) and not isinstance(value, bool))
+
+
+def _skillsbench_compact_pre_agent_setup_label(compact: dict[str, Any]) -> str:
+    diagnostic = compact.get("compose_setup_diagnostic")
+    if not isinstance(diagnostic, dict):
+        return ""
+    label = _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS.get(
+        str(diagnostic.get("status") or "")
+    )
+    if not label:
+        return ""
+    if compact.get("mode") != "skillsbench_codex_app_server_goal_baseline":
+        return ""
+    validation = (
+        compact.get("validation") if isinstance(compact.get("validation"), dict) else {}
+    )
+    native_route = (
+        compact.get("native_goal_worker_route")
+        if "native_goal_worker_route" in compact
+        else validation.get("native_goal_worker_route")
+    )
+    if native_route is not True:
+        return ""
+    native_connected = (
+        compact.get("native_goal_worker_connected")
+        if "native_goal_worker_connected" in compact
+        else validation.get("native_goal_worker_connected")
+    )
+    if native_connected is True:
+        return ""
+    trace_count = (
+        compact.get("native_goal_worker_trace_count")
+        if "native_goal_worker_trace_count" in compact
+        else validation.get("native_goal_worker_trace_count")
+    )
+    if (
+        isinstance(trace_count, int)
+        and not isinstance(trace_count, bool)
+        and trace_count > 0
+    ):
+        return ""
+    if diagnostic.get("agent_rounds_started") is True:
+        return ""
+    if not _skillsbench_compact_official_score_missing(compact):
+        return ""
+    return label
+
+
+def _apply_skillsbench_pre_agent_setup_compact_projection(
+    compact: dict[str, Any],
+) -> None:
+    label = _skillsbench_compact_pre_agent_setup_label(compact)
+    if not label:
+        return
+    current = str(compact.get("score_failure_attribution") or "")
+    if (
+        current in {"", "none", "score_missing", "skillsbench_runner_error"}
+        or current.startswith("skillsbench_native_goal_worker_")
+    ):
+        compact["score_failure_attribution"] = label
+        compact["first_blocker"] = label
+    labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str) and item
+    ]
+    for item in (
+        label,
+        "skillsbench_app_server_goal_pre_agent_materialization_blocked",
+        "skillsbench_runner_setup_error",
+    ):
+        if item not in labels:
+            labels.append(item)
+    compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["exception_type"] = label
+        runner_failure["failure_class"] = label
+        runner_failure["pre_agent_setup_materialization_blocked"] = True
+    validation = compact.get("validation")
+    if isinstance(validation, dict):
+        failed = [
+            item
+            for item in validation.get("failed_checks", [])
+            if isinstance(item, str) and item
+        ]
+        failed = [
+            item for item in failed if item != "native_goal_worker_public_trace_missing"
+        ]
+        if "pre_agent_setup_materialization_blocked" not in failed:
+            failed.append("pre_agent_setup_materialization_blocked")
+        validation["failed_checks"] = failed[:MAX_BENCHMARK_RUN_LIST_ITEMS]
+        validation["all_passed"] = False
+    compact["pre_agent_setup_materialization_blocked"] = True
+    compact["native_goal_worker_pre_agent_setup_blocked"] = True
 
 
 def _compact_benchmark_result_discovery(value: Any) -> dict[str, Any]:
@@ -3689,6 +3885,18 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_turn_start_count",
         "native_goal_worker_turn_completed_observed_count",
         "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_assistant_context_only_count",
+        "native_goal_worker_context_only_recovery_attempted_count",
+        "native_goal_worker_context_only_recovery_succeeded_count",
+        "native_goal_worker_context_only_followup_start_attempted_count",
+        "native_goal_worker_context_only_followup_start_succeeded_count",
+        "native_goal_worker_transport_reconnect_attempted_count",
+        "native_goal_worker_transport_reconnect_succeeded_count",
+        "native_goal_worker_goal_reactivation_attempted_count",
+        "native_goal_worker_goal_reactivation_succeeded_count",
+        "native_goal_worker_post_context_assistant_chars_total",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
         "remote_command_file_bridge_solver_trace_count",
         "remote_command_file_bridge_solver_probe_ready_count",
         "remote_command_file_bridge_solver_operation_count",
@@ -4014,6 +4222,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if compose_setup_diagnostic:
         compact["compose_setup_diagnostic"] = compose_setup_diagnostic
+        _apply_skillsbench_pre_agent_setup_compact_projection(compact)
 
     progress = _compact_numeric_map(
         source.get("progress"),
@@ -4085,9 +4294,6 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if case_event_timeline:
         compact["case_event_timeline"] = case_event_timeline
-    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
-    if post_run_debug_gate:
-        compact["post_run_debug_gate"] = post_run_debug_gate
 
     preflight_guard = _compact_benchmark_preflight_guard(source.get("preflight_guard"))
     if preflight_guard:
@@ -4166,10 +4372,17 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         )
         if (
             native_goal_worker_trace_missing
+            and compact.get("pre_agent_setup_materialization_blocked") is not True
             and "native_goal_worker_public_trace_missing" not in failed
             and len(failed) < MAX_BENCHMARK_RUN_LIST_ITEMS
         ):
             failed.append("native_goal_worker_public_trace_missing")
+        if (
+            compact.get("pre_agent_setup_materialization_blocked") is True
+            and "pre_agent_setup_materialization_blocked" not in failed
+            and len(failed) < MAX_BENCHMARK_RUN_LIST_ITEMS
+        ):
+            failed.append("pre_agent_setup_materialization_blocked")
         compact_validation: dict[str, Any] = {
             "all_passed": not failed
             and all(
@@ -4196,6 +4409,8 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "native_goal_worker_trace_count",
             "native_goal_worker_lifecycle_trace_count",
             "native_goal_worker_prompt_received_count",
+            "native_goal_worker_first_action_observed_count",
+            "native_goal_worker_effective_action_observed_count",
         ):
             value = validation.get(field)
             if isinstance(value, int) and not isinstance(value, bool):
@@ -4288,6 +4503,15 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             if isinstance(validation.get(field), bool):
                 compact_validation[field] = validation[field]
         compact["validation"] = compact_validation
+        _apply_skillsbench_pre_agent_setup_compact_projection(compact)
+
+    solution_quality = build_skillsbench_solution_quality_signals(compact)
+    if solution_quality:
+        compact["solution_quality_signals"] = solution_quality
+
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
+    if post_run_debug_gate:
+        compact["post_run_debug_gate"] = post_run_debug_gate
 
     trials: list[dict[str, Any]] = []
     for trial in trials_source or []:
@@ -5605,10 +5829,7 @@ def todo_role_for_heading(heading: str) -> str | None:
 
 
 def todo_priority_parts(text: str) -> tuple[str | None, str]:
-    match = AUTONOMOUS_PRIORITY_PATTERN.match(text)
-    if not match:
-        return None, text
-    return match.group(1).strip().upper(), match.group(2).strip()
+    return projection_todo_priority_parts(text)
 
 
 def structured_todo_item(
@@ -5758,46 +5979,35 @@ def compact_active_next_action_todo_item(item: dict[str, Any]) -> dict[str, Any]
 
 
 def todo_item_task_class(item: dict[str, Any]) -> str:
-    return monitor_todo_task_class(item, task_text=str(item.get("text") or ""))
+    return projection_todo_item_task_class(item, task_text_keys=("text",))
 
 
 def todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
-    return monitor_todo_is_actionable_open(item)
+    return projection_todo_item_is_actionable_open(item)
 
 
 def todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_next_due_at(item)
+    return projection_todo_item_next_due_at(item)
 
 
 def todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_expires_at(item)
+    return projection_todo_item_expires_at(item)
 
 
 def todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    return monitor_todo_is_expired(item, now=now)
+    return projection_todo_item_is_expired_monitor(item, now=now)
 
 
 def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    return monitor_todo_is_due(item, now=now, task_text=str(item.get("text") or ""))
+    return projection_todo_item_is_due_monitor(item, now=now, task_text_keys=("text",))
 
 
 def todo_priority_rank(priority: Any) -> int:
-    if not isinstance(priority, str):
-        return 50
-    match = re.match(r"P([0-4])", priority.strip().upper())
-    if not match:
-        return 50
-    return int(match.group(1))
+    return projection_todo_priority_rank(priority)
 
 
 def todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
-    priority = item.get("priority")
-    if not isinstance(priority, str):
-        priority, _ = todo_priority_parts(str(item.get("text") or ""))
-    return (
-        todo_priority_rank(priority),
-        int(item.get("index") or 999999),
-    )
+    return projection_todo_projection_sort_key(item, text_mode="prefix")
 
 
 def claimed_visibility_items(items: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
@@ -5939,13 +6149,14 @@ def pr_merged_condition(target: str, rollout_events: list[dict[str, Any]]) -> di
 def apply_resume_conditions(
     items: list[dict[str, Any]],
     *,
+    resume_source_items: list[dict[str, Any]] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
 ) -> None:
-    by_id = {
-        str(item.get("todo_id") or ""): item
-        for item in items
-        if str(item.get("todo_id") or "")
-    }
+    by_id: dict[str, dict[str, Any]] = {}
+    for source_item in [*(resume_source_items or []), *items]:
+        todo_id = normalize_todo_id(source_item.get("todo_id"))
+        if todo_id:
+            by_id[todo_id] = source_item
     for item in items:
         resume_when = normalize_todo_resume_when(item.get("resume_when"))
         if not resume_when:
@@ -5967,6 +6178,13 @@ def apply_resume_conditions(
                 if isinstance(target_item, dict)
                 else None
             )
+            if isinstance(target_item, dict):
+                condition["target_archive_state"] = target_item.get("archive_state")
+                condition["target_source_section"] = target_item.get("source_section")
+                condition["target_task_class"] = todo_item_task_class(target_item)
+                target_claimed_by = normalize_todo_claimed_by(target_item.get("claimed_by"))
+                if target_claimed_by:
+                    condition["target_claimed_by"] = target_claimed_by
             condition["satisfied"] = condition["target_status"] == "done"
         elif kind == TODO_RESUME_KIND_PR_MERGED and target:
             condition.update(pr_merged_condition(target, rollout_events or []))
@@ -5991,7 +6209,9 @@ def compact_todo_group(
     source_section: str | None,
     role: str | None = None,
     preferred_todo_ids: set[str] | None = None,
+    resume_source_items: list[dict[str, Any]] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any] | None:
     if not items:
         return None
@@ -6001,7 +6221,29 @@ def compact_todo_group(
         else item
         for item in items
     ]
-    apply_resume_conditions(items, rollout_events=rollout_events)
+    structured_resume_source_items = [
+        structured_todo_item(
+            item,
+            role=item.get("role") if isinstance(item.get("role"), str) else None,
+            source_section=(
+                item.get("source_section")
+                if isinstance(item.get("source_section"), str)
+                else source_section
+            ),
+            archive_state=(
+                str(item.get("archive_state"))
+                if item.get("archive_state") is not None
+                else "active"
+            ),
+        )
+        for item in (resume_source_items or [])
+        if isinstance(item, dict)
+    ]
+    apply_resume_conditions(
+        items,
+        resume_source_items=structured_resume_source_items,
+        rollout_events=rollout_events,
+    )
     open_items = [item for item in items if not item.get("done")]
     terminal_items = [item for item in items if item.get("done")]
     deferred_items = [item for item in terminal_items if todo_item_is_deferred(item)]
@@ -6020,6 +6262,12 @@ def compact_todo_group(
         for item in projected_open_items
         if todo_item_is_actionable_open(item)
         if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+    ]
+    resume_blocked_items = [
+        item
+        for item in projected_open_items
+        if normalize_todo_resume_when(item.get("resume_when"))
+        if item.get("resume_ready") is False
     ]
     monitor_items = [
         item
@@ -6122,8 +6370,14 @@ def compact_todo_group(
             for item in projected_deferred_items
             if item.get("resume_ready") is True
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
-        "items": budgeted_items[:MAX_STATUS_TODOS_PER_ROLE],
+        "items": budgeted_items if item_limit is None else budgeted_items[:item_limit],
     }
+    if resume_blocked_items:
+        summary["resume_blocked_count"] = len(resume_blocked_items)
+        summary["resume_blocked_items"] = [
+            compact_todo_item(item)
+            for item in resume_blocked_items[:MAX_DEFERRED_TODO_VISIBILITY_ITEMS]
+        ]
     handoff_gates = build_todo_handoff_gate_states(items)
     if handoff_gates:
         summary["handoff_gates"] = handoff_gates
@@ -6143,6 +6397,25 @@ def compact_todo_group(
         summary["claimed_advancement_open_count"] = len(claimed_advancement_items)
         summary["claimed_monitor_open_count"] = len(claimed_monitor_items)
     return summary
+
+
+def attach_monitor_writeback_contract(
+    fields: dict[str, Any],
+    *,
+    supported: bool,
+    source: str,
+) -> None:
+    if supported:
+        return
+    contract = {
+        "schema_version": MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION,
+        "supported": False,
+        "source": source,
+    }
+    for key in ("user_todos", "agent_todos"):
+        summary = fields.get(key)
+        if isinstance(summary, dict):
+            summary["monitor_writeback"] = dict(contract)
 
 
 def redacted_status_todo_fields(fields: dict[str, Any]) -> dict[str, Any]:
@@ -6182,37 +6455,54 @@ def parse_active_state_todos(
     state_path: Path | None = None,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any]:
     role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
     items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
+    archive_items: list[dict[str, Any]] = []
+    archive_mode = False
+    archive_source_section: str | None = None
     current_todo: dict[str, Any] | None = None
 
     for line in state_text.splitlines():
         if line.startswith("## "):
             heading = line.lstrip("#").strip()
+            normalized_heading = heading.strip().lower()
+            archive_mode = any(
+                marker in normalized_heading for marker in TODO_ARCHIVE_HEADER_MARKERS
+            )
+            archive_source_section = heading if archive_mode else None
             role = todo_role_for_heading(heading)
             current_todo = None
             if role and source_sections[role] is None:
                 source_sections[role] = heading
             continue
-        if role is None:
+        if role is None and not archive_mode:
             continue
         match = TODO_TASK_PATTERN.match(line)
         if match:
             marker, text = match.groups()
             status = todo_status_from_marker(marker)
+            target_items = archive_items if archive_mode else items[str(role)]
             todo: dict[str, Any] = {
-                "index": len(items[role]) + 1,
+                "index": len(target_items) + 1,
                 "done": todo_done_for_status(status),
                 "status": status,
                 "text": normalize_todo_text(text),
             }
+            if archive_mode:
+                todo["archive_state"] = "archive"
+                todo["source_section"] = archive_source_section
+            else:
+                todo["archive_state"] = "active"
+                todo["source_section"] = source_sections[str(role)]
+                todo["role"] = role
             if goal is not None:
                 materials = extract_review_materials(text, goal=goal, state_path=state_path)
                 if materials:
                     todo["review_materials"] = materials
-            items[role].append(todo)
+            target_items.append(todo)
             current_todo = todo
             continue
         if current_todo is None or not line.startswith((" ", "\t")):
@@ -6226,19 +6516,27 @@ def parse_active_state_todos(
             current_todo["text"] = normalize_todo_text(f"{current_todo.get('text', '')} {continuation}")
 
     result: dict[str, Any] = {}
+    archived_resume_source_items = [
+        item for item in archive_items if normalize_todo_id(item.get("todo_id"))
+    ]
+    resume_source_items = [*items["user"], *items["agent"], *archived_resume_source_items]
     user = compact_todo_group(
         items["user"],
         source_section=source_sections["user"],
         role="user",
         preferred_todo_ids=preferred_todo_ids,
+        resume_source_items=resume_source_items,
         rollout_events=rollout_events,
+        item_limit=item_limit,
     )
     agent = compact_todo_group(
         items["agent"],
         source_section=source_sections["agent"],
         role="agent",
         preferred_todo_ids=preferred_todo_ids,
+        resume_source_items=resume_source_items,
         rollout_events=rollout_events,
+        item_limit=item_limit,
     )
     if user:
         result["user_todos"] = user
@@ -6272,6 +6570,7 @@ def active_state_event_projection_fields(
     state_path: Path,
     preferred_todo_ids: set[str] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any]:
     goal_id = str(goal.get("id") or "").strip()
     for event_log_path in state_event_log_candidates(goal, state_path=state_path):
@@ -6289,6 +6588,7 @@ def active_state_event_projection_fields(
                 state_path=state_path,
                 preferred_todo_ids=preferred_todo_ids,
                 rollout_events=rollout_events,
+                item_limit=item_limit,
             )
         except (OSError, StateEventError) as exc:
             return {
@@ -6754,6 +7054,52 @@ def autonomous_replan_ack_recorded(run: dict[str, Any]) -> bool:
     return delta_contract.get("delta_present") is True
 
 
+def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict) or not autonomous_replan_ack_recorded(run):
+        return None
+    ack = run.get("autonomous_replan_ack")
+    delta_contract = ack.get("delta_contract") if isinstance(ack, dict) else {}
+    if not isinstance(delta_contract, dict):
+        return None
+    compact_delta = {
+        "schema_version": delta_contract.get("schema_version"),
+        "delta_present": bool(delta_contract.get("delta_present")),
+        "delta_kinds": [
+            str(item)
+            for item in (delta_contract.get("delta_kinds") or [])
+            if str(item or "").strip()
+        ],
+    }
+    return {
+        "schema_version": ack.get("schema_version"),
+        "recorded": True,
+        "source": ack.get("source"),
+        "delta_contract": compact_delta,
+    }
+
+
+def latest_autonomous_replan_ack_for_projection(
+    latest_runs: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Return the newest durable replan ACK, skipping neutral accounting runs."""
+
+    for run in latest_runs or []:
+        if not isinstance(run, dict):
+            continue
+        replan_ack = compact_autonomous_replan_ack(run)
+        if replan_ack:
+            return replan_ack
+        classification = str(run.get("classification") or "").strip()
+        if not classification:
+            continue
+        if classification in AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS:
+            continue
+        if classification == "quota_monitor_poll":
+            continue
+        return None
+    return None
+
+
 def autonomous_replan_periodic_review_from_runs(
     latest_runs: list[dict[str, Any]] | None,
     *,
@@ -7115,6 +7461,9 @@ def project_asset_todo_summary(
             summary["next_index"] = open_items[0].get("index")
         if open_items[0].get("claimed_by"):
             summary["next_claimed_by"] = open_items[0].get("claimed_by")
+    monitor_writeback = todos.get("monitor_writeback")
+    if isinstance(monitor_writeback, dict):
+        summary["monitor_writeback"] = dict(monitor_writeback)
     deferred_items = [
         compact_todo_item(item)
         for item in todos.get("deferred_items", [])
@@ -8080,6 +8429,11 @@ def active_state_todo_fields(
     )
     if event_fields.get("user_todos") or event_fields.get("agent_todos"):
         fields = event_fields
+        attach_monitor_writeback_contract(
+            fields,
+            supported=False,
+            source="event_projection_read_model",
+        )
     else:
         fields = parse_active_state_todos(
             state_text,
@@ -8087,6 +8441,11 @@ def active_state_todo_fields(
             state_path=state_path,
             preferred_todo_ids=preferred_todo_ids,
             rollout_events=rollout_events,
+        )
+        attach_monitor_writeback_contract(
+            fields,
+            supported=True,
+            source="markdown_active_state",
         )
         if event_fields:
             fields.update(event_fields)
@@ -9254,6 +9613,7 @@ def build_attention_queue(
     global_registry: dict[str, Any],
     runtime_root: Path | None = None,
     include_task_graph: bool = False,
+    goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
     health_items: list[dict[str, Any]] = []
     history_items: list[dict[str, Any]] = []
@@ -9275,6 +9635,7 @@ def build_attention_queue(
         active_state_fields: dict[str, Any] | None = None
         active_state_item: dict[str, Any] | None = None
         current_status_run = latest_run(goal)
+        goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
         if goal.get("registry_member"):
             active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
             active_state_item = active_state_todo_attention_item(goal, active_state_fields, current_status_run)
@@ -9308,10 +9669,16 @@ def build_attention_queue(
                         item["project_asset"][
                             "latest_run_recommended_action_source"
                         ] = latest_run_action_source
+            replan_ack = compact_autonomous_replan_ack(
+                current_status_run
+            ) or latest_autonomous_replan_ack_for_projection(goal_latest_runs)
+            if replan_ack:
+                item["autonomous_replan_ack"] = replan_ack
+                if isinstance(item.get("project_asset"), dict):
+                    item["project_asset"]["autonomous_replan_ack"] = replan_ack
             control_plane = compact_control_plane_policy(goal.get("control_plane"))
             if control_plane:
                 item["control_plane"] = control_plane
-            goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
             if agent_lane_recommendation:
                 item["agent_lane_recommendation"] = agent_lane_recommendation
             subagent_activity = subagent_activity_for_goal(goal)
@@ -9467,6 +9834,14 @@ def build_attention_queue(
         if finding.get("severity") not in {"high", "action"}:
             continue
         goal_id = str(finding.get("goal_id") or "global-registry")
+        if goal_id_filter:
+            finding_goal_ids = [
+                str(item)
+                for item in (finding.get("goal_ids") or [])
+                if str(item or "").strip()
+            ]
+            if goal_id != goal_id_filter and goal_id_filter not in finding_goal_ids:
+                continue
         live_items = live_quota_items_by_goal.get(goal_id, [])
         if finding.get("kind") in SOURCE_REGISTRY_SHADOW_FINDINGS and live_items:
             for item in live_items:
@@ -9500,6 +9875,9 @@ def build_attention_queue(
         "watching_monitor": sum(1 for item in items if item["waiting_on"] == MONITOR_SIGNAL_WAITING_ON),
         "items": items,
     }
+    if goal_id_filter:
+        queue["goal_filter"] = goal_id_filter
+        queue["goal_filter_applied"] = True
     if backlog_candidates:
         queue["autonomous_backlog_candidates"] = backlog_candidates
     if monitor_candidates:
@@ -9575,6 +9953,9 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     operator_gate = compact_operator_gate(run.get("operator_gate"))
     if operator_gate:
         compact["operator_gate"] = operator_gate
+    replan_ack = compact_autonomous_replan_ack(run)
+    if replan_ack:
+        compact["autonomous_replan_ack"] = replan_ack
     resume_contract = compact_operator_gate_resume_contract(run.get("operator_gate_resume_contract"))
     if resume_contract:
         compact["operator_gate_resume_contract"] = resume_contract
@@ -9889,6 +10270,7 @@ def build_promotion_readiness_summary(
     history: dict[str, Any],
     *,
     runtime_root: Path | None = None,
+    goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
     latest: dict[str, Any] | None = None
     latest_at: datetime | None = None
@@ -9909,7 +10291,10 @@ def build_promotion_readiness_summary(
             latest = run
 
     if latest is None and runtime_root is not None:
-        full_scan_latest = latest_promotion_readiness_event(runtime_root)
+        full_scan_latest = latest_promotion_readiness_event(
+            runtime_root,
+            goal_id=goal_id_filter,
+        )
         if full_scan_latest.get("available"):
             latest = full_scan_latest
             source = "run_history_full_scan"
@@ -9957,6 +10342,34 @@ def build_status_contract() -> dict[str, Any]:
         "minimum_dashboard_schema_version": MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION,
         "producer": "loopx status",
         "reload_hint": STATUS_CONTRACT_RELOAD_HINT,
+    }
+
+
+def _compact_status_contract_signals(
+    value: Any,
+    *,
+    limit: int = STATUS_CONTRACT_SIGNAL_LIMIT,
+) -> dict[str, Any]:
+    items = [str(item).strip() for item in value or [] if str(item).strip()]
+    bounded = items[: max(0, limit)]
+    return {
+        "items": bounded,
+        "total_count": len(items),
+        "truncated": len(items) > len(bounded),
+    }
+
+
+def build_contract_health_projection(contract: dict[str, Any]) -> dict[str, Any]:
+    errors = _compact_status_contract_signals(contract.get("errors"))
+    warnings = _compact_status_contract_signals(contract.get("warnings"))
+    return {
+        "contract_summary": contract.get("summary"),
+        "contract_errors": errors["items"],
+        "contract_errors_total_count": errors["total_count"],
+        "contract_errors_truncated": errors["truncated"],
+        "contract_warnings": warnings["items"],
+        "contract_warnings_total_count": warnings["total_count"],
+        "contract_warnings_truncated": warnings["truncated"],
     }
 
 
@@ -10329,9 +10742,11 @@ def collect_status(
     scan_roots: list[Path],
     limit: int,
     include_task_graph: bool = False,
+    goal_id: str | None = None,
 ) -> dict[str, Any]:
     display_limit = max(0, limit)
     control_plane_limit = max(display_limit, STATUS_CONTROL_PLANE_CONTEXT_LIMIT)
+    goal_filter = str(goal_id or "").strip() or None
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_override)
     global_registry = collect_global_registry_health(
@@ -10343,7 +10758,7 @@ def collect_status(
     history = collect_history(
         registry_path=registry_path,
         runtime_root=runtime_root,
-        goal_id=None,
+        goal_id=goal_filter,
         limit=control_plane_limit,
         include_runtime_goals=include_runtime_goals,
     )
@@ -10359,12 +10774,14 @@ def collect_status(
         global_registry=global_registry,
         runtime_root=runtime_root,
         include_task_graph=include_task_graph,
+        goal_id_filter=goal_filter,
     )
     run_history = build_run_history(history, display_limit=display_limit)
     event_ledger_summary = build_event_ledger_summary(history)
     promotion_readiness_summary = build_promotion_readiness_summary(
         history,
         runtime_root=runtime_root,
+        goal_id_filter=goal_filter,
     )
     promotion_gate = build_promotion_gate(
         registry_path=registry_path,
@@ -10385,6 +10802,8 @@ def collect_status(
         "goal_count": history.get("goal_count"),
         "run_count": history.get("run_count"),
         "status_contract": build_status_contract(),
+        "goal_filter": goal_filter,
+        **build_contract_health_projection(contract),
         "contract": {
             "ok": contract.get("ok"),
             "summary": contract.get("summary"),
@@ -10427,6 +10846,8 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             f"minimum_dashboard_schema_version={status_contract.get('minimum_dashboard_schema_version')}, "
             f"producer={status_contract.get('producer')}"
         )
+    if payload.get("goal_filter"):
+        lines.append(f"- goal_filter: `{payload.get('goal_filter')}`")
 
     contract = payload.get("contract") if isinstance(payload.get("contract"), dict) else {}
     summary = contract.get("summary") if isinstance(contract.get("summary"), dict) else {}
@@ -10437,6 +10858,26 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         f"warnings={summary.get('warnings')}, "
         f"checks={summary.get('checks')}"
     )
+    contract_errors = (
+        payload.get("contract_errors") if isinstance(payload.get("contract_errors"), list) else []
+    )
+    contract_warnings = (
+        payload.get("contract_warnings") if isinstance(payload.get("contract_warnings"), list) else []
+    )
+    if contract_errors or contract_warnings:
+        lines.extend(["", "## Status Contract Signals"])
+        for item in contract_errors:
+            lines.append(f"- error: {item}")
+        if payload.get("contract_errors_truncated"):
+            lines.append(
+                f"- contract_errors_truncated: total={payload.get('contract_errors_total_count')}"
+            )
+        for item in contract_warnings:
+            lines.append(f"- warning: {item}")
+        if payload.get("contract_warnings_truncated"):
+            lines.append(
+                f"- contract_warnings_truncated: total={payload.get('contract_warnings_total_count')}"
+            )
 
     global_registry = payload.get("global_registry") if isinstance(payload.get("global_registry"), dict) else {}
     global_summary = (
@@ -10608,6 +11049,38 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"source={_markdown_scalar(agent_lane_frontier_hint.get('source') or '')} "
                     f"reason_code={_markdown_scalar(agent_lane_frontier_hint.get('reason_code') or '')} "
                     f"target_todo_id={_markdown_scalar(agent_lane_frontier_hint.get('target_todo_id') or '')}"
+                )
+            goal_frontier = (
+                project_asset.get("goal_frontier_projection")
+                if isinstance(project_asset.get("goal_frontier_projection"), dict)
+                else item.get("goal_frontier_projection")
+                if isinstance(item.get("goal_frontier_projection"), dict)
+                else {}
+            )
+            if goal_frontier:
+                remaining = (
+                    goal_frontier.get("remaining_advancement_frontier")
+                    if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
+                    else {}
+                )
+                deferred_successors = (
+                    goal_frontier.get("deferred_successors")
+                    if isinstance(goal_frontier.get("deferred_successors"), dict)
+                    else {}
+                )
+                acceptance_gaps = (
+                    goal_frontier.get("acceptance_gaps")
+                    if isinstance(goal_frontier.get("acceptance_gaps"), list)
+                    else []
+                )
+                lines.append(
+                    "    - goal_frontier_projection: "
+                    f"replan_required={goal_frontier.get('replan_required')} "
+                    f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
+                    f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
+                    f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')} "
+                    f"deferred_ready={deferred_successors.get('ready_count')} "
+                    f"acceptance_gaps={len(acceptance_gaps)}"
                 )
             dreaming_lane_badge = (
                 project_asset.get("dreaming_lane_badge")

@@ -468,6 +468,13 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
         claimed_by="codex-main-control",
         action_kind="benchmark_run",
     )
+    unavailable_auto_research = todo_item(
+        todo_id="todo_unavailable_auto_research",
+        text="[P0] Validate the frontier with an unavailable auto-research capability.",
+        claimed_by="codex-main-control",
+        action_kind="auto_research_frontier",
+    )
+    unavailable_auto_research["required_capabilities"] = ["auto_research_frontier"]
     independent_benchmark = todo_item(
         todo_id="todo_benchmark_ledger_cleanup",
         text="[P1] Clean public-safe benchmark ledger summaries while target choice is pending.",
@@ -484,7 +491,7 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
         claimed_by="codex-main-control",
         action_kind="corrected_x_launch_timing_monitor",
     )
-    agent_items = [blocked_benchmark]
+    agent_items = [unavailable_auto_research, blocked_benchmark]
     if include_fallback:
         agent_items.append(independent_benchmark)
     agent_items.append(external_publish_monitor)
@@ -736,6 +743,12 @@ def assert_exact_todo_gate_only_blocks_target_todo() -> None:
     selected = fallback["selected_executable"]
     assert selected["todo_id"] == "todo_benchmark_ledger_cleanup", fallback
     assert selected["todo_gate_relation"]["state"] == "independent", selected
+    lane_action = payload["agent_lane_next_action"]
+    assert lane_action["todo_id"] == "todo_benchmark_ledger_cleanup", payload
+    assert lane_action["source"] == "scoped_user_gate_fallback.selected_executable", lane_action
+    assert lane_action["selected_by"] == "scoped_user_gate_fallback", lane_action
+    assert lane_action["replaces_gated_goal_next_action"] is True, lane_action
+    assert "todo_benchmark_ledger_cleanup" in payload["protocol_action_packet"]["summary"], payload
     monitor_ids = {
         item["todo_id"]
         for item in payload["agent_todo_summary"]["first_open_items"]
@@ -877,23 +890,18 @@ def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet
     assert "claude_code_loop" not in scheduler, scheduler
     assert "cold_path_detail" not in scheduler, scheduler
     reset = scheduler["reset_policy"]
-    assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-    assert reset["profile_action"] == "backoff_until_material_transition", reset
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
     assert reset["codex_app_initial_interval_minutes"] == 15, reset
     assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
     assert scheduler["codex_app"]["max_interval_minutes"] == 60, scheduler
-    assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
     assert len(reset["identity_signature"]) == 12, reset
-    assert len(reset["profile_signature"]) == 12, reset
     assert "identity_snapshot" not in reset, reset
     assert "profile_snapshot" not in reset, reset
     assert "identity_keys" not in reset, reset
-    assert "token_changed" in reset["reset_condition_summary"], reset
-    assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
-    assert "active_work_projected" in reset["reset_condition_summary"], reset
-    assert reset["no_spend_for_reset"] is True, reset
+    assert "profile_signature" not in reset, reset
+    assert "reset_condition_summary" not in reset, reset
+    assert "no_spend_for_reset" not in reset, reset
     assert "scheduler=backoff_until_material_transition" in payload["protocol_action_packet"]["summary"], payload
 
 

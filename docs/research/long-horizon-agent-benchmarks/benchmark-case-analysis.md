@@ -7,7 +7,7 @@ It is intentionally separate from `benchmark-run-ledger.md`. The run ledger
 records compact attempts and scores; this file records why a result matters.
 
 - schema_version: `benchmark_case_analysis_v0`
-- updated_at: `2026-06-28T17:56:06+08:00`
+- updated_at: `2026-07-02T17:38:24+08:00`
 - machine_source: `benchmark-case-analysis.json`
 - ledger-only migration audit:
   `benchmark-case-analysis-ledger-only-migration-audit-20260618.md`
@@ -19,7 +19,7 @@ The table below is generated from compact public case-analysis JSON. It uses
 and it preserves detailed hand-authored case notes below the generated
 summary sections.
 
-- case_count: `34`
+- case_count: `39`
 - generated_compact_record_count: `8`
 
 | Benchmark | Case | Class | Baseline | Treatment | Delta | Decision |
@@ -36,6 +36,7 @@ summary sections.
 | `skillsbench@1.1` | `civ6-adjacency-optimizer` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
 | `skillsbench@1.1` | `manufacturing-codebook-normalization` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
 | `skillsbench@1.1` | `software-dependency-audit` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
+| `skillsbench@1.1` | `react-performance-debugging` | xhigh app server zero attribution asset | n/a | `` | n/a | `single_arm_xhigh_app_server_official_zero_attributed` |
 | `skillsbench@1.1` | `react-performance-debugging` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
 | `skillsbench@1.1` | `pddl-airport-planning` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
@@ -45,7 +46,9 @@ summary sections.
 | `skillsbench@1.1` | `bike-rebalance` | current-protocol baseline-solved / non-regression asset | `1` | `1` | `` | `paired_baseline_solved_treatment_preserved` |
 | `skillsbench@1.1` | `azure-bgp-oscillation-route-leak` | no-uplift asset | `` | `` | `` | `paired_no_score_uplift` |
 | `terminal-bench@2.0` | `train-fasttext` | single arm failure asset | n/a | `` | n/a | `single_arm_recorded` |
+| `skillsbench@1.1` | `setup-fuzzing-py` | xhigh app server zero attribution asset | n/a | `` | n/a | `single_arm_xhigh_app_server_official_zero_attributed` |
 | `skillsbench@1.1` | `setup-fuzzing-py` | setup blocker asset | `missing` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
+| `skillsbench@1.1` | `adaptive-cruise-control` | xhigh app server zero attribution asset | n/a | `` | n/a | `single_arm_xhigh_app_server_official_zero_attributed` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | setup blocker asset | `missing` | n/a | n/a | `baseline_runner_or_setup_repair_required` |
 | `skillsbench@1.1` | `travel-planning` | baseline solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
 | `skillsbench@1.1` | `paratransit-routing` | product mode invalid shallow loopx asset | `` | `` | `` | `product_mode_treatment_invalid_shallow_loopx_lifecycle` |
@@ -58,6 +61,8 @@ summary sections.
 | `terminal-bench@2.0` | `merge-diff-arc-agi-task` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
 | `terminal-bench@2.0` | `path-tracing` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
 | `terminal-bench@2.0` | `sqlite-db-truncate` | generated baseline-solved control asset | `1.0` | n/a | n/a | `baseline_passed_not_current_treatment_priority` |
+| `skillsbench@1.1` | `fix-build-agentops` | xhigh app server zero attribution asset | n/a | `` | n/a | `single_arm_xhigh_app_server_official_zero_attributed` |
+| `skillsbench@1.1` | `data-to-d3` | xhigh app server zero attribution asset | n/a | `` | n/a | `single_arm_xhigh_app_server_official_zero_attributed` |
 
 ## Public Trajectory Summary Coverage
 
@@ -88,22 +93,27 @@ benchmark case records that expose the same public fields. They do not read
 or copy raw trajectories, task text, verifier output, logs, or local paths.
 
 - schema_version: `harness_interaction_public_summary_coverage_v0`
-- summary_count: `15`
+- summary_count: `21`
 - benchmark_ids: `skillsbench@1.1, swe-marathon, terminal-bench@2.0`
 
 | Benchmark | Case | Source | Kind | LoopX CLI | Rounds | Tools | Events | Controller Trace | Lifecycle |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.baseline.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `7` | `7` | `no` | `no` |
 | `skillsbench@1.1` | `3d-scan-calc` | `historical_final_only_lifecycle_trajectory_summaries.treatment.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `73` | `8` | `138` | `211` | `no` | `no` |
+| `skillsbench@1.1` | `adaptive-cruise-control` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `1` | `0` | `4` | `yes` | `yes` |
 | `skillsbench@1.1` | `citation-check` | `goal_start_bridge_timeout_recheck.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `13` | `0` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `citation-check` | `goal_start_transport_monitor` (public-safe) | `compact_harness_interaction` | `0` | `0` | `0` | `0` | `yes` | `no` |
 | `skillsbench@1.1` | `citation-check` | `post_stop_policy_raw_rerun.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `26` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `data-to-d3` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `1` | `0` | `4` | `yes` | `yes` |
 | `skillsbench@1.1` | `debug-trl-grpo` | `trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `5` | `112` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `fix-build-agentops` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `1` | `0` | `4` | `yes` | `yes` |
 | `skillsbench@1.1` | `llm-prefix-cache-replay` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `0` | `0` | `0` | `yes` | `no` |
 | `skillsbench@1.1` | `paratransit-routing` | `arms.treatment` (public-safe) | `case_arm` | `1` | `0` | `0` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `paratransit-routing` | `legacy_blind_loop_positive_result.trajectory_public_summary` (public-safe) | `trajectory_public_summary` | `0` | `1` | `16` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `paratransit-routing` | `product_mode_attribution.blind_loop_positive_treatment` (public-safe) | `product_mode_attribution` | `0` | `0` | `16` | `0` | `no` | `no` |
 | `skillsbench@1.1` | `paratransit-routing` | `product_mode_attribution.product_mode_neutral_treatment` (public-safe) | `product_mode_attribution` | `1` | `0` | `13` | `0` | `no` | `no` |
+| `skillsbench@1.1` | `react-performance-debugging` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `1` | `0` | `4` | `yes` | `yes` |
+| `skillsbench@1.1` | `setup-fuzzing-py` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `1` | `0` | `4` | `yes` | `yes` |
 | `skillsbench@1.1` | `tictoc-unnecessary-abort-detection` | `native_goal_route_observations` (public-safe) | `native_goal_route_observation` | `0` | `0` | `0` | `0` | `yes` | `no` |
 | `swe-marathon` | `zstd-decoder` | `arms.baseline` (public-safe) | `case_arm` | `0` | `0` | `0` | `0` | `no` | `no` |
 | `swe-marathon` | `zstd-decoder` | `arms.treatment` (public-safe) | `case_arm` | `31` | `0` | `0` | `0` | `no` | `yes` |

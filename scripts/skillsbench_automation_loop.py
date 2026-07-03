@@ -78,7 +78,7 @@ import urllib.parse
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from typing import Any, Mapping, get_args, get_origin
 from urllib.parse import urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +103,7 @@ from loopx.benchmark_case_state import (  # noqa: E402
     benchmark_case_active_state_write_command,
 )
 from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
+    apply_skillsbench_pre_agent_setup_diagnostic_attribution,
     build_skillsbench_app_server_goal_worker_contract,
     build_skillsbench_run_permission_policy,
     build_skillsbench_worker_handshake_preflight,
@@ -152,11 +153,16 @@ DEFAULT_LEDGER = (
     REPO_ROOT
     / "docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json"
 )
+TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS = {
+    "official_score_zero_case_failure",
+    "official_verifier_solution_failure",
+}
 DEFAULT_GOAL_ID = "loopx-meta"
 DEFAULT_MODEL = "gpt-5.5"
 DEFAULT_TIMEOUT_SEC = 7200
 DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC = 3600
 DEFAULT_HOST_LOCAL_CODEX_TASK_OUTPUT_QUIET_TIMEOUT_SEC = 600
+DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC = 3600
 DEFAULT_VERIFIER_PREP_TIMEOUT_SEC = 120
 DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC = 600
 DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY = "every-round"
@@ -168,6 +174,8 @@ HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "AI_ADDR",
     "AI_PORT",
     "GOAL_HARNESS_REMOTE_BENCH_ROOT",
+    "LOOPX_SKILLSBENCH_EGRESS_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_PROXY",
     "HTTP_PROXY",
     "HTTPS_PROXY",
     "ALL_PROXY",
@@ -178,6 +186,66 @@ HOST_LOCAL_ACP_TARGET_ENV_KEYS = (
     "no_proxy",
     "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
 )
+
+
+def _expanded_path(value: str | os.PathLike[str]) -> Path:
+    return Path(value).expanduser()
+
+
+def _same_ledger_path(left: Path, right: Path) -> bool:
+    return left.resolve(strict=False) == right.resolve(strict=False)
+
+
+def _ledger_scope_label(primary_path: Path, global_path: Path) -> str:
+    if _same_ledger_path(primary_path, global_path):
+        return "global"
+    return "run_group_with_global_sync"
+
+
+def _inherit_global_ledger_snapshot(
+    *,
+    primary_path: Path,
+    global_path: Path,
+    dry_run: bool,
+    enabled: bool,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "schema_version": "skillsbench_global_ledger_inheritance_v0",
+        "enabled": enabled,
+        "dry_run": dry_run,
+        "inherited": False,
+        "markdown_inherited": False,
+        "primary_ledger_path": str(primary_path),
+        "global_ledger_path": str(global_path),
+    }
+    if not enabled:
+        result["status"] = "disabled"
+        return result
+    if _same_ledger_path(primary_path, global_path):
+        result["status"] = "same_as_global"
+        return result
+    if primary_path.exists():
+        result["status"] = "primary_ledger_already_exists"
+        return result
+    if not global_path.exists():
+        result["status"] = "global_ledger_missing"
+        return result
+    if dry_run:
+        result["status"] = "would_inherit"
+        result["inherited"] = True
+        result["markdown_inherited"] = global_path.with_suffix(".md").exists()
+        return result
+
+    primary_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(global_path, primary_path)
+    result["inherited"] = True
+    global_markdown = global_path.with_suffix(".md")
+    primary_markdown = primary_path.with_suffix(".md")
+    if global_markdown.exists():
+        shutil.copy2(global_markdown, primary_markdown)
+        result["markdown_inherited"] = True
+    result["status"] = "inherited"
+    return result
 CODEX_API_REVERSE_TUNNEL_PROXY_ENV_KEYS = (
     "LOOPX_CODEX_API_REVERSE_TUNNEL_PROXY",
     "CODEX_API_REVERSE_TUNNEL_PROXY",
@@ -195,6 +263,29 @@ CODEX_API_EGRESS_TEST_HOST = "chatgpt.com"
 CODEX_API_EGRESS_TEST_PORT = 443
 CODEX_API_EGRESS_MODE_CHOICES = ("auto", "reverse-tunnel", "direct")
 DEFAULT_CODEX_API_EGRESS_PREFLIGHT_TIMEOUT_SEC = 8.0
+BENCHMARK_EGRESS_PROXY_ENV_KEYS = (
+    "LOOPX_SKILLSBENCH_EGRESS_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_PROXY",
+)
+BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS = (
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+)
+BENCHMARK_EGRESS_NO_PROXY_ENV_KEYS = (
+    "LOOPX_SKILLSBENCH_EGRESS_NO_PROXY",
+    "LOOPX_BENCHMARK_EGRESS_NO_PROXY",
+)
+DEFAULT_BENCHMARK_EGRESS_NO_PROXY = (
+    "localhost,127.0.0.1,::1,hifis-storage.desy.de"
+)
+BENCHMARK_EGRESS_PROXY_MODE_CHOICES = ("auto", "off", "require")
+BENCHMARK_EGRESS_TEST_HOST = "pypi.org"
+BENCHMARK_EGRESS_TEST_PORT = 443
+DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC = 8.0
 _MISSING = object()
 SUPPORTED_ROUTES = (
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -366,6 +457,9 @@ def _benchflow_rollout_planes_class(module: Any) -> type[Any] | None:
 
 DOCKER_APP_SKILLS_MOUNT_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
 DOCKER_APP_SKILLS_MOUNT_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_MOUNT"
+DOCKER_APP_SKILLS_MOUNT_KEEP_FILE = "loopx_app_skills_keep"
+DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APP_SKILLS_CONTEXT"
+DOCKER_APP_SKILLS_DOCKERIGNORE_END = "# END LOOPX_SKILLSBENCH_APP_SKILLS_CONTEXT"
 DOCKER_APT_RETRY_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_APT_RETRY"
 DOCKER_APT_RETRY_END = "# END LOOPX_SKILLSBENCH_APT_RETRY"
 DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN = (
@@ -376,11 +470,44 @@ DOCKER_CODEX_ACP_RUNTIME_TOOLS_END = (
 )
 DOCKER_PIP_BOOTSTRAP_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
 DOCKER_PIP_BOOTSTRAP_END = "# END LOOPX_SKILLSBENCH_PIP_BOOTSTRAP"
+DOCKER_GCR_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_GCR_MIRROR"
+DOCKER_GCR_MIRROR_END = "# END LOOPX_SKILLSBENCH_GCR_MIRROR"
+DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_DOCKER_BENCHMARK_EGRESS_PROXY"
+)
+DOCKER_BENCHMARK_EGRESS_PROXY_END = (
+    "# END LOOPX_SKILLSBENCH_DOCKER_BENCHMARK_EGRESS_PROXY"
+)
+DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_ELAN_TOOLCHAIN_RETRY"
+)
+DOCKER_ELAN_TOOLCHAIN_RETRY_END = (
+    "# END LOOPX_SKILLSBENCH_ELAN_TOOLCHAIN_RETRY"
+)
+DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_NETWORK_DOWNLOAD_RETRY"
+)
+DOCKER_NETWORK_DOWNLOAD_RETRY_END = (
+    "# END LOOPX_SKILLSBENCH_NETWORK_DOWNLOAD_RETRY"
+)
+DOCKER_MAVEN_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_MAVEN_MIRROR"
+DOCKER_MAVEN_MIRROR_END = "# END LOOPX_SKILLSBENCH_MAVEN_MIRROR"
+DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_BASE = "https://mirrors.huaweicloud.com/apache"
+DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST = "mirrors.huaweicloud.com"
+DEFAULT_DOCKER_MAVEN_MIRROR_URL = "https://repo.huaweicloud.com/repository/maven"
+DEFAULT_DOCKER_MAVEN_MIRROR_HOST = "repo.huaweicloud.com"
+DEFAULT_DOCKER_MAVEN_SETTINGS_PATH = "/opt/loopx-maven/settings.xml"
 VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
     "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
 )
 VERIFIER_UV_BOOTSTRAP_MIRROR_END = (
     "# END LOOPX_SKILLSBENCH_VERIFIER_UV_BOOTSTRAP_MIRROR"
+)
+VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN = (
+    "# BEGIN LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
+)
+VERIFIER_BENCHMARK_EGRESS_PROXY_END = (
+    "# END LOOPX_SKILLSBENCH_VERIFIER_BENCHMARK_EGRESS_PROXY"
 )
 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE = (
     "https://releases.astral.sh/github/uv/releases/download"
@@ -963,7 +1090,7 @@ def _host_local_acp_launch_command(
                 "--approval-policy",
                 "never",
                 "--reasoning-effort",
-                args.app_server_reasoning_effort,
+                _effective_app_server_reasoning_effort(args),
                 "--response-timeout-sec",
                 "30",
                 "--stream-heartbeat-interval-sec",
@@ -982,6 +1109,12 @@ def _host_local_acp_launch_command(
             args.dataset,
             "--task-id",
             args.task_id,
+            "--run-group-id",
+            str(plan.get("run_group_id") or ""),
+            "--job-name",
+            str(plan.get("job_name") or ""),
+            "--rollout-name",
+            str(plan.get("rollout_name") or ""),
             "--codex-bin",
             args.local_codex_bin,
             "--sandbox",
@@ -989,18 +1122,16 @@ def _host_local_acp_launch_command(
             "--timeout-sec",
             str(_effective_local_codex_exec_timeout_sec(args)),
             "--first-action-timeout-sec",
-            str(
-                max(
-                    0,
-                    int(getattr(args, "local_codex_first_action_timeout_sec", 0) or 0),
-                )
-            ),
+            str(_effective_local_codex_first_action_timeout_sec(args)),
             "--bridge-idle-timeout-sec",
             str(_effective_local_codex_bridge_idle_timeout_sec(args)),
             "--task-output-quiet-timeout-sec",
             str(_effective_local_codex_task_output_quiet_timeout_sec(args)),
         ]
     )
+    cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
+    if cli_reasoning_effort and args.route != "codex-app-server-goal-baseline":
+        command.extend(["--reasoning-effort", cli_reasoning_effort])
     if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
         heartbeat_interval = min(
             max(1.0, float(args.app_server_acp_heartbeat_interval_sec)),
@@ -1109,6 +1240,22 @@ def _host_local_acp_launch_command(
     return command
 
 
+def _effective_reasoning_effort(args: argparse.Namespace) -> str:
+    return str(getattr(args, "reasoning_effort", None) or "").strip()
+
+
+def _effective_app_server_reasoning_effort(args: argparse.Namespace) -> str:
+    return str(
+        getattr(args, "reasoning_effort", None)
+        or getattr(args, "app_server_reasoning_effort", None)
+        or "high"
+    ).strip()
+
+
+def _effective_codex_cli_reasoning_effort(args: argparse.Namespace) -> str:
+    return _effective_reasoning_effort(args)
+
+
 def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
     configured_raw = getattr(args, "local_codex_exec_timeout_sec", None)
     configured = max(1, int(configured_raw or DEFAULT_TIMEOUT_SEC))
@@ -1117,6 +1264,9 @@ def _effective_local_codex_exec_timeout_sec(args: argparse.Namespace) -> int:
         configured_raw is None
         and bool(getattr(args, "host_local_acp_launch", False))
     ):
+        if getattr(args, "route", "") == "codex-app-server-goal-baseline":
+            outer_timeout = max(0, int(getattr(args, "outer_timeout_sec", 0) or 0))
+            return max(configured, outer_timeout)
         bridge_idle_timeout = _effective_local_codex_bridge_idle_timeout_sec(args)
         if bridge_idle_timeout > 0:
             return max(
@@ -1155,6 +1305,21 @@ def _effective_local_codex_bridge_idle_timeout_sec(args: argparse.Namespace) -> 
     return min(requested, DEFAULT_HOST_LOCAL_CODEX_BRIDGE_IDLE_TIMEOUT_SEC)
 
 
+def _effective_local_codex_first_action_timeout_sec(args: argparse.Namespace) -> int:
+    configured = getattr(args, "local_codex_first_action_timeout_sec", None)
+    if configured is not None:
+        return max(0, int(configured or 0))
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and getattr(args, "route", "") == "codex-app-server-goal-baseline"
+    ):
+        idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+        if idle_timeout > 0:
+            return min(idle_timeout, DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC)
+        return DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC
+    return 0
+
+
 def _effective_local_codex_task_output_quiet_timeout_sec(
     args: argparse.Namespace,
 ) -> int:
@@ -1177,10 +1342,12 @@ def _effective_local_codex_task_output_quiet_timeout_sec(
 
 
 def _codex_api_egress_preflight_required(args: argparse.Namespace) -> bool:
-    return (
-        getattr(args, "route", "") == "codex-app-server-goal-baseline"
-        and bool(getattr(args, "host_local_acp_launch", False))
-    )
+    if not bool(getattr(args, "host_local_acp_launch", False)):
+        return False
+    requested = _codex_api_egress_requested_mode(args)
+    if requested in {"reverse-tunnel", "direct"}:
+        return True
+    return getattr(args, "route", "") == "codex-app-server-goal-baseline"
 
 
 def _codex_api_egress_requested_mode(args: argparse.Namespace | None) -> str:
@@ -1193,14 +1360,37 @@ def _codex_api_egress_requested_mode(args: argparse.Namespace | None) -> str:
 
 
 def _codex_api_egress_resolved_mode(args: argparse.Namespace | None) -> str:
-    if args is None or not _codex_api_egress_preflight_required(args):
+    if args is None or not bool(getattr(args, "host_local_acp_launch", False)):
         return "not_required"
     requested = _codex_api_egress_requested_mode(args)
     if requested == "auto":
         # Formal remote app-server benchmark runs must use the reverse tunnel
         # path by default; direct egress is only for explicit local debugging.
-        return "reverse-tunnel"
+        if getattr(args, "route", "") == "codex-app-server-goal-baseline":
+            return "reverse-tunnel"
+        return "not_required"
     return requested
+
+
+def _formal_app_server_goal_bootstrap_light_guard_required(
+    args: argparse.Namespace | None,
+) -> bool:
+    return bool(
+        args is not None
+        and getattr(args, "route", "") == "codex-app-server-goal-baseline"
+        and getattr(args, "host_local_acp_launch", False)
+        and not getattr(args, "reduce_only", False)
+        and _codex_api_egress_resolved_mode(args) == "reverse-tunnel"
+    )
+
+
+def _formal_app_server_goal_bootstrap_light_fail_fast_required(
+    args: argparse.Namespace | None,
+) -> bool:
+    return bool(
+        _formal_app_server_goal_bootstrap_light_guard_required(args)
+        and not getattr(args, "allow_staged_bootstrap_repair_run", False)
+    )
 
 
 def _codex_api_reverse_tunnel_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
@@ -1216,6 +1406,68 @@ def _codex_api_reverse_tunnel_proxy(args: argparse.Namespace | None) -> tuple[st
     return "", ""
 
 
+def _benchmark_egress_proxy(args: argparse.Namespace | None) -> tuple[str, str]:
+    explicit = ""
+    if args is not None:
+        explicit = str(getattr(args, "benchmark_egress_proxy", "") or "")
+    if explicit:
+        return _normalized_proxy_url(explicit), "cli"
+    for key in BENCHMARK_EGRESS_PROXY_ENV_KEYS:
+        value = os.environ.get(key)
+        if value:
+            return _normalized_proxy_url(value), f"env:{key}"
+    return "", ""
+
+
+def _normalized_proxy_url(proxy_url: str) -> str:
+    raw = str(proxy_url or "").strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        return raw
+    return f"http://{raw}"
+
+
+def _merged_no_proxy(*values: str) -> str:
+    entries: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for raw_entry in str(value or "").split(","):
+            entry = raw_entry.strip()
+            if not entry:
+                continue
+            key = entry.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(entry)
+    return ",".join(entries)
+
+
+def _benchmark_egress_no_proxy(args: argparse.Namespace | None) -> str:
+    configured = ""
+    if args is not None:
+        configured = str(getattr(args, "benchmark_egress_no_proxy", "") or "")
+    if not configured:
+        for key in BENCHMARK_EGRESS_NO_PROXY_ENV_KEYS:
+            value = os.environ.get(key)
+            if value:
+                configured = value
+                break
+    return _merged_no_proxy(DEFAULT_BENCHMARK_EGRESS_NO_PROXY, configured)
+
+
+def _benchmark_egress_proxy_requested_mode(
+    args: argparse.Namespace | None,
+) -> str:
+    requested = ""
+    if args is not None:
+        requested = str(getattr(args, "benchmark_egress_proxy_mode", "") or "")
+    if requested in BENCHMARK_EGRESS_PROXY_MODE_CHOICES:
+        return requested
+    return "auto"
+
+
 def _proxy_host_kind(host: str) -> str:
     normalized = host.strip("[]").lower()
     if normalized in {"localhost", "127.0.0.1", "::1"}:
@@ -1228,6 +1480,13 @@ def _proxy_host_kind(host: str) -> str:
         except (IndexError, ValueError):
             second_octet = -1
         if 16 <= second_octet <= 31:
+            return "private"
+    if normalized.startswith("100."):
+        try:
+            second_octet = int(normalized.split(".", 2)[1])
+        except (IndexError, ValueError):
+            second_octet = -1
+        if 64 <= second_octet <= 127:
             return "private"
     return "public_or_unknown"
 
@@ -1287,13 +1546,15 @@ def _probe_http_connect_proxy(
     host: str,
     port: int,
     timeout_sec: float,
+    target_host: str = CODEX_API_EGRESS_TEST_HOST,
+    target_port: int = CODEX_API_EGRESS_TEST_PORT,
 ) -> str:
     with socket.create_connection((host, port), timeout=timeout_sec) as sock:
         sock.settimeout(timeout_sec)
         request = (
-            f"CONNECT {CODEX_API_EGRESS_TEST_HOST}:{CODEX_API_EGRESS_TEST_PORT} "
+            f"CONNECT {target_host}:{target_port} "
             "HTTP/1.1\r\n"
-            f"Host: {CODEX_API_EGRESS_TEST_HOST}:{CODEX_API_EGRESS_TEST_PORT}\r\n"
+            f"Host: {target_host}:{target_port}\r\n"
             "Proxy-Connection: close\r\n\r\n"
         )
         sock.sendall(request.encode("ascii"))
@@ -1426,6 +1687,280 @@ def _sync_codex_api_egress_contract(
     target["codex_api_reverse_tunnel_proxy_url_recorded"] = False
 
 
+def _public_benchmark_egress_proxy_contract(
+    args: argparse.Namespace,
+    *,
+    status: str = "pending",
+    ready: bool = False,
+    error_kind: str = "",
+) -> dict[str, Any]:
+    proxy_mode = _benchmark_egress_proxy_requested_mode(args)
+    proxy_url = ""
+    proxy_source = ""
+    if proxy_mode != "off":
+        proxy_url, proxy_source = _benchmark_egress_proxy(args)
+    scheme = ""
+    host = ""
+    port = 0
+    parse_error = ""
+    if proxy_url:
+        try:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+        except Exception as exc:
+            parse_error = type(exc).__name__
+    no_proxy = _benchmark_egress_no_proxy(args) if proxy_mode != "off" else ""
+    no_proxy_entry_count = (
+        len([entry for entry in no_proxy.split(",") if entry.strip()])
+        if no_proxy
+        else 0
+    )
+    configured = bool(proxy_url)
+    if status == "pending":
+        if proxy_mode == "off":
+            status = "disabled"
+            ready = True
+        elif not configured and proxy_mode == "auto":
+            status = "not_configured"
+            ready = True
+        elif not configured:
+            status = "missing_required_proxy"
+            ready = False
+    return {
+        "schema_version": "skillsbench_benchmark_egress_proxy_v0",
+        "requested_mode": proxy_mode,
+        "ready": bool(ready),
+        "status": status,
+        "error_kind": error_kind or parse_error,
+        "proxy_configured": configured,
+        "proxy_required": proxy_mode == "require",
+        "proxy_source": (
+            proxy_source.split(":", 1)[0] if proxy_source else ""
+        ),
+        "proxy_env_key": (
+            proxy_source.split(":", 1)[1]
+            if proxy_source.startswith("env:")
+            else ""
+        ),
+        "proxy_scheme": scheme[:20],
+        "proxy_endpoint_kind": _proxy_host_kind(host) if host else "",
+        "proxy_endpoint_port": port,
+        "no_proxy_configured": bool(no_proxy),
+        "no_proxy_entry_count": no_proxy_entry_count,
+        "no_proxy_raw_value_recorded": False,
+        "proxy_url_recorded": False,
+        "raw_proxy_url_recorded": False,
+        "raw_probe_output_recorded": False,
+        "test_host": BENCHMARK_EGRESS_TEST_HOST,
+        "test_host_public_only": True,
+    }
+
+
+def _run_benchmark_egress_proxy_preflight(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    proxy_mode = _benchmark_egress_proxy_requested_mode(args)
+    proxy_url, _source = _benchmark_egress_proxy(args)
+    timeout_sec = max(
+        1.0,
+        float(
+            getattr(
+                args,
+                "benchmark_egress_proxy_preflight_timeout_sec",
+                DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC,
+            )
+            or DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC
+        ),
+    )
+    status = "pending"
+    ready = False
+    error_kind = ""
+    try:
+        if proxy_mode == "off":
+            status = "disabled"
+            ready = True
+        elif not proxy_url:
+            status = (
+                "not_configured"
+                if proxy_mode == "auto"
+                else "missing_required_proxy"
+            )
+            ready = proxy_mode == "auto"
+        else:
+            scheme, host, port = _parse_proxy_endpoint(proxy_url)
+            if not host or not port:
+                raise ValueError("proxy endpoint missing host or port")
+            if scheme != "http":
+                status = "unsupported_proxy_scheme"
+                ready = False
+            else:
+                status = _probe_http_connect_proxy(
+                    host=host,
+                    port=port,
+                    timeout_sec=timeout_sec,
+                    target_host=BENCHMARK_EGRESS_TEST_HOST,
+                    target_port=BENCHMARK_EGRESS_TEST_PORT,
+                )
+                ready = status == "http_connect_ready"
+    except Exception as exc:
+        status = "failed"
+        ready = False
+        error_kind = type(exc).__name__
+    contract = _public_benchmark_egress_proxy_contract(
+        args,
+        status=status,
+        ready=ready,
+        error_kind=error_kind,
+    )
+    plan["benchmark_egress_proxy"] = contract
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    if isinstance(prerequisites, dict):
+        _sync_benchmark_egress_proxy_contract(prerequisites, contract)
+    if not ready:
+        raise SkillsBenchSetupPreflightBlocked(
+            "benchmark egress proxy preflight blocked: configure a valid "
+            "private proxy in LOOPX_SKILLSBENCH_EGRESS_PROXY or run with "
+            "--benchmark-egress-proxy-mode off for explicit no-proxy runs"
+        )
+    return contract
+
+
+def _sync_benchmark_egress_proxy_contract(
+    target: dict[str, Any],
+    contract: dict[str, Any],
+) -> None:
+    target["benchmark_egress_proxy_ready"] = bool(contract.get("ready"))
+    target["benchmark_egress_proxy_configured"] = bool(
+        contract.get("proxy_configured")
+    )
+    target["benchmark_egress_proxy_required"] = bool(contract.get("proxy_required"))
+    target["benchmark_egress_proxy_url_recorded"] = False
+    target["benchmark_egress_proxy_status"] = str(contract.get("status") or "")
+    target["benchmark_egress_proxy_error_kind"] = str(
+        contract.get("error_kind") or ""
+    )
+    target["benchmark_egress_proxy_mode_requested"] = str(
+        contract.get("requested_mode") or ""
+    )
+    target["benchmark_egress_proxy_source"] = str(
+        contract.get("proxy_source") or ""
+    )
+    target["benchmark_egress_proxy_env_key"] = str(
+        contract.get("proxy_env_key") or ""
+    )
+    target["benchmark_egress_proxy_scheme"] = str(
+        contract.get("proxy_scheme") or ""
+    )
+    target["benchmark_egress_proxy_endpoint_kind"] = str(
+        contract.get("proxy_endpoint_kind") or ""
+    )
+    port = contract.get("proxy_endpoint_port")
+    target["benchmark_egress_proxy_endpoint_port"] = (
+        int(port) if isinstance(port, int) and not isinstance(port, bool) else 0
+    )
+    target["benchmark_egress_no_proxy_configured"] = bool(
+        contract.get("no_proxy_configured")
+    )
+    entry_count = contract.get("no_proxy_entry_count")
+    target["benchmark_egress_no_proxy_entry_count"] = (
+        int(entry_count)
+        if isinstance(entry_count, int) and not isinstance(entry_count, bool)
+        else 0
+    )
+    target["benchmark_egress_no_proxy_raw_value_recorded"] = False
+    target.setdefault("benchmark_egress_proxy_docker_config_injected", False)
+    target.setdefault("benchmark_egress_proxy_docker_config_path_recorded", False)
+    target.setdefault("benchmark_egress_proxy_docker_config_raw_proxy_recorded", False)
+
+
+def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, str]:
+    if args is None or _benchmark_egress_proxy_requested_mode(args) == "off":
+        return {}
+    proxy_url, _source = _benchmark_egress_proxy(args)
+    if not proxy_url:
+        return {}
+    env = {key: proxy_url for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS}
+    env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
+    no_proxy = _benchmark_egress_no_proxy(args)
+    env["NO_PROXY"] = no_proxy
+    env["no_proxy"] = no_proxy
+    return env
+
+
+def _docker_config_payload_with_proxy(
+    *,
+    proxy_url: str,
+    no_proxy: str,
+) -> dict[str, Any]:
+    """Return a Docker client config that forwards proxies without mutating home."""
+
+    docker_config_dir = os.environ.get("DOCKER_CONFIG")
+    source_config = (
+        Path(docker_config_dir).expanduser() / "config.json"
+        if docker_config_dir
+        else Path.home() / ".docker" / "config.json"
+    )
+    payload: dict[str, Any] = {}
+    if source_config.exists():
+        try:
+            loaded = json.loads(source_config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            loaded = {}
+        if isinstance(loaded, dict):
+            payload = loaded
+    proxies = payload.setdefault("proxies", {})
+    if not isinstance(proxies, dict):
+        proxies = {}
+        payload["proxies"] = proxies
+    proxies["default"] = {
+        "httpProxy": proxy_url,
+        "httpsProxy": proxy_url,
+        "noProxy": no_proxy,
+    }
+    return payload
+
+
+@contextlib.contextmanager
+def _benchmark_egress_proxy_env_applied(
+    args: argparse.Namespace,
+) -> Any:
+    proxy_env = _benchmark_egress_proxy_env(args)
+    if not proxy_env:
+        yield
+        return
+    docker_config_tmp: tempfile.TemporaryDirectory[str] | None = None
+    docker_config_env: dict[str, str] = {}
+    proxy_url = proxy_env.get("LOOPX_SKILLSBENCH_EGRESS_PROXY", "")
+    if proxy_url:
+        docker_config_tmp = tempfile.TemporaryDirectory(
+            prefix="loopx-skillsbench-docker-proxy-"
+        )
+        docker_config_path = Path(docker_config_tmp.name) / "config.json"
+        docker_config_payload = _docker_config_payload_with_proxy(
+            proxy_url=proxy_url,
+            no_proxy=proxy_env.get("NO_PROXY", "localhost,127.0.0.1,::1"),
+        )
+        docker_config_path.write_text(
+            json.dumps(docker_config_payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        docker_config_env["DOCKER_CONFIG"] = docker_config_tmp.name
+    keys = set(proxy_env) | set(docker_config_env)
+    previous = {key: os.environ.get(key) for key in keys}
+    try:
+        os.environ.update(proxy_env)
+        os.environ.update(docker_config_env)
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        if docker_config_tmp is not None:
+            docker_config_tmp.cleanup()
+
+
 def _host_local_acp_target_env(
     agent_env: object,
     *,
@@ -1440,11 +1975,17 @@ def _host_local_acp_target_env(
             continue
         target_env[key] = str(value)
     proxy_url, _proxy_source = _codex_api_reverse_tunnel_proxy(args)
-    if proxy_url and args is not None and _codex_api_egress_preflight_required(args):
+    if (
+        proxy_url
+        and args is not None
+        and _codex_api_egress_resolved_mode(args) == "reverse-tunnel"
+    ):
         for key in CODEX_API_PROXY_FORWARD_ENV_KEYS:
             target_env[key] = proxy_url
         target_env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
         target_env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
+    for key, value in _benchmark_egress_proxy_env(args).items():
+        target_env.setdefault(key, value)
     return target_env
 
 
@@ -1532,6 +2073,9 @@ def _host_local_acp_codex_exec_preflight_command(
     )
     if args.model:
         command.extend(["--model", args.model])
+    cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
+    if cli_reasoning_effort and args.route != "codex-app-server-goal-baseline":
+        command.extend(["--reasoning-effort", cli_reasoning_effort])
     relay_trace_dir = str(plan.get("host_local_acp_relay_trace_dir") or "")
     if relay_trace_dir:
         command.extend(
@@ -1756,7 +2300,15 @@ def _run_host_local_acp_codex_exec_preflight(
         int(getattr(args, "host_local_acp_codex_exec_preflight_attempts", 1) or 1),
     )
     command = _host_local_acp_codex_exec_preflight_command(args, plan)
-    proxy_probe = _host_local_proxy_endpoint_probe()
+    target_env = _host_local_acp_target_env({}, args=args)
+    prerequisites["host_local_acp_target_env_forwarded"] = bool(target_env)
+    prerequisites["host_local_acp_target_env_key_count"] = len(target_env)
+    prerequisites["host_local_acp_target_env_keys"] = sorted(target_env)
+    if target_env:
+        prerequisites["benchmark_egress_proxy_agent_env_injected"] = bool(
+            any(key.startswith("LOOPX_SKILLSBENCH") for key in target_env)
+        )
+    proxy_probe = _host_local_proxy_endpoint_probe(env=target_env or None)
     prerequisites["host_local_acp_proxy_endpoint_status"] = proxy_probe["status"]
     prerequisites["host_local_acp_proxy_endpoint_checked"] = (
         proxy_probe.get("checked") is True
@@ -1818,6 +2370,7 @@ def _run_host_local_acp_codex_exec_preflight(
                 else SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER
             ),
             model_id=str(getattr(args, "model", "") or "") or None,
+            env=target_env or None,
         )
         ready = probe.get("ready") is True
         prerequisites["host_local_acp_codex_exec_preflight_ready"] = ready
@@ -2113,6 +2666,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_stage",
         "benchflow_intermediate_soft_verify_timeout_cleanup_status",
         "benchflow_intermediate_soft_verify_orphan_cleanup_status",
+        "host_local_acp_attempt_cleanup_status",
         "benchflow_setup_stall_cleanup_status",
         "remote_command_file_bridge_consumption_status",
         "remote_command_file_bridge_agent_operation_trace_status",
@@ -2133,6 +2687,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_api_reverse_tunnel_proxy_source",
         "codex_api_reverse_tunnel_proxy_scheme",
         "codex_api_reverse_tunnel_proxy_endpoint_kind",
+        "benchmark_egress_proxy_status",
+        "benchmark_egress_proxy_error_kind",
+        "benchmark_egress_proxy_mode_requested",
+        "benchmark_egress_proxy_source",
+        "benchmark_egress_proxy_env_key",
+        "benchmark_egress_proxy_scheme",
+        "benchmark_egress_proxy_endpoint_kind",
         "host_local_acp_proxy_endpoint_status",
         "host_local_acp_proxy_endpoint_env_key",
         "host_local_acp_proxy_endpoint_scheme",
@@ -2164,6 +2725,16 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_api_reverse_tunnel_required",
         "codex_api_reverse_tunnel_proxy_configured",
         "codex_api_reverse_tunnel_proxy_url_recorded",
+        "benchmark_egress_proxy_ready",
+        "benchmark_egress_proxy_configured",
+        "benchmark_egress_proxy_required",
+        "benchmark_egress_proxy_url_recorded",
+        "benchmark_egress_no_proxy_configured",
+        "benchmark_egress_no_proxy_raw_value_recorded",
+        "benchmark_egress_proxy_agent_env_injected",
+        "benchmark_egress_proxy_docker_config_injected",
+        "benchmark_egress_proxy_docker_config_path_recorded",
+        "benchmark_egress_proxy_docker_config_raw_proxy_recorded",
         "host_local_acp_codex_exec_preflight_response_marker_observed",
         "host_local_acp_codex_exec_preflight_bridge_action_required",
         "host_local_acp_codex_exec_preflight_bridge_action_observed",
@@ -2233,6 +2804,9 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_timeout_cleanup_raw_logs_read",
         "benchflow_intermediate_soft_verify_orphan_cleanup_requested",
         "benchflow_intermediate_soft_verify_orphan_cleanup_raw_logs_read",
+        "host_local_acp_attempt_cleanup_requested",
+        "host_local_acp_attempt_cleanup_raw_logs_read",
+        "host_local_acp_attempt_cleanup_raw_command_recorded",
         "goal_start_product_mode",
         "goal_start_plan_required",
         "goal_start_selected_p0_lifecycle_required",
@@ -2293,6 +2867,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_intermediate_soft_verify_orphan_cleanup_term_sent_count",
         "benchflow_intermediate_soft_verify_orphan_cleanup_kill_sent_count",
         "benchflow_intermediate_soft_verify_orphan_cleanup_alive_after_count",
+        "host_local_acp_attempt_cleanup_match_count",
+        "host_local_acp_attempt_cleanup_term_sent_count",
+        "host_local_acp_attempt_cleanup_kill_sent_count",
+        "host_local_acp_attempt_cleanup_alive_after_count",
         "benchflow_verifier_prep_timeout_sec",
         "benchflow_final_verifier_timeout_sec",
         "benchflow_final_verifier_timeout_override_count",
@@ -2347,6 +2925,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_bridge_task_facing_failure_count",
         "host_local_acp_codex_exec_failure_trace_count",
         "codex_api_reverse_tunnel_proxy_endpoint_port",
+        "benchmark_egress_proxy_endpoint_port",
+        "benchmark_egress_no_proxy_entry_count",
         "host_local_acp_proxy_endpoint_loopback_port",
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
@@ -2603,6 +3183,171 @@ def cleanup_benchflow_setup_stall_children(
             except ProcessLookupError:
                 continue
             except PermissionError:
+                continue
+        cleanup["kill_sent_count"] = kill_sent
+        time.sleep(0.1)
+        alive = {pid for pid in alive if is_alive(pid)}
+    cleanup["alive_after_count"] = len(alive)
+    if alive:
+        cleanup["status"] = "cleanup_incomplete"
+    elif kill_sent:
+        cleanup["status"] = "killed"
+    else:
+        cleanup["status"] = "terminated"
+    return publish()
+
+
+def cleanup_host_local_acp_attempt_children(
+    plan: dict[str, Any],
+    *,
+    grace_seconds: float = 3.0,
+) -> dict[str, Any]:
+    """Terminate host-local ACP/app-server worker processes scoped to one attempt."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    cleanup: dict[str, Any] = {
+        "schema_version": "skillsbench_host_local_acp_attempt_cleanup_v0",
+        "requested": True,
+        "raw_logs_read": False,
+        "raw_command_recorded": False,
+        "status": "not_attempted",
+        "match_count": 0,
+        "term_sent_count": 0,
+        "kill_sent_count": 0,
+        "alive_after_count": 0,
+    }
+
+    def publish() -> dict[str, Any]:
+        prerequisites["host_local_acp_attempt_cleanup_requested"] = True
+        prerequisites["host_local_acp_attempt_cleanup_raw_logs_read"] = False
+        prerequisites["host_local_acp_attempt_cleanup_raw_command_recorded"] = False
+        prerequisites["host_local_acp_attempt_cleanup_status"] = str(
+            cleanup.get("status") or "unknown"
+        )
+        for source, target in (
+            ("match_count", "host_local_acp_attempt_cleanup_match_count"),
+            ("term_sent_count", "host_local_acp_attempt_cleanup_term_sent_count"),
+            ("kill_sent_count", "host_local_acp_attempt_cleanup_kill_sent_count"),
+            ("alive_after_count", "host_local_acp_attempt_cleanup_alive_after_count"),
+        ):
+            value = cleanup.get(source)
+            if isinstance(value, int):
+                prerequisites[target] = value
+        return cleanup
+
+    if os.name != "posix":
+        cleanup["status"] = "unsupported_platform"
+        return publish()
+
+    if (
+        prerequisites.get("host_local_acp_launch") is not True
+        and prerequisites.get("agent_execution_mode") != "host_local_acp"
+    ):
+        cleanup["status"] = "not_applicable_no_host_local_acp"
+        return publish()
+
+    identifiers = [
+        str(value).strip()
+        for value in (plan.get("job_name"), plan.get("rollout_name"))
+        if str(value or "").strip()
+    ]
+    if not identifiers:
+        cleanup["status"] = "missing_run_identifiers"
+        return publish()
+
+    try:
+        proc = subprocess.run(
+            ["ps", "-eo", "pid=,ppid=,command="],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        cleanup["status"] = "process_table_unavailable"
+        return publish()
+    if proc.returncode != 0:
+        cleanup["status"] = "process_table_unavailable"
+        return publish()
+
+    entries: dict[int, tuple[int, str]] = {}
+    children: dict[int, set[int]] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split(maxsplit=2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        command = parts[2]
+        entries[pid] = (ppid, command)
+        children.setdefault(ppid, set()).add(pid)
+
+    host_local_markers = (
+        "skillsbench_local_acp_relay.py",
+        "scripts/skillsbench_local_acp_relay.py",
+        "skillsbench_host_codex_goal_worker.py",
+        "scripts/skillsbench_host_codex_goal_worker.py",
+        "skillsbench_remote_command_file_bridge",
+        "remote_command_file_bridge",
+        "json_file_bridge",
+    )
+    protected_pids = {os.getpid(), os.getppid()}
+    root_matches = {
+        pid
+        for pid, (_ppid, command) in entries.items()
+        if pid not in protected_pids
+        and any(identifier in command for identifier in identifiers)
+        and any(marker in command for marker in host_local_markers)
+    }
+    to_terminate = set(root_matches)
+    stack = list(root_matches)
+    while stack:
+        parent = stack.pop()
+        for child in children.get(parent, set()):
+            if child not in to_terminate and child not in protected_pids:
+                to_terminate.add(child)
+                stack.append(child)
+
+    cleanup["match_count"] = len(to_terminate)
+    if not to_terminate:
+        cleanup["status"] = "no_matching_processes"
+        return publish()
+
+    def is_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+
+    term_sent = 0
+    for pid in sorted(to_terminate, reverse=True):
+        try:
+            os.kill(pid, signal.SIGTERM)
+            term_sent += 1
+        except (ProcessLookupError, PermissionError):
+            continue
+    cleanup["term_sent_count"] = term_sent
+
+    deadline = time.monotonic() + max(0.0, grace_seconds)
+    alive = {pid for pid in to_terminate if is_alive(pid)}
+    while alive and time.monotonic() < deadline:
+        time.sleep(0.1)
+        alive = {pid for pid in alive if is_alive(pid)}
+
+    kill_sent = 0
+    if alive:
+        for pid in sorted(alive, reverse=True):
+            try:
+                os.kill(pid, signal.SIGKILL)
+                kill_sent += 1
+            except (ProcessLookupError, PermissionError):
                 continue
         cleanup["kill_sent_count"] = kill_sent
         time.sleep(0.1)
@@ -4962,14 +5707,38 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_pip_install_risk_detected",
         "dockerfile_pip_bootstrap_patch_required",
         "dockerfile_pip_bootstrap_patch_applied",
+        "dockerfile_gcr_mirror_configured",
+        "dockerfile_gcr_mirror_patch_required",
+        "dockerfile_gcr_mirror_patch_applied",
+        "dockerfile_gcr_mirror_raw_prefix_recorded",
+        "dockerfile_elan_toolchain_retry_patch_required",
+        "dockerfile_elan_toolchain_retry_patch_applied",
+        "dockerfile_wget_gpg_key_retry_patch_required",
+        "dockerfile_wget_gpg_key_retry_patch_applied",
+        "dockerfile_network_download_retry_patch_required",
+        "dockerfile_network_download_retry_patch_applied",
+        "dockerfile_apache_archive_mirror_patch_required",
+        "dockerfile_apache_archive_mirror_patch_applied",
+        "dockerfile_apache_archive_raw_url_recorded",
+        "dockerfile_maven_mirror_patch_required",
+        "dockerfile_maven_mirror_patch_applied",
+        "dockerfile_maven_mirror_raw_url_recorded",
+        "dockerfile_package_bootstrap_risk_preflight_blocked",
         "app_skills_mount_patch_applied",
         "apt_retry_patch_applied",
         "apt_risk_preflight_blocked",
+        "bootstrap_light_preflight_blocked",
+        "bootstrap_light_fail_fast_defaulted",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
         "verifier_uv_bootstrap_mirror_patch_required",
         "verifier_uv_bootstrap_mirror_patch_applied",
+        "verifier_uv_bootstrap_pip_fallback_patch_applied",
+        "benchmark_egress_proxy_verifier_env_patch_required",
+        "benchmark_egress_proxy_verifier_env_patch_applied",
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded",
         "verifier_bootstrap_risk_preflight_blocked",
+        "verifier_bootstrap_fail_fast_defaulted",
         "codex_acp_runtime_tools_patch_applied",
         "task_skills_removed",
         "original_task_mutated",
@@ -4978,12 +5747,21 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
             compact[field] = value[field]
     for field in (
         "dockerfile_pip_index_host",
+        "bootstrap_light_blocker_kind",
         "verifier_uv_bootstrap_version",
         "verifier_uv_bootstrap_mirror_host",
+        "dockerfile_apache_archive_mirror_host",
+        "dockerfile_maven_mirror_host",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
             compact[field] = raw[:180]
+    count = value.get("bootstrap_light_blocking_field_count")
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        compact["bootstrap_light_blocking_field_count"] = count
+    key_count = value.get("benchmark_egress_proxy_verifier_env_key_count")
+    if isinstance(key_count, int) and not isinstance(key_count, bool) and key_count >= 0:
+        compact["benchmark_egress_proxy_verifier_env_key_count"] = key_count
     resource_cap = value.get("resource_cap_patch")
     if isinstance(resource_cap, dict):
         safe_cap: dict[str, Any] = {}
@@ -5043,8 +5821,44 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "dockerfile_pip_bootstrap_patch_applied": (
             DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text
         ),
+        "dockerfile_gcr_mirror_patch_applied": (
+            DOCKER_GCR_MIRROR_BEGIN in dockerfile_text
+        ),
+        "dockerfile_gcr_mirror_raw_prefix_recorded": False,
+        "dockerfile_elan_toolchain_retry_patch_applied": (
+            DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN in dockerfile_text
+        ),
+        "dockerfile_wget_gpg_key_retry_patch_applied": (
+            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30"
+            in dockerfile_text
+            and "| gpg --dearmor" in dockerfile_text
+        ),
+        "dockerfile_network_download_retry_patch_applied": (
+            DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN in dockerfile_text
+        ),
+        "dockerfile_apache_archive_mirror_patch_applied": (
+            DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST in dockerfile_text
+        ),
+        "dockerfile_apache_archive_mirror_host": (
+            DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+            if DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST in dockerfile_text
+            else ""
+        ),
+        "dockerfile_apache_archive_raw_url_recorded": False,
+        "dockerfile_maven_mirror_patch_applied": (
+            DOCKER_MAVEN_MIRROR_BEGIN in dockerfile_text
+        ),
+        "dockerfile_maven_mirror_host": (
+            DEFAULT_DOCKER_MAVEN_MIRROR_HOST
+            if DOCKER_MAVEN_MIRROR_BEGIN in dockerfile_text
+            else ""
+        ),
+        "dockerfile_maven_mirror_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": (
             DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in dockerfile_text
+        ),
+        "benchmark_egress_proxy_dockerfile_env_patch_applied": (
+            DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN in dockerfile_text
         ),
         "task_skills_removed": (
             not include_task_skills
@@ -5058,6 +5872,14 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
                 "verifier_uv_bootstrap_risk_detected": True,
                 "verifier_uv_bootstrap_mirror_patch_required": True,
                 "verifier_uv_bootstrap_mirror_patch_applied": True,
+                "verifier_uv_bootstrap_pip_fallback_patch_applied": (
+                    "python3 -m pip install" in verifier_text
+                    and "uv==${loopx_uv_version}" in verifier_text
+                ),
+                "verifier_uv_env_source_guard_patch_applied": (
+                    'if [ -f "$HOME/.local/bin/env" ]; then' in verifier_text
+                    and '. "$HOME/.local/bin/env"' in verifier_text
+                ),
                 "verifier_uv_bootstrap_mirror_host": (
                     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
                 ),
@@ -5065,6 +5887,14 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         )
         if uv_versions:
             discovered["verifier_uv_bootstrap_version"] = uv_versions[0]
+    if VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN in verifier_text:
+        discovered.update(
+            {
+                "benchmark_egress_proxy_verifier_env_patch_required": True,
+                "benchmark_egress_proxy_verifier_env_patch_applied": True,
+                "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+            }
+        )
     if DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text:
         discovered.update(
             {
@@ -5114,6 +5944,8 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "raw_trajectory_read",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
         "verifier_present",
         "verifier_bootstrap_risk_detected",
         "verifier_uv_bootstrap_risk_detected",
@@ -5124,6 +5956,7 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         "alternate_source_supported_by_runner",
         "task_source_path_recorded",
         "task_source_content_recorded",
+        "bootstrap_light_candidate_eligible",
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
@@ -5131,7 +5964,11 @@ def _public_task_setup_preflight(value: Any) -> dict[str, Any]:
         raw = value.get(field)
         if isinstance(raw, str) and raw:
             compact[field] = raw[:180]
-    for field in ("nearest_canonical_task_ids", "verifier_bootstrap_risk_categories"):
+    for field in (
+        "nearest_canonical_task_ids",
+        "verifier_bootstrap_risk_categories",
+        "bootstrap_light_blocking_fields",
+    ):
         raw_items = value.get(field)
         if isinstance(raw_items, list):
             compact[field] = [
@@ -5316,6 +6153,10 @@ def build_compose_setup_diagnostic(
             "verifier_uv_bootstrap_mirror_patch_applied"
         )
         is True,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": task_staging.get(
+            "verifier_uv_bootstrap_pip_fallback_patch_applied"
+        )
+        is True,
         "staged_task_prepared": task_staging.get("staged") is True,
         "task_skills_removed": task_staging.get("task_skills_removed") is True,
         "codex_acp_runtime_tools_patch_applied": task_staging.get(
@@ -5484,9 +6325,30 @@ def patch_dockerfile_app_skills_mount(dockerfile: Path) -> bool:
     )
     if re.search(r"^\s*FROM\s+scratch(?:\s|$)", text, flags=re.IGNORECASE | re.MULTILINE):
         return False
+    keep_file = dockerfile.parent / DOCKER_APP_SKILLS_MOUNT_KEEP_FILE
+    if not keep_file.exists():
+        _write_text_atomic(keep_file, "LoopX SkillsBench app skills mount marker.\n")
+    dockerignore = dockerfile.parent / ".dockerignore"
+    if dockerignore.exists():
+        dockerignore_text = _strip_marker_block(
+            dockerignore.read_text(encoding="utf-8", errors="replace"),
+            DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN,
+            DOCKER_APP_SKILLS_DOCKERIGNORE_END,
+        ).rstrip()
+        dockerignore_block = (
+            f"{DOCKER_APP_SKILLS_DOCKERIGNORE_BEGIN}\n"
+            f"!{DOCKER_APP_SKILLS_MOUNT_KEEP_FILE}\n"
+            f"{DOCKER_APP_SKILLS_DOCKERIGNORE_END}"
+        )
+        _write_text_atomic(
+            dockerignore,
+            (dockerignore_text + "\n\n" if dockerignore_text else "")
+            + dockerignore_block
+            + "\n",
+        )
     block = (
         f"{DOCKER_APP_SKILLS_MOUNT_BEGIN}\n"
-        "RUN mkdir -p /app /app/skills\n"
+        f"COPY {DOCKER_APP_SKILLS_MOUNT_KEEP_FILE} /app/skills/.loopx_keep\n"
         f"{DOCKER_APP_SKILLS_MOUNT_END}"
     )
     patched_lines: list[str] = []
@@ -5531,6 +6393,336 @@ def dockerfile_needs_pip_bootstrap_patch(dockerfile: Path) -> bool:
     )
 
 
+def _normalized_docker_gcr_mirror_prefix(mirror_prefix: str | None) -> str:
+    prefix = str(mirror_prefix or "").strip().rstrip("/")
+    if not prefix or "://" in prefix or re.search(r"\s", prefix):
+        return ""
+    return prefix
+
+
+def dockerfile_references_gcr_oss_fuzz_base(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    pattern = re.compile(
+        r"^\s*FROM(?:\s+--platform=[^\s]+)?\s+gcr\.io/oss-fuzz-base/",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    return bool(pattern.search(text))
+
+
+def dockerfile_needs_gcr_mirror_rewrite(
+    dockerfile: Path,
+    *,
+    mirror_prefix: str | None,
+) -> bool:
+    if not _normalized_docker_gcr_mirror_prefix(mirror_prefix):
+        return False
+    return dockerfile_references_gcr_oss_fuzz_base(dockerfile)
+
+
+def patch_dockerfile_gcr_mirror(
+    dockerfile: Path,
+    *,
+    mirror_prefix: str | None,
+) -> bool:
+    """Rewrite staged GCR oss-fuzz base image refs to a configured mirror."""
+
+    prefix = _normalized_docker_gcr_mirror_prefix(mirror_prefix)
+    if not prefix or not dockerfile.exists():
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_GCR_MIRROR_BEGIN,
+        DOCKER_GCR_MIRROR_END,
+    )
+    pattern = re.compile(
+        r"^(?P<lead>\s*FROM(?:\s+--platform=[^\s]+)?\s+)"
+        r"(?P<image>gcr\.io/oss-fuzz-base/[^\s]+)"
+        r"(?P<tail>.*)$",
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        return (
+            f"{match.group('lead')}{prefix}/{match.group('image')}"
+            f"{match.group('tail')}"
+        )
+
+    rewritten, count = pattern.subn(replace, text)
+    if count == 0:
+        return False
+    block = (
+        f"{DOCKER_GCR_MIRROR_BEGIN}\n"
+        "# Staged-only public base-image mirror rewrite; raw mirror prefix is\n"
+        "# provided by private benchmark runtime configuration.\n"
+        f"{DOCKER_GCR_MIRROR_END}"
+    )
+    patched = f"{block}\n{rewritten}".rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def dockerfile_needs_elan_toolchain_retry_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(
+        re.search(
+            r"\belan\s+toolchain\s+install\s+\$\(cat\s+[^)]+lean-toolchain\)",
+            text,
+        )
+    )
+
+
+def patch_dockerfile_elan_toolchain_retry(dockerfile: Path) -> bool:
+    """Add bounded retry around staged Lean toolchain downloads."""
+
+    if not dockerfile_needs_elan_toolchain_retry_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN,
+        DOCKER_ELAN_TOOLCHAIN_RETRY_END,
+    )
+    pattern = re.compile(
+        r"RUN\s+elan\s+toolchain\s+install\s+\$\(cat\s+"
+        r"(?P<toolchain>[^)]+lean-toolchain)\)\s*&&\s*\\?\s*"
+        r"(?:\n\s*)?elan\s+default\s+\$\(cat\s+(?P=toolchain)\)",
+        flags=re.MULTILINE,
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        toolchain = match.group("toolchain").strip()
+        return (
+            f"{DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN}\n"
+            "RUN set -eux; \\\n"
+            f"    loopx_lean_toolchain=\"$(cat {toolchain})\"; \\\n"
+            "    for loopx_attempt in 1 2 3 4 5; do \\\n"
+            "      elan toolchain install \"${loopx_lean_toolchain}\" && break; \\\n"
+            "      if [ \"${loopx_attempt}\" = \"5\" ]; then exit 1; fi; \\\n"
+            "      sleep 10; \\\n"
+            "    done; \\\n"
+            "    elan default \"${loopx_lean_toolchain}\"\n"
+            f"{DOCKER_ELAN_TOOLCHAIN_RETRY_END}"
+        )
+
+    patched, count = pattern.subn(replace, text, count=1)
+    if count == 0:
+        return False
+    patched = patched.rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def dockerfile_needs_wget_gpg_key_retry_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(
+        re.search(
+            r"\bwget\s+(?:-qO\s+-|-q\s+-O\s+-|-O\s+-\s+-q)\s+"
+            r"https?://[^\s|]+\s*\|\s*gpg\s+--dearmor",
+            text,
+        )
+    )
+
+
+def patch_dockerfile_wget_gpg_key_retry(dockerfile: Path) -> bool:
+    """Use curl retry semantics for staged public key download pipelines."""
+
+    if not dockerfile_needs_wget_gpg_key_retry_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    pattern = re.compile(
+        r"\bwget\s+(?:-qO\s+-|-q\s+-O\s+-|-O\s+-\s+-q)\s+"
+        r"(?P<url>https?://[^\s|]+)\s*\|\s*gpg\s+--dearmor",
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        return (
+            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
+            f"{match.group('url')} | gpg --dearmor"
+        )
+
+    patched, count = pattern.subn(replace, original)
+    if count == 0 or patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def dockerfile_needs_apache_archive_mirror_rewrite(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return (
+        "https://archive.apache.org/dist/druid/" in text
+        or "http://archive.apache.org/dist/druid/" in text
+    )
+
+
+def patch_dockerfile_apache_archive_mirror(dockerfile: Path) -> bool:
+    """Rewrite known slow Apache archive Druid downloads to a public mirror."""
+
+    if not dockerfile_needs_apache_archive_mirror_rewrite(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    mirror_base = DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_BASE.rstrip("/")
+    patched = original.replace(
+        "https://archive.apache.org/dist/druid/",
+        f"{mirror_base}/druid/",
+    ).replace(
+        "http://archive.apache.org/dist/druid/",
+        f"{mirror_base}/druid/",
+    )
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def _insert_dockerfile_block_after_first_from(text: str, block: str) -> str:
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        patched_lines.append(line)
+        if not inserted and _is_dockerfile_from_instruction(line.strip()):
+            patched_lines.extend(["", *block.splitlines(), ""])
+            inserted = True
+    if not inserted:
+        return "\n".join([*block.splitlines(), "", *text.splitlines()])
+    return "\n".join(patched_lines)
+
+
+def dockerfile_needs_maven_mirror_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(re.search(r"\bmvn\s+", text))
+
+
+def patch_dockerfile_maven_mirror(dockerfile: Path) -> bool:
+    """Route staged Docker build Maven downloads through a public mirror."""
+
+    if not dockerfile_needs_maven_mirror_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_MAVEN_MIRROR_BEGIN,
+        DOCKER_MAVEN_MIRROR_END,
+    )
+    settings_block = (
+        f"{DOCKER_MAVEN_MIRROR_BEGIN}\n"
+        "RUN mkdir -p /opt/loopx-maven && cat > "
+        f"{DEFAULT_DOCKER_MAVEN_SETTINGS_PATH} "
+        "<<'LOOPX_MAVEN_SETTINGS_EOF'\n"
+        "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\" "
+        "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+        "xsi:schemaLocation=\"http://maven.apache.org/SETTINGS/1.0.0 "
+        "https://maven.apache.org/xsd/settings-1.0.0.xsd\">\n"
+        "  <mirrors>\n"
+        "    <mirror>\n"
+        "      <id>loopx-public-maven-mirror</id>\n"
+        "      <mirrorOf>*</mirrorOf>\n"
+        "      <url>"
+        f"{DEFAULT_DOCKER_MAVEN_MIRROR_URL}"
+        "</url>\n"
+        "    </mirror>\n"
+        "  </mirrors>\n"
+        "</settings>\n"
+        "LOOPX_MAVEN_SETTINGS_EOF\n"
+        f"{DOCKER_MAVEN_MIRROR_END}"
+    )
+    if DOCKER_NETWORK_DOWNLOAD_RETRY_END in text:
+        text = text.replace(
+            DOCKER_NETWORK_DOWNLOAD_RETRY_END,
+            f"{DOCKER_NETWORK_DOWNLOAD_RETRY_END}\n\n{settings_block}",
+            1,
+        )
+    else:
+        text = _insert_dockerfile_block_after_first_from(text, settings_block)
+    text = re.sub(
+        r"\bmvn(?!\s+(?:--settings|-s)\b)",
+        f"mvn --settings {DEFAULT_DOCKER_MAVEN_SETTINGS_PATH}",
+        text,
+    )
+    if text == original:
+        return False
+    _write_text_atomic(dockerfile, text.rstrip() + "\n")
+    return True
+
+
+def dockerfile_needs_network_download_retry_patch(dockerfile: Path) -> bool:
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    return bool(
+        re.search(r"\bwget\s+[^;\n]*https?://", text)
+        or re.search(r"\bgit\s+clone\s+https?://", text)
+        or re.search(r"\bmvn\s+", text)
+    )
+
+
+def patch_dockerfile_network_download_retry(dockerfile: Path) -> bool:
+    """Add staged retry/timeout defaults for common build-time downloads."""
+
+    if not dockerfile_needs_network_download_retry_patch(dockerfile):
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    text = _strip_marker_block(
+        original,
+        DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN,
+        DOCKER_NETWORK_DOWNLOAD_RETRY_END,
+    )
+    wget_pattern = re.compile(
+        r"\bwget(?P<args>(?:\s+(?!https?://)[^\s\\;&|]+)*)\s+"
+        r"(?P<url>https?://[^\s\\;&|]+)"
+    )
+
+    def replace_wget(match: re.Match[str]) -> str:
+        args = match.group("args") or ""
+        if "--tries" in args or "--timeout" in args:
+            return match.group(0)
+        return (
+            f"wget{args} --tries=5 --timeout=120 --read-timeout=120 "
+            f"--retry-connrefused {match.group('url')}"
+        )
+
+    text = wget_pattern.sub(replace_wget, text)
+    block = (
+        f"{DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN}\n"
+        "ENV GIT_HTTP_LOW_SPEED_LIMIT=1000 \\\n"
+        "    GIT_HTTP_LOW_SPEED_TIME=120 \\\n"
+        "    MAVEN_OPTS=\"-Dmaven.wagon.http.retryHandler.count=5 "
+        "-Dmaven.wagon.httpconnectionManager.ttlSeconds=60 "
+        "-Dhttp.keepAlive=false\"\n"
+        f"{DOCKER_NETWORK_DOWNLOAD_RETRY_END}"
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    for line in text.splitlines():
+        patched_lines.append(line)
+        stripped = line.strip()
+        if stripped.upper().startswith("FROM ") and " scratch" not in stripped.lower():
+            patched_lines.extend(["", *block.splitlines(), ""])
+            inserted = True
+    if not inserted:
+        patched_lines = [*block.splitlines(), "", *text.splitlines()]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
 def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     text = str(value or "").strip()
     cleaned = []
@@ -5542,6 +6734,131 @@ def _skillsbench_public_task_label(value: Any, *, limit: int = 120) -> str:
     while "--" in label:
         label = label.replace("--", "-")
     return label[:limit]
+
+
+SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS = (
+    "apt_setup_risk_detected",
+    "apt_retry_patch_required",
+    "dockerfile_pip_install_risk_detected",
+    "dockerfile_pip_bootstrap_patch_required",
+    "verifier_bootstrap_risk_detected",
+    "verifier_uv_bootstrap_risk_detected",
+    "verifier_external_download_risk_detected",
+    "verifier_package_install_risk_detected",
+)
+
+
+def skillsbench_bootstrap_light_blocking_fields(
+    preflight: dict[str, Any],
+) -> list[str]:
+    if preflight.get("canonical_task_present") is False:
+        return ["canonical_task_present"]
+    return [
+        field
+        for field in SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS
+        if preflight.get(field) is True
+    ]
+
+
+def _setup_preflight_public_blocking_fields(preflight: dict[str, Any]) -> list[str]:
+    raw_fields = preflight.get("bootstrap_light_blocking_fields")
+    if isinstance(raw_fields, list):
+        return [
+            field
+            for field in raw_fields
+            if isinstance(field, str)
+            and field
+            in (
+                *SKILLSBENCH_BOOTSTRAP_LIGHT_BLOCKING_PREFLIGHT_FIELDS,
+                "canonical_task_present",
+            )
+        ]
+    return skillsbench_bootstrap_light_blocking_fields(preflight)
+
+
+def _bootstrap_light_blocker_kind(blocking_fields: list[str]) -> str:
+    fields = set(blocking_fields)
+    if "canonical_task_present" in fields:
+        return "task_source"
+    if fields & {
+        "apt_setup_risk_detected",
+        "apt_retry_patch_required",
+    }:
+        return "apt"
+    if fields & {
+        "dockerfile_pip_install_risk_detected",
+        "dockerfile_pip_bootstrap_patch_required",
+    }:
+        return "dockerfile_package"
+    if fields & {
+        "verifier_bootstrap_risk_detected",
+        "verifier_uv_bootstrap_risk_detected",
+        "verifier_external_download_risk_detected",
+        "verifier_package_install_risk_detected",
+    }:
+        return "verifier"
+    return "setup"
+
+
+def _bootstrap_light_preflight_block_required(
+    args: argparse.Namespace,
+    *,
+    blocker_kind: str,
+) -> bool:
+    if getattr(args, "reduce_only", False):
+        return False
+    fail_fast_required = _formal_app_server_goal_bootstrap_light_fail_fast_required(
+        args
+    )
+    if blocker_kind in {"apt", "dockerfile_package"}:
+        return bool(args.fail_fast_on_apt_risk or fail_fast_required)
+    if blocker_kind == "verifier":
+        return bool(args.fail_fast_on_verifier_bootstrap_risk or fail_fast_required)
+    return False
+
+
+def _mark_bootstrap_light_preflight_blocked(
+    *,
+    staging: dict[str, Any],
+    setup_preflight: dict[str, Any],
+    blocking_fields: list[str],
+    args: argparse.Namespace,
+) -> str:
+    blocker_kind = _bootstrap_light_blocker_kind(blocking_fields)
+    staging["bootstrap_light_preflight_blocked"] = True
+    staging["bootstrap_light_blocker_kind"] = blocker_kind
+    staging["bootstrap_light_fail_fast_defaulted"] = bool(
+        getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+    )
+    staging["bootstrap_light_blocking_field_count"] = len(blocking_fields)
+    if blocker_kind == "task_source":
+        staging["task_source_preflight_blocked"] = True
+    if blocker_kind in {"apt", "dockerfile_package"}:
+        staging["apt_setup_risk_detected"] = bool(
+            setup_preflight.get("apt_setup_risk_detected")
+        )
+        staging["apt_retry_patch_required"] = bool(
+            setup_preflight.get("apt_retry_patch_required")
+        )
+        staging["dockerfile_pip_install_risk_detected"] = bool(
+            setup_preflight.get("dockerfile_pip_install_risk_detected")
+        )
+        staging["dockerfile_pip_bootstrap_patch_required"] = bool(
+            setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
+        )
+        if blocker_kind == "apt":
+            staging["apt_risk_preflight_blocked"] = True
+        else:
+            staging["dockerfile_package_bootstrap_risk_preflight_blocked"] = True
+    if blocker_kind == "verifier":
+        staging["verifier_bootstrap_risk_detected"] = bool(
+            setup_preflight.get("verifier_bootstrap_risk_detected")
+        )
+        staging["verifier_bootstrap_risk_preflight_blocked"] = True
+        staging["verifier_bootstrap_fail_fast_defaulted"] = bool(
+            getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+        )
+    return blocker_kind
 
 
 def skillsbench_task_setup_preflight(
@@ -5574,6 +6891,8 @@ def skillsbench_task_setup_preflight(
         "verifier_external_download_risk_detected": False,
         "verifier_package_install_risk_detected": False,
         "verifier_bootstrap_risk_categories": [],
+        "bootstrap_light_candidate_eligible": False,
+        "bootstrap_light_blocking_fields": [],
     }
     skillsbench_root = expanded_task_path.parent.parent
     canonical_task_exists = expanded_task_path.is_dir()
@@ -5610,9 +6929,13 @@ def skillsbench_task_setup_preflight(
                 ),
             }
         )
+        preflight["bootstrap_light_blocking_fields"] = (
+            skillsbench_bootstrap_light_blocking_fields(preflight)
+        )
         return preflight
     if sandbox != "docker":
         preflight["status"] = "not_applicable"
+        preflight["bootstrap_light_candidate_eligible"] = True
         return preflight
 
     dockerfile = expanded_task_path / "environment" / "Dockerfile"
@@ -5620,6 +6943,7 @@ def skillsbench_task_setup_preflight(
     preflight["dockerfile_present"] = dockerfile_exists
     if not dockerfile_exists:
         preflight["status"] = "no_dockerfile"
+        preflight["bootstrap_light_candidate_eligible"] = True
         return preflight
 
     apt_risk = dockerfile_needs_apt_retry_patch(dockerfile)
@@ -5637,6 +6961,15 @@ def skillsbench_task_setup_preflight(
         setup_status = "verifier_bootstrap_risk_detected"
     else:
         setup_status = "ok"
+    risk_fields = skillsbench_bootstrap_light_blocking_fields(
+        {
+            **preflight,
+            "apt_setup_risk_detected": apt_risk,
+            "apt_retry_patch_required": apt_risk,
+            "dockerfile_pip_install_risk_detected": pip_risk,
+            "dockerfile_pip_bootstrap_patch_required": pip_risk,
+        }
+    )
     preflight.update(
         {
             "status": setup_status,
@@ -5644,10 +6977,12 @@ def skillsbench_task_setup_preflight(
             "apt_retry_patch_required": apt_risk,
             "dockerfile_pip_install_risk_detected": pip_risk,
             "dockerfile_pip_bootstrap_patch_required": pip_risk,
+            "bootstrap_light_candidate_eligible": not risk_fields,
+            "bootstrap_light_blocking_fields": risk_fields,
             "selection_recommendation": (
                 "route_to_setup_repair_or_use_fail_fast_guard"
-                if apt_risk or pip_risk or verifier_bootstrap_risk
-                else "eligible_for_full_pair"
+                if risk_fields
+                else "eligible_for_bootstrap_light_full_pair"
             ),
         }
     )
@@ -5734,6 +7069,8 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+        "verifier_uv_env_source_guard_patch_applied": False,
     }
     if not verifier.exists():
         return metadata
@@ -5753,13 +7090,26 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
     version = versions[0]
     block = (
         f"{VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN}\n"
-        "# Use a public mirror for uv release tarballs when GitHub release\n"
-        "# downloads stall behind the benchmark runner network path.\n"
+        "# Prefer the PyPI uv wheel for verifier bootstrap; the official uv\n"
+        "# installer release tarball remains as a bounded fallback.\n"
         f"loopx_uv_release_mirror={shlex.quote(DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE)}\n"
         f"loopx_uv_version={shlex.quote(version)}\n"
+        "if ! command -v uvx >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then\n"
+        "  loopx_pip_break_system_packages=''\n"
+        "  if python3 -m pip install --help 2>/dev/null | grep -q -- '--break-system-packages'; then\n"
+        "    loopx_pip_break_system_packages='--break-system-packages'\n"
+        "  fi\n"
+        "  python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
+        "    --no-cache-dir --timeout 120 --retries 5 \\\n"
+        f"    --index-url {shlex.quote(DEFAULT_DOCKER_PIP_INDEX_URL)} \\\n"
+        f"    --extra-index-url {shlex.quote(DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL)} \\\n"
+        "    \"uv==${loopx_uv_version}\" || true\n"
+        "  unset loopx_pip_break_system_packages\n"
+        "fi\n"
         "if [ -z \"${INSTALLER_DOWNLOAD_URL:-}\" ]; then\n"
         "  export INSTALLER_DOWNLOAD_URL=\"${loopx_uv_release_mirror}/${loopx_uv_version}\"\n"
         "fi\n"
+        "loopx_uv_installer_timeout_sec=${LOOPX_SKILLSBENCH_UV_INSTALL_TIMEOUT_SEC:-180}\n"
         f"{VERIFIER_UV_BOOTSTRAP_MIRROR_END}"
     )
     patched_lines: list[str] = []
@@ -5772,10 +7122,25 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
         ):
             patched_lines.extend(block.splitlines())
             inserted = True
+            if "curl" in line and "|" in line:
+                fallback_line = shlex.quote(line)
+                patched_lines.extend(
+                    [
+                        "if ! command -v uvx >/dev/null 2>&1; then",
+                        "  if command -v timeout >/dev/null 2>&1; then",
+                        f"    timeout \"${{loopx_uv_installer_timeout_sec}}\" sh -c {fallback_line}",
+                        "  else",
+                        f"    sh -c {fallback_line}",
+                        "  fi",
+                        "fi",
+                    ]
+                )
+                continue
         patched_lines.append(line)
     if not inserted:
         patched_lines.extend(block.splitlines())
     patched = "\n".join(patched_lines).rstrip() + "\n"
+    patched, source_guard_applied = _patch_verifier_uv_env_source_guard(patched)
     if patched != original:
         _write_text_atomic(verifier, patched)
     metadata.update(
@@ -5783,12 +7148,191 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
             "verifier_uv_bootstrap_risk_detected": True,
             "verifier_uv_bootstrap_mirror_patch_required": True,
             "verifier_uv_bootstrap_mirror_patch_applied": True,
+            "verifier_uv_bootstrap_pip_fallback_patch_applied": True,
+            "verifier_uv_env_source_guard_patch_applied": source_guard_applied,
             "verifier_uv_bootstrap_version": version,
             "verifier_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
             ),
         }
     )
+    return metadata
+
+
+def _patch_verifier_uv_env_source_guard(text: str) -> tuple[str, bool]:
+    """Guard uv installer env sourcing when the pip wheel already provided uvx."""
+
+    source_lines = {
+        'source "$HOME/.local/bin/env"',
+        "source $HOME/.local/bin/env",
+        '. "$HOME/.local/bin/env"',
+        ". $HOME/.local/bin/env",
+    }
+    replacement = [
+        'if [ -f "$HOME/.local/bin/env" ]; then',
+        '  . "$HOME/.local/bin/env"',
+        "fi",
+    ]
+    patched_lines: list[str] = []
+    applied = False
+    for line in text.splitlines():
+        if line.strip() in source_lines:
+            indent = line[: len(line) - len(line.lstrip())]
+            patched_lines.extend(f"{indent}{part}" for part in replacement)
+            applied = True
+        else:
+            patched_lines.append(line)
+    if not applied:
+        return text, False
+    return "\n".join(patched_lines).rstrip() + "\n", True
+
+
+def _verifier_benchmark_egress_proxy_exports(
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if not isinstance(proxy_env, Mapping):
+        return {}
+    proxy_url = str(proxy_env.get("LOOPX_SKILLSBENCH_EGRESS_PROXY") or "").strip()
+    if not proxy_url:
+        for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS:
+            proxy_url = str(proxy_env.get(key) or "").strip()
+            if proxy_url:
+                break
+    if not proxy_url:
+        return {}
+    exports = {
+        key: proxy_url
+        for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS
+    }
+    no_proxy = str(proxy_env.get("NO_PROXY") or proxy_env.get("no_proxy") or "").strip()
+    if no_proxy:
+        exports["NO_PROXY"] = no_proxy
+        exports["no_proxy"] = no_proxy
+    return exports
+
+
+def patch_verifier_benchmark_egress_proxy_env(
+    verifier: Path,
+    *,
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    """Forward the private benchmark egress proxy into staged verifier scripts."""
+
+    exports = _verifier_benchmark_egress_proxy_exports(proxy_env)
+    metadata: dict[str, Any] = {
+        "benchmark_egress_proxy_verifier_env_patch_required": bool(exports),
+        "benchmark_egress_proxy_verifier_env_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_key_count": len(exports),
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+    }
+    if not verifier.exists() or not exports:
+        return metadata
+    try:
+        original = verifier.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return metadata
+    text = _strip_marker_block(
+        original,
+        VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        VERIFIER_BENCHMARK_EGRESS_PROXY_END,
+    )
+    block_lines = [
+        VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        "# Forward the runtime benchmark egress proxy into verifier bootstrap commands.",
+        "# The concrete proxy is staged only in the private prepared task copy.",
+        "loopx_restore_xtrace=''",
+        "case \"$-\" in *x*) loopx_restore_xtrace=1; set +x;; esac",
+    ]
+    for key in sorted(exports):
+        block_lines.append(f"export {key}={shlex.quote(exports[key])}")
+    block_lines.extend(
+        [
+            "[ -z \"${loopx_restore_xtrace}\" ] || set -x",
+            "unset loopx_restore_xtrace",
+            VERIFIER_BENCHMARK_EGRESS_PROXY_END,
+        ]
+    )
+    block = "\n".join(block_lines)
+    lines = text.splitlines()
+    insert_at = 0
+    if lines and lines[0].startswith("#!"):
+        insert_at = 1
+    patched_lines = [*lines[:insert_at], block, *lines[insert_at:]]
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(verifier, patched)
+    metadata["benchmark_egress_proxy_verifier_env_patch_applied"] = True
+    return metadata
+
+
+def patch_dockerfile_benchmark_egress_proxy_env(
+    dockerfile: Path,
+    *,
+    proxy_env: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    """Forward the private benchmark egress proxy into staged Docker builds."""
+
+    exports = _verifier_benchmark_egress_proxy_exports(proxy_env)
+    proxy_url = str(exports.get("HTTPS_PROXY") or exports.get("HTTP_PROXY") or "")
+    no_proxy = str(exports.get("NO_PROXY") or exports.get("no_proxy") or "")
+    metadata: dict[str, Any] = {
+        "benchmark_egress_proxy_dockerfile_env_patch_required": bool(proxy_url),
+        "benchmark_egress_proxy_dockerfile_env_patch_applied": False,
+        "benchmark_egress_proxy_dockerfile_env_key_count": len(exports),
+        "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded": False,
+    }
+    if not dockerfile.exists() or not proxy_url:
+        return metadata
+    try:
+        original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return metadata
+    text = _strip_marker_block(
+        original,
+        DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
+        DOCKER_BENCHMARK_EGRESS_PROXY_END,
+    )
+    block = "\n".join(
+        [
+            DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
+            "# Forward the runtime benchmark egress proxy into Docker build steps.",
+            "# The concrete proxy is staged only in the private prepared task copy.",
+            f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY={proxy_url}",
+            f"ARG LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY={no_proxy}",
+            "ENV HTTPS_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    HTTP_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    ALL_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    https_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    http_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    all_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY} \\",
+            "    NO_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY} \\",
+            "    no_proxy=${LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY}",
+            DOCKER_BENCHMARK_EGRESS_PROXY_END,
+        ]
+    )
+    patched_lines: list[str] = []
+    inserted = False
+    heredoc_delimiter: str | None = None
+    for line in text.splitlines():
+        patched_lines.append(line)
+        if heredoc_delimiter is not None:
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = _dockerfile_heredoc_delimiter(line)
+        stripped = line.strip()
+        if (
+            _is_dockerfile_from_instruction(stripped)
+            and " scratch" not in stripped.lower()
+        ):
+            patched_lines.extend(["", block, ""])
+            inserted = True
+    if not inserted:
+        return metadata
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched != original:
+        _write_text_atomic(dockerfile, patched)
+    metadata["benchmark_egress_proxy_dockerfile_env_patch_applied"] = True
     return metadata
 
 
@@ -5805,14 +7349,18 @@ def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
     block = (
         f"{DOCKER_APT_RETRY_BEGIN}\n"
         "RUN set -eux; \\\n"
-        "    mkdir -p /etc/apt/apt.conf.d; \\\n"
-        "    printf '%s\\n' \\\n"
-        "      'Acquire::Retries \"5\";' \\\n"
-        "      'Acquire::http::No-Cache \"true\";' \\\n"
-        "      'Acquire::https::No-Cache \"true\";' \\\n"
-        "      'Acquire::Check-Valid-Until \"false\";' \\\n"
-        "      > /etc/apt/apt.conf.d/80-loopx-retry; \\\n"
-        "    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb\n"
+        "    if mkdir -p /etc/apt/apt.conf.d 2>/dev/null && "
+        "[ -w /etc/apt/apt.conf.d ]; then \\\n"
+        "      printf '%s\\n' \\\n"
+        "        'Acquire::Retries \"5\";' \\\n"
+        "        'Acquire::http::No-Cache \"true\";' \\\n"
+        "        'Acquire::https::No-Cache \"true\";' \\\n"
+        "        'Acquire::Check-Valid-Until \"false\";' \\\n"
+        "        > /etc/apt/apt.conf.d/80-loopx-retry; \\\n"
+        "      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb; \\\n"
+        "    else \\\n"
+        "      echo 'loopx apt retry config skipped: apt config directory is not writable'; \\\n"
+        "    fi\n"
         f"{DOCKER_APT_RETRY_END}"
     )
     patched_lines: list[str] = []
@@ -5856,10 +7404,19 @@ def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
     )
     patched_lines: list[str] = []
     inserted = False
+    heredoc_delimiter: str | None = None
     for line in text.splitlines():
         patched_lines.append(line)
+        if heredoc_delimiter is not None:
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = _dockerfile_heredoc_delimiter(line)
         stripped = line.strip()
-        if stripped.upper().startswith("FROM ") and " scratch" not in stripped.lower():
+        if (
+            _is_dockerfile_from_instruction(stripped)
+            and " scratch" not in stripped.lower()
+        ):
             patched_lines.extend(["", *block.splitlines(), ""])
             inserted = True
     if not inserted:
@@ -5869,6 +7426,27 @@ def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
         return False
     _write_text_atomic(dockerfile, patched)
     return True
+
+
+def _dockerfile_heredoc_delimiter(line: str) -> str | None:
+    """Return a Dockerfile shell heredoc delimiter opened on this line."""
+
+    match = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", line)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _is_dockerfile_from_instruction(stripped_line: str) -> bool:
+    """Match Dockerfile ``FROM`` instructions without matching heredoc Python."""
+
+    return bool(
+        re.match(
+            r"^FROM(?:\s+--platform=\S+)?\s+\S+(?:\s+AS\s+\S+)?\s*$",
+            stripped_line,
+            flags=re.IGNORECASE,
+        )
+    )
 
 
 def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
@@ -5940,6 +7518,35 @@ def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
     return True
 
 
+def dockerfile_references_skills_build_context(dockerfile: Path) -> bool:
+    """Return whether the Dockerfile copies the local ``skills`` build context."""
+
+    if not dockerfile.exists():
+        return False
+    try:
+        text = dockerfile.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    pattern = re.compile(r"^\s*(?:COPY|ADD)\b[^\n]*\bskills(?:\s|$)", re.MULTILINE)
+    return bool(pattern.search(text))
+
+
+def ensure_empty_skills_build_context(dockerfile: Path) -> bool:
+    """Create an empty ``skills`` context when staging removed task skills."""
+
+    if not dockerfile_references_skills_build_context(dockerfile):
+        return False
+    skills_dir = dockerfile.parent / "skills"
+    if skills_dir.exists():
+        return False
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    (skills_dir / ".loopx_keep").write_text(
+        "empty SkillsBench build context created by LoopX staging\n",
+        encoding="utf-8",
+    )
+    return True
+
+
 def stage_task_for_sandbox(
     *,
     task_path: Path,
@@ -5947,6 +7554,8 @@ def stage_task_for_sandbox(
     job_name: str,
     sandbox: str,
     include_task_skills: bool = True,
+    benchmark_egress_proxy_env: Mapping[str, str] | None = None,
+    docker_gcr_mirror_prefix: str = "",
 ) -> tuple[Path, dict[str, Any]]:
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
@@ -5962,10 +7571,41 @@ def stage_task_for_sandbox(
         "dockerfile_pip_install_risk_detected": False,
         "dockerfile_pip_bootstrap_patch_required": False,
         "dockerfile_pip_bootstrap_patch_applied": False,
+        "dockerfile_gcr_mirror_configured": bool(
+            _normalized_docker_gcr_mirror_prefix(docker_gcr_mirror_prefix)
+        ),
+        "dockerfile_gcr_mirror_patch_required": False,
+        "dockerfile_gcr_mirror_patch_applied": False,
+        "dockerfile_gcr_mirror_raw_prefix_recorded": False,
+        "dockerfile_elan_toolchain_retry_patch_required": False,
+        "dockerfile_elan_toolchain_retry_patch_applied": False,
+        "dockerfile_wget_gpg_key_retry_patch_required": False,
+        "dockerfile_wget_gpg_key_retry_patch_applied": False,
+        "dockerfile_network_download_retry_patch_required": False,
+        "dockerfile_network_download_retry_patch_applied": False,
+        "dockerfile_apache_archive_mirror_patch_required": False,
+        "dockerfile_apache_archive_mirror_patch_applied": False,
+        "dockerfile_apache_archive_mirror_host": "",
+        "dockerfile_apache_archive_raw_url_recorded": False,
+        "dockerfile_maven_mirror_patch_required": False,
+        "dockerfile_maven_mirror_patch_applied": False,
+        "dockerfile_maven_mirror_host": "",
+        "dockerfile_maven_mirror_raw_url_recorded": False,
         "codex_acp_runtime_tools_patch_applied": False,
+        "empty_skills_build_context_required": False,
+        "empty_skills_build_context_created": False,
         "verifier_uv_bootstrap_risk_detected": False,
         "verifier_uv_bootstrap_mirror_patch_required": False,
         "verifier_uv_bootstrap_mirror_patch_applied": False,
+        "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_patch_required": False,
+        "benchmark_egress_proxy_verifier_env_patch_applied": False,
+        "benchmark_egress_proxy_verifier_env_key_count": 0,
+        "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
+        "benchmark_egress_proxy_dockerfile_env_patch_required": False,
+        "benchmark_egress_proxy_dockerfile_env_patch_applied": False,
+        "benchmark_egress_proxy_dockerfile_env_key_count": 0,
+        "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded": False,
         "task_skills_removed": False,
         "resource_cap_patch": {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -5989,10 +7629,40 @@ def stage_task_for_sandbox(
     needs_pip_bootstrap_patch = dockerfile_needs_pip_bootstrap_patch(
         task_path / "environment" / "Dockerfile"
     )
+    needs_gcr_mirror_patch = dockerfile_needs_gcr_mirror_rewrite(
+        task_path / "environment" / "Dockerfile",
+        mirror_prefix=docker_gcr_mirror_prefix,
+    )
+    needs_elan_toolchain_retry_patch = dockerfile_needs_elan_toolchain_retry_patch(
+        task_path / "environment" / "Dockerfile"
+    )
+    needs_wget_gpg_key_retry_patch = dockerfile_needs_wget_gpg_key_retry_patch(
+        task_path / "environment" / "Dockerfile"
+    )
+    needs_network_download_retry_patch = dockerfile_needs_network_download_retry_patch(
+        task_path / "environment" / "Dockerfile"
+    )
+    needs_apache_archive_mirror_patch = (
+        dockerfile_needs_apache_archive_mirror_rewrite(
+            task_path / "environment" / "Dockerfile"
+        )
+    )
+    needs_maven_mirror_patch = dockerfile_needs_maven_mirror_patch(
+        task_path / "environment" / "Dockerfile"
+    )
     verifier_risk = skillsbench_verifier_bootstrap_risk(task_path)
     needs_verifier_uv_mirror_patch = bool(
         verifier_risk.get("verifier_uv_bootstrap_risk_detected")
         and verifier_risk.get("verifier_uv_bootstrap_version")
+    )
+    verifier_proxy_exports = _verifier_benchmark_egress_proxy_exports(
+        benchmark_egress_proxy_env
+    )
+    needs_verifier_proxy_env_patch = bool(
+        verifier_proxy_exports and (task_path / "verifier" / "test.sh").exists()
+    )
+    needs_dockerfile_proxy_env_patch = bool(
+        verifier_proxy_exports and (task_path / "environment" / "Dockerfile").exists()
     )
     needs_runtime_tools_patch = (task_path / "environment" / "Dockerfile").exists()
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
@@ -6002,6 +7672,26 @@ def stage_task_for_sandbox(
     metadata["dockerfile_pip_bootstrap_patch_required"] = needs_pip_bootstrap_patch
     if needs_pip_bootstrap_patch:
         metadata["dockerfile_pip_index_host"] = DEFAULT_DOCKER_PIP_INDEX_HOST
+    metadata["dockerfile_gcr_mirror_patch_required"] = needs_gcr_mirror_patch
+    metadata["dockerfile_elan_toolchain_retry_patch_required"] = (
+        needs_elan_toolchain_retry_patch
+    )
+    metadata["dockerfile_wget_gpg_key_retry_patch_required"] = (
+        needs_wget_gpg_key_retry_patch
+    )
+    metadata["dockerfile_network_download_retry_patch_required"] = (
+        needs_network_download_retry_patch
+    )
+    metadata["dockerfile_apache_archive_mirror_patch_required"] = (
+        needs_apache_archive_mirror_patch
+    )
+    if needs_apache_archive_mirror_patch:
+        metadata["dockerfile_apache_archive_mirror_host"] = (
+            DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+        )
+    metadata["dockerfile_maven_mirror_patch_required"] = needs_maven_mirror_patch
+    if needs_maven_mirror_patch:
+        metadata["dockerfile_maven_mirror_host"] = DEFAULT_DOCKER_MAVEN_MIRROR_HOST
     metadata["verifier_bootstrap_risk_detected"] = bool(
         verifier_risk.get("verifier_bootstrap_risk_detected")
     )
@@ -6010,6 +7700,18 @@ def stage_task_for_sandbox(
     )
     metadata["verifier_uv_bootstrap_mirror_patch_required"] = (
         needs_verifier_uv_mirror_patch
+    )
+    metadata["benchmark_egress_proxy_verifier_env_patch_required"] = (
+        needs_verifier_proxy_env_patch
+    )
+    metadata["benchmark_egress_proxy_verifier_env_key_count"] = len(
+        verifier_proxy_exports
+    )
+    metadata["benchmark_egress_proxy_dockerfile_env_patch_required"] = (
+        needs_dockerfile_proxy_env_patch
+    )
+    metadata["benchmark_egress_proxy_dockerfile_env_key_count"] = len(
+        verifier_proxy_exports
     )
     if isinstance(verifier_risk.get("verifier_uv_bootstrap_version"), str):
         metadata["verifier_uv_bootstrap_version"] = verifier_risk[
@@ -6021,8 +7723,16 @@ def stage_task_for_sandbox(
         and not needs_resource_cap
         and not needs_apt_retry_patch
         and not needs_pip_bootstrap_patch
+        and not needs_gcr_mirror_patch
+        and not needs_elan_toolchain_retry_patch
+        and not needs_wget_gpg_key_retry_patch
+        and not needs_network_download_retry_patch
+        and not needs_apache_archive_mirror_patch
+        and not needs_maven_mirror_patch
         and not needs_runtime_tools_patch
         and not needs_verifier_uv_mirror_patch
+        and not needs_verifier_proxy_env_patch
+        and not needs_dockerfile_proxy_env_patch
     ):
         metadata["resource_cap_patch"] = {
             "schema_version": "skillsbench_local_docker_resource_cap_v0",
@@ -6048,8 +7758,18 @@ def stage_task_for_sandbox(
     if not include_task_skills and staged_skills_dir.exists():
         shutil.rmtree(staged_skills_dir)
         task_skills_removed = True
+    empty_skills_context_required = dockerfile_references_skills_build_context(
+        staged_path / "environment" / "Dockerfile"
+    )
+    empty_skills_context_created = ensure_empty_skills_build_context(
+        staged_path / "environment" / "Dockerfile"
+    )
     patched = patch_dockerfile_app_skills_mount(
         staged_path / "environment" / "Dockerfile"
+    )
+    dockerfile_proxy_metadata = patch_dockerfile_benchmark_egress_proxy_env(
+        staged_path / "environment" / "Dockerfile",
+        proxy_env=benchmark_egress_proxy_env,
     )
     apt_retry_patched = patch_dockerfile_apt_retry(
         staged_path / "environment" / "Dockerfile"
@@ -6057,11 +7777,34 @@ def stage_task_for_sandbox(
     pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
         staged_path / "environment" / "Dockerfile"
     )
+    gcr_mirror_patched = patch_dockerfile_gcr_mirror(
+        staged_path / "environment" / "Dockerfile",
+        mirror_prefix=docker_gcr_mirror_prefix,
+    )
+    elan_toolchain_retry_patched = patch_dockerfile_elan_toolchain_retry(
+        staged_path / "environment" / "Dockerfile"
+    )
+    wget_gpg_key_retry_patched = patch_dockerfile_wget_gpg_key_retry(
+        staged_path / "environment" / "Dockerfile"
+    )
+    apache_archive_mirror_patched = patch_dockerfile_apache_archive_mirror(
+        staged_path / "environment" / "Dockerfile"
+    )
+    network_download_retry_patched = patch_dockerfile_network_download_retry(
+        staged_path / "environment" / "Dockerfile"
+    )
+    maven_mirror_patched = patch_dockerfile_maven_mirror(
+        staged_path / "environment" / "Dockerfile"
+    )
     runtime_tools_patched = patch_dockerfile_codex_acp_runtime_tools(
         staged_path / "environment" / "Dockerfile"
     )
     uv_mirror_metadata = patch_verifier_uv_bootstrap_mirror(
         staged_path / "verifier" / "test.sh"
+    )
+    verifier_proxy_metadata = patch_verifier_benchmark_egress_proxy_env(
+        staged_path / "verifier" / "test.sh",
+        proxy_env=benchmark_egress_proxy_env,
     )
     resource_cap_patch = patch_task_cpu_cap_for_local_docker(
         staged_path / "task.toml",
@@ -6077,7 +7820,34 @@ def stage_task_for_sandbox(
             "dockerfile_pip_index_host": (
                 DEFAULT_DOCKER_PIP_INDEX_HOST if pip_bootstrap_patched else ""
             ),
+            "dockerfile_gcr_mirror_patch_applied": gcr_mirror_patched,
+            "dockerfile_gcr_mirror_raw_prefix_recorded": False,
+            "dockerfile_elan_toolchain_retry_patch_applied": (
+                elan_toolchain_retry_patched
+            ),
+            "dockerfile_wget_gpg_key_retry_patch_applied": (
+                wget_gpg_key_retry_patched
+            ),
+            "dockerfile_network_download_retry_patch_applied": (
+                network_download_retry_patched
+            ),
+            "dockerfile_apache_archive_mirror_patch_applied": (
+                apache_archive_mirror_patched
+            ),
+            "dockerfile_apache_archive_mirror_host": (
+                DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+                if apache_archive_mirror_patched
+                else ""
+            ),
+            "dockerfile_apache_archive_raw_url_recorded": False,
+            "dockerfile_maven_mirror_patch_applied": maven_mirror_patched,
+            "dockerfile_maven_mirror_host": (
+                DEFAULT_DOCKER_MAVEN_MIRROR_HOST if maven_mirror_patched else ""
+            ),
+            "dockerfile_maven_mirror_raw_url_recorded": False,
             "codex_acp_runtime_tools_patch_applied": runtime_tools_patched,
+            "empty_skills_build_context_required": empty_skills_context_required,
+            "empty_skills_build_context_created": empty_skills_context_created,
             "app_skills_mount_target": "/app/skills",
             "original_task_mutated": False,
             "task_skills_removed": task_skills_removed,
@@ -6092,6 +7862,8 @@ def stage_task_for_sandbox(
         ):
             continue
         metadata[key] = value
+    metadata.update(dockerfile_proxy_metadata)
+    metadata.update(verifier_proxy_metadata)
     return staged_path, metadata
 
 
@@ -6142,6 +7914,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     loopx_source_mount = _loopx_source_mount_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     is_app_server_goal_route = route == "codex-app-server-goal-baseline"
+    reasoning_effort = _effective_reasoning_effort(args)
+    app_server_reasoning_effort = _effective_app_server_reasoning_effort(args)
+    codex_cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
     codex_api_egress_preflight = _public_codex_api_egress_contract(
         args,
         status=(
@@ -6151,6 +7926,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         ready=not _codex_api_egress_preflight_required(args),
     )
+    benchmark_egress_proxy = _public_benchmark_egress_proxy_contract(args)
     remote_command_file_bridge_materialized = bool(
         args.remote_command_file_bridge_ready
         or args.remote_command_file_bridge_probe
@@ -6227,7 +8003,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             task_id=task_id,
             cwd="<skillsbench-task-workspace>",
             model=args.model,
-            reasoning_effort=args.app_server_reasoning_effort,
+            reasoning_effort=app_server_reasoning_effort,
             sandbox="workspace-write",
             approval_policy="never",
             no_upload=True,
@@ -6253,9 +8029,34 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else "codex-acp"
         ),
         "model": args.model,
+        "reasoning_effort": reasoning_effort,
+        "codex_cli_reasoning_effort": (
+            codex_cli_reasoning_effort if not is_app_server_goal_route else ""
+        ),
+        "app_server_reasoning_effort": (
+            app_server_reasoning_effort if is_app_server_goal_route else ""
+        ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "max_rounds": args.max_rounds,
+        "independent_goal_retry": {
+            "schema_version": "skillsbench_independent_goal_retry_config_v0",
+            "enabled": bool(int(getattr(args, "independent_goal_retries", 1) or 1) > 1),
+            "attempt_budget": max(
+                1, int(getattr(args, "independent_goal_retries", 1) or 1)
+            ),
+            "route_supported": route == "codex-app-server-goal-baseline",
+            "fresh_goal_thread_per_attempt": True,
+            "stop_policy": (
+                "stop_after_first_official_reward_1_or_first_terminal_"
+                "official_nonpassing_or_retry_budget"
+            ),
+            "official_reward_feedback_forwarded_to_agent": False,
+            "verifier_output_forwarded_to_agent": False,
+            "raw_task_text_read_into_public_state": False,
+            "raw_trajectory_read_into_public_state": False,
+            "raw_verifier_output_read_into_public_state": False,
+        },
         "treatment_prompt_style": args.treatment_prompt_style,
         "outer_timeout_sec": args.outer_timeout_sec,
         "sandbox_setup_timeout_sec": args.sandbox_setup_timeout,
@@ -6265,6 +8066,28 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "include_task_skills": bool(args.include_task_skills),
         "host_local_acp_launch": bool(args.host_local_acp_launch),
+        "bootstrap_light_candidate_required": bool(
+            _formal_app_server_goal_bootstrap_light_guard_required(args)
+        ),
+        "bootstrap_light_fail_fast_required": bool(
+            _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        ),
+        "allow_staged_bootstrap_repair_run": bool(
+            getattr(args, "allow_staged_bootstrap_repair_run", False)
+        ),
+        "fail_fast_on_apt_risk": bool(args.fail_fast_on_apt_risk),
+        "apt_risk_fail_fast_defaulted": bool(
+            getattr(args, "apt_risk_fail_fast_defaulted", False)
+        ),
+        "fail_fast_on_verifier_bootstrap_risk": bool(
+            args.fail_fast_on_verifier_bootstrap_risk
+        ),
+        "verifier_bootstrap_fail_fast_defaulted": bool(
+            getattr(args, "verifier_bootstrap_fail_fast_defaulted", False)
+        ),
+        "bootstrap_light_fail_fast_defaulted": bool(
+            getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+        ),
         "remote_command_file_bridge_ready": bool(
             remote_command_file_bridge_materialized
         ),
@@ -6289,9 +8112,17 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             else ""
         ),
         "ledger_path": str(Path(args.ledger_path).expanduser()),
+        "global_ledger_path": str(Path(args.global_ledger_path).expanduser()),
+        "ledger_scope": _ledger_scope_label(
+            Path(args.ledger_path).expanduser(),
+            Path(args.global_ledger_path).expanduser(),
+        ),
+        "global_ledger_sync_enabled": not bool(args.skip_global_ledger_sync),
+        "ledger_inherit_enabled": not bool(args.skip_ledger_inherit),
         "run_permission_policy": run_permission_policy,
         "task_setup_preflight": setup_preflight,
         "codex_api_egress_preflight": codex_api_egress_preflight,
+        "benchmark_egress_proxy": benchmark_egress_proxy,
         "task_staging": {
             "schema_version": "skillsbench_task_staging_v0",
             "staged": False,
@@ -6314,7 +8145,12 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 if setup_preflight.get("dockerfile_pip_bootstrap_patch_required")
                 else ""
             ),
+            "dockerfile_package_bootstrap_risk_preflight_blocked": False,
             "apt_risk_preflight_blocked": False,
+            "bootstrap_light_preflight_blocked": False,
+            "bootstrap_light_fail_fast_defaulted": bool(
+                getattr(args, "bootstrap_light_fail_fast_defaulted", False)
+            ),
             "verifier_bootstrap_risk_detected": bool(
                 setup_preflight.get("verifier_bootstrap_risk_detected")
             ),
@@ -6326,6 +8162,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 and setup_preflight.get("verifier_uv_bootstrap_version")
             ),
             "verifier_uv_bootstrap_mirror_patch_applied": False,
+            "verifier_uv_bootstrap_pip_fallback_patch_applied": False,
+            "benchmark_egress_proxy_verifier_env_patch_required": False,
+            "benchmark_egress_proxy_verifier_env_patch_applied": False,
+            "benchmark_egress_proxy_verifier_env_key_count": 0,
+            "benchmark_egress_proxy_verifier_env_raw_proxy_recorded": False,
             "verifier_uv_bootstrap_version": (
                 str(setup_preflight.get("verifier_uv_bootstrap_version"))
                 if setup_preflight.get("verifier_uv_bootstrap_version")
@@ -6421,6 +8262,51 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 codex_api_egress_preflight.get("proxy_endpoint_port") or 0
             ),
             "codex_api_reverse_tunnel_proxy_url_recorded": False,
+            "benchmark_egress_proxy_ready": bool(
+                benchmark_egress_proxy.get("ready")
+            ),
+            "benchmark_egress_proxy_configured": bool(
+                benchmark_egress_proxy.get("proxy_configured")
+            ),
+            "benchmark_egress_proxy_required": bool(
+                benchmark_egress_proxy.get("proxy_required")
+            ),
+            "benchmark_egress_proxy_status": str(
+                benchmark_egress_proxy.get("status") or ""
+            ),
+            "benchmark_egress_proxy_error_kind": str(
+                benchmark_egress_proxy.get("error_kind") or ""
+            ),
+            "benchmark_egress_proxy_mode_requested": str(
+                benchmark_egress_proxy.get("requested_mode") or ""
+            ),
+            "benchmark_egress_proxy_source": str(
+                benchmark_egress_proxy.get("proxy_source") or ""
+            ),
+            "benchmark_egress_proxy_env_key": str(
+                benchmark_egress_proxy.get("proxy_env_key") or ""
+            ),
+            "benchmark_egress_proxy_scheme": str(
+                benchmark_egress_proxy.get("proxy_scheme") or ""
+            ),
+            "benchmark_egress_proxy_endpoint_kind": str(
+                benchmark_egress_proxy.get("proxy_endpoint_kind") or ""
+            ),
+            "benchmark_egress_proxy_endpoint_port": int(
+                benchmark_egress_proxy.get("proxy_endpoint_port") or 0
+            ),
+            "benchmark_egress_no_proxy_configured": bool(
+                benchmark_egress_proxy.get("no_proxy_configured")
+            ),
+            "benchmark_egress_no_proxy_entry_count": int(
+                benchmark_egress_proxy.get("no_proxy_entry_count") or 0
+            ),
+            "benchmark_egress_no_proxy_raw_value_recorded": False,
+            "benchmark_egress_proxy_url_recorded": False,
+            "benchmark_egress_proxy_agent_env_injected": False,
+            "benchmark_egress_proxy_docker_config_injected": False,
+            "benchmark_egress_proxy_docker_config_path_recorded": False,
+            "benchmark_egress_proxy_docker_config_raw_proxy_recorded": False,
             "loopx_workflow_lifecycle_checkpoint": bool(
                 _is_loopx_product_mode_route(args.route)
                 and args.host_local_acp_launch
@@ -6641,6 +8527,8 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "schema_version": "skillsbench_runner_config_v0",
         "raw_command_recorded": False,
         "raw_env_recorded": False,
+        "ledger_path_recorded": False,
+        "global_ledger_path_recorded": False,
     }
     string_fields = (
         "benchmark_id",
@@ -6648,11 +8536,15 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "route",
         "agent",
         "model",
+        "reasoning_effort",
+        "codex_cli_reasoning_effort",
+        "app_server_reasoning_effort",
         "sandbox",
         "run_group_id",
         "job_name",
         "rollout_name",
         "treatment_prompt_style",
+        "ledger_scope",
     )
     for field in string_fields:
         value = plan.get(field)
@@ -6670,7 +8562,20 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         value = plan.get(field)
         if isinstance(value, int) and not isinstance(value, bool):
             config[field] = value
-    for field in ("include_task_skills", "host_local_acp_launch"):
+    for field in (
+        "include_task_skills",
+        "host_local_acp_launch",
+        "bootstrap_light_candidate_required",
+        "bootstrap_light_fail_fast_required",
+        "allow_staged_bootstrap_repair_run",
+        "fail_fast_on_apt_risk",
+        "apt_risk_fail_fast_defaulted",
+        "fail_fast_on_verifier_bootstrap_risk",
+        "verifier_bootstrap_fail_fast_defaulted",
+        "bootstrap_light_fail_fast_defaulted",
+        "global_ledger_sync_enabled",
+        "ledger_inherit_enabled",
+    ):
         value = plan.get(field)
         if isinstance(value, bool):
             config[field] = value
@@ -6704,6 +8609,16 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "codex_api_reverse_tunnel_required",
             "codex_api_reverse_tunnel_proxy_configured",
             "codex_api_reverse_tunnel_proxy_url_recorded",
+            "benchmark_egress_proxy_ready",
+            "benchmark_egress_proxy_configured",
+            "benchmark_egress_proxy_required",
+            "benchmark_egress_proxy_url_recorded",
+            "benchmark_egress_no_proxy_configured",
+            "benchmark_egress_no_proxy_raw_value_recorded",
+            "benchmark_egress_proxy_agent_env_injected",
+            "benchmark_egress_proxy_docker_config_injected",
+            "benchmark_egress_proxy_docker_config_path_recorded",
+            "benchmark_egress_proxy_docker_config_raw_proxy_recorded",
         ):
             value = prerequisites.get(field)
             if isinstance(value, bool):
@@ -6716,6 +8631,13 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             "codex_api_reverse_tunnel_proxy_source",
             "codex_api_reverse_tunnel_proxy_scheme",
             "codex_api_reverse_tunnel_proxy_endpoint_kind",
+            "benchmark_egress_proxy_status",
+            "benchmark_egress_proxy_error_kind",
+            "benchmark_egress_proxy_mode_requested",
+            "benchmark_egress_proxy_source",
+            "benchmark_egress_proxy_env_key",
+            "benchmark_egress_proxy_scheme",
+            "benchmark_egress_proxy_endpoint_kind",
         ):
             value = prerequisites.get(field)
             if isinstance(value, str) and value:
@@ -6723,7 +8645,180 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         value = prerequisites.get("codex_api_reverse_tunnel_proxy_endpoint_port")
         if isinstance(value, int) and not isinstance(value, bool):
             config["codex_api_reverse_tunnel_proxy_endpoint_port"] = value
+        value = prerequisites.get("benchmark_egress_proxy_endpoint_port")
+        if isinstance(value, int) and not isinstance(value, bool):
+            config["benchmark_egress_proxy_endpoint_port"] = value
+        value = prerequisites.get("benchmark_egress_no_proxy_entry_count")
+        if isinstance(value, int) and not isinstance(value, bool):
+            config["benchmark_egress_no_proxy_entry_count"] = value
+    app_server_observability = _app_server_goal_worker_observability(plan)
+    if app_server_observability:
+        config["app_server_goal_worker_observability"] = app_server_observability
     return config
+
+
+def _app_server_goal_worker_observability(
+    plan: dict[str, Any],
+    controller_trace: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a public-safe attribution packet for app-server Goal launches."""
+
+    if str(plan.get("route") or "") != "codex-app-server-goal-baseline":
+        return {}
+
+    trace_summary = plan.get("app_server_goal_worker_trace_summary")
+    if not isinstance(trace_summary, dict):
+        trace_summary = {}
+    if isinstance(controller_trace, dict):
+        trace_summary = {**trace_summary, **controller_trace}
+
+    prereqs = plan.get("runner_prerequisites")
+    if not isinstance(prereqs, dict):
+        prereqs = {}
+    egress = plan.get("codex_api_egress_preflight")
+    if not isinstance(egress, dict):
+        egress = {}
+
+    requested_effort = str(plan.get("app_server_reasoning_effort") or "")[:40]
+    observed_effort = str(
+        trace_summary.get("native_goal_worker_reasoning_effort") or ""
+    )[:40]
+    if requested_effort and observed_effort:
+        if requested_effort == observed_effort:
+            effort_status = "matched"
+        else:
+            effort_status = "mismatch"
+    elif requested_effort:
+        effort_status = "requested_not_yet_observed"
+    else:
+        effort_status = "not_recorded"
+
+    preflight_status = str(
+        egress.get("status")
+        or prereqs.get("codex_api_egress_preflight_status")
+        or ""
+    )[:80]
+    preflight_required = bool(
+        egress.get("required") or prereqs.get("codex_api_egress_preflight_required")
+    )
+    preflight_ready = bool(
+        egress.get("ready") or prereqs.get("codex_api_egress_preflight_ready")
+    )
+    if not preflight_required:
+        preflight_observation_status = "not_required"
+    elif preflight_ready:
+        preflight_observation_status = "executed_ready"
+    elif preflight_status and preflight_status != "pending":
+        preflight_observation_status = "executed_blocked"
+    else:
+        preflight_observation_status = "required_pending"
+
+    def _int_field(name: str) -> int:
+        value = trace_summary.get(name)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        return 0
+
+    summary: dict[str, Any] = {
+        "schema_version": "skillsbench_app_server_goal_worker_observability_v0",
+        "route": "codex-app-server-goal-baseline",
+        "requested_reasoning_effort": requested_effort,
+        "observed_reasoning_effort": observed_effort,
+        "reasoning_effort_observation_status": effort_status,
+        "reasoning_effort_matches_request": bool(
+            requested_effort and observed_effort and requested_effort == observed_effort
+        ),
+        "trace_dir_configured": bool(plan.get("app_server_goal_worker_trace_dir")),
+        "trace_dir_present": bool(
+            trace_summary.get("native_goal_worker_trace_dir_present")
+        ),
+        "public_trace_read": bool(
+            trace_summary.get("native_goal_worker_public_trace_read")
+        ),
+        "trace_count": _int_field("native_goal_worker_trace_count"),
+        "lifecycle_trace_count": _int_field(
+            "native_goal_worker_lifecycle_trace_count"
+        ),
+        "prompt_received_count": _int_field(
+            "native_goal_worker_prompt_received_count"
+        ),
+        "goal_get_count": _int_field("native_goal_worker_goal_get_count"),
+        "turn_start_count": _int_field("native_goal_worker_turn_start_count"),
+        "turn_completed_observed_count": _int_field(
+            "native_goal_worker_turn_completed_observed_count"
+        ),
+        "assistant_message_present_count": _int_field(
+            "native_goal_worker_assistant_message_present_count"
+        ),
+        "effective_action_observed_count": _int_field(
+            "native_goal_worker_effective_action_observed_count"
+        ),
+        "first_action_observed_count": _int_field(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "raw_material_recorded": bool(
+            trace_summary.get("native_goal_worker_raw_material_recorded")
+        ),
+        "codex_api_egress_preflight_required": preflight_required,
+        "codex_api_egress_preflight_ready": preflight_ready,
+        "codex_api_egress_preflight_status": preflight_status,
+        "codex_api_egress_preflight_observation_status": (
+            preflight_observation_status
+        ),
+        "codex_api_egress_mode_resolved": str(
+            egress.get("resolved_mode")
+            or prereqs.get("codex_api_egress_mode_resolved")
+            or ""
+        )[:80],
+        "codex_api_reverse_tunnel_required": bool(
+            egress.get("reverse_tunnel_required")
+            or prereqs.get("codex_api_reverse_tunnel_required")
+        ),
+        "codex_api_reverse_tunnel_proxy_configured": bool(
+            egress.get("proxy_configured")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_configured")
+        ),
+        "codex_api_reverse_tunnel_proxy_source": str(
+            egress.get("proxy_source")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_source")
+            or ""
+        )[:40],
+        "codex_api_reverse_tunnel_proxy_scheme": str(
+            egress.get("proxy_scheme")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_scheme")
+            or ""
+        )[:20],
+        "codex_api_reverse_tunnel_proxy_endpoint_kind": str(
+            egress.get("proxy_endpoint_kind")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_endpoint_kind")
+            or ""
+        )[:40],
+        "codex_api_reverse_tunnel_proxy_endpoint_port": int(
+            egress.get("proxy_endpoint_port")
+            or prereqs.get("codex_api_reverse_tunnel_proxy_endpoint_port")
+            or 0
+        ),
+        "codex_api_reverse_tunnel_proxy_url_recorded": False,
+        "codex_api_egress_raw_probe_output_recorded": False,
+    }
+
+    for key in (
+        "native_goal_worker_failure_category",
+        "native_goal_worker_first_blocker",
+    ):
+        value = trace_summary.get(key)
+        if isinstance(value, str) and value:
+            summary[key] = value[:120]
+    efforts = trace_summary.get("native_goal_worker_reasoning_efforts")
+    if isinstance(efforts, list):
+        compact_efforts = [
+            item[:40]
+            for item in efforts
+            if isinstance(item, str) and item
+        ][:8]
+        if compact_efforts:
+            summary["observed_reasoning_efforts"] = compact_efforts
+    return summary
 
 
 def _runner_config_public_path(plan: dict[str, Any]) -> Path | None:
@@ -6798,7 +8893,8 @@ async def run_benchflow_case_with_private_output(
         stream.flush()
         try:
             with redirect_stdout(stream), redirect_stderr(stream):
-                result = await run_benchflow_case(args, plan)
+                with _benchmark_egress_proxy_env_applied(args):
+                    result = await run_benchflow_case(args, plan)
         finally:
             stream.write(
                 f"[{datetime.now().isoformat(timespec='seconds')}] "
@@ -7258,6 +9354,19 @@ def _merge_app_server_goal_worker_trace_summary(
     turn_start_count = 0
     turn_completed_count = 0
     assistant_message_count = 0
+    context_only_assistant_message_count = 0
+    context_only_recovery_attempted_count = 0
+    context_only_recovery_succeeded_count = 0
+    context_only_followup_start_attempted_count = 0
+    context_only_followup_start_succeeded_count = 0
+    transport_reconnect_attempted_count = 0
+    transport_reconnect_succeeded_count = 0
+    goal_reactivation_attempted_count = 0
+    goal_reactivation_succeeded_count = 0
+    post_context_assistant_chars_total = 0
+    first_action_count = 0
+    effective_action_count = 0
+    reasoning_efforts: list[str] = []
     raw_material_recorded = False
     for path in files:
         try:
@@ -7303,14 +9412,92 @@ def _merge_app_server_goal_worker_trace_summary(
                 if safe_category not in failure_categories:
                     failure_categories.append(safe_category)
         turn = payload.get("turn") if isinstance(payload.get("turn"), dict) else {}
+        turn_attempts = turn.get("turn_attempt_count")
+        if not isinstance(turn_attempts, int) or isinstance(turn_attempts, bool):
+            turn_attempts = 1
+        turn_attempts = max(1, turn_attempts)
         if turn.get("goal_get_present") is True:
-            goal_get_count += 1
+            goal_get_count += turn_attempts
         if turn.get("turn_id_present") is True:
-            turn_start_count += 1
-        if turn.get("turn_completed_observed") is True:
+            turn_start_count += turn_attempts
+        completed_attempts = turn.get("turn_completed_attempt_count")
+        if isinstance(completed_attempts, int) and not isinstance(
+            completed_attempts, bool
+        ):
+            turn_completed_count += max(0, completed_attempts)
+        elif turn.get("turn_completed_observed") is True:
             turn_completed_count += 1
-        if turn.get("assistant_message_present") is True:
+        assistant_attempts = turn.get("assistant_message_attempt_count")
+        if isinstance(assistant_attempts, int) and not isinstance(
+            assistant_attempts, bool
+        ):
+            assistant_message_count += max(0, assistant_attempts)
+        elif turn.get("assistant_message_present") is True:
             assistant_message_count += 1
+        context_only_attempts = turn.get("context_only_turn_count")
+        if isinstance(context_only_attempts, int) and not isinstance(
+            context_only_attempts, bool
+        ):
+            context_only_assistant_message_count += max(0, context_only_attempts)
+        elif turn.get("assistant_message_context_only") is True:
+            context_only_assistant_message_count += 1
+        recovery = (
+            payload.get("context_only_recovery")
+            if isinstance(payload.get("context_only_recovery"), dict)
+            else {}
+        )
+        if (
+            turn.get("context_only_recovery_attempted") is True
+            or recovery.get("attempted") is True
+        ):
+            context_only_recovery_attempted_count += 1
+        if (
+            turn.get("context_only_recovery_succeeded") is True
+            or recovery.get("succeeded") is True
+        ):
+            context_only_recovery_succeeded_count += 1
+        if (
+            turn.get("context_only_followup_start_attempted") is True
+            or recovery.get("followup_start_attempted") is True
+        ):
+            context_only_followup_start_attempted_count += 1
+        if (
+            turn.get("context_only_followup_start_succeeded") is True
+            or recovery.get("followup_start_succeeded") is True
+        ):
+            context_only_followup_start_succeeded_count += 1
+        if turn.get("transport_reconnect_attempted") is True:
+            transport_reconnect_attempted_count += 1
+        if turn.get("transport_reconnect_succeeded") is True:
+            transport_reconnect_succeeded_count += 1
+        if turn.get("goal_reactivation_attempted") is True:
+            goal_reactivation_attempted_count += 1
+        if turn.get("goal_reactivation_succeeded") is True:
+            goal_reactivation_succeeded_count += 1
+        post_context_chars = turn.get("post_context_assistant_chars")
+        if isinstance(post_context_chars, int) and not isinstance(
+            post_context_chars, bool
+        ):
+            post_context_assistant_chars_total += max(0, post_context_chars)
+        effort = turn.get("reasoning_effort")
+        if isinstance(effort, str) and effort and effort not in reasoning_efforts:
+            reasoning_efforts.append(effort[:40])
+        worker_adapter = (
+            payload.get("worker_adapter")
+            if isinstance(payload.get("worker_adapter"), dict)
+            else {}
+        )
+        adapter_effort = worker_adapter.get("reasoning_effort")
+        if (
+            isinstance(adapter_effort, str)
+            and adapter_effort
+            and adapter_effort not in reasoning_efforts
+        ):
+            reasoning_efforts.append(adapter_effort[:40])
+        if turn.get("first_action_observed") is True:
+            first_action_count += 1
+        if turn.get("effective_action_observed") is True:
+            effective_action_count += 1
         boundary = (
             payload.get("boundary")
             if isinstance(payload.get("boundary"), dict)
@@ -7351,8 +9538,84 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_assistant_message_present_count"] = (
         assistant_message_count
     )
+    trace["native_goal_worker_assistant_context_only_count"] = (
+        context_only_assistant_message_count
+    )
+    trace["native_goal_worker_context_only_recovery_attempted_count"] = (
+        context_only_recovery_attempted_count
+    )
+    trace["native_goal_worker_context_only_recovery_succeeded_count"] = (
+        context_only_recovery_succeeded_count
+    )
+    trace["native_goal_worker_context_only_followup_start_attempted_count"] = (
+        context_only_followup_start_attempted_count
+    )
+    trace["native_goal_worker_context_only_followup_start_succeeded_count"] = (
+        context_only_followup_start_succeeded_count
+    )
+    trace["native_goal_worker_transport_reconnect_attempted_count"] = (
+        transport_reconnect_attempted_count
+    )
+    trace["native_goal_worker_transport_reconnect_succeeded_count"] = (
+        transport_reconnect_succeeded_count
+    )
+    trace["native_goal_worker_goal_reactivation_attempted_count"] = (
+        goal_reactivation_attempted_count
+    )
+    trace["native_goal_worker_goal_reactivation_succeeded_count"] = (
+        goal_reactivation_succeeded_count
+    )
+    trace["native_goal_worker_post_context_assistant_chars_total"] = (
+        post_context_assistant_chars_total
+    )
+    trace["native_goal_worker_reasoning_efforts"] = reasoning_efforts
+    trace["native_goal_worker_reasoning_effort"] = (
+        reasoning_efforts[0] if reasoning_efforts else ""
+    )
+    trace["native_goal_worker_first_action_observed_count"] = first_action_count
+    trace["native_goal_worker_effective_action_observed_count"] = (
+        effective_action_count
+    )
     trace["native_goal_worker_public_trace_read"] = worker_trace_count > 0
     trace["native_goal_worker_raw_material_recorded"] = raw_material_recorded
+    public_summary_keys = (
+        "native_goal_worker_route",
+        "native_goal_worker_trace_dir_present",
+        "native_goal_worker_trace_count",
+        "native_goal_worker_lifecycle_trace_count",
+        "native_goal_worker_prompt_received_count",
+        "native_goal_worker_ok_count",
+        "native_goal_worker_failure_trace_count",
+        "native_goal_worker_failure_categories",
+        "native_goal_worker_failure_category",
+        "native_goal_worker_first_blockers",
+        "native_goal_worker_first_blocker",
+        "native_goal_worker_goal_get_count",
+        "native_goal_worker_turn_start_count",
+        "native_goal_worker_turn_completed_observed_count",
+        "native_goal_worker_assistant_message_present_count",
+        "native_goal_worker_assistant_context_only_count",
+        "native_goal_worker_context_only_recovery_attempted_count",
+        "native_goal_worker_context_only_recovery_succeeded_count",
+        "native_goal_worker_context_only_followup_start_attempted_count",
+        "native_goal_worker_context_only_followup_start_succeeded_count",
+        "native_goal_worker_transport_reconnect_attempted_count",
+        "native_goal_worker_transport_reconnect_succeeded_count",
+        "native_goal_worker_goal_reactivation_attempted_count",
+        "native_goal_worker_goal_reactivation_succeeded_count",
+        "native_goal_worker_post_context_assistant_chars_total",
+        "native_goal_worker_reasoning_efforts",
+        "native_goal_worker_reasoning_effort",
+        "native_goal_worker_first_action_observed_count",
+        "native_goal_worker_effective_action_observed_count",
+        "native_goal_worker_public_trace_read",
+        "native_goal_worker_raw_material_recorded",
+    )
+    plan["app_server_goal_worker_trace_summary"] = {
+        key: trace[key]
+        for key in public_summary_keys
+        if key in trace
+    }
     if worker_trace_count:
         trace["last_decision"] = "host_app_server_goal_worker_trace_recorded"
 
@@ -10032,6 +12295,8 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         job_name=str(plan["job_name"]),
         sandbox=args.sandbox,
         include_task_skills=bool(args.include_task_skills),
+        benchmark_egress_proxy_env=_benchmark_egress_proxy_env(args),
+        docker_gcr_mirror_prefix=args.docker_gcr_mirror_prefix,
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
@@ -10784,6 +13049,14 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     if runtime_mounts:
         agent_env["PATH"] = BENCHFLOW_AGENT_RUNTIME_CONTAINER_PATH
         agent_env["CODEX_ACP_RUNTIME_HOME"] = BENCHFLOW_AGENT_RUNTIME_MOUNT_TARGET
+    benchmark_proxy_env = _benchmark_egress_proxy_env(args)
+    if benchmark_proxy_env:
+        agent_env.update(benchmark_proxy_env)
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        prerequisites["benchmark_egress_proxy_agent_env_injected"] = True
+        prerequisites["benchmark_egress_proxy_docker_config_injected"] = True
+        prerequisites["benchmark_egress_proxy_docker_config_path_recorded"] = False
+        prerequisites["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] = False
 
     rollout_config_kwargs = {
         "task_path": effective_task_path,
@@ -11083,12 +13356,19 @@ def reduce_result(
     diagnostic = build_compose_setup_diagnostic(compact, plan)
     if diagnostic.get("status") != "not_applicable":
         compact["compose_setup_diagnostic"] = diagnostic
+        apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
     runner_config = _public_runner_config(plan)
     if runner_config:
         compact["runner_config"] = runner_config
+    app_server_observability = _app_server_goal_worker_observability(
+        plan,
+        controller_trace,
+    )
+    if app_server_observability:
+        compact["app_server_goal_worker_observability"] = app_server_observability
     goal_start_control_score = _build_goal_start_product_mode_control_score(
         compact,
         plan,
@@ -11096,7 +13376,11 @@ def reduce_result(
     if goal_start_control_score:
         compact["goal_start_product_mode_control_score"] = goal_start_control_score
     compact["case_event_timeline"] = _build_case_event_timeline(compact, plan)
-    compact["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(compact)
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
+    compact["post_run_debug_gate"] = post_run_debug_gate
+    solution_quality = post_run_debug_gate.get("solution_quality")
+    if isinstance(solution_quality, dict):
+        compact["solution_quality_signals"] = solution_quality
     return compact
 
 
@@ -11790,6 +14074,10 @@ def build_runner_failure_compact(
         exc,
         cleanup_if_missing=True,
     )
+    controller_trace = _read_controller_trace(plan)
+    _merge_app_server_goal_worker_trace_summary(plan, controller_trace)
+    _merge_host_local_acp_relay_trace_summary(plan, controller_trace)
+    _write_controller_trace(plan, controller_trace)
     _write_public_runner_config(plan)
     _write_public_runner_prerequisites(plan)
 
@@ -11880,6 +14168,7 @@ def build_runner_failure_compact(
     diagnostic = build_compose_setup_diagnostic(compact, plan)
     if diagnostic.get("status") != "not_applicable":
         compact["compose_setup_diagnostic"] = diagnostic
+        apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
     trials = compact.get("trials")
     if isinstance(trials, list) and trials:
         trial = trials[0]
@@ -11918,11 +14207,21 @@ def build_runner_failure_compact(
     runner_config = _public_runner_config(plan)
     if runner_config:
         reduced["runner_config"] = runner_config
+    app_server_observability = _app_server_goal_worker_observability(
+        plan,
+        controller_trace,
+    )
+    if app_server_observability:
+        reduced["app_server_goal_worker_observability"] = app_server_observability
     recovered = _recover_runner_failure_score_from_controller_trace(reduced, plan)
     if not recovered:
         _recover_runner_failure_score_from_verifier_artifact(reduced, plan)
     reduced["case_event_timeline"] = _build_case_event_timeline(reduced, plan)
-    reduced["post_run_debug_gate"] = build_skillsbench_post_run_debug_gate(reduced)
+    post_run_debug_gate = build_skillsbench_post_run_debug_gate(reduced)
+    reduced["post_run_debug_gate"] = post_run_debug_gate
+    solution_quality = post_run_debug_gate.get("solution_quality")
+    if isinstance(solution_quality, dict):
+        reduced["solution_quality_signals"] = solution_quality
     return reduced
 
 
@@ -11949,8 +14248,17 @@ def update_ledger(
         if args.route == "raw-codex-autonomous-max5"
         else "Codex ACP baseline"
     )
-    return update_benchmark_run_ledger(
-        ledger_path=Path(args.ledger_path).expanduser(),
+    primary_ledger_path = _expanded_path(args.ledger_path)
+    global_ledger_path = _expanded_path(args.global_ledger_path)
+    dry_run = not args.update_ledger
+    ledger_inheritance = _inherit_global_ledger_snapshot(
+        primary_path=primary_ledger_path,
+        global_path=global_ledger_path,
+        dry_run=dry_run,
+        enabled=not bool(args.skip_ledger_inherit),
+    )
+    primary_update = update_benchmark_run_ledger(
+        ledger_path=primary_ledger_path,
         benchmark_run=compact,
         compact_artifact_ref=compact_path,
         run_group_id=args.run_group_id,
@@ -11959,8 +14267,34 @@ def update_ledger(
             "no raw task/log/trajectory read into public state"
         ),
         cwd=REPO_ROOT,
-        dry_run=not args.update_ledger,
+        dry_run=dry_run,
     )
+    global_update: dict[str, Any] | None = None
+    if (
+        not args.skip_global_ledger_sync
+        and not _same_ledger_path(primary_ledger_path, global_ledger_path)
+    ):
+        global_update = update_benchmark_run_ledger(
+            ledger_path=global_ledger_path,
+            benchmark_run=compact,
+            compact_artifact_ref=compact_path,
+            run_group_id=args.run_group_id,
+            notes=(
+                f"official SkillsBench BenchFlow {note_route}; compact result only; "
+                "no raw task/log/trajectory read into public state"
+            ),
+            cwd=REPO_ROOT,
+            dry_run=dry_run,
+        )
+
+    result = dict(primary_update)
+    result["ledger_scope"] = _ledger_scope_label(primary_ledger_path, global_ledger_path)
+    result["primary_ledger_update"] = primary_update
+    result["global_ledger_path"] = str(global_ledger_path)
+    result["global_ledger_sync_enabled"] = not bool(args.skip_global_ledger_sync)
+    result["global_ledger_update"] = global_update
+    result["global_ledger_inheritance"] = ledger_inheritance
+    return result
 
 
 def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, Any]:
@@ -12088,6 +14422,7 @@ def _build_runner_exception_closeout_payload(
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    raw_argv = list(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-id", default="react-performance-debugging")
     parser.add_argument(
@@ -12136,12 +14471,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
+        "--reasoning-effort",
+        default=None,
+        help=(
+            "Generic Codex reasoning effort for routes backed by Codex. "
+            "For codex-acp routes this is forwarded to codex exec via "
+            "-c model_reasoning_effort=...; for native app-server Goal routes "
+            "it overrides --app-server-reasoning-effort."
+        ),
+    )
+    parser.add_argument(
         "--app-server-reasoning-effort",
         default="high",
         help=(
-            "Reasoning effort passed as turn/start effort for native "
-            "codex-app-server-goal-baseline runs. Formal benchmark runs "
-            "default to high."
+            "Legacy/native app-server-only reasoning effort passed as "
+            "turn/start effort for codex-app-server-goal-baseline runs. "
+            "Prefer --reasoning-effort for cross-route benchmark runs."
         ),
     )
     parser.add_argument("--sandbox", default="docker")
@@ -12163,6 +14508,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             f"Defaults to {DEFAULT_MAX_ROUNDS}; blind-loop and product-mode "
             "routes still stop early once official reward reaches 1.0, without "
             "forwarding that reward to the agent."
+        ),
+    )
+    parser.add_argument(
+        "--independent-goal-retries",
+        type=int,
+        default=1,
+        help=(
+            "Run the same codex-app-server-goal-baseline case as multiple "
+            "independent native Goal attempts. Each attempt gets a fresh "
+            "job/rollout/thread; official verifier reward is observed only by "
+            "the runner to decide whether to stop before the retry budget, and "
+            "is never forwarded to the worker."
         ),
     )
     parser.add_argument(
@@ -12284,6 +14641,25 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
     )
     parser.add_argument("--ledger-path", default=str(DEFAULT_LEDGER))
+    parser.add_argument(
+        "--global-ledger-path",
+        default=str(DEFAULT_LEDGER),
+        help=(
+            "Canonical benchmark_run_ledger_v0 JSON. When --ledger-path points "
+            "to a run-group/local ledger, the runner inherits this ledger first "
+            "and syncs the new row back here unless --skip-global-ledger-sync is set."
+        ),
+    )
+    parser.add_argument(
+        "--skip-global-ledger-sync",
+        action="store_true",
+        help="Do not upsert run-group/local ledger rows back into --global-ledger-path.",
+    )
+    parser.add_argument(
+        "--skip-ledger-inherit",
+        action="store_true",
+        help="Do not initialize a missing run-group/local ledger from --global-ledger-path.",
+    )
     parser.add_argument("--goal-id", default=DEFAULT_GOAL_ID)
     parser.add_argument("--registry", default=str(REPO_ROOT / ".loopx/registry.json"))
     parser.add_argument("--runtime-root", default=str(REPO_ROOT / ".local"))
@@ -12329,16 +14705,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Per-prompt timeout for local Codex exec in host-local ACP launch "
             "mode. Omit to use the host-local bridge idle timeout plus a small "
-            "agent timeout margin."
+            "agent timeout margin, except codex-app-server-goal-baseline which "
+            "uses the longer of the default exec timeout and --outer-timeout-sec."
         ),
     )
     parser.add_argument(
         "--local-codex-first-action-timeout-sec",
         type=int,
-        default=0,
+        default=None,
         help=(
             "Optional watchdog for the first sandbox bridge operation from a "
-            "host-local Codex turn. 0 disables the watchdog."
+            "host-local Codex turn. Omit to use the app-server Goal default "
+            f"({DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC}s) for "
+            "codex-app-server-goal-baseline; 0 disables the watchdog."
         ),
     )
     parser.add_argument(
@@ -12451,11 +14830,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=CODEX_API_EGRESS_MODE_CHOICES,
         default=os.environ.get("LOOPX_CODEX_API_EGRESS_MODE", "auto"),
         help=(
-            "How native app-server goal workers reach the Codex backend. "
-            "For formal host-local app-server benchmark runs, auto resolves "
-            "to reverse-tunnel so the runner fails fast unless a checked HTTP "
-            "CONNECT reverse tunnel proxy is configured. direct is intended "
-            "only for explicit local debugging."
+            "How host-local Codex workers reach the Codex backend. For formal "
+            "host-local app-server benchmark runs, auto resolves to "
+            "reverse-tunnel so the runner fails fast unless a checked HTTP "
+            "CONNECT reverse tunnel proxy is configured. For other host-local "
+            "routes, explicit reverse-tunnel/direct requests are honored; "
+            "direct is intended only for explicit local debugging."
         ),
     )
     parser.add_argument(
@@ -12466,6 +14846,56 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Timeout for the native app-server Codex API egress preflight. "
             "For remote benchmark hosts, configure a reverse tunnel proxy "
             "before running formal codex-app-server-goal-baseline cases."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy",
+        default="",
+        help=(
+            "Optional HTTP proxy URL for benchmark setup/verifier egress. "
+            "Omit the flag and set LOOPX_SKILLSBENCH_EGRESS_PROXY in the "
+            "private runtime environment for default benchmark runs. The URL "
+            "is applied only to private subprocess/worker environments; public "
+            "artifacts record only source/scheme/kind/port summaries."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy-mode",
+        choices=BENCHMARK_EGRESS_PROXY_MODE_CHOICES,
+        default=os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY_MODE", "auto"),
+        help=(
+            "Benchmark setup/verifier proxy policy. auto uses "
+            "LOOPX_SKILLSBENCH_EGRESS_PROXY when present, off disables proxy "
+            "injection, and require fails before a run unless a valid private "
+            "HTTP CONNECT proxy is configured."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-no-proxy",
+        default=os.environ.get("LOOPX_SKILLSBENCH_EGRESS_NO_PROXY", ""),
+        help=(
+            "Comma-separated NO_PROXY additions for benchmark setup/verifier "
+            "egress. The value is merged with loopback and public benchmark "
+            "endpoint defaults, forwarded only to private subprocess/worker "
+            "environments, and never recorded raw in public artifacts."
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-egress-proxy-preflight-timeout-sec",
+        type=float,
+        default=DEFAULT_BENCHMARK_EGRESS_PROXY_PREFLIGHT_TIMEOUT_SEC,
+        help=(
+            "Timeout for the benchmark setup/verifier egress proxy preflight. "
+            "The probe records no raw proxy URL or raw response output."
+        ),
+    )
+    parser.add_argument(
+        "--docker-gcr-mirror-prefix",
+        default=os.environ.get("LOOPX_SKILLSBENCH_GCR_MIRROR_PREFIX", ""),
+        help=(
+            "Optional private runtime registry prefix used only for staged "
+            "Dockerfile FROM rewrites of gcr.io/oss-fuzz-base images. Public "
+            "artifacts record only booleans and never the raw prefix."
         ),
     )
     parser.add_argument(
@@ -12593,7 +15023,42 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "setup-preflight failure instead of spending a full case attempt."
         ),
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--allow-staged-bootstrap-repair-run",
+        action="store_true",
+        help=(
+            "For formal reverse-tunnel app-server Goal runs, allow the runner "
+            "to stage an isolated task copy and apply existing public-safe "
+            "Dockerfile/verifier bootstrap repairs instead of treating those "
+            "repairable setup risks as automatic preflight blockers. Explicit "
+            "--fail-fast-on-* flags still block."
+        ),
+    )
+    apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
+    verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
+    args = parser.parse_args(raw_argv)
+    args.apt_risk_fail_fast_defaulted = False
+    args.verifier_bootstrap_fail_fast_defaulted = False
+    args.bootstrap_light_fail_fast_defaulted = False
+    if (
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        and not args.fail_fast_on_apt_risk
+    ):
+        args.fail_fast_on_apt_risk = True
+        args.apt_risk_fail_fast_defaulted = not apt_fail_fast_explicit
+    if (
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        and not args.fail_fast_on_verifier_bootstrap_risk
+    ):
+        args.fail_fast_on_verifier_bootstrap_risk = True
+        args.verifier_bootstrap_fail_fast_defaulted = not verifier_fail_fast_explicit
+    args.bootstrap_light_fail_fast_defaulted = bool(
+        _formal_app_server_goal_bootstrap_light_fail_fast_required(args)
+        and (
+            args.apt_risk_fail_fast_defaulted
+            or args.verifier_bootstrap_fail_fast_defaulted
+        )
+    )
     if args.parallel_cases < 1:
         parser.error("--parallel-cases must be >= 1")
     batch_task_ids = _split_task_ids_arg(args.task_ids)
@@ -12601,6 +15066,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--task-ids must contain at least one task id")
     if len(set(batch_task_ids)) != len(batch_task_ids):
         parser.error("--task-ids must not contain duplicate task ids")
+    if args.task_ids is not None and len(batch_task_ids) == 1:
+        args.task_id = batch_task_ids[0]
+    if args.independent_goal_retries < 1:
+        parser.error("--independent-goal-retries must be >= 1")
+    if args.independent_goal_retries > 1:
+        if args.route != "codex-app-server-goal-baseline":
+            parser.error(
+                "--independent-goal-retries currently applies only to "
+                "codex-app-server-goal-baseline"
+            )
+        if args.reduce_only:
+            parser.error("--independent-goal-retries is not compatible with --reduce-only")
+        if len(batch_task_ids) > 1:
+            parser.error(
+                "--independent-goal-retries is not compatible with multi-case "
+                "--task-ids; retry one case at a time"
+            )
     if (
         args.route in PRODUCT_MODE_CONTROLLER_ROUTES
         and not args.plan_only
@@ -12659,29 +15141,51 @@ async def async_main(
         if isinstance(plan.get("task_setup_preflight"), dict)
         else {}
     )
+    bootstrap_light_blocking_fields = _setup_preflight_public_blocking_fields(
+        setup_preflight
+    )
+    bootstrap_light_blocker_kind = _bootstrap_light_blocker_kind(
+        bootstrap_light_blocking_fields
+    )
     if (
-        args.fail_fast_on_apt_risk
-        and not args.reduce_only
-        and setup_preflight.get("apt_setup_risk_detected") is True
+        _bootstrap_light_preflight_block_required(
+            args,
+            blocker_kind=bootstrap_light_blocker_kind,
+        )
+        and bootstrap_light_blocker_kind in {"apt", "dockerfile_package"}
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
-            staging["apt_setup_risk_detected"] = True
-            staging["apt_retry_patch_required"] = True
-            staging["apt_risk_preflight_blocked"] = True
+            bootstrap_light_blocker_kind = _mark_bootstrap_light_preflight_blocked(
+                staging=staging,
+                setup_preflight=setup_preflight,
+                blocking_fields=bootstrap_light_blocking_fields,
+                args=args,
+            )
+        if bootstrap_light_blocker_kind == "apt":
+            raise SkillsBenchSetupPreflightBlocked(
+                "skillsbench apt setup risk preflight blocked: "
+                "apt-based Docker setup risk detected before full case run"
+            )
         raise SkillsBenchSetupPreflightBlocked(
-            "skillsbench apt setup risk preflight blocked: "
-            "apt-based Docker setup risk detected before full case run"
+            "skillsbench dockerfile package bootstrap risk preflight blocked: "
+            "Dockerfile package bootstrap risk detected before full case run"
         )
     if (
-        args.fail_fast_on_verifier_bootstrap_risk
-        and not args.reduce_only
-        and setup_preflight.get("verifier_bootstrap_risk_detected") is True
+        _bootstrap_light_preflight_block_required(
+            args,
+            blocker_kind=bootstrap_light_blocker_kind,
+        )
+        and bootstrap_light_blocker_kind == "verifier"
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
-            staging["verifier_bootstrap_risk_detected"] = True
-            staging["verifier_bootstrap_risk_preflight_blocked"] = True
+            _mark_bootstrap_light_preflight_blocked(
+                staging=staging,
+                setup_preflight=setup_preflight,
+                blocking_fields=bootstrap_light_blocking_fields,
+                args=args,
+            )
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench verifier bootstrap risk preflight blocked: "
             "verifier dependency bootstrap risk detected before full case run"
@@ -12692,6 +15196,13 @@ async def async_main(
     ):
         staging = plan.setdefault("task_staging", {})
         if isinstance(staging, dict):
+            if _formal_app_server_goal_bootstrap_light_guard_required(args):
+                _mark_bootstrap_light_preflight_blocked(
+                    staging=staging,
+                    setup_preflight=setup_preflight,
+                    blocking_fields=bootstrap_light_blocking_fields,
+                    args=args,
+                )
             staging["task_source_preflight_blocked"] = True
         raise SkillsBenchSetupPreflightBlocked(
             "skillsbench task source preflight blocked: "
@@ -12704,6 +15215,13 @@ async def async_main(
     ):
         try:
             _run_codex_api_egress_preflight(args, plan)
+        finally:
+            _write_public_runner_config(plan)
+            _write_public_runner_prerequisites(plan)
+
+    if not args.reduce_only:
+        try:
+            _run_benchmark_egress_proxy_preflight(args, plan)
         finally:
             _write_public_runner_config(plan)
             _write_public_runner_prerequisites(plan)
@@ -12790,6 +15308,18 @@ def _batch_case_args_to_cli(case_args: argparse.Namespace) -> list[str]:
     for key, value in sorted(vars(case_args).items()):
         if key == "task_ids":
             continue
+        if key in BATCH_CASE_INTERNAL_ARG_KEYS:
+            continue
+        if (
+            key == "fail_fast_on_apt_risk"
+            and getattr(case_args, "apt_risk_fail_fast_defaulted", False)
+        ):
+            continue
+        if (
+            key == "fail_fast_on_verifier_bootstrap_risk"
+            and getattr(case_args, "verifier_bootstrap_fail_fast_defaulted", False)
+        ):
+            continue
         option = "--" + key.replace("_", "-")
         if key == "parallel_cases":
             value = 1
@@ -12807,6 +15337,39 @@ def _parallel_batch_requires_subprocess_isolation(parallel_cases: int) -> bool:
     return parallel_cases > 1
 
 
+BATCH_CASE_INTERNAL_ARG_KEYS = frozenset(
+    {
+        "apt_risk_fail_fast_defaulted",
+        "bootstrap_light_fail_fast_defaulted",
+        "verifier_bootstrap_fail_fast_defaulted",
+    }
+)
+
+
+def _load_json_object_from_mixed_text(text: str) -> tuple[dict[str, Any], bool]:
+    stripped = text.strip()
+    if not stripped:
+        raise ValueError("empty child payload")
+    try:
+        payload = json.loads(stripped)
+        if isinstance(payload, dict):
+            return payload, False
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(stripped):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(stripped[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload, True
+    raise ValueError("child payload did not contain a JSON object")
+
+
 def _extract_batch_case_subprocess_payload(
     *,
     case_args: argparse.Namespace,
@@ -12814,13 +15377,36 @@ def _extract_batch_case_subprocess_payload(
     stdout: bytes,
     stderr: bytes,
 ) -> dict[str, Any]:
-    text = stdout.decode("utf-8", errors="replace").strip()
-    if not text:
-        text = stderr.decode("utf-8", errors="replace").strip()
+    streams = [
+        ("stdout", stdout.decode("utf-8", errors="replace")),
+        ("stderr", stderr.decode("utf-8", errors="replace")),
+    ]
+    if stdout and stderr:
+        streams.append(
+            (
+                "combined",
+                (
+                    stdout.decode("utf-8", errors="replace")
+                    + "\n"
+                    + stderr.decode("utf-8", errors="replace")
+                ),
+            )
+        )
+    last_exc: Exception | None = None
     try:
-        payload = json.loads(text)
-        if not isinstance(payload, dict):
-            raise ValueError("child payload was not a JSON object")
+        payload: dict[str, Any] | None = None
+        mixed_output = False
+        payload_source = ""
+        for payload_source, text in streams:
+            try:
+                payload, mixed_output = _load_json_object_from_mixed_text(text)
+                break
+            except Exception as exc:
+                last_exc = exc
+        if payload is None:
+            raise last_exc or ValueError("child payload missing")
+        payload["batch_case_subprocess_payload_source"] = payload_source
+        payload["batch_case_subprocess_payload_mixed_output"] = mixed_output
     except Exception as exc:
         payload = {
             "ok": False,
@@ -12829,6 +15415,9 @@ def _extract_batch_case_subprocess_payload(
             "route": str(case_args.route),
             "error_type": "SkillsBenchBatchCaseSubprocessPayloadError",
             "error_class": type(exc).__name__,
+            "payload_error_class": (
+                type(last_exc).__name__ if last_exc is not None else type(exc).__name__
+            ),
             "child_returncode": int(returncode),
             "child_stdout_bytes": len(stdout),
             "child_stderr_bytes": len(stderr),
@@ -12918,6 +15507,257 @@ async def async_batch_main(
         "results": results,
         "runner_returncode": returncode,
     }
+
+
+def _independent_goal_retry_enabled(args: argparse.Namespace) -> bool:
+    return int(getattr(args, "independent_goal_retries", 1) or 1) > 1
+
+
+def _safe_retry_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
+    return slug or "retry"
+
+
+def _clone_args_for_independent_goal_retry(
+    args: argparse.Namespace,
+    *,
+    attempt_index: int,
+    run_group_id: str,
+    base_job_name: str,
+) -> argparse.Namespace:
+    attempt_number = attempt_index + 1
+    attempt_args = argparse.Namespace(**vars(args))
+    attempt_args.independent_goal_retries = 1
+    attempt_args.task_ids = None
+    attempt_args.parallel_cases = 1
+    attempt_args.run_group_id = run_group_id
+    attempt_args.job_name = f"{base_job_name}-attempt-{attempt_number:02d}"
+    route_slug = _safe_retry_slug(str(args.route).replace("-", "_"))
+    attempt_args.rollout_name = (
+        f"{args.task_id}__{route_slug}_independent_attempt_{attempt_number:02d}"
+    )
+    return attempt_args
+
+
+def _official_reward_from_payload(payload: dict[str, Any]) -> float | None:
+    official_task_score = payload.get("official_task_score")
+    if isinstance(official_task_score, dict):
+        value = official_task_score.get("value")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    value = payload.get("official_score")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _official_success_from_payload(payload: dict[str, Any]) -> bool:
+    official_task_score = payload.get("official_task_score")
+    if isinstance(official_task_score, dict):
+        if official_task_score.get("passed") is True:
+            return True
+    reward = _official_reward_from_payload(payload)
+    return bool(reward is not None and reward >= 1.0)
+
+
+def _terminal_official_nonpassing_from_payload(payload: dict[str, Any]) -> bool:
+    reward = _official_reward_from_payload(payload)
+    if reward is None or _official_success_from_payload(payload):
+        return False
+    return (
+        str(payload.get("score_failure_attribution") or "")
+        in TERMINAL_OFFICIAL_NONPASSING_ATTRIBUTIONS
+    )
+
+
+def _independent_goal_retry_attempt_summary(
+    payload: dict[str, Any],
+    *,
+    attempt_index: int,
+) -> dict[str, Any]:
+    launch_plan = payload.get("launch_plan")
+    if not isinstance(launch_plan, dict):
+        launch_plan = {}
+    official_reward = _official_reward_from_payload(payload)
+    official_success = _official_success_from_payload(payload)
+    terminal_official_nonpassing = _terminal_official_nonpassing_from_payload(payload)
+    summary: dict[str, Any] = {
+        "schema_version": "skillsbench_independent_goal_retry_attempt_v0",
+        "attempt_index": attempt_index,
+        "attempt_number": attempt_index + 1,
+        "ok": payload.get("ok") is True,
+        "runner_returncode": int(payload.get("runner_returncode") or 0),
+        "official_success": official_success,
+        "official_reward": official_reward,
+        "terminal_official_nonpassing": terminal_official_nonpassing,
+        "score_failure_attribution": str(
+            payload.get("score_failure_attribution") or ""
+        ),
+        "raw_stdout_recorded": False,
+        "raw_stderr_recorded": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "raw_verifier_output_read": False,
+    }
+    for key in (
+        "task_id",
+        "route",
+        "run_group_id",
+        "job_name",
+        "rollout_name",
+        "compact_benchmark_run_json",
+        "result_json",
+    ):
+        value = payload.get(key) or launch_plan.get(key)
+        if value:
+            summary[key] = str(value)
+    if not summary.get("compact_benchmark_run_json") and launch_plan.get(
+        "compact_benchmark_run_json"
+    ):
+        summary["compact_benchmark_run_json"] = str(
+            launch_plan.get("compact_benchmark_run_json")
+        )
+    if not summary.get("result_json") and launch_plan.get("result_json"):
+        summary["result_json"] = str(launch_plan.get("result_json"))
+    cleanup = payload.get("host_local_acp_attempt_cleanup")
+    if isinstance(cleanup, dict):
+        summary["host_local_acp_attempt_cleanup"] = {
+            "schema_version": str(
+                cleanup.get("schema_version")
+                or "skillsbench_host_local_acp_attempt_cleanup_v0"
+            )[:120],
+            "requested": cleanup.get("requested") is True,
+            "raw_logs_read": cleanup.get("raw_logs_read") is True,
+            "raw_command_recorded": cleanup.get("raw_command_recorded") is True,
+            "status": str(cleanup.get("status") or "unknown")[:120],
+            "match_count": int(cleanup.get("match_count") or 0),
+            "term_sent_count": int(cleanup.get("term_sent_count") or 0),
+            "kill_sent_count": int(cleanup.get("kill_sent_count") or 0),
+            "alive_after_count": int(cleanup.get("alive_after_count") or 0),
+        }
+    return summary
+
+
+async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[str, Any]:
+    attempt_budget = max(1, int(getattr(args, "independent_goal_retries", 1) or 1))
+    run_group_id = str(
+        args.run_group_id
+        or f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+    )
+    base_job_name = _safe_retry_slug(
+        str(
+            args.job_name
+            or f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+        )
+    )
+    jobs_dir = Path(args.jobs_dir).expanduser()
+    attempts: list[dict[str, Any]] = []
+    success_observed = False
+    first_success_attempt: int | None = None
+    terminal_official_nonpassing_observed = False
+    first_terminal_official_nonpassing_attempt: int | None = None
+
+    for attempt_index in range(attempt_budget):
+        attempt_args = _clone_args_for_independent_goal_retry(
+            args,
+            attempt_index=attempt_index,
+            run_group_id=run_group_id,
+            base_job_name=base_job_name,
+        )
+        attempt_plan = build_plan(attempt_args)
+        attempt_cleanup: dict[str, Any] | None = None
+        try:
+            payload = await async_main(attempt_args, plan=attempt_plan)
+            payload["runner_returncode"] = 0
+        except Exception as exc:
+            attempt_cleanup = cleanup_host_local_acp_attempt_children(attempt_plan)
+            payload, returncode = _build_runner_exception_closeout_payload(
+                attempt_args,
+                attempt_plan,
+                exc,
+            )
+            payload["runner_returncode"] = returncode
+        else:
+            attempt_cleanup = cleanup_host_local_acp_attempt_children(attempt_plan)
+            _write_public_runner_prerequisites(attempt_plan)
+        payload.setdefault("launch_plan", attempt_plan)
+        if attempt_cleanup is not None:
+            payload["host_local_acp_attempt_cleanup"] = attempt_cleanup
+        attempt_summary = _independent_goal_retry_attempt_summary(
+            payload,
+            attempt_index=attempt_index,
+        )
+        attempts.append(attempt_summary)
+        if attempt_summary.get("official_success") is True:
+            success_observed = True
+            first_success_attempt = attempt_index + 1
+            break
+        if attempt_summary.get("terminal_official_nonpassing") is True:
+            terminal_official_nonpassing_observed = True
+            first_terminal_official_nonpassing_attempt = attempt_index + 1
+            break
+
+    if success_observed:
+        stop_reason = "stop_after_first_official_reward_1_without_feedback"
+    elif terminal_official_nonpassing_observed:
+        stop_reason = "stop_after_first_terminal_official_nonpassing_verifier_result"
+    else:
+        stop_reason = "stop_after_independent_goal_retry_budget"
+    observed_rewards = [
+        float(attempt["official_reward"])
+        for attempt in attempts
+        if isinstance(attempt.get("official_reward"), (int, float))
+        and not isinstance(attempt.get("official_reward"), bool)
+    ]
+    best_official_reward = max(observed_rewards) if observed_rewards else None
+    final_official_reward = observed_rewards[-1] if observed_rewards else None
+    retry_summary = {
+        "schema_version": "skillsbench_independent_goal_retry_summary_v0",
+        "ok": success_observed,
+        "independent_goal_retry": True,
+        "task_id": str(args.task_id),
+        "route": str(args.route),
+        "run_group_id": run_group_id,
+        "attempt_budget": attempt_budget,
+        "attempts_started": len(attempts),
+        "attempts_completed": len(attempts),
+        "success_observed": success_observed,
+        "first_success_attempt": first_success_attempt,
+        "terminal_official_nonpassing_observed": (
+            terminal_official_nonpassing_observed
+        ),
+        "first_terminal_official_nonpassing_attempt": (
+            first_terminal_official_nonpassing_attempt
+        ),
+        "best_official_reward": best_official_reward,
+        "final_official_reward": final_official_reward,
+        "official_task_score": {
+            "kind": "skillsbench_independent_goal_retry_best_reward",
+            "value": best_official_reward,
+            "passed": success_observed,
+        },
+        "stop_reason": stop_reason,
+        "fresh_goal_thread_per_attempt": True,
+        "official_reward_feedback_forwarded_to_agent": False,
+        "verifier_output_forwarded_to_agent": False,
+        "reward_feedback_forwarded": False,
+        "raw_task_text_read_into_public_state": False,
+        "raw_trajectory_read_into_public_state": False,
+        "raw_verifier_output_read_into_public_state": False,
+        "attempts": attempts,
+        "runner_returncode": 0 if success_observed else max(
+            int(attempt.get("runner_returncode") or 0) for attempt in attempts
+        ),
+    }
+    summary_path = jobs_dir / base_job_name / "independent_goal_retry_summary.public.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(retry_summary, indent=2, sort_keys=True, default=_json_default)
+        + "\n",
+        encoding="utf-8",
+    )
+    retry_summary["retry_summary_json"] = str(summary_path)
+    return retry_summary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -13165,13 +16005,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     task_ids = _batch_task_ids(args)
     batch_mode = len(task_ids) > 1
+    independent_retry_mode = _independent_goal_retry_enabled(args) and not args.plan_only
     if args.run_group_id is None:
         args.run_group_id = (
             f"skillsbench-batch-{args.route}-{_now_stamp()}"
             if batch_mode
+            else f"skillsbench-{args.task_id}-{args.route}-independent-retry-{_now_stamp()}"
+            if independent_retry_mode
             else f"skillsbench-{args.task_id}-{args.route}-{_now_stamp()}"
         )
-    plan = None if batch_mode else build_plan(args)
+    plan = None if batch_mode or independent_retry_mode else build_plan(args)
     previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
     def _closeout_sigterm_handler(signum: int, frame: Any) -> None:
@@ -13183,10 +16026,26 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if batch_mode:
             payload = asyncio.run(async_batch_main(args, task_ids=task_ids))
+        elif independent_retry_mode:
+            payload = asyncio.run(async_independent_goal_retry_main(args))
         else:
             payload = asyncio.run(async_main(args, plan=plan))
     except (KeyboardInterrupt, SkillsBenchRunnerInterrupted) as exc:
         if plan is None:
+            if independent_retry_mode:
+                payload = {
+                    "ok": False,
+                    "independent_goal_retry": True,
+                    "task_id": str(args.task_id),
+                    "route": str(args.route),
+                    "attempt_budget": int(args.independent_goal_retries),
+                    "run_group_id": args.run_group_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "compact_closeout_recorded": False,
+                }
+                print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+                return 1
             payload = {
                 "ok": False,
                 "batch": True,
@@ -13214,6 +16073,20 @@ def main(argv: list[str] | None = None) -> int:
         return returncode
     except Exception as exc:
         if plan is None:
+            if independent_retry_mode:
+                payload = {
+                    "ok": False,
+                    "independent_goal_retry": True,
+                    "task_id": str(args.task_id),
+                    "route": str(args.route),
+                    "attempt_budget": int(args.independent_goal_retries),
+                    "run_group_id": args.run_group_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "compact_closeout_recorded": False,
+                }
+                print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+                return 1
             payload = {
                 "ok": False,
                 "batch": True,

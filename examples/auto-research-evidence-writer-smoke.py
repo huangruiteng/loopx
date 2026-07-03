@@ -12,10 +12,21 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PACK = REPO_ROOT / "examples/auto_research_knn_pack"
-EVAL = PACK / "protected_eval.py"
-CONTRACT = PACK / "research_contract.json"
-CANDIDATE = PACK / "solution_candidate.py"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from examples.auto_research_lightweight_fixture import (  # noqa: E402
+    AGENT_ID,
+    GROUNDING_REF,
+    HYPOTHESIS_ID,
+    HYPOTHESIS_TEXT,
+    MECHANISM_FAMILY,
+    METRIC_NAME,
+    TODO_ID,
+    eval_result,
+    write_contract_and_results,
+    write_json,
+)
 
 
 def assert_public_safe(payload: Any) -> None:
@@ -47,24 +58,12 @@ def run_json(args: list[str], *, check: bool = True) -> subprocess.CompletedProc
     )
 
 
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def eval_result(split: str) -> dict[str, Any]:
-    result = run_json(
-        [
-            str(EVAL),
-            "--solution",
-            str(CANDIDATE),
-            "--split",
-            split,
-        ]
-    )
-    return json.loads(result.stdout)
-
-
-def run_evidence_cli(paths: list[Path], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_evidence_cli(
+    contract: Path,
+    paths: list[Path],
+    *,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     args = [
         "-m",
         "loopx.cli",
@@ -73,21 +72,21 @@ def run_evidence_cli(paths: list[Path], *, check: bool = True) -> subprocess.Com
         "auto-research",
         "evidence",
         "--contract",
-        str(CONTRACT),
+        str(contract),
         "--hypothesis-id",
-        "hyp_pack_partial_selection",
+        HYPOTHESIS_ID,
         "--todo-id",
-        "todo_auto_research_pack_001",
+        TODO_ID,
         "--agent-id",
-        "codex-side-bypass",
+        AGENT_ID,
         "--claimed-by",
-        "codex-side-bypass",
+        AGENT_ID,
         "--mechanism-family",
-        "partial_selection",
+        MECHANISM_FAMILY,
         "--hypothesis",
-        "Use exact partial selection to avoid full distance sorting.",
+        HYPOTHESIS_TEXT,
         "--grounding-ref",
-        "knn_pack_public_contract",
+        GROUNDING_REF,
         "--branch-ref",
         "codex/auto-research-evidence-writer-smoke",
     ]
@@ -99,12 +98,9 @@ def run_evidence_cli(paths: list[Path], *, check: bool = True) -> subprocess.Com
 def main() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
-        dev = temp / "dev.json"
-        holdout = temp / "holdout.json"
-        write_json(dev, eval_result("dev"))
-        write_json(holdout, eval_result("holdout"))
+        contract, dev, holdout = write_contract_and_results(temp)
 
-        result = run_evidence_cli([dev, holdout])
+        result = run_evidence_cli(contract, [dev, holdout])
         payload = json.loads(result.stdout)
         assert payload["ok"] is True, payload
         assert payload["schema_version"] == "auto_research_evidence_packet_v0", payload
@@ -131,22 +127,22 @@ def main() -> None:
         write_json(
             retry,
             {
-                "schema_version": "auto_research_knn_eval_result_v0",
+                "schema_version": "auto_research_lightweight_eval_result_v0",
                 "split": "dev",
                 "metric": {
-                    "name": "deterministic_speedup",
+                    "name": METRIC_NAME,
                     "direction": "maximize",
                     "value": None,
                     "baseline": 1.0,
                 },
                 "eval_status": "failed_to_run",
                 "primary_metric_status": "inconclusive",
-                "artifact_refs": ["knn_pack:dev:retry"],
+                "artifact_refs": ["public_metric:dev:retry"],
                 "protected_scope_clean": True,
                 "no_upload": True,
             },
         )
-        retry_payload = json.loads(run_evidence_cli([retry]).stdout)
+        retry_payload = json.loads(run_evidence_cli(contract, [retry]).stdout)
         assert retry_payload["hypothesis"]["status"] == "needs_retry", retry_payload
         assert retry_payload["summary"]["needs_retry_count"] == 1, retry_payload
         assert retry_payload["summary"]["negative_evidence_count"] == 0, retry_payload
@@ -157,7 +153,7 @@ def main() -> None:
         dirty_payload = eval_result("dev")
         dirty_payload["protected_scope_clean"] = False
         write_json(dirty, dirty_payload)
-        contradicted = json.loads(run_evidence_cli([dirty]).stdout)
+        contradicted = json.loads(run_evidence_cli(contract, [dirty]).stdout)
         assert contradicted["hypothesis"]["status"] == "contradicted", contradicted
         assert contradicted["summary"]["negative_evidence_count"] == 1, contradicted
         assert contradicted["summary"]["protected_scope_clean"] is False, contradicted
@@ -167,7 +163,7 @@ def main() -> None:
         bad_payload = eval_result("dev")
         bad_payload["artifact_refs"] = ["/" + "Users/example/raw.log"]
         write_json(bad, bad_payload)
-        blocked = run_evidence_cli([bad], check=False)
+        blocked = run_evidence_cli(contract, [bad], check=False)
         blocked_payload = json.loads(blocked.stdout)
         assert blocked.returncode == 1, blocked_payload
         assert blocked_payload["ok"] is False, blocked_payload

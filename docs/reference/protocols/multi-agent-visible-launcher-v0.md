@@ -17,6 +17,84 @@ This contract intentionally sits between two existing surfaces:
 The visible launcher may plan or start panes, but it must not become a leader
 agent, hidden scheduler, promotion authority, or second source of truth.
 
+The launcher also follows
+[`multi_agent_three_layer_minimality_contract_v0`](multi-agent-three-layer-minimality-v0.md):
+both the user-facing recipe and the domain preset stay thin, while the generic
+kernel owns runner/TUI/tick/todo/evidence/status mechanics.
+
+## Kernel Module
+
+The reusable product kernel lives in `loopx/capabilities/multi_agent/`.
+Domain capabilities should depend on that package for:
+
+- `tui_multi_agent_runner_contract_v0`;
+- `generic_multi_agent_role_profile_v0`;
+- `multi_agent_three_layer_minimality_contract_v0`;
+- pane-local A2A prompt rules;
+- artifact-only machine JSON policy;
+- compact human status for launch previews.
+- runtime scripts for scoped LoopX wrappers, pane-local A2A ticks, and Codex
+  TUI exec.
+
+The host launcher in `loopx/visible_multi_agent_launcher.py` owns tmux process
+execution and Codex TUI acceptance only. Auto-research, benchmark demos, and
+future custom teams should not duplicate runner schema, role-profile
+normalization, attach/stop semantics, pane-local tick scripts, or machine JSON
+wrapper policy.
+
+## User-Facing Spec
+
+Most callers should not author `multi_agent_visible_launcher_v0` packets by
+hand. They should provide a small `generic_multi_agent_launch_spec_v0` role
+spec and let `loopx multi-agent launch --spec <file>` expand it into the
+visible launcher packet.
+
+```json
+{
+  "schema_version": "generic_multi_agent_launch_spec_v0",
+  "goal_id": "loopx-meta",
+  "session_name": "loopx-custom-team",
+  "default_reasoning_effort": "high",
+  "roles": [
+    {
+      "lane_id": "planner",
+      "agent_id": "codex-main-control",
+      "role_id": "planner",
+      "scope": "Plan the next bounded step from the shared goal surface.",
+      "skill": {
+        "name": "loopx-planner-worker",
+        "source": "worker/SKILL.md"
+      },
+      "handoff_hints": [
+        "Create or update a LoopX todo for critic when a plan needs review."
+      ]
+    },
+    {
+      "lane_id": "critic",
+      "agent_id": "codex-side-bypass",
+      "role_id": "critic",
+      "scope": "Review the bounded step against the same todo and quota projection."
+    }
+  ]
+}
+```
+
+The spec is intentionally small:
+
+- `goal_id` selects the shared LoopX state surface;
+- each role names an `agent_id`, human role, and scope;
+- `skill.source` is resolved relative to the spec file and materialized as a
+  worker-local skill for that role;
+- `handoff_hints` describe how roles should use LoopX todos/evidence to pass
+  work, without creating a central workflow engine;
+- `--execute` starts visible Codex TUI panes, while the default mode only
+  previews the packet.
+
+This keeps product integration focused on role design and state-mediated
+handoff. The generated launcher packet still enforces artifact-only machine
+JSON, interactive Codex TUI windows, attach/stop controls, and public boundary
+fields.
+
 ## Ownership Split
 
 | Surface | Owns | Does not own |
@@ -49,6 +127,25 @@ agent lane that must read the same goal state and pass its own guard.
     "all_lane_workspace_isolation": false,
     "mutation_isolation_policy": "only mutating attempts require a claimed worktree or equivalent execution boundary"
   },
+  "interactive_tui_contract": {
+    "schema_version": "multi_agent_visible_interactive_tui_contract_v0",
+    "human_pane": [
+      "codex_cli_tui",
+      "role_prompt_inside_codex",
+      "normal_user_typing",
+      "normal_codex_tool_output",
+      "takeover_controls"
+    ],
+    "machine_artifacts": [
+      "quota.public.json",
+      "frontier.public.json",
+      "bootstrap-prompt.public.txt",
+      "role_local_public_artifacts"
+    ],
+    "machine_json_policy": "file_or_explicit_machine_channel_only",
+    "visible_json_policy": "not_printed_before_tui",
+    "codex_surface": "interactive_cli_tui"
+  },
   "lanes": [],
   "commands": {
     "start_script": [],
@@ -69,6 +166,7 @@ Required top-level fields:
 - `goal_id` and `session_name`;
 - `reasoning_contract`;
 - `shared_goal_surface`;
+- `interactive_tui_contract`;
 - `lanes[]`;
 - `commands.attach`, `commands.stop`, and `commands.retry`;
 - `acceptance`;
@@ -91,10 +189,14 @@ agents cooperate on one goal surface. Isolation is applied only to the lane or
 attempt that mutates files, typically through an independent git worktree,
 scratch directory, or equivalent execution boundary. The launcher must make that
 policy explicit instead of silently moving every lane into unrelated state.
+Visible Codex TUI panes must not default into a generated demo-local git
+worktree or control-plane repository. By default they should start in the
+caller-selected workspace, or in an explicit user-owned scratch workspace, so a
+user sees the agent role TUI instead of a generated workspace trust prompt.
 
 ## Lane Shape
 
-Each lane is small enough to print before the agent starts:
+Each lane is small enough to inspect before the agent starts:
 
 ```json
 {
@@ -132,18 +234,47 @@ packet is the lane identity authority.
 
 Every visible lane follows the same generic start order:
 
-1. Print the role profile or role profile ref.
-2. Run `quota should-run --goal-id <goal-id> --agent-id <agent-id>`.
-3. Stop visibly if `interaction_contract.user_channel.action_required=true`,
-   delivery is disallowed, quota is false, or the packet is contradictory.
-4. Print the domain frontier or a blocked reason.
-5. Print the public-safe bootstrap message.
-6. Start the visible agent process only after the preceding packets are visible.
-7. Keep the pane open after exit so the user can inspect, interrupt, close, or
-   retry manually.
+1. Prepare the role profile, scoped LoopX wrappers, and bootstrap prompt as
+   local artifacts without printing raw JSON or shell marker streams.
+2. Start one fresh interactive Codex CLI TUI per role window with
+   `codex -c model_reasoning_effort=<effort> -C "$LOOPX_PROJECT" "$PROMPT"`.
+3. Let the Codex role read quota/frontier/todo state through the pane-local
+   LoopX wrapper inside the TUI.
+4. Stop inside that Codex role if
+   `interaction_contract.user_channel.action_required=true`, delivery is
+   disallowed, quota is false, the frontier is contradictory, or the role would
+   bypass LoopX todo/evidence writeback.
+5. Keep the pane interactive so the user can type, interrupt, close, or retry
+   manually like a normal Codex CLI session.
 
-The launcher must not inject prompts into a hidden session, hide guard output,
-or continue a lane after a user gate is projected.
+The launcher must not inject prompts into an existing hidden session, print raw
+control-plane JSON as the first screen, or continue a lane after a user gate is
+projected.
+
+## Interactive TUI Contract
+
+The first screen of each visible pane is the Codex CLI TUI itself. Users should
+feel that they opened several normal Codex agents, one per role, and can type
+into any of them. Raw quota, frontier, role profile, bootstrap prompt, and
+machine JSON belong in public-safe artifacts or an explicit machine channel,
+not in the initial tmux viewport.
+
+Required runtime shape:
+
+- one tmux window per role;
+- no extra frontier/status JSON window by default;
+- every role window executes the interactive Codex CLI, not `codex exec`;
+- no pre-Codex character stream, marker transcript, raw JSON dump, or copied
+  role profile appears before the TUI;
+- no generated demo-local worktree trust prompt should be the first visible
+  screen;
+- the role prompt instructs Codex to use the pane-local LoopX wrapper for
+  quota/frontier/todo/evidence work;
+- users can interact with each role through ordinary Codex CLI controls.
+
+The TUI may later show human-readable LoopX summaries when the Codex role runs
+commands. It should not dump raw JSON, credentials, private logs, raw
+transcripts, or absolute local artifact paths into the visible pane.
 
 ## Host Controls
 
@@ -154,8 +285,8 @@ The packet must expose:
 - per-pane interrupt path using normal terminal controls;
 - `retry`: the safe retry shape, which must recompute quota/frontier/bootstrap
   first instead of replaying stale hidden state;
-- visible acceptance markers that prove each pane printed profile, quota,
-  frontier-or-blocker, bootstrap-or-stop, and takeover controls.
+- visible acceptance proof that each pane was created as an interactive Codex
+  CLI TUI role and remains attachable or inspectable.
 
 Host commands are public-safe command shapes. They must not include credentials,
 auth headers, raw transcript paths, private document ids, or local absolute
@@ -212,13 +343,15 @@ A public fixture or implementation satisfies the contract when:
    agent-scoped quota, todo/frontier projection, run history, and evidence;
 5. it requires per-lane role identity, quota guard, frontier, bootstrap message,
    high reasoning, lane timeline, and visible launch command;
-6. it requires attach, stop, retry, pane interrupt, and visible acceptance
-   markers;
-7. dry-run mode starts no process, runs no agent, writes no LoopX state, and
+6. it requires attach, stop, retry, pane interrupt, and visible acceptance proof
+   for interactive Codex CLI TUI role windows;
+7. it has an interactive TUI contract that keeps raw machine JSON in artifacts
+   or explicit machine channels instead of printing it before Codex starts;
+8. dry-run mode starts no process, runs no agent, writes no LoopX state, and
    spends no quota;
-8. execute mode still writes state and spends quota only through normal LoopX
+9. execute mode still writes state and spends quota only through normal LoopX
    writeback after validation;
-9. it keeps workspace isolation scoped to mutating attempts rather than
+10. it keeps workspace isolation scoped to mutating attempts rather than
    splitting the shared goal surface; and
-10. public docs and fixtures contain no raw transcripts, credentials, private
+11. public docs and fixtures contain no raw transcripts, credentials, private
     links, internal project names, or local absolute paths.

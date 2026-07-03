@@ -19,6 +19,7 @@ from ..benchmark_core import (
     canonical_lifecycle,
 )
 from ..codex_goal_baseline import build_codex_app_server_goal_worker_plan
+from .skillsbench_signals import build_skillsbench_solution_quality_signals
 
 
 SKILLSBENCH_DEFAULT_DATASET = "skillsbench@1.1"
@@ -551,7 +552,172 @@ _SKILLSBENCH_SETUP_FAILURE_LABELS = {
     "skillsbench_docker_setup_preflight_blocked",
     "skillsbench_docker_compose_setup_failure",
     "skillsbench_docker_compose_unclassified_setup_failure",
+    "skillsbench_compose_setup_blocked_before_agent_rounds",
+    "skillsbench_runner_setup_blocked_before_agent_rounds",
+    "skillsbench_app_server_goal_pre_agent_materialization_blocked",
 }
+
+_SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
+    "compose_setup_blocked_before_agent_rounds": (
+        "skillsbench_compose_setup_blocked_before_agent_rounds"
+    ),
+    "runner_setup_blocked_before_agent_rounds": (
+        "skillsbench_runner_setup_blocked_before_agent_rounds"
+    ),
+}
+
+_SKILLSBENCH_PRE_AGENT_SETUP_REPLACEABLE_ATTRIBUTIONS = {
+    "",
+    "none",
+    "score_missing",
+    "skillsbench_runner_error",
+    "skillsbench_result_json_missing_after_runner_exit",
+    "official_score_zero_case_failure",
+    "official_verifier_solution_failure",
+    "verifier_infrastructure_failure",
+}
+
+
+def _skillsbench_number(value: Any) -> float | int | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _skillsbench_official_score_missing(benchmark_run: dict[str, Any]) -> bool:
+    official = (
+        benchmark_run.get("official_task_score")
+        if isinstance(benchmark_run.get("official_task_score"), dict)
+        else {}
+    )
+    if _skillsbench_number(official.get("value")) is not None:
+        return False
+    return _skillsbench_number(benchmark_run.get("official_score")) is None
+
+
+def _skillsbench_pre_agent_setup_diagnostic_label(
+    benchmark_run: dict[str, Any],
+) -> str:
+    diagnostic = benchmark_run.get("compose_setup_diagnostic")
+    if not isinstance(diagnostic, dict):
+        return ""
+    label = _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS.get(
+        str(diagnostic.get("status") or "")
+    )
+    if not label:
+        return ""
+    route = str(benchmark_run.get("route") or "")
+    mode = str(benchmark_run.get("mode") or "")
+    if route != "codex-app-server-goal-baseline" and mode != (
+        "skillsbench_codex_app_server_goal_baseline"
+    ):
+        return ""
+    if benchmark_run.get("native_goal_worker_route") is not True:
+        validation = benchmark_run.get("validation")
+        if not isinstance(validation, dict) or validation.get(
+            "native_goal_worker_route"
+        ) is not True:
+            return ""
+    if benchmark_run.get("native_goal_worker_connected") is True:
+        return ""
+    trace_count = benchmark_run.get("native_goal_worker_trace_count")
+    if (
+        isinstance(trace_count, int)
+        and not isinstance(trace_count, bool)
+        and trace_count > 0
+    ):
+        return ""
+    if diagnostic.get("agent_rounds_started") is True:
+        return ""
+    if not _skillsbench_official_score_missing(benchmark_run):
+        return ""
+    return label
+
+
+def apply_skillsbench_pre_agent_setup_diagnostic_attribution(
+    benchmark_run: dict[str, Any],
+) -> dict[str, Any]:
+    """Project app-server pre-agent setup blockers into terminal attribution.
+
+    The app-server Goal route can be selected before BenchFlow/compose has
+    materialized the native worker. Without this projection, downstream
+    reducers only see `native_goal_worker_route=true` plus no worker trace and
+    report a misleading worker connection failure.
+    """
+
+    label = _skillsbench_pre_agent_setup_diagnostic_label(benchmark_run)
+    if not label:
+        return benchmark_run
+    current = str(benchmark_run.get("score_failure_attribution") or "")
+    if (
+        current in _SKILLSBENCH_PRE_AGENT_SETUP_REPLACEABLE_ATTRIBUTIONS
+        or current.startswith("skillsbench_native_goal_worker_")
+    ):
+        benchmark_run["score_failure_attribution"] = label
+        benchmark_run["first_blocker"] = label
+    benchmark_run["pre_agent_setup_materialization_blocked"] = True
+    benchmark_run["native_goal_worker_pre_agent_setup_blocked"] = True
+
+    labels = [
+        item
+        for item in benchmark_run.get("failure_attribution_labels", [])
+        if isinstance(item, str) and item
+    ]
+    for item in (
+        label,
+        "skillsbench_app_server_goal_pre_agent_materialization_blocked",
+        "skillsbench_runner_setup_error",
+    ):
+        if item not in labels:
+            labels.append(item)
+    benchmark_run["failure_attribution_labels"] = labels
+
+    runner_failure = benchmark_run.get("runner_failure")
+    if not isinstance(runner_failure, dict):
+        runner_failure = {
+            "schema_version": "skillsbench_runner_failure_v0",
+            "raw_error_recorded": False,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+        }
+        benchmark_run["runner_failure"] = runner_failure
+    runner_failure["exception_type"] = label
+    runner_failure["failure_class"] = label
+    runner_failure["pre_agent_setup_materialization_blocked"] = True
+
+    attempt_accounting = benchmark_run.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["failure_class"] = (
+            BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED.value
+        )
+    return benchmark_run
+
+
+def _skillsbench_verifier_uv_bootstrap_failure(verifier_error_text: str) -> bool:
+    text = str(verifier_error_text or "").lower()
+    if not text:
+        return False
+    indicators = (
+        "uvx: command not found",
+        "uv: command not found",
+        "failed to download",
+        "releases.astral.sh",
+        "astral.sh/uv",
+        "uv-x86_64-unknown-linux-gnu",
+        "uv-aarch64-unknown-linux-gnu",
+        "installer_download_url",
+    )
+    if any(indicator in text for indicator in indicators) and re.search(
+        r"\buvx?\b|astral|releases\.astral|installer_download_url",
+        text,
+    ):
+        return True
+    return bool(
+        re.search(r"\buvx?\b.*(?:download|bootstrap|not found|installer)", text)
+        or re.search(r"(?:download|bootstrap|installer).*\buvx?\b", text)
+    )
 
 
 def _skillsbench_attempt_setup_blocked(failure_labels: Iterable[str]) -> bool:
@@ -582,6 +748,8 @@ def _skillsbench_attempt_failure_class(
         return BenchmarkFailureClass.SOLVER_FAILED
     if score_failure_attribution.startswith("skillsbench_native_goal_worker_"):
         return BenchmarkFailureClass.JOB_MATERIALIZATION_FAILED
+    if "skillsbench_verifier_uv_bootstrap_failure" in set(failure_labels):
+        return BenchmarkFailureClass.VERIFIER_FAILED
     if verifier_error_text and reward_value is None:
         return BenchmarkFailureClass.VERIFIER_FAILED
     if reward_value is None and score_failure_attribution != "none":
@@ -727,6 +895,7 @@ def build_skillsbench_app_server_goal_worker_contract(
             "native_goal_methods_required": list(worker_plan["methods"]),
             "thread_goal_get_required": True,
             "turn_start_required": True,
+            "context_only_followup_supported": True,
             "raw_transcript_recorded": False,
         },
         "worker_plan": {
@@ -1481,12 +1650,17 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
         "could not find the file /app" in text
         or "main:/app/skills" in text
         or (
+            "mkdir -p /app" in text
+            and "permission denied" in text
+        )
+        or (
             "/app/skills" in text
             and (
                 "bind source path" in text
                 or "mount" in text
                 or "volume" in text
                 or "task skills" in text
+                or "permission denied" in text
             )
         )
     ):
@@ -1538,6 +1712,16 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
         or "apt-based docker setup risk detected before full case run" in text
     ):
         label = "skillsbench_docker_apt_setup_risk_preflight_blocked"
+        return label, label, [
+            label,
+            "skillsbench_docker_setup_preflight_blocked",
+            "skillsbench_environment_setup_error",
+        ]
+    if (
+        "dockerfile package bootstrap risk preflight blocked" in text
+        or "dockerfile package bootstrap risk detected before full case run" in text
+    ):
+        label = "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked"
         return label, label, [
             label,
             "skillsbench_docker_setup_preflight_blocked",
@@ -2400,6 +2584,48 @@ def _skillsbench_controller_trace_counters(
         "native_goal_worker_assistant_message_present_count": count(
             "native_goal_worker_assistant_message_present_count"
         ),
+        "native_goal_worker_assistant_context_only_count": count(
+            "native_goal_worker_assistant_context_only_count"
+        ),
+        "native_goal_worker_context_only_recovery_attempted_count": count(
+            "native_goal_worker_context_only_recovery_attempted_count"
+        ),
+        "native_goal_worker_context_only_recovery_succeeded_count": count(
+            "native_goal_worker_context_only_recovery_succeeded_count"
+        ),
+        "native_goal_worker_context_only_followup_start_attempted_count": count(
+            "native_goal_worker_context_only_followup_start_attempted_count"
+        ),
+        "native_goal_worker_context_only_followup_start_succeeded_count": count(
+            "native_goal_worker_context_only_followup_start_succeeded_count"
+        ),
+        "native_goal_worker_transport_reconnect_attempted_count": count(
+            "native_goal_worker_transport_reconnect_attempted_count"
+        ),
+        "native_goal_worker_transport_reconnect_succeeded_count": count(
+            "native_goal_worker_transport_reconnect_succeeded_count"
+        ),
+        "native_goal_worker_goal_reactivation_attempted_count": count(
+            "native_goal_worker_goal_reactivation_attempted_count"
+        ),
+        "native_goal_worker_goal_reactivation_succeeded_count": count(
+            "native_goal_worker_goal_reactivation_succeeded_count"
+        ),
+        "native_goal_worker_post_context_assistant_chars_total": count(
+            "native_goal_worker_post_context_assistant_chars_total"
+        ),
+        "native_goal_worker_reasoning_effort": text_value(
+            "native_goal_worker_reasoning_effort"
+        ),
+        "native_goal_worker_reasoning_efforts": text_list(
+            "native_goal_worker_reasoning_efforts"
+        ),
+        "native_goal_worker_first_action_observed_count": count(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "native_goal_worker_effective_action_observed_count": count(
+            "native_goal_worker_effective_action_observed_count"
+        ),
         "remote_command_file_bridge_consumed_by_solver": controller_trace.get(
             "remote_command_file_bridge_consumed_by_solver"
         )
@@ -3045,6 +3271,25 @@ def _skillsbench_native_goal_worker_failure_label(
         counters.get("native_goal_worker_failure_trace_count", 0)
         or counters.get("native_goal_worker_failure_category")
     )
+    context_only_count = counters.get("native_goal_worker_assistant_context_only_count")
+    post_context_chars = counters.get(
+        "native_goal_worker_post_context_assistant_chars_total"
+    )
+    if (
+        isinstance(context_only_count, int)
+        and not isinstance(context_only_count, bool)
+        and context_only_count > 0
+        and (
+            not isinstance(post_context_chars, int)
+            or isinstance(post_context_chars, bool)
+            or post_context_chars <= 0
+        )
+    ):
+        return (
+            "skillsbench_native_goal_worker_failed_"
+            "codex_app_server_context_only_assistant_message"
+        )
+
     if trace_status == "public_trace_observed" and not has_worker_failure_trace:
         return ""
 
@@ -3304,7 +3549,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
         reward_value, reward_artifact_source = _skillsbench_rollout_reward_artifact(
             result_path
         )
-    official_passed = bool(reward_value is not None and reward_value >= 1)
 
     timing_path = result_path.with_name("timing.json")
     timing: dict[str, Any] = {}
@@ -3331,6 +3575,17 @@ def build_skillsbench_benchflow_result_benchmark_run(
     verifier_error = result.get("verifier_error")
     error_text = str(error).strip() if error else ""
     verifier_error_text = str(verifier_error).strip() if verifier_error else ""
+    verifier_uv_bootstrap_failure = _skillsbench_verifier_uv_bootstrap_failure(
+        verifier_error_text
+    )
+    if (
+        verifier_uv_bootstrap_failure
+        and reward_value == 0
+        and reward_artifact_source is None
+    ):
+        reward_value = None
+        warning_labels.append("skillsbench_verifier_uv_bootstrap_zero_reward_ignored")
+    official_passed = bool(reward_value is not None and reward_value >= 1)
     failure_labels: list[str] = []
     exception_type = "none"
     score_failure_attribution = "none"
@@ -3346,11 +3601,31 @@ def build_skillsbench_benchflow_result_benchmark_run(
         )
     elif verifier_error_text:
         if score_failure_attribution in {"none", "skillsbench_runner_error"}:
-            exception_type = "skillsbench_verifier_error"
-            failure_labels.append("verifier_infrastructure_failure")
-            score_failure_attribution = "verifier_infrastructure_failure"
+            if verifier_uv_bootstrap_failure:
+                exception_type = "skillsbench_verifier_uv_bootstrap_failure"
+                failure_labels.extend(
+                    [
+                        "skillsbench_verifier_uv_bootstrap_failure",
+                        "skillsbench_verifier_bootstrap_failure",
+                        "verifier_infrastructure_failure",
+                    ]
+                )
+                score_failure_attribution = (
+                    "skillsbench_verifier_uv_bootstrap_failure"
+                )
+            else:
+                exception_type = "skillsbench_verifier_error"
+                failure_labels.append("verifier_infrastructure_failure")
+                score_failure_attribution = "verifier_infrastructure_failure"
         elif "verifier_infrastructure_failure" not in failure_labels:
             failure_labels.append("verifier_infrastructure_failure")
+        if (
+            verifier_uv_bootstrap_failure
+            and "skillsbench_verifier_uv_bootstrap_failure" not in failure_labels
+        ):
+            failure_labels.append("skillsbench_verifier_uv_bootstrap_failure")
+            if "skillsbench_verifier_bootstrap_failure" not in failure_labels:
+                failure_labels.append("skillsbench_verifier_bootstrap_failure")
 
     n_tool_calls = result.get("n_tool_calls")
     tool_calls = n_tool_calls if isinstance(n_tool_calls, int) else 0
@@ -3479,6 +3754,45 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ),
         "assistant_message_present_count": _controller_public_count(
             "native_goal_worker_assistant_message_present_count"
+        ),
+        "assistant_context_only_count": _controller_public_count(
+            "native_goal_worker_assistant_context_only_count"
+        ),
+        "context_only_recovery_attempted_count": _controller_public_count(
+            "native_goal_worker_context_only_recovery_attempted_count"
+        ),
+        "context_only_recovery_succeeded_count": _controller_public_count(
+            "native_goal_worker_context_only_recovery_succeeded_count"
+        ),
+        "context_only_followup_start_attempted_count": _controller_public_count(
+            "native_goal_worker_context_only_followup_start_attempted_count"
+        ),
+        "context_only_followup_start_succeeded_count": _controller_public_count(
+            "native_goal_worker_context_only_followup_start_succeeded_count"
+        ),
+        "transport_reconnect_attempted_count": _controller_public_count(
+            "native_goal_worker_transport_reconnect_attempted_count"
+        ),
+        "transport_reconnect_succeeded_count": _controller_public_count(
+            "native_goal_worker_transport_reconnect_succeeded_count"
+        ),
+        "goal_reactivation_attempted_count": _controller_public_count(
+            "native_goal_worker_goal_reactivation_attempted_count"
+        ),
+        "goal_reactivation_succeeded_count": _controller_public_count(
+            "native_goal_worker_goal_reactivation_succeeded_count"
+        ),
+        "post_context_assistant_chars_total": _controller_public_count(
+            "native_goal_worker_post_context_assistant_chars_total"
+        ),
+        "reasoning_effort": str(
+            controller_counters.get("native_goal_worker_reasoning_effort") or ""
+        )[:40],
+        "first_action_observed_count": _controller_public_count(
+            "native_goal_worker_first_action_observed_count"
+        ),
+        "effective_action_observed_count": _controller_public_count(
+            "native_goal_worker_effective_action_observed_count"
         ),
         "failure_trace_count": _controller_public_count(
             "native_goal_worker_failure_trace_count"
@@ -4155,10 +4469,12 @@ def build_skillsbench_benchflow_result_benchmark_run(
         ):
             if item not in warning_labels:
                 warning_labels.append(item)
+    setup_failure_observed = _skillsbench_attempt_setup_blocked(failure_labels)
     native_goal_worker_uncountable = bool(
         native_goal_worker_failure_label
         and not official_passed
         and not native_goal_worker_countable_via_bridge_activity
+        and not setup_failure_observed
     )
     if native_goal_worker_uncountable:
         exception_type = native_goal_worker_failure_label
@@ -5012,6 +5328,59 @@ def build_skillsbench_benchflow_result_benchmark_run(
                     "native_goal_worker_assistant_message_present_count", 0
                 )
             ),
+            "native_goal_worker_assistant_context_only_count": (
+                controller_counters.get(
+                    "native_goal_worker_assistant_context_only_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_recovery_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_recovery_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_recovery_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_recovery_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_followup_start_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_followup_start_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_context_only_followup_start_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_context_only_followup_start_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_transport_reconnect_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_transport_reconnect_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_transport_reconnect_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_transport_reconnect_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_goal_reactivation_attempted_count": (
+                controller_counters.get(
+                    "native_goal_worker_goal_reactivation_attempted_count", 0
+                )
+            ),
+            "native_goal_worker_goal_reactivation_succeeded_count": (
+                controller_counters.get(
+                    "native_goal_worker_goal_reactivation_succeeded_count", 0
+                )
+            ),
+            "native_goal_worker_post_context_assistant_chars_total": (
+                controller_counters.get(
+                    "native_goal_worker_post_context_assistant_chars_total", 0
+                )
+            ),
+            "native_goal_worker_reasoning_effort": controller_counters.get(
+                "native_goal_worker_reasoning_effort", ""
+            ),
             "remote_command_file_bridge_consumed_by_solver": (
                 controller_counters.get(
                     "remote_command_file_bridge_consumed_by_solver", False
@@ -5303,6 +5672,27 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "native_goal_worker_prompt_received_count": controller_counters.get(
                 "native_goal_worker_prompt_received_count", 0
             ),
+            "native_goal_worker_first_action_observed_count": controller_counters.get(
+                "native_goal_worker_first_action_observed_count", 0
+            ),
+            "native_goal_worker_effective_action_observed_count": (
+                controller_counters.get(
+                    "native_goal_worker_effective_action_observed_count", 0
+                )
+            ),
+            "native_goal_worker_assistant_context_only_count": (
+                controller_counters.get(
+                    "native_goal_worker_assistant_context_only_count", 0
+                )
+            ),
+            "native_goal_worker_post_context_assistant_chars_total": (
+                controller_counters.get(
+                    "native_goal_worker_post_context_assistant_chars_total", 0
+                )
+            ),
+            "native_goal_worker_reasoning_effort": controller_counters.get(
+                "native_goal_worker_reasoning_effort", ""
+            ),
             "native_goal_worker_trace_status": native_goal_worker_trace_status,
             "native_goal_worker_countable_baseline": native_goal_worker_countable,
             "native_goal_worker_failure_category": native_goal_worker_contract.get(
@@ -5443,6 +5833,9 @@ def build_skillsbench_benchflow_result_benchmark_run(
             benchmark_run["runner_failure_fingerprint"] = runner_failure_fingerprint
     if partial_trajectory and not host_local_acp_codex_exec_failure_present:
         benchmark_run["failure_attribution_labels"].append("partial_trajectory")
+    benchmark_run["solution_quality_signals"] = (
+        build_skillsbench_solution_quality_signals(benchmark_run)
+    )
     return benchmark_run
 
 

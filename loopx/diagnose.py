@@ -10,6 +10,7 @@ from .status import collect_status
 
 DIAGNOSIS_SCHEMA_VERSION = "loopx_agent_diagnosis_packet_v0"
 PACKET_KIND = "agent_reasoning_evidence_packet"
+STATUS_CONTRACT_SIGNAL_LIMIT = 3
 
 
 USER_DIAGNOSE_PROMPT = (
@@ -38,6 +39,16 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _compact_text_signals(value: Any, *, limit: int = STATUS_CONTRACT_SIGNAL_LIMIT) -> dict[str, Any]:
+    items = [str(item).strip() for item in _as_list(value) if str(item).strip()]
+    bounded = items[: max(0, limit)]
+    return {
+        "items": bounded,
+        "truncated": len(items) > len(bounded),
+        "total_count": len(items),
+    }
+
+
 def _first_text(summary: dict[str, Any]) -> str | None:
     for key in ("first_open_items", "items", "backlog_items"):
         for item in _as_list(summary.get(key)):
@@ -46,6 +57,18 @@ def _first_text(summary: dict[str, Any]) -> str | None:
     if summary.get("next"):
         return str(summary.get("next"))
     return None
+
+
+def _first_agent_todo_text(quota: dict[str, Any], summary: dict[str, Any]) -> str | None:
+    selected = _as_dict(quota.get("agent_lane_next_action"))
+    if selected.get("text"):
+        return str(selected.get("text"))
+    if selected.get("title"):
+        return str(selected.get("title"))
+    for item in _as_list(summary.get("first_executable_items")):
+        if isinstance(item, dict) and item.get("text"):
+            return str(item.get("text"))
+    return _first_text(summary)
 
 
 def _open_count(summary: dict[str, Any]) -> int:
@@ -88,13 +111,14 @@ def _goal_ids_for_packet(status_payload: dict[str, Any], *, goal_id: str | None,
     return ids
 
 
-def _quota_for_goal(status_payload: dict[str, Any], goal_id: str) -> dict[str, Any]:
+def _quota_for_goal(status_payload: dict[str, Any], goal_id: str, *, agent_id: str | None) -> dict[str, Any]:
     try:
-        return build_quota_should_run(status_payload, goal_id=goal_id)
+        return build_quota_should_run(status_payload, goal_id=goal_id, agent_id=agent_id)
     except Exception as exc:  # noqa: BLE001 - diagnosis packets should preserve compact failure context.
         return {
             "ok": False,
             "goal_id": goal_id,
+            "agent_id": agent_id,
             "error": str(exc),
             "should_run": False,
             "state": "diagnosis_quota_failed",
@@ -148,21 +172,33 @@ def _first_user_question(quota: dict[str, Any], item: dict[str, Any]) -> str | N
     return _first_text(_todo_summary(quota, item, role="user"))
 
 
-def _agent_commands(*, goal_id: str | None, registry_path: Path, scan_roots: list[Path], limit: int) -> list[str]:
+def _agent_commands(
+    *,
+    goal_id: str | None,
+    registry_path: Path,
+    scan_roots: list[Path],
+    limit: int,
+    agent_id: str | None,
+) -> list[str]:
     registry_arg = shlex.quote(str(registry_path))
     scan_args = " ".join(f"--scan-path {shlex.quote(str(path))}" for path in scan_roots)
     diagnose = f"loopx --registry {registry_arg} diagnose"
     status = f"loopx --registry {registry_arg} status"
+    agent_arg = f" --agent-id {shlex.quote(agent_id)}" if agent_id else ""
+    goal_arg = f" --goal-id {shlex.quote(goal_id)}" if goal_id else ""
     if scan_args:
         diagnose = f"{diagnose} {scan_args}"
         status = f"{status} {scan_args}"
     commands = [
-        f"{diagnose} --limit {max(1, limit)}",
-        f"{status} --limit {max(1, limit)}",
+        f"{diagnose}{goal_arg}{agent_arg} --limit {max(1, limit)}",
+        f"{status}{goal_arg}{agent_arg} --limit {max(1, limit)}",
     ]
     if goal_id:
         quoted_goal = shlex.quote(goal_id)
-        commands.append(f"loopx --registry {registry_arg} --format json quota should-run --goal-id {quoted_goal}")
+        commands.append(
+            f"loopx --registry {registry_arg} --format json quota should-run "
+            f"--goal-id {quoted_goal}{agent_arg}"
+        )
         commands.append(f"loopx --registry {registry_arg} history --goal-id {quoted_goal} --limit {max(1, limit)}")
     return commands
 
@@ -183,8 +219,120 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
         "requires_user_action",
         "recommended_action",
         "reason",
+        "agent_identity",
+        "agent_lane_next_action",
+        "agent_scoped_user_gate_override",
+        "agent_scope_frontier",
+        "goal_frontier_projection",
+        "autonomous_replan_decision",
     )
-    return {key: quota.get(key) for key in keys if key in quota}
+    signals = {key: quota.get(key) for key in keys if key in quota}
+    scheduler_hint = _compact_scheduler_hint(_as_dict(quota.get("scheduler_hint")))
+    if scheduler_hint:
+        signals["scheduler_hint"] = scheduler_hint
+    return signals
+
+
+def _compact_scheduler_hint(scheduler_hint: dict[str, Any]) -> dict[str, Any]:
+    if not scheduler_hint:
+        return {}
+    codex_app = _as_dict(scheduler_hint.get("codex_app"))
+    stateful_backoff = _as_dict(codex_app.get("stateful_backoff"))
+    reset_policy = _as_dict(scheduler_hint.get("reset_policy"))
+    unchanged_poll = _as_dict(scheduler_hint.get("unchanged_poll"))
+    return {
+        "schema_version": "diagnose_scheduler_hint_summary_v0",
+        "action": scheduler_hint.get("action"),
+        "cadence_class": scheduler_hint.get("cadence_class"),
+        "reason": scheduler_hint.get("reason"),
+        "codex_app": {
+            "apply": codex_app.get("apply"),
+            "host_action": codex_app.get("host_action"),
+            "recommended_rrule": codex_app.get("recommended_rrule"),
+            "recommended_interval_minutes": codex_app.get("recommended_interval_minutes"),
+            "current_rrule": stateful_backoff.get("current_rrule"),
+            "apply_needed": stateful_backoff.get("apply_needed"),
+            "no_spend_for_cadence_change": codex_app.get("no_spend_for_cadence_change"),
+        },
+        "unchanged_poll": {
+            "final_quota_replan_check_enabled": unchanged_poll.get(
+                "final_quota_replan_check_enabled"
+            ),
+            "final_quota_replan_check_action": unchanged_poll.get(
+                "final_quota_replan_check_action"
+            ),
+        },
+        "reset_policy": {
+            "reset_token": reset_policy.get("reset_token"),
+            "codex_app_initial_rrule": reset_policy.get("codex_app_initial_rrule"),
+        },
+    }
+
+
+def _goal_frontier_projection_line(goal_frontier: dict[str, Any]) -> str | None:
+    if not goal_frontier:
+        return None
+    normalized_progress = (
+        goal_frontier.get("normalized_progress")
+        if isinstance(goal_frontier.get("normalized_progress"), dict)
+        else {}
+    )
+    remaining = (
+        goal_frontier.get("remaining_advancement_frontier")
+        if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
+        else {}
+    )
+    deferred_successors = (
+        goal_frontier.get("deferred_successors")
+        if isinstance(goal_frontier.get("deferred_successors"), dict)
+        else {}
+    )
+    monitor_only_lanes = (
+        goal_frontier.get("monitor_only_lanes")
+        if isinstance(goal_frontier.get("monitor_only_lanes"), dict)
+        else {}
+    )
+    acceptance_gaps = (
+        goal_frontier.get("acceptance_gaps")
+        if isinstance(goal_frontier.get("acceptance_gaps"), list)
+        else []
+    )
+    autonomy_blockers = (
+        goal_frontier.get("autonomy_blockers")
+        if isinstance(goal_frontier.get("autonomy_blockers"), list)
+        else []
+    )
+    return (
+        "- goal_frontier_projection: "
+        f"replan_required={goal_frontier.get('replan_required')} "
+        f"user_open={normalized_progress.get('user_open_count')} "
+        f"agent_open={normalized_progress.get('agent_open_count')} "
+        f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
+        f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
+        f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')} "
+        f"deferred_ready={deferred_successors.get('ready_count')} "
+        f"monitor_only={monitor_only_lanes.get('present')} "
+        f"acceptance_gaps={len(acceptance_gaps)} "
+        f"autonomy_blockers={len(autonomy_blockers)}"
+    )
+
+
+def _scheduler_hint_line(scheduler_hint: dict[str, Any]) -> str | None:
+    if not scheduler_hint:
+        return None
+    codex_app = _as_dict(scheduler_hint.get("codex_app"))
+    unchanged_poll = _as_dict(scheduler_hint.get("unchanged_poll"))
+    return (
+        "- scheduler_hint: "
+        f"action={scheduler_hint.get('action')} "
+        f"cadence={scheduler_hint.get('cadence_class')} "
+        f"codex_app_apply={codex_app.get('apply')} "
+        f"apply_needed={codex_app.get('apply_needed')} "
+        f"recommended_rrule={codex_app.get('recommended_rrule')} "
+        f"current_rrule={codex_app.get('current_rrule')} "
+        f"final_replan_check={unchanged_poll.get('final_quota_replan_check_enabled')} "
+        f"no_spend_for_cadence_change={codex_app.get('no_spend_for_cadence_change')}"
+    )
 
 
 def _build_goal_packet(
@@ -195,6 +343,7 @@ def _build_goal_packet(
     registry_path: Path,
     scan_roots: list[Path],
     limit: int,
+    agent_id: str | None,
 ) -> dict[str, Any]:
     goal_id = str((item or {}).get("goal_id") or quota.get("goal_id") or "")
     item = item or {}
@@ -215,9 +364,10 @@ def _build_goal_packet(
             "user_open_count": _open_count(user_summary),
             "agent_open_count": _open_count(agent_summary),
             "first_user_todo": _first_text(user_summary),
-            "first_agent_todo": _first_text(agent_summary),
+            "first_agent_todo": _first_agent_todo_text(quota, agent_summary),
         },
         "quota_signals": _compact_quota_signals(quota),
+        "agent_id": agent_id,
         "interaction_contract": _as_dict(quota.get("interaction_contract")),
         "work_lane_contract": _as_dict(quota.get("work_lane_contract")),
         "goal_boundary": _as_dict(quota.get("goal_boundary")),
@@ -233,6 +383,7 @@ def _build_goal_packet(
             registry_path=registry_path,
             scan_roots=scan_roots,
             limit=limit,
+            agent_id=agent_id,
         ),
     }
 
@@ -244,6 +395,7 @@ def collect_diagnosis(
     scan_roots: list[Path],
     limit: int,
     goal_id: str | None = None,
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
     limit = max(1, limit)
     registry_path = registry_path.expanduser()
@@ -262,7 +414,7 @@ def collect_diagnosis(
     goal_packets = []
     for current_goal_id in goal_ids:
         item = item_by_goal.get(current_goal_id)
-        quota = _quota_for_goal(status_payload, current_goal_id)
+        quota = _quota_for_goal(status_payload, current_goal_id, agent_id=agent_id)
         goal_packets.append(
             _build_goal_packet(
                 status_payload=status_payload,
@@ -271,6 +423,7 @@ def collect_diagnosis(
                 registry_path=registry_path,
                 scan_roots=scan_roots,
                 limit=limit,
+                agent_id=agent_id,
             )
         )
     selected_item = _select_attention_item(status_payload, goal_id=goal_id)
@@ -280,11 +433,15 @@ def collect_diagnosis(
         selected = _build_goal_packet(
             status_payload=status_payload,
             item=selected_item,
-            quota={"ok": True, "goal_id": selected_goal_id, "should_run": False},
+            quota={"ok": True, "goal_id": selected_goal_id, "agent_id": agent_id, "should_run": False},
             registry_path=registry_path,
             scan_roots=scan_roots,
             limit=limit,
+            agent_id=agent_id,
         )
+    contract = _as_dict(status_payload.get("contract"))
+    contract_errors = _compact_text_signals(contract.get("errors"))
+    contract_warnings = _compact_text_signals(contract.get("warnings"))
     return {
         "ok": bool(status_payload.get("ok")),
         "schema_version": DIAGNOSIS_SCHEMA_VERSION,
@@ -293,15 +450,23 @@ def collect_diagnosis(
         "registry": str(registry_path),
         "runtime_root": status_payload.get("runtime_root"),
         "goal_id": goal_id,
+        "agent_id": agent_id,
         "selected_goal_id": selected.get("goal_id"),
         "status_ok": status_payload.get("ok"),
         "goal_count": status_payload.get("goal_count"),
+        "goal_packet_count": len(goal_packets),
         "run_count": status_payload.get("run_count"),
         "attention_item_count": _as_dict(status_payload.get("attention_queue")).get("item_count"),
         "selected": selected,
         "goals": goal_packets,
         "status_summary": {
-            "contract": _as_dict(status_payload.get("contract")).get("summary"),
+            "contract": contract.get("summary"),
+            "contract_errors": contract_errors["items"],
+            "contract_errors_total_count": contract_errors["total_count"],
+            "contract_errors_truncated": contract_errors["truncated"],
+            "contract_warnings": contract_warnings["items"],
+            "contract_warnings_total_count": contract_warnings["total_count"],
+            "contract_warnings_truncated": contract_warnings["truncated"],
             "global_registry": _as_dict(_as_dict(status_payload.get("global_registry")).get("summary")),
         },
         "user_prompt": USER_DIAGNOSE_PROMPT,
@@ -312,6 +477,7 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
     selected = _as_dict(payload.get("selected"))
     todo_evidence = _as_dict(selected.get("todo_evidence"))
     quota = _as_dict(selected.get("quota_signals"))
+    status_summary = _as_dict(payload.get("status_summary"))
     lines = [
         "# LoopX Diagnosis Packet",
         "",
@@ -323,7 +489,8 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
         f"- registry: `{payload.get('registry')}`",
         f"- runtime_root: `{payload.get('runtime_root')}`",
         f"- selected_goal_id: `{payload.get('selected_goal_id')}`",
-        f"- goals: `{payload.get('goal_count')}`",
+        f"- status_goals: `{payload.get('goal_count')}`",
+        f"- goal_packets: `{payload.get('goal_packet_count') or len(_as_list(payload.get('goals')))}`",
         f"- runs: `{payload.get('run_count')}`",
         "",
         "## Machine Signals",
@@ -354,6 +521,31 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
                 f"- quota_reason: {quota.get('reason')}",
             ]
         )
+        goal_frontier_line = _goal_frontier_projection_line(
+            _as_dict(quota.get("goal_frontier_projection"))
+        )
+        if goal_frontier_line:
+            lines.append(goal_frontier_line)
+        scheduler_hint_line = _scheduler_hint_line(_as_dict(quota.get("scheduler_hint")))
+        if scheduler_hint_line:
+            lines.append(scheduler_hint_line)
+
+    contract_errors = _as_list(status_summary.get("contract_errors"))
+    contract_warnings = _as_list(status_summary.get("contract_warnings"))
+    if contract_errors or contract_warnings:
+        lines.extend(["", "## Status Contract Signals", ""])
+        for item in contract_errors:
+            lines.append(f"- contract_error: {item}")
+        if status_summary.get("contract_errors_truncated"):
+            lines.append(
+                f"- contract_errors_truncated: total={status_summary.get('contract_errors_total_count')}"
+            )
+        for item in contract_warnings:
+            lines.append(f"- contract_warning: {item}")
+        if status_summary.get("contract_warnings_truncated"):
+            lines.append(
+                f"- contract_warnings_truncated: total={status_summary.get('contract_warnings_total_count')}"
+            )
 
     checklist = _as_list(selected.get("agent_reasoning_checklist"))
     if checklist:

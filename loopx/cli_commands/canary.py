@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -13,7 +15,9 @@ from ..canary.planner import (
     render_catalog_canary_profiles_markdown,
 )
 from ..canary.runner import (
+    build_canary_smoke_suite_run,
     build_catalog_canary_run,
+    render_canary_smoke_suite_run_markdown,
     render_catalog_canary_run_markdown,
 )
 
@@ -24,6 +28,130 @@ PrintPayload = Callable[
 ]
 FormatSelector = Callable[..., str]
 AddFormat = Callable[[argparse.ArgumentParser], None]
+
+
+def _dedupe_preserving_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _run_git_name_only(repo_root: Path, args: list[str]) -> dict[str, object]:
+    command = ["git", "-C", str(repo_root), *args]
+    completed = subprocess.run(
+        command,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    files = [
+        line.strip()
+        for line in completed.stdout.splitlines()
+        if line.strip()
+    ]
+    return {
+        "ok": completed.returncode == 0,
+        "returncode": completed.returncode,
+        "command": command,
+        "changed_files": files,
+        "stderr_tail": completed.stderr[-800:],
+    }
+
+
+def collect_git_diff_changed_files(
+    *,
+    repo_root: Path,
+    base_ref: str = "origin/main",
+) -> dict[str, object]:
+    """Collect committed, staged, unstaged, and untracked paths for canary selection."""
+
+    base_ref = (base_ref or "origin/main").strip() or "origin/main"
+    sources = {
+        "base": _run_git_name_only(repo_root, ["diff", "--name-only", f"{base_ref}...HEAD"]),
+        "staged": _run_git_name_only(repo_root, ["diff", "--name-only", "--cached"]),
+        "unstaged": _run_git_name_only(repo_root, ["diff", "--name-only"]),
+        "untracked": _run_git_name_only(repo_root, ["ls-files", "--others", "--exclude-standard"]),
+    }
+    changed_files = _dedupe_preserving_order(
+        [
+            file
+            for source in sources.values()
+            for file in (source.get("changed_files") or [])
+            if isinstance(file, str)
+        ]
+    )
+    successful_sources = [
+        name for name, source in sources.items()
+        if source.get("ok")
+    ]
+    warnings = [
+        {
+            "source": name,
+            "returncode": source.get("returncode"),
+            "stderr_tail": source.get("stderr_tail"),
+        }
+        for name, source in sources.items()
+        if not source.get("ok")
+    ]
+    return {
+        "ok": bool(successful_sources),
+        "base_ref": base_ref,
+        "repo_root": str(repo_root),
+        "changed_files": changed_files,
+        "changed_file_count": len(changed_files),
+        "successful_sources": successful_sources,
+        "warnings": warnings,
+    }
+
+
+def _resolve_canary_changed_files(args: argparse.Namespace) -> tuple[list[str], dict[str, object] | None]:
+    changed_files = list(args.changed_file or [])
+    git_diff_selector = None
+    if bool(getattr(args, "from_git_diff", False)):
+        git_diff_selector = collect_git_diff_changed_files(
+            repo_root=Path.cwd(),
+            base_ref=str(getattr(args, "git_diff_base", "origin/main") or "origin/main"),
+        )
+        changed_files.extend(
+            file
+            for file in (git_diff_selector.get("changed_files") or [])
+            if isinstance(file, str)
+        )
+    return _dedupe_preserving_order(changed_files), git_diff_selector
+
+
+def _attach_selector_sources(
+    payload: dict[str, object],
+    *,
+    git_diff_selector: dict[str, object] | None,
+) -> None:
+    if git_diff_selector is None:
+        return
+    payload["selector_sources"] = {"git_diff": git_diff_selector}
+
+
+def _print_smoke_suite_progress(event: dict[str, object]) -> None:
+    kind = str(event.get("event") or "")
+    index = event.get("check_index")
+    total = event.get("check_count")
+    if kind == "check_started":
+        command = str(event.get("command") or "")
+        print(f"[loopx canary] start {index}/{total}: {command}", file=sys.stderr, flush=True)
+    elif kind == "check_finished":
+        status = str(event.get("status") or "")
+        duration = event.get("duration_seconds")
+        print(
+            f"[loopx canary] done {index}/{total}: {status} ({duration}s)",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def _add_canary_selector_args(parser: argparse.ArgumentParser) -> None:
@@ -37,6 +165,19 @@ def _add_canary_selector_args(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=[],
         help="Changed path or glob-like surface. Repeat for multiple paths.",
+    )
+    parser.add_argument(
+        "--from-git-diff",
+        action="store_true",
+        help=(
+            "Append changed paths from git diff against --git-diff-base plus "
+            "staged, unstaged, and untracked working-tree changes."
+        ),
+    )
+    parser.add_argument(
+        "--git-diff-base",
+        default="origin/main",
+        help="Base ref for --from-git-diff committed changes. Defaults to origin/main.",
     )
     parser.add_argument(
         "--surface",
@@ -81,7 +222,7 @@ def register_canary_commands(
 ) -> None:
     canary_parser = subparsers.add_parser(
         "canary",
-        help="Plan or run catalog-informed canary profiles.",
+        help="Plan or run catalog-informed canary profiles and smoke suites.",
     )
     canary_sub = canary_parser.add_subparsers(dest="canary_command", required=True)
 
@@ -127,6 +268,71 @@ def register_canary_commands(
         help="Per-check timeout for executed canaries.",
     )
 
+    smoke_parser = canary_sub.add_parser(
+        "smoke-suite",
+        help="Run or preview public smoke scripts as a full suite, module subset, or catalog profile.",
+    )
+    add_subcommand_format(smoke_parser)
+    _add_canary_selector_args(smoke_parser)
+    smoke_parser.add_argument(
+        "--suite",
+        choices=["default-public", "full-public", "catalog-plan"],
+        default="default-public",
+        help=(
+            "Smoke selection mode. default-public excludes explicit grouped checks; "
+            "full-public includes every tracked examples/**/*-smoke.py; catalog-plan "
+            "runs only checks selected by catalog/profile inputs."
+        ),
+    )
+    smoke_parser.add_argument(
+        "--module",
+        action="append",
+        default=[],
+        help="Filter suite scripts by module token, such as quota, status, or canary. Repeatable.",
+    )
+    smoke_parser.add_argument(
+        "--script",
+        action="append",
+        default=[],
+        help="Run a specific examples/**/*-smoke.py script. Repeatable.",
+    )
+    smoke_parser.add_argument(
+        "--no-execute",
+        action="store_true",
+        help="Preview normalized smoke commands without running checks.",
+    )
+    smoke_parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Maximum selected checks to execute or preview. Defaults to all selected checks.",
+    )
+    smoke_parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=120.0,
+        help="Per-check timeout for executed smoke scripts.",
+    )
+    smoke_parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop execution at the first failed or timed-out smoke.",
+    )
+    smoke_parser.add_argument(
+        "--allow-tracked-side-effects",
+        action="store_true",
+        help=(
+            "Allow selected smoke scripts to modify tracked files. Defaults to false; "
+            "read-only smoke-suite runs fail and restore generated tracked changes "
+            "when the suite starts from a clean tree."
+        ),
+    )
+    smoke_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Do not print per-check smoke-suite progress to stderr during execution.",
+    )
+
     coverage_parser = canary_sub.add_parser(
         "coverage-audit",
         help="Report P0/P1 catalog patterns missing canary profile coverage or explicit exception rationale.",
@@ -158,9 +364,10 @@ def handle_canary_command(
         payload = build_catalog_canary_profiles(catalog_path=args.catalog)
         renderer = render_catalog_canary_profiles_markdown
     elif args.canary_command == "plan":
+        changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_catalog_canary_plan(
             catalog_path=args.catalog,
-            changed_files=list(args.changed_file or []),
+            changed_files=changed_files,
             surfaces=list(args.surface or []),
             families=list(args.family or []),
             profiles=list(args.profile or []),
@@ -168,11 +375,13 @@ def handle_canary_command(
             max_checks_per_family=int(args.max_checks_per_family or 3),
             max_checks_per_profile=int(args.max_checks_per_profile or 3),
         )
+        _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
         renderer = render_catalog_canary_plan_markdown
     elif args.canary_command == "run":
+        changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         payload = build_catalog_canary_run(
             catalog_path=args.catalog,
-            changed_files=list(args.changed_file or []),
+            changed_files=changed_files,
             surfaces=list(args.surface or []),
             families=list(args.family or []),
             profiles=list(args.profile or []),
@@ -183,7 +392,35 @@ def handle_canary_command(
             execute=not bool(args.no_execute),
             timeout_seconds=float(args.timeout_seconds or 120.0),
         )
+        _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
         renderer = render_catalog_canary_run_markdown
+    elif args.canary_command == "smoke-suite":
+        changed_files, git_diff_selector = _resolve_canary_changed_files(args)
+        payload = build_canary_smoke_suite_run(
+            suite=str(args.suite or "default-public"),
+            modules=list(args.module or []),
+            scripts=list(args.script or []),
+            catalog_path=args.catalog,
+            changed_files=changed_files,
+            surfaces=list(args.surface or []),
+            families=list(args.family or []),
+            profiles=list(args.profile or []),
+            include_deep_checks=bool(args.include_deep_checks),
+            max_checks_per_family=int(args.max_checks_per_family or 3),
+            max_checks_per_profile=int(args.max_checks_per_profile or 3),
+            limit=int(args.limit or 0),
+            execute=not bool(args.no_execute),
+            timeout_seconds=float(args.timeout_seconds or 120.0),
+            fail_fast=bool(args.fail_fast),
+            allow_tracked_side_effects=bool(args.allow_tracked_side_effects),
+            progress_callback=(
+                None
+                if bool(args.no_execute) or bool(args.no_progress)
+                else _print_smoke_suite_progress
+            ),
+        )
+        _attach_selector_sources(payload, git_diff_selector=git_diff_selector)
+        renderer = render_canary_smoke_suite_run_markdown
     elif args.canary_command == "coverage-audit":
         payload = build_catalog_canary_coverage_audit(
             catalog_path=args.catalog,
@@ -191,6 +428,6 @@ def handle_canary_command(
         )
         renderer = render_catalog_canary_coverage_audit_markdown
     else:
-        raise ValueError("canary requires `profiles`, `plan`, `run`, or `coverage-audit`")
+        raise ValueError("canary requires `profiles`, `plan`, `run`, `smoke-suite`, or `coverage-audit`")
     print_payload(payload, output_format(args), renderer)
     return 0 if payload.get("ok") else 1

@@ -161,7 +161,7 @@ Metric extraction should read only public-safe projections:
   evidence, and retry counts;
 - `decentralized_research_frontier_v0` for currently runnable, blocked,
   promotion, and retirement candidates;
-- `research_showcase_projection_v0` for public case pages;
+- `research_evidence_graph_v0` for any future public case page inputs;
 - `loopx_rollout_event_v0` summaries for timestamps and lifecycle transitions;
 - user/operator gates after they have been compacted into public-safe gate
   labels and todo ids.

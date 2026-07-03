@@ -672,184 +672,32 @@ def main() -> int:
             registry_path=registry_path,
             runtime=runtime,
         )
-        assert first_guard["effective_action"] == "monitor_quiet_skip", first_guard
-        assert first_guard["should_run"] is False, first_guard
-        assert first_guard["execution_obligation"]["must_attempt_work"] is False, first_guard
-        assert first_guard["automation_liveness"]["automation_action"] == "keep_active_quiet", first_guard
-        assert first_guard["automation_liveness"]["keep_active"] is True, first_guard
-        assert first_guard["automation_liveness"]["pause_allowed"] is False, first_guard
-        assert "not a self-stop signal" in first_guard["automation_liveness"]["reason"], first_guard
-        assert first_guard["scheduler_hint"]["action"] == "backoff_until_material_transition", first_guard
-        assert first_guard["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 15, first_guard
-        assert first_guard["scheduler_hint"]["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", first_guard
-        assert first_guard["scheduler_hint"]["codex_app"]["example_progression_minutes"] == [15, 30, 60], first_guard
-        assert first_guard["scheduler_hint"]["codex_app"]["max_interval_minutes"] == 60, first_guard
-        assert first_guard["scheduler_hint"]["unchanged_poll"]["limits"]["codex_cli_tui"] == 3, first_guard
-        assert first_guard["scheduler_hint"]["unchanged_poll"]["final_quota_replan_check_enabled"] is True, first_guard
-        assert "local_scheduler" not in first_guard["scheduler_hint"], first_guard
-        assert "codex_cli_tui" not in first_guard["scheduler_hint"], first_guard
-        assert "claude_code_loop" not in first_guard["scheduler_hint"], first_guard
-        assert "cold_path_detail" not in first_guard["scheduler_hint"], first_guard
-        reset = first_guard["scheduler_hint"]["reset_policy"]
-        assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-        assert reset["profile_action"] == "backoff_until_material_transition", reset
-        assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
-        assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
-        assert reset["codex_app_initial_interval_minutes"] == 15, reset
-        assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
-        assert reset["identity_key_count"] == len(first_guard["scheduler_hint"]["unchanged_identity_keys"]), reset
-        assert len(reset["identity_signature"]) == 12, reset
-        assert len(reset["profile_signature"]) == 12, reset
-        assert "identity_snapshot" not in reset, reset
-        assert "profile_snapshot" not in reset, reset
-        assert "identity_keys" not in reset, reset
-        assert "token_changed" in reset["reset_condition_summary"], reset
-        assert "material_transition" in reset["reset_condition_summary"], reset
-        assert "active_work_projected" in reset["reset_condition_summary"], reset
-        assert reset["clear_unchanged_poll_state"] is True, reset
-        first_reset_token = reset["reset_token"]
-        assert "automation=keep_active_quiet" in first_guard["protocol_action_packet"]["summary"], first_guard
-        assert "scheduler=backoff_until_material_transition" in first_guard["protocol_action_packet"]["summary"], first_guard
-        assert "pause_allowed=false" in first_guard["protocol_action_packet"]["summary"], first_guard
-        interaction = first_guard["interaction_contract"]
-        assert interaction["mode"] == "monitor_quiet_skip", interaction
-        assert interaction["user_channel"]["action_required"] is False, interaction
-        assert interaction["agent_channel"]["must_attempt"] is False, interaction
-        assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
-        assert interaction["cli_channel"]["spend_after_validation"] is False, interaction
-        actions = interaction["cli_channel"]["next_cli_actions"]
-        monitor_poll_action = actions[0]
-        assert shlex.split(monitor_poll_action) == [
-            "loopx",
-            "quota",
-            "monitor-poll",
-            "--goal-id",
-            GOAL_ID,
-            "--execute",
-        ], interaction
-
-        for index in range(5):
-            poll_reason = f"fixture monitor poll no material transition {index}"
-            if index == 0:
-                poll = run_projected_loopx_command(
-                    root,
-                    monitor_poll_action,
-                    "--reason-summary",
-                    poll_reason,
-                    "--scan-path",
-                    str(project),
-                    registry_path=registry_path,
-                    runtime=runtime,
-                )
-            else:
-                poll = run_cli(
-                    root,
-                    "quota",
-                    "monitor-poll",
-                    "--goal-id",
-                    GOAL_ID,
-                    "--source",
-                    "heartbeat",
-                    "--reason-summary",
-                    poll_reason,
-                    "--execute",
-                    "--scan-path",
-                    str(project),
-                    registry_path=registry_path,
-                    runtime=runtime,
-                )
-            assert poll["ok"] is True, poll
-            assert poll["appended"] is True, poll
-            assert poll["registry_mutated"] is False, poll
-            assert poll["classification"] == "quota_monitor_poll", poll
-            assert poll["monitor_event"]["before"]["effective_action"] == "monitor_quiet_skip", poll
-            assert poll["monitor_event"]["reason_summary"] == poll_reason, poll
-            assert count_spend_events(runtime) == 0, poll
-            assert count_events(runtime, "quota_monitor_poll") == index + 1, poll
-
-        intermediate_guard = run_cli(
-            root,
-            "quota",
-            "should-run",
-            "--goal-id",
-            GOAL_ID,
-            "--scan-path",
-            str(project),
-            registry_path=registry_path,
-            runtime=runtime,
-        )
-        assert intermediate_guard["should_run"] is False, intermediate_guard
-        assert intermediate_guard["effective_action"] == "monitor_quiet_skip", intermediate_guard
-        assert "autonomous_replan_obligation" not in intermediate_guard, intermediate_guard
-
-        poll_reason = "fixture monitor poll no material transition 5"
-        poll = run_cli(
-            root,
-            "quota",
-            "monitor-poll",
-            "--goal-id",
-            GOAL_ID,
-            "--source",
-            "heartbeat",
-            "--reason-summary",
-            poll_reason,
-            "--execute",
-            "--scan-path",
-            str(project),
-            registry_path=registry_path,
-            runtime=runtime,
-        )
-        assert poll["ok"] is True, poll
-        assert poll["classification"] == "quota_monitor_poll", poll
-        assert count_spend_events(runtime) == 0, poll
-        assert count_events(runtime, "quota_monitor_poll") == 6, poll
-
-        replan_guard = run_cli(
-            root,
-            "quota",
-            "should-run",
-            "--goal-id",
-            GOAL_ID,
-            "--scan-path",
-            str(project),
-            registry_path=registry_path,
-            runtime=runtime,
-        )
-        assert replan_guard["should_run"] is True, replan_guard
-        assert replan_guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", replan_guard
-        obligation = replan_guard["autonomous_replan_obligation"]
-        assert obligation["triggers"][0]["kind"] == "dead_monitor_repeat", obligation
-        assert obligation["stall_threshold"] == 6, obligation
-        assert obligation["triggers"][0]["run_count"] == 6, obligation
-        assert obligation["triggers"][0]["threshold"] == 6, obligation
-        assert obligation["dead_monitor_detector"]["schema_version"] == "dead_monitor_repeat_v0", obligation
-        assert obligation["dead_monitor_detector"]["threshold"] == 6, obligation
-        assert obligation["dead_monitor_detector"]["required_resolution"] == [
-            "watch_lane_expiry",
-            "blocker",
-            "todo_supersede",
-            "successor_runnable_todo",
-        ], obligation
+        assert first_guard["effective_action"] == "autonomous_replan_required", first_guard
+        assert first_guard["should_run"] is True, first_guard
+        assert first_guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", first_guard
+        obligation = first_guard["autonomous_replan_obligation"]
+        assert obligation["triggers"][0]["kind"] == "frontier_exhausted_monitor_lane", obligation
+        assert obligation["stall_threshold"] == 1, obligation
         assert obligation["guidance_actions"] == [
-            "set_watch_expiry",
-            "write_blocker",
-            "supersede_monitor",
             "create_successor",
+            "supersede_monitor",
+            "set_watch_expiry",
+            "record_no_followup",
         ], obligation
-        assert "watch-lane continuation with expiry" in obligation["recommended_action"], obligation
-        assert replan_guard["execution_obligation"]["kind"] == "autonomous_replan_required", replan_guard
-        assert replan_guard["execution_obligation"]["must_attempt_work"] is True, replan_guard
-        assert replan_guard["automation_liveness"]["automation_action"] == "execute_bounded_work", replan_guard
-        assert replan_guard["automation_liveness"]["pause_allowed"] is False, replan_guard
-        assert replan_guard["scheduler_hint"]["action"] == "run_now", replan_guard
-        assert replan_guard["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 3, replan_guard
-        assert replan_guard["scheduler_hint"]["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", replan_guard
-        replan_reset = replan_guard["scheduler_hint"]["reset_policy"]
-        assert replan_reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=3", replan_reset
-        assert replan_reset["reset_token"] != first_reset_token, replan_reset
-        assert "active_work_projected" in replan_reset["reset_condition_summary"], replan_reset
-        assert "automation=execute_bounded_work" in replan_guard["protocol_action_packet"]["summary"], replan_guard
-        interaction = replan_guard["interaction_contract"]
+        assert "another monitor-only quiet poll" in obligation["recommended_action"], obligation
+        assert first_guard["execution_obligation"]["kind"] == "autonomous_replan_required", first_guard
+        assert first_guard["execution_obligation"]["must_attempt_work"] is True, first_guard
+        assert first_guard["automation_liveness"]["automation_action"] == "execute_bounded_work", first_guard
+        assert first_guard["automation_liveness"]["pause_allowed"] is False, first_guard
+        assert first_guard["scheduler_hint"]["action"] == "run_now", first_guard
+        assert first_guard["scheduler_hint"]["codex_app"]["recommended_interval_minutes"] == 3, first_guard
+        assert first_guard["scheduler_hint"]["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", first_guard
+        reset = first_guard["scheduler_hint"]["reset_policy"]
+        assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=3", reset
+        assert "reset_condition_summary" not in reset, reset
+        assert "automation=execute_bounded_work" in first_guard["protocol_action_packet"]["summary"], first_guard
+        assert count_events(runtime, "quota_monitor_poll") == 0, first_guard
+        interaction = first_guard["interaction_contract"]
         assert interaction["mode"] == "autonomous_replan", interaction
         assert interaction["agent_channel"]["must_attempt"] is True, interaction
         assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
@@ -864,7 +712,7 @@ def main() -> int:
             "monitor_poll_autonomous_replan_recorded_v0",
             "--autonomous-replan-recorded",
             "--repair-delta-kind",
-            "monitor_target",
+            "watch_lane_continuation",
             "--delivery-batch-scale",
             "single_surface",
             "--delivery-outcome",
@@ -947,27 +795,6 @@ def main() -> int:
         assert ack["ok"] is True, ack
         assert ack.get("delivery_outcome") is None, ack
 
-        post_ack_poll_count = count_events(runtime, "quota_monitor_poll")
-        for index in range(2):
-            poll = run_cli(
-                root,
-                "quota",
-                "monitor-poll",
-                "--goal-id",
-                GOAL_ID,
-                "--source",
-                "heartbeat",
-                "--execute",
-                "--scan-path",
-                str(project),
-                registry_path=registry_path,
-                runtime=runtime,
-            )
-            assert poll["ok"] is True, poll
-            assert poll["classification"] == "quota_monitor_poll", poll
-            assert count_spend_events(runtime) == 1, poll
-            assert count_events(runtime, "quota_monitor_poll") == post_ack_poll_count + index + 1, poll
-
         post_ack_guard = run_cli(
             root,
             "quota",
@@ -986,6 +813,68 @@ def main() -> int:
             post_ack_guard["heartbeat_recommendation"]["recommended_mode"]
             == "monitor_quiet_until_material_transition"
         ), post_ack_guard
+        post_ack_interaction = post_ack_guard["interaction_contract"]
+        assert post_ack_interaction["mode"] == "monitor_quiet_skip", post_ack_interaction
+        post_ack_actions = post_ack_interaction["cli_channel"]["next_cli_actions"]
+        post_ack_monitor_poll_action = post_ack_actions[0]
+        assert shlex.split(post_ack_monitor_poll_action) == [
+            "loopx",
+            "quota",
+            "monitor-poll",
+            "--goal-id",
+            GOAL_ID,
+            "--execute",
+        ], post_ack_interaction
+
+        post_ack_poll_count = count_events(runtime, "quota_monitor_poll")
+        for index in range(2):
+            if index == 0:
+                poll = run_projected_loopx_command(
+                    root,
+                    post_ack_monitor_poll_action,
+                    "--scan-path",
+                    str(project),
+                    registry_path=registry_path,
+                    runtime=runtime,
+                )
+            else:
+                poll = run_cli(
+                    root,
+                    "quota",
+                    "monitor-poll",
+                    "--goal-id",
+                    GOAL_ID,
+                    "--source",
+                    "heartbeat",
+                    "--execute",
+                    "--scan-path",
+                    str(project),
+                    registry_path=registry_path,
+                    runtime=runtime,
+                )
+            assert poll["ok"] is True, poll
+            assert poll["classification"] == "quota_monitor_poll", poll
+            assert count_spend_events(runtime) == 1, poll
+            assert count_events(runtime, "quota_monitor_poll") == post_ack_poll_count + index + 1, poll
+
+        post_poll_guard = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert post_poll_guard["effective_action"] == "monitor_quiet_skip", post_poll_guard
+        assert post_poll_guard["execution_obligation"]["must_attempt_work"] is False, post_poll_guard
+        assert post_poll_guard.get("autonomous_replan_obligation") is None, post_poll_guard
+        assert (
+            post_poll_guard["heartbeat_recommendation"]["recommended_mode"]
+            == "monitor_quiet_until_material_transition"
+        ), post_poll_guard
 
     with tempfile.TemporaryDirectory(prefix="loopx-external-evidence-observation-") as tmp:
         root = Path(tmp)

@@ -15,13 +15,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.auto_research import (  # noqa: E402
-    AUTO_RESEARCH_BOARD_SCHEMA_VERSION,
+from loopx.capabilities.auto_research.research_state import (  # noqa: E402
     AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION,
     RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION,
     RESEARCH_FRONTIER_SCHEMA_VERSION,
-    RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION,
-    build_auto_research_board_projection,
     build_auto_research_projection,
     build_live_auto_research_projection,
     load_auto_research_fixture,
@@ -70,33 +67,17 @@ def main() -> None:
     assert payload["schema_version"] == AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION, payload
     assert payload["frontier"]["schema_version"] == RESEARCH_FRONTIER_SCHEMA_VERSION, payload
     assert payload["evidence_graph"]["schema_version"] == RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION, payload
-    assert payload["showcase_projection"]["schema_version"] == RESEARCH_SHOWCASE_PROJECTION_SCHEMA_VERSION, payload
     assert payload["frontier"]["agent_id"] == "codex-side-bypass", payload
     assert payload["frontier"]["selected"]["hypothesis_id"] == "hyp_002", payload
     assert payload["frontier"]["selected"]["allowed_action"] == "run_dev_attempt", payload
     assert payload["frontier"]["blocked"][0]["blocked_by"] == "claimed_by:codex-product-capability", payload
     assert payload["evidence_graph"]["holdout_improved"] is True, payload
     assert payload["evidence_graph"]["negative_evidence_count"] == 1, payload
-    assert payload["showcase_projection"]["decentralized_pattern"].startswith("todo_linked"), payload
+    assert "showcase_projection" not in payload, payload
+    assert "artifact_packet" not in payload, payload
     assert payload["public_boundary"]["raw_logs_recorded"] is False, payload
     assert payload["public_boundary"]["private_artifacts_recorded"] is False, payload
     assert_no_private_surface(payload)
-
-    board_payload = build_auto_research_board_projection(payload)
-    assert board_payload["ok"], board_payload
-    assert board_payload["schema_version"] == AUTO_RESEARCH_BOARD_SCHEMA_VERSION, board_payload
-    assert board_payload["generated_from"] == AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION, board_payload
-    assert board_payload["surface"]["stage"] == "experimental", board_payload
-    assert board_payload["projection_binding"]["read_only"] is True, board_payload
-    assert board_payload["projection_binding"]["source_kind"] == "public_fixture", board_payload
-    assert board_payload["projection_binding"]["first_screen_policy"] == (
-        "experimental_only_not_first_screen_without_owner_review"
-    ), board_payload
-    assert board_payload["decision_candidates"]["promotion_candidates"], board_payload
-    assert board_payload["decision_candidates"]["retirement_candidates"], board_payload
-    assert len(board_payload["user_gates"]) >= 4, board_payload
-    assert board_payload["artifact_packet"]["schema_version"] == "auto_research_artifact_packet_v0", board_payload
-    assert_no_private_surface(board_payload)
 
     result = run_cli(
         [
@@ -114,26 +95,6 @@ def main() -> None:
     assert cli_payload["ok"], cli_payload
     assert cli_payload["frontier"]["selected"]["todo_id"] == "todo_auto_research_002", cli_payload
     assert_no_private_surface(cli_payload)
-
-    board_result = run_cli(
-        [
-            "--format",
-            "json",
-            "auto-research",
-            "board",
-            "--fixture",
-            str(FIXTURE),
-            "--agent-id",
-            "codex-side-bypass",
-        ]
-    )
-    cli_board_payload = json.loads(board_result.stdout)
-    assert cli_board_payload["ok"], cli_board_payload
-    assert cli_board_payload["schema_version"] == AUTO_RESEARCH_BOARD_SCHEMA_VERSION, cli_board_payload
-    assert cli_board_payload["projection_binding"]["read_only"] is True, cli_board_payload
-    assert cli_board_payload["projection_binding"]["source_kind"] == "public_fixture", cli_board_payload
-    assert cli_board_payload["user_gates"][0]["gate_id"] == "first_screen_review_gate", cli_board_payload
-    assert_no_private_surface(cli_board_payload)
 
     bad_fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     bad_fixture["evidence_events"][0]["artifact_refs"] = ["/" + "Users/example/raw.log"]
@@ -162,7 +123,7 @@ def main() -> None:
         encoding="utf-8"
     )
     assert "decentralized_research_frontier_v0" in docs, docs
-    assert "research_showcase_projection_v0" in docs, docs
+    assert "shared control plane" in docs, docs
 
     live_payload = build_live_auto_research_projection(
         goal_id="loopx-meta",
@@ -219,7 +180,8 @@ def main() -> None:
     assert live_payload["frontier"]["blocked"][0]["blocked_by"] == "claimed_by:codex-main-control", live_payload
     assert live_payload["frontier"]["blocked"][1]["blocked_by"] == "claimed_by:codex-product-capability", live_payload
     assert live_payload["evidence_graph"]["hypothesis_count"] == 3, live_payload
-    assert live_payload["showcase_projection"]["decentralized_pattern"].startswith("todo_backed_live_frontier"), live_payload
+    assert "showcase_projection" not in live_payload, live_payload
+    assert "artifact_packet" not in live_payload, live_payload
     assert live_payload["public_boundary"]["source"] == "live_quota_status_projection", live_payload
     assert_no_private_surface(live_payload)
 

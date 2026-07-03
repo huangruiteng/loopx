@@ -30,6 +30,9 @@ def main() -> int:
     dashboard_source = DASHBOARD_DEMO_SMOKE.read_text(encoding="utf-8")
 
     assert_contains(canary_source, "--no-write-evidence", "canary no-write flag")
+    assert_contains(canary_source, "--agent-id", "canary refresh-state agent id flag")
+    assert_contains(canary_source, "DEFAULT_READINESS_AGENT_ID", "canary default writeback agent")
+    assert_contains(canary_source, "DEFAULT_READINESS_AGENT_LANE", "canary default writeback lane")
     assert_contains(canary_source, "dashboard-demo-readiness-smoke.py", "canary dashboard demo-readiness command")
     assert_contains(canary_source, 'commands.append(("dashboard demo readiness", dashboard_command))', "canary grouped path append")
     assert_before(

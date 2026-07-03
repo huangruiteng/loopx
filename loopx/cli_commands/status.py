@@ -59,6 +59,13 @@ def register_status_commands(
     )
     status_parser.add_argument("--limit", type=int, default=5)
     status_parser.add_argument(
+        "--goal-id",
+        help=(
+            "Optional goal id to focus the status projection. The default remains "
+            "the global dashboard/status view."
+        ),
+    )
+    status_parser.add_argument(
         "--agent-id",
         help=(
             "Registered agent id for adding agent-lane next-action projection "
@@ -81,6 +88,13 @@ def register_status_commands(
     )
     add_subcommand_format(diagnose_parser)
     diagnose_parser.add_argument("--goal-id", help="Goal id to diagnose. Defaults to the first attention item.")
+    diagnose_parser.add_argument(
+        "--agent-id",
+        help=(
+            "Registered agent id for identity-scoped quota/todo projection. "
+            "Use this for multi-agent goals and heartbeat-driven diagnosis."
+        ),
+    )
     diagnose_parser.add_argument(
         "--scan-root",
         default=default_public_scan_root(),
@@ -224,6 +238,7 @@ def handle_status_command(
             scan_roots=_scan_roots(args),
             limit=max(0, args.limit),
             include_task_graph=args.include_task_graph,
+            goal_id=args.goal_id,
         )
         if args.agent_id:
             attach_agent_lane_next_actions(payload, agent_id=args.agent_id)
@@ -306,6 +321,7 @@ def _review_handoff_agent(
     *,
     coordination: dict[str, Any],
     profile: dict[str, Any],
+    identity: dict[str, Any],
     role: str | None,
 ) -> str | None:
     review_policy = profile.get("review_policy")
@@ -313,6 +329,9 @@ def _review_handoff_agent(
         handoff_agent = normalize_todo_claimed_by(review_policy.get("handoff_agent"))
         if handoff_agent:
             return handoff_agent
+    handoff_agent = normalize_todo_claimed_by(identity.get("handoff_agent"))
+    if handoff_agent:
+        return handoff_agent
     if role == "side-agent":
         return normalize_todo_claimed_by(coordination.get("side_agent_handoff_agent"))
     return None
@@ -341,6 +360,39 @@ def _current_claims_for_agent(item: dict[str, Any], *, agent_id: str) -> list[st
     return claims
 
 
+def _selected_claim_for_agent(guard: dict[str, Any], *, agent_id: str) -> str | None:
+    next_action = guard.get("agent_lane_next_action")
+    if not isinstance(next_action, dict):
+        return None
+    todo_id = str(next_action.get("todo_id") or "").strip()
+    if not todo_id:
+        return None
+    lane_agent = normalize_todo_claimed_by(next_action.get("agent_id"))
+    if lane_agent and lane_agent != agent_id:
+        return None
+    if next_action.get("claim_required_before_work") is True:
+        return None
+    claimed_by = normalize_todo_claimed_by(next_action.get("claimed_by"))
+    selected_by = str(next_action.get("selected_by") or "").strip()
+    if claimed_by == agent_id or selected_by == "current_agent_claimed_todo":
+        return todo_id
+    return None
+
+
+def _current_claims_with_selected_lane(
+    item: dict[str, Any],
+    *,
+    guard: dict[str, Any],
+    agent_id: str,
+) -> list[str]:
+    claims = _current_claims_for_agent(item, agent_id=agent_id)
+    selected_claim = _selected_claim_for_agent(guard, agent_id=agent_id)
+    if not selected_claim:
+        return claims
+    claims = [claim for claim in claims if claim != selected_claim]
+    return [selected_claim, *claims]
+
+
 def _build_agent_member_projection(
     item: dict[str, Any],
     *,
@@ -357,7 +409,7 @@ def _build_agent_member_projection(
         limit=80,
     )
     worktree_policy, requires_independent_worktree = _profile_worktree_policy(profile)
-    claims = _current_claims_for_agent(item, agent_id=agent_id)
+    claims = _current_claims_with_selected_lane(item, guard=guard, agent_id=agent_id)
     member: dict[str, Any] = {
         "schema_version": "agent_member_v0",
         "agent_id": agent_id,
@@ -383,6 +435,7 @@ def _build_agent_member_projection(
     handoff_agent = _review_handoff_agent(
         coordination=coordination,
         profile=profile,
+        identity=identity,
         role=role,
     )
     if handoff_agent:
@@ -411,6 +464,7 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
     attached = 0
     frontier_attached = 0
     hint_attached = 0
+    goal_frontier_attached = 0
     member_attached = 0
     for item in items:
         if not isinstance(item, dict):
@@ -445,6 +499,13 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
                 project_asset["agent_lane_frontier_hint"] = frontier_hint
             hint_attached += 1
             changed = True
+        goal_frontier = guard.get("goal_frontier_projection")
+        if isinstance(goal_frontier, dict):
+            item["goal_frontier_projection"] = goal_frontier
+            if isinstance(project_asset, dict):
+                project_asset["goal_frontier_projection"] = goal_frontier
+            goal_frontier_attached += 1
+            changed = True
         agent_member = _build_agent_member_projection(
             item,
             guard=guard,
@@ -458,13 +519,14 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
             changed = True
         if not changed:
             continue
-    if attached or frontier_attached or hint_attached or member_attached:
+    if attached or frontier_attached or hint_attached or goal_frontier_attached or member_attached:
         payload["agent_lane_next_action_projection"] = {
             "schema_version": "agent_lane_next_action_projection_v0",
             "agent_id": safe_agent_id,
             "attached_count": attached,
             "frontier_attached_count": frontier_attached,
             "frontier_hint_attached_count": hint_attached,
+            "goal_frontier_attached_count": goal_frontier_attached,
             "agent_member_attached_count": member_attached,
             "preserves_goal_next_action": True,
         }
@@ -494,6 +556,7 @@ def handle_diagnose_command(
             scan_roots=_scan_roots(args),
             limit=max(1, args.limit),
             goal_id=args.goal_id,
+            agent_id=args.agent_id,
         )
     except Exception as exc:
         payload = {

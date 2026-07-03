@@ -339,11 +339,14 @@ The reusable skills have intentionally narrow jobs:
 
 | Skill | Use it for | Do not use it for |
 | --- | --- | --- |
-| `loopx-auto-research` | Running role-scoped auto-research lanes after LoopX has projected a role profile, frontier item, demo pane, or evidence/promotion task. | Assigning identity, bypassing quota/gates, acting as a leader agent, or selecting/promoting the whole research graph. |
 | `loopx-project` | Connecting projects, reading status/quota/history, diagnosing LoopX, generating heartbeat/review packets, and refreshing state. | Reading private project documents by default or replacing the CLI as source of truth. |
 | `loopx-pr-review` | Running `/loopx-pr-review`, preserving the `loopx pr-review` packet, and guiding per-PR five-block reviews. | Approving, commenting on, merging, self-merging, or admin-bypassing a PR. |
 | `loopx-doc-registry` | Registering durable project material and redacted authority-source metadata. | Copying raw doc bodies, internal URLs, or private comments into public repo docs. |
 | `loopx-self-repair` | Repairing surprising control-plane behavior, stale projection, tiny turns, or contradictory guard payloads. | Lowering gates, guessing around missing authority, or committing private runtime state. |
+
+Auto-research role guidance is worker-local: the visible worker launcher owns
+the `loopx-auto-research` playbook after it has projected a role profile,
+quota packet, and frontier item. It is not installed as a global LoopX skill.
 
 Keep three layers separate:
 
@@ -377,8 +380,7 @@ the pieces you intend to drop:
 
 ```bash
 rm -f ~/.local/bin/loopx ~/.local/bin/loopx-canary
-rm -rf ~/.codex/skills/loopx-auto-research \
-       ~/.codex/skills/loopx-project \
+rm -rf ~/.codex/skills/loopx-project \
        ~/.codex/skills/loopx-pr-review \
        ~/.codex/skills/loopx-doc-registry \
        ~/.codex/skills/loopx-self-repair

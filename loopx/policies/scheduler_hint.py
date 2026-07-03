@@ -5,10 +5,134 @@ import json
 from collections.abc import Collection
 from typing import Any
 
+from ..delivery_outcome import DeliveryOutcome
+from ..scheduler_state import (
+    CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    CODEX_APP_SURFACE,
+    SCHEDULER_STATE_SCHEMA_VERSION,
+    rrule_for_minutes,
+)
+
 
 SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
 SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
+CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
+
+
+def normalize_scheduler_rrule(value: Any) -> str:
+    text = " ".join(str(value or "").strip().split())
+    if text.upper().startswith("RRULE:"):
+        text = text[6:].strip()
+    return text
+
+
+def scheduler_backoff_packet(
+    decision: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    scheduler_hint = (
+        decision.get("scheduler_hint")
+        if isinstance(decision.get("scheduler_hint"), dict)
+        else {}
+    )
+    codex_app = (
+        scheduler_hint.get("codex_app")
+        if isinstance(scheduler_hint.get("codex_app"), dict)
+        else {}
+    )
+    stateful_backoff = (
+        codex_app.get("stateful_backoff")
+        if isinstance(codex_app.get("stateful_backoff"), dict)
+        else {}
+    )
+    return scheduler_hint, codex_app, stateful_backoff
+
+
+def _int_number(value: Any, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def build_codex_app_scheduler_ack_event(
+    before: dict[str, Any],
+    *,
+    agent_id: str | None,
+    applied_rrule: str,
+    classification: str = "quota_scheduler_ack",
+    surface: str = CODEX_APP_SURFACE,
+    state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    generated_at: str | None = None,
+    reason_summary: str | None = None,
+    compact_before: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    safe_agent_id = str(agent_id or "").strip()
+    if not safe_agent_id:
+        raise ValueError("quota scheduler-ack requires a scoped --agent-id")
+    _, codex_app, stateful_backoff = scheduler_backoff_packet(before)
+    if not stateful_backoff:
+        raise ValueError("quota scheduler-ack requires scheduler_hint.codex_app.stateful_backoff")
+    if str(stateful_backoff.get("state_key") or "") != state_key:
+        raise ValueError("quota scheduler-ack state_key does not match current quota scheduler hint")
+    if stateful_backoff.get("apply_needed") is not True:
+        raise ValueError("quota scheduler-ack is not needed because the current RRULE is already applied")
+    expected_rrule = normalize_scheduler_rrule(
+        codex_app.get("recommended_rrule") or stateful_backoff.get("current_rrule")
+    )
+    safe_applied_rrule = normalize_scheduler_rrule(applied_rrule)
+    if not expected_rrule:
+        raise ValueError("quota scheduler-ack has no current recommended_rrule to acknowledge")
+    if safe_applied_rrule != expected_rrule:
+        raise ValueError(
+            f"quota scheduler-ack applied_rrule {safe_applied_rrule!r} does not match expected {expected_rrule!r}"
+        )
+    codex_progression = (
+        codex_app.get("example_progression_minutes")
+        if isinstance(codex_app.get("example_progression_minutes"), list)
+        else []
+    )
+    progression_minutes = (
+        stateful_backoff.get("progression_minutes")
+        if isinstance(stateful_backoff.get("progression_minutes"), list)
+        else codex_progression
+    )
+    progression_index = max(0, _int_number(stateful_backoff.get("progression_index"), default=0))
+    safe_generated_at = generated_at or ""
+    scheduler_state = {
+        "schema_version": SCHEDULER_STATE_SCHEMA_VERSION,
+        "goal_id": before.get("goal_id"),
+        "agent_id": safe_agent_id,
+        "surface": surface,
+        "state_key": state_key,
+        "reset_token": stateful_backoff.get("reset_token"),
+        "identity_signature": stateful_backoff.get("identity_signature"),
+        "progression_index": progression_index,
+        "progression_minutes": progression_minutes,
+        "last_applied_rrule": expected_rrule,
+        "updated_at": safe_generated_at,
+        "source": classification,
+    }
+    reason = str(reason_summary or "").strip() or (
+        f"acknowledged Codex App scheduler RRULE {expected_rrule}; no quota spend"
+    )
+    return {
+        "generated_at": safe_generated_at,
+        "goal_id": before.get("goal_id"),
+        "classification": classification,
+        "agent_id": safe_agent_id,
+        "recommended_action": reason,
+        "health_check": "scheduler ack state updated; no quota spend",
+        "delivery_outcome": DeliveryOutcome.SURFACE_ONLY.value,
+        "scheduler_ack_event": {
+            "event_type": classification,
+            "surface": surface,
+            "state_key": state_key,
+            "applied_rrule": expected_rrule,
+            "before": compact_before if isinstance(compact_before, dict) else before,
+            "scheduler_state": scheduler_state,
+        },
+    }
 
 
 def build_scheduler_hint(
@@ -17,6 +141,7 @@ def build_scheduler_hint(
     user_action_required: bool = False,
     agent_scope_frontier_actions: Collection[str] = (),
     include_detail: bool = False,
+    codex_app_scheduler_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project host-runtime cadence/backoff policy from a quota decision.
 
@@ -89,6 +214,7 @@ def build_scheduler_hint(
         claude_limit: int | None,
         multiplier: int = 2,
         cadence_progression_override: list[int] | None = None,
+        advance_same_identity: bool = True,
     ) -> dict[str, Any]:
         cadence_progression = cadence_progression_override or [
             min(codex_interval * (multiplier**step), codex_max)
@@ -104,7 +230,7 @@ def build_scheduler_hint(
             "spend_policy": "no quota spend for final replan check or loop stop",
         }
         identity_snapshot = {key: identity_value(key) for key in identity_keys}
-        codex_rrule = f"FREQ=MINUTELY;INTERVAL={codex_interval}"
+        codex_rrule = rrule_for_minutes(codex_interval)
         profile_snapshot = {
             "cadence_class": cadence_class,
             "codex_app_initial_interval_minutes": codex_interval,
@@ -143,7 +269,7 @@ def build_scheduler_hint(
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:12]
-        reset_policy = {
+        reset_policy_detail = {
             "schema_version": SCHEDULER_RESET_POLICY_SCHEMA_VERSION,
             "source": "quota.should-run",
             "reset_to": "profile_initial_interval",
@@ -162,6 +288,13 @@ def build_scheduler_hint(
             "codex_app_tool": "automation_update",
             "codex_app_apply": "call_automation_update_to_restore_initial_rrule_on_token_change",
             "no_spend_for_reset": True,
+        }
+        reset_policy = {
+            "reset_token": reset_token,
+            "host_state_key": "scheduler_hint.reset_policy.reset_token",
+            "codex_app_initial_interval_minutes": codex_interval,
+            "codex_app_initial_rrule": codex_rrule,
+            "identity_signature": identity_signature,
         }
         local_scheduler = {
             "recommended_interval_minutes": codex_interval,
@@ -185,6 +318,85 @@ def build_scheduler_hint(
             "final_quota_replan_check": final_replan_check,
             "no_spend_for_stop": True,
         }
+        current_index = 0
+        state_status = "missing"
+        scheduler_state = (
+            codex_app_scheduler_state
+            if isinstance(codex_app_scheduler_state, dict)
+            else {}
+        )
+        if scheduler_state:
+            same_identity = (
+                scheduler_state.get("reset_token") == reset_token
+                and scheduler_state.get("identity_signature") == identity_signature
+            )
+            if same_identity:
+                state_status = "same_identity"
+                try:
+                    applied_index = int(scheduler_state.get("progression_index"))
+                except (TypeError, ValueError):
+                    applied_index = -1
+                next_index = applied_index + 1 if advance_same_identity else 0
+                current_index = min(max(next_index, 0), len(cadence_progression) - 1)
+            else:
+                state_status = "reset_required"
+        current_interval = cadence_progression[current_index]
+        current_rrule = rrule_for_minutes(current_interval)
+        last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
+        apply_needed = state_status != "same_identity" or last_applied_rrule != current_rrule
+        stateful_backoff_detail = {
+            "progression_minutes": cadence_progression,
+            "current_interval_minutes": current_interval,
+            "ack_required_after_apply": apply_needed,
+            "persist": "reset_token|identity_signature|progression_index|last_applied_rrule",
+            "same_identity_action": (
+                "advance_index_after_scheduler_ack"
+                if advance_same_identity
+                else "keep_initial_interval_while_active_work"
+            ),
+            "reset_action": "clear_progression_index_apply_initial_rrule",
+            "automation_update_scope": "rrule_only_preserve_body_name_status",
+        }
+        codex_app = {
+            "recommended_interval_minutes": current_interval,
+            "max_interval_minutes": codex_max,
+            "unchanged_poll_backoff_multiplier": multiplier,
+            "example_progression_minutes": cadence_progression,
+            "apply": (
+                "update_automation_cadence_if_possible"
+                if apply_needed
+                else "none_already_applied"
+            ),
+            "host_tool": "automation_update",
+            "host_action": (
+                "update_current_heartbeat_rrule"
+                if apply_needed
+                else "none"
+            ),
+            "host_action_contract": (
+                "automation_update_rrule_then_quota_scheduler_ack"
+                if apply_needed
+                else "skip_automation_update_when_apply_needed_false"
+            ),
+            "rrule_source": (
+                "scheduler_hint.codex_app.recommended_rrule"
+                if apply_needed
+                else None
+            ),
+            "stateful_backoff": {
+                "schema_version": CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION,
+                "state_key": CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+                "identity_signature": identity_signature,
+                "reset_token": reset_token,
+                "progression_index": current_index,
+                "current_rrule": current_rrule,
+                "apply_needed": apply_needed,
+                "state_status": state_status,
+            },
+            "no_spend_for_cadence_change": True,
+        }
+        if apply_needed:
+            codex_app["recommended_rrule"] = current_rrule
         scheduler_hint = {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,
             "source": "quota.should-run",
@@ -192,19 +404,7 @@ def build_scheduler_hint(
             "cadence_class": cadence_class,
             "reason": reason,
             "spend_policy": spend_policy,
-            "codex_app": {
-                "recommended_interval_minutes": codex_interval,
-                "recommended_rrule": codex_rrule,
-                "max_interval_minutes": codex_max,
-                "unchanged_poll_backoff_multiplier": multiplier,
-                "example_progression_minutes": cadence_progression,
-                "apply": "update_automation_cadence_if_possible",
-                "host_tool": "automation_update",
-                "host_action": "update_current_heartbeat_rrule",
-                "host_action_contract": "call_automation_update_update_with_recommended_rrule_when_available",
-                "rrule_source": "scheduler_hint.codex_app.recommended_rrule",
-                "no_spend_for_cadence_change": True,
-            },
+            "codex_app": codex_app,
             "unchanged_poll": {
                 "limits": {
                     "local_scheduler": cli_limit,
@@ -239,6 +439,8 @@ def build_scheduler_hint(
                     "codex_cli_tui",
                     "claude_code_loop",
                     "final_quota_replan_check",
+                    "reset_policy_detail",
+                    "stateful_backoff_detail",
                 ],
             },
         }
@@ -250,6 +452,8 @@ def build_scheduler_hint(
                 "codex_cli_tui": codex_cli_tui,
                 "claude_code_loop": claude_code_loop,
                 "final_quota_replan_check": final_replan_check,
+                "reset_policy_detail": reset_policy_detail,
+                "stateful_backoff_detail": stateful_backoff_detail,
             }
         return scheduler_hint
 
@@ -291,6 +495,7 @@ def build_scheduler_hint(
             codex_max=10,
             cli_limit=None,
             claude_limit=None,
+            advance_same_identity=False,
         )
 
     if user_required or recommended_mode in {"ask_operator_gate", "blocker_push_notify"}:

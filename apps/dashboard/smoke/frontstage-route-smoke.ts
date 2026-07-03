@@ -24,7 +24,6 @@ function sourceBetween(source: string, start: string, end: string, label: string
 
 const routerSource = readFileSync("src/router.tsx", "utf8");
 const mainSource = readFileSync("src/main.tsx", "utf8");
-const frontstageAutoResearchSource = readFileSync("src/views/frontstage-auto-research-page.tsx", "utf8");
 const frontstageDeveloperSource = readFileSync("src/views/frontstage-developer-page.tsx", "utf8");
 const frontstageSource = readFileSync("src/views/frontstage-page.tsx", "utf8");
 const stylesSource = readFileSync("src/styles.css", "utf8");
@@ -32,7 +31,6 @@ const dataSource = readFileSync("src/data/goal-channel-frontstage.ts", "utf8");
 const localStatusQuerySource = readFileSync("src/data/local-status-query.ts", "utf8");
 const statusSource = readFileSync("src/data/status.ts", "utf8");
 const catalogSource = readFileSync("../../docs/showcases/showcase-catalog.json", "utf8");
-const autoResearchBoardSource = readFileSync("../../docs/product/auto-research-frontstage-board.public.json", "utf8");
 const rolloutProjectionFixtureSource = readFileSync("../../examples/fixtures/frontstage-rollout-projections.public.json", "utf8");
 const privateTrapFixtureSource = readFileSync("../../examples/fixtures/frontstage-private-status-trap.public.json", "utf8");
 const readmeSource = readFileSync("README.md", "utf8");
@@ -44,9 +42,9 @@ includes(routerSource, "component: FrontstagePage", "frontstage route component"
 includes(routerSource, 'path: "/frontstage/developer"', "frontstage developer route path");
 includes(routerSource, "component: FrontstageDeveloperPage", "frontstage developer route component");
 includes(routerSource, "frontstageDeveloperRoute", "frontstage developer route export");
-includes(routerSource, 'path: "/frontstage/auto-research"', "frontstage auto-research route path");
-includes(routerSource, "component: FrontstageAutoResearchPage", "frontstage auto-research route component");
-includes(routerSource, "frontstageAutoResearchRoute", "frontstage auto-research route export");
+excludes(routerSource, 'path: "/frontstage/auto-research"', "retired frontstage auto-research board route path");
+excludes(routerSource, "component: FrontstageAutoResearchPage", "retired frontstage auto-research board component");
+excludes(routerSource, "frontstageAutoResearchRoute", "retired frontstage auto-research board route export");
 includes(routerSource, "frontstageSearchSchema", "frontstage search schema");
 includes(routerSource, 'mode: z.enum(["showcase", "developer", "ops"]).optional().default("showcase")', "frontstage mode gate");
 includes(routerSource, 'todoLane: z.enum(["all", "user", "agent"]).optional().default("all")', "frontstage todo lane filter search param");
@@ -59,58 +57,6 @@ includes(privateTrapFixtureSource, "GH_FAKE_PRIVATE_PLAN_SUMMARY_ALPHA", "fake-p
 includes(privateTrapFixtureSource, "GH_FAKE_LIVE_STATUS_FEED_BETA", "fake-private live status trap marker");
 includes(privateTrapFixtureSource, "GH_FAKE_PRIVATE_TODO_GAMMA", "fake-private todo trap marker");
 includes(packageSource, '"@tanstack/react-query"', "TanStack Query dependency");
-
-const autoResearchBoard = JSON.parse(autoResearchBoardSource);
-assert(
-  autoResearchBoard.schema_version === "auto_research_frontstage_board_v0",
-  "auto-research board schema version",
-);
-assert(autoResearchBoard.surface.stage === "experimental", "auto-research board remains experimental");
-assert(autoResearchBoard.projection_binding.read_only === true, "auto-research board read-only binding");
-assert(
-  autoResearchBoard.projection_binding.first_screen_policy ===
-    "experimental_only_not_first_screen_without_owner_review",
-  "auto-research board first-screen policy",
-);
-assert(autoResearchBoard.lane_contract.topology === "decentralized", "auto-research decentralized topology");
-assert(autoResearchBoard.value_metrics.length >= 4, "auto-research board must expose user-value metrics");
-assert(
-  autoResearchBoard.evidence_graph.best_holdout_metric > autoResearchBoard.evidence_graph.metric.baseline,
-  "auto-research board must surface held-out improvement",
-);
-assert(
-  autoResearchBoard.decision_candidates.promotion_candidates.length >= 1,
-  "auto-research board promotion candidate",
-);
-assert(
-  autoResearchBoard.decision_candidates.retirement_candidates.length >= 1,
-  "auto-research board retirement candidate",
-);
-assert(autoResearchBoard.user_gates.length >= 4, "auto-research board user gates");
-for (const gateId of [
-  "first_screen_review_gate",
-  "promotion_gate",
-  "protected_scope_gate",
-  "real_launch_gate",
-]) {
-  assert(
-    autoResearchBoard.user_gates.some((gate: { gate_id: string }) => gate.gate_id === gateId),
-    `auto-research board user gate ${gateId}`,
-  );
-}
-for (const forbidden of [
-  "/Users/",
-  "/private/",
-  "/tmp/",
-  "lark" + "office",
-  "byte" + "dance",
-  "Bearer ",
-  "api_key",
-  "password",
-  "secret",
-]) {
-  excludes(autoResearchBoardSource, forbidden, `auto-research board private marker ${forbidden}`);
-}
 
 includes(mainSource, "QueryClientProvider", "TanStack Query provider");
 includes(mainSource, "new QueryClient", "query client construction");
@@ -434,25 +380,8 @@ includes(readmeSource, "write authority", "README write authority boundary");
 includes(selectionSource, "Multica", "Multica benchmark note");
 includes(selectionSource, "agent board", "agent board benchmark note");
 
-includes(frontstageAutoResearchSource, 'data-testid="frontstage-auto-research-board"', "auto-research board route test id");
-includes(frontstageAutoResearchSource, "autoResearchBoardData", "auto-research board JSON import");
-includes(frontstageAutoResearchSource, "auto-research-frontstage-board.public.json", "auto-research board public fixture");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-value-metrics"', "auto-research value metrics");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-contract-commands"', "auto-research runnable command strip");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-lane-contract"', "auto-research lane contract");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-frontier"', "auto-research per-agent frontier");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-evidence-graph"', "auto-research evidence graph");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-decision-candidates"', "auto-research decision candidates");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-user-gates"', "auto-research user gates");
-includes(frontstageAutoResearchSource, 'data-testid="auto-research-showcase-projection"', "auto-research showcase projection");
-includes(autoResearchBoardSource, "single leader agent owns the whole hypothesis tree", "auto-research hidden leader anti-pattern");
-includes(autoResearchBoardSource, "Public fixture and protected-evaluator outputs only", "auto-research public boundary");
-includes(autoResearchBoardSource, "first_screen_review_gate", "auto-research first-screen gate data");
-includes(frontstageAutoResearchSource, "BoardPanel", "auto-research board panel component");
-excludes(frontstageAutoResearchSource, "<form", "auto-research board write form");
-excludes(frontstageAutoResearchSource, "method=", "auto-research board form method");
-excludes(frontstageAutoResearchSource, "fetchFrontstageStatusPayload", "auto-research board live status dependency");
-excludes(frontstageAutoResearchSource, "statusUrl", "auto-research board status URL dependency");
+excludes(routerSource, "auto-research-frontstage-board.public.json", "retired auto-research board fixture");
+excludes(routerSource, "frontstage-auto-research-page", "retired auto-research board page import");
 
 includes(frontstageDeveloperSource, 'data-testid="frontstage-developer-cockpit"', "developer cockpit route test id");
 includes(frontstageDeveloperSource, "LoopX Projection Developer Cockpit", "developer cockpit title");

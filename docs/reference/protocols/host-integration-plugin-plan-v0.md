@@ -38,7 +38,7 @@ The eventual host plugin should be small and explicit:
 | Lifecycle reads | Surface status, quota, review packet, and command-pack output as compact host packets. | CLI JSON from `status`, `quota should-run`, `review-packet`, and `bootstrap-command-pack`. |
 | Controlled writes | Offer only CLI-equivalent todo/gate/reward/refresh/spend operations, with dry-run when required. | LoopX CLI commands and active-state/event ledger writes. |
 | Automation install | Create or refresh the host heartbeat using `heartbeat-prompt --thin` and scoped agent identity. | Generated heartbeat prompt and registry coordination fields. |
-| Scheduler adapter | Apply `scheduler_hint.codex_app.recommended_rrule` through `automation_update` and reset cadence when `reset_policy.reset_token` changes. | `quota should-run.scheduler_hint`. |
+| Scheduler adapter | Apply `scheduler_hint.codex_app.recommended_rrule` through `automation_update` only when `stateful_backoff.apply_needed=true`, then call `quota scheduler-ack` so LoopX persists progression state. | `quota should-run.scheduler_hint`, `quota scheduler-ack`. |
 | Privacy guard | Redact local paths and reject raw transcript/session-file/credential payloads. | Public/private boundary plus host projection boundary checks. |
 
 ## Phased Path
@@ -99,9 +99,14 @@ Exit criteria:
 The host applies `quota should-run.scheduler_hint` after each heartbeat result:
 
 - `run_now` restores or keeps active cadence.
-- wait/backoff states update the RRULE toward the recommended interval.
-- `reset_policy.reset_token` changes clear unchanged-poll state and restore the
-  initial RRULE before starting a new backoff progression.
+- wait/backoff states expose `codex_app.recommended_rrule` only when host update
+  work is needed.
+- `codex_app.stateful_backoff.apply_needed=true` means call `automation_update`
+  for that RRULE; after success, call `quota scheduler-ack --applied-rrule ...`
+  so LoopX persists reset token, identity signature, progression index, and
+  last applied RRULE.
+- `apply_needed=false` means the desired RRULE is already applied; skip the host
+  update.
 - Codex CLI TUI and Claude Code loops run the final quota/replan check before
   self-stop.
 

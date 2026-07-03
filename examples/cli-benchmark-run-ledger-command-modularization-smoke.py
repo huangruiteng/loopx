@@ -45,6 +45,11 @@ def main() -> int:
         raise AssertionError(help_result.stderr or help_result.stdout)
     assert_contains(help_result.stdout, "--update-run-ledger")
     assert_contains(help_result.stdout, "--skillsbench-route")
+    merge_help_result = run_cli("benchmark", "run-ledger-merge", "--help")
+    if merge_help_result.returncode != 0:
+        raise AssertionError(merge_help_result.stderr or merge_help_result.stdout)
+    assert_contains(merge_help_result.stdout, "--source-run-ledger-path")
+    assert_contains(merge_help_result.stdout, "--source-run-ledger-glob")
 
     terminal_result = run_cli(
         "--format",
@@ -270,6 +275,80 @@ def main() -> int:
             raise AssertionError(check_payload)
         if check_payload["read_boundary"].get("upload_invoked") is not False:
             raise AssertionError(check_payload)
+
+        def compact_source_ledger(case_id: str, run_id: str) -> dict[str, object]:
+            return {
+                "schema_version": "benchmark_run_ledger_v0",
+                "benchmarks": {
+                    "skillsbench@1.1": {
+                        "cases": {
+                            case_id: {
+                                "case_id": case_id,
+                                "runs": [
+                                    {
+                                        "run_id": run_id,
+                                        "benchmark_id": "skillsbench@1.1",
+                                        "case_id": case_id,
+                                        "arm_id": "codex_app_server_goal_baseline",
+                                        "mode": "skillsbench_codex_app_server_goal_baseline",
+                                        "run_group_id": (
+                                            "skillsbench-revtunnel-appgoal-batch5-smoke"
+                                        ),
+                                        "official_score": 0.0,
+                                        "official_passed": False,
+                                        "failure_class": (
+                                            "official_verifier_solution_failure"
+                                        ),
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                },
+            }
+
+        source_a = temp_root / "source-a" / "benchmark-run-ledger.json"
+        source_b = temp_root / "source-b" / "benchmark-run-ledger.json"
+        source_a.parent.mkdir(parents=True)
+        source_b.parent.mkdir(parents=True)
+        source_a.write_text(
+            json.dumps(compact_source_ledger("merge-alpha", "merge-run-alpha")),
+            encoding="utf-8",
+        )
+        source_b.write_text(
+            json.dumps(compact_source_ledger("merge-beta", "merge-run-beta")),
+            encoding="utf-8",
+        )
+        merged_ledger = temp_root / "merged" / "benchmark-run-ledger.json"
+        merge_result = run_cli(
+            "--format",
+            "json",
+            "benchmark",
+            "run-ledger-merge",
+            "--run-ledger-path",
+            str(merged_ledger),
+            "--source-run-ledger-path",
+            str(source_a),
+            "--source-run-ledger-path",
+            str(source_b),
+            "--benchmark-id",
+            "skillsbench@1.1",
+            "--run-group-contains",
+            "batch5",
+            "--execute",
+        )
+        if merge_result.returncode != 0:
+            raise AssertionError(merge_result.stderr or merge_result.stdout)
+        merge_payload = payload_from(merge_result)
+        if merge_payload.get("ok") is not True:
+            raise AssertionError(merge_payload)
+        merge_summary = merge_payload["merge"]
+        if merge_summary.get("source_paths_recorded") is not False:
+            raise AssertionError(merge_payload)
+        if merge_summary.get("merged_run_count") != 2:
+            raise AssertionError(merge_payload)
+        if str(source_a) in merge_result.stdout or str(source_b) in merge_result.stdout:
+            raise AssertionError(merge_result.stdout)
 
     print("cli-benchmark-run-ledger-command-modularization-smoke: ok")
     return 0

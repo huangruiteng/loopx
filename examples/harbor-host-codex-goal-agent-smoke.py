@@ -648,6 +648,9 @@ def main() -> int:
         class _FakeTurn:
             thread_id = "thread_demo"
             turn_id = "turn_demo"
+            turn_id_source = "fixture"
+            turn_start_response_turn_id_present = True
+            turn_event_stream_turn_id_present = False
             goal_status = "active"
             turn_status = "completed"
             turn_completed_observed = True
@@ -655,6 +658,22 @@ def main() -> int:
             agent_message_delta_count = 0
             agent_message_item_count = 0
             item_completed_count = 0
+            non_user_item_completed_count = 0
+            user_message_item_count = 0
+            session_log_observed = False
+            session_event_count = 0
+            session_task_complete_observed = False
+            stream_eof_observed = True
+            stream_error_observed = False
+            process_exit_observed = False
+            process_returncode = None
+            transport_reconnect_attempted = False
+            transport_reconnect_succeeded = False
+            transport_reconnect_reason = ""
+            goal_reactivation_attempted = False
+            goal_reactivation_succeeded = False
+            goal_reactivation_previous_status = ""
+            goal_reactivation_result_status = ""
             notifications: list[str] = []
             _responses = None
 

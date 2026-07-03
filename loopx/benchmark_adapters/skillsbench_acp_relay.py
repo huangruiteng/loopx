@@ -446,6 +446,19 @@ def _prompt_with_app_server_closeout_instruction(prompt_text: str) -> str:
         + "Native Codex Goal worker closeout contract:\n"
         + "- Solve the task using only the available benchmark workspace or the "
         + "private bridge packet above.\n"
+        + "- SkillsBench scores relative task output file names from `/root`. "
+        + "If the task asks for `report.json`, `answer.json`, or another "
+        + "relative output file, write and self-check `/root/<name>`; an "
+        + "`/app/<name>` working copy alone is not a scored output.\n"
+        + "- Before writing the final scored output for optimization, "
+        + "scheduling, allocation, routing, planning, or data-processing "
+        + "tasks, run a task-derived quality self-check using only visible "
+        + "task instructions and workspace data: validate hard constraints, "
+        + "compute or estimate the visible objective when the task defines "
+        + "one, compare at least one simple alternative or repair pass when "
+        + "feasible, and only then write the final `/root` output. Do not "
+        + "use official verifier/reward/pass-fail output, hidden tests, "
+        + "gold answers, or external benchmark feedback for this self-check.\n"
         + "- After the task-required scored output file is written, immediately "
         + "end the turn with one short confirmation.\n"
         + "- Do not keep optimizing, narrating, or rechecking after the scored "
@@ -497,6 +510,9 @@ class CodexExecConfig:
     app_server_goal_worker: bool = False
     dataset: str = "skillsbench-v1.1"
     task_id: str = "llm-prefix-cache-replay"
+    run_group_id: str = ""
+    job_name: str = ""
+    rollout_name: str = ""
     approval_policy: str = "never"
     response_timeout_sec: float = 30.0
     worker_script: str | None = None
@@ -504,7 +520,7 @@ class CodexExecConfig:
     first_action_timeout_sec: float = 0.0
     bridge_idle_timeout_sec: float = 0.0
     task_output_quiet_timeout_sec: float = 0.0
-    reasoning_effort: str | None = "high"
+    reasoning_effort: str | None = None
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
     remote_command_file_bridge_agent_command: str | None = None
@@ -728,6 +744,14 @@ class SkillsBenchLocalAcpRelay:
                 str(output_path),
                 "--json",
             ]
+            if self._config.reasoning_effort:
+                cmd.extend(
+                    [
+                        "-c",
+                        "model_reasoning_effort="
+                        + json.dumps(str(self._config.reasoning_effort)),
+                    ]
+                )
             model = self._config.model or session.get("model")
             if model:
                 cmd.extend(["--model", str(model)])
@@ -2029,6 +2053,7 @@ raise SystemExit(proc.returncode)
                 / "scripts"
                 / "skillsbench_host_codex_goal_worker.py"
             )
+            worker_first_action_timeout_sec = self._config.first_action_timeout_sec
             cmd = [
                 sys.executable,
                 str(worker_script),
@@ -2036,6 +2061,12 @@ raise SystemExit(proc.returncode)
                 self._config.dataset,
                 "--task-id",
                 self._config.task_id,
+                "--run-group-id",
+                self._config.run_group_id,
+                "--job-name",
+                self._config.job_name,
+                "--rollout-name",
+                self._config.rollout_name,
                 "--codex-bin",
                 self._config.codex_bin,
                 "--sandbox",
@@ -2055,7 +2086,7 @@ raise SystemExit(proc.returncode)
                 "--turn-timeout-sec",
                 str(self._config.timeout_sec),
                 "--first-action-timeout-sec",
-                str(self._config.first_action_timeout_sec),
+                str(worker_first_action_timeout_sec),
                 "--reasoning-effort",
                 str(self._config.reasoning_effort or "high"),
                 "--runner-integration-ready",
@@ -2070,6 +2101,7 @@ raise SystemExit(proc.returncode)
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
+                    start_new_session=True,
                 )
                 self._write_worker_heartbeat(
                     stdout,
@@ -2156,7 +2188,7 @@ raise SystemExit(proc.returncode)
                         and bridge_first_action_deadline
                         and now >= bridge_first_action_deadline
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2179,7 +2211,7 @@ raise SystemExit(proc.returncode)
                         and meaningful_progress_deadline
                         and now >= meaningful_progress_deadline
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2205,7 +2237,7 @@ raise SystemExit(proc.returncode)
                         and now - last_bridge_activity_at
                         >= task_output_quiet_timeout_sec
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2232,7 +2264,7 @@ raise SystemExit(proc.returncode)
                         )
                         and now - last_bridge_activity_at >= bridge_idle_timeout_sec
                     ):
-                        proc.terminate()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -2249,7 +2281,7 @@ raise SystemExit(proc.returncode)
                             "codex_exec_bridge_idle_timeout"
                         )
                     if now >= deadline:
-                        proc.kill()
+                        self._terminate_codex_process(proc, grace_sec=2)
                         stdout_text, stderr_text = proc.communicate(timeout=2)
                         if bridge_summary_path is not None:
                             self._publish_remote_bridge_agent_operations_trace(
@@ -2276,6 +2308,7 @@ raise SystemExit(proc.returncode)
                     time.sleep(0.2)
                 stdout_text, stderr_text = proc.communicate(timeout=5)
             except subprocess.TimeoutExpired as exc:
+                self._terminate_codex_process(proc, grace_sec=2)
                 if bridge_summary_path is not None:
                     self._publish_remote_bridge_agent_operations_trace(
                         bridge_summary_path=bridge_summary_path,
@@ -2289,6 +2322,10 @@ raise SystemExit(proc.returncode)
                     )
                 self._terminate_bridge_server_process(bridge_server_proc)
                 raise TimeoutError from exc
+            except BaseException:
+                self._terminate_codex_process(proc, grace_sec=2)
+                self._terminate_bridge_server_process(bridge_server_proc)
+                raise
             if proc.returncode != 0:
                 if bridge_summary_path is not None:
                     self._publish_remote_bridge_agent_operations_trace(
@@ -2358,6 +2395,11 @@ raise SystemExit(proc.returncode)
         worker_contract = payload.get("worker_contract")
         if not isinstance(worker_contract, dict):
             worker_contract = {}
+        worker_adapter = (
+            worker_contract.get("worker_adapter")
+            if isinstance(worker_contract.get("worker_adapter"), dict)
+            else {}
+        )
         trace = {
             "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
             "ok": payload.get("ok") is True,
@@ -2374,6 +2416,15 @@ raise SystemExit(proc.returncode)
                     "first_blocker",
                 ),
             ),
+            "worker_adapter": compact_dict(
+                worker_adapter,
+                (
+                    "reasoning_effort",
+                    "agent_execution_mode",
+                    "worker_surface",
+                    "context_only_followup_supported",
+                ),
+            ),
             "prompt": compact_dict(
                 payload.get("prompt"),
                 ("sha256", "chars", "raw_recorded"),
@@ -2386,6 +2437,9 @@ raise SystemExit(proc.returncode)
                     "goal_get_present",
                     "goal_status",
                     "turn_id_present",
+                    "turn_id_source",
+                    "turn_start_response_turn_id_present",
+                    "turn_event_stream_turn_id_present",
                     "turn_status",
                     "turn_completed_observed",
                     "agent_message_delta_count",
@@ -2397,8 +2451,43 @@ raise SystemExit(proc.returncode)
                     "completion_source_of_truth",
                     "first_action_timeout_sec",
                     "first_action_observed",
+                    "effective_action_observed",
+                    "assistant_message_context_only",
+                    "post_context_assistant_chars",
+                    "turn_attempt_count",
+                    "turn_completed_attempt_count",
+                    "assistant_message_attempt_count",
+                    "context_only_turn_count",
+                    "context_only_followup_max",
+                    "context_only_recovery_attempted",
+                    "context_only_recovery_succeeded",
+                    "context_only_followup_start_attempted",
+                    "context_only_followup_start_succeeded",
+                    "context_only_followup_start_error_type",
+                    "transport_reconnect_attempted",
+                    "transport_reconnect_succeeded",
+                    "transport_reconnect_reason",
+                    "goal_reactivation_attempted",
+                    "goal_reactivation_succeeded",
+                    "goal_reactivation_previous_status",
+                    "goal_reactivation_result_status",
+                    "reasoning_effort",
                     "raw_transcript_recorded",
                     "raw_assistant_message_recorded",
+                ),
+            ),
+            "context_only_recovery": compact_dict(
+                payload.get("context_only_recovery"),
+                (
+                    "enabled",
+                    "max_followups",
+                    "attempted",
+                    "succeeded",
+                    "followup_start_attempted",
+                    "followup_start_succeeded",
+                    "followup_start_error_type",
+                    "context_only_turn_count",
+                    "turn_attempt_count",
                 ),
             ),
             "worker_result": compact_dict(
@@ -2631,6 +2720,7 @@ def run_skillsbench_local_acp_relay_probe(
     prompt_text: str | None = None,
     required_response_marker: str | None = None,
     model_id: str | None = "probe-model",
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     argv = (
         _command_to_argv(command)
@@ -2647,6 +2737,7 @@ def run_skillsbench_local_acp_relay_probe(
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=({**os.environ, **env} if env else None),
         )
         stage = "initialize"
         initialize = _probe_request(

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .agent_registry import side_agent_handoff_agent_id_for_goal
 from .benchmark_core import compact_run_permission_policy_for_quota
 from .boundary_authority import checkpointed_boundary_authority_summary
 from .control_plane import (
@@ -32,19 +33,32 @@ from .execution_profile import (
 from .long_task_cadence import long_task_cadence_hint_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .policies.execution_obligation import build_execution_obligation
-from .policies.monitor_todo import (
-    monitor_todo_expires_at,
-    monitor_todo_is_actionable_open,
-    monitor_todo_is_due,
-    monitor_todo_is_expired,
-    monitor_todo_next_due_at,
-    monitor_todo_task_class,
+from .policies.goal_frontier import (
+    AUTONOMOUS_REPLAN_REQUIRED_MODE,
+    autonomous_replan_decision_allowed,
+    build_autonomous_replan_recommendation,
+    build_goal_frontier_projection_from_summaries,
+    derive_goal_frontier_replan_obligation_from_summaries,
+    select_autonomous_replan_obligation,
 )
+from .policies.goal_route_hint import build_goal_route_hint
 from .policies.outcome_followthrough import build_outcome_followthrough_hint
-from .policies.scheduler_hint import build_scheduler_hint
+from .policies.scheduler_hint import (
+    build_codex_app_scheduler_ack_event,
+    build_scheduler_hint,
+    normalize_scheduler_rrule,
+    scheduler_backoff_packet,
+)
 from .policies.work_lane import (
     WORK_LANE_CONTRACT_SCHEMA_VERSION,
     build_work_lane_contract as build_work_lane_contract_policy,
+)
+from .scheduler_state import (
+    CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    CODEX_APP_SURFACE,
+    load_scheduler_state,
+    scheduler_state_path,
+    write_scheduler_state,
 )
 from .state_projection import is_user_wait_text, next_action_projection_warning
 from .todo_contract import (
@@ -68,6 +82,18 @@ from .todo_contract import (
     normalize_todo_task_class,
 )
 from .todo_handoff_gate import HandoffGateState, build_todo_handoff_gate_states
+from .todo_projection import (
+    todo_index_rank as projection_todo_index_rank,
+    todo_item_expires_at as projection_todo_item_expires_at,
+    todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
+    todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
+    todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
+    todo_item_next_due_at as projection_todo_item_next_due_at,
+    todo_item_task_class as projection_todo_item_task_class,
+    todo_priority_label as projection_todo_priority_label,
+    todo_priority_rank as projection_todo_priority_rank,
+    todo_projection_sort_key as projection_todo_projection_sort_key,
+)
 
 
 DEFAULT_COMPUTE_QUOTA = 1.0
@@ -85,6 +111,13 @@ QUOTA_STATE_ORDER = (
 QUOTA_SLOT_SPENT_CLASSIFICATION = "quota_slot_spent"
 QUOTA_SLOT_VOIDED_CLASSIFICATION = "quota_slot_voided"
 QUOTA_MONITOR_POLL_CLASSIFICATION = "quota_monitor_poll"
+QUOTA_SCHEDULER_ACK_CLASSIFICATION = "quota_scheduler_ack"
+AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS = {
+    QUOTA_SLOT_SPENT_CLASSIFICATION,
+    QUOTA_SLOT_VOIDED_CLASSIFICATION,
+    QUOTA_SCHEDULER_ACK_CLASSIFICATION,
+    "delivery_completion_spend_accounted_v0",
+}
 DEFAULT_SLOT_SPEND_SOURCE = "heartbeat"
 VALID_SLOT_SPEND_SOURCES = {"heartbeat", "controller", "adapter"}
 USER_GATE_ACTION_KIND_HINTS = (
@@ -159,6 +192,7 @@ DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
     "dependency_monitor",
 )
 EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_obligation_v0"
+PROJECTED_MONITOR_HANDLE_SCHEMA_VERSION = "projected_monitor_handle_v0"
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
 PROTOCOL_ACTION_PACKET_SCHEMA_VERSION = "protocol_action_packet_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
@@ -206,8 +240,6 @@ TODO_BACKLOG_ITEM_LIMIT = 8
 TODO_DEFERRED_VISIBILITY_LIMIT = 8
 TODO_VISIBILITY_LANE_LIMIT = 16
 MONITOR_DUE_ITEM_LIMIT = 1
-TODO_MISSING_PRIORITY_RANK = 50
-TODO_MISSING_INDEX = 999999
 EXTERNAL_EVIDENCE_OBSERVE_PATTERNS = (
     re.compile(
         r"(?i)\b(?:poll(?:ing)?|observ(?:e|ing)|watch(?:ing)?|await(?:ing)?|wait\s+for|monitor(?:ing)?)\b.*\b"
@@ -386,6 +418,8 @@ def _external_evidence_poll_signal(
     ):
         return None
 
+    scoped_monitor_handle = _projected_monitor_handle(agent_todo_summary)
+    scoped_monitor_watch = _scoped_monitor_watch_without_advancement(agent_todo_summary)
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     action_texts = [
         str(value or "").strip()
@@ -463,12 +497,19 @@ def _external_evidence_poll_signal(
     direct_observe = direct_observe_action or direct_observe_todo or direct_observe_state
     if not direct_observe and not launched_wait:
         return None
+    if scoped_monitor_watch and not scoped_monitor_handle:
+        return None
 
-    observation_target = next((text for text in action_texts if text), None) or next(
-        (text for text in todo_texts if text),
-        "",
+    scoped_monitor_target = (
+        str(scoped_monitor_handle.get("target_text") or "").strip()
+        if isinstance(scoped_monitor_handle, dict)
+        else ""
     )
-    return {
+    observation_target = scoped_monitor_target or next(
+        (text for text in action_texts if text),
+        None,
+    ) or next((text for text in todo_texts if text), "")
+    signal = {
         "source": "active_state_or_latest_run",
         "trigger": "implicit_launched_external_poll",
         "observation_target": observation_target,
@@ -481,6 +522,74 @@ def _external_evidence_poll_signal(
             else "state"
         ),
     }
+    if scoped_monitor_handle:
+        signal["monitor_handle"] = scoped_monitor_handle
+    return signal
+
+
+def _todo_summary_monitor_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return []
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
+    for key in (
+        "monitor_due_items",
+        "current_agent_claimed_monitor_items",
+        "monitor_open_items",
+        "claimed_monitor_open_items",
+        "first_open_items",
+    ):
+        values = summary.get(key)
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            if not _todo_item_is_actionable_open(value):
+                continue
+            if _todo_task_class(value) != TODO_TASK_CLASS_MONITOR:
+                continue
+            identity = (normalize_todo_id(value.get("todo_id")) or "", id(value))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            items.append(value)
+    return items
+
+
+def _projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    for item in _todo_summary_monitor_items(summary):
+        target_key = str(item.get("target_key") or "").strip()
+        if not target_key:
+            continue
+        handle: dict[str, Any] = {
+            "schema_version": PROJECTED_MONITOR_HANDLE_SCHEMA_VERSION,
+            "target_key": target_key,
+        }
+        todo_id = normalize_todo_id(item.get("todo_id"))
+        if todo_id:
+            handle["todo_id"] = todo_id
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if claimed_by:
+            handle["claimed_by"] = claimed_by
+        next_due_at = str(item.get("next_due_at") or "").strip()
+        if next_due_at:
+            handle["next_due_at"] = next_due_at
+        target_text = str(item.get("title") or item.get("text") or "").strip()
+        if target_text:
+            handle["target_text"] = target_text[:320]
+        return handle
+    return None
+
+
+def _scoped_monitor_watch_without_advancement(summary: dict[str, Any] | None) -> bool:
+    if not isinstance(summary, dict):
+        return False
+    if not _todo_summary_claim_scope_agent_id(summary):
+        return False
+    if not _todo_summary_monitor_items(summary):
+        return False
+    return _open_todo_task_counts(summary).get("advancement", 0) <= 0
 
 
 def _post_handoff_latest_run(item: dict[str, Any]) -> dict[str, Any]:
@@ -516,6 +625,11 @@ def _work_lane_contract(
     )
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None
     first_advancement = _first_executable_todo_item(agent_todo_summary)
+    agent_id = _todo_summary_claim_scope_agent_id(agent_todo_summary or {})
+    monitor_blocked_resume_candidates = _agent_scope_monitor_blocked_resume_candidates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
     due_monitor_preempts_advancement = bool(
         first_due_monitor
         and (
@@ -534,6 +648,8 @@ def _work_lane_contract(
         outcome_followthrough=_outcome_followthrough_hint(item),
         next_action_requires_advancement=_next_action_requires_advancement(item),
         monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
+        resume_blocked_by_monitor_count=len(monitor_blocked_resume_candidates),
+        resume_blocked_by_monitor_items=monitor_blocked_resume_candidates,
     )
 
 
@@ -581,7 +697,7 @@ def _external_evidence_observation_obligation(
     if poll_signal and poll_signal.get("observation_target"):
         observation_target = str(poll_signal.get("observation_target") or observation_target)
 
-    return {
+    obligation = {
         "schema_version": EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION,
         "required": True,
         "kind": "external_evidence_monitor" if explicit_wait else "launched_external_work_monitor",
@@ -622,6 +738,10 @@ def _external_evidence_observation_obligation(
             "compact transition or blocker writeback"
         ),
     }
+    monitor_handle = poll_signal.get("monitor_handle") if isinstance(poll_signal, dict) else None
+    if isinstance(monitor_handle, dict) and monitor_handle:
+        obligation["monitor_handle"] = monitor_handle
+    return obligation
 
 
 def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1243,39 +1363,19 @@ def _capability_gate(
 
 
 def _todo_priority_label(item: dict[str, Any]) -> str | None:
-    priority = item.get("priority")
-    if isinstance(priority, str) and priority.strip():
-        return priority.strip().upper()
-    text = " ".join(
-        str(value or "")
-        for value in (item.get("title"), item.get("text"))
-        if str(value or "").strip()
-    )
-    match = re.search(r"\bP([0-4])\b", text.upper())
-    if not match:
-        return None
-    return f"P{match.group(1)}"
+    return projection_todo_priority_label(item)
 
 
 def _todo_priority_rank(item: dict[str, Any]) -> int:
-    priority = _todo_priority_label(item)
-    if not priority:
-        return TODO_MISSING_PRIORITY_RANK
-    match = re.match(r"P([0-4])", priority)
-    if not match:
-        return TODO_MISSING_PRIORITY_RANK
-    return int(match.group(1))
+    return projection_todo_priority_rank(item)
 
 
 def _todo_index_rank(item: dict[str, Any]) -> int:
-    try:
-        return int(item.get("index"))
-    except (TypeError, ValueError):
-        return TODO_MISSING_INDEX
+    return projection_todo_index_rank(item)
 
 
 def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
-    return (_todo_priority_rank(item), _todo_index_rank(item))
+    return projection_todo_projection_sort_key(item)
 
 
 def _claimed_visibility_items(items: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
@@ -1576,6 +1676,97 @@ def _todo_summary_deferred_items(value: dict[str, Any], key: str) -> list[dict[s
     return sorted(items, key=_todo_projection_sort_key)
 
 
+def _dedupe_todo_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, Any]] = set()
+    for item in items:
+        todo_id = normalize_todo_id(item.get("todo_id")) or ""
+        text = str(item.get("text") or "").strip()
+        identity = (todo_id, text, item.get("index"))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(item)
+    return unique
+
+
+def _todo_summary_resume_blocked_items(value: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(value, dict):
+        return []
+    source_items = (
+        value.get("resume_blocked_items")
+        if isinstance(value.get("resume_blocked_items"), list)
+        else []
+    )
+    if not source_items:
+        for key in ("items", "backlog_items", "first_open_items"):
+            raw_items = value.get(key) if isinstance(value.get(key), list) else []
+            source_items.extend(item for item in raw_items if isinstance(item, dict))
+    items: list[dict[str, Any]] = []
+    for item in source_items:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or "").strip()
+        if not text:
+            continue
+        if item.get("done") is True:
+            continue
+        if not normalize_todo_resume_when(item.get("resume_when")):
+            continue
+        if item.get("resume_ready") is not False:
+            continue
+        items.append(_compact_todo_summary_item(item, text=text))
+    return sorted(_dedupe_todo_items(items), key=_todo_projection_sort_key)
+
+
+def _monitor_target_todo_ids(value: dict[str, Any]) -> set[str]:
+    ids: set[str] = set()
+    for key in (
+        "monitor_open_items",
+        "current_agent_claimed_monitor_items",
+        "claimed_monitor_open_items",
+        "items",
+        "backlog_items",
+        "first_open_items",
+    ):
+        source_items = value.get(key) if isinstance(value.get(key), list) else []
+        for item in source_items:
+            if not isinstance(item, dict):
+                continue
+            todo_id = normalize_todo_id(item.get("todo_id"))
+            if not todo_id:
+                continue
+            if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR:
+                ids.add(todo_id)
+    return ids
+
+
+def _todo_summary_monitor_blocked_resume_items(value: dict[str, Any]) -> list[dict[str, Any]]:
+    monitor_ids = _monitor_target_todo_ids(value)
+    candidates: list[dict[str, Any]] = []
+    for item in _todo_summary_resume_blocked_items(value):
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        condition = item.get("resume_condition") if isinstance(item.get("resume_condition"), dict) else {}
+        target_todo_id = normalize_todo_id(
+            condition.get("target_todo_id") or condition.get("target")
+        )
+        target_status = normalize_todo_status(condition.get("target_status"))
+        target_task_class = normalize_todo_task_class(
+            condition.get("target_task_class"),
+            text="",
+        )
+        if target_status != TODO_STATUS_OPEN:
+            continue
+        if target_task_class != TODO_TASK_CLASS_MONITOR and target_todo_id not in monitor_ids:
+            continue
+        candidate = dict(item)
+        if target_todo_id:
+            candidate["blocking_monitor_todo_id"] = target_todo_id
+        candidates.append(candidate)
+    return sorted(_dedupe_todo_items(candidates), key=_todo_projection_sort_key)
+
+
 def _agent_claim_filtered_deferred_items(
     items: list[dict[str, Any]],
     *,
@@ -1593,6 +1784,72 @@ def _agent_claim_filtered_deferred_items(
             continue
         selected.append(item)
     return selected
+
+
+def _resume_blocked_visibility_lanes(
+    value: dict[str, Any],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any]:
+    resume_blocked_items = _todo_summary_resume_blocked_items(value)
+    monitor_blocked_items = _todo_summary_monitor_blocked_resume_items(value)
+    if not resume_blocked_items and not monitor_blocked_items:
+        return {}
+    lanes: dict[str, Any] = {
+        "resume_blocked_count": len(resume_blocked_items),
+        "resume_blocked_items": resume_blocked_items[:TODO_DEFERRED_VISIBILITY_LIMIT],
+    }
+    if monitor_blocked_items:
+        lanes.update(
+            {
+                "monitor_blocked_resume_count": len(monitor_blocked_items),
+                "monitor_blocked_resume_candidates": monitor_blocked_items[
+                    :TODO_DEFERRED_VISIBILITY_LIMIT
+                ],
+            }
+        )
+    agent_id = (
+        normalize_todo_claimed_by(agent_identity.get("agent_id"))
+        if isinstance(agent_identity, dict)
+        else None
+    )
+    if agent_id and monitor_blocked_items:
+        current_agent_candidates = _agent_claim_filtered_deferred_items(
+            monitor_blocked_items,
+            agent_id=agent_id,
+            claim="current",
+        )
+        unclaimed_candidates = _agent_claim_filtered_deferred_items(
+            monitor_blocked_items,
+            agent_id=agent_id,
+            claim="unclaimed",
+        )
+        other_agent_candidates = _agent_claim_filtered_deferred_items(
+            monitor_blocked_items,
+            agent_id=agent_id,
+            claim="other",
+        )
+        lanes.update(
+            {
+                "current_agent_monitor_blocked_resume_candidates": current_agent_candidates[
+                    :TODO_DEFERRED_VISIBILITY_LIMIT
+                ],
+                "unclaimed_monitor_blocked_resume_candidates": unclaimed_candidates[
+                    :TODO_DEFERRED_VISIBILITY_LIMIT
+                ],
+                "other_agent_monitor_blocked_resume_candidates": other_agent_candidates[
+                    :TODO_DEFERRED_VISIBILITY_LIMIT
+                ],
+                "current_agent_monitor_blocked_resume_count": len(current_agent_candidates),
+                "unclaimed_monitor_blocked_resume_count": len(unclaimed_candidates),
+                "other_agent_monitor_blocked_resume_count": len(other_agent_candidates),
+                "monitor_blocked_resume_selection_policy": (
+                    "open advancement todos gated by todo_done:<continuous_monitor> "
+                    "must project as successor replan/state repair instead of quiet monitor wait"
+                ),
+            }
+        )
+    return lanes
 
 
 def _deferred_visibility_lanes(
@@ -1816,8 +2073,13 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
         "current_agent_claimed_open_items",
         "current_agent_claimed_advancement_items",
         "current_agent_claimed_monitor_items",
+        "resume_blocked_items",
+        "monitor_blocked_resume_candidates",
+        "current_agent_monitor_blocked_resume_candidates",
+        "unclaimed_monitor_blocked_resume_candidates",
         "items",
     )
+    ready_successor_todo_ids = _handoff_ready_successor_todo_ids(value)
     open_items: list[dict[str, Any]] = []
     for key in source_keys:
         source_items = value.get(key) if isinstance(value.get(key), list) else []
@@ -1836,8 +2098,62 @@ def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
             )
             if duplicate:
                 continue
-            open_items.append(_compact_todo_summary_item(item, text=text))
+            compact = _compact_todo_summary_item(item, text=text)
+            todo_id = normalize_todo_id(compact.get("todo_id"))
+            if (
+                todo_id
+                and todo_id in ready_successor_todo_ids
+                and normalize_todo_resume_when(compact.get("resume_when"))
+                and "resume_ready" not in compact
+            ):
+                compact["resume_ready"] = True
+                compact["resume_condition"] = {
+                    "schema_version": "todo_resume_condition_v0",
+                    "resume_when": compact.get("resume_when"),
+                    "satisfied": True,
+                    "source": "handoff_gate_cleared_with_successor",
+                }
+            open_items.append(compact)
     return open_items
+
+
+def _todo_summary_monitor_writeback_contract(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    contract = value.get("monitor_writeback")
+    if not isinstance(contract, dict):
+        return None
+    if contract.get("supported") is not False:
+        return None
+    compact: dict[str, Any] = {"supported": False}
+    source = str(contract.get("source") or "").strip()
+    if source:
+        compact["source"] = source
+    return compact
+
+
+def _todo_summary_monitor_writeback_supported(value: dict[str, Any] | None) -> bool:
+    contract = _todo_summary_monitor_writeback_contract(value)
+    if not contract:
+        return True
+    return contract.get("supported") is not False
+
+
+def _handoff_ready_successor_todo_ids(value: dict[str, Any]) -> set[str]:
+    ready: set[str] = set()
+    for gate in _todo_summary_handoff_gates(value):
+        if not isinstance(gate, dict):
+            continue
+        if str(gate.get("gate_state") or "") != HandoffGateState.CLEARED_WITH_SUCCESSOR.value:
+            continue
+        successor_ids = gate.get("successor_todo_ids")
+        if not isinstance(successor_ids, list):
+            continue
+        for todo_id in successor_ids:
+            normalized = normalize_todo_id(todo_id)
+            if normalized:
+                ready.add(normalized)
+    return ready
 
 
 def _todo_summary_handoff_gates(value: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1941,12 +2257,17 @@ def _summarize_user_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    monitor_due_items = [
-        item
-        for item in monitor_items
-        if _todo_item_is_due_monitor(item)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ]
+    monitor_writeback_supported = _todo_summary_monitor_writeback_supported(value)
+    monitor_due_items = (
+        [
+            item
+            for item in monitor_items
+            if _todo_item_is_due_monitor(item)
+            if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
+        ]
+        if monitor_writeback_supported
+        else []
+    )
     claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
     gate_items = [
         item
@@ -1987,6 +2308,9 @@ def _summarize_user_todos(
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    monitor_writeback = _todo_summary_monitor_writeback_contract(value)
+    if monitor_writeback:
+        summary["monitor_writeback"] = monitor_writeback
     summary.update(
         _todo_summary_visibility_lanes(
             blocking_open_items,
@@ -1995,6 +2319,12 @@ def _summarize_user_todos(
     )
     summary.update(
         _deferred_visibility_lanes(
+            value,
+            agent_identity=agent_identity,
+        )
+    )
+    summary.update(
+        _resume_blocked_visibility_lanes(
             value,
             agent_identity=agent_identity,
         )
@@ -2089,12 +2419,17 @@ def _summarize_project_asset_todos(
         if _todo_item_is_actionable_open(item)
         if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
     ]
-    monitor_due_items = [
-        item
-        for item in monitor_items
-        if _todo_item_is_due_monitor(item)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ]
+    monitor_writeback_supported = _todo_summary_monitor_writeback_supported(value)
+    monitor_due_items = (
+        [
+            item
+            for item in monitor_items
+            if _todo_item_is_due_monitor(item)
+            if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
+        ]
+        if monitor_writeback_supported
+        else []
+    )
     active_next_action_items = [
         _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
@@ -2129,6 +2464,9 @@ def _summarize_project_asset_todos(
         "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    monitor_writeback = _todo_summary_monitor_writeback_contract(value)
+    if monitor_writeback:
+        summary["monitor_writeback"] = monitor_writeback
     summary.update(
         _todo_summary_visibility_lanes(
             blocking_open_items,
@@ -2261,7 +2599,7 @@ def _blocked_priority_fallback(
         "schema_version": "blocked_priority_fallback_v0",
         "kind": "blocked_priority_fallback",
         "severity": "warning",
-        "notify_user": True,
+        "notify_user": False,
         "requires_user_action": False,
         "reason": (
             "a higher-priority agent todo is blocked or deferred before the "
@@ -2270,7 +2608,7 @@ def _blocked_priority_fallback(
         "blocked_items": blocked_items[:3],
         "selected_executable": selected_item,
         "recommended_action": (
-            "Surface the blocked core todo and why fallback is being selected; "
+            "Keep the blocked core todo visible in status while selecting fallback; "
             "continue the fallback only if it still matches the latest user priority."
         ),
     }
@@ -2373,19 +2711,27 @@ def _scoped_user_gate_fallback(
     user_todo_summary: dict[str, Any] | None,
     agent_todo_summary: dict[str, Any] | None,
     *,
+    capability_gate: dict[str, Any] | None = None,
     allow_unrelated_gate: bool = False,
 ) -> dict[str, Any] | None:
     gates = _open_user_gate_todo_items(user_todo_summary)
     if not gates or not isinstance(agent_todo_summary, dict):
         return None
 
-    executable_items = (
-        agent_todo_summary.get("executable_backlog_items")
-        if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
-        else agent_todo_summary.get("first_executable_items")
-        if isinstance(agent_todo_summary.get("first_executable_items"), list)
-        else []
-    )
+    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
+        executable_items = (
+            capability_gate.get("runnable_candidates")
+            if isinstance(capability_gate.get("runnable_candidates"), list)
+            else []
+        )
+    else:
+        executable_items = (
+            agent_todo_summary.get("executable_backlog_items")
+            if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
+            else agent_todo_summary.get("first_executable_items")
+            if isinstance(agent_todo_summary.get("first_executable_items"), list)
+            else []
+        )
     executable_items = [item for item in executable_items if isinstance(item, dict)]
     claim_scope = (
         agent_todo_summary.get("claim_scope")
@@ -2545,12 +2891,43 @@ def _agent_lane_next_action(
     agent_todo_summary: dict[str, Any] | None,
     capability_gate: dict[str, Any] | None,
     active_next_action: Any = None,
+    scoped_user_gate_fallback: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(agent_identity, dict):
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
+
+    if isinstance(scoped_user_gate_fallback, dict):
+        selected = scoped_user_gate_fallback.get("selected_executable")
+        if isinstance(selected, dict):
+            text = _protocol_action_text(selected.get("text"), limit=500)
+            claimed_by = normalize_todo_claimed_by(selected.get("claimed_by"))
+            if (
+                text
+                and _todo_item_is_actionable_open(selected)
+                and _todo_task_class(selected) == TODO_TASK_CLASS_ADVANCEMENT
+                and (not claimed_by or claimed_by == agent_id)
+            ):
+                payload = dict(selected)
+                payload.update(
+                    {
+                        "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
+                        "agent_id": agent_id,
+                        "primary_agent": normalize_todo_claimed_by(
+                            agent_identity.get("primary_agent")
+                        ),
+                        "source": "scoped_user_gate_fallback.selected_executable",
+                        "selected_by": "scoped_user_gate_fallback",
+                        "confidence": "selected",
+                        "preserves_goal_next_action": False,
+                        "replaces_gated_goal_next_action": True,
+                    }
+                )
+                if not claimed_by:
+                    payload["claim_required_before_work"] = True
+                return payload
 
     candidate_sources: list[tuple[str, list[Any]]] = []
     candidate_sources.append(
@@ -2793,6 +3170,34 @@ def _agent_lane_frontier_hint(
                     "--no-follow-up --evidence '<public-safe rationale>'"
                 ),
             )
+        monitor_candidates = (
+            frontier.get("monitor_blocked_resume_candidates")
+            if isinstance(frontier.get("monitor_blocked_resume_candidates"), list)
+            else []
+        )
+        monitor_candidate = (
+            monitor_candidates[0]
+            if monitor_candidates and isinstance(monitor_candidates[0], dict)
+            else {}
+        )
+        monitor_blocker_id = normalize_todo_id(
+            monitor_candidate.get("blocking_monitor_todo_id")
+        )
+        if monitor_candidate:
+            target_todo_id = normalize_todo_id(monitor_candidate.get("todo_id"))
+            return build_hint(
+                AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+                source="agent_scope_frontier",
+                reason_code="resume_blocked_by_open_monitor",
+                target_todo_id=target_todo_id or monitor_blocker_id,
+                quiet_noop_allowed=False,
+                next_cli_action=(
+                    f"loopx todo complete --goal-id {goal_id} --todo-id {monitor_blocker_id} "
+                    "--evidence '<validated gate evidence>'"
+                    if monitor_blocker_id
+                    else None
+                ),
+            )
         deferred_todo_id = _first_compact_todo_id(frontier.get("deferred_resume_candidates"))
         route_todo_id = _first_compact_todo_id(
             frontier.get("route_continuation_replan_candidates")
@@ -2919,6 +3324,59 @@ def _agent_scope_deferred_resume_candidates(
             continue
         seen.add(identity)
         unique.append(_compact_todo_summary_item(item, text=str(item.get("text") or "").strip()))
+    return sorted(unique, key=_todo_projection_sort_key)
+
+
+def _agent_scope_monitor_blocked_resume_candidates(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(agent_todo_summary, dict):
+        return []
+    candidates: list[dict[str, Any]] = []
+    if agent_id:
+        for key in (
+            "current_agent_monitor_blocked_resume_candidates",
+            "unclaimed_monitor_blocked_resume_candidates",
+        ):
+            value = agent_todo_summary.get(key)
+            if isinstance(value, list):
+                candidates.extend(item for item in value if isinstance(item, dict))
+    else:
+        value = agent_todo_summary.get("monitor_blocked_resume_candidates")
+        if isinstance(value, list):
+            candidates.extend(item for item in value if isinstance(item, dict))
+
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        if item.get("resume_ready") is not False:
+            continue
+        condition = item.get("resume_condition") if isinstance(item.get("resume_condition"), dict) else {}
+        if normalize_todo_status(condition.get("target_status")) != TODO_STATUS_OPEN:
+            continue
+        target_todo_id = normalize_todo_id(
+            item.get("blocking_monitor_todo_id")
+            or condition.get("target_todo_id")
+            or condition.get("target")
+        )
+        target_task_class = normalize_todo_task_class(
+            condition.get("target_task_class"),
+            text="",
+        )
+        if target_task_class != TODO_TASK_CLASS_MONITOR and not target_todo_id:
+            continue
+        identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
+        if identity in seen:
+            continue
+        seen.add(identity)
+        compact = _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        if target_todo_id:
+            compact["blocking_monitor_todo_id"] = target_todo_id
+        unique.append(compact)
     return sorted(unique, key=_todo_projection_sort_key)
 
 
@@ -3092,6 +3550,47 @@ def _agent_scope_no_candidate_frontier(
         )
     if current_agent_count > 0 or unclaimed_count > 0:
         return None
+
+    monitor_blocked_resume_candidates = _agent_scope_monitor_blocked_resume_candidates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if monitor_blocked_resume_candidates:
+        first_candidate = monitor_blocked_resume_candidates[0]
+        candidate_todo_id = str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
+        monitor_todo_id = (
+            str(first_candidate.get("blocking_monitor_todo_id") or "").strip()
+            or "<monitor_todo_id>"
+        )
+        reason = (
+            f"current side-agent {agent_id} has advancement todo {candidate_todo_id} "
+            f"gated by open continuous_monitor {monitor_todo_id}; a standing monitor "
+            "cannot be the todo_done prerequisite for autonomous continuation"
+        )
+        recommended_action = (
+            "Run a bounded gate-model repair before quiet wait: close/supersede "
+            f"{monitor_todo_id} after validated evidence, or rewrite {candidate_todo_id} "
+            "to use a non-blocking monitor contract before delivery."
+        )
+        return {
+            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+            "agent_id": agent_id,
+            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "blocks_delivery": True,
+            "requires_replan": True,
+            "quiet_noop_allowed": False,
+            "spend_policy": "spend once after validated standing-monitor gate repair/todo writeback",
+            "reason": reason,
+            "recommended_action": recommended_action,
+            "candidate_counts": {
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "monitor_blocked_resume_candidate_count": len(monitor_blocked_resume_candidates),
+            },
+            "monitor_blocked_resume_candidates": monitor_blocked_resume_candidates[:3],
+        }
 
     deferred_resume_candidates = _agent_scope_deferred_resume_candidates(
         agent_todo_summary,
@@ -3580,14 +4079,10 @@ def _state_action_projection_warning(
         "requires_state_writeback": True,
         "active_state_next_action": _protocol_action_text(active_next_action, limit=320),
         "selected_recommended_action": _protocol_action_text(selected_text, limit=320),
-        "reason": (
-            "quota selected the executable backlog item, but the active state's visible "
-            "Next Action still points at a different action"
-        ),
+        "reason": "quota selected executable backlog while active Next Action differs",
         "recommended_action": (
-            "sync the active state Next Action to the selected protocol action, or treat "
-            "protocol_action_packet / interaction_contract as authoritative over stale "
-            "Next Action text"
+            "sync active-state Next Action, or treat protocol_action_packet / "
+            "interaction_contract as authoritative"
         ),
     }
 
@@ -4133,7 +4628,7 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
         return "user_action_required"
     if kind == "external_evidence_observation_required":
         return "external_evidence_observation"
-    if kind == "autonomous_replan_required":
+    if kind == AUTONOMOUS_REPLAN_REQUIRED_MODE:
         return "autonomous_replan"
     agent_scope_action = _agent_scope_frontier_action(effective_action)
     if agent_scope_action is not None:
@@ -4262,6 +4757,27 @@ def _interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list
             if isinstance(payload.get("agent_scope_frontier"), dict)
             else {}
         )
+        monitor_candidates = (
+            agent_scope_frontier.get("monitor_blocked_resume_candidates")
+            if isinstance(agent_scope_frontier.get("monitor_blocked_resume_candidates"), list)
+            else []
+        )
+        if monitor_candidates:
+            first_candidate = (
+                monitor_candidates[0]
+                if isinstance(monitor_candidates[0], dict)
+                else {}
+            )
+            monitor_todo_id = str(
+                first_candidate.get("blocking_monitor_todo_id") or "<monitor_todo_id>"
+            )
+            gated_todo_id = str(first_candidate.get("todo_id") or "<gated_todo_id>")
+            return [
+                f"loopx todo complete --goal-id {goal_id} --todo-id {monitor_todo_id} --evidence '<validated gate evidence>'",
+                f"loopx todo update --goal-id {goal_id} --todo-id {gated_todo_id} --note '<public-safe gate repair reason>'",
+                f"loopx refresh-state --goal-id {goal_id} --classification standing_monitor_gate_repair_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{agent_arg}",
+                f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{agent_arg}",
+            ]
         route_candidates = (
             agent_scope_frontier.get("route_continuation_replan_candidates")
             if isinstance(agent_scope_frontier.get("route_continuation_replan_candidates"), list)
@@ -4364,6 +4880,23 @@ def _interaction_spend_policy(
     return "no spend without validated transition"
 
 
+def _blocked_priority_fallback_user_reason(payload: dict[str, Any]) -> str | None:
+    fallback = (
+        payload.get("blocked_priority_fallback")
+        if isinstance(payload.get("blocked_priority_fallback"), dict)
+        else {}
+    )
+    if not fallback:
+        return None
+    if (
+        fallback.get("requires_user_action") is not True
+        and fallback.get("notify_user") is not True
+    ):
+        return None
+    reason = str(fallback.get("reason") or "").strip()
+    return reason or None
+
+
 def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     execution_obligation = (
         payload.get("execution_obligation")
@@ -4433,11 +4966,7 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("open_todo_notify_reason")
         or payload.get("gate_prompt")
         or payload.get("operator_question")
-        or (
-            payload.get("blocked_priority_fallback", {}).get("reason")
-            if isinstance(payload.get("blocked_priority_fallback"), dict)
-            else None
-        )
+        or _blocked_priority_fallback_user_reason(payload)
         or (
             payload.get("scoped_user_gate_fallback", {}).get("reason")
             if isinstance(payload.get("scoped_user_gate_fallback"), dict)
@@ -4531,7 +5060,7 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             "next_trigger": (
                 "material monitor transition, regression, concrete blocker, or "
-                "autonomous_replan_required"
+                f"{AUTONOMOUS_REPLAN_REQUIRED_MODE}"
             ),
             "spend_policy": "no quota spend for unchanged monitor-only polls",
         }
@@ -4546,6 +5075,22 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             "spend_policy": "no quota spend for identity prompt upgrade preflight",
         }
     if effective_action == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value:
+        agent_scope_frontier = (
+            payload.get("agent_scope_frontier")
+            if isinstance(payload.get("agent_scope_frontier"), dict)
+            else {}
+        )
+        if agent_scope_frontier.get("monitor_blocked_resume_candidates"):
+            return {
+                **base,
+                "automation_action": "execute_bounded_work",
+                "reason": (
+                    "a current-agent advancement todo is gated by an open standing "
+                    "monitor; repair the gate model before another quiet no-op"
+                ),
+                "next_trigger": "standing monitor gate repair writeback or fresh quota guard",
+                "spend_policy": "spend once only after validated gate repair/todo writeback",
+            }
         return {
             **base,
             "automation_action": "execute_bounded_work",
@@ -4570,7 +5115,7 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             ),
             "spend_policy": "no quota spend for agent-scoped no-candidate checks",
         }
-    if must_attempt_work or recommended_mode == "autonomous_replan_required":
+    if must_attempt_work or recommended_mode == AUTONOMOUS_REPLAN_REQUIRED_MODE:
         return {
             **base,
             "automation_action": "execute_bounded_work",
@@ -4601,12 +5146,37 @@ def _automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _scheduler_hint(payload: dict[str, Any], *, include_detail: bool = False) -> dict[str, Any]:
+def _scheduler_hint(
+    payload: dict[str, Any],
+    *,
+    include_detail: bool = False,
+    codex_app_scheduler_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return build_scheduler_hint(
         payload,
         user_action_required=_user_channel_action_required(payload),
         agent_scope_frontier_actions=[action.value for action in AgentScopeFrontierAction],
         include_detail=include_detail,
+        codex_app_scheduler_state=codex_app_scheduler_state,
+    )
+
+
+def _load_codex_app_scheduler_state(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    raw_runtime_root = status_payload.get("runtime_root")
+    safe_agent_id = normalize_todo_claimed_by(agent_id)
+    if not raw_runtime_root or not safe_agent_id:
+        return None
+    return load_scheduler_state(
+        Path(str(raw_runtime_root)).expanduser(),
+        goal_id=goal_id,
+        agent_id=safe_agent_id,
+        surface=CODEX_APP_SURFACE,
+        state_key=CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     )
 
 
@@ -4732,11 +5302,19 @@ def _quota_agent_identity(goal: dict[str, Any], *, agent_id: str | None) -> dict
             f"registered_agents={', '.join(registered_agents)}"
         )
     primary_agent = _quota_primary_agent(goal)
+    handoff_agent = side_agent_handoff_agent_id_for_goal(goal, agent_id=normalized_agent_id)
+    if handoff_agent:
+        if handoff_agent not in registered_agents:
+            raise ValueError(
+                f"side_agent_handoff_agent={handoff_agent!r} is not registered; "
+                f"registered_agents={', '.join(registered_agents)}"
+            )
     return {
         "agent_id": normalized_agent_id,
         "registered": True,
         "role": "primary-agent" if primary_agent and normalized_agent_id == primary_agent else "side-agent",
         "primary_agent": primary_agent,
+        "handoff_agent": handoff_agent,
         "registered_agents": registered_agents,
     }
 
@@ -5038,37 +5616,27 @@ def _user_gate_todo_notify_reason(summary: dict[str, Any] | None) -> str:
 
 
 def _todo_task_class(item: dict[str, Any]) -> str:
-    text = " ".join(
-        str(value or "")
-        for value in (item.get("title"), item.get("text"))
-        if str(value or "").strip()
-    )
-    return monitor_todo_task_class(item, task_text=text)
+    return projection_todo_item_task_class(item)
 
 
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
-    return monitor_todo_is_actionable_open(item)
+    return projection_todo_item_is_actionable_open(item)
 
 
 def _todo_item_next_due_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_next_due_at(item)
+    return projection_todo_item_next_due_at(item)
 
 
 def _todo_item_expires_at(item: dict[str, Any]) -> datetime | None:
-    return monitor_todo_expires_at(item)
+    return projection_todo_item_expires_at(item)
 
 
 def _todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    return monitor_todo_is_expired(item, now=now)
+    return projection_todo_item_is_expired_monitor(item, now=now)
 
 
 def _todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    text = " ".join(
-        str(value or "")
-        for value in (item.get("title"), item.get("text"))
-        if str(value or "").strip()
-    )
-    return monitor_todo_is_due(item, now=now, task_text=text)
+    return projection_todo_item_is_due_monitor(item, now=now)
 
 
 def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
@@ -5078,6 +5646,8 @@ def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
 
 def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(summary, dict):
+        return []
+    if not _todo_summary_monitor_writeback_supported(summary):
         return []
     projected_items = summary.get("monitor_due_items")
     if isinstance(projected_items, list):
@@ -5112,6 +5682,8 @@ def _todo_summary_monitor_due_count(
     due_items: list[dict[str, Any]] | None = None,
 ) -> int:
     if not isinstance(summary, dict):
+        return 0
+    if not _todo_summary_monitor_writeback_supported(summary):
         return 0
     agent_id = _todo_summary_claim_scope_agent_id(summary)
     if agent_id:
@@ -5481,14 +6053,24 @@ def _boundary_projection_repair_hint(
     agent_todo_summary: dict[str, Any] | None,
     *,
     candidate_should_run: bool,
+    capability_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not candidate_should_run or not isinstance(agent_todo_summary, dict):
         return None
     candidate_items: list[dict[str, Any]] = []
-    for key in ("first_executable_items", "first_open_items"):
-        value = agent_todo_summary.get(key)
-        if isinstance(value, list):
-            candidate_items.extend(item for item in value if isinstance(item, dict))
+    if isinstance(capability_gate, dict):
+        if capability_gate.get("action") != "run":
+            return None
+        runnable_candidates = capability_gate.get("runnable_candidates")
+        if isinstance(runnable_candidates, list) and runnable_candidates:
+            candidate_items.extend(
+                item for item in runnable_candidates if isinstance(item, dict)
+            )
+    if not candidate_items:
+        for key in ("first_executable_items", "first_open_items"):
+            value = agent_todo_summary.get(key)
+            if isinstance(value, list):
+                candidate_items.extend(item for item in value if isinstance(item, dict))
     selected: dict[str, Any] | None = None
     for item in candidate_items:
         if not _todo_item_is_actionable_open(item):
@@ -5647,6 +6229,7 @@ def _heartbeat_recommendation(
     agent_todo_summary: dict[str, Any] | None,
     work_lane_contract: dict[str, Any] | None = None,
     stall_self_repair: dict[str, Any] | None = None,
+    replan_obligation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status = str(item.get("status") or "")
     waiting_on = str(item.get("waiting_on") or "")
@@ -5656,11 +6239,9 @@ def _heartbeat_recommendation(
     quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
     replan_obligation = (
-        item.get("autonomous_replan_obligation")
-        if isinstance(item.get("autonomous_replan_obligation"), dict)
-        else project_asset.get("autonomous_replan_obligation")
-        if isinstance(project_asset.get("autonomous_replan_obligation"), dict)
-        else None
+        replan_obligation
+        if isinstance(replan_obligation, dict)
+        else select_autonomous_replan_obligation(item, project_asset)
     )
     has_user_todos = _open_todo_count(user_todo_summary) > 0
     has_agent_todos = _open_todo_count(agent_todo_summary) > 0
@@ -5689,6 +6270,11 @@ def _heartbeat_recommendation(
             "spend_policy": stall_self_repair.get("spend_policy") or base["spend_policy"],
             "reason": stall_self_repair.get("reason") or "control-plane stall requires bounded repair",
             "repair_focus": stall_self_repair.get("repair_focus"),
+        }
+    if should_run and replan_obligation and replan_obligation.get("required"):
+        return {
+            **base,
+            **build_autonomous_replan_recommendation(replan_obligation),
         }
     if state in {"focus_wait", "waiting"} and has_user_todos:
         return {
@@ -5739,29 +6325,6 @@ def _heartbeat_recommendation(
             "recommended_mode": "quota_skip",
             "reason": f"quota state is {state}; skip delivery compute",
         }
-    if replan_obligation and replan_obligation.get("required"):
-        payload = {
-            **base,
-            "recommended_mode": "autonomous_replan_required",
-            "notify": "DONT_NOTIFY",
-            "replan_obligation": {
-                "schema_version": replan_obligation.get("schema_version"),
-                "stall_threshold": replan_obligation.get("stall_threshold"),
-                "trigger_count": replan_obligation.get("trigger_count"),
-                "triggers": replan_obligation.get("triggers") or [],
-                "next_validation_command": replan_obligation.get("next_validation_command"),
-                "stop_condition": replan_obligation.get("stop_condition"),
-            },
-            "spend_policy": (
-                "append exactly one heartbeat spend only after executing the selected "
-                "replan slice, validating it, and writing back todo split/add/retire state"
-            ),
-            "reason": (
-                "status exposes an autonomous replan obligation; advance the "
-                "planning-trigger slice before another monitor-only or repeated action"
-            ),
-        }
-        return payload
 
     if item.get("agent_command"):
         return {
@@ -6326,6 +6889,81 @@ def _registry_goal_by_id(status_payload: dict[str, Any]) -> dict[str, dict[str, 
     }
 
 
+def _compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict):
+        return None
+    ack = run.get("autonomous_replan_ack")
+    if not isinstance(ack, dict) or ack.get("recorded") is not True:
+        return None
+    delta_contract = ack.get("delta_contract")
+    if not isinstance(delta_contract, dict) or delta_contract.get("delta_present") is not True:
+        return None
+    compact_delta = {
+        "schema_version": delta_contract.get("schema_version"),
+        "delta_present": True,
+        "delta_kinds": [
+            str(item)
+            for item in (delta_contract.get("delta_kinds") or [])
+            if str(item or "").strip()
+        ],
+    }
+    result = {
+        "schema_version": ack.get("schema_version"),
+        "recorded": True,
+        "source": ack.get("source"),
+        "delta_contract": compact_delta,
+    }
+    agent_id = str(run.get("agent_id") or "").strip()
+    if agent_id:
+        result["agent_id"] = agent_id
+    return result
+
+
+def _latest_autonomous_replan_ack_for_agent(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    if not agent_id:
+        return None
+    run_history = (
+        status_payload.get("run_history")
+        if isinstance(status_payload.get("run_history"), dict)
+        else {}
+    )
+    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
+    goal = next(
+        (
+            item
+            for item in goals
+            if isinstance(item, dict) and str(item.get("id") or "") == goal_id
+        ),
+        None,
+    )
+    latest_runs = goal.get("latest_runs") if isinstance(goal, dict) else None
+    if not isinstance(latest_runs, list):
+        return None
+    for run in latest_runs:
+        if not isinstance(run, dict):
+            continue
+        run_agent_id = str(run.get("agent_id") or "").strip()
+        if run_agent_id and run_agent_id != agent_id:
+            continue
+        replan_ack = _compact_autonomous_replan_ack(run)
+        if replan_ack:
+            return replan_ack
+        classification = str(run.get("classification") or "").strip()
+        if not classification:
+            continue
+        if classification in AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS:
+            continue
+        if classification == QUOTA_MONITOR_POLL_CLASSIFICATION:
+            continue
+        return None
+    return None
+
+
 def _recovery_delivery_allowed(quota: dict[str, Any], *, plan_ok: bool) -> bool:
     return (
         bool(plan_ok)
@@ -6476,6 +7114,42 @@ def build_quota_should_run(
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
+        replan_obligation = select_autonomous_replan_obligation(item, project_asset)
+        agent_frontier_id = (
+            normalize_todo_claimed_by(agent_identity.get("agent_id"))
+            if isinstance(agent_identity, dict)
+            else None
+        )
+        latest_agent_replan_ack = _latest_autonomous_replan_ack_for_agent(
+            status_payload,
+            goal_id=safe_goal_id,
+            agent_id=agent_frontier_id,
+        )
+        frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
+            user_todo_summary=user_todo_summary,
+            agent_todo_summary=agent_todo_summary,
+            work_lane_contract=work_lane_contract,
+            agent_id=agent_frontier_id,
+            existing_replan_obligation=replan_obligation,
+            latest_replan_ack=latest_agent_replan_ack
+            or (
+                item.get("autonomous_replan_ack")
+                if isinstance(item.get("autonomous_replan_ack"), dict)
+                else project_asset.get("autonomous_replan_ack")
+                if isinstance(project_asset.get("autonomous_replan_ack"), dict)
+                else None
+            ),
+        )
+        if frontier_replan_obligation:
+            replan_obligation = frontier_replan_obligation
+        goal_frontier_projection = build_goal_frontier_projection_from_summaries(
+            goal_id=safe_goal_id,
+            agent_id=agent_frontier_id,
+            user_todo_summary=user_todo_summary,
+            agent_todo_summary=agent_todo_summary,
+            work_lane_contract=work_lane_contract,
+            replan_obligation=replan_obligation,
+        )
         capability_gate = _capability_gate(
             agent_todo_summary,
             available_capabilities=_available_capabilities(available_capabilities),
@@ -6505,6 +7179,7 @@ def build_quota_should_run(
             candidate_should_run=bool(
                 normal_delivery_allowed or recovery_allowed or self_repair_allowed
             ),
+            capability_gate=capability_gate,
         )
         if boundary_projection_repair:
             stall_self_repair = boundary_projection_repair
@@ -6554,6 +7229,21 @@ def build_quota_should_run(
             state=state,
             quota=quota,
         )
+        replan_decision_allowed = autonomous_replan_decision_allowed(
+            replan_obligation=replan_obligation,
+            plan_ok=bool(plan.get("ok")),
+            workspace_blocked=bool(workspace_guard),
+            automation_prompt_upgrade_required=automation_prompt_upgrade_required,
+        )
+        if replan_decision_allowed:
+            normal_delivery_allowed = False
+            recovery_allowed = False
+            should_run = True
+            effective_action = AUTONOMOUS_REPLAN_REQUIRED_MODE
+            reason = (
+                "autonomous replan obligation is selected before monitor quiet "
+                "or agent-scope wait classification"
+            )
         if automation_prompt_upgrade_required:
             should_run = False
             effective_action = "automation_prompt_upgrade_required"
@@ -6567,6 +7257,7 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
             stall_self_repair=stall_self_repair,
+            replan_obligation=replan_obligation,
         )
         if capability_gate and capability_gate.get("action") == "repair_bridge":
             heartbeat_recommendation = {
@@ -6621,11 +7312,15 @@ def build_quota_should_run(
         if blocked_priority_fallback and should_run:
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
-                "notify": "NOTIFY",
-                "reason": blocked_priority_fallback.get("reason")
-                or heartbeat_recommendation.get("reason"),
                 "blocked_priority_fallback": blocked_priority_fallback,
             }
+            if blocked_priority_fallback.get("notify_user") is True:
+                heartbeat_recommendation = {
+                    **heartbeat_recommendation,
+                    "notify": "NOTIFY",
+                    "reason": blocked_priority_fallback.get("reason")
+                    or heartbeat_recommendation.get("reason"),
+                }
         external_evidence_observation = _external_evidence_observation_obligation(
             item,
             state=state,
@@ -6649,7 +7344,8 @@ def build_quota_should_run(
             effective_action = "external_evidence_observe"
             reason = "external evidence monitor requires read-only observation before quiet no-op"
         monitor_quiet_skip = (
-            normal_delivery_allowed
+            not replan_decision_allowed
+            and normal_delivery_allowed
             and not recovery_allowed
             and not self_repair_allowed
             and isinstance(work_lane_contract, dict)
@@ -6696,12 +7392,25 @@ def build_quota_should_run(
                 or automation_prompt_upgrade.get("reason")
                 or selected_recommended_action
             )
+        if replan_decision_allowed:
+            selected_recommended_action = (
+                str(replan_obligation.get("recommended_action") or "").strip()
+                or str(replan_obligation.get("stop_condition") or "").strip()
+                or "Run one bounded autonomous replan slice and write back the selected todo/frontier changes."
+            )
+        scoped_user_gate_fallback = _scoped_user_gate_fallback(
+            user_todo_summary,
+            agent_todo_summary,
+            capability_gate=capability_gate,
+            allow_unrelated_gate=bool(quota.get("safe_bypass_allowed")),
+        )
         agent_lane_next_action = None
-        if not due_monitor_attempt:
+        if not due_monitor_attempt and not replan_decision_allowed:
             agent_lane_next_action = _agent_lane_next_action(
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,
                 capability_gate=capability_gate,
+                scoped_user_gate_fallback=scoped_user_gate_fallback,
                 active_next_action=(
                     item.get("active_state_next_action")
                     or (
@@ -6715,24 +7424,28 @@ def build_quota_should_run(
                 selected_recommended_action,
                 agent_lane_next_action=agent_lane_next_action,
             )
-        agent_scope_frontier = _agent_scope_no_candidate_frontier(
-            agent_identity=agent_identity,
-            agent_todo_summary=agent_todo_summary,
-            agent_lane_next_action=agent_lane_next_action,
-            work_lane_contract=work_lane_contract,
-            candidate_should_run=bool(should_run and normal_delivery_allowed),
-        )
-        agent_lane_frontier_hint = _agent_lane_frontier_hint(
-            goal_id=safe_goal_id,
-            agent_identity=agent_identity,
-            agent_todo_summary=agent_todo_summary,
-            agent_lane_next_action=agent_lane_next_action,
-            agent_scope_frontier=agent_scope_frontier,
-            work_lane_contract=work_lane_contract,
-        )
+        agent_scope_frontier = None
+        if not replan_decision_allowed:
+            agent_scope_frontier = _agent_scope_no_candidate_frontier(
+                agent_identity=agent_identity,
+                agent_todo_summary=agent_todo_summary,
+                agent_lane_next_action=agent_lane_next_action,
+                work_lane_contract=work_lane_contract,
+                candidate_should_run=bool(should_run and normal_delivery_allowed),
+            )
+        agent_lane_frontier_hint = None
+        if not replan_decision_allowed:
+            agent_lane_frontier_hint = _agent_lane_frontier_hint(
+                goal_id=safe_goal_id,
+                agent_identity=agent_identity,
+                agent_todo_summary=agent_todo_summary,
+                agent_lane_next_action=agent_lane_next_action,
+                agent_scope_frontier=agent_scope_frontier,
+                work_lane_contract=work_lane_contract,
+            )
         if agent_scope_frontier and agent_lane_frontier_hint:
             agent_scope_frontier["frontier_hint"] = agent_lane_frontier_hint
-        if agent_scope_frontier:
+        if agent_scope_frontier and not replan_decision_allowed:
             frontier_action = str(agent_scope_frontier.get("effective_action") or "")
             successor_replan_required = (
                 frontier_action == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value
@@ -6770,14 +7483,20 @@ def build_quota_should_run(
             or project_asset.get("latest_run_recommended_action"),
             limit=320,
         )
-        agent_lane_next_action_text = _protocol_action_text(
-            agent_lane_next_action.get("text") if isinstance(agent_lane_next_action, dict) else None,
-            limit=320,
-        )
         next_action_warning = next_action_projection_warning(
             active_state_next_action=active_state_next_action_text,
             latest_run_recommended_action=latest_run_recommended_action_text,
-            agent_lane_next_action=agent_lane_next_action_text,
+            agent_lane_next_action=agent_lane_next_action,
+        )
+        goal_route_hint = build_goal_route_hint(
+            agent_identity=agent_identity,
+            agent_todo_summary=agent_todo_summary,
+            agent_lane_next_action=agent_lane_next_action,
+            agent_scope_frontier=agent_scope_frontier,
+            agent_lane_frontier_hint=agent_lane_frontier_hint,
+            active_state_next_action=active_state_next_action_text,
+            latest_run_recommended_action=latest_run_recommended_action_text,
+            selected_recommended_action=selected_recommended_action,
         )
         agent_scope_action = _agent_scope_frontier_action(effective_action)
         payload = {
@@ -6786,7 +7505,9 @@ def build_quota_should_run(
             "mode": "should-run",
             "goal_id": safe_goal_id,
             "decision": (
-                "run"
+                AUTONOMOUS_REPLAN_REQUIRED_MODE
+                if replan_decision_allowed
+                else "run"
                 if normal_delivery_allowed
                 else "observe"
                 if external_evidence_observation
@@ -6866,15 +7587,21 @@ def build_quota_should_run(
                 external_evidence_observation=external_evidence_observation,
             ),
             "goal_boundary": goal_boundary,
+            "goal_frontier_projection": goal_frontier_projection,
             "plan_summary": plan.get("summary"),
             "todo_write_hint": _todo_write_hint(safe_goal_id),
         }
+        autonomous_replan_decision = goal_frontier_projection.get("autonomous_replan_decision")
+        if isinstance(autonomous_replan_decision, dict):
+            payload["autonomous_replan_decision"] = autonomous_replan_decision
         if agent_identity:
             payload["agent_identity"] = agent_identity
         if agent_lane_next_action:
             payload["agent_lane_next_action"] = agent_lane_next_action
         if agent_lane_frontier_hint:
             payload["agent_lane_frontier_hint"] = agent_lane_frontier_hint
+        if goal_route_hint:
+            payload["goal_route_hint"] = goal_route_hint
         if agent_scope_frontier:
             payload["agent_scope_frontier"] = agent_scope_frontier
         if workspace_guard:
@@ -6932,12 +7659,7 @@ def build_quota_should_run(
                         or "no-work polling should ask the current open user todo"
                     )
                     payload["open_todo_notification_policy"] = "repeat_until_resolved"
-        scoped_user_gate_fallback = _scoped_user_gate_fallback(
-            user_todo_summary,
-            agent_todo_summary,
-            allow_unrelated_gate=bool(payload.get("safe_bypass_allowed")),
-        )
-        if scoped_user_gate_fallback:
+        if scoped_user_gate_fallback and not replan_decision_allowed:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
             payload["should_run"] = True
             if payload.get("decision") == "skip":
@@ -7026,13 +7748,6 @@ def build_quota_should_run(
         )
         if archive_warning:
             payload["completed_todo_archive_warning"] = archive_warning
-        replan_obligation = (
-            item.get("autonomous_replan_obligation")
-            if isinstance(item.get("autonomous_replan_obligation"), dict)
-            else project_asset.get("autonomous_replan_obligation")
-            if isinstance(project_asset.get("autonomous_replan_obligation"), dict)
-            else None
-        )
         if replan_obligation:
             payload["autonomous_replan_obligation"] = replan_obligation
         dreaming_proposal = (
@@ -7087,7 +7802,15 @@ def build_quota_should_run(
             payload["agent_command"] = item.get("agent_command")
         payload["automation_liveness"] = _automation_liveness(payload)
         payload["interaction_contract"] = _interaction_contract(payload)
-        payload["scheduler_hint"] = _scheduler_hint(payload, include_detail=include_scheduler_detail)
+        payload["scheduler_hint"] = _scheduler_hint(
+            payload,
+            include_detail=include_scheduler_detail,
+            codex_app_scheduler_state=_load_codex_app_scheduler_state(
+                status_payload,
+                goal_id=safe_goal_id,
+                agent_id=_quota_decision_agent_id(payload) or agent_id,
+            ),
+        )
         payload["protocol_action_packet"] = _protocol_action_packet(payload)
         return payload
 
@@ -7163,6 +7886,7 @@ def build_quota_slot_preview(
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     safe_slots = max(1, _int_number(slots, default=1))
+    safe_requested_agent_id = normalize_todo_claimed_by(agent_id)
     before = build_quota_should_run(
         status_payload,
         goal_id=safe_goal_id,
@@ -7193,6 +7917,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": (
@@ -7215,6 +7940,7 @@ def build_quota_slot_preview(
             not before.get("should_run")
             or before.get("effective_action") == "external_evidence_observe"
         )
+        and before.get("effective_action") != "automation_prompt_upgrade_required"
         and not safe_bypass_spend
         and str(before.get("state") or "") in {"waiting", "focus_wait", "operator_gate", "eligible"}
     )
@@ -7230,13 +7956,13 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": before.get("reason") or "goal is not eligible for quota accounting preview",
             "before": before,
             "after": None,
         }
-
     before_quota = before.get("quota") if isinstance(before.get("quota"), dict) else {}
     if not before_quota:
         return {
@@ -7245,6 +7971,7 @@ def build_quota_slot_preview(
             "dry_run": True,
             "goal_id": safe_goal_id,
             "slots": safe_slots,
+            "agent_id": safe_requested_agent_id,
             "appended": False,
             "registry_mutated": False,
             "reason": "goal has no quota payload to preview",
@@ -7282,6 +8009,7 @@ def build_quota_slot_preview(
         "dry_run": True,
         "goal_id": safe_goal_id,
         "slots": safe_slots,
+        "agent_id": safe_requested_agent_id,
         "appended": False,
         "registry_mutated": False,
         "before": before,
@@ -7344,6 +8072,240 @@ def _quota_decision_agent_id(decision: dict[str, Any]) -> str | None:
         else {}
     )
     return normalize_todo_claimed_by(agent_identity.get("agent_id"))
+
+
+def _scheduler_ack_failure(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    execute: bool,
+    surface: str,
+    state_key: str,
+    applied_rrule: str | None,
+    reason: str,
+    before: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "mode": "scheduler-ack",
+        "dry_run": not execute,
+        "goal_id": goal_id,
+        "agent_id": normalize_todo_claimed_by(agent_id),
+        "surface": surface,
+        "state_key": state_key,
+        "applied_rrule": applied_rrule,
+        "appended": False,
+        "registry_mutated": False,
+        "reason": reason,
+        "before": before,
+        "after": None,
+    }
+
+
+def build_quota_scheduler_ack_event(
+    before: dict[str, Any],
+    *,
+    applied_rrule: str,
+    surface: str = CODEX_APP_SURFACE,
+    state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    generated_at: str | None = None,
+    reason_summary: str | None = None,
+) -> dict[str, Any]:
+    return build_codex_app_scheduler_ack_event(
+        before,
+        agent_id=_quota_decision_agent_id(before),
+        applied_rrule=applied_rrule,
+        classification=QUOTA_SCHEDULER_ACK_CLASSIFICATION,
+        surface=surface,
+        state_key=state_key,
+        generated_at=generated_at or _now_local(),
+        reason_summary=reason_summary,
+        compact_before=_compact_quota_decision(before),
+    )
+
+
+def record_quota_scheduler_ack(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    execute: bool = False,
+    agent_id: str | None = None,
+    surface: str = CODEX_APP_SURFACE,
+    state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    applied_rrule: str | None = None,
+    reset_token: str | None = None,
+    identity_signature: str | None = None,
+    reason_summary: str | None = None,
+) -> dict[str, Any]:
+    safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
+    safe_agent_id = normalize_todo_claimed_by(agent_id)
+    safe_surface = str(surface or CODEX_APP_SURFACE).strip() or CODEX_APP_SURFACE
+    safe_state_key = str(state_key or CODEX_APP_STATEFUL_BACKOFF_STATE_KEY).strip()
+    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=safe_agent_id)
+    _, codex_app, stateful_backoff = scheduler_backoff_packet(before)
+    if not safe_agent_id:
+        return _scheduler_ack_failure(
+            goal_id=safe_goal_id,
+            agent_id=agent_id,
+            execute=execute,
+            surface=safe_surface,
+            state_key=safe_state_key,
+            applied_rrule=applied_rrule,
+            reason="`loopx quota scheduler-ack` requires --agent-id",
+            before=before,
+        )
+    if not stateful_backoff:
+        return _scheduler_ack_failure(
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            execute=execute,
+            surface=safe_surface,
+            state_key=safe_state_key,
+            applied_rrule=applied_rrule,
+            reason="current quota decision has no Codex App stateful scheduler packet",
+            before=before,
+        )
+    if safe_state_key != str(stateful_backoff.get("state_key") or ""):
+        return _scheduler_ack_failure(
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            execute=execute,
+            surface=safe_surface,
+            state_key=safe_state_key,
+            applied_rrule=applied_rrule,
+            reason="--state-key does not match scheduler_hint.codex_app.stateful_backoff.state_key",
+            before=before,
+        )
+    if reset_token and str(reset_token).strip() != str(stateful_backoff.get("reset_token") or ""):
+        return _scheduler_ack_failure(
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            execute=execute,
+            surface=safe_surface,
+            state_key=safe_state_key,
+            applied_rrule=applied_rrule,
+            reason="--reset-token does not match the current scheduler hint",
+            before=before,
+        )
+    if identity_signature and str(identity_signature).strip() != str(stateful_backoff.get("identity_signature") or ""):
+        return _scheduler_ack_failure(
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            execute=execute,
+            surface=safe_surface,
+            state_key=safe_state_key,
+            applied_rrule=applied_rrule,
+            reason="--identity-signature does not match the current scheduler hint",
+            before=before,
+        )
+    if stateful_backoff.get("apply_needed") is not True:
+        return {
+            "ok": True,
+            "mode": "scheduler-ack",
+            "dry_run": not execute,
+            "goal_id": safe_goal_id,
+            "agent_id": safe_agent_id,
+            "surface": safe_surface,
+            "state_key": safe_state_key,
+            "applied_rrule": normalize_scheduler_rrule(applied_rrule),
+            "appended": False,
+            "registry_mutated": False,
+            "already_applied": True,
+            "before": before,
+            "after": before,
+            "reason": "scheduler RRULE already applied; no ack write needed",
+        }
+    if not normalize_scheduler_rrule(applied_rrule):
+        return _scheduler_ack_failure(
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            execute=execute,
+            surface=safe_surface,
+            state_key=safe_state_key,
+            applied_rrule=applied_rrule,
+            reason="`loopx quota scheduler-ack` requires --applied-rrule when apply_needed=true",
+            before=before,
+        )
+
+    raw_runtime_root = status_payload.get("runtime_root")
+    if not raw_runtime_root:
+        raise ValueError("status payload does not include runtime_root")
+    runtime_root = Path(str(raw_runtime_root)).expanduser()
+    generated_at = _now_local()
+    try:
+        record = build_quota_scheduler_ack_event(
+            before,
+            applied_rrule=str(applied_rrule),
+            surface=safe_surface,
+            state_key=safe_state_key,
+            generated_at=generated_at,
+            reason_summary=reason_summary,
+        )
+    except ValueError as exc:
+        return _scheduler_ack_failure(
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            execute=execute,
+            surface=safe_surface,
+            state_key=safe_state_key,
+            applied_rrule=applied_rrule,
+            reason=str(exc),
+            before=before,
+        )
+
+    state_path = scheduler_state_path(
+        runtime_root,
+        goal_id=safe_goal_id,
+        agent_id=safe_agent_id,
+        surface=safe_surface,
+        state_key=safe_state_key,
+    )
+    scheduler_state = (
+        record.get("scheduler_ack_event", {}).get("scheduler_state")
+        if isinstance(record.get("scheduler_ack_event"), dict)
+        else {}
+    )
+    if execute:
+        write_scheduler_state(
+            runtime_root,
+            scheduler_state,
+            goal_id=safe_goal_id,
+            agent_id=safe_agent_id,
+            surface=safe_surface,
+            state_key=safe_state_key,
+        )
+
+    return {
+        "ok": True,
+        "mode": "scheduler-ack",
+        "dry_run": not execute,
+        "goal_id": safe_goal_id,
+        "agent_id": safe_agent_id,
+        "surface": safe_surface,
+        "state_key": safe_state_key,
+        "applied_rrule": record["scheduler_ack_event"]["applied_rrule"],
+        "classification": QUOTA_SCHEDULER_ACK_CLASSIFICATION,
+        "generated_at": generated_at,
+        "appended": False,
+        "registry_mutated": False,
+        "scheduler_state_mutated": execute,
+        "already_applied": False,
+        "scheduler_ack_event": record["scheduler_ack_event"],
+        "health_check": record["health_check"],
+        "delivery_outcome": record["delivery_outcome"],
+        "scheduler_state_path": str(state_path),
+        "before": before,
+        "after": None,
+        "post_ack_contract": {
+            "next_action": "wait_for_next_scheduler_tick_or_material_state_transition",
+            "do_not_apply_successor_rrule_from_ack_response": True,
+            "next_rrule_source": "future_quota_should-run_only",
+        },
+        "reason": (
+            f"{'updated' if execute else 'dry-run preview'} scheduler state ack: "
+            f"{safe_goal_id}/{safe_agent_id} applied {record['scheduler_ack_event']['applied_rrule']}"
+        ),
+    }
 
 
 def _monitor_target_summary(value: Any, *, limit: int = 160) -> str:
@@ -7789,7 +8751,7 @@ def build_quota_slot_spend_event(
         raise ValueError(f"quota slot spend source must be one of: {', '.join(sorted(VALID_SLOT_SPEND_SOURCES))}")
     before = preview.get("before") if isinstance(preview.get("before"), dict) else {}
     after = preview.get("after") if isinstance(preview.get("after"), dict) else {}
-    safe_agent_id = _quota_decision_agent_id(before)
+    safe_agent_id = normalize_todo_claimed_by(preview.get("agent_id")) or _quota_decision_agent_id(before)
     slots = max(1, _int_number(preview.get("slots"), default=1))
     before_compact = _compact_quota_decision(before)
     after_compact = _compact_quota_decision(after)
@@ -8581,6 +9543,36 @@ def render_quota_monitor_poll_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_quota_scheduler_ack_markdown(payload: dict[str, Any]) -> str:
+    event = payload.get("scheduler_ack_event") if isinstance(payload.get("scheduler_ack_event"), dict) else {}
+    state = event.get("scheduler_state") if isinstance(event.get("scheduler_state"), dict) else {}
+    before = event.get("before") if isinstance(event.get("before"), dict) else {}
+    lines = [
+        "# LoopX Quota Scheduler Ack",
+        "",
+        f"- goal_id: `{payload.get('goal_id')}`",
+        f"- classification: `{payload.get('classification')}`",
+        f"- agent_id: `{payload.get('agent_id') or event.get('agent_id') or state.get('agent_id') or ''}`",
+        f"- surface: `{payload.get('surface') or event.get('surface')}`",
+        f"- state_key: `{payload.get('state_key') or event.get('state_key')}`",
+        f"- applied_rrule: `{payload.get('applied_rrule') or event.get('applied_rrule')}`",
+        f"- progression_index: `{state.get('progression_index')}`",
+        f"- reset_token: `{state.get('reset_token') or ''}`",
+        f"- identity_signature: `{state.get('identity_signature') or ''}`",
+        f"- appended: `{payload.get('appended')}`",
+        f"- registry_mutated: `{payload.get('registry_mutated')}`",
+        f"- effective_action: `{before.get('effective_action')}`",
+        f"- state: `{before.get('state')}`",
+        f"- should_run: `{before.get('should_run')}`",
+        f"- health_check: {payload.get('health_check') or 'scheduler ack state updated; no quota spend'}",
+    ]
+    if payload.get("scheduler_state_path"):
+        lines.append(f"- scheduler_state_path: `{payload.get('scheduler_state_path')}`")
+    if payload.get("reason"):
+        lines.append(f"- reason: {payload.get('reason')}")
+    return "\n".join(lines)
+
+
 def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
     quota = payload.get("quota") if isinstance(payload.get("quota"), dict) else {}
     lines = [
@@ -8611,7 +9603,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             "- agent_identity: "
             f"agent_id={agent_identity.get('agent_id')} "
             f"role={agent_identity.get('role')} "
-            f"primary_agent={agent_identity.get('primary_agent')}"
+            f"primary_agent={agent_identity.get('primary_agent')} "
+            f"handoff_agent={agent_identity.get('handoff_agent')}"
         )
     if payload.get("active_state_next_action"):
         lines.append(f"- active_state_next_action: {payload.get('active_state_next_action')}")
@@ -8646,6 +9639,35 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"reason_code={agent_lane_frontier_hint.get('reason_code')} "
             f"target_todo_id={agent_lane_frontier_hint.get('target_todo_id')}"
         )
+    goal_route_hint = (
+        payload.get("goal_route_hint")
+        if isinstance(payload.get("goal_route_hint"), dict)
+        else {}
+    )
+    if goal_route_hint:
+        counts = (
+            goal_route_hint.get("counts")
+            if isinstance(goal_route_hint.get("counts"), dict)
+            else {}
+        )
+        lines.append(
+            "- goal_route_hint: "
+            f"decision={goal_route_hint.get('route_decision')} "
+            f"agent_id={goal_route_hint.get('agent_id')} "
+            f"preserves_goal_next_action={goal_route_hint.get('preserves_goal_next_action')} "
+            f"other_agent_claimed_advancement_count={counts.get('other_agent_claimed_advancement_count')}"
+        )
+        current_action = (
+            goal_route_hint.get("current_agent_next_action")
+            if isinstance(goal_route_hint.get("current_agent_next_action"), dict)
+            else {}
+        )
+        if current_action:
+            lines.append(
+                "- goal_route_hint_current_action: "
+                f"todo_id={current_action.get('todo_id')} "
+                f"selected_by={current_action.get('selected_by')}"
+            )
     agent_scope_frontier = (
         payload.get("agent_scope_frontier")
         if isinstance(payload.get("agent_scope_frontier"), dict)
@@ -8693,6 +9715,47 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"top_todo_id={first_candidate.get('todo_id')} "
                 f"route={first_candidate.get('route_id') or first_candidate.get('route_key') or ''}"
             )
+    goal_frontier = (
+        payload.get("goal_frontier_projection")
+        if isinstance(payload.get("goal_frontier_projection"), dict)
+        else {}
+    )
+    if goal_frontier:
+        remaining = (
+            goal_frontier.get("remaining_advancement_frontier")
+            if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
+            else {}
+        )
+        deferred_successors = (
+            goal_frontier.get("deferred_successors")
+            if isinstance(goal_frontier.get("deferred_successors"), dict)
+            else {}
+        )
+        acceptance_gaps = (
+            goal_frontier.get("acceptance_gaps")
+            if isinstance(goal_frontier.get("acceptance_gaps"), list)
+            else []
+        )
+        lines.append(
+            "- goal_frontier_projection: "
+            f"replan_required={goal_frontier.get('replan_required')} "
+            f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
+            f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
+            f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')} "
+            f"deferred_ready={deferred_successors.get('ready_count')} "
+            f"acceptance_gaps={len(acceptance_gaps)}"
+        )
+    replan_decision = (
+        payload.get("autonomous_replan_decision")
+        if isinstance(payload.get("autonomous_replan_decision"), dict)
+        else {}
+    )
+    if replan_decision:
+        lines.append(
+            "- autonomous_replan_decision: "
+            f"decision={replan_decision.get('decision')} "
+            f"plane={replan_decision.get('decision_plane')}"
+        )
     automation_prompt_upgrade = (
         payload.get("automation_prompt_upgrade")
         if isinstance(payload.get("automation_prompt_upgrade"), dict)
@@ -9308,6 +10371,7 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"cadence={scheduler_hint.get('cadence_class')} "
             f"codex_app_minutes={codex_app.get('recommended_interval_minutes')} "
             f"codex_app_rrule={codex_app.get('recommended_rrule')} "
+            f"codex_app_apply_needed={(codex_app.get('stateful_backoff') or {}).get('apply_needed') if isinstance(codex_app.get('stateful_backoff'), dict) else None} "
             f"codex_app_progression={codex_app.get('example_progression_minutes')} "
             f"cli_unchanged_limit={cli_unchanged_limit} "
             f"claude_unchanged_limit={claude_unchanged_limit}"
@@ -9322,14 +10386,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         if reset_policy:
             lines.append(
                 "- scheduler_reset: "
-                f"reset_to={reset_policy.get('reset_to')} "
                 f"initial_interval={reset_policy.get('codex_app_initial_interval_minutes')} "
                 f"initial_rrule={reset_policy.get('codex_app_initial_rrule')} "
                 f"reset_generation={reset_policy.get('reset_token')} "
-                f"identity_key_count={reset_policy.get('identity_key_count')} "
-                f"identity_signature={reset_policy.get('identity_signature')} "
-                f"profile_signature={reset_policy.get('profile_signature')} "
-                f"conditions={reset_policy.get('reset_condition_summary')}"
+                f"identity_signature={reset_policy.get('identity_signature')}"
             )
     protocol_action_packet = (
         payload.get("protocol_action_packet")

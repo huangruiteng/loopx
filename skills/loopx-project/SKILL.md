@@ -209,6 +209,14 @@ If a registered goal returns `automation_prompt_upgrade.required=true`, treat
 the installed automation prompt as stale and regenerate it with
 `heartbeat-prompt --agent-id ... --agent-scope ...`.
 
+If the default `loopx` payload contradicts the just-merged source checkout or a
+`PYTHONPATH=<checkout> python3 -m loopx.cli ...` cross-check, pause delivery and
+run `loopx doctor` before trusting quota. The installed command is normally a
+release snapshot wrapper, so a self-merged fix may require refreshing the local
+install from the latest trusted checkout with `scripts/install-local.sh`; rerun
+the default `loopx` command after the refresh and only spend quota after the
+runtime payload matches the repaired source behavior.
+
 If the response has `state=operator_gate`, treat it as a user/controller
 interaction, not a silent skip. Read `gate_prompt`, `operator_question`,
 `recommended_action`, `next_handoff_condition`, `missing_gates`, and
@@ -412,13 +420,14 @@ scheduling policy, not delivery permission. Codex CLI TUI and Claude Code loops
 should run the final quota/replan check from `scheduler_hint` before applying
 their `after_limit`; if the guard changes or returns `run_now`, follow the new
 quota contract instead of stopping. Codex App heartbeat workers should
-search/use `automation_update` when available: update the current heartbeat
-RRULE from `scheduler_hint.codex_app.recommended_rrule`, and when
-`scheduler_hint.reset_policy.reset_token` changes because of user feedback,
-new/reassigned work, a resolved gate, material evidence, or active work, restore
-the heartbeat RRULE to `scheduler_hint.reset_policy.codex_app_initial_rrule`
-before starting a new backoff progression. Cadence changes, reset-to-initial
-updates, final checks, and self-stop changes do not spend quota. Read
+search/use `automation_update` when available, but only when
+`scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
+`scheduler_hint.codex_app.recommended_rrule` is present. After a successful
+RRULE update, call `loopx quota scheduler-ack --goal-id <STABLE_GOAL_ID>
+--agent-id <REGISTERED_AGENT_ID> --applied-rrule <recommended_rrule> --execute`;
+LoopX owns reset/progression state and omits `recommended_rrule` when the
+desired RRULE is already applied. Cadence changes, reset-to-initial updates,
+final checks, and self-stop changes do not spend quota. Read
 `execution_obligation` before
 deciding on a quiet no-op:
 `heartbeat_recommendation.notify` is only the user-notification policy, not an
@@ -716,6 +725,13 @@ Inside a project:
 
 ```bash
 loopx status
+```
+
+To focus the status projection on one goal while preserving global health
+fields, pass the goal id:
+
+```bash
+loopx --format json status --goal-id <STABLE_GOAL_ID>
 ```
 
 Outside a project, `loopx status` should fall back to:

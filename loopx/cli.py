@@ -34,6 +34,7 @@ from .cli_commands import (
     handle_history_command,
     handle_lark_kanban_command,
     handle_ml_experiment_command,
+    handle_multi_agent_command,
     handle_project_lifecycle_command,
     handle_pr_review_command,
     handle_quota_command,
@@ -45,6 +46,7 @@ from .cli_commands import (
     handle_summary_all_command,
     handle_support_control_command,
     handle_todo_command,
+    handle_version_command,
     handle_worker_bridge_command,
     register_benchmark_command_group,
     register_bootstrap_connect_command,
@@ -55,6 +57,7 @@ from .cli_commands import (
     register_history_command,
     register_lark_kanban_commands,
     register_ml_experiment_commands,
+    register_multi_agent_commands,
     register_project_lifecycle_commands,
     register_pr_review_command,
     register_quota_command,
@@ -65,6 +68,7 @@ from .cli_commands import (
     register_summary_all_command,
     register_support_control_commands,
     register_todo_command,
+    register_version_command,
     register_worker_bridge_commands,
 )
 from .cli_rollout import (
@@ -80,19 +84,6 @@ def print_payload(payload: dict[str, object], fmt: str, markdown_renderer) -> No
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(markdown_renderer(payload))
-
-
-def build_version_payload() -> dict[str, object]:
-    return {
-        "ok": True,
-        "schema_version": "loopx_version_v0",
-        "name": "loopx",
-        "version": __version__,
-    }
-
-
-def render_version_markdown(payload: dict[str, object]) -> str:
-    return f"{payload.get('name')} {payload.get('version')}\n"
 
 
 def add_subcommand_format(arg_parser: argparse.ArgumentParser) -> None:
@@ -125,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("version", help="Print the installed LoopX version.")
+    register_version_command(sub, add_subcommand_format)
 
     register_bootstrap_connect_command(sub)
 
@@ -150,6 +141,8 @@ def main(argv: list[str] | None = None) -> int:
     register_ml_experiment_commands(sub, add_subcommand_format)
 
     register_auto_research_commands(sub, add_subcommand_format)
+
+    register_multi_agent_commands(sub, add_subcommand_format)
 
     register_registry_admin_commands(sub)
 
@@ -209,9 +202,9 @@ def main(argv: list[str] | None = None) -> int:
         if fallback_registry.exists():
             registry_path = fallback_registry
 
-    if args.command == "version":
-        print_payload(build_version_payload(), args.format, render_version_markdown)
-        return 0
+    version_result = handle_version_command(args, output_format=output_format, print_payload=print_payload)
+    if version_result is not None:
+        return version_result
 
     bootstrap_connect_result = handle_bootstrap_connect_command(
         args,
@@ -273,6 +266,16 @@ def main(argv: list[str] | None = None) -> int:
             output_format=output_format,
             print_payload=print_payload,
         )
+
+    multi_agent_result = handle_multi_agent_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if multi_agent_result is not None:
+        return multi_agent_result
 
     if args.command == "content-ops":
         return handle_content_ops_command(args, output_format=output_format, print_payload=print_payload)

@@ -3,14 +3,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import importlib.util
 import subprocess
 import sys
 import tempfile
 import time
+from argparse import Namespace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +38,7 @@ from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
 
 ROUTE = "codex-app-server-goal-baseline"
 WORKER_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_host_codex_goal_worker.py"
+RUNNER_SCRIPT = REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"
 
 FAKE_CODEX = """#!/usr/bin/env python3
 import json
@@ -144,6 +148,78 @@ for line in sys.stdin:
     print(json.dumps({"id": mid, "result": result}), flush=True)
 """
 
+FAKE_CODEX_EXIT_AFTER_TURN_START = """#!/usr/bin/env python3
+import json
+import sys
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        result = {"turn": {"id": "turn-skillsbench", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        raise SystemExit(0)
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
+FAKE_CODEX_THOUGHT_ONLY_NO_COMPLETION = """#!/usr/bin/env python3
+import json
+import sys
+import time
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-thought-only", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-thought-only", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-thought-only",
+                "itemId": "item-thought-only",
+                "delta": "thinking heartbeat without task action",
+            },
+        }), flush=True)
+        time.sleep(10)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
 FAKE_CODEX_USER_ONLY_COMPLETED = """#!/usr/bin/env python3
 import json
 import sys
@@ -190,6 +266,281 @@ for line in sys.stdin:
             "params": {
                 "threadId": "thread-skillsbench",
                 "turn": {"id": "turn-user-only", "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
+FAKE_CODEX_CONTEXT_ONLY_THEN_FOLLOWUP = """#!/usr/bin/env python3
+import json
+import sys
+
+turn_count = 0
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "xhigh":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing xhigh effort"},
+            }), flush=True)
+            continue
+        turn_count += 1
+        if turn_count == 1:
+            print(json.dumps({
+                "method": "turn/started",
+                "params": {
+                    "threadId": "thread-skillsbench",
+                    "turn": {"id": "turn-context-only", "status": "inProgress"},
+                },
+            }), flush=True)
+            result = {"turn": {"id": "turn-context-only", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "<permissions instructions>\\ncontext preamble\\n</skills_instructions>",
+                        }
+                    ],
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            }), flush=True)
+            continue
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-followup", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-followup",
+                "itemId": "item-followup",
+                "delta": "private worker answer after context retry",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup", "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
+FAKE_CODEX_CONTEXT_ONLY_EXIT_THEN_RESUME = """#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+state_path = Path(__file__).with_suffix(".state")
+resumed = state_path.exists()
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/resume":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": "active"}}
+    elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "xhigh":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing xhigh effort"},
+            }), flush=True)
+            continue
+        if not resumed:
+            print(json.dumps({
+                "method": "turn/started",
+                "params": {
+                    "threadId": "thread-skillsbench",
+                    "turn": {"id": "turn-context-only", "status": "inProgress"},
+                },
+            }), flush=True)
+            result = {"turn": {"id": "turn-context-only", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "<permissions instructions>\\ncontext preamble\\n</skills_instructions>",
+                        }
+                    ],
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            }), flush=True)
+            state_path.write_text("resume", encoding="utf-8")
+            sys.exit(0)
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-resumed", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-followup-resumed", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-followup-resumed",
+                "itemId": "item-followup-resumed",
+                "delta": "private worker answer after transport reconnect",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-resumed", "status": "completed"},
+            },
+        }), flush=True)
+        continue
+    else:
+        result = {}
+    print(json.dumps({"id": mid, "result": result}), flush=True)
+"""
+
+FAKE_CODEX_CONTEXT_ONLY_BLOCKS_GOAL_THEN_REACTIVATE = """#!/usr/bin/env python3
+import json
+import sys
+
+turn_count = 0
+goal_status = "active"
+reactivated = False
+for line in sys.stdin:
+    msg = json.loads(line)
+    mid = msg.get("id")
+    method = msg.get("method")
+    if method == "initialized":
+        continue
+    if method == "initialize":
+        result = {"serverInfo": {"name": "fake-codex"}}
+    elif method == "thread/start":
+        result = {"thread": {"id": "thread-skillsbench"}}
+    elif method == "thread/goal/set":
+        if msg.get("params", {}).get("status") == "active":
+            goal_status = "active"
+            reactivated = True
+        result = {"goal": {"threadId": "thread-skillsbench", "status": goal_status}}
+    elif method == "thread/goal/get":
+        result = {"goal": {"threadId": "thread-skillsbench", "status": goal_status}}
+    elif method == "turn/start":
+        if msg.get("params", {}).get("effort") != "xhigh":
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32602, "message": "missing xhigh effort"},
+            }), flush=True)
+            continue
+        turn_count += 1
+        if turn_count == 1:
+            print(json.dumps({
+                "method": "turn/started",
+                "params": {
+                    "threadId": "thread-skillsbench",
+                    "turn": {"id": "turn-context-only", "status": "inProgress"},
+                },
+            }), flush=True)
+            result = {"turn": {"id": "turn-context-only", "status": "running"}}
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "<permissions instructions>\\ncontext preamble\\n</skills_instructions>",
+                        }
+                    ],
+                },
+            }), flush=True)
+            print(json.dumps({
+                "type": "event_msg",
+                "payload": {"type": "task_complete"},
+            }), flush=True)
+            goal_status = "blocked"
+            continue
+        if not reactivated:
+            print(json.dumps({
+                "id": mid,
+                "error": {"code": -32000, "message": "goal remained blocked"},
+            }), flush=True)
+            continue
+        print(json.dumps({
+            "method": "turn/started",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-reactivated", "status": "inProgress"},
+            },
+        }), flush=True)
+        result = {"turn": {"id": "turn-followup-reactivated", "status": "running"}}
+        print(json.dumps({"id": mid, "result": result}), flush=True)
+        print(json.dumps({
+            "method": "item/agentMessage/delta",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turnId": "turn-followup-reactivated",
+                "itemId": "item-followup-reactivated",
+                "delta": "private worker answer after goal reactivation",
+            },
+        }), flush=True)
+        print(json.dumps({
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-skillsbench",
+                "turn": {"id": "turn-followup-reactivated", "status": "completed"},
             },
         }), flush=True)
         continue
@@ -265,6 +616,16 @@ def _load_worker_module() -> Any:
     return module
 
 
+def _load_runner_module() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "skillsbench_automation_loop", RUNNER_SCRIPT
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_route_contract_requires_native_goal_proof() -> None:
     contract = skillsbench_route_contract(ROUTE)
     assert contract["native_goal_mode_requested"] is True, contract
@@ -287,6 +648,7 @@ def test_worker_contract_is_public_safe() -> None:
     assert payload["runner_integration_ready"] is False, payload
     assert payload["worker_adapter"]["worker_surface"] == "codex_app_server", payload
     assert "turn/start" in payload["worker_adapter"]["native_goal_methods_required"], payload
+    assert payload["worker_adapter"]["context_only_followup_supported"] is True, payload
     assert payload["proof_required"]["thread_goal_get"] is True, payload
     assert payload["proof_required"]["turn_start"] is True, payload
     assert payload["boundary"]["raw_task_text_read_into_public_state"] is False, payload
@@ -409,6 +771,314 @@ def test_launcher_plan_only_marks_runner_ready_with_host_acp_launch() -> None:
     assert (
         prereq["codex_app_server_goal_worker_runner_integration_ready"] is True
     ), prereq
+
+
+def test_launcher_plan_only_records_independent_retry_config() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-retry-plan-") as tmp:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(RUNNER_SCRIPT),
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                ROUTE,
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--remote-command-file-bridge-ready",
+                "--host-local-acp-launch",
+                "--independent-goal-retries",
+                "3",
+                "--plan-only",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    payload = json.loads(result.stdout)
+    plan = payload["launch_plan"]
+    retry = plan["independent_goal_retry"]
+    assert retry["schema_version"] == "skillsbench_independent_goal_retry_config_v0", retry
+    assert retry["enabled"] is True, retry
+    assert retry["attempt_budget"] == 3, retry
+    assert retry["fresh_goal_thread_per_attempt"] is True, retry
+    assert retry["stop_policy"] == (
+        "stop_after_first_official_reward_1_or_first_terminal_"
+        "official_nonpassing_or_retry_budget"
+    ), retry
+    assert retry["official_reward_feedback_forwarded_to_agent"] is False, retry
+    assert retry["verifier_output_forwarded_to_agent"] is False, retry
+    assert retry["raw_task_text_read_into_public_state"] is False, retry
+    assert retry["raw_trajectory_read_into_public_state"] is False, retry
+    assert retry["raw_verifier_output_read_into_public_state"] is False, retry
+
+
+def test_independent_goal_retry_stops_after_first_success() -> None:
+    runner = _load_runner_module()
+    original_async_main = runner.async_main
+    original_build_plan = runner.build_plan
+
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-retry-") as tmp:
+        tmp_path = Path(tmp)
+
+        def fake_build_plan(args: Namespace) -> dict[str, Any]:
+            rollout_name = args.rollout_name or "rollout"
+            return {
+                "task_id": args.task_id,
+                "route": args.route,
+                "run_group_id": args.run_group_id,
+                "job_name": args.job_name,
+                "rollout_name": rollout_name,
+                "compact_benchmark_run_json": str(
+                    tmp_path / args.job_name / rollout_name / "benchmark_run.compact.json"
+                ),
+                "result_json": str(
+                    tmp_path / args.job_name / rollout_name / "result.json"
+                ),
+            }
+
+        async def fake_async_main(args: Namespace, *, plan: dict[str, Any] | None = None) -> dict[str, Any]:
+            assert args.independent_goal_retries == 1, args
+            attempt_number = int(str(args.job_name).rsplit("-", 1)[-1])
+            reward = 1.0 if attempt_number == 2 else None
+            return {
+                "ok": reward is not None,
+                "launch_plan": plan or {},
+                "official_task_score": {
+                    "kind": "fake_skillsbench_reward",
+                    "value": reward,
+                    "passed": reward == 1.0,
+                },
+                "score_failure_attribution": (
+                    "none" if reward == 1.0 else "skillsbench_runner_error"
+                ),
+            }
+
+        runner.build_plan = fake_build_plan
+        runner.async_main = fake_async_main
+        try:
+            payload = asyncio.run(
+                runner.async_independent_goal_retry_main(
+                    Namespace(
+                        task_id="bike-rebalance",
+                        task_ids=None,
+                        route=ROUTE,
+                        jobs_dir=str(tmp_path),
+                        run_group_id="retry-group",
+                        job_name="retry-job",
+                        rollout_name=None,
+                        independent_goal_retries=3,
+                        parallel_cases=1,
+                    )
+                )
+            )
+        finally:
+            runner.async_main = original_async_main
+            runner.build_plan = original_build_plan
+
+        assert payload["schema_version"] == "skillsbench_independent_goal_retry_summary_v0", payload
+        assert payload["ok"] is True, payload
+        assert payload["attempt_budget"] == 3, payload
+        assert payload["attempts_started"] == 2, payload
+        assert payload["first_success_attempt"] == 2, payload
+        assert payload["best_official_reward"] == 1.0, payload
+        assert payload["final_official_reward"] == 1.0, payload
+        assert payload["official_task_score"]["passed"] is True, payload
+        assert payload["stop_reason"] == "stop_after_first_official_reward_1_without_feedback", payload
+        assert payload["official_reward_feedback_forwarded_to_agent"] is False, payload
+        assert payload["verifier_output_forwarded_to_agent"] is False, payload
+        assert payload["reward_feedback_forwarded"] is False, payload
+        assert payload["raw_task_text_read_into_public_state"] is False, payload
+        assert payload["raw_trajectory_read_into_public_state"] is False, payload
+        assert payload["raw_verifier_output_read_into_public_state"] is False, payload
+        assert len(payload["attempts"]) == 2, payload
+        assert payload["attempts"][0]["official_reward"] is None, payload
+        assert payload["attempts"][0]["terminal_official_nonpassing"] is False, payload
+        assert payload["attempts"][1]["official_reward"] == 1.0, payload
+
+
+def test_independent_goal_retry_stops_after_first_terminal_nonpassing_score() -> None:
+    runner = _load_runner_module()
+    original_async_main = runner.async_main
+    original_build_plan = runner.build_plan
+
+    with tempfile.TemporaryDirectory(prefix="skillsbench-independent-nonpass-") as tmp:
+        tmp_path = Path(tmp)
+
+        def fake_build_plan(args: Namespace) -> dict[str, Any]:
+            rollout_name = args.rollout_name or "bike-rebalance__codex_app_server_goal"
+            return {
+                "task_id": args.task_id,
+                "route": args.route,
+                "run_group_id": args.run_group_id,
+                "job_name": args.job_name,
+                "rollout_name": rollout_name,
+                "compact_benchmark_run_json": str(
+                    tmp_path / args.job_name / rollout_name / "benchmark_run.compact.json"
+                ),
+                "result_json": str(
+                    tmp_path / args.job_name / rollout_name / "result.json"
+                ),
+            }
+
+        async def fake_async_main(
+            args: Namespace,
+            *,
+            plan: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            assert args.independent_goal_retries == 1, args
+            return {
+                "ok": True,
+                "launch_plan": plan or {},
+                "official_task_score": {
+                    "kind": "fake_skillsbench_reward",
+                    "value": 0.0,
+                    "passed": False,
+                },
+                "score_failure_attribution": "official_verifier_solution_failure",
+            }
+
+        runner.build_plan = fake_build_plan
+        runner.async_main = fake_async_main
+        try:
+            payload = asyncio.run(
+                runner.async_independent_goal_retry_main(
+                    Namespace(
+                        task_id="bike-rebalance",
+                        task_ids=None,
+                        route=ROUTE,
+                        jobs_dir=str(tmp_path),
+                        run_group_id="retry-nonpass",
+                        job_name="retry-job",
+                        rollout_name=None,
+                        independent_goal_retries=3,
+                        parallel_cases=1,
+                    )
+                )
+            )
+        finally:
+            runner.async_main = original_async_main
+            runner.build_plan = original_build_plan
+
+        assert payload["ok"] is False, payload
+        assert payload["attempt_budget"] == 3, payload
+        assert payload["attempts_started"] == 1, payload
+        assert payload["terminal_official_nonpassing_observed"] is True, payload
+        assert payload["first_terminal_official_nonpassing_attempt"] == 1, payload
+        assert payload["best_official_reward"] == 0.0, payload
+        assert payload["final_official_reward"] == 0.0, payload
+        assert payload["stop_reason"] == (
+            "stop_after_first_terminal_official_nonpassing_verifier_result"
+        ), payload
+        assert len(payload["attempts"]) == 1, payload
+        assert payload["attempts"][0]["terminal_official_nonpassing"] is True, payload
+        assert payload["official_reward_feedback_forwarded_to_agent"] is False, payload
+        for attempt in payload["attempts"]:
+            assert attempt["raw_task_text_read"] is False, attempt
+            assert attempt["raw_trajectory_read"] is False, attempt
+            assert attempt["raw_verifier_output_read"] is False, attempt
+        summary_path = Path(payload["retry_summary_json"])
+        assert summary_path.exists(), payload
+        saved = json.loads(summary_path.read_text(encoding="utf-8"))
+        assert saved["first_success_attempt"] is None, saved
+        assert saved["terminal_official_nonpassing_observed"] is True, saved
+
+
+def test_app_server_retry_relay_command_carries_attempt_scope() -> None:
+    runner = _load_runner_module()
+    with tempfile.TemporaryDirectory(prefix="skillsbench-retry-scope-") as tmp:
+        public_trace_dir = str(Path(tmp) / "public-traces")
+        args = runner.parse_args(
+            [
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                ROUTE,
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--run-group-id",
+                "retry-group",
+                "--job-name",
+                "retry-job-attempt-01",
+                "--rollout-name",
+                "bike-rebalance__codex_app_server_goal_independent_attempt_01",
+                "--plan-only",
+            ]
+        )
+    plan = {
+        "run_group_id": "retry-group",
+        "job_name": "retry-job-attempt-01",
+        "rollout_name": "bike-rebalance__codex_app_server_goal_independent_attempt_01",
+        "app_server_goal_worker_trace_dir": public_trace_dir,
+    }
+    command = runner._host_local_acp_launch_command(args, plan)
+    assert "--run-group-id" in command, command
+    assert command[command.index("--run-group-id") + 1] == "retry-group", command
+    assert "--job-name" in command, command
+    assert command[command.index("--job-name") + 1] == "retry-job-attempt-01", command
+    assert "--rollout-name" in command, command
+    assert (
+        command[command.index("--rollout-name") + 1]
+        == "bike-rebalance__codex_app_server_goal_independent_attempt_01"
+    ), command
+
+
+def test_host_local_attempt_cleanup_matches_scoped_relay_subtree() -> None:
+    runner = _load_runner_module()
+
+    class FakePs:
+        returncode = 0
+        stdout = "\n".join(
+            [
+                "100 1 python scripts/skillsbench_local_acp_relay.py "
+                "--job-name retry-job-attempt-01 "
+                "--rollout-name bike-rebalance__codex_app_server_goal_independent_attempt_01",
+                "101 100 python scripts/skillsbench_host_codex_goal_worker.py "
+                "--task-id bike-rebalance",
+                "102 1 python scripts/skillsbench_local_acp_relay.py "
+                "--job-name other-job --rollout-name other-rollout",
+            ]
+        )
+        stderr = ""
+
+    alive = {100, 101}
+    signals: list[tuple[int, int]] = []
+
+    def fake_run(*_args: Any, **_kwargs: Any) -> FakePs:
+        return FakePs()
+
+    def fake_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if pid in alive:
+                return
+            raise ProcessLookupError
+        signals.append((pid, sig))
+        alive.discard(pid)
+
+    plan = {
+        "job_name": "retry-job-attempt-01",
+        "rollout_name": "bike-rebalance__codex_app_server_goal_independent_attempt_01",
+        "runner_prerequisites": {
+            "host_local_acp_launch": True,
+        },
+    }
+    with patch.object(runner.subprocess, "run", fake_run), patch.object(
+        runner.os,
+        "kill",
+        fake_kill,
+    ):
+        cleanup = runner.cleanup_host_local_acp_attempt_children(
+            plan,
+            grace_seconds=0,
+        )
+    assert cleanup["match_count"] == 2, cleanup
+    assert cleanup["term_sent_count"] == 2, cleanup
+    assert cleanup["alive_after_count"] == 0, cleanup
+    assert cleanup["status"] == "terminated", cleanup
+    assert (102, runner.signal.SIGTERM) not in signals, signals
 
 
 def test_host_worker_contract_only_cli() -> None:
@@ -543,6 +1213,211 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         assert "Private task instruction placeholder" not in public_json, payload
 
 
+def test_host_worker_recovers_when_first_turn_only_echoes_context() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-context-retry-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_CONTEXT_ONLY_THEN_FOLLOWUP, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--reasoning-effort",
+                "xhigh",
+                "--context-only-followup-max",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["error_type"] == "", payload
+        assert payload["turn"]["reasoning_effort"] == "xhigh", payload
+        assert payload["turn"]["turn_attempt_count"] == 2, payload
+        assert payload["turn"]["context_only_turn_count"] == 1, payload
+        assert payload["turn"]["context_only_recovery_attempted"] is True, payload
+        assert payload["turn"]["context_only_recovery_succeeded"] is True, payload
+        assert payload["turn"]["assistant_message_context_only"] is False, payload
+        assert payload["turn"]["post_context_assistant_chars"] == len(
+            "private worker answer after context retry"
+        ), payload
+        assert payload["context_only_recovery"]["attempted"] is True, payload
+        assert payload["context_only_recovery"]["succeeded"] is True, payload
+        assert len(payload["turn_attempts"]) == 2, payload
+        assert payload["turn_attempts"][0]["assistant_message_context_only"] is True, payload
+        assert payload["turn_attempts"][1]["selected_final_turn"] is True, payload
+        assert private_response.read_text(encoding="utf-8") == (
+            "private worker answer after context retry"
+        )
+        public_json = json.dumps(payload)
+        assert "context preamble" not in public_json, payload
+        assert "private worker answer after context retry" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
+def test_host_worker_reactivates_goal_for_context_only_followup() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-app-goal-context-reactivate-"
+    ) as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(
+            FAKE_CODEX_CONTEXT_ONLY_BLOCKS_GOAL_THEN_REACTIVATE,
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--reasoning-effort",
+                "xhigh",
+                "--context-only-followup-max",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["error_type"] == "", payload
+        assert payload["turn"]["turn_attempt_count"] == 2, payload
+        assert payload["turn"]["context_only_turn_count"] == 1, payload
+        assert payload["turn"]["context_only_followup_start_attempted"] is True, payload
+        assert payload["turn"]["context_only_followup_start_succeeded"] is True, payload
+        assert payload["turn"]["goal_reactivation_attempted"] is True, payload
+        assert payload["turn"]["goal_reactivation_succeeded"] is True, payload
+        assert payload["turn"]["goal_reactivation_previous_status"] == "blocked", payload
+        assert payload["turn"]["goal_reactivation_result_status"] == "active", payload
+        assert payload["turn_attempts"][0]["assistant_message_context_only"] is True, payload
+        assert payload["turn_attempts"][1]["selected_final_turn"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_attempted"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_succeeded"] is True, payload
+        assert private_response.read_text(encoding="utf-8") == (
+            "private worker answer after goal reactivation"
+        )
+        public_json = json.dumps(payload)
+        assert "context preamble" not in public_json, payload
+        assert "private worker answer after goal reactivation" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
+def test_host_worker_reconnects_context_only_followup_transport() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-app-goal-context-reconnect-"
+    ) as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_CONTEXT_ONLY_EXIT_THEN_RESUME, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--reasoning-effort",
+                "xhigh",
+                "--context-only-followup-max",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        assert result.stdout == "", result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is True, payload
+        assert payload["error_type"] == "", payload
+        assert payload["turn"]["turn_attempt_count"] == 2, payload
+        assert payload["turn"]["context_only_turn_count"] == 1, payload
+        assert payload["turn"]["context_only_recovery_attempted"] is True, payload
+        assert payload["turn"]["context_only_recovery_succeeded"] is True, payload
+        assert payload["turn"]["context_only_followup_start_attempted"] is True, payload
+        assert payload["turn"]["context_only_followup_start_succeeded"] is True, payload
+        assert payload["turn"]["transport_reconnect_attempted"] is True, payload
+        assert payload["turn"]["transport_reconnect_succeeded"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_attempted"] is True, payload
+        assert payload["context_only_recovery"]["followup_start_succeeded"] is True, payload
+        assert len(payload["turn_attempts"]) == 2, payload
+        assert payload["turn_attempts"][0]["assistant_message_context_only"] is True, payload
+        assert payload["turn_attempts"][1]["transport_reconnect_succeeded"] is True, payload
+        assert private_response.read_text(encoding="utf-8") == (
+            "private worker answer after transport reconnect"
+        )
+        public_json = json.dumps(payload)
+        assert "context preamble" not in public_json, payload
+        assert "private worker answer after transport reconnect" not in public_json, payload
+        assert "Private task instruction placeholder" not in public_json, payload
+
+
 def test_host_worker_fails_closed_on_first_action_timeout() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-worker-no-complete-") as tmp:
         root = Path(tmp)
@@ -598,6 +1473,115 @@ def test_host_worker_fails_closed_on_first_action_timeout() -> None:
         assert payload["turn"]["first_action_timeout_sec"] == 1.0, payload
         assert not private_response.exists(), result
         assert not list(work.glob(".loopx_app_server_goal_worker_response_*.txt"))
+
+
+def test_host_worker_fails_fast_when_app_server_stream_closes() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-worker-eof-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_EXIT_AFTER_TURN_START, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "60",
+                "--first-action-timeout-sec",
+                "60",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=5,
+        )
+        assert result.returncode == 1, result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is False, payload
+        assert (
+            payload["error_type"]
+            == "codex_app_server_stream_eof_before_completion"
+        ), payload
+        assert (
+            payload["worker_contract"]["first_blocker"]
+            == "codex_app_server_stream_eof_before_completion"
+        ), payload
+        assert payload["turn"]["turn_id_present"] is True, payload
+        assert payload["turn"]["turn_completed_observed"] is False, payload
+        assert payload["turn"]["stream_eof_observed"] is True, payload
+        assert payload["turn"]["process_exit_observed"] is True, payload
+        assert payload["turn"]["process_returncode"] == 0, payload
+        assert "process/exited" in payload["turn"]["notifications"], payload
+        assert not private_response.exists(), payload
+
+
+def test_host_worker_treats_thought_delta_as_no_effective_first_action() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-worker-thought-only-") as tmp:
+        root = Path(tmp)
+        fake = root / "codex"
+        prompt = root / "prompt.txt"
+        output = root / "worker.compact.json"
+        private_response = root / "private-response.txt"
+        fake.write_text(FAKE_CODEX_THOUGHT_ONLY_NO_COMPLETION, encoding="utf-8")
+        fake.chmod(0o755)
+        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(WORKER_SCRIPT),
+                "--task-id",
+                "llm-prefix-cache-replay",
+                "--codex-bin",
+                str(fake),
+                "--work-dir",
+                str(root / "work"),
+                "--prompt-file",
+                str(prompt),
+                "--output-json",
+                str(output),
+                "--response-text-file",
+                str(private_response),
+                "--response-timeout-sec",
+                "5",
+                "--turn-timeout-sec",
+                "5",
+                "--first-action-timeout-sec",
+                "1",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 1, result
+        payload = json.loads(output.read_text(encoding="utf-8"))
+        assert payload["ok"] is False, payload
+        assert payload["error_type"] == "codex_exec_first_action_timeout", payload
+        assert payload["turn"]["first_action_observed"] is True, payload
+        assert payload["turn"]["effective_action_observed"] is False, payload
+        assert payload["turn"]["agent_message_delta_count"] == 1, payload
+        assert payload["turn"]["turn_completed_observed"] is False, payload
+        assert payload["turn"]["assistant_message_present"] is False, payload
+        assert not private_response.exists(), payload
 
 
 def test_host_worker_fails_closed_when_only_user_message_echo_completes() -> None:
@@ -1203,16 +2187,27 @@ sys.exit(0)
 
 
 def test_acp_relay_fails_fast_when_app_server_worker_never_uses_bridge() -> None:
-    fake_worker = """#!/usr/bin/env python3
-import time
-
-time.sleep(30)
-"""
     with tempfile.TemporaryDirectory(prefix="skillsbench-app-goal-bridge-first-action-") as tmp:
         root = Path(tmp)
         worker = root / "fake_worker.py"
         work = root / "work"
         trace_dir = root / "worker-traces"
+        timeout_arg = trace_dir / "first_action_timeout_arg.txt"
+        fake_worker = f"""#!/usr/bin/env python3
+import argparse
+import time
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--first-action-timeout-sec")
+args, _ = parser.parse_known_args()
+Path({str(timeout_arg)!r}).parent.mkdir(parents=True, exist_ok=True)
+Path({str(timeout_arg)!r}).write_text(
+    str(args.first_action_timeout_sec),
+    encoding="utf-8",
+)
+time.sleep(30)
+"""
         worker.write_text(fake_worker, encoding="utf-8")
         worker.chmod(0o755)
         work.mkdir()
@@ -1300,11 +2295,60 @@ time.sleep(30)
         assert trace["worker_process"]["stage"] == "first_action_timeout", trace
         assert trace["worker_contract"]["first_blocker"] == "first_action_timeout", trace
         assert trace["worker_process"]["stderr_bytes"] > 0, trace
+        assert timeout_arg.read_text(encoding="utf-8") == "1.0"
         trace_text = json.dumps(trace, sort_keys=True)
         assert "private task placeholder" not in trace_text, trace
         assert str(work) not in trace_text, trace
         proc.terminate()
         proc.wait(timeout=2)
+
+
+def test_app_server_goal_launcher_defaults_first_action_watchdog() -> None:
+    from scripts.skillsbench_automation_loop import _host_local_acp_launch_command
+
+    command = _host_local_acp_launch_command(
+        _app_server_goal_command_args(first_action_timeout=None),
+        {"app_server_goal_worker_trace_dir": "/tmp/worker-traces"},
+    )
+    index = command.index("--first-action-timeout-sec")
+    assert command[index + 1] == "900", command
+
+
+def test_app_server_goal_launcher_allows_explicit_first_action_disable() -> None:
+    from scripts.skillsbench_automation_loop import _host_local_acp_launch_command
+
+    command = _host_local_acp_launch_command(
+        _app_server_goal_command_args(first_action_timeout=0),
+        {"app_server_goal_worker_trace_dir": "/tmp/worker-traces"},
+    )
+    index = command.index("--first-action-timeout-sec")
+    assert command[index + 1] == "0", command
+
+
+def _app_server_goal_command_args(first_action_timeout: int | None) -> Namespace:
+    return Namespace(
+        local_acp_relay_command="",
+        route=ROUTE,
+        app_server_reasoning_effort="high",
+        app_server_acp_heartbeat_interval_sec=120.0,
+        dataset="skillsbench@1.1",
+        task_id="llm-prefix-cache-replay",
+        local_codex_bin="codex",
+        local_codex_sandbox="workspace-write",
+        local_codex_exec_timeout_sec=None,
+        local_codex_first_action_timeout_sec=first_action_timeout,
+        local_codex_bridge_idle_timeout_sec=None,
+        local_codex_task_output_quiet_timeout_sec=None,
+        outer_timeout_sec=7200,
+        agent_idle_timeout=900,
+        model="gpt-5.5",
+        host_local_acp_launch=True,
+        remote_command_file_bridge_solver_command="python bridge.py",
+        remote_command_file_bridge_ready=True,
+        remote_command_file_bridge_probe=False,
+        remote_command_file_bridge_probe_timeout_sec=10,
+        remote_command_file_bridge_agent_command="",
+    )
 
 
 def test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge() -> None:
@@ -1361,7 +2405,7 @@ time.sleep(30)
                 "--timeout-sec",
                 "20",
                 "--first-action-timeout-sec",
-                "1",
+                "5",
                 "--remote-command-file-bridge-command",
                 bridge_command,
                 "--worker-public-trace-dir",
@@ -1793,7 +2837,11 @@ if __name__ == "__main__":
     test_launcher_plan_only_marks_runner_ready_with_host_acp_launch()
     test_host_worker_contract_only_cli()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
+    test_host_worker_recovers_when_first_turn_only_echoes_context()
+    test_host_worker_reactivates_goal_for_context_only_followup()
+    test_host_worker_reconnects_context_only_followup_transport()
     test_host_worker_fails_closed_on_first_action_timeout()
+    test_host_worker_fails_fast_when_app_server_stream_closes()
     test_acp_relay_delegates_to_app_server_goal_worker()
     test_acp_relay_materializes_lifecycle_trace_before_prompt()
     test_acp_relay_streams_public_keepalive_while_worker_runs()
@@ -1801,8 +2849,15 @@ if __name__ == "__main__":
     test_acp_relay_materializes_public_failure_trace_without_worker_output()
     test_acp_relay_fails_closed_when_zero_exit_worker_writes_no_public_output()
     test_acp_relay_fails_fast_when_app_server_worker_never_uses_bridge()
+    test_app_server_goal_launcher_defaults_first_action_watchdog()
+    test_app_server_goal_launcher_allows_explicit_first_action_disable()
     test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge()
     test_acp_relay_yields_after_task_output_quiet_timeout()
+    test_launcher_plan_only_records_independent_retry_config()
+    test_independent_goal_retry_stops_after_first_success()
+    test_independent_goal_retry_stops_after_first_terminal_nonpassing_score()
+    test_app_server_retry_relay_command_carries_attempt_scope()
+    test_host_local_attempt_cleanup_matches_scoped_relay_subtree()
     test_full_run_fails_closed_until_bridge_is_materialized()
     test_full_run_with_bridge_ready_requires_host_acp_launch()
     test_launcher_patches_rollout_planes_connect_acp()

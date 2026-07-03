@@ -52,6 +52,28 @@ Before promoting a stable install/update recommendation, maintainers must move
 the public `stable` ref to the release commit that passed this gate. Do not
 claim stable-channel readiness while `stable` is missing or stale.
 
+## Named Version Contract
+
+LoopX v0.x is distributed from GitHub, but each stable promotion still needs a
+package version name. The version source is `loopx.__version__`, mirrored by
+`pyproject.toml`; the expected public tag is `vX.Y.Z` for that version.
+
+Before moving `stable`, maintainers should:
+
+- bump `loopx.__version__` and `pyproject.toml` together when user-visible
+  release behavior changes;
+- create or verify the matching Git tag, for example `v0.1.3`;
+- fast-forward `stable` to that tagged commit after the release canary passes;
+- confirm `release.json`, `loopx doctor`, and `loopx update --check` report the
+  same package version and tag;
+- tell existing users to run `loopx update --check`, then
+  `loopx update --execute` when the check recommends or when they want to
+  refresh to the named stable release.
+
+This is a lightweight GitHub release contract, not a PyPI publishing
+requirement. A future package registry can reuse the same version/tag contract
+instead of inventing a second release identity.
+
 ## Compatibility Gate
 
 Before a release snapshot is promoted or a public guide tells users to depend
@@ -59,10 +81,11 @@ on a new surface, run the smallest gate that covers the touched surface:
 
 ```bash
 python3 -m py_compile loopx/*.py
-python3 examples/codex-cli-no-clone-release-verification-smoke.py
+python3 examples/release/codex-cli-no-clone-release-verification-smoke.py
 python3 examples/fresh-clone-quickstart-smoke.py
 python3 examples/loopx-update-smoke.py
-python3 examples/release-readiness-doc-smoke.py
+python3 examples/release/release-version-contract-smoke.py
+python3 examples/release/release-readiness-doc-smoke.py
 git diff --check
 loopx check --scan-path README.md --scan-path docs/ --scan-path examples/
 ```
@@ -100,6 +123,14 @@ The default promotion canary is:
 python3 examples/canary-promotion-readiness-smoke.py --no-write-evidence
 ```
 
+The default dashboard policy is `--dashboard-mode=auto`: source checkouts run
+dashboard demo-readiness when `apps/dashboard` is present, while installed
+release snapshots that omit the dashboard app skip that optional surface and
+keep the omission visible in the canary output. Use `--dashboard-mode=require`
+when the dashboard/frontstage itself is being promoted, and
+`--dashboard-mode=skip` only when the release boundary intentionally excludes
+the dashboard app.
+
 Use the writeback form only when you intentionally want to append fresh
 promotion-readiness evidence:
 
@@ -107,10 +138,31 @@ promotion-readiness evidence:
 python3 examples/canary-promotion-readiness-smoke.py
 ```
 
+For broader source-checkout regressions, keep `loopx canary smoke-suite` as the
+source of truth. Local and LoopX automation should continue to use the runner
+payload directly:
+
+```bash
+python3 examples/run-smokes.py --suite default-public --module canary
+loopx canary smoke-suite --suite default-public --module canary
+```
+
+CI may wrap the same runner selection in pytest when JUnit reporting is useful.
+The pytest facade still executes each `examples/**/*-smoke.py` through a
+subprocess; it is not a migration of legacy smokes into pytest unit tests:
+
+```bash
+python3 -m pytest tests/test_smoke_suite.py \
+  --loopx-smoke-suite default-public \
+  --loopx-smoke-module canary \
+  --junitxml smoke-suite.xml
+```
+
 If the source checkout has optional frontend dependencies installed, dashboard
 readiness can be included in the same canary. If a release snapshot omits the
-dashboard app, record that as a release-boundary decision or follow-up instead
-of silently treating the dashboard path as covered.
+dashboard app, the canary should degrade gracefully and record that boundary
+rather than failing unrelated CLI/install promotion or silently treating the
+dashboard path as covered.
 
 ## What Is Safe To Depend On
 
@@ -147,6 +199,7 @@ Treat these as experimental until their contract docs say otherwise:
 Every public release note or update note should answer:
 
 - What user-visible capability became more dependable?
+- What package version and public tag name this stable release uses?
 - Which install/update path should a new user follow?
 - Which commands, docs, or smokes prove the claim?
 - Are there compatibility or migration notes for existing local state?

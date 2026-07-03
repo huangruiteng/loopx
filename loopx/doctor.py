@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ from typing import Any
 from . import __version__
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path
 from .registry_writability import probe_registry_write_path
-from .release_manifest import load_release_manifest
+from .release_manifest import load_release_manifest, release_version_tag
 
 
 PROMOTION_READINESS_CLASSIFICATIONS = {
@@ -28,13 +29,6 @@ NO_CLONE_UPGRADE_COMMAND = (
 )
 RELEASE_ID_TIMESTAMP_RE = re.compile(r"^\d{8}T\d{6}Z$")
 REQUIRED_INSTALLED_SKILL_PHRASES = {
-    "loopx-auto-research": (
-        "Identity comes from LoopX control-plane metadata",
-        'loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"',
-        "No role owns the full graph",
-        "Do not infer role from pane title",
-        "auto_research_role_profile_v0",
-    ),
     "loopx-project": (
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
         "--delivery-batch-scale multi_surface",
@@ -54,7 +48,7 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
     "loopx-self-repair": (
         "Build a compact evidence packet",
         "loopx --format json diagnose --goal-id <goal-id>",
-        "loopx --format json status --limit 20",
+        "loopx --format json status --goal-id <goal-id> --limit 20",
         "registry-declared active state file",
         "references/repair-patterns.md",
         "Repair at the lowest durable layer",
@@ -109,6 +103,62 @@ def parse_release_id_time(release_id: str | None) -> datetime | None:
         return None
 
 
+def short_revision(value: Any, *, length: int = 12) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    return text[:length] if len(text) > length else text
+
+
+def git_metadata_for_root(root: Path | None) -> dict[str, Any]:
+    if root is None:
+        return {
+            "root": None,
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+        }
+    try:
+        source_root = root.expanduser().resolve()
+    except OSError:
+        source_root = root.expanduser()
+    if not source_root.exists():
+        return {
+            "root": str(source_root),
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+        }
+
+    def _run(args: list[str]) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(source_root), *args],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
+    commit = _run(["rev-parse", "HEAD"])
+    branch = _run(["symbolic-ref", "--quiet", "--short", "HEAD"])
+    tag = _run(["describe", "--tags", "--exact-match"])
+    status = _run(["status", "--porcelain"])
+    dirty = None if commit is None and branch is None and tag is None and status is None else bool(status)
+    return {
+        "root": str(source_root),
+        "git_commit": commit,
+        "git_ref": branch or tag,
+        "git_dirty": dirty,
+    }
+
+
 def build_install_freshness(
     *,
     command_path: Path | None,
@@ -116,6 +166,7 @@ def build_install_freshness(
     repo_root: Path,
     skills: dict[str, dict[str, Any]],
     release_manifest: dict[str, Any] | None = None,
+    comparison_source: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     reference = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
@@ -160,9 +211,51 @@ def build_install_freshness(
     manifest_package = (
         manifest_body.get("package") if isinstance(manifest_body.get("package"), dict) else {}
     )
+    manifest_package_version = manifest_package.get("version")
+    manifest_package_version_tag = manifest_package.get("version_tag") or (
+        release_version_tag(manifest_package_version)
+        if isinstance(manifest_package_version, str)
+        else None
+    )
+    current_version_tag = release_version_tag(__version__)
+    manifest_package_version_matches_runtime = (
+        manifest_package_version == __version__
+        if isinstance(manifest_package_version, str) and manifest_package_version
+        else None
+    )
     manifest_source = (
         manifest_body.get("source") if isinstance(manifest_body.get("source"), dict) else {}
     )
+    manifest_source_git_commit = manifest_source.get("git_commit")
+    manifest_source_revision = (
+        manifest_source_git_commit
+        or manifest_source.get("git_ref")
+        or manifest_source.get("ref")
+    )
+    comparison = comparison_source if isinstance(comparison_source, dict) else {}
+    comparison_source_git_commit = comparison.get("git_commit")
+    comparison_source_label = comparison.get("label") or "comparison_source"
+    manifest_source_matches_comparison = (
+        manifest_source_git_commit == comparison_source_git_commit
+        if manifest_source_git_commit and comparison_source_git_commit
+        else None
+    )
+    source_commit_mismatch = manifest_source_matches_comparison is False
+
+    if release_id and source_commit_mismatch and command_path is not None and not skill_problem:
+        status = "stale"
+        reason = f"release manifest source commit differs from {comparison_source_label} commit"
+        requires_upgrade = True
+
+    if (
+        manifest_package_version_matches_runtime is False
+        and command_path is not None
+        and not skill_problem
+    ):
+        status = "repair_recommended"
+        reason = "release manifest package version differs from runtime package version"
+        requires_upgrade = True
+
     manifest_skills = (
         manifest_body.get("skills") if isinstance(manifest_body.get("skills"), dict) else {}
     )
@@ -172,6 +265,7 @@ def build_install_freshness(
         "requires_upgrade": requires_upgrade,
         "reason": reason,
         "current_version": __version__,
+        "current_version_tag": current_version_tag,
         "stale_after_hours": INSTALL_FRESHNESS_STALE_HOURS,
         "release_id": release_id,
         "release_age_hours": age_hours,
@@ -182,10 +276,25 @@ def build_install_freshness(
         "release_manifest_available": manifest.get("available"),
         "release_manifest_path": manifest.get("path"),
         "release_manifest_reason": manifest.get("reason"),
-        "manifest_package_version": manifest_package.get("version"),
+        "manifest_package_version": manifest_package_version,
+        "manifest_package_version_tag": manifest_package_version_tag,
+        "manifest_package_version_matches_runtime": manifest_package_version_matches_runtime,
         "manifest_source_kind": manifest_source.get("kind"),
         "manifest_source_repo": manifest_source.get("repo"),
         "manifest_source_ref": manifest_source.get("ref"),
+        "manifest_source_git_commit": manifest_source_git_commit,
+        "manifest_source_git_commit_short": short_revision(manifest_source_git_commit),
+        "manifest_source_git_ref": manifest_source.get("git_ref"),
+        "manifest_source_git_dirty": manifest_source.get("git_dirty"),
+        "manifest_source_revision": manifest_source_revision,
+        "manifest_source_revision_short": short_revision(manifest_source_revision),
+        "comparison_source_label": comparison_source_label if comparison else None,
+        "comparison_source_root": comparison.get("root"),
+        "comparison_source_git_commit": comparison_source_git_commit,
+        "comparison_source_git_commit_short": short_revision(comparison_source_git_commit),
+        "comparison_source_git_ref": comparison.get("git_ref"),
+        "comparison_source_git_dirty": comparison.get("git_dirty"),
+        "manifest_source_matches_comparison": manifest_source_matches_comparison,
         "manifest_archive_sha256": manifest_source.get("archive_sha256"),
         "manifest_skills_digest": manifest_skills.get("digest"),
     }
@@ -283,7 +392,7 @@ def installed_skill_summary(skills_root: Path) -> dict[str, dict[str, Any]]:
     return summaries
 
 
-def latest_promotion_readiness_event(runtime_root: Path) -> dict[str, Any]:
+def latest_promotion_readiness_event(runtime_root: Path, goal_id: str | None = None) -> dict[str, Any]:
     goals_dir = runtime_root / "goals"
     if not goals_dir.exists():
         return {
@@ -293,8 +402,9 @@ def latest_promotion_readiness_event(runtime_root: Path) -> dict[str, Any]:
         }
 
     matches: list[dict[str, Any]] = []
-    for index_path in goals_dir.glob("*/runs/index.jsonl"):
-        goal_id = index_path.parent.parent.name
+    index_glob = f"{goal_id}/runs/index.jsonl" if goal_id else "*/runs/index.jsonl"
+    for index_path in goals_dir.glob(index_glob):
+        current_goal_id = index_path.parent.parent.name
         try:
             lines = index_path.read_text(encoding="utf-8").splitlines()
         except OSError:
@@ -316,7 +426,7 @@ def latest_promotion_readiness_event(runtime_root: Path) -> dict[str, Any]:
             matches.append(
                 {
                     "available": True,
-                    "goal_id": str(item.get("goal_id") or goal_id),
+                    "goal_id": str(item.get("goal_id") or current_goal_id),
                     "generated_at": item.get("generated_at"),
                     "classification": classification,
                     "delivery_batch_scale": item.get("delivery_batch_scale"),
@@ -331,7 +441,12 @@ def latest_promotion_readiness_event(runtime_root: Path) -> dict[str, Any]:
         return {
             "available": False,
             "runtime_root": str(runtime_root),
-            "reason": "no canary promotion readiness run found",
+            "goal_id": goal_id,
+            "reason": (
+                f"no canary promotion readiness run found for `{goal_id}`"
+                if goal_id
+                else "no canary promotion readiness run found"
+            ),
         }
     matches.sort(key=lambda item: str(item.get("generated_at") or ""), reverse=True)
     latest = matches[0]
@@ -357,6 +472,10 @@ def collect_doctor() -> dict[str, Any]:
     release_root = command_release_root(command_realpath)
     canary_root = command_release_root(canary_realpath)
     release_manifest = load_release_manifest(release_root)
+    comparison_source = None
+    if canary_realpath and command_realpath and canary_realpath != command_realpath:
+        comparison_source = git_metadata_for_root(command_release_root(canary_realpath))
+        comparison_source["label"] = "loopx-canary"
     path_entries = os.environ.get("PATH", "").split(os.pathsep)
     local_bin = user_local_bin()
     skills_root = codex_home() / "skills"
@@ -387,6 +506,7 @@ def collect_doctor() -> dict[str, Any]:
         repo_root=repo_root,
         skills=skills,
         release_manifest=release_manifest,
+        comparison_source=comparison_source,
     )
     default_global_registry = global_registry_path(DEFAULT_RUNTIME_ROOT)
     global_registry_writability = probe_registry_write_path(default_global_registry, create_parent=True)
@@ -592,7 +712,12 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
     freshness = payload.get("install_freshness") if isinstance(payload.get("install_freshness"), dict) else {}
     if freshness:
         manifest_source_repo = freshness.get("manifest_source_repo") or freshness.get("manifest_source_kind")
-        manifest_source_ref = freshness.get("manifest_source_ref") or "n/a"
+        manifest_source_ref = (
+            freshness.get("manifest_source_git_ref")
+            or freshness.get("manifest_source_ref")
+            or freshness.get("manifest_source_git_commit_short")
+            or "n/a"
+        )
         lines.extend(
             [
                 "",
@@ -601,11 +726,19 @@ def render_doctor_markdown(payload: dict[str, Any]) -> str:
                 f"- status: `{freshness.get('status')}`",
                 f"- requires_upgrade: `{freshness.get('requires_upgrade')}`",
                 f"- current_version: `{freshness.get('current_version')}`",
+                f"- current_version_tag: `{freshness.get('current_version_tag')}`",
+                f"- manifest_package_version: `{freshness.get('manifest_package_version')}`",
+                f"- manifest_package_version_tag: `{freshness.get('manifest_package_version_tag')}`",
+                f"- manifest_package_version_matches_runtime: `{freshness.get('manifest_package_version_matches_runtime')}`",
                 f"- release_id: `{freshness.get('release_id')}`",
                 f"- release_age_hours: `{freshness.get('release_age_hours')}`",
                 f"- reason: `{freshness.get('reason')}`",
                 f"- release_manifest_available: `{freshness.get('release_manifest_available')}`",
                 f"- manifest_source: `{manifest_source_repo}` @ `{manifest_source_ref}`",
+                f"- manifest_source_git_commit: `{freshness.get('manifest_source_git_commit_short')}`",
+                f"- manifest_source_git_dirty: `{freshness.get('manifest_source_git_dirty')}`",
+                f"- comparison_source: `{freshness.get('comparison_source_label')}` @ `{freshness.get('comparison_source_git_commit_short')}`",
+                f"- manifest_source_matches_comparison: `{freshness.get('manifest_source_matches_comparison')}`",
                 f"- manifest_archive_sha256: `{freshness.get('manifest_archive_sha256')}`",
                 f"- manifest_skills_digest: `{freshness.get('manifest_skills_digest')}`",
                 "- upgrade_command:",

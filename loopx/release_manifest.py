@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from . import __version__
@@ -12,6 +13,26 @@ from . import __version__
 
 RELEASE_MANIFEST_SCHEMA_VERSION = "loopx_release_manifest_v0"
 RELEASE_MANIFEST_FILENAME = "release.json"
+PACKAGE_VERSION_SOURCE = "loopx.__version__"
+
+
+def release_version_tag(version: str | None = None) -> str | None:
+    selected = __version__ if version is None else version
+    if not isinstance(selected, str):
+        return None
+    text = selected.strip()
+    if not text:
+        return None
+    return text if text.startswith("v") else f"v{text}"
+
+
+def package_release_metadata() -> dict[str, str | None]:
+    return {
+        "name": "loopx",
+        "version": __version__,
+        "version_tag": release_version_tag(__version__),
+        "version_source": PACKAGE_VERSION_SOURCE,
+    }
 
 
 def _sha256_file(path: Path) -> str:
@@ -48,19 +69,130 @@ def _hash_tree(root: Path) -> dict[str, Any]:
     }
 
 
+def _run_git(source_root: Path, args: list[str]) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(source_root), *args],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return value or None
+
+
+def _git_metadata(source_root: Path | None) -> dict[str, Any]:
+    if source_root is None:
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+        }
+    root = source_root.expanduser().resolve()
+    if not root.exists():
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+        }
+    commit = _run_git(root, ["rev-parse", "HEAD"])
+    branch = _run_git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"])
+    tag = _run_git(root, ["describe", "--tags", "--exact-match"])
+    status = _run_git(root, ["status", "--porcelain"])
+    if commit is None and branch is None and tag is None and status is None:
+        dirty: bool | None = None
+    else:
+        dirty = bool(status)
+    return {
+        "git_commit": commit,
+        "git_ref": branch or tag,
+        "git_dirty": dirty,
+    }
+
+
+def _manifest_source_metadata(source_root: Path | None) -> dict[str, Any]:
+    if source_root is None:
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    manifest_path = source_root.expanduser() / RELEASE_MANIFEST_FILENAME
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    source = manifest.get("source") if isinstance(manifest, dict) else None
+    if not isinstance(source, dict):
+        return {
+            "git_commit": None,
+            "git_ref": None,
+            "git_dirty": None,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    return {
+        "git_commit": source.get("git_commit"),
+        "git_ref": source.get("git_ref") or source.get("ref"),
+        "git_dirty": source.get("git_dirty"),
+        "kind": source.get("kind"),
+        "repo": source.get("repo"),
+        "ref": source.get("ref"),
+        "archive_url": source.get("archive_url"),
+        "archive_sha256": source.get("archive_sha256"),
+    }
+
+
+def _source_metadata(source_root: Path | None) -> dict[str, Any]:
+    git_metadata = _git_metadata(source_root)
+    if any(git_metadata.get(key) is not None for key in ("git_commit", "git_ref", "git_dirty")):
+        return {
+            **git_metadata,
+            "kind": None,
+            "repo": None,
+            "ref": None,
+            "archive_url": None,
+            "archive_sha256": None,
+        }
+    return _manifest_source_metadata(source_root)
+
+
 def build_release_manifest(
     *,
     release_root: Path,
     release_id: str,
+    source_root: Path | None = None,
     installed_at: str | None = None,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     source_env = env or os.environ
-    archive_url = source_env.get("LOOPX_ARCHIVE_URL")
-    archive_sha256 = source_env.get("LOOPX_ARCHIVE_SHA256")
-    repo = source_env.get("LOOPX_REPO")
-    ref = source_env.get("LOOPX_REF")
-    source_kind = "github_archive" if archive_url else "local_checkout"
+    source_metadata = _source_metadata(source_root)
+    archive_url = source_env.get("LOOPX_ARCHIVE_URL") or source_metadata.get("archive_url")
+    archive_sha256 = source_env.get("LOOPX_ARCHIVE_SHA256") or source_metadata.get("archive_sha256")
+    repo = source_env.get("LOOPX_REPO") or source_metadata.get("repo")
+    ref = source_env.get("LOOPX_REF") or source_metadata.get("ref")
+    source_kind = "github_archive" if archive_url else (source_metadata.get("kind") or "local_checkout")
     skills_root = release_root / "skills"
     skills: dict[str, Any] = {}
     if skills_root.exists():
@@ -73,14 +205,14 @@ def build_release_manifest(
         "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
         "release_id": release_id,
         "installed_at": installed_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "package": {
-            "name": "loopx",
-            "version": __version__,
-        },
+        "package": package_release_metadata(),
         "source": {
             "kind": source_kind,
             "repo": repo,
             "ref": ref,
+            "git_commit": source_metadata["git_commit"],
+            "git_ref": source_metadata["git_ref"],
+            "git_dirty": source_metadata["git_dirty"],
             "archive_url": archive_url,
             "archive_sha256": archive_sha256,
         },
@@ -95,12 +227,14 @@ def write_release_manifest(
     *,
     release_root: Path,
     release_id: str,
+    source_root: Path | None = None,
     installed_at: str | None = None,
     env: dict[str, str] | None = None,
 ) -> Path:
     manifest = build_release_manifest(
         release_root=release_root,
         release_id=release_id,
+        source_root=source_root,
         installed_at=installed_at,
         env=env,
     )
@@ -158,11 +292,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Write a LoopX release manifest.")
     parser.add_argument("release_root")
     parser.add_argument("--release-id", required=True)
+    parser.add_argument("--source-root")
     parser.add_argument("--installed-at")
     args = parser.parse_args(argv)
     write_release_manifest(
         release_root=Path(args.release_root),
         release_id=args.release_id,
+        source_root=Path(args.source_root) if args.source_root else None,
         installed_at=args.installed_at,
     )
     return 0

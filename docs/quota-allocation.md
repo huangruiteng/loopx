@@ -354,6 +354,12 @@ ordinary delivery work. Only when no ready current-agent/unclaimed deferred
 resume exists should agent-scoped quota fall through to `agent_scope_wait`,
 `reassignment_required`, or `scope_exhausted`.
 
+Open todos with `resume_when` use the same readiness signal before they enter
+ordinary execution lanes. Until `resume_ready=true`, quota must not include the
+todo in `capability_gate.runnable_candidates` or `agent_lane_next_action`; it
+may continue with a lower-priority executable fallback when the interaction
+contract allows safe scoped fallback work.
+
 For completed handoff gates, record that rationale structurally as
 `no_followup=true`; status projects the gate as `cleared_no_followup` instead
 of waking the blocked agent with `successor_replan_required`.
@@ -568,21 +574,17 @@ JSON or Markdown decision:
         "local_scheduler",
         "codex_cli_tui",
         "claude_code_loop",
-        "final_quota_replan_check"
+        "final_quota_replan_check",
+        "reset_policy_detail",
+        "stateful_backoff_detail"
       ]
     },
     "reset_policy": {
-      "schema_version": "scheduler_reset_policy_v0",
-      "reset_to": "profile_initial_interval",
       "reset_token": "0123456789abcdef",
       "host_state_key": "scheduler_hint.reset_policy.reset_token",
       "codex_app_initial_interval_minutes": 30,
       "codex_app_initial_rrule": "FREQ=MINUTELY;INTERVAL=30",
-      "clear_unchanged_poll_state": true,
-      "identity_key_count": 6,
-      "identity_signature": "123456789abc",
-      "profile_signature": "abcdef123456",
-      "reset_condition_summary": "token_changed|user_feedback|new_or_reassigned_todo|gate_or_material_transition|active_work_projected"
+      "identity_signature": "123456789abc"
     }
   },
   "operator_question": "是否同意 project-main-control 先做 read-only map dry-run？",
@@ -633,7 +635,19 @@ When available, `quota should-run` also keeps next-action signals separate:
 `active_state_next_action` is the durable `## Next Action`,
 `latest_run_recommended_action` is the latest non-agent-lane run's
 recommendation, and `agent_lane_next_action` is the current `--agent-id`
-slice. If the active-state and latest-run actions differ,
+slice. Agent-scoped payloads may also include
+`goal_route_hint.schema_version=goal_route_hint_v0`, a compact read-only
+synthesis that says whether the current lane should run, claim, wait, or
+reassign while preserving `## Next Action` as durable goal-level guidance. It
+is an advisory routing hint, not a writeback instruction and not a replacement
+for `agent_todo_summary`.
+When projected, `goal_frontier_projection.schema_version =
+goal_frontier_projection_v0` is the per-goal progress/frontier view used before
+lane-local quiet or wait decisions. Its `autonomous_replan_decision` says that a
+required replan must be selected independently of `monitor_quiet_skip` or
+`agent_scope_wait`; the policy lives in `loopx.policies.goal_frontier`, while
+quota only wires the selected mode into `interaction_contract`.
+If the active-state and latest-run actions differ,
 `next_action_projection_warning` asks the executor to explicitly write back the
 intended durable route with a primary goal-scope `refresh-state --next-action`
 or keep treating the signals as distinct.
@@ -707,35 +721,45 @@ agent-to-agent handoff cadence too quickly;
 `backoff_until_material_transition` handles monitor-only quiet polls; and
 `backoff_until_fresh_evidence` handles mapped or post-handoff no-op waits.
 For Codex App and local schedulers, `recommended_interval_minutes` is the next
-target interval; if the same `unchanged_identity_keys` remain unchanged, the
-host multiplies the applied interval by
-`unchanged_poll_backoff_multiplier` until `max_interval_minutes`. Human gates
-can move to `[30, 60, 120]` after the concrete user todo has been surfaced.
+target interval. For Codex App heartbeats, `recommended_rrule` is emitted only
+when `codex_app.stateful_backoff.apply_needed=true`; if the desired RRULE is
+already applied, it is omitted so the agent does not call a host tool again.
+After a successful host RRULE update, the agent records that fact with
+`loopx quota scheduler-ack --goal-id ... --agent-id ... --applied-rrule ... --execute`,
+which lets LoopX advance the per goal/agent scheduler state without spending
+quota. Human gates can move to `[30, 60, 120]` after the concrete user todo has
+been surfaced.
 Agent-scope waits use a more conservative adjustment curve such as
 `[10, 20, 30, 60]`, so a 600-second local tick stays close to the existing
 agent-to-agent interaction cadence before cooling further.
-Each hint also carries `reset_policy.schema_version=scheduler_reset_policy_v0`.
-Hosts should cache and compare `reset_policy.reset_token` across unchanged
-polls and reset the unchanged streak whenever the token changes. The token is
-derived from scheduler action plus the current identity/profile inputs, while
-the hot path only exposes short `identity_signature` and `profile_signature`
-debug aids instead of full snapshots. Hosts should also reset when an external
-event makes the goal actionable again, such as user feedback in the thread, a
-new or reassigned todo, a resolved gate, or material evidence transition. A
-reset applies
-`codex_app_initial_interval_minutes` (and the matching local scheduler initial
-interval) before starting unchanged backoff again; it never spends quota.
-For Codex App heartbeats, hosts and agents should use `automation_update` with
-`codex_app.recommended_rrule` for the current cadence and
-`reset_policy.codex_app_initial_rrule` when the stored
-`reset_policy.reset_token` changes. This gives host runtimes a compact state key
-instead of requiring them to diff the whole quota payload. The token is derived
-from scheduler action plus identity/profile inputs, so a changed initial RRULE
-or scheduler profile also produces a new generation without projecting full
-snapshots in `quota should-run` JSON. User
-feedback, newly runnable work, reassignment, or material evidence should
-therefore restore the automation to the current profile's initial interval
-before backoff resumes.
+The compact hot path carries only the reset fields hosts need to act:
+`reset_policy.reset_token`, `host_state_key`,
+`codex_app_initial_interval_minutes`, `codex_app_initial_rrule`, and the short
+`identity_signature`. Hosts should cache and compare `reset_token` across
+unchanged polls and reset the unchanged streak whenever the token changes. The
+token is derived from scheduler action plus the current identity/profile inputs;
+the explanatory reset profile, profile signature, reset condition summary, and
+stateful-backoff policy live in `scheduler_hint.cold_path_detail` when callers
+request `loopx quota should-run --include-scheduler-detail`. Hosts should also
+reset when an external event makes the goal actionable again, such as user
+feedback in the thread, a new or reassigned todo, a resolved gate, or material
+evidence transition. A reset applies `codex_app_initial_interval_minutes` (and
+the matching local scheduler initial interval) before starting unchanged
+backoff again; it never spends quota.
+For Codex App heartbeats, hosts and agents should use `automation_update` only
+when `codex_app.stateful_backoff.apply_needed=true` and
+`codex_app.recommended_rrule` is present. After `automation_update` succeeds,
+the agent must call `quota scheduler-ack` with that applied RRULE. LoopX then
+persists `reset_token`, `identity_signature`, `progression_index`, and
+`last_applied_rrule` under the runtime root. Repeated unchanged identity
+advances through `progression_minutes`; a changed `reset_policy.reset_token`
+returns to the current profile's initial interval. This gives hosts a compact
+post-update ack protocol instead of requiring them to own or diff the whole
+quota state. `scheduler-ack` is not a second `should-run`: it confirms the
+host update and does not emit a successor RRULE to apply in the same turn. User
+feedback, newly runnable work, reassignment, or material evidence therefore
+restores the automation to the current profile's initial
+interval before backoff resumes.
 For Codex CLI TUI and Claude Code loops, the default hot path reads
 `scheduler_hint.unchanged_poll.limits.<runtime>`. A value of `3` means the third
 unchanged poll triggers the compact final quota/replan check named by

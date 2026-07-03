@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loopx"
-version = "0.1.2"
+version = "0.1.4"
 description = "A lightweight Loop Engineering control plane for long-running agent goals."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,8 +12,14 @@ license = { file = "LICENSE" }
 authors = [{ name = "LoopX contributors" }]
 dependencies = []
 
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
 [project.scripts]
 loopx = "loopx.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["loopx*"]
+
+[tool.setuptools.package-data]
+"loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]

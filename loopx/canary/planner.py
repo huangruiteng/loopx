@@ -209,12 +209,23 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "Release promotion readiness",
         "purpose": "Check whether the release/canary promotion path is ready without mutating the install.",
         "catalog_families": ["Work Routing", "Planning Governance", "State And Boundary"],
-        "trigger_hints": ("release", "promotion", "canary-promotion", "install", "upgrade"),
+        "trigger_hints": (
+            "release",
+            "release promotion",
+            "promotion",
+            "canary-promotion",
+            "promotion-readiness",
+        ),
         "checks": [
             {
                 "command": "python3 examples/canary-promotion-readiness-smoke.py",
                 "tier": "default",
                 "reason": "checks promotion readiness from compact run history",
+            },
+            {
+                "command": "python3 examples/canary-promotion-readiness-boundary-smoke.py",
+                "tier": "default",
+                "reason": "guards dashboard release-boundary planning for source checkouts and release snapshots",
             },
             {
                 "command": "python3 examples/canary-promotion-no-write-contract-smoke.py",
@@ -229,16 +240,86 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "install-update",
+        "title": "Install and update safety",
+        "purpose": "Check local install, packaged install, update planning, rollback, and uninstall safety before install/update changes ship.",
+        "catalog_families": ["State And Boundary", "Work Routing", "Planning Governance"],
+        "trigger_hints": (
+            "install",
+            "installer",
+            "packaged install",
+            "install-local",
+            "install-from-github",
+            "loopx update",
+            "self-update",
+            "update command",
+            "upgrade",
+            "rollback",
+            "uninstall",
+            "scripts/install-local.sh",
+            "scripts/install-from-github.sh",
+            "loopx/self_update.py",
+            "loopx/cli_commands/update",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/install-local-smoke.py",
+                "tier": "default",
+                "reason": "guards the local installer wrapper, skill installation, and install freshness reporting",
+            },
+            {
+                "command": "python3 examples/codex-cli-packaged-install-smoke.py",
+                "tier": "default",
+                "reason": "checks packaged GitHub/archive install behavior in a temporary home",
+            },
+            {
+                "command": "python3 examples/loopx-update-smoke.py",
+                "tier": "default",
+                "reason": "checks update planning, check-only behavior, rollback planning, and rollback execution fixtures",
+            },
+            {
+                "command": "python3 examples/rollback-packet-protocol-smoke.py",
+                "tier": "deep",
+                "reason": "validates the public rollback packet protocol and fixture boundary",
+            },
+            {
+                "command": "python3 examples/project-uninstall-smoke.py",
+                "tier": "deep",
+                "reason": "samples project-local uninstall safety with isolated fixture registries",
+            },
+            {
+                "command": "python3 examples/worker-bridge-install-contract-smoke.py",
+                "tier": "deep",
+                "reason": "checks generic worker bridge install contracts without exposing private runtime material",
+            },
+        ],
+    },
+    {
         "id": "control-plane-refactor",
         "title": "Control-plane refactor safety",
         "purpose": "Sample hot-path route, policy seam, and interface budget checks for quota/status refactors.",
         "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
-        "trigger_hints": ("refactor", "quota.py", "status.py", "control-plane", "policy seam"),
+        "trigger_hints": (
+            "refactor",
+            "quota.py",
+            "status.py",
+            "control-plane",
+            "policy seam",
+            "work-lane policy",
+            "resume_when",
+            "resume_ready",
+            "handoff",
+            "blocks_agent",
+            "unblocks_todo_id",
+            "successor",
+            "loopx/policies/monitor_todo.py",
+            "loopx/todo_handoff_gate.py",
+        ),
         "checks": [
             {
                 "command": "python3 examples/control-plane-risk-characterization-smoke.py",
                 "tier": "default",
-                "reason": "characterizes shared control-plane routing risks",
+                "reason": "characterizes shared control-plane routing, scheduler, and review-packet risks",
             },
             {
                 "command": "python3 examples/hot-path-interface-budget-smoke.py",
@@ -246,9 +327,258 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "keeps hot-path payload and module growth bounded",
             },
             {
+                "command": "python3 examples/quota-resume-gated-open-todo-smoke.py",
+                "tier": "default",
+                "reason": "guards resume_when-gated open todos from entering executable quota lanes early",
+            },
+            {
+                "command": "python3 examples/quota-cleared-blocker-successor-gate-smoke.py",
+                "tier": "default",
+                "reason": "guards cleared handoff gates waking the blocked agent through a concrete successor todo",
+            },
+            {
                 "command": "python3 examples/work-lane-contract-smoke.py",
                 "tier": "deep",
                 "reason": "covers broad work-lane policy interactions after larger refactors",
+            },
+        ],
+    },
+    {
+        "id": "repo-architecture-budget",
+        "title": "Repository architecture budget",
+        "purpose": (
+            "Keep Python source files below a default line budget, with explicit legacy "
+            "allowlist entries for oversized modules that need staged refactors."
+        ),
+        "catalog_families": ["Planning Governance", "State And Boundary"],
+        "trigger_hints": (
+            "architecture",
+            "architecture budget",
+            "file length",
+            "line budget",
+            "large file",
+            "mega-file",
+            "refactor",
+            "quota.py",
+            "status.py",
+            "terminal_bench.py",
+            "skillsbench",
+            "loopx/",
+            "examples/",
+            "scripts/",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/repo-python-line-budget-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "fails when a Python source file grows beyond the default limit or "
+                    "its current legacy allowlist budget"
+                ),
+            },
+        ],
+    },
+    {
+        "id": "status-read-path",
+        "title": "Status read-path contract",
+        "purpose": "Check scoped status reads, markdown rendering, and goal-channel status export before status/read-path changes ship.",
+        "catalog_families": ["Work Routing", "State And Boundary"],
+        "trigger_hints": (
+            "read-path",
+            "status --goal-id",
+            "status data",
+            "goal status",
+            "loopx/status.py",
+            "loopx/cli_commands/status",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/status-goal-filter-smoke.py",
+                "tier": "default",
+                "reason": "guards scoped status projection and global default status behavior",
+            },
+            {
+                "command": "python3 examples/status-quota-review-packet-parity-smoke.py",
+                "tier": "default",
+                "reason": "guards scoped status, agent quota, review-packet handoff, and scheduler_hint parity on one fixture",
+            },
+            {
+                "command": "python3 examples/status-markdown-smoke.py",
+                "tier": "default",
+                "reason": "checks operator-facing markdown status rendering",
+            },
+            {
+                "command": "python3 examples/goal-channel-status-export-smoke.py",
+                "tier": "deep",
+                "reason": "guards goal-channel status export consumed by non-hot-path readers",
+            },
+            {
+                "command": "python3 examples/status-quota-perf-budget-smoke.py",
+                "tier": "deep",
+                "reason": "runs the broader status/quota performance budget sample when explicitly requested",
+            },
+        ],
+    },
+    {
+        "id": "review-packet-read-path",
+        "title": "Review-packet read-path contract",
+        "purpose": "Check operator review packets, handoff-only payloads, and task-graph lineage before review-packet/read-path changes ship.",
+        "catalog_families": ["Work Routing", "Human Decision", "State And Boundary"],
+        "trigger_hints": (
+            "review-packet",
+            "review packet",
+            "handoff-only",
+            "project-agent handoff",
+            "operator packet",
+            "loopx/review_packet.py",
+            "loopx/cli_commands/status",
+            "docs/status-data-contract.md",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/review-packet-cli-smoke.py",
+                "tier": "default",
+                "reason": "guards CLI-visible review-packet and handoff-only JSON contracts",
+            },
+            {
+                "command": "python3 examples/review-packet-smoke.py",
+                "tier": "default",
+                "reason": "checks dashboard/operator packet copy and public-safe handoff text",
+            },
+            {
+                "command": "python3 examples/task-graph-projection-fixture-smoke.py",
+                "tier": "default",
+                "reason": "guards task-graph lineage consumed by review packets without private sources",
+            },
+            {
+                "command": "python3 examples/control-plane-integrated-canary-smoke.py",
+                "tier": "deep",
+                "reason": "samples the bounded status -> quota -> review-packet event read path",
+            },
+            {
+                "command": "python3 examples/hot-path-interface-budget-smoke.py",
+                "tier": "deep",
+                "reason": "checks review-packet handoff interface budgets after hot-path changes",
+            },
+        ],
+    },
+    {
+        "id": "event-sourced-read-path",
+        "title": "Event-sourced read-path contract",
+        "purpose": "Check event projection, status read path, downstream read surfaces, and migration gates before event-store/read-path changes ship.",
+        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "trigger_hints": (
+            "event-sourced",
+            "event sourced",
+            "event projection",
+            "event read-path",
+            "downstream read",
+            "event-store",
+            "event store",
+            "loopx/event_sourced_state.py",
+            "loopx/rollout_event_log.py",
+            "docs/reference/protocols/event-store-migration-bridge-v0.md",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/event-sourced-state-api-smoke.py",
+                "tier": "default",
+                "reason": "guards event append/replay API behavior used by read-path projections",
+            },
+            {
+                "command": "python3 examples/event-sourced-status-read-path-smoke.py",
+                "tier": "default",
+                "reason": "checks status consumption of event projection with Markdown fallback",
+            },
+            {
+                "command": "python3 examples/event-sourced-downstream-read-path-smoke.py",
+                "tier": "default",
+                "reason": "checks downstream read surfaces consume event projection without private state",
+            },
+            {
+                "command": "python3 examples/event-store-migration-bridge-smoke.py",
+                "tier": "deep",
+                "reason": "samples the migration bridge gates before bounded event read-path canaries",
+            },
+            {
+                "command": "python3 examples/event-sourced-replay-compaction-smoke.py",
+                "tier": "deep",
+                "reason": "checks replay compaction when broader event-store changes are promoted",
+            },
+        ],
+    },
+    {
+        "id": "cli-command-contract",
+        "title": "CLI command module contract",
+        "purpose": "Check command-module boundaries, ownership budgets, and compatibility for LoopX CLI refactors.",
+        "catalog_families": ["State And Boundary", "Planning Governance"],
+        "trigger_hints": (
+            "loopx/cli.py",
+            "loopx/cli_commands",
+            "cli command",
+            "command modularization",
+            "command-module",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/cli-version-command-modularization-smoke.py",
+                "tier": "default",
+                "reason": "guards a low-risk command migration plus old version invocations",
+            },
+            {
+                "command": "python3 examples/cli-control-plane-command-modularization-smoke.py",
+                "tier": "default",
+                "reason": "samples todo/quota command compatibility after CLI command refactors",
+            },
+        ],
+    },
+    {
+        "id": "todo-lifecycle",
+        "title": "Todo lifecycle contract",
+        "purpose": "Check todo metadata, lifecycle transitions, and event/list projection before todo read/write CLI changes ship.",
+        "catalog_families": ["State And Boundary", "Human Decision", "Planning Governance"],
+        "trigger_hints": (
+            "todo lifecycle",
+            "todo claim",
+            "todo list",
+            "todo complete",
+            "todo supersede",
+            "todo metadata",
+            "todo detail",
+            "loopx/todos.py",
+            "loopx/todo_contract.py",
+            "loopx/cli_commands/todo",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/todo-contract-smoke.py",
+                "tier": "default",
+                "reason": "guards the public todo status and metadata helper contract",
+            },
+            {
+                "command": "python3 examples/todo-cli-smoke.py",
+                "tier": "default",
+                "reason": "checks agent-facing todo add/update/list behavior on fixture state",
+            },
+            {
+                "command": "python3 examples/todo-lifecycle-cli-smoke.py",
+                "tier": "default",
+                "reason": "exercises claim, completion, successor, and handoff lifecycle transitions by todo_id",
+            },
+            {
+                "command": "python3 examples/todo-list-event-projection-smoke.py",
+                "tier": "default",
+                "reason": "guards event-sourced todo list projection with Markdown fallback",
+            },
+            {
+                "command": "python3 examples/todo-concurrent-write-lock-smoke.py",
+                "tier": "deep",
+                "reason": "samples lock behavior for concurrent todo writes",
+            },
+            {
+                "command": "python3 examples/todo-detail-cold-path-contract-smoke.py",
+                "tier": "deep",
+                "reason": "checks the cold-path todo detail contract when detail surfaces are promoted",
             },
         ],
     },
@@ -294,9 +624,225 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "reason": "guards refresh-state update behavior and projection writes",
             },
             {
+                "command": "python3 examples/todo-write-correctness-smoke.py",
+                "tier": "default",
+                "reason": "guards todo dry-run write correctness and shadow revision/lease validation",
+            },
+            {
                 "command": "python3 examples/todo-concurrent-write-lock-smoke.py",
                 "tier": "deep",
                 "reason": "samples lock behavior for concurrent todo writes",
+            },
+        ],
+    },
+    {
+        "id": "product-entry-workflows",
+        "title": "Product entry workflows",
+        "purpose": (
+            "Check user-facing product entry routes for issue-fix, content-ops, "
+            "update notes, and cross-runtime demo surfaces without reading private sources."
+        ),
+        "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary", "Work Routing"],
+        "trigger_hints": (
+            "product-entry",
+            "product entry",
+            "issue-fix",
+            "issue fix",
+            "content-ops",
+            "content ops",
+            "update-note",
+            "update note",
+            "update-notes",
+            "update notes",
+            "cross-runtime",
+            "impl-review",
+            "claude implements",
+            "codex reviews",
+            "README.md",
+            "docs/product/cross-runtime-impl-review-demo.md",
+            "docs/capabilities/issue-fix",
+            "docs/capabilities/content-ops",
+            "docs/update-notes",
+            "loopx/capabilities/issue_fix",
+            "loopx/capabilities/content_ops",
+            "loopx/cli_commands/issue_fix",
+            "loopx/cli_commands/content_ops",
+            "scripts/update_notes_release_job.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/issue-fix-workflow-contract-smoke.py",
+                "tier": "default",
+                "reason": "guards the public issue-fix workflow contract, gated metadata preview, and todo writeback preview",
+            },
+            {
+                "command": "python3 examples/content-ops-issue-fix-intake-smoke.py",
+                "tier": "default",
+                "reason": "checks content-ops issue-fix intake from public metadata without external reads or writes",
+            },
+            {
+                "command": "python3 examples/public_entry/readme-demo-surface-smoke.py",
+                "tier": "default",
+                "reason": "guards the README and cross-runtime implement/review demo entry surface",
+            },
+            {
+                "command": "python3 examples/update-notes-archive-smoke.py",
+                "tier": "default",
+                "reason": "checks public update-note archive, automation wiring, and private-boundary exclusions",
+            },
+            {
+                "command": "python3 examples/issue-fix-workflow-e2e-smoke.py",
+                "tier": "deep",
+                "reason": "runs the fuller issue-fix metadata-to-plan-to-review-packet product path",
+            },
+            {
+                "command": "python3 examples/issue-fix-acceptance-loop-smoke.py",
+                "tier": "deep",
+                "reason": "samples the heavier caller-repo branch and acceptance-loop fixture",
+            },
+            {
+                "command": "python3 examples/content-ops-private-connector-gate-smoke.py",
+                "tier": "deep",
+                "reason": "checks private connector owner-gate projection for content operations",
+            },
+        ],
+    },
+    {
+        "id": "cross-runtime-impl-review-demo",
+        "title": "Cross-runtime implementation/review demo",
+        "purpose": (
+            "Check the Claude Code implementation + Codex review demo packet "
+            "without writing state or launching either runtime."
+        ),
+        "catalog_families": [
+            "Human Decision",
+            "Work Routing",
+            "Evidence Lifecycle",
+            "State And Boundary",
+        ],
+        "trigger_hints": (
+            "cross-runtime",
+            "impl-review",
+            "claude implements",
+            "codex reviews",
+            "claude-code-impl",
+            "codex-review",
+            "loopx demo impl-review",
+            "cross_runtime_impl_review_demo_packet_v0",
+            "docs/product/cross-runtime-impl-review-demo.md",
+            "loopx/capabilities/cross_runtime",
+            "loopx/cli_commands/starter.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/cross-runtime-impl-review-demo-smoke.py",
+                "tier": "default",
+                "reason": "guards the dry-run packet, CLI route, role split, and no-write boundary",
+            },
+            {
+                "command": "python3 examples/public_entry/readme-demo-surface-smoke.py",
+                "tier": "default",
+                "reason": "guards the public README and product note entry points for the demo",
+            },
+        ],
+    },
+    {
+        "id": "host-command-entry",
+        "title": "Host command entry and slash-command discovery",
+        "purpose": (
+            "Check slash-command discovery, Codex App host command routing, "
+            "and global manager command entry surfaces without mutating project state."
+        ),
+        "catalog_families": ["Human Decision", "Work Routing", "State And Boundary"],
+        "trigger_hints": (
+            "slash-command",
+            "slash command",
+            "slash-commands",
+            "/loopx-global-summary",
+            "/loopx-global-gates",
+            "/loopx-global-todos",
+            "/loopx-global-risks",
+            "global-manager",
+            "global manager",
+            "host command",
+            "host command registry",
+            "codex app host command",
+            "docs/reference/protocols/codex-app-host-command-registry-v0.md",
+            "docs/reference/protocols/global-manager-command-v0.md",
+            "loopx/cli_commands/slash_commands.py",
+            "loopx/cli_commands/summary_all.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/slash-command-catalog-smoke.py",
+                "tier": "default",
+                "reason": "guards public slash-command discovery and legacy alias visibility",
+            },
+            {
+                "command": "python3 examples/codex-app-host-command-registry-smoke.py",
+                "tier": "default",
+                "reason": "guards Codex App host command routing and fail-closed slash-command help",
+            },
+            {
+                "command": "python3 examples/global-manager-command-protocol-smoke.py",
+                "tier": "default",
+                "reason": "checks read-only global manager command protocol and aliases",
+            },
+        ],
+    },
+    {
+        "id": "runtime-connector-catalog",
+        "title": "Runtime connector catalog",
+        "purpose": (
+            "Check Codex App heartbeat, Codex CLI TUI, Claude Code loop, "
+            "and worker bridge connector contracts from the public runtime catalog."
+        ),
+        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "trigger_hints": (
+            "runtime connector",
+            "runtime connector catalog",
+            "runtime-connector-catalog",
+            "docs/runtime-connector-catalog.md",
+            "codex app heartbeat",
+            "codex_app_heartbeat",
+            "codex cli tui",
+            "codex_cli_tui",
+            "claude code loop",
+            "claude_code_loop",
+            "shell worker",
+            "http webhook",
+            "worker bridge",
+            "worker_bridge",
+            "scheduler_hint",
+            "scoped identity",
+            "runtime loop",
+            "host runtime",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/heartbeat-prompt-smoke.py",
+                "tier": "default",
+                "reason": "guards Codex App heartbeat identity, scheduler hints, and no-spend cadence behavior",
+            },
+            {
+                "command": "python3 examples/codex-cli-tui-bootstrap-smoke-bundle-smoke.py",
+                "tier": "default",
+                "reason": "checks Codex CLI TUI bootstrap bundle and scoped LoopX command contract",
+            },
+            {
+                "command": "python3 examples/claude-goalmode-lifecycle-smoke.py",
+                "tier": "default",
+                "reason": "checks the Claude Code goal-mode loop lifecycle without production actions",
+            },
+            {
+                "command": "python3 examples/worker-bridge-install-contract-smoke.py",
+                "tier": "default",
+                "reason": "checks generic worker bridge install/status contracts without private runtime material",
+            },
+            {
+                "command": "python3 examples/host-integration-surface-smoke.py",
+                "tier": "deep",
+                "reason": "samples the broader host integration surface when connector catalog changes are promoted",
             },
         ],
     },
@@ -325,12 +871,110 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "auto-research-demo",
+        "title": "Auto-research demo and frontier route",
+        "purpose": (
+            "Check the minimal auto-research kernel and shared frontier projection; "
+            "keep legacy visible/demo wrappers out of the default canary path."
+        ),
+        "catalog_families": ["Work Routing", "Evidence Lifecycle", "State And Boundary", "Human Decision"],
+        "trigger_hints": (
+            "auto-research",
+            "auto research",
+            "demo-supervisor",
+            "demo e2e",
+            "frontier",
+            "visible launcher",
+            "loopx/capabilities/auto_research",
+            "loopx/cli_commands/auto_research",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/auto-research-minimal-kernel-smoke.py",
+                "tier": "default",
+                "reason": "checks the minimal evaluator-agnostic kernel and rejects public shortcut replay paths",
+            },
+            {
+                "command": "python3 examples/decentralized-auto-research-frontier-smoke.py",
+                "tier": "default",
+                "reason": "checks shared frontier, evidence graph, and public boundary fixtures",
+            },
+            {
+                "command": "python3 examples/auto-research-demo-supervisor-smoke.py",
+                "tier": "deep",
+                "reason": "samples the full dry-run supervisor packet and lane bootstrap contract",
+            },
+            {
+                "command": "python3 examples/auto-research-rollout-readpath-smoke.py",
+                "tier": "deep",
+                "reason": "checks rollout event read-path projection into live evidence graphs",
+            },
+            {
+                "command": "python3 examples/auto-research-live-evidence-capture-smoke.py",
+                "tier": "deep",
+                "reason": "checks compact live evidence capture fixtures for visible lanes",
+            },
+        ],
+    },
+    {
+        "id": "catalog-canary-contract",
+        "title": "Catalog canary contract",
+        "purpose": "Check catalog-to-canary planning, JSON actionability, shell-free no-write execution, and full/module smoke-suite selection.",
+        "catalog_families": ["Planning Governance", "State And Boundary", "Work Routing"],
+        "trigger_hints": (
+            "catalog canary", "canary planner", "canary runner", "canary plan", "canary run",
+            "smoke-suite", "run-smokes", "full smoke", "loopx/canary", "loopx/cli_commands/canary.py",
+            "examples/canary/catalog", "examples/run-smokes.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/canary/catalog-planner-smoke.py",
+                "tier": "default",
+                "reason": "guards catalog coverage, selector routing, and actionable JSON plan commands",
+            },
+            {
+                "command": "python3 examples/canary/catalog-run-e2e-smoke.py",
+                "tier": "default",
+                "reason": "guards shell-free no-write canary execution from the selected catalog plan",
+            },
+            {
+                "command": "python3 examples/canary/smoke-suite-runner-smoke.py",
+                "tier": "default",
+                "reason": "guards full-public, module-filtered, and catalog-profile smoke-suite selection",
+            },
+            {
+                "command": "python3 examples/canary/pytest-smoke-suite-facade-smoke.py",
+                "tier": "deep",
+                "reason": "guards optional pytest/JUnit reporting while keeping canary smoke-suite as source of truth",
+            },
+        ],
+    },
+    {
         "id": "benchmark-adapter-readiness",
         "title": "Benchmark adapter readiness",
         "purpose": "Check public adapter contracts and evidence boundaries without launching benchmark jobs by default.",
         "catalog_families": ["Evidence Lifecycle", "State And Boundary", "Work Routing"],
-        "trigger_hints": ("benchmark", "adapter", "runner", "ledger", "skillsbench", "terminal-bench"),
+        "trigger_hints": (
+            "benchmark",
+            "benchmark adapter",
+            "benchmark runner",
+            "benchmark ledger",
+            "skillsbench",
+            "terminal-bench",
+            "loopx/benchmark",
+            "loopx/benchmark_case_state.py",
+            "examples/benchmark",
+        ),
         "checks": [
+            {
+                "command": "python3 examples/terminal-bench-adapter-readiness-characterization-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "characterizes Terminal-Bench preflight, no-submit boundary, "
+                    "CLI bridge/access packet, and benchmark_run builders without "
+                    "launching benchmark jobs"
+                ),
+            },
             {
                 "command": "python3 examples/benchmark-core-adapter-contract-smoke.py",
                 "tier": "default",
@@ -353,6 +997,10 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def _catalog_profile_id(profile: dict[str, Any]) -> str:
+    return _slug(str(profile.get("id") or profile.get("family") or ""))
 
 
 def _split_table_row(line: str) -> list[str]:
@@ -655,6 +1303,52 @@ def _domain_profile_with_checks(
     return copied
 
 
+def flatten_catalog_canary_checks(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return selected canary checks in execution order."""
+
+    checks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for profile in plan.get("domain_profiles", []):
+        if not isinstance(profile, dict):
+            continue
+        for check in profile.get("checks", []):
+            if not isinstance(check, dict):
+                continue
+            command = str(check.get("command") or "")
+            if not command or command in seen:
+                continue
+            seen.add(command)
+            checks.append(
+                {
+                    "source": "domain_profile",
+                    "profile_id": profile.get("id"),
+                    "profile_title": profile.get("title"),
+                    "tier": check.get("tier") or "default",
+                    **check,
+                }
+            )
+    for profile in plan.get("profiles", []):
+        if not isinstance(profile, dict):
+            continue
+        for check in profile.get("candidate_checks", []):
+            if not isinstance(check, dict):
+                continue
+            command = str(check.get("command") or "")
+            if not command or command in seen:
+                continue
+            seen.add(command)
+            checks.append(
+                {
+                    "source": "catalog_family",
+                    "profile_id": profile.get("id"),
+                    "profile_title": profile.get("family"),
+                    "tier": check.get("tier") or "default",
+                    **check,
+                }
+            )
+    return checks
+
+
 def build_catalog_canary_plan(
     *,
     catalog_path: Path | None = None,
@@ -674,31 +1368,48 @@ def build_catalog_canary_plan(
     selector_blob = _selector_blob(changed_files, surfaces)
     max_checks = max(1, max_checks_per_family)
     max_profile_checks = max(1, max_checks_per_profile)
+    catalog_profile_ids = {
+        _catalog_profile_id(profile)
+        for profile in packet["profiles"]
+        if isinstance(profile, dict)
+    }
+    requested_catalog_profiles = requested_profiles & catalog_profile_ids
+    requested_domain_profiles = requested_profiles - requested_catalog_profiles
 
     selected_profiles: list[dict[str, Any]] = []
     for profile in packet["profiles"]:
-        if requested_profiles and not requested_families and not selector_blob:
+        profile_id = _catalog_profile_id(profile)
+        if requested_domain_profiles and not requested_catalog_profiles and not requested_families and not selector_blob:
             continue
         reasons = _selection_reasons(profile, selector_blob)
+        if requested_catalog_profiles and profile_id not in requested_catalog_profiles:
+            continue
         if requested_families and _slug(str(profile.get("family") or "")) not in requested_families:
             continue
-        if not requested_families and selector_blob and not reasons:
+        if not requested_catalog_profiles and not requested_families and selector_blob and not reasons:
             continue
         profile_copy = dict(profile)
         profile_copy["candidate_checks"] = list(profile_copy.get("candidate_checks", []))[:max_checks]
-        profile_copy["selection_reasons"] = reasons or [
-            "selected because no narrower selector was provided",
-        ]
+        if requested_catalog_profiles and profile_id in requested_catalog_profiles:
+            profile_copy["selection_reasons"] = reasons or [
+                "selected because this catalog profile was explicitly requested",
+            ]
+        else:
+            profile_copy["selection_reasons"] = reasons or [
+                "selected because no narrower selector was provided",
+            ]
         selected_profiles.append(profile_copy)
 
     selected_domain_profiles: list[dict[str, Any]] = []
     for profile in packet["domain_profiles"]:
         reasons = _domain_selection_reasons(profile, selector_blob)
-        if requested_profiles and _slug(str(profile.get("id") or "")) not in requested_profiles:
+        if requested_domain_profiles and _slug(str(profile.get("id") or "")) not in requested_domain_profiles:
             continue
-        if not requested_profiles and selector_blob and not reasons:
+        if requested_catalog_profiles and not requested_domain_profiles:
             continue
-        if not requested_profiles and not selector_blob:
+        if not requested_domain_profiles and selector_blob and not reasons:
+            continue
+        if not requested_domain_profiles and not selector_blob:
             continue
         profile_copy = _domain_profile_with_checks(
             profile,
@@ -710,7 +1421,7 @@ def build_catalog_canary_plan(
         ]
         selected_domain_profiles.append(profile_copy)
 
-    return {
+    payload = {
         "ok": True,
         "schema_version": CANARY_PLAN_SCHEMA_VERSION,
         "source": packet["source"],
@@ -737,6 +1448,11 @@ def build_catalog_canary_plan(
             "necessity/risk packet before implementation."
         ),
     }
+    suggested_checks = flatten_catalog_canary_checks(payload)
+    payload["suggested_check_count"] = len(suggested_checks)
+    payload["suggested_checks"] = suggested_checks
+    payload["commands"] = [str(check.get("command") or "") for check in suggested_checks]
+    return payload
 
 
 def render_catalog_canary_profiles_markdown(payload: dict[str, Any]) -> str:

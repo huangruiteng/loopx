@@ -17,6 +17,9 @@ incident report, or launch draft.
 - [Auto-research command path](guides/auto-research-command-path.md): the
   shortest visible route from a clean workspace to an inspectable multi-agent
   auto-research rehearsal with stop and takeover controls.
+- [Multi-agent product recipe](guides/multi-agent-product-recipe.md): the
+  product-author path for keeping both user config and product presets thin
+  while the generic kernel owns runner, TUI, tick, status, and host controls.
 - [Product vision](product/vision.md): long-term product direction, Loop Agent
   definition, maintainer-first management surface, and open-source anchor
   strategy.
@@ -78,6 +81,7 @@ incident report, or launch draft.
 - [Getting started](guides/getting-started.md)
 - [Newcomer command path](guides/newcomer-command-path.md)
 - [Auto-research command path](guides/auto-research-command-path.md)
+- [Multi-agent product recipe](guides/multi-agent-product-recipe.md)
 - [Integration guide](integration.md)
 - [Benchmark developer workflow](benchmark-developer-workflow.md)
 - [Attention queue](attention-queue.md)
@@ -93,10 +97,12 @@ incident report, or launch draft.
 - [OpenViking session memory adapter v0](reference/protocols/openviking-session-memory-adapter-v0.md)
 - [Interface budget contract](interface-budget-contract.md)
 - [Host integration surface v0](reference/protocols/host-integration-surface-v0.md)
+- [Computer-use runtime connector v0](reference/protocols/computer-use-runtime-connector-v0.md)
 - [Host integration plugin plan v0](reference/protocols/host-integration-plugin-plan-v0.md)
 - [Codex App host command registry v0](reference/protocols/codex-app-host-command-registry-v0.md)
 - [Local agent launch plan v0](reference/protocols/local-agent-launch-plan-v0.md)
 - [Multi-agent visible launcher v0](reference/protocols/multi-agent-visible-launcher-v0.md)
+- [Goal vision replan contract v0](reference/protocols/goal-vision-replan-contract-v0.md)
 - [Runtime connector catalog](runtime-connector-catalog.md)
 - [Reward gate direct-write contract](reward-gate-direct-write-contract.md)
 - [Worker bridge install contract](worker-bridge-install-contract.md)

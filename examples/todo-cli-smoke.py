@@ -536,6 +536,40 @@ def main() -> int:
         assert claimed_fields["agent_todos"]["claimed_monitor_open_count"] == 1, claimed_fields
         assert claimed_fields["agent_todos"]["unclaimed_open_count"] == 0, claimed_fields
 
+        side_agent_list = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--agent-id",
+            "codex-side-bypass",
+        )
+        assert side_agent_list["ok"] is True, side_agent_list
+        assert side_agent_list["agent_id_filter"] == "codex-side-bypass", side_agent_list
+        assert side_agent_list["unfiltered_todo_count"] == 2, side_agent_list
+        assert side_agent_list["todo_count"] == 1, side_agent_list
+        assert side_agent_list["todos"][0]["todo_id"] == monitor_payload["todo_id"], side_agent_list
+        assert side_agent_list["todos"][0]["claimed_by"] == "codex-side-bypass", side_agent_list
+
+        main_agent_list = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--agent-id",
+            "codex-main-control",
+        )
+        assert main_agent_list["ok"] is True, main_agent_list
+        assert main_agent_list["todo_count"] == 1, main_agent_list
+        assert main_agent_list["todos"][0]["todo_id"] == metadata_payload["todo_id"], main_agent_list
+        assert main_agent_list["todos"][0]["claimed_by"] == "codex-main-control", main_agent_list
+
         preserve_claim_payload = run_cli(
             registry_path,
             "todo",

@@ -56,7 +56,15 @@ def payload(
     }
 
 
-def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, expected_rrule: str) -> None:
+def assert_policy_case(
+    name: str,
+    base_payload: dict,
+    *,
+    expected_action: str,
+    expected_rrule: str,
+    expected_progression: list[int] | None = None,
+    expected_same_identity_action: str = "advance_index_after_scheduler_ack",
+) -> None:
     quota_wrapper = _scheduler_hint(deepcopy(base_payload))
     extracted = build_scheduler_hint(
         deepcopy(base_payload),
@@ -88,6 +96,26 @@ def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, e
         name,
         extracted,
     )
+    stateful_backoff = extracted["codex_app"]["stateful_backoff"]
+    if expected_progression is not None:
+        assert extracted["codex_app"]["example_progression_minutes"] == expected_progression, (
+            name,
+            extracted,
+        )
+    assert stateful_backoff["schema_version"] == "codex_app_stateful_backoff_v0", (name, extracted)
+    assert stateful_backoff["state_key"] == "scheduler_hint.codex_app.stateful_backoff", (name, extracted)
+    assert stateful_backoff["apply_needed"] is True, (name, extracted)
+    assert stateful_backoff["current_rrule"] == expected_rrule, (name, extracted)
+    assert stateful_backoff["state_status"] == "missing", (name, extracted)
+    for omitted in (
+        "progression_minutes",
+        "current_interval_minutes",
+        "ack_required_after_apply",
+        "same_identity_action",
+        "reset_action",
+        "automation_update_scope",
+    ):
+        assert omitted not in stateful_backoff, (name, omitted, extracted)
     assert "local_scheduler" not in extracted, (name, extracted)
     assert "codex_cli_tui" not in extracted, (name, extracted)
     assert "claude_code_loop" not in extracted, (name, extracted)
@@ -96,13 +124,32 @@ def assert_policy_case(name: str, base_payload: dict, *, expected_action: str, e
     assert detailed["cold_path_detail"]["local_scheduler"]["recommended_interval_minutes"], (name, detailed)
     assert detailed["cold_path_detail"]["codex_cli_tui"]["final_quota_replan_check"], (name, detailed)
     assert detailed["cold_path_detail"]["claude_code_loop"]["after_limit"], (name, detailed)
+    stateful_detail = detailed["cold_path_detail"]["stateful_backoff_detail"]
+    if expected_progression is not None:
+        assert stateful_detail["progression_minutes"] == expected_progression, (name, detailed)
+    assert stateful_detail["ack_required_after_apply"] is True, (name, detailed)
+    assert stateful_detail["same_identity_action"] == expected_same_identity_action, (
+        name,
+        detailed,
+    )
+    assert stateful_detail["reset_action"] == "clear_progression_index_apply_initial_rrule", (
+        name,
+        detailed,
+    )
+    assert stateful_detail["automation_update_scope"] == "rrule_only_preserve_body_name_status", (
+        name,
+        detailed,
+    )
     reset = extracted["reset_policy"]
-    assert reset["schema_version"] == "scheduler_reset_policy_v0", (name, reset)
-    assert reset["codex_app_tool"] == "automation_update", (name, reset)
-    assert "automation_update" in reset["codex_app_apply"], (name, reset)
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, (name, reset)
     assert len(reset["identity_signature"]) == 12, (name, reset)
-    assert len(reset["profile_signature"]) == 12, (name, reset)
+    reset_detail = detailed["cold_path_detail"]["reset_policy_detail"]
+    assert reset_detail["schema_version"] == "scheduler_reset_policy_v0", (name, reset_detail)
+    assert reset_detail["codex_app_tool"] == "automation_update", (name, reset_detail)
+    assert "automation_update" in reset_detail["codex_app_apply"], (name, reset_detail)
+    assert len(reset_detail["profile_signature"]) == 12, (name, reset_detail)
+    assert stateful_backoff["reset_token"] == reset["reset_token"], (name, reset)
+    assert stateful_backoff["identity_signature"] == reset["identity_signature"], (name, reset)
     assert "identity_snapshot" not in reset, (name, reset)
     assert "profile_snapshot" not in reset, (name, reset)
 
@@ -113,6 +160,7 @@ def main() -> int:
         payload(should_run=True, effective_action="normal_run"),
         expected_action="run_now",
         expected_rrule="FREQ=MINUTELY;INTERVAL=3",
+        expected_same_identity_action="keep_initial_interval_while_active_work",
     )
     assert_policy_case(
         "mapped-noop",
@@ -144,6 +192,7 @@ def main() -> int:
         ),
         expected_action="backoff_until_reassigned",
         expected_rrule="FREQ=MINUTELY;INTERVAL=10",
+        expected_progression=[10, 20, 30, 60],
     )
     assert_policy_case(
         "monitor-wait",

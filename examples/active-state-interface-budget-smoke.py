@@ -73,6 +73,16 @@ def assert_next_action_budget(path: Path) -> None:
 
 
 def assert_no_tracked_live_active_state() -> None:
+    git_check = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if git_check.returncode != 0:
+        return
     output = subprocess.check_output(
         ["git", "ls-files"],
         cwd=REPO_ROOT,

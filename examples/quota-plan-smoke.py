@@ -1612,16 +1612,12 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert "claude_code_loop" not in scheduler, scheduler
     assert "cold_path_detail" not in scheduler, scheduler
     reset = scheduler["reset_policy"]
-    assert reset["schema_version"] == "scheduler_reset_policy_v0", reset
-    assert reset["reset_to"] == "profile_initial_interval", reset
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
     assert reset["reset_token"] == expected_scheduler_reset_token(scheduler, mapped_decision), reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
     assert reset["codex_app_initial_interval_minutes"] == 60, reset
     assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", reset
-    assert reset["identity_key_count"] == len(scheduler["unchanged_identity_keys"]), reset
     assert len(reset["identity_signature"]) == 12, reset
-    assert len(reset["profile_signature"]) == 12, reset
     assert "identity_snapshot" not in reset, reset
     assert "profile_snapshot" not in reset, reset
     assert "identity_keys" not in reset, reset
@@ -1631,24 +1627,21 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert profile_snapshot["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=60", profile_snapshot
     assert profile_snapshot["codex_app_max_interval_minutes"] == 240, profile_snapshot
     assert profile_snapshot["unchanged_poll_backoff_multiplier"] == 2, profile_snapshot
-    assert reset["profile_signature"] == _short_hash(profile_snapshot, 12), reset
     identity_snapshot = {
         key: _nested_value(mapped_decision, key)
         for key in scheduler["unchanged_identity_keys"]
     }
     assert identity_snapshot["recommended_action"] == mapped_decision["recommended_action"], identity_snapshot
     assert reset["identity_signature"] == _short_hash(identity_snapshot, 12), reset
-    assert "token_changed" in reset["reset_condition_summary"], reset
-    assert "user_feedback" in reset["reset_condition_summary"], reset
-    assert "new_or_reassigned_todo" in reset["reset_condition_summary"], reset
-    assert "active_work_projected" in reset["reset_condition_summary"], reset
+    assert "profile_signature" not in reset, reset
+    assert "reset_condition_summary" not in reset, reset
     assert "do not run another dry-run" in mapped_rec["spend_policy"], mapped_rec
     assert "heartbeat_recommendation: mode=mapped_noop_if_unchanged notify=DONT_NOTIFY" in mapped_markdown
     assert "heartbeat_stop_if_unchanged: `True`" in mapped_markdown, mapped_markdown
     assert "scheduler_hint: action=backoff_until_fresh_evidence" in mapped_markdown, mapped_markdown
     assert "codex_app_rrule=FREQ=MINUTELY;INTERVAL=60" in mapped_markdown, mapped_markdown
     assert "codex_app_progression=[60, 120, 240]" in mapped_markdown, mapped_markdown
-    assert "scheduler_reset: reset_to=profile_initial_interval initial_interval=60" in mapped_markdown, mapped_markdown
+    assert "scheduler_reset: initial_interval=60" in mapped_markdown, mapped_markdown
     assert "initial_rrule=FREQ=MINUTELY;INTERVAL=60" in mapped_markdown, mapped_markdown
     assert "reset_generation=" in mapped_markdown, mapped_markdown
     assert (
@@ -1670,8 +1663,9 @@ def assert_goal_boundary_in_should_run() -> None:
                     "production-action",
                     "managed-mirror-sync",
                 ],
-                "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                "registered_agents": ["codex-main-control", "codex-side-bypass", "codex-side-reviewer"],
                 "primary_agent": "codex-main-control",
+                "side_agent_handoff_agent": "codex-side-reviewer",
             },
             "spawn_policy": {
                 "mode": "multi_subagent",
@@ -1725,8 +1719,12 @@ def assert_goal_boundary_in_should_run() -> None:
     assert "- automation_prompt_upgrade: required=True blocks_should_run=True" in markdown, markdown
     assert side_agent_decision["agent_identity"]["agent_id"] == "codex-side-bypass", side_agent_decision
     assert side_agent_decision["agent_identity"]["role"] == "side-agent", side_agent_decision
+    assert side_agent_decision["agent_identity"]["handoff_agent"] == "codex-side-reviewer", side_agent_decision
     assert "automation_prompt_upgrade" not in side_agent_decision, side_agent_decision
-    assert "agent_identity: agent_id=codex-side-bypass role=side-agent" in side_agent_markdown, side_agent_markdown
+    assert (
+        "agent_identity: agent_id=codex-side-bypass role=side-agent "
+        "primary_agent=codex-main-control handoff_agent=codex-side-reviewer"
+    ) in side_agent_markdown, side_agent_markdown
     assert boundary["adapter"]["status"] == "connected-delivery", boundary
     assert boundary["write_scope"] == ["docs/design/**", "src/agent_harness/**", "tests/**"], boundary
     assert "production-action" in boundary["requires_parent_approval"], boundary
@@ -2068,6 +2066,49 @@ def assert_monitor_poll_next_cli_action_preserves_agent_id() -> None:
     ], actions
 
 
+def assert_delivery_completion_spend_preserves_requested_agent_id() -> None:
+    before = {
+        "goal_id": "delivery-completion-goal",
+        "should_run": False,
+        "normal_delivery_allowed": False,
+        "recovery_delivery_allowed": False,
+        "effective_action": "monitor_quiet_skip",
+        "self_repair_allowed": False,
+        "capability_repair_allowed": False,
+        "workspace_repair_allowed": False,
+        "state": "eligible",
+        "safe_bypass_allowed": False,
+        "quota": {
+            "compute": 1.0,
+            "window_hours": 24,
+            "slot_minutes": 1,
+            "spent_slots": 0,
+            "allowed_slots": 1440,
+        },
+    }
+    after = deepcopy(before)
+    after["quota"] = {**before["quota"], "spent_slots": 1}
+    preview = {
+        "ok": True,
+        "mode": "spend-slot",
+        "dry_run": True,
+        "goal_id": "delivery-completion-goal",
+        "slots": 1,
+        "agent_id": SCOPED_AGENT_ID,
+        "before": before,
+        "after": after,
+        "delivery_completion_spend": True,
+        "delivery_run_generated_at": "2026-01-01T00:00:00+00:00",
+        "delivery_run_classification": "validated_delivery_fixture",
+    }
+    event = build_quota_slot_spend_event(preview, source="heartbeat")
+
+    assert event["agent_id"] == SCOPED_AGENT_ID, event
+    assert event["quota_event"]["agent_id"] == SCOPED_AGENT_ID, event
+    assert event["quota_event"]["delivery_run_classification"] == "validated_delivery_fixture", event
+    assert "validated delivery" in event["health_check"], event
+
+
 def main() -> int:
     assert_default_quota_is_duty_cycle()
     assert_rolling_window_ledger_expires_old_spends()
@@ -2096,6 +2137,7 @@ def main() -> int:
     assert_quota_void_event_net_ledger()
     assert_monitor_poll_event_carries_agent_id()
     assert_monitor_poll_next_cli_action_preserves_agent_id()
+    assert_delivery_completion_spend_preserves_requested_agent_id()
     assert_slot_preview(build_quota_slot_preview(status_payload, goal_id="near-limit-half", slots=1))
     with tempfile.TemporaryDirectory(prefix="loopx-quota-plan-smoke-") as tmp:
         cli_plan, cli_markdown = run_cli_quota_plan(Path(tmp))

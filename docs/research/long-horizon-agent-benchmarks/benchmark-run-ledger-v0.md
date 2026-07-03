@@ -7,7 +7,7 @@ evidence. It answers four questions without reading raw benchmark artifacts:
 - which arm ran (`codex_goal_mode_baseline`, `codex_loopx_treatment`,
   calibration baselines, or another benchmark adapter arm);
 - what compact score/failure class was recorded;
-- where the compact run artifact and local private run root can be found.
+- which compact/public artifact handle can be used for public-safe follow-up.
 
 The ledger is intentionally separate from `benchmark_learning_ledger_v0`.
 `benchmark_run_ledger_v0` is the inventory of case attempts. The learning ledger
@@ -25,6 +25,16 @@ routing lesson.
 
 - Machine source: `benchmark-run-ledger.json`
 - Human view: `benchmark-run-ledger.md`
+- Canonical global source: `docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json`
+
+Benchmark launchers may also materialize a run-group/local
+`remote-ledger/benchmark-run-ledger.json` so interrupted or remote workspaces can
+resume with the current view. That local ledger is not canonical by itself. A
+run-group ledger should inherit the canonical global ledger before its first
+write, then upsert each terminal compact closeout back into the canonical global
+ledger. If a run-group ledger contains rows that the canonical global ledger
+does not, treat that as a sync gap rather than as two independent result
+sources.
 
 Both files are generated from compact `benchmark_run_v0` events. The Markdown
 view is for humans; the JSON is the source of truth.
@@ -119,6 +129,28 @@ The ledger infers route arms such as `codex_goal_mode_baseline`,
 `loopx_automation_loop_treatment`, and `curated_skills_baseline` from
 compact run modes.
 
+## Current View And Archive
+
+Old runs should not pollute the current operator view after the team switches
+to a new benchmark route. Mark obsolete rows archived instead of deleting them:
+
+```bash
+PYTHONPATH=<loopx-repo> python3 -m loopx.cli \
+  benchmark run-ledger-archive \
+  --benchmark-id skillsbench@1.1 \
+  --archive-all-matching-benchmark \
+  --keep-run-group-contains <current-run-group-substring> \
+  --reason "<public-safe archive reason>" \
+  --execute
+```
+
+Archived rows remain in `benchmark-run-ledger.json` with
+`archive_state=archived`, `archive_reason`, `archive_batch_id`, and
+`archived_at`. The generated Markdown excludes archived rows from default
+`Case Decisions`, `Repair Backlog`, and `Runs`, and instead renders a compact
+`Archived Run Summary`. This keeps old experiments traceable without letting
+obsolete route attempts dominate current counts.
+
 ## Schema
 
 Top-level fields:
@@ -136,7 +168,13 @@ Each run row records:
 - `status`, `score_status`, `official_score`, `official_passed`.
 - `failure_class`, `failure_scope`, optional `failure_labels`.
 - `loopx_inside_case`, `worker_bridge_status`, `agent_model`.
-- `artifact_refs`: relative references to compact/private artifacts.
+- `artifact_refs`: public-safe compact/public artifact references only. Raw
+  `result.json`, raw logs, trajectories, task text, credentials, uploads,
+  absolute paths, and private local run-root paths are not recorded. If a
+  compact/public artifact lives under a private local run root, only its
+  basename may be recorded.
+- optional archive fields: `archive_state=archived`, `archive_reason`,
+  `archive_batch_id`, and `archived_at`.
 
 Each case also has `latest_decision`, derived from the current rows:
 
@@ -172,10 +210,11 @@ older durable signal. Current routing classes include:
 ## Boundary
 
 The ledger must not contain raw logs, task prompts, trajectories, credentials,
-uploads, hidden test material, or absolute local paths. It may contain relative
-artifact references such as `.local/private-benchmark-jobs/.../result.json`
-because those point to private local evidence without copying the evidence into
-the repository.
+uploads, hidden test material, absolute local paths, private local run-root
+paths, or raw runner result paths. It may contain relative references to
+checked-in docs or compact/public artifact handles such as
+`benchmark_run.compact.json`; private local run roots must be represented by a
+redacted compact handle or omitted.
 
 When a reducer reads raw runner artifacts to classify a failure, it must record
 only compact labels such as `codex_model_access_unsupported_for_account` or

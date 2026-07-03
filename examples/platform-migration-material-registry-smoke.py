@@ -15,9 +15,7 @@ GOAL_ID = "platform-migration-material-registry"
 EXPECTED_USER_TODO = "Confirm whether owner review is fresh enough to resume delivery."
 EXPECTED_AGENT_TODO = "Run read-only map and report material freshness without internal links."
 EXPECTED_NEXT_ACTION = "Refresh the public-safe material registry summary."
-EXPECTED_STOP_CONDITION = (
-    "stop if the next action needs reward, gate approval, write control, or production access"
-)
+EXPECTED_STOP_CONDITION = "stop until the controller or owner resolves this gate"
 EXPECTED_MATERIAL_CONTEXT = (
     "authority/material: topics=3, materials=6, repositories=2, owner_review_required=1, "
     "stale=1, current_authority=1, risk=medium"
@@ -229,26 +227,27 @@ def assert_material_counts(
 
 
 def assert_no_evidence_project_asset(project_asset: dict[str, object]) -> None:
-    assert project_asset["owner"] == "codex", project_asset
-    assert project_asset["gate"] == "none", project_asset
-    assert project_asset["next_action"] == EXPECTED_NEXT_ACTION, project_asset
+    assert project_asset["owner"] == "controller", project_asset
+    assert project_asset["gate"] == "active_state_user_todo", project_asset
+    assert project_asset["next_action"] == EXPECTED_USER_TODO, project_asset
+    assert project_asset["active_state_next_action"] == EXPECTED_NEXT_ACTION, project_asset
     assert project_asset["stop_condition"] == EXPECTED_STOP_CONDITION, project_asset
     assert project_asset["user_todos"]["open"] == 1, project_asset
     assert project_asset["user_todos"]["next"] == EXPECTED_USER_TODO, project_asset
     assert project_asset["agent_todos"]["open"] == 1, project_asset
     assert project_asset["agent_todos"]["next"] == EXPECTED_AGENT_TODO, project_asset
     assert project_asset["quota"]["compute"] == 1.0, project_asset
-    assert project_asset["quota"]["state"] == "eligible", project_asset
+    assert project_asset["quota"]["state"] == "operator_gate", project_asset
     assert project_asset["quota"]["spent_slots"] == 0, project_asset
     assert project_asset["latest_validation"]["classification"] == "read_only_project_map", project_asset
     assert_public_safe(json.dumps(project_asset, ensure_ascii=False))
 
 
 def assert_no_evidence_handoff_readiness(readiness: dict[str, object]) -> None:
-    assert readiness["ready"] is True, readiness
-    assert readiness["codex_ready"] is True, readiness
+    assert readiness["ready"] is False, readiness
+    assert readiness["codex_ready"] is False, readiness
     assert readiness["source"] == "project_asset", readiness
-    assert readiness["quota_state"] == "eligible", readiness
+    assert readiness["quota_state"] == "operator_gate", readiness
     assert readiness["handoff_status"] == "ready_waiting_for_run", readiness
     assert readiness["post_handoff_run_seen"] is False, readiness
     assert "post_handoff_latest_run" not in readiness, readiness
@@ -256,7 +255,7 @@ def assert_no_evidence_handoff_readiness(readiness: dict[str, object]) -> None:
     checks = readiness["checks"]
     assert checks["project_asset_backed"] is True, readiness
     assert checks["same_source_should_run"] is True, readiness
-    assert checks["codex_ready"] is True, readiness
+    assert checks["codex_ready"] is False, readiness
     assert checks["handoff_has_next_action"] is True, readiness
     assert checks["handoff_has_stop_condition"] is True, readiness
     assert checks["handoff_sanitized_surface"] is True, readiness
@@ -266,19 +265,22 @@ def assert_no_evidence_handoff_readiness(readiness: dict[str, object]) -> None:
 def assert_status_markdown_no_evidence_projection(status_markdown: str) -> None:
     expected_lines = [
         "project_asset_source: project_asset",
-        f"project_asset: owner=codex gate=none stop={EXPECTED_STOP_CONDITION}",
-        f"asset_next_action: {EXPECTED_NEXT_ACTION}",
+        f"project_asset: owner=controller gate=active_state_user_todo stop={EXPECTED_STOP_CONDITION}",
+        f"asset_next_action: {EXPECTED_USER_TODO}",
         "asset_todos: user_open=1 agent_open=1",
         f"asset_user_todo: {EXPECTED_USER_TODO}",
         f"asset_agent_todo: {EXPECTED_AGENT_TODO}",
-        "asset_quota: compute=1.0 state=eligible slots=0/1440",
-        "handoff_readiness: ready=True codex_ready=True source=project_asset quota_state=eligible",
+        "asset_active_state_next_action: Refresh the public-safe material registry summary.",
+        "asset_latest_run_recommended_action: Refresh the public-safe material registry summary.",
+        "asset_quota: compute=1.0 state=operator_gate slots=0/1440",
+        "handoff_readiness: ready=False codex_ready=False source=project_asset quota_state=operator_gate",
+        "handoff_interface_budget: mode=project_agent_handoff max_lines=16 max_chars=1800",
         (
             "handoff_checks: "
-            "pass=project_asset_backed,same_source_should_run,codex_ready,handoff_has_next_action,"
-            "handoff_has_stop_condition,handoff_sanitized_surface fail=-"
+            "pass=project_asset_backed,same_source_should_run,handoff_has_next_action,"
+            "handoff_has_stop_condition,handoff_sanitized_surface fail=codex_ready"
         ),
-        "handoff_state: status=ready_waiting_for_run post_handoff_run_seen=False",
+        "handoff_state: status=ready_waiting_for_run post_handoff_run_seen=False ready_at=",
         f"handoff_probe: `loopx review-packet --goal-id {GOAL_ID} --handoff-only`",
         "authority_material: entries=0/3 topics=3 materials=6 repositories=2",
         "owner_review_required=1 stale=1 current_authority=1 risk=medium",
@@ -294,7 +296,7 @@ def assert_review_packet_no_evidence_projection(packet: str) -> None:
         "项目资产来源：project_asset（owner/gate/next/stop 来自 attention_queue.project_asset）",
         f"Agent 待办：{EXPECTED_AGENT_TODO}",
         f"材料上下文：{EXPECTED_MATERIAL_CONTEXT}",
-        "停止条件：需要真实写 reward、approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
+        "停止条件：需要真实 approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
         "不含内部链接、路径或正文",
     ]
     for line in expected_lines:
@@ -313,7 +315,7 @@ def assert_handoff_only_no_evidence_projection(handoff: str) -> None:
         "项目资产来源：project_asset（owner/gate/next/stop 来自 attention_queue.project_asset）",
         f"Agent 待办：{EXPECTED_AGENT_TODO}",
         f"材料上下文：{EXPECTED_MATERIAL_CONTEXT}",
-        "停止条件：需要真实写 reward、approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
+        "停止条件：需要真实 approval、write-control、run history append、生产动作或命令失败时，停下等明确授权。",
         f"--goal-id {GOAL_ID}",
     ]
     for line in expected_lines:
@@ -328,9 +330,9 @@ def assert_handoff_only_json_projection(payload: dict[str, object]) -> None:
     assert payload["handoff_text"] == payload["project_agent_handoff"], payload
     assert "packet" not in payload, payload
     assert "operator_gate_preview" not in payload, payload
-    assert payload["kind"] == "codex", payload
-    assert payload["status"] == "read_only_project_map", payload
-    assert payload["waiting_on"] == "codex", payload
+    assert payload["kind"] == "controller", payload
+    assert payload["status"] == "active_state_user_todo", payload
+    assert payload["waiting_on"] == "controller", payload
     assert_handoff_only_no_evidence_projection(payload["handoff_text"])
     assert_public_safe(json.dumps(payload, ensure_ascii=False))
 
@@ -410,17 +412,17 @@ def main() -> int:
         assert "materials 6; repos 2; owner review 1; stale 1; risk medium" in html, html
         assert "Public-safe counts only; no source links or raw material text." in html, html
         assert "Project Asset" in html, html
-        assert "owner codex; gate none" in html, html
-        assert f"<b>Next</b> {EXPECTED_NEXT_ACTION}" in html, html
+        assert "owner controller; gate active_state_user_todo" in html, html
+        assert f"<b>Next</b> {EXPECTED_USER_TODO}" in html, html
         assert f"<b>Stop</b> {EXPECTED_STOP_CONDITION}" in html, html
         assert f"User todo: 1/1 open; next {EXPECTED_USER_TODO}" in html, html
         assert f"Agent todo: 1/1 open; next {EXPECTED_AGENT_TODO}" in html, html
-        assert "<b>Quota</b> compute 1.0; eligible; slots 0/1440" in html, html
+        assert "<b>Quota</b> compute 1.0; operator_gate; slots 0/1440" in html, html
         assert "<b>Validation</b> read_only_project_map" in html, html
         assert "Handoff readiness" in html, html
-        assert "ready; codex_ready True; source project_asset; quota eligible" in html, html
-        assert "<b>Failed checks</b> none" in html, html
-        assert "<b>Handoff state</b> status ready_waiting_for_run; post_handoff_run_seen False" in html, html
+        assert "not ready; codex_ready False; source project_asset; quota operator_gate" in html, html
+        assert "<b>Failed checks</b> codex_ready" in html, html
+        assert "<b>Handoff state</b> status ready_waiting_for_run; post_handoff_run_seen False; ready_at" in html, html
         assert f"<b>Probe</b> loopx review-packet --goal-id {GOAL_ID} --handoff-only" in html, html
         assert_public_safe(html)
 

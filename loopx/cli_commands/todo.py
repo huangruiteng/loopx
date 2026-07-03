@@ -300,17 +300,22 @@ def handle_todo_command(
             and args.role == "user"
             and args.task_class == "user_gate"
         )
+        agent_id_allowed_for_read = args.todo_command == "list"
         global_gate_allowed = args.todo_command in {"add", "update"}
         if args.todo_command not in {"suggest", "capture-followups"} and (
-            (args.agent_id and not agent_id_allowed_for_gate_authoring)
+            (
+                args.agent_id
+                and not agent_id_allowed_for_gate_authoring
+                and not agent_id_allowed_for_read
+            )
             or (args.global_gate and not global_gate_allowed)
             or args.suggestion_sources
             or args.suggestion_limit is not None
             or args.suggestion_trigger
         ):
             raise ValueError(
-                "todo --agent-id is supported by `todo suggest` and by "
-                "`todo add/update --role user --task-class user_gate` for "
+                "todo --agent-id is supported by `todo list`, `todo suggest`, and "
+                "by `todo add/update --role user --task-class user_gate` for "
                 "agent-scoped user gates; --global-gate is supported by "
                 "`todo add/update` for user gates; --from, --limit, and "
                 "--trigger are only supported by `todo suggest`"
@@ -348,7 +353,6 @@ def handle_todo_command(
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
                     ("--side-agent-self-merged", args.side_agent_self_merged),
-                    ("--agent-id", args.agent_id),
                     ("--from", args.suggestion_sources),
                     ("--limit", args.suggestion_limit),
                     ("--trigger", args.suggestion_trigger),
@@ -359,7 +363,7 @@ def handle_todo_command(
             if unsupported:
                 raise ValueError(
                     "todo list only accepts --goal-id, optional --role, --status, --todo-id, "
-                    "--project, --state-file, --dry-run, and --format; unsupported: "
+                    "--agent-id, --project, --state-file, --dry-run, and --format; unsupported: "
                     + ", ".join(unsupported)
                 )
             payload = list_goal_todos(
@@ -368,6 +372,7 @@ def handle_todo_command(
                 role=args.role,
                 status=args.status,
                 todo_id=args.todo_id,
+                agent_id=args.agent_id,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
             )

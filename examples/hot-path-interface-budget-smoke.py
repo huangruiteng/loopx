@@ -297,7 +297,7 @@ def main() -> int:
         assert "identity_keys" not in reset_policy, reset_policy
         assert "profile" not in reset_policy, reset_policy
         assert len(reset_policy["identity_signature"]) == 12, reset_policy
-        assert len(reset_policy["profile_signature"]) == 12, reset_policy
+        assert "profile_signature" not in reset_policy, reset_policy
         assert handoff_payload["within_budget"] is True, handoff_payload
         summaries = [
             assert_surface("heartbeat_prompt_json", heartbeat_payload),

@@ -245,7 +245,7 @@ def assert_contract_word_alone_does_not_trigger_outcome_followthrough() -> None:
     assert "outcome_followthrough" not in lane, lane
 
 
-def assert_monitor_only_todo_waits_quietly() -> None:
+def assert_monitor_only_todo_requires_replan_before_quiet() -> None:
     guard = build_quota_should_run(
         status_payload(
             status="typed_task_lane_planning_writeback",
@@ -269,10 +269,10 @@ def assert_monitor_only_todo_waits_quietly() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["decision"] == "skip", guard
-    assert guard["should_run"] is False, guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
     assert guard["normal_delivery_allowed"] is False, guard
-    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["schema_version"] == "work_lane_contract_v1", lane
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "todo_monitor", lane
@@ -280,14 +280,21 @@ def assert_monitor_only_todo_waits_quietly() -> None:
     assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
     assert lane["must_attempt_work"] is False, lane
     assert lane["reason_codes"] == ["monitor_todo_only"], lane
-    assert guard["heartbeat_recommendation"]["recommended_mode"] == "monitor_quiet_until_material_transition", guard
-    assert guard["execution_obligation"]["kind"] == "monitor_quiet_skip", guard
-    assert guard["execution_obligation"]["must_attempt_work"] is False, guard
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+    assert guard["execution_obligation"]["kind"] == "autonomous_replan_required", guard
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
+    assert guard["autonomous_replan_decision"]["not_disturbed_by"] == [
+        "monitor_quiet_skip",
+        "agent_scope_wait",
+        "agent_scope_exhausted",
+    ], guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert [item["task_class"] for item in first_items] == ["continuous_monitor", "continuous_monitor"], guard
     markdown = render_quota_should_run_markdown(guard)
     assert "work_lane_contract: lane=continuous_monitor next=continuous_monitor" in markdown, markdown
     assert "obligation=quiet_until_material_monitor_transition" in markdown, markdown
+    assert "autonomous_replan_decision: decision=autonomous_replan_required" in markdown, markdown
 
 
 def assert_monitor_only_with_user_todo_surfaces_user_action_without_transition() -> None:
@@ -671,9 +678,13 @@ def assert_structured_monitor_registration_beats_action_text() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["should_run"] is False, guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert first_items[0]["task_class"] == TODO_TASK_CLASS_MONITOR, guard
     assert first_items[0]["action_kind"] == "monitor", guard
@@ -715,7 +726,7 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     assert [item["task_class"] for item in first_items] == ["advancement_task", "continuous_monitor"], guard
 
 
-def assert_not_due_monitor_only_waits_quietly() -> None:
+def assert_not_due_monitor_only_requires_replan_before_quiet() -> None:
     guard = build_quota_should_run(
         status_payload(
             status="monitor_schedule_waiting",
@@ -735,11 +746,13 @@ def assert_not_due_monitor_only_waits_quietly() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["decision"] == "skip", guard
-    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "todo_monitor", lane
     assert lane["must_attempt_work"] is False, lane
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
     assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
 
 
@@ -1195,6 +1208,111 @@ def assert_launch_then_poll_todo_without_handle_routes_to_advancement() -> None:
     assert first_items[0]["action_kind"] == "run_eval", guard
 
 
+def assert_side_agent_monitor_watch_without_handle_stays_quiet() -> None:
+    monitor_todo = (
+        "[P0] Observe launched external demo worker via compact public-safe "
+        "markers only."
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            status="external_demo_worker_launched_v0",
+            next_action=(
+                "Observe launched external demo worker until a compact public-safe "
+                "result marker arrives."
+            ),
+            coordination={
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control", "codex-side-bypass"],
+            },
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": monitor_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "monitor",
+                    "claimed_by": "codex-side-bypass",
+                    "todo_id": "todo_side_external_observe",
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-side-bypass",
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["monitor_kind"] == "todo_monitor", lane
+    assert lane["must_attempt_work"] is False, lane
+    assert "external_evidence_observation" not in guard, guard
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    interaction = guard["interaction_contract"]
+    assert interaction["mode"] == "autonomous_replan", interaction
+    assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+
+
+def assert_side_agent_monitor_watch_with_handle_requires_observation() -> None:
+    target_key = "external-demo-worker:run-42"
+    monitor_todo = (
+        "[P0] Observe launched external demo worker via compact public-safe "
+        "markers only."
+    )
+    guard = build_quota_should_run(
+        status_payload(
+            status="external_demo_worker_launched_v0",
+            next_action=(
+                "Observe launched external demo worker until a compact public-safe "
+                "result marker arrives."
+            ),
+            coordination={
+                "primary_agent": "codex-main-control",
+                "registered_agents": ["codex-main-control", "codex-side-bypass"],
+            },
+            agent_todo_items=[
+                {
+                    "index": 1,
+                    "text": monitor_todo,
+                    "role": "agent",
+                    "status": "open",
+                    "priority": "P0",
+                    "task_class": "continuous_monitor",
+                    "action_kind": "monitor",
+                    "claimed_by": "codex-side-bypass",
+                    "todo_id": "todo_side_external_observe",
+                    "target_key": target_key,
+                }
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-side-bypass",
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "observe", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "external_evidence_observe", guard
+    assert lane["lane"] == "continuous_monitor", lane
+    assert lane["monitor_kind"] == "external_evidence", lane
+    assert lane["must_attempt_work"] is True, lane
+    observation = guard["external_evidence_observation"]
+    assert observation["kind"] == "launched_external_work_monitor", observation
+    assert observation["must_attempt_observation"] is True, observation
+    assert observation["monitor_handle"]["schema_version"] == "projected_monitor_handle_v0", observation
+    assert observation["monitor_handle"]["target_key"] == target_key, observation
+    assert observation["monitor_handle"]["todo_id"] == "todo_side_external_observe", observation
+    assert observation["monitor_handle"]["claimed_by"] == "codex-side-bypass", observation
+    assert observation["monitor_handle"]["target_text"] == monitor_todo, observation
+    assert observation["observation_target"] == monitor_todo, observation
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    interaction = guard["interaction_contract"]
+    assert interaction["mode"] == "external_evidence_observation", interaction
+    assert interaction["agent_channel"]["must_attempt"] is True, interaction
+    assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
+
+
 def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -> None:
     primary_action = "[P0] Run the primary benchmark monitor owned by main control."
     side_action = (
@@ -1258,9 +1376,25 @@ def assert_side_agent_next_action_projects_without_stealing_goal_next_action() -
     assert next_action["confidence"] == "selected", next_action
     assert next_action["source"] == "capability_gate.runnable_candidates", next_action
     assert next_action["preserves_goal_next_action"] is True, next_action
+    route_hint = guard["goal_route_hint"]
+    assert route_hint["schema_version"] == "goal_route_hint_v0", route_hint
+    assert route_hint["route_decision"] == "run_current_agent_lane", route_hint
+    assert route_hint["agent_id"] == "codex-side-bypass", route_hint
+    assert route_hint["primary_agent"] == "codex-main-control", route_hint
+    assert route_hint["preserves_goal_next_action"] is True, route_hint
+    assert route_hint["goal_next_action_mutation"] == "none", route_hint
+    assert route_hint["has_durable_next_action"] is True, route_hint
+    assert route_hint["has_latest_run_recommended_action"] is False, route_hint
+    assert route_hint["selected_action_differs_from_durable"] is True, route_hint
+    assert route_hint["current_agent_next_action"]["todo_id"] == "todo_side_tui", route_hint
+    assert route_hint["other_agent_next_actions"][0]["todo_id"] == "todo_primary", route_hint
+    assert route_hint["counts"]["current_agent_claimed_advancement_count"] == 2, route_hint
+    assert route_hint["counts"]["other_agent_claimed_advancement_count"] == 1, route_hint
     assert guard["capability_gate"]["runnable_candidates"][0]["todo_id"] == "todo_side_tui", guard
     markdown = render_quota_should_run_markdown(guard)
     assert "agent_lane_next_action: todo_id=todo_side_tui" in markdown, markdown
+    assert "goal_route_hint: decision=run_current_agent_lane" in markdown, markdown
+    assert "goal_route_hint_current_action: todo_id=todo_side_tui" in markdown, markdown
     assert side_action in markdown, markdown
     assert primary_action not in guard["agent_lane_next_action"]["text"], guard
 
@@ -1314,6 +1448,14 @@ def assert_side_agent_waits_when_only_other_agent_has_claimed_work() -> None:
     assert hint["reason_code"] == "blocked_by_other_agent_frontier", hint
     assert hint["target_todo_id"] == "todo_primary_suite", hint
     assert hint["quiet_noop_allowed"] is True, hint
+    route_hint = guard["goal_route_hint"]
+    assert route_hint["schema_version"] == "goal_route_hint_v0", route_hint
+    assert route_hint["route_decision"] == "agent_scope_wait", route_hint
+    assert route_hint["preserves_goal_next_action"] is True, route_hint
+    assert route_hint["has_durable_next_action"] is True, route_hint
+    assert route_hint["frontier_hint"]["decision"] == "quiet_noop_blocker", route_hint
+    assert route_hint["other_agent_next_actions"][0]["todo_id"] == "todo_primary_suite", route_hint
+    assert "current_agent_next_action" not in route_hint, route_hint
     assert frontier["frontier_hint"] == hint, frontier
     assert "codex-side-bypass" in guard["recommended_action"], guard
     assert "codex-main-control" in guard["recommended_action"], guard
@@ -1661,6 +1803,14 @@ def assert_side_agent_replans_when_deferred_successor_is_ready() -> None:
     assert frontier["quiet_noop_allowed"] is False, frontier
     assert frontier["requires_replan"] is True, frontier
     assert frontier["deferred_resume_candidates"][0]["todo_id"] == "todo_issue_surface_deferred", frontier
+    goal_frontier = guard["goal_frontier_projection"]
+    deferred_successors = goal_frontier["deferred_successors"]
+    assert deferred_successors["ready_count"] == 1, goal_frontier
+    assert deferred_successors["blocked_count"] == 0, goal_frontier
+    assert deferred_successors["current_agent_ready_count"] == 1, goal_frontier
+    assert deferred_successors["top_ready_todo_id"] == "todo_issue_surface_deferred", goal_frontier
+    assert deferred_successors["ready_todo_ids"] == ["todo_issue_surface_deferred"], goal_frontier
+    assert goal_frontier["acceptance_gaps"] == [], goal_frontier
     hint = guard["agent_lane_frontier_hint"]
     assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
     assert hint["decision"] == "add_next_advancement", hint
@@ -2115,7 +2265,7 @@ def main() -> int:
     assert_structured_surface_only_run_requires_outcome_followthrough()
     assert_blocker_writeback_satisfies_contract_followthrough()
     assert_contract_word_alone_does_not_trigger_outcome_followthrough()
-    assert_monitor_only_todo_waits_quietly()
+    assert_monitor_only_todo_requires_replan_before_quiet()
     assert_monitor_only_with_user_todo_surfaces_user_action_without_transition()
     assert_blocked_agent_todo_with_user_gate_notifies_without_execution()
     assert_monitor_only_with_planning_next_action_materializes_advancement()
@@ -2125,7 +2275,7 @@ def main() -> int:
     assert_structured_todo_lane_registration_beats_text_fallback()
     assert_structured_monitor_registration_beats_action_text()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
-    assert_not_due_monitor_only_waits_quietly()
+    assert_not_due_monitor_only_requires_replan_before_quiet()
     assert_due_monitor_only_requires_attempt()
     assert_due_monitor_lower_priority_does_not_preempt_advancement()
     assert_due_monitor_higher_priority_preempts_advancement()
@@ -2136,6 +2286,8 @@ def main() -> int:
     assert_behavior_regression_suite_routes_to_advancement()
     assert_launched_external_observation_does_not_preempt_advancement_backlog()
     assert_launch_then_poll_todo_without_handle_routes_to_advancement()
+    assert_side_agent_monitor_watch_without_handle_stays_quiet()
+    assert_side_agent_monitor_watch_with_handle_requires_observation()
     assert_side_agent_next_action_projects_without_stealing_goal_next_action()
     assert_side_agent_waits_when_only_other_agent_has_claimed_work()
     assert_side_agent_scope_wait_mentions_blocking_owner()

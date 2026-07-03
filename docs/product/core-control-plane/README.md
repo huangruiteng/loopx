@@ -11,6 +11,9 @@ LoopX learns a new long-running agent behavior:
   owns it?
 - [Rule seam map](rule-seam-map.md): which runtime rule families should be
   characterized and extracted before moving code?
+- [Smoke failure classification ledger](smoke-failure-classification-ledger.md):
+  which red public smokes are product bugs, stale fixtures, release packaging
+  gaps, or runner ergonomics issues?
 
 The older detailed documents remain the canonical reference for full protocol
 detail:

@@ -48,10 +48,12 @@ def main() -> int:
         assert payload["todos"]["agent_added"] is True, payload
         assert payload["refresh"]["appended"] is True, payload
         assert payload["status"]["ok"] is True, payload
-        assert payload["status"]["demo_waiting_on"] == "codex", payload
+        assert payload["status"]["demo_waiting_on"] == "controller", payload
         assert payload["status"]["demo_user_todos"]["open_count"] == 1, payload
         assert payload["status"]["demo_agent_todos"]["open_count"] == 1, payload
-        assert payload["quota"]["should_run"] is True, payload
+        assert payload["quota"]["should_run"] is False, payload
+        assert payload["quota"]["state"] == "operator_gate", payload
+        assert payload["quota"]["safe_bypass_allowed"] is True, payload
         assert payload["quota"]["quota"]["spent_slots"] == 0, payload
         dashboard_status_commands = "\n".join(payload["dashboard_status_commands"])
         dashboard_app_commands = "\n".join(payload["dashboard_app_commands"])

@@ -36,7 +36,10 @@ def status_payload(
     agent_todos: list[dict],
     user_todos: list[dict] | None = None,
     status: str = "protocol_router_comparison_fixture",
+    next_action: str | None = None,
 ) -> dict:
+    if next_action is None:
+        next_action = f"Run cold-path comparison fixture for {scenario_id}."
     agent_summary = {
         "schema_version": "todo_summary_v0",
         "source_section": "Agent Todo",
@@ -51,7 +54,7 @@ def status_payload(
         "waiting_on": "codex",
         "severity": "info",
         "source": "project_asset",
-        "recommended_action": f"Run cold-path comparison fixture for {scenario_id}.",
+        "recommended_action": next_action,
         "quota": {
             "compute": 1.0,
             "window_hours": 24,
@@ -62,7 +65,7 @@ def status_payload(
             "reason": "eligible fixture",
         },
         "project_asset": {
-            "next_action": f"Run cold-path comparison fixture for {scenario_id}.",
+            "next_action": next_action,
             "stop_condition": "stop on private material",
             "agent_todos": agent_summary,
         },
@@ -156,7 +159,9 @@ def status_payload(
 
 
 def deterministic_router_summary(rule_summary: str) -> str:
-    if "actor=user" in rule_summary:
+    if "user_action_required=true" in rule_summary:
+        if "actor=agent_with_user_gate" in rule_summary:
+            return "agent_with_user_gate surfaces user action; no_api"
         return "user action required; agent waits; no_api"
     if "quiet_noop_allowed=true" in rule_summary:
         return "agent quiet monitor noop until material transition; no_api"
@@ -272,6 +277,7 @@ def build_comparison_report() -> dict:
                         task_class="continuous_monitor",
                     )
                 ],
+                next_action="Stay quiet until the monitor lane reports a material transition.",
             ),
         ),
     ]

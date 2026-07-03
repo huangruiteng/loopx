@@ -2183,6 +2183,7 @@ recommendation as the next machine-visible route.
 - `examples/autonomous-replan-obligation-smoke.py`
 - `regression/autonomous-replan-vs-dreaming-contract.py`
 - `docs/archive/incidents/monitor-only-replan-stall-incident-20260621.md`
+- `docs/archive/incidents/agent-scoped-replan-precedence-incident-20260703.md`
 
 #### IP-024 Repair Delta Contract
 

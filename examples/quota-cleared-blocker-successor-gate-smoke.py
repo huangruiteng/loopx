@@ -225,6 +225,7 @@ def assert_cleared_blocker_requires_successor_replan() -> None:
     )
     assert payload["decision"] == "successor_replan_required", payload
     assert payload["should_run"] is True, payload
+    assert payload["effective_action"] == "successor_replan_required", payload
     assert payload["normal_delivery_allowed"] is False, payload
     assert payload.get("agent_lane_next_action") is None, payload
     frontier = payload["agent_scope_frontier"]
@@ -248,8 +249,23 @@ def assert_cleared_blocker_requires_successor_replan() -> None:
     assert contract["agent_channel"]["must_attempt"] is True, contract
     assert contract["agent_channel"]["delivery_allowed"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is False, contract
+    assert contract["cli_channel"]["spend_allowed_now"] is False, contract
     assert contract["cli_channel"]["spend_after_validation"] is True, contract
     assert contract["user_channel"]["action_required"] is False, contract
+    assert any(
+        "loopx todo update" in action for action in contract["cli_channel"]["next_cli_actions"]
+    ), contract
+    assert any(
+        "quota spend-slot" in action for action in contract["cli_channel"]["next_cli_actions"]
+    ), contract
+
+    scheduler = payload["scheduler_hint"]
+    assert scheduler["action"] == "run_now", scheduler
+    assert scheduler["cadence_class"] == "active_work", scheduler
+    assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
+    assert scheduler["codex_app"]["recommended_interval_minutes"] == 3, scheduler
+    assert scheduler["codex_app"]["stateful_backoff"]["apply_needed"] is True, scheduler
+    assert scheduler["codex_app"]["no_spend_for_cadence_change"] is True, scheduler
 
 
 def assert_status_summary_projects_handoff_gate_state() -> None:

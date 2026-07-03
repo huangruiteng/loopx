@@ -49,6 +49,7 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
 from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
+    apply_skillsbench_pre_agent_setup_diagnostic_attribution,
     skillsbench_runner_error_attribution,
     skillsbench_runner_error_fingerprint,
 )
@@ -69,12 +70,23 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DEFAULT_MAX_ROUNDS,
     DEFAULT_PRODUCT_MODE_SOFT_VERIFY_POLICY,
     DEFAULT_SOFT_VERIFIER_TIMEOUT_SEC,
+    DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST,
+    DEFAULT_DOCKER_MAVEN_MIRROR_HOST,
+    DEFAULT_DOCKER_MAVEN_MIRROR_URL,
+    DEFAULT_DOCKER_MAVEN_SETTINGS_PATH,
     DEFAULT_DOCKER_PIP_INDEX_HOST,
     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST,
     DECLARED_DONE_MARKER,
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
     DOCKER_APT_RETRY_BEGIN,
     DOCKER_APP_SKILLS_MOUNT_BEGIN,
+    DOCKER_APP_SKILLS_MOUNT_KEEP_FILE,
+    DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN,
+    DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN,
+    DOCKER_GCR_MIRROR_BEGIN,
+    DOCKER_MAVEN_MIRROR_BEGIN,
+    DOCKER_MAVEN_MIRROR_END,
+    DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN,
     DOCKER_PIP_BOOTSTRAP_BEGIN,
     DOCKER_HOST_CPU_ENV,
     HOST_LOCAL_ACP_AGENT_TIMEOUT_MARGIN_SEC,
@@ -85,6 +97,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     RUNNER_CONFIG_PUBLIC_FILENAME,
     RUNNER_PREREQUISITES_PUBLIC_FILENAME,
     SkillsBenchProductModeNoLifecycleRequests,
+    VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
     VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
     _tail,
     _apply_agent_message_only_no_tool_calls_attribution,
@@ -93,6 +106,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _build_product_mode_user,
     _copy_loopx_source_subset,
     _host_local_acp_launch_command,
+    _effective_local_codex_first_action_timeout_sec,
     _first_bridge_failure_category,
     _host_local_acp_codex_exec_preflight_bridge_success_observed,
     _loopx_case_init_failure_blocker,
@@ -109,6 +123,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     build_compose_setup_diagnostic,
     build_plan,
     cleanup_benchflow_setup_stall_children,
+    cleanup_host_local_acp_attempt_children,
     cleanup_benchflow_soft_verify_timeout_children,
     install_benchflow_user_loop_final_verify_recovery,
     install_benchflow_verifier_prep_timeout_override,
@@ -121,6 +136,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     product_mode_case_state_seed_text,
     product_mode_soft_verify_policy_for_route,
     reduce_result,
+    update_ledger as update_skillsbench_ledger,
     _runner_prerequisite_failure_attribution,
     _subcommand_family_count,
     _sync_relay_closeout_counts_into_compact,
@@ -170,6 +186,8 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
                 "reverse-tunnel",
                 "--codex-api-reverse-tunnel-proxy",
                 proxy_url,
+                "--app-server-reasoning-effort",
+                "xhigh",
                 "--skillsbench-root",
                 str(skillsbench_root),
                 "--jobs-dir",
@@ -199,6 +217,8 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
         assert "127.0.0.1" in target_env["NO_PROXY"], target_env
 
         config = plan["runner_config"]
+        assert plan["app_server_reasoning_effort"] == "xhigh", plan
+        assert config["app_server_reasoning_effort"] == "xhigh", config
         assert config["codex_api_egress_preflight_required"] is True, config
         assert config["codex_api_egress_mode_requested"] == "reverse-tunnel", config
         assert config["codex_api_egress_mode_resolved"] == "reverse-tunnel", config
@@ -207,6 +227,285 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
         assert config["codex_api_reverse_tunnel_proxy_endpoint_port"] == 18080, config
         assert config["codex_api_reverse_tunnel_proxy_url_recorded"] is False, config
         assert proxy_url not in json.dumps(config, sort_keys=True), config
+
+        benchmark_proxy_url = "http://benchmark-proxy.example.invalid:3128"
+        codex_acp_args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "codex-acp-blind-loop-baseline",
+                "--host-local-acp-launch",
+                "--codex-api-egress-mode",
+                "reverse-tunnel",
+                "--codex-api-reverse-tunnel-proxy",
+                proxy_url,
+                "--benchmark-egress-proxy",
+                benchmark_proxy_url,
+                "--benchmark-egress-proxy-mode",
+                "require",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs-codex-acp"),
+            ]
+        )
+        codex_acp_plan = build_plan(codex_acp_args)
+        codex_acp_egress = codex_acp_plan["codex_api_egress_preflight"]
+        assert codex_acp_egress["required"] is True, codex_acp_egress
+        assert codex_acp_egress["resolved_mode"] == "reverse-tunnel", codex_acp_egress
+        assert codex_acp_egress["reverse_tunnel_required"] is True, codex_acp_egress
+        codex_acp_config = codex_acp_plan["runner_config"]
+        assert (
+            codex_acp_config["codex_api_egress_mode_resolved"] == "reverse-tunnel"
+        ), codex_acp_config
+        assert codex_acp_config["codex_api_reverse_tunnel_required"] is True, (
+            codex_acp_config
+        )
+        agent_env = {
+            "HTTPS_PROXY": benchmark_proxy_url,
+            "HTTP_PROXY": benchmark_proxy_url,
+            "ALL_PROXY": benchmark_proxy_url,
+            "LOOPX_SKILLSBENCH_EGRESS_PROXY": benchmark_proxy_url,
+        }
+        codex_acp_target_env = skillsbench_loop._host_local_acp_target_env(
+            agent_env,
+            args=codex_acp_args,
+        )
+        for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+            assert codex_acp_target_env[key] == proxy_url, codex_acp_target_env
+        assert (
+            codex_acp_target_env["LOOPX_SKILLSBENCH_EGRESS_PROXY"]
+            == benchmark_proxy_url
+        ), codex_acp_target_env
+        assert benchmark_proxy_url not in json.dumps(
+            codex_acp_config,
+            sort_keys=True,
+        ), codex_acp_config
+
+
+def test_generic_reasoning_effort_reaches_codex_exec_route() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-reasoning-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--route",
+                "codex-acp-blind-loop-baseline",
+                "--host-local-acp-launch",
+                "--reasoning-effort",
+                "xhigh",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+            ]
+        )
+        plan = build_plan(args)
+        command = _host_local_acp_launch_command(args, plan)
+        assert plan["reasoning_effort"] == "xhigh", plan
+        assert plan["codex_cli_reasoning_effort"] == "xhigh", plan
+        assert plan["app_server_reasoning_effort"] == "", plan
+        assert command[command.index("--reasoning-effort") + 1] == "xhigh", command
+        config = plan["runner_config"]
+        assert config["reasoning_effort"] == "xhigh", config
+        assert config["codex_cli_reasoning_effort"] == "xhigh", config
+        assert "app_server_reasoning_effort" not in config, config
+
+
+def test_codex_exec_relay_maps_reasoning_effort_to_cli_config() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-codex-cli-effort-") as tmp:
+        root = Path(tmp)
+        fake_codex = root / "fake-codex"
+        argv_path = root / "argv.json"
+        fake_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+
+Path(os.environ["LOOPX_FAKE_CODEX_ARGV_PATH"]).write_text(json.dumps(sys.argv), encoding="utf-8")
+output_path = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
+output_path.write_text("relay ok", encoding="utf-8")
+raise SystemExit(0)
+""",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o700)
+
+        old_env = os.environ.get("LOOPX_FAKE_CODEX_ARGV_PATH")
+        os.environ["LOOPX_FAKE_CODEX_ARGV_PATH"] = str(argv_path)
+        try:
+            relay = SkillsBenchLocalAcpRelay(
+                CodexExecConfig(
+                    codex_bin=str(fake_codex),
+                    route="codex-acp-blind-loop-baseline",
+                    timeout_sec=5,
+                    reasoning_effort="xhigh",
+                )
+            )
+            response = relay._run_codex(
+                "public-safe prompt placeholder",
+                session={"cwd": str(root)},
+                session_id="session-cli-effort",
+                stdout=io.StringIO(),
+            )
+        finally:
+            if old_env is None:
+                os.environ.pop("LOOPX_FAKE_CODEX_ARGV_PATH", None)
+            else:
+                os.environ["LOOPX_FAKE_CODEX_ARGV_PATH"] = old_env
+
+        assert response == "relay ok", response
+        argv = json.loads(argv_path.read_text(encoding="utf-8"))
+        assert "-c" in argv, argv
+        config_value = argv[argv.index("-c") + 1]
+        assert config_value == 'model_reasoning_effort="xhigh"', argv
+
+
+def test_benchmark_egress_proxy_env_is_public_safe_and_forwarded() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-proxy-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        proxy_url = "http://benchmark-proxy.example.invalid:18080"
+        previous = os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY")
+        os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
+        try:
+            args = parse_args(
+                [
+                    "--task-id",
+                    "citation-check",
+                    "--route",
+                    "codex-app-server-goal-baseline",
+                    "--host-local-acp-launch",
+                    "--remote-command-file-bridge-ready",
+                    "--skillsbench-root",
+                    str(skillsbench_root),
+                    "--jobs-dir",
+                    str(root / "jobs"),
+                    "--benchmark-egress-no-proxy",
+                    "example-cache.invalid,127.0.0.1",
+                ]
+            )
+            plan = build_plan(args)
+            egress = plan["benchmark_egress_proxy"]
+            assert egress["proxy_configured"] is True, egress
+            assert egress["proxy_source"] == "env", egress
+            assert egress["proxy_env_key"] == "LOOPX_SKILLSBENCH_EGRESS_PROXY", egress
+            assert egress["proxy_scheme"] == "http", egress
+            assert egress["proxy_endpoint_kind"] == "public_or_unknown", egress
+            assert egress["proxy_endpoint_port"] == 18080, egress
+            assert egress["no_proxy_configured"] is True, egress
+            assert egress["no_proxy_entry_count"] >= 5, egress
+            assert egress["no_proxy_raw_value_recorded"] is False, egress
+            assert egress["proxy_url_recorded"] is False, egress
+            assert egress["raw_proxy_url_recorded"] is False, egress
+            assert proxy_url not in json.dumps(plan, sort_keys=True), plan
+            assert "example-cache.invalid" not in json.dumps(plan, sort_keys=True), plan
+
+            private_env = skillsbench_loop._benchmark_egress_proxy_env(args)
+            for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+                assert private_env[key] == proxy_url, private_env
+            assert "127.0.0.1" in private_env["NO_PROXY"], private_env
+            assert "hifis-storage.desy.de" in private_env["NO_PROXY"], private_env
+            assert "example-cache.invalid" in private_env["NO_PROXY"], private_env
+
+            target_env = skillsbench_loop._host_local_acp_target_env({}, args=args)
+            for key in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"):
+                assert target_env[key] == proxy_url, target_env
+            assert target_env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] == proxy_url
+            assert "127.0.0.1" in target_env["NO_PROXY"], target_env
+            assert "hifis-storage.desy.de" in target_env["NO_PROXY"], target_env
+            assert "example-cache.invalid" in target_env["NO_PROXY"], target_env
+
+            previous_docker_config = os.environ.get("DOCKER_CONFIG")
+            with skillsbench_loop._benchmark_egress_proxy_env_applied(args):
+                docker_config_dir = Path(os.environ["DOCKER_CONFIG"])
+                docker_config_path = docker_config_dir / "config.json"
+                docker_config = json.loads(docker_config_path.read_text(encoding="utf-8"))
+                docker_proxy = docker_config["proxies"]["default"]
+                assert docker_proxy["httpProxy"] == proxy_url, docker_proxy
+                assert docker_proxy["httpsProxy"] == proxy_url, docker_proxy
+                assert "127.0.0.1" in docker_proxy["noProxy"], docker_proxy
+                assert "hifis-storage.desy.de" in docker_proxy["noProxy"], docker_proxy
+                assert "example-cache.invalid" in docker_proxy["noProxy"], docker_proxy
+            if previous_docker_config is None:
+                assert "DOCKER_CONFIG" not in os.environ
+            else:
+                assert os.environ["DOCKER_CONFIG"] == previous_docker_config
+            assert not docker_config_dir.exists(), docker_config_dir
+
+            config = plan["runner_config"]
+            assert config["benchmark_egress_proxy_configured"] is True, config
+            assert config["benchmark_egress_proxy_endpoint_kind"] == "public_or_unknown", config
+            assert config["benchmark_egress_proxy_endpoint_port"] == 18080, config
+            assert config["benchmark_egress_no_proxy_configured"] is True, config
+            assert config["benchmark_egress_no_proxy_entry_count"] >= 5, config
+            assert config["benchmark_egress_no_proxy_raw_value_recorded"] is False, config
+            assert config["benchmark_egress_proxy_url_recorded"] is False, config
+            assert config["benchmark_egress_proxy_docker_config_injected"] is False, config
+            assert config["benchmark_egress_proxy_docker_config_path_recorded"] is False, config
+            assert config["benchmark_egress_proxy_docker_config_raw_proxy_recorded"] is False, config
+            assert proxy_url not in json.dumps(config, sort_keys=True), config
+            assert "example-cache.invalid" not in json.dumps(config, sort_keys=True), config
+        finally:
+            if previous is None:
+                os.environ.pop("LOOPX_SKILLSBENCH_EGRESS_PROXY", None)
+            else:
+                os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = previous
+
+
+def test_benchmark_egress_proxy_require_mode_blocks_without_proxy() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-require-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        previous = os.environ.get("LOOPX_SKILLSBENCH_EGRESS_PROXY")
+        os.environ.pop("LOOPX_SKILLSBENCH_EGRESS_PROXY", None)
+        try:
+            args = parse_args(
+                [
+                    "--task-id",
+                    "citation-check",
+                    "--benchmark-egress-proxy-mode",
+                    "require",
+                    "--skillsbench-root",
+                    str(skillsbench_root),
+                    "--jobs-dir",
+                    str(root / "jobs"),
+                ]
+            )
+            plan = build_plan(args)
+            try:
+                skillsbench_loop._run_benchmark_egress_proxy_preflight(args, plan)
+            except skillsbench_loop.SkillsBenchSetupPreflightBlocked:
+                pass
+            else:  # pragma: no cover - assertion path for script-style smoke
+                raise AssertionError("require mode without proxy should block preflight")
+
+            egress = plan["benchmark_egress_proxy"]
+            assert egress["status"] == "missing_required_proxy", egress
+            assert egress["ready"] is False, egress
+            assert egress["proxy_configured"] is False, egress
+            assert egress["proxy_url_recorded"] is False, egress
+            assert egress["raw_proxy_url_recorded"] is False, egress
+        finally:
+            if previous is not None:
+                os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = previous
 
 
 def test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme() -> None:
@@ -4138,6 +4437,36 @@ def write_official_skillsbench_app_skills_mount_failure(root: Path) -> Path:
     return result_path
 
 
+def write_official_skillsbench_app_skills_permission_failure(root: Path) -> Path:
+    run_dir = root / "official" / "2026-06-15__00-00-03" / "audit__perm"
+    result_path = run_dir / "result.json"
+    write_json(
+        result_path,
+        {
+            "task_name": "audit",
+            "rollout_name": "audit__perm",
+            "rewards": None,
+            "agent": "codex-acp",
+            "agent_name": "",
+            "model": "gpt-5.5",
+            "n_tool_calls": 0,
+            "n_prompts": 0,
+            "error": (
+                "Docker compose command failed for environment audit. "
+                "Command: docker compose build. Return code: 1. "
+                "Dockerfile:45 RUN mkdir -p /app /app/skills. "
+                "mkdir: cannot create directory '/app': Permission denied. "
+                "failed to solve: process did not complete successfully"
+            ),
+            "verifier_error": None,
+            "partial_trajectory": False,
+            "trajectory_source": None,
+        },
+    )
+    write_json(run_dir / "timing.json", {"environment_setup": 12.0, "total": 12.0})
+    return result_path
+
+
 def write_official_skillsbench_docker_port_conflict_failure(root: Path) -> Path:
     run_dir = root / "official" / "2026-06-15__00-00-02" / "setup-fuzzing-py__port"
     result_path = run_dir / "result.json"
@@ -4466,6 +4795,66 @@ def test_skillsbench_official_result_builder() -> None:
         assert compact["read_boundary"]["trajectory_read"] is False
 
 
+def test_skillsbench_verifier_uv_bootstrap_error_is_not_solution_failure() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-uv-bootstrap-result-") as tmp:
+        root = Path(tmp)
+        run_dir = root / "official" / "2026-07-01__12-00-00" / "citation-check__abc123"
+        result_path = run_dir / "result.json"
+        write_json(
+            result_path,
+            {
+                "task_name": "citation-check",
+                "rollout_name": "citation-check__abc123",
+                "rewards": {"reward": 0.0},
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 5,
+                "n_prompts": 1,
+                "error": None,
+                "verifier_error": (
+                    "downloading uv 0.9.7 x86_64-unknown-linux-gnu\n"
+                    "failed to download https://releases.astral.sh/github/uv/"
+                    "releases/download/0.9.7/uv-x86_64-unknown-linux-gnu.tar.gz\n"
+                    "/verifier/test.sh: line 27: uvx: command not found"
+                ),
+                "partial_trajectory": False,
+                "trajectory_source": "acp",
+            },
+        )
+        write_json(run_dir / "timing.json", {"agent_execution": 5.0, "total": 65.0})
+
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="codex-app-server-goal-baseline",
+            )
+        )
+
+        assert compact is not None
+        assert compact["official_score_status"] == "missing", compact
+        assert "official_score" not in compact, compact
+        assert "value" not in compact["official_task_score"], compact
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_verifier_uv_bootstrap_failure"
+        ), compact
+        labels = compact["failure_attribution_labels"]
+        assert "skillsbench_verifier_uv_bootstrap_failure" in labels, compact
+        assert "skillsbench_verifier_bootstrap_failure" in labels, compact
+        assert "verifier_infrastructure_failure" in labels, compact
+        assert "official_verifier_solution_failure" not in labels, compact
+        assert "official_score_zero_case_failure" not in labels, compact
+        assert "skillsbench_verifier_uv_bootstrap_zero_reward_ignored" in compact[
+            "runner_warning_labels"
+        ], compact
+        accounting = compact["attempt_accounting"]
+        assert accounting["failure_class"] == "verifier_failed", compact
+        assert accounting["case_attempt_countable"] is True, compact
+        assert accounting["solver_attempt_countable"] is True, compact
+        assert accounting["verifier_attempt_countable"] is True, compact
+        assert accounting["official_score_attempt_countable"] is False, compact
+
+
 def test_skillsbench_result_reward_artifact_recovery() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-reward-recovery-") as tmp:
         result_path = write_official_skillsbench_reward_artifact_recovery_result(
@@ -4618,6 +5007,42 @@ def test_skillsbench_app_skills_failure_attribution() -> None:
         assert "skillsbench_environment_setup_error" in compact[
             "failure_attribution_labels"
         ], compact
+
+
+def test_skillsbench_app_skills_permission_failure_not_overridden_by_worker_route() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-skills-perm-") as tmp:
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": False,
+            "native_goal_worker_connect_count": 0,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        result_path = write_official_skillsbench_app_skills_permission_failure(Path(tmp))
+        compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                result_path,
+                route="codex-app-server-goal-baseline",
+                controller_trace=controller_trace,
+            )
+        )
+        assert compact is not None
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_environment_app_mount_missing"
+        ), compact
+        assert "skillsbench_environment_setup_error" in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "skillsbench_native_goal_worker_uncountable_baseline" not in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert compact["runner_failure"]["failure_class"] == (
+            "skillsbench_environment_app_mount_missing"
+        ), compact
 
 
 def test_skillsbench_docker_pip_bootstrap_failure_attribution() -> None:
@@ -4838,6 +5263,106 @@ def test_skillsbench_unclassified_compose_failure_fingerprint() -> None:
         text = json.dumps(compact, sort_keys=True)
         assert "Docker compose command failed" not in text, compact
         assert "/Users/example/private/job/root" not in text, compact
+
+
+def test_skillsbench_app_server_pre_agent_setup_overrides_route_selected_gap() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-appserver-preagent-") as tmp:
+        root = Path(tmp)
+        run_dir = (
+            root
+            / "official"
+            / "2026-07-01__09-50-00"
+            / "fix-build-agentops__preagent"
+        )
+        result_path = run_dir / "result.json"
+        write_json(
+            result_path,
+            {
+                "task_name": "fix-build-agentops",
+                "rollout_name": "fix-build-agentops__preagent",
+                "rewards": None,
+                "agent": "codex-acp",
+                "agent_name": "codex-acp",
+                "model": "gpt-5.5",
+                "n_tool_calls": 0,
+                "n_prompts": 1,
+                "error": "BenchFlow setup blocked before agent lifecycle",
+                "verifier_error": None,
+                "partial_trajectory": False,
+                "trajectory_source": None,
+            },
+        )
+        write_json(run_dir / "timing.json", {"environment_setup": 1.0, "total": 1.0})
+        controller_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "last_decision": "host_app_server_goal_worker_selected",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": False,
+            "native_goal_worker_trace_dir_present": False,
+            "native_goal_worker_public_trace_read": False,
+            "native_goal_worker_trace_count": 0,
+            "native_goal_worker_connect_count": 0,
+        }
+        compact = build_skillsbench_benchflow_result_benchmark_run(
+            result_path,
+            route="codex-app-server-goal-baseline",
+            controller_trace=controller_trace,
+        )
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_native_goal_worker_uncountable_worker_route_selected_not_connected"
+        ), compact
+        compact["compose_setup_diagnostic"] = {
+            "schema_version": "skillsbench_compose_setup_diagnostic_v0",
+            "status": "runner_setup_blocked_before_agent_rounds",
+            "route": "codex-app-server-goal-baseline",
+            "failure_class": compact["score_failure_attribution"],
+            "agent_rounds_started": False,
+            "official_score_missing": True,
+            "case_attempt_budget_should_count": False,
+            "raw_logs_read": False,
+            "raw_task_text_read": False,
+            "raw_trajectory_read": False,
+        }
+
+        legacy_reduced = compact_benchmark_run(compact)
+        assert legacy_reduced is not None
+        assert legacy_reduced["score_failure_attribution"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), legacy_reduced
+        assert "native_goal_worker_public_trace_missing" not in legacy_reduced[
+            "validation"
+        ]["failed_checks"], legacy_reduced
+        assert "pre_agent_setup_materialization_blocked" in legacy_reduced[
+            "validation"
+        ]["failed_checks"], legacy_reduced
+
+        apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
+        assert compact["score_failure_attribution"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), compact
+        accounting = compact["attempt_accounting"]
+        assert accounting["failure_label"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), accounting
+        assert accounting["failure_class"] == "job_materialization_failed", accounting
+
+        ledger_path = root / "ledger.json"
+        update = update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            run_group_id="skillsbench-appserver-preagent-test",
+            arm_id="baseline",
+            dry_run=False,
+        )
+        entry = update["entry"]
+        assert entry["arm_id"] == "codex_app_server_goal_baseline", entry
+        assert entry["failure_class"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), entry
+        assert entry["attempt_failure_label"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        ), entry
 
 
 def test_skillsbench_volume_mount_failure_attribution() -> None:
@@ -5304,11 +5829,13 @@ def test_skillsbench_docker_task_staging_adds_app_skills_mount() -> None:
         root = Path(tmp)
         task = root / "tasks" / "citation-check"
         dockerfile = task / "environment" / "Dockerfile"
+        dockerignore = task / "environment" / ".dockerignore"
         skills = task / "environment" / "skills" / "citation"
         skills.mkdir(parents=True)
         (skills / "SKILL.md").write_text("---\nname: citation\n---\n", encoding="utf-8")
         original_text = "FROM ubuntu:24.04\n\nWORKDIR /root\n"
         dockerfile.write_text(original_text, encoding="utf-8")
+        dockerignore.write_text("*\n", encoding="utf-8")
         (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
 
         staged_path, metadata = stage_task_for_sandbox(
@@ -5323,10 +5850,22 @@ def test_skillsbench_docker_task_staging_adds_app_skills_mount() -> None:
         assert metadata["original_task_mutated"] is False, metadata
         assert staged_path != task, staged_path
         assert dockerfile.read_text(encoding="utf-8") == original_text
+        assert dockerignore.read_text(encoding="utf-8") == "*\n"
         staged_dockerfile = staged_path / "environment" / "Dockerfile"
         staged_text = staged_dockerfile.read_text(encoding="utf-8")
         assert DOCKER_APP_SKILLS_MOUNT_BEGIN in staged_text, staged_text
-        assert "RUN mkdir -p /app /app/skills" in staged_text, staged_text
+        assert (
+            f"COPY {DOCKER_APP_SKILLS_MOUNT_KEEP_FILE} /app/skills/.loopx_keep"
+            in staged_text
+        ), staged_text
+        assert "RUN mkdir -p /app /app/skills" not in staged_text, staged_text
+        assert (
+            staged_path / "environment" / DOCKER_APP_SKILLS_MOUNT_KEEP_FILE
+        ).is_file()
+        staged_dockerignore = (
+            staged_path / "environment" / ".dockerignore"
+        ).read_text(encoding="utf-8")
+        assert f"!{DOCKER_APP_SKILLS_MOUNT_KEEP_FILE}" in staged_dockerignore
 
 
 def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
@@ -5360,7 +5899,14 @@ def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
             encoding="utf-8"
         )
         assert DOCKER_APP_SKILLS_MOUNT_BEGIN in staged_text, staged_text
-        assert "RUN mkdir -p /app /app/skills" in staged_text, staged_text
+        assert (
+            f"COPY {DOCKER_APP_SKILLS_MOUNT_KEEP_FILE} /app/skills/.loopx_keep"
+            in staged_text
+        ), staged_text
+        assert "RUN mkdir -p /app /app/skills" not in staged_text, staged_text
+        assert (
+            staged_path / "environment" / DOCKER_APP_SKILLS_MOUNT_KEEP_FILE
+        ).is_file()
 
 
 def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
@@ -5398,6 +5944,235 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
         assert DOCKER_APT_RETRY_BEGIN in staged_text, staged_text
         assert DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in staged_text, staged_text
         assert 'Acquire::Retries "5";' in staged_text, staged_text
+
+
+def test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-nonroot-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "fix-build-google-auto"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM example.invalid/nonroot-base:latest\n"
+            "RUN apt-get update && apt-get install -y curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="fix-build-google-auto-baseline",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["apt_retry_patch_required"] is True, metadata
+        assert metadata["apt_retry_patch_applied"] is True, metadata
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_APT_RETRY_BEGIN in staged_text, staged_text
+        assert "if mkdir -p /etc/apt/apt.conf.d 2>/dev/null" in staged_text
+        assert "[ -w /etc/apt/apt.conf.d ]" in staged_text
+        assert "apt config directory is not writable" in staged_text
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+
+
+def test_skillsbench_docker_task_staging_rewrites_gcr_oss_fuzz_base() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-gcr-mirror-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "setup-fuzzing-py"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM gcr.io/oss-fuzz-base/base-builder-python:latest\n"
+            "RUN true\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        mirror_prefix = "mirror.example.invalid/cache"
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="setup-fuzzing-py-goal",
+            sandbox="docker",
+            include_task_skills=False,
+            docker_gcr_mirror_prefix=mirror_prefix,
+        )
+
+        assert metadata["dockerfile_gcr_mirror_configured"] is True, metadata
+        assert metadata["dockerfile_gcr_mirror_patch_required"] is True, metadata
+        assert metadata["dockerfile_gcr_mirror_patch_applied"] is True, metadata
+        assert metadata["dockerfile_gcr_mirror_raw_prefix_recorded"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        assert mirror_prefix not in json.dumps(metadata, sort_keys=True), metadata
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_GCR_MIRROR_BEGIN in staged_text, staged_text
+        assert (
+            "FROM mirror.example.invalid/cache/gcr.io/oss-fuzz-base/"
+            "base-builder-python:latest"
+        ) in staged_text, staged_text
+
+
+def test_skillsbench_docker_task_staging_hardens_elan_toolchain_install() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-elan-retry-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "lean4-proof"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n"
+            "RUN elan toolchain install $(cat /app/workspace/lean-toolchain) && \\\n"
+            "    elan default $(cat /app/workspace/lean-toolchain)\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="lean4-proof-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_elan_toolchain_retry_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["dockerfile_elan_toolchain_retry_patch_applied"] is True, (
+            metadata
+        )
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_ELAN_TOOLCHAIN_RETRY_BEGIN in staged_text, staged_text
+        assert "for loopx_attempt in 1 2 3 4 5" in staged_text, staged_text
+        assert "elan toolchain install \"${loopx_lean_toolchain}\"" in staged_text
+        assert "elan default \"${loopx_lean_toolchain}\"" in staged_text
+
+
+def test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-wget-gpg-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "software-dependency-audit"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM python:3.12-slim\n"
+            "RUN wget -qO - https://example.invalid/public.key | "
+            "gpg --dearmor -o /usr/share/keyrings/example.gpg\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="software-dependency-audit-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_wget_gpg_key_retry_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["dockerfile_wget_gpg_key_retry_patch_applied"] is True, (
+            metadata
+        )
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert "wget -qO -" not in staged_text, staged_text
+        assert (
+            "curl -fsSL --retry 5 --retry-delay 2 --connect-timeout 30 "
+            "https://example.invalid/public.key | gpg --dearmor"
+        ) in staged_text, staged_text
+
+
+def test_skillsbench_docker_task_staging_hardens_build_downloads() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-build-download-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "fix-druid-loophole-cve"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n"
+            "RUN wget "
+            "https://archive.apache.org/dist/druid/0.20.0/"
+            "apache-druid-0.20.0-bin.tar.gz && \\\n"
+            "    git clone https://github.com/example/project.git && \\\n"
+            "    mvn dependency:resolve -DskipTests\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="fix-druid-loophole-cve-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_network_download_retry_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["dockerfile_network_download_retry_patch_applied"] is True, (
+            metadata
+        )
+        assert (
+            metadata["dockerfile_apache_archive_mirror_patch_required"] is True
+        ), metadata
+        assert metadata["dockerfile_apache_archive_mirror_patch_applied"] is True, (
+            metadata
+        )
+        assert (
+            metadata["dockerfile_apache_archive_mirror_host"]
+            == DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+        ), metadata
+        assert metadata["dockerfile_apache_archive_raw_url_recorded"] is False, (
+            metadata
+        )
+        assert metadata["dockerfile_maven_mirror_patch_required"] is True, metadata
+        assert metadata["dockerfile_maven_mirror_patch_applied"] is True, metadata
+        assert (
+            metadata["dockerfile_maven_mirror_host"]
+            == DEFAULT_DOCKER_MAVEN_MIRROR_HOST
+        ), metadata
+        assert metadata["dockerfile_maven_mirror_raw_url_recorded"] is False, (
+            metadata
+        )
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_NETWORK_DOWNLOAD_RETRY_BEGIN in staged_text, staged_text
+        assert "GIT_HTTP_LOW_SPEED_LIMIT=1000" in staged_text, staged_text
+        assert "maven.wagon.http.retryHandler.count=5" in staged_text, staged_text
+        assert "https://archive.apache.org/dist/druid/" not in staged_text, staged_text
+        assert (
+            "https://mirrors.huaweicloud.com/apache/druid/0.20.0/"
+            "apache-druid-0.20.0-bin.tar.gz"
+        ) in staged_text, staged_text
+        assert "# BEGIN LOOPX_SKILLSBENCH_MAVEN_MIRROR" in staged_text, staged_text
+        assert DEFAULT_DOCKER_MAVEN_MIRROR_URL in staged_text, staged_text
+        assert (
+            f"mvn --settings {DEFAULT_DOCKER_MAVEN_SETTINGS_PATH} "
+            "dependency:resolve"
+        ) in staged_text, staged_text
+        assert "/etc/maven/settings.xml" not in staged_text, staged_text
+        assert (
+            "wget --tries=5 --timeout=120 --read-timeout=120 "
+            "--retry-connrefused "
+            "https://mirrors.huaweicloud.com/apache/druid/0.20.0/"
+            "apache-druid-0.20.0-bin.tar.gz"
+        ) in staged_text, staged_text
 
 
 def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
@@ -5451,6 +6226,47 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         ), staged_text
 
 
+def test_skillsbench_docker_pip_bootstrap_skips_python_heredoc_imports() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-pip-heredoc-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "latex-formula-extraction"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        dockerfile.write_text(
+            "FROM ubuntu:24.04\n"
+            "RUN python3 - <<'PY'\n"
+            "from huggingface_hub import snapshot_download\n"
+            "snapshot_download(repo_id='example/model')\n"
+            "PY\n"
+            "RUN pip3 install marker-pdf==1.3.3\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="latex-formula-extraction-goalstart",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        assert metadata["dockerfile_pip_bootstrap_patch_applied"] is True, metadata
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert staged_text.count(DOCKER_PIP_BOOTSTRAP_BEGIN) == 1, staged_text
+        heredoc_body = staged_text[
+            staged_text.index("RUN python3 - <<'PY'") : staged_text.index(
+                "PY\nRUN pip3 install"
+            )
+        ]
+        assert DOCKER_PIP_BOOTSTRAP_BEGIN not in heredoc_body, staged_text
+        assert staged_text.index(DOCKER_PIP_BOOTSTRAP_BEGIN) < staged_text.index(
+            "RUN python3 - <<'PY'"
+        ), staged_text
+
+
 def test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-runtime-tools-apt-") as tmp:
         root = Path(tmp)
@@ -5501,6 +6317,7 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
             "#!/bin/sh\n"
             "apt-get update\n"
             "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n"
+            "source \"$HOME/.local/bin/env\"\n"
             "uvx --with pytest==8.4.1 pytest /tests/test_outputs.py\n"
         )
         verifier.write_text(original_verifier, encoding="utf-8")
@@ -5523,6 +6340,12 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert metadata["verifier_uv_bootstrap_mirror_patch_applied"] is True, (
             metadata
         )
+        assert metadata[
+            "verifier_uv_bootstrap_pip_fallback_patch_applied"
+        ] is True, metadata
+        assert metadata["verifier_uv_env_source_guard_patch_applied"] is True, (
+            metadata
+        )
         assert metadata["verifier_uv_bootstrap_version"] == "0.9.7", metadata
         assert metadata["verifier_uv_bootstrap_mirror_host"] == (
             DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
@@ -5533,13 +6356,177 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         )
         assert VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN in staged_verifier, staged_verifier
         assert "INSTALLER_DOWNLOAD_URL" in staged_verifier, staged_verifier
+        assert "python3 -m pip install" in staged_verifier, staged_verifier
+        assert "--break-system-packages" in staged_verifier, staged_verifier
+        assert "uv==${loopx_uv_version}" in staged_verifier, staged_verifier
+        assert "loopx_uv_installer_timeout_sec" in staged_verifier, staged_verifier
+        assert "timeout \"${loopx_uv_installer_timeout_sec}\" sh -c" in (
+            staged_verifier
+        )
+        assert 'if [ -f "$HOME/.local/bin/env" ]; then' in staged_verifier, (
+            staged_verifier
+        )
+        assert "source \"$HOME/.local/bin/env\"" not in staged_verifier, (
+            staged_verifier
+        )
         assert "releases.astral.sh/github/uv/releases/download" in staged_verifier, (
             staged_verifier
         )
         assert "uv-${loopx_uv_target}.tar.gz" not in staged_verifier, staged_verifier
+        assert "if ! command -v uvx >/dev/null 2>&1; then" in staged_verifier, (
+            staged_verifier
+        )
         assert staged_verifier.index("INSTALLER_DOWNLOAD_URL") < staged_verifier.index(
             "astral.sh/uv/0.9.7/install.sh"
         ), staged_verifier
+
+
+def test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-verifier-proxy-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "citation-check"
+        dockerfile = task / "environment" / "Dockerfile"
+        verifier = task / "verifier" / "test.sh"
+        dockerfile.parent.mkdir(parents=True)
+        verifier.parent.mkdir(parents=True)
+        original_dockerfile = (
+            "FROM python:3.12-slim AS builder\n"
+            "RUN wget https://example.invalid/model.tar.gz\n"
+            "FROM python:3.12-slim\n"
+            "RUN python3 - <<'PY'\n"
+            "from urllib.request import urlopen\n"
+            "urlopen('https://example.invalid/data.json')\n"
+            "PY\n"
+        )
+        dockerfile.write_text(original_dockerfile, encoding="utf-8")
+        original_verifier = (
+            "#!/bin/sh\n"
+            "set -x\n"
+            "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh\n"
+            "uvx --with pytest==8.4.1 pytest /tests/test_outputs.py\n"
+        )
+        verifier.write_text(original_verifier, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+        proxy_url = "http://benchmark-proxy.example.invalid:18080"
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="citation-check-goalstart",
+            sandbox="docker",
+            include_task_skills=False,
+            benchmark_egress_proxy_env={
+                "LOOPX_SKILLSBENCH_EGRESS_PROXY": proxy_url,
+                "HTTPS_PROXY": proxy_url,
+                "HTTP_PROXY": proxy_url,
+                "ALL_PROXY": proxy_url,
+                "https_proxy": proxy_url,
+                "http_proxy": proxy_url,
+                "all_proxy": proxy_url,
+                "NO_PROXY": "localhost,127.0.0.1,::1,hifis-storage.desy.de",
+                "no_proxy": "localhost,127.0.0.1,::1,hifis-storage.desy.de",
+            },
+        )
+
+        assert metadata["staged"] is True, metadata
+        assert metadata["benchmark_egress_proxy_verifier_env_patch_required"] is True, (
+            metadata
+        )
+        assert metadata["benchmark_egress_proxy_verifier_env_patch_applied"] is True, (
+            metadata
+        )
+        assert metadata["benchmark_egress_proxy_verifier_env_key_count"] >= 8, metadata
+        assert metadata[
+            "benchmark_egress_proxy_verifier_env_raw_proxy_recorded"
+        ] is False, metadata
+        assert metadata[
+            "benchmark_egress_proxy_dockerfile_env_patch_required"
+        ] is True, metadata
+        assert metadata[
+            "benchmark_egress_proxy_dockerfile_env_patch_applied"
+        ] is True, metadata
+        assert metadata[
+            "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded"
+        ] is False, metadata
+        assert proxy_url not in json.dumps(metadata, sort_keys=True), metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_dockerfile
+        assert verifier.read_text(encoding="utf-8") == original_verifier
+
+        staged_verifier = (staged_path / "verifier" / "test.sh").read_text(
+            encoding="utf-8"
+        )
+        assert VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN in staged_verifier, (
+            staged_verifier
+        )
+        assert staged_verifier.index(
+            VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN
+        ) < staged_verifier.index("set -x"), staged_verifier
+        assert f"export HTTPS_PROXY={proxy_url}" in staged_verifier, staged_verifier
+        assert f"export HTTP_PROXY={proxy_url}" in staged_verifier, staged_verifier
+        assert "export NO_PROXY=localhost,127.0.0.1,::1,hifis-storage.desy.de" in (
+            staged_verifier
+        ), staged_verifier
+        assert "case \"$-\" in *x*) loopx_restore_xtrace=1; set +x;; esac" in (
+            staged_verifier
+        )
+        staged_dockerfile = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert staged_dockerfile.count(DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN) == 2, (
+            staged_dockerfile
+        )
+        assert f"ARG LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY={proxy_url}" in (
+            staged_dockerfile
+        ), staged_dockerfile
+        assert (
+            "ARG LOOPX_SKILLSBENCH_BENCHMARK_NO_PROXY="
+            "localhost,127.0.0.1,::1,hifis-storage.desy.de"
+        ) in staged_dockerfile, staged_dockerfile
+        assert "ENV HTTPS_PROXY=${LOOPX_SKILLSBENCH_BENCHMARK_EGRESS_PROXY}" in (
+            staged_dockerfile
+        ), staged_dockerfile
+        heredoc_start = staged_dockerfile.index("RUN python3 - <<'PY'")
+        heredoc_end = staged_dockerfile.index("\nPY\n", heredoc_start)
+        heredoc_body = staged_dockerfile[heredoc_start:heredoc_end]
+        assert DOCKER_BENCHMARK_EGRESS_PROXY_BEGIN not in heredoc_body, (
+            staged_dockerfile
+        )
+
+
+def test_skillsbench_docker_task_staging_keeps_empty_skills_build_context() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-empty-skills-context-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "radar-vital-signs"
+        dockerfile = task / "environment" / "Dockerfile"
+        skills_dir = task / "environment" / "skills"
+        dockerfile.parent.mkdir(parents=True)
+        skills_dir.mkdir(parents=True)
+        dockerfile.write_text(
+            "FROM python:3.11-slim\nCOPY skills /root/.codex/skills\n",
+            encoding="utf-8",
+        )
+        (skills_dir / "private_task_skill.md").write_text(
+            "task-local skill content should not be copied when disabled\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="radar-vital-signs-goal",
+            sandbox="docker",
+            include_task_skills=False,
+        )
+
+        staged_skills_dir = staged_path / "environment" / "skills"
+        assert metadata["task_skills_removed"] is True, metadata
+        assert metadata["empty_skills_build_context_required"] is True, metadata
+        assert metadata["empty_skills_build_context_created"] is True, metadata
+        assert staged_skills_dir.is_dir(), metadata
+        assert (staged_skills_dir / ".loopx_keep").exists(), metadata
+        assert not (staged_skills_dir / "private_task_skill.md").exists(), metadata
+        assert not skills_dir.joinpath(".loopx_keep").exists()
 
 
 def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> None:
@@ -5614,7 +6601,12 @@ def test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow() -> N
         assert case["latest_decision"]["decision"] == (
             "baseline_setup_preflight_selection_required"
         ), case
-        entry = case["runs"][0]
+        entry = next(
+            run
+            for run in case["runs"]
+            if run.get("run_group_id") == "setup-fuzzing-py-apt-risk-preflight"
+            and run.get("job_name") == "setup-fuzzing-py-apt-risk-preflight"
+        )
         assert entry["repair_class"] == "skillsbench_setup_preflight_selection", (
             entry
         )
@@ -5705,7 +6697,14 @@ def test_skillsbench_verifier_bootstrap_preflight_blocks_full_run_without_benchf
         assert case["latest_decision"]["decision"] == (
             "baseline_verifier_bootstrap_preflight_selection_required"
         ), case
-        entry = case["runs"][0]
+        entry = next(
+            run
+            for run in case["runs"]
+            if run.get("run_group_id")
+            == "organize-messy-files-verifier-bootstrap-preflight"
+            and run.get("job_name")
+            == "organize-messy-files-verifier-bootstrap-preflight"
+        )
         assert entry["repair_class"] == (
             "skillsbench_verifier_bootstrap_preflight_selection"
         ), entry
@@ -6393,6 +7392,16 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
             "verifier_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
             ),
+            "dockerfile_apache_archive_mirror_patch_required": True,
+            "dockerfile_apache_archive_mirror_patch_applied": True,
+            "dockerfile_apache_archive_mirror_host": (
+                DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+            ),
+            "dockerfile_apache_archive_raw_url_recorded": False,
+            "dockerfile_maven_mirror_patch_required": True,
+            "dockerfile_maven_mirror_patch_applied": True,
+            "dockerfile_maven_mirror_host": DEFAULT_DOCKER_MAVEN_MIRROR_HOST,
+            "dockerfile_maven_mirror_raw_url_recorded": False,
             "task_skills_removed": False,
             "original_task_mutated": False,
             "resource_cap_patch": {
@@ -6424,6 +7433,16 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
             "verifier_uv_bootstrap_mirror_host": (
                 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST
             ),
+            "dockerfile_apache_archive_mirror_patch_required": True,
+            "dockerfile_apache_archive_mirror_patch_applied": True,
+            "dockerfile_apache_archive_mirror_host": (
+                DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+            ),
+            "dockerfile_apache_archive_raw_url_recorded": False,
+            "dockerfile_maven_mirror_patch_required": True,
+            "dockerfile_maven_mirror_patch_applied": True,
+            "dockerfile_maven_mirror_host": DEFAULT_DOCKER_MAVEN_MIRROR_HOST,
+            "dockerfile_maven_mirror_raw_url_recorded": False,
             "task_skills_removed": False,
             "original_task_mutated": False,
             "resource_cap_patch": {
@@ -6451,6 +7470,10 @@ def test_skillsbench_task_staging_metadata_is_compacted() -> None:
         assert entry_staging["verifier_uv_bootstrap_mirror_patch_applied"] is True, (
             update
         )
+        assert (
+            entry_staging["dockerfile_apache_archive_mirror_patch_applied"] is True
+        ), update
+        assert entry_staging["dockerfile_maven_mirror_patch_applied"] is True, update
         assert "staged_task_path" not in json.dumps(update, sort_keys=True), update
 
 
@@ -6486,7 +7509,12 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
             "FROM ubuntu:20.04\n"
             f"{DOCKER_APT_RETRY_BEGIN}\n"
             "RUN true\n"
-            "# END LOOPX_SKILLSBENCH_APT_RETRY\n",
+            "# END LOOPX_SKILLSBENCH_APT_RETRY\n"
+            f"{DOCKER_MAVEN_MIRROR_BEGIN}\n"
+            "RUN mkdir -p /opt/loopx-maven\n"
+            f"{DOCKER_MAVEN_MIRROR_END}\n"
+            "RUN wget https://mirrors.huaweicloud.com/apache/druid/0.20.0/"
+            "apache-druid-0.20.0-bin.tar.gz\n",
             encoding="utf-8",
         )
         verifier.write_text(
@@ -6512,6 +7540,18 @@ def test_skillsbench_reduce_only_recovers_prepared_task_staging_metadata() -> No
         assert compact["task_staging"][
             "verifier_uv_bootstrap_version"
         ] == "0.9.7", compact
+        assert compact["task_staging"][
+            "dockerfile_apache_archive_mirror_patch_applied"
+        ] is True, compact
+        assert compact["task_staging"]["dockerfile_apache_archive_mirror_host"] == (
+            DEFAULT_DOCKER_APACHE_ARCHIVE_MIRROR_HOST
+        ), compact
+        assert compact["task_staging"][
+            "dockerfile_maven_mirror_patch_applied"
+        ] is True, compact
+        assert compact["task_staging"]["dockerfile_maven_mirror_host"] == (
+            DEFAULT_DOCKER_MAVEN_MIRROR_HOST
+        ), compact
         assert compact["task_staging"]["task_skills_removed"] is True, compact
         compact_text = json.dumps(compact, sort_keys=True)
         assert "prepared-tasks" not in compact_text, compact
@@ -7225,6 +8265,148 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert no_assistant_compact["attempt_accounting"][
             "failure_class"
         ] == "job_materialization_failed", no_assistant_compact
+
+        context_only_trace_dir = root / "native-worker-context-only-message"
+        context_only_trace_dir.mkdir()
+        write_json(
+            context_only_trace_dir / "worker-context-only.compact.json",
+            {
+                "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+                "ok": False,
+                "route": "codex-app-server-goal-baseline",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "llm-prefix-cache-replay",
+                "worker_adapter": {
+                    "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                    "reasoning_effort": "xhigh",
+                    "agent_execution_mode": "codex_app_server_goal",
+                    "worker_surface": "native_codex_app_server_goal",
+                },
+                "worker_contract": {
+                    "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                    "route": "codex-app-server-goal-baseline",
+                    "ready": False,
+                    "runner_integration_ready": True,
+                    "first_blocker": "codex_app_server_context_only_assistant_message",
+                },
+                "turn": {
+                    "thread_id_present": True,
+                    "goal_get_present": True,
+                    "turn_id_present": True,
+                    "turn_completed_observed": True,
+                    "assistant_message_present": True,
+                    "assistant_message_chars": 10339,
+                    "agent_message_item_count": 1,
+                    "agent_message_delta_count": 0,
+                    "assistant_message_context_only": True,
+                    "post_context_assistant_chars": 0,
+                    "context_only_recovery_attempted": True,
+                    "context_only_recovery_succeeded": False,
+                    "context_only_followup_start_attempted": True,
+                    "context_only_followup_start_succeeded": False,
+                    "context_only_followup_start_error_type": (
+                        "codex_app_server_context_only_followup_start_failed"
+                    ),
+                    "reasoning_effort": "xhigh",
+                    "first_action_observed": False,
+                    "effective_action_observed": False,
+                    "raw_transcript_recorded": False,
+                    "raw_assistant_message_recorded": False,
+                },
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                },
+            },
+        )
+        context_only_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(context_only_trace_dir),
+            },
+            context_only_trace,
+        )
+        context_only_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-worker-context-only-result",
+                    reward=0.0,
+                    task_id="llm-prefix-cache-replay",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=context_only_trace,
+            )
+        )
+        assert context_only_compact is not None
+        expected_context_only_failure = (
+            "skillsbench_native_goal_worker_failed_"
+            "codex_app_server_context_only_assistant_message"
+        )
+        assert (
+            context_only_compact["score_failure_attribution"]
+            == expected_context_only_failure
+        ), context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "countable_baseline"
+        ] is False, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "assistant_context_only_count"
+        ] == 1, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "context_only_recovery_attempted_count"
+        ] == 1, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "context_only_recovery_succeeded_count"
+        ] == 0, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "context_only_followup_start_attempted_count"
+        ] == 1, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "context_only_followup_start_succeeded_count"
+        ] == 0, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "post_context_assistant_chars_total"
+        ] == 0, context_only_compact
+        assert context_only_compact["native_goal_worker_contract"][
+            "reasoning_effort"
+        ] == "xhigh", context_only_compact
+        context_only_counters = context_only_compact["interaction_counters"]
+        assert (
+            context_only_counters["native_goal_worker_assistant_context_only_count"]
+            == 1
+        ), context_only_compact
+        assert (
+            context_only_counters[
+                "native_goal_worker_context_only_followup_start_attempted_count"
+            ]
+            == 1
+        ), context_only_compact
+        assert (
+            context_only_counters["native_goal_worker_reasoning_effort"] == "xhigh"
+        ), context_only_compact
+        assert context_only_compact[
+            "official_score_comparable_to_native_codex"
+        ] is False, context_only_compact
+        assert "official_verifier_solution_failure" not in context_only_compact[
+            "failure_attribution_labels"
+        ], context_only_compact
+        assert context_only_compact["attempt_accounting"][
+            "failure_class"
+        ] == "job_materialization_failed", context_only_compact
 
         bridge_quiet_result_path = write_official_skillsbench_result(
             root / "native-worker-bridge-quiet-result",
@@ -8128,6 +9310,54 @@ def test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout() -
     assert "official_verifier_solution_failure" in labels, compact
     assert "skillsbench_product_mode_lifecycle_missing" not in labels, compact
     assert "skillsbench_product_mode_uncountable_treatment" not in labels, compact
+    solution_quality = compact["solution_quality_signals"]
+    assert solution_quality["outcome_class"] == "official_zero", compact
+    assert "official_zero_after_public_worker_activity" in solution_quality[
+        "solution_action_labels"
+    ], compact
+    assert solution_quality["rubric_miss_label_status"] == (
+        "not_available_from_compact_public_signals"
+    ), compact
+    assert compact["post_run_debug_gate"]["solution_quality"]["outcome_class"] == (
+        "official_zero"
+    ), compact
+
+
+def test_skillsbench_solution_quality_labels_partial_nonpass() -> None:
+    compact = compact_benchmark_run(
+        {
+            "schema_version": "benchmark_run_v0",
+            "source_runner": "official_skillsbench_benchflow_result",
+            "benchmark_id": "skillsbench",
+            "case_id": "sample-partial-task",
+            "case_ids": ["sample-partial-task"],
+            "mode": "single",
+            "official_score": 0.5,
+            "official_task_score": {
+                "kind": "skillsbench_verifier_reward",
+                "value": 0.5,
+                "passed": False,
+            },
+            "score_failure_attribution": "official_score_partial_case_failure",
+            "failure_attribution_labels": ["partial_trajectory"],
+        }
+    )
+    assert compact is not None
+    solution_quality = compact["solution_quality_signals"]
+    assert solution_quality["outcome_class"] == "partial_nonpass", compact
+    assert "partial_nonpass_official_score" in solution_quality[
+        "solution_action_labels"
+    ], compact
+    assert "partial_trajectory_public_label_present" in solution_quality[
+        "solution_action_labels"
+    ], compact
+    assert solution_quality["rubric_miss_labels"] == [], compact
+    assert solution_quality["rubric_miss_label_status"] == (
+        "not_available_from_compact_public_signals"
+    ), compact
+    assert compact["post_run_debug_gate"]["solution_quality"]["outcome_class"] == (
+        "partial_nonpass"
+    ), compact
 
 
 def test_skillsbench_agent_bridge_closeout_requires_successful_commands() -> None:
@@ -9026,6 +10256,58 @@ def test_app_server_goal_worker_skips_plain_codex_exec_preflight() -> None:
         assert prereqs["codex_acp_runtime_launch_preflight_stage"] == (
             "not_applicable_app_server_goal_worker"
         ), prereqs
+
+
+def test_app_server_goal_first_action_timeout_respects_agent_idle_timeout() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-app-server-timeout-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "energy-ac-optimal-power-flow",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--host-local-acp-launch",
+                "--agent-idle-timeout",
+                "900",
+                "--outer-timeout-sec",
+                "3600",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-app-server-timeout-fixture",
+            ]
+        )
+        assert _effective_local_codex_first_action_timeout_sec(args) == 900
+        command = _host_local_acp_launch_command(args, build_plan(args))
+        assert int(command[command.index("--timeout-sec") + 1]) >= 3600
+        assert command[command.index("--first-action-timeout-sec") + 1] == "900"
+
+        explicit_args = parse_args(
+            [
+                "--task-id",
+                "energy-ac-optimal-power-flow",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--host-local-acp-launch",
+                "--agent-idle-timeout",
+                "900",
+                "--local-codex-first-action-timeout-sec",
+                "1200",
+                "--jobs-dir",
+                str(Path(tmp) / "explicit-jobs"),
+                "--job-name",
+                "skillsbench-app-server-explicit-timeout-fixture",
+            ]
+        )
+        assert _effective_local_codex_first_action_timeout_sec(explicit_args) == 1200
+        explicit_command = _host_local_acp_launch_command(
+            explicit_args,
+            build_plan(explicit_args),
+        )
+        assert (
+            explicit_command[explicit_command.index("--first-action-timeout-sec") + 1]
+            == "1200"
+        )
 
 
 def test_goal_start_host_exec_failure_overrides_zero_score_recovery() -> None:
@@ -10038,6 +11320,11 @@ def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
     )
     child_argv = skillsbench_loop._batch_case_args_to_cli(case_args)
     assert "--task-ids" not in child_argv, child_argv
+    assert "--apt-risk-fail-fast-defaulted" not in child_argv, child_argv
+    assert "--bootstrap-light-fail-fast-defaulted" not in child_argv, child_argv
+    assert "--verifier-bootstrap-fail-fast-defaulted" not in child_argv, child_argv
+    assert "--fail-fast-on-apt-risk" not in child_argv, child_argv
+    assert "--fail-fast-on-verifier-bootstrap-risk" not in child_argv, child_argv
     assert child_argv[child_argv.index("--task-id") + 1] == (
         "adaptive-cruise-control"
     ), child_argv
@@ -10051,6 +11338,65 @@ def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
     assert "--host-local-acp-launch" in child_argv, child_argv
     assert "--remote-command-file-bridge-ready" in child_argv, child_argv
     assert "--append-history" in child_argv, child_argv
+    reparsed_child = parse_args(child_argv)
+    assert reparsed_child.task_id == "adaptive-cruise-control", reparsed_child
+    assert reparsed_child.task_ids is None, reparsed_child
+    assert reparsed_child.parallel_cases == 1, reparsed_child
+    assert reparsed_child.bootstrap_light_fail_fast_defaulted is True, reparsed_child
+
+
+def test_skillsbench_single_task_ids_replaces_default_task_id() -> None:
+    args = parse_args(
+        [
+            "--task-ids",
+            "bike-rebalance",
+            "--route",
+            "codex-app-server-goal-baseline",
+            "--plan-only",
+        ]
+    )
+    assert args.task_id == "bike-rebalance", args
+    assert skillsbench_loop._batch_task_ids(args) == ["bike-rebalance"], args
+
+
+def test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr() -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "suricata-custom-exfil",
+            "--route",
+            "codex-app-server-goal-baseline",
+            "--host-local-acp-launch",
+            "--remote-command-file-bridge-ready",
+        ]
+    )
+    payload = {
+        "ok": False,
+        "task_id": "suricata-custom-exfil",
+        "route": "codex-app-server-goal-baseline",
+        "score_failure_attribution": "skillsbench_verifier_bootstrap_risk_preflight_blocked",
+        "compact_closeout_recorded": True,
+    }
+    recovered = skillsbench_loop._extract_batch_case_subprocess_payload(
+        case_args=args,
+        returncode=2,
+        stdout=b"",
+        stderr=(
+            "usage warning that must not become the payload\n"
+            + json.dumps(payload, sort_keys=True)
+            + "\n"
+        ).encode("utf-8"),
+    )
+    assert recovered["task_id"] == "suricata-custom-exfil", recovered
+    assert recovered["score_failure_attribution"] == (
+        "skillsbench_verifier_bootstrap_risk_preflight_blocked"
+    ), recovered
+    assert recovered["compact_closeout_recorded"] is True, recovered
+    assert recovered["batch_case_subprocess_payload_source"] == "stderr", recovered
+    assert recovered["batch_case_subprocess_payload_mixed_output"] is True, recovered
+    assert recovered["runner_returncode"] == 2, recovered
+    assert recovered.get("raw_stdout_recorded") is not True, recovered
+    assert recovered.get("raw_stderr_recorded") is not True, recovered
 
 
 def test_skillsbench_compact_runs_update_ledger_pair() -> None:
@@ -10226,6 +11572,67 @@ def test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs() -> None:
             "software-dependency-audit"
         ]
         assert len(case["runs"]) == 4, case
+
+
+def test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-ledger-global-sync-") as tmp:
+        root = Path(tmp)
+        global_ledger = root / "global" / "benchmark-run-ledger.json"
+        run_group_ledger = root / "run-group" / "benchmark-run-ledger.json"
+        inherited_compact = compact_skillsbench_run(
+            task_id="3d-scan-calc",
+            mode="skillsbench_codex_app_server_goal_baseline",
+            score=1.0,
+            passed=True,
+        )
+        update_benchmark_run_ledger(
+            ledger_path=global_ledger,
+            benchmark_run=inherited_compact,
+            run_group_id="skillsbench-global-existing",
+            dry_run=False,
+        )
+        new_compact = compact_skillsbench_run(
+            task_id="tictoc-unnecessary-abort-detection",
+            mode="skillsbench_codex_app_server_goal_baseline",
+            score=1.0,
+            passed=True,
+        )
+        args = parse_args(
+            [
+                "--task-id",
+                "tictoc-unnecessary-abort-detection",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--ledger-path",
+                str(run_group_ledger),
+                "--global-ledger-path",
+                str(global_ledger),
+                "--run-group-id",
+                "skillsbench-revtunnel-appgoal-batch5-fixture",
+                "--update-ledger",
+            ]
+        )
+        compact_path = (
+            root
+            / "remote-public"
+            / "tictoc-unnecessary-abort-detection"
+            / "benchmark_run.compact.json"
+        )
+        update = update_skillsbench_ledger(args, new_compact, compact_path=compact_path)
+        assert update["ledger_scope"] == "run_group_with_global_sync", update
+        assert update["global_ledger_inheritance"]["status"] == "inherited", update
+        assert update["global_ledger_inheritance"]["inherited"] is True, update
+        assert update["primary_ledger_update"]["updated"] is True, update
+        assert update["global_ledger_update"]["updated"] is True, update
+
+        local_ledger = load_benchmark_run_ledger(run_group_ledger)
+        global_payload = load_benchmark_run_ledger(global_ledger)
+        local_cases = local_ledger["benchmarks"]["skillsbench@1.1"]["cases"]
+        global_cases = global_payload["benchmarks"]["skillsbench@1.1"]["cases"]
+        assert "3d-scan-calc" in local_cases, local_cases
+        assert "tictoc-unnecessary-abort-detection" in local_cases, local_cases
+        assert "tictoc-unnecessary-abort-detection" in global_cases, global_cases
+        assert ".local" not in json.dumps(update, sort_keys=True), update
 
 
 def test_skillsbench_runner_failure_compact_closeout() -> None:
@@ -10524,6 +11931,18 @@ def test_skillsbench_runner_failure_recovers_zero_score_from_controller_trace() 
             "completed_nonpassing"
         ), gate
         assert gate["scorer_verifier"]["official_score_value"] == 0.0, gate
+        solution_quality = compact["solution_quality_signals"]
+        assert solution_quality["outcome_class"] == "official_zero", compact
+        assert "official_zero_after_public_worker_activity" in solution_quality[
+            "solution_action_labels"
+        ], compact
+        assert "runner_recovery_noise_recorded" in solution_quality[
+            "solution_action_labels"
+        ], compact
+        assert gate["solution_quality"]["outcome_class"] == "official_zero", gate
+        assert "runner_recovery_noise_recorded" in gate["solution_quality"][
+            "solution_action_labels"
+        ], gate
         assert compact["runner_failure"]["failure_class"] == (
             "skillsbench_runner_interrupted_after_controller_reward_observation"
         ), compact
@@ -11156,6 +12575,177 @@ def test_skillsbench_setup_stall_cleanup_targets_current_job_only() -> None:
             },
         )
         assert job_name not in json.dumps(cleanup, sort_keys=True)
+
+
+def test_skillsbench_host_local_attempt_cleanup_targets_current_attempt_only() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-host-acp-cleanup-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-bike-rebalance-cleanup-fixture-attempt-01",
+                "--host-local-acp-launch",
+            ]
+        )
+        plan = build_plan(args)
+        job_name = plan["job_name"]
+        rollout_name = plan["rollout_name"]
+        ps_stdout = "\n".join(
+            [
+                (
+                    "201 1 python scripts/skillsbench_local_acp_relay.py "
+                    f"--worker-public-trace-dir /tmp/{job_name}/trace "
+                    f"--project-name {rollout_name}"
+                ),
+                (
+                    "202 201 python scripts/skillsbench_host_codex_goal_worker.py "
+                    "--turn-timeout-sec 3600"
+                ),
+                "203 202 codex app-server --listen 127.0.0.1:0",
+                (
+                    "204 1 python scripts/skillsbench_local_acp_relay.py "
+                    "--worker-public-trace-dir /tmp/unrelated/trace "
+                    "--project-name unrelated"
+                ),
+            ]
+        )
+        alive = {201, 202, 203, 204}
+        sent: list[tuple[int, int]] = []
+        original_run = skillsbench_loop.subprocess.run
+        original_kill = skillsbench_loop.os.kill
+        original_sleep = skillsbench_loop.time.sleep
+
+        def fake_run(*_args: Any, **_kwargs: Any) -> Any:
+            return types.SimpleNamespace(returncode=0, stdout=ps_stdout, stderr="")
+
+        def fake_kill(pid: int, sig: int) -> None:
+            if sig == 0:
+                if pid in alive:
+                    return
+                raise ProcessLookupError(pid)
+            sent.append((pid, sig))
+            if sig == skillsbench_loop.signal.SIGTERM:
+                alive.discard(pid)
+
+        try:
+            skillsbench_loop.subprocess.run = fake_run
+            skillsbench_loop.os.kill = fake_kill
+            skillsbench_loop.time.sleep = lambda _seconds: None
+            cleanup = cleanup_host_local_acp_attempt_children(
+                plan,
+                grace_seconds=0,
+            )
+        finally:
+            skillsbench_loop.subprocess.run = original_run
+            skillsbench_loop.os.kill = original_kill
+            skillsbench_loop.time.sleep = original_sleep
+
+        assert cleanup["status"] == "terminated", cleanup
+        assert cleanup["match_count"] == 3, cleanup
+        assert set(sent) == {
+            (201, skillsbench_loop.signal.SIGTERM),
+            (202, skillsbench_loop.signal.SIGTERM),
+            (203, skillsbench_loop.signal.SIGTERM),
+        }, sent
+        assert 204 in alive, alive
+        prereqs = plan["runner_prerequisites"]
+        assert_prerequisites_include(
+            prereqs,
+            {
+                "host_local_acp_attempt_cleanup_requested": True,
+                "host_local_acp_attempt_cleanup_raw_logs_read": False,
+                "host_local_acp_attempt_cleanup_raw_command_recorded": False,
+                "host_local_acp_attempt_cleanup_status": "terminated",
+                "host_local_acp_attempt_cleanup_match_count": 3,
+                "host_local_acp_attempt_cleanup_term_sent_count": 3,
+                "host_local_acp_attempt_cleanup_kill_sent_count": 0,
+                "host_local_acp_attempt_cleanup_alive_after_count": 0,
+            },
+        )
+        assert job_name not in json.dumps(cleanup, sort_keys=True)
+        assert rollout_name not in json.dumps(cleanup, sort_keys=True)
+
+
+def test_independent_goal_retry_records_attempt_cleanup_after_exception() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-retry-cleanup-summary-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "bike-rebalance",
+                "--route",
+                "codex-app-server-goal-baseline",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-bike-rebalance-independent-cleanup",
+                "--independent-goal-retries",
+                "2",
+                "--host-local-acp-launch",
+            ]
+        )
+        cleanup_calls: list[str] = []
+        original_async_main = skillsbench_loop.async_main
+        original_cleanup = skillsbench_loop.cleanup_host_local_acp_attempt_children
+
+        async def fake_async_main(
+            _args: Any,
+            *,
+            plan: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            raise RuntimeError("fixture runner exception")
+
+        def fake_cleanup(plan_arg: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+            cleanup_calls.append(str(plan_arg.get("job_name") or ""))
+            prereqs = plan_arg.setdefault("runner_prerequisites", {})
+            prereqs.update(
+                {
+                    "host_local_acp_attempt_cleanup_requested": True,
+                    "host_local_acp_attempt_cleanup_raw_logs_read": False,
+                    "host_local_acp_attempt_cleanup_raw_command_recorded": False,
+                    "host_local_acp_attempt_cleanup_status": "no_matching_processes",
+                    "host_local_acp_attempt_cleanup_match_count": 0,
+                    "host_local_acp_attempt_cleanup_term_sent_count": 0,
+                    "host_local_acp_attempt_cleanup_kill_sent_count": 0,
+                    "host_local_acp_attempt_cleanup_alive_after_count": 0,
+                }
+            )
+            return {
+                "schema_version": "skillsbench_host_local_acp_attempt_cleanup_v0",
+                "requested": True,
+                "raw_logs_read": False,
+                "raw_command_recorded": False,
+                "status": "no_matching_processes",
+                "match_count": 0,
+                "term_sent_count": 0,
+                "kill_sent_count": 0,
+                "alive_after_count": 0,
+            }
+
+        try:
+            skillsbench_loop.async_main = fake_async_main
+            skillsbench_loop.cleanup_host_local_acp_attempt_children = fake_cleanup
+            summary = asyncio.run(skillsbench_loop.async_independent_goal_retry_main(args))
+        finally:
+            skillsbench_loop.async_main = original_async_main
+            skillsbench_loop.cleanup_host_local_acp_attempt_children = original_cleanup
+
+        assert summary["success_observed"] is False, summary
+        assert summary["attempts_started"] == 2, summary
+        assert len(cleanup_calls) == 2, cleanup_calls
+        for attempt in summary["attempts"]:
+            cleanup = attempt["host_local_acp_attempt_cleanup"]
+            assert cleanup["requested"] is True, cleanup
+            assert cleanup["raw_logs_read"] is False, cleanup
+            assert cleanup["raw_command_recorded"] is False, cleanup
+            assert cleanup["status"] == "no_matching_processes", cleanup
+        summary_text = json.dumps(summary, sort_keys=True)
+        assert "fixture runner exception" not in summary_text
+        assert "/private/" not in summary_text
 
 
 def test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero() -> None:
@@ -12819,8 +14409,12 @@ def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> N
 if __name__ == "__main__":
     test_skillsbench_default_blind_loop_budget_is_sixteen()
     test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract()
+    test_generic_reasoning_effort_reaches_codex_exec_route()
+    test_codex_exec_relay_maps_reasoning_effort_to_cli_config()
     test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme()
     test_codex_app_server_goal_blocks_without_codex_api_egress()
+    test_benchmark_egress_proxy_env_is_public_safe_and_forwarded()
+    test_benchmark_egress_proxy_require_mode_blocks_without_proxy()
     test_skillsbench_plan_only_batch_parallel_case_contract()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
     test_skillsbench_product_mode_soft_verify_default_is_every_round()
@@ -12841,6 +14435,8 @@ if __name__ == "__main__":
     test_skillsbench_intermediate_soft_verifier_phase_timeout_bounds_hung_exec()
     test_skillsbench_final_verifier_phase_timeout_bounds_hung_exec()
     test_skillsbench_intermediate_soft_verifier_return_cleans_orphan_processes()
+    test_skillsbench_host_local_attempt_cleanup_targets_current_attempt_only()
+    test_independent_goal_retry_records_attempt_cleanup_after_exception()
     test_skillsbench_local_driver_a2a_contract_keeps_codex_local()
     test_skillsbench_local_driver_a2a_contract_ready_only_after_both_sides()
     test_skillsbench_local_driver_a2a_contract_distinguishes_cli_from_handshake()
@@ -12877,6 +14473,7 @@ if __name__ == "__main__":
     test_skillsbench_oracle_result_reward_artifact_recovery()
     test_skillsbench_app_mount_failure_attribution()
     test_skillsbench_app_skills_failure_attribution()
+    test_skillsbench_app_skills_permission_failure_not_overridden_by_worker_route()
     test_skillsbench_docker_port_conflict_attribution()
     test_skillsbench_docker_apt_failure_attribution()
     test_skillsbench_docker_daemon_unavailable_attribution()
@@ -12893,8 +14490,14 @@ if __name__ == "__main__":
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
+    test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe()
+    test_skillsbench_docker_task_staging_rewrites_gcr_oss_fuzz_base()
+    test_skillsbench_docker_task_staging_hardens_elan_toolchain_install()
+    test_skillsbench_docker_task_staging_rewrites_wget_gpg_key_download()
+    test_skillsbench_docker_task_staging_hardens_build_downloads()
     test_skillsbench_runtime_tools_patch_has_own_apt_retry_defaults()
     test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror()
+    test_skillsbench_docker_task_staging_forwards_proxy_to_verifier_bootstrap()
     test_skillsbench_apt_risk_preflight_blocks_full_run_without_benchflow()
     test_skillsbench_verifier_bootstrap_preflight_blocks_full_run_without_benchflow()
     test_skillsbench_docker_task_staging_caps_local_cpu_request()
@@ -12919,6 +14522,7 @@ if __name__ == "__main__":
     test_skillsbench_product_mode_declared_done_is_compacted()
     test_skillsbench_product_mode_lifecycle_checkpoint_is_compacted()
     test_skillsbench_product_mode_recompact_normalizes_agent_bridge_closeout()
+    test_skillsbench_solution_quality_labels_partial_nonpass()
     test_skillsbench_agent_bridge_closeout_requires_successful_commands()
     test_skillsbench_product_mode_recompact_prefers_corroborated_solver_gap()
     test_skillsbench_product_mode_solver_activity_gap_is_compacted()
@@ -12929,6 +14533,7 @@ if __name__ == "__main__":
     test_product_mode_host_local_idle_no_output_progress_requires_new_trace()
     test_goal_start_host_local_defers_codex_exec_preflight_until_bridge_command()
     test_app_server_goal_worker_skips_plain_codex_exec_preflight()
+    test_app_server_goal_first_action_timeout_respects_agent_idle_timeout()
     test_goal_start_host_exec_failure_overrides_zero_score_recovery()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()
     test_skillsbench_declared_done_missing_reward_status_is_compacted()
@@ -12943,8 +14548,12 @@ if __name__ == "__main__":
     test_cli_dry_run_skillsbench_official_result()
     test_cli_skillsbench_result_root_discovers_nested_case_result_for_ledger()
     test_skillsbench_runner_plan_supports_controller_trace_path()
+    test_skillsbench_parallel_batch_isolates_case_process_argv()
+    test_skillsbench_single_task_ids_replaces_default_task_id()
+    test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr()
     test_skillsbench_compact_runs_update_ledger_pair()
     test_skillsbench_repeat_same_mode_keeps_distinct_ledger_runs()
+    test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger()
     test_skillsbench_runner_failure_compact_closeout()
     test_skillsbench_runner_failure_case_event_timeline_is_compacted()
     test_skillsbench_runner_failure_recovers_zero_score_from_controller_trace()

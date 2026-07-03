@@ -77,6 +77,7 @@ def main() -> int:
         "docs/showcases/",
         "product/codex-cli-tui-loop.md",
         "guides/auto-research-command-path.md",
+        "guides/multi-agent-product-recipe.md",
     ]:
         assert required in docs_index, required
 
@@ -87,6 +88,7 @@ def main() -> int:
         "docs/outreach/README.md",
         "docs/product/README.md",
         "docs/guides/auto-research-command-path.md",
+        "docs/guides/multi-agent-product-recipe.md",
         "docs/reference/README.md",
         "docs/reference/protocols/README.md",
         "docs/research/long-horizon-agent-benchmarks/README.md",
@@ -147,9 +149,9 @@ def main() -> int:
     for required in [
         "Start From A Clean Workspace",
         "loopx-auto-research-demo",
-        "auto-research quickstart",
+        "auto-research demo-e2e",
         "auto-research demo-supervisor",
-        "auto-research acceptance",
+        "auto-research worker-loop",
         "research-curator",
         "hypothesis-mapper",
         "evidence-runner",
@@ -159,6 +161,22 @@ def main() -> int:
         "not a leader agent",
     ]:
         assert required in compact_auto_research_command_path, required
+
+    multi_agent_product_recipe = read("docs/guides/multi-agent-product-recipe.md")
+    compact_multi_agent_product_recipe = compact(multi_agent_product_recipe)
+    for required in [
+        "Multi-Agent Product Recipe",
+        "Product preset",
+        "Multi-agent kernel",
+        "role list",
+        "agent scope",
+        "worker-local skill snippet",
+        "handoff/todo hints",
+        "One-Command Launch",
+        "Attach, Stop, Retry",
+        "Auto-research should stay a reference preset, not the kernel",
+    ]:
+        assert required in compact_multi_agent_product_recipe, required
 
     print("docs-governance-smoke ok")
     return 0
