@@ -369,11 +369,14 @@ def _discover_visible_live_evidence(
 
     deadline = time.monotonic() + max(0.0, wait_seconds)
     while True:
-        candidates = (
-            sorted(artifact_root.glob("*/live_codex_e2e_evidence.public.json"))
-            if artifact_root.is_dir()
-            else []
-        )
+        candidates = []
+        if artifact_root.is_dir():
+            for artifact_name in (
+                "live-codex-e2e-evidence.public.json",
+                "live_codex_e2e_evidence.public.json",
+            ):
+                candidates.extend(artifact_root.glob(f"*/{artifact_name}"))
+            candidates = sorted(set(candidates))
         for candidate in candidates:
             try:
                 raw = json.loads(candidate.read_text(encoding="utf-8"))

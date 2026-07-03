@@ -154,7 +154,7 @@ def main() -> int:
                 / "evidence_runner"
             )
             artifact_dir.mkdir(parents=True, exist_ok=True)
-            (artifact_dir / "live_codex_e2e_evidence.public.json").write_text(
+            (artifact_dir / "live-codex-e2e-evidence.public.json").write_text(
                 json.dumps(
                     {
                         "schema_version": "auto_research_live_codex_lane_e2e_evidence_v0",
