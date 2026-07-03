@@ -46,6 +46,7 @@ from .cli_commands import (
     handle_starter_command,
     handle_summary_all_command,
     handle_support_control_command,
+    handle_task_lease_command,
     handle_todo_command,
     handle_version_command,
     handle_worker_bridge_command,
@@ -68,6 +69,7 @@ from .cli_commands import (
     register_status_commands,
     register_summary_all_command,
     register_support_control_commands,
+    register_task_lease_command,
     register_todo_command,
     register_version_command,
     register_worker_bridge_commands,
@@ -178,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     register_slash_commands_command(sub, add_subcommand_format)
     register_dreaming_commands(sub, add_subcommand_format)
     register_todo_command(sub)
+    register_task_lease_command(sub, add_subcommand_format)
     register_quota_command(sub)
 
     args = parser.parse_args(raw_argv)
@@ -438,6 +441,16 @@ def main(argv: list[str] | None = None) -> int:
             print_payload=print_payload,
             append_cli_rollout_event=append_cli_rollout_event,
         )
+
+    task_lease_result = handle_task_lease_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if task_lease_result is not None:
+        return task_lease_result
 
     if args.command == "quota":
         return handle_quota_command(

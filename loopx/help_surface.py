@@ -43,6 +43,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Render a handoff or review packet for operator judgment.",
             },
             {"command": "loopx todo --help", "purpose": "Show todo lifecycle commands."},
+            {
+                "command": "loopx task-lease --help",
+                "purpose": "Acquire, renew, transfer, release, or inspect a hard per-todo lease.",
+            },
             {"command": "loopx quota should-run", "purpose": "Decide whether the next agent turn should run."},
             {"command": "loopx history --goal-id <goal-id>", "purpose": "Read compact run history."},
         ],
@@ -162,6 +166,7 @@ def render_concise_help(program: str = "loopx") -> str:
             "  loopx status                   Show current goals, gates, and next action.",
             "  loopx diagnose --goal-id ID    Build a compact evidence packet.",
             "  loopx todo --help              Add, claim, complete, update, or archive todos.",
+            "  loopx task-lease --help        Manage a hard per-todo lease.",
             "  loopx quota should-run         Decide whether the next agent turn should run.",
             "",
             "Run the loop:",

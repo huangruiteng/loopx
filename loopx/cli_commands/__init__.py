@@ -150,6 +150,7 @@ from .support_control import (
     handle_support_control_command,
     register_support_control_commands,
 )
+from .task_lease import handle_task_lease_command, register_task_lease_command
 from .terminal_bench_adapter import (
     handle_terminal_bench_adapter_command,
     register_terminal_bench_adapter_commands,
@@ -224,6 +225,7 @@ __all__ = [
     "handle_starter_visible_pilot_command",
     "handle_summary_all_command",
     "handle_support_control_command",
+    "handle_task_lease_command",
     "handle_terminal_bench_adapter_command",
     "handle_terminal_bench_environment_result_command",
     "handle_todo_command",
@@ -268,6 +270,7 @@ __all__ = [
     "register_summary_all_command",
     "register_status_commands",
     "register_support_control_commands",
+    "register_task_lease_command",
     "register_terminal_bench_adapter_commands",
     "register_terminal_bench_environment_result_commands",
     "register_todo_command",
