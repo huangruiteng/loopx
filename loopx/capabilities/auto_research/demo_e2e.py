@@ -21,6 +21,7 @@ from .worker_loop import run_auto_research_worker_loop
 
 AppendEvidence = Callable[[str], dict[str, object]]
 VisibleLauncher = Callable[..., dict[str, object]]
+VisibleWake = Callable[[str, Sequence[str]], dict[str, object]]
 
 AUTO_RESEARCH_DEMO_E2E_SCHEMA_VERSION = "auto_research_demo_e2e_result_v0"
 
@@ -265,6 +266,8 @@ def _visible_worker_proof(*, launch_visible: bool) -> dict[str, object]:
         "pane_local_a2a_rounds_loaded": False,
         "pane_local_a2a_round_count": 0,
         "decentralized_a2a_rounds_verified": False,
+        "cadence_wake_loaded": False,
+        "cadence_wake_verified": False,
         "visible_lanes_launched": bool(launch_visible),
         "visible_lanes_accepted": False,
         "evidence_source": "not_loaded",
@@ -531,6 +534,38 @@ def _load_visible_pane_a2a_rounds_into_payload(
         )
 
 
+def _load_visible_wake_into_payload(
+    *,
+    payload: dict[str, object],
+    wake: dict[str, object],
+) -> None:
+    payload["visible_wake"] = {
+        "schema_version": wake.get("schema_version"),
+        "mode": wake.get("mode"),
+        "session_name": wake.get("session_name"),
+        "target_lanes": wake.get("target_lanes"),
+        "prompt_hash": wake.get("prompt_hash"),
+        "coordination_model": wake.get("coordination_model"),
+        "wakeup_model": wake.get("wakeup_model"),
+        "workflow_driver": bool(wake.get("workflow_driver")),
+        "broadcaster_reads_frontier": bool(wake.get("broadcaster_reads_frontier")),
+        "broadcaster_selects_todo": bool(wake.get("broadcaster_selects_todo")),
+        "pane_decision_owner": wake.get("pane_decision_owner"),
+        "boundary": wake.get("boundary"),
+    }
+    visible_proof = payload["visible_worker_proof"]
+    if isinstance(visible_proof, dict):
+        visible_proof["cadence_wake_loaded"] = True
+        visible_proof["cadence_wake_verified"] = (
+            wake.get("mode") == "execute"
+            and wake.get("coordination_model") == "decentralized_state_a2a"
+            and wake.get("wakeup_model") == "fixed_prompt_broadcast"
+            and wake.get("workflow_driver") is False
+            and wake.get("broadcaster_reads_frontier") is False
+            and wake.get("broadcaster_selects_todo") is False
+        )
+
+
 def run_auto_research_demo_e2e(
     *,
     agent_id: str,
@@ -551,6 +586,8 @@ def run_auto_research_demo_e2e(
     live_evidence_path: str | None,
     append_evidence: AppendEvidence,
     visible_launcher: VisibleLauncher | None = None,
+    visible_wake: VisibleWake | None = None,
+    wake_visible_after_launch: bool = False,
     goal_surface_mode: str = "explicit_goal",
     agent_specs: Sequence[str] | None = None,
     run_worker_loop: bool = False,
@@ -565,6 +602,10 @@ def run_auto_research_demo_e2e(
         raise ValueError("--worker-loop-rounds must be >= 1")
     if launch_visible and visible_launcher is None:
         raise ValueError("--launch-visible requires a visible launcher callback")
+    if wake_visible_after_launch and not launch_visible:
+        raise ValueError("--wake-visible-after-launch requires --launch-visible")
+    if wake_visible_after_launch and visible_wake is None:
+        raise ValueError("--wake-visible-after-launch requires a visible wake callback")
     if live_evidence_path and not execute:
         raise ValueError("--live-evidence requires --execute")
 
@@ -671,6 +712,10 @@ def run_auto_research_demo_e2e(
                 execute=True,
                 live_evidence=True,
                 tracking_goal_id=tracking_goal or None,
+            ),
+            "wake_visible_lanes": (
+                f"{shlex.quote(cli_bin)} --format json multi-agent wake --session-name "
+                f"{shlex.quote(session_name)} --execute"
             ),
         },
         "supervisor": _supervisor_summary(supervisor),
@@ -842,6 +887,20 @@ def run_auto_research_demo_e2e(
                 visible_proof["visible_lanes_launched"] = True
                 visible_proof["visible_lanes_accepted"] = bool(visible_acceptance.get("accepted"))
                 visible_proof["evidence_source"] = "visible_launcher"
+            if wake_visible_after_launch and visible_wake is not None:
+                lane_ids = [
+                    str(lane).strip()
+                    for lane in launch_result.get("started_lanes") or []
+                    if str(lane).strip()
+                ]
+                wake_payload = visible_wake(
+                    str(launch_result.get("session_name") or session_name),
+                    lane_ids,
+                )
+                _load_visible_wake_into_payload(
+                    payload=payload,
+                    wake=wake_payload,
+                )
             pane_rounds = _discover_visible_pane_a2a_rounds(
                 runtime_root_arg=visible_runtime_root_arg,
                 session_name=str(launch_result.get("session_name") or session_name),

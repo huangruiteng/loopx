@@ -241,6 +241,33 @@ def main() -> int:
                 "boundary": {"reads_raw_transcripts": False},
             }
 
+        def visible_wake(session: str, lanes: list[str]) -> dict[str, object]:
+            assert session == session_name, session
+            assert lanes == [], lanes
+            target_lanes = lanes or ["<all-session-windows>"]
+            return {
+                "ok": True,
+                "schema_version": "multi_agent_pane_a2a_wakeup_v0",
+                "mode": "execute",
+                "session_name": session,
+                "target_lanes": target_lanes,
+                "prompt": "LoopX pane-local A2A wakeup: run $LOOPX_PANE_A2A_TICK now.",
+                "prompt_hash": "wakehash",
+                "coordination_model": "decentralized_state_a2a",
+                "wakeup_model": "fixed_prompt_broadcast",
+                "workflow_driver": False,
+                "broadcaster_reads_frontier": False,
+                "broadcaster_selects_todo": False,
+                "pane_decision_owner": "codex_tui_agent_via_loopx_state",
+                "boundary": {
+                    "writes_loopx_state": False,
+                    "spends_loopx_quota": False,
+                    "reads_raw_transcripts": False,
+                    "reads_credentials": False,
+                    "runs_worker_turn_directly": False,
+                },
+            }
+
         visible_loaded_payload = run_auto_research_demo_e2e(
             agent_id=AGENT_ID,
             goal_id=GOAL_ID,
@@ -260,15 +287,20 @@ def main() -> int:
             live_evidence_path=None,
             append_evidence=lambda _path: {"ok": True},
             visible_launcher=visible_launcher,
+            visible_wake=visible_wake,
+            wake_visible_after_launch=True,
             visible_live_evidence_wait_seconds=0,
         )
         visible_loaded_proof = visible_loaded_payload["visible_worker_proof"]
         visible_loaded_evidence = visible_loaded_payload["live_worker_evidence"]
         visible_loaded_rounds = visible_loaded_payload["visible_pane_a2a_rounds"]
+        visible_loaded_wake = visible_loaded_payload["visible_wake"]
         assert visible_loaded_proof["lane_authored_evidence_loaded"] is True, visible_loaded_payload
         assert visible_loaded_proof["pane_local_a2a_rounds_loaded"] is True, visible_loaded_payload
         assert visible_loaded_proof["pane_local_a2a_round_count"] == 2, visible_loaded_payload
         assert visible_loaded_proof["decentralized_a2a_rounds_verified"] is True, visible_loaded_payload
+        assert visible_loaded_proof["cadence_wake_loaded"] is True, visible_loaded_payload
+        assert visible_loaded_proof["cadence_wake_verified"] is True, visible_loaded_payload
         assert visible_loaded_proof["evidence_source"] == "visible_launcher_artifact", visible_loaded_payload
         assert visible_loaded_evidence["loaded"] is True, visible_loaded_payload
         assert visible_loaded_evidence["agent_id"] == "codex-live-lane", visible_loaded_payload
@@ -278,6 +310,11 @@ def main() -> int:
         assert visible_loaded_rounds["workflow_driver"] is False, visible_loaded_rounds
         assert visible_loaded_rounds["max_rounds_completed"] == 2, visible_loaded_rounds
         assert visible_loaded_rounds["multi_round_verified"] is True, visible_loaded_rounds
+        assert visible_loaded_wake["wakeup_model"] == "fixed_prompt_broadcast", visible_loaded_wake
+        assert visible_loaded_wake["coordination_model"] == "decentralized_state_a2a", visible_loaded_wake
+        assert visible_loaded_wake["workflow_driver"] is False, visible_loaded_wake
+        assert visible_loaded_wake["broadcaster_reads_frontier"] is False, visible_loaded_wake
+        assert visible_loaded_wake["broadcaster_selects_todo"] is False, visible_loaded_wake
         assert_public_safe(visible_loaded_payload)
 
     loop_markdown = render_auto_research_markdown(
@@ -448,6 +485,7 @@ def main() -> int:
                         "worker-skill-visible-smoke",
                         "--execute",
                         "--no-attach",
+                        "--wake-visible-after-launch",
                         "--replace-existing",
                         "--session-name",
                         session_name,
@@ -486,6 +524,8 @@ def main() -> int:
                 assert visible_proof["pane_local_a2a_rounds_loaded"] is True, visible_proof
                 assert visible_proof["pane_local_a2a_round_count"] >= 2, visible_proof
                 assert visible_proof["decentralized_a2a_rounds_verified"] is True, visible_proof
+                assert visible_proof["cadence_wake_loaded"] is True, visible_proof
+                assert visible_proof["cadence_wake_verified"] is True, visible_proof
                 live_evidence = visible_payload["live_worker_evidence"]
                 assert live_evidence["loaded"] is True, live_evidence
                 assert live_evidence["source"] == "live_codex_lane_output", live_evidence
@@ -496,6 +536,20 @@ def main() -> int:
                 assert visible_rounds["workflow_driver"] is False, visible_rounds
                 assert visible_rounds["max_rounds_completed"] >= 2, visible_rounds
                 assert visible_rounds["multi_round_verified"] is True, visible_rounds
+                visible_wake = visible_payload["visible_wake"]
+                assert visible_wake["schema_version"] == "multi_agent_pane_a2a_wakeup_v0", visible_wake
+                assert visible_wake["mode"] == "execute", visible_wake
+                assert visible_wake["target_lanes"] == [
+                    "research-curator",
+                    "hypothesis-mapper",
+                    "evidence-runner",
+                    "evidence-verifier",
+                ], visible_wake
+                assert visible_wake["wakeup_model"] == "fixed_prompt_broadcast", visible_wake
+                assert visible_wake["coordination_model"] == "decentralized_state_a2a", visible_wake
+                assert visible_wake["workflow_driver"] is False, visible_wake
+                assert visible_wake["broadcaster_reads_frontier"] is False, visible_wake
+                assert visible_wake["broadcaster_selects_todo"] is False, visible_wake
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload

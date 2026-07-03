@@ -34,7 +34,10 @@ from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
 from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from ...status import collect_status
-from ...visible_multi_agent_launcher import execute_visible_multi_agent_launcher
+from ...visible_multi_agent_launcher import (
+    execute_visible_multi_agent_launcher,
+    wake_visible_multi_agent_panes,
+)
 
 
 PrintPayload = Callable[
@@ -486,6 +489,14 @@ def register_auto_research_commands(
         help=argparse.SUPPRESS,
     )
     demo_e2e_parser.add_argument(
+        "--wake-visible-after-launch",
+        action="store_true",
+        help=(
+            "After starting visible tmux panes, broadcast the fixed pane-local A2A "
+            "wake prompt. Each pane still runs its own LoopX tick from state."
+        ),
+    )
+    demo_e2e_parser.add_argument(
         "--keep-workspace",
         action="store_true",
         help="Keep the temporary demo workspace after execution. The output payload still redacts its absolute path.",
@@ -807,11 +818,24 @@ def handle_auto_research_command(
                 )
 
             visible_launcher: Callable[[dict[str, object], Path, str | None, Path], dict[str, object]] | None = None
+            visible_wake: Callable[[str, list[str]], dict[str, object]] | None = None
             auto_visible_launch = bool(args.execute and not args.headless)
             launch_visible = bool(args.launch_visible or auto_visible_launch)
-            attach_visible = bool(args.attach or (auto_visible_launch and not args.no_attach))
             if args.no_attach and args.attach:
                 raise ValueError("--attach cannot be combined with --no-attach")
+            if args.wake_visible_after_launch and args.attach:
+                raise ValueError(
+                    "--wake-visible-after-launch cannot be combined with --attach; "
+                    "wake evidence must be recorded before operator takeover"
+                )
+            attach_visible = bool(
+                args.attach
+                or (
+                    auto_visible_launch
+                    and not args.no_attach
+                    and not args.wake_visible_after_launch
+                )
+            )
             if launch_visible:
                 def visible_launcher(
                     supervisor: dict[str, object],
@@ -845,6 +869,13 @@ def handle_auto_research_command(
                         create_workspace=create_visible_workspace,
                         codex_trust_workspace=codex_trust_workspace,
                     )
+                def visible_wake(session: str, lanes: list[str]) -> dict[str, object]:
+                    return wake_visible_multi_agent_panes(
+                        session_name=session,
+                        tmux_bin=args.tmux_bin,
+                        lanes=lanes,
+                        execute=True,
+                    )
 
             run_hidden_worker_loop = bool(args.execute and (args.headless or args.run_worker_loop))
             payload = run_auto_research_demo_e2e(
@@ -870,6 +901,8 @@ def handle_auto_research_command(
                 live_evidence_path=args.live_evidence,
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,
+                visible_wake=visible_wake,
+                wake_visible_after_launch=bool(args.wake_visible_after_launch),
                 visible_live_evidence_wait_seconds=args.visible_live_evidence_wait_seconds,
             )
         else:
