@@ -23,6 +23,7 @@ from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
 from loopx.capabilities.auto_research.cli import (  # noqa: E402
     _default_auto_research_start_workspace,
     _start_attach_visible,
+    _start_codex_trust_workspace,
     _start_wake_visible_after_launch,
 )
 
@@ -154,6 +155,12 @@ def assert_start_wake_contract() -> None:
     )
     assert "wake_visible_after_launch=bool(args.wake_visible_after_launch)" not in cli_source
     assert cli_source.count("wake_visible_after_launch = _start_wake_visible_after_launch(args)") == 2
+    assert "codex_trust_visible_workspace = _start_codex_trust_workspace(args)" in cli_source
+    start_source = cli_source.split('elif args.auto_research_command == "start":', 1)[1].split(
+        'elif args.auto_research_command == "demo-supervisor":',
+        1,
+    )[0]
+    assert "if args.codex_trust_workspace is None" not in start_source
 
     default_visible = Namespace(
         execute=True,
@@ -161,8 +168,10 @@ def assert_start_wake_contract() -> None:
         wake_visible_after_launch=None,
         attach=False,
         no_attach=False,
+        codex_trust_workspace=None,
     )
     assert _start_wake_visible_after_launch(default_visible) is True
+    assert _start_codex_trust_workspace(default_visible) is True
     assert (
         _start_attach_visible(
             default_visible,
@@ -177,8 +186,10 @@ def assert_start_wake_contract() -> None:
         wake_visible_after_launch=None,
         attach=True,
         no_attach=False,
+        codex_trust_workspace=None,
     )
     assert _start_wake_visible_after_launch(attach_takeover) is False
+    assert _start_codex_trust_workspace(attach_takeover) is True
     assert (
         _start_attach_visible(
             attach_takeover,
@@ -193,8 +204,10 @@ def assert_start_wake_contract() -> None:
         wake_visible_after_launch=True,
         attach=False,
         no_attach=False,
+        codex_trust_workspace=None,
     )
     assert _start_wake_visible_after_launch(explicit_wake) is True
+    assert _start_codex_trust_workspace(explicit_wake) is True
     assert (
         _start_attach_visible(
             explicit_wake,
@@ -209,8 +222,10 @@ def assert_start_wake_contract() -> None:
         wake_visible_after_launch=False,
         attach=False,
         no_attach=False,
+        codex_trust_workspace=None,
     )
     assert _start_wake_visible_after_launch(manual_takeover) is False
+    assert _start_codex_trust_workspace(manual_takeover) is True
     assert (
         _start_attach_visible(
             manual_takeover,
@@ -225,8 +240,10 @@ def assert_start_wake_contract() -> None:
         wake_visible_after_launch=False,
         attach=False,
         no_attach=True,
+        codex_trust_workspace=None,
     )
     assert _start_wake_visible_after_launch(background_manual) is False
+    assert _start_codex_trust_workspace(background_manual) is True
     assert (
         _start_attach_visible(
             background_manual,
@@ -241,8 +258,10 @@ def assert_start_wake_contract() -> None:
         wake_visible_after_launch=True,
         attach=False,
         no_attach=False,
+        codex_trust_workspace=None,
     )
     assert _start_wake_visible_after_launch(headless) is False
+    assert _start_codex_trust_workspace(headless) is False
     assert (
         _start_attach_visible(
             headless,
@@ -250,6 +269,26 @@ def assert_start_wake_contract() -> None:
         )
         is False
     )
+
+    explicit_no_trust = Namespace(
+        execute=True,
+        headless=False,
+        wake_visible_after_launch=None,
+        attach=False,
+        no_attach=False,
+        codex_trust_workspace=False,
+    )
+    assert _start_codex_trust_workspace(explicit_no_trust) is False
+
+    explicit_trust = Namespace(
+        execute=True,
+        headless=False,
+        wake_visible_after_launch=None,
+        attach=False,
+        no_attach=False,
+        codex_trust_workspace=True,
+    )
+    assert _start_codex_trust_workspace(explicit_trust) is True
 
 
 def main() -> None:

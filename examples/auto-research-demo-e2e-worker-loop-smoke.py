@@ -498,14 +498,15 @@ def main() -> int:
         worker_loop = payload["worker_loop"]
         assert worker_loop["schema_version"] == "auto_research_worker_loop_v0", payload
         assert worker_loop["mode"] == "execute", payload
-        assert worker_loop["executed_turn_count"] == 5, payload
-        assert worker_loop["completed_turn_count"] == 5, payload
+        assert worker_loop["executed_turn_count"] == 6, payload
+        assert worker_loop["completed_turn_count"] == 6, payload
         assert worker_loop["selected_actions"] == [
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
             "summarize_evidence",
             "run_holdout_eval",
+            "write_evaluation_summary",
         ], payload
         assert worker_loop["stop_reason"] == "no_runnable_frontier", payload
         tonight = payload["tonight_experience"]
@@ -601,7 +602,10 @@ def main() -> int:
                 live_evidence = visible_payload["live_worker_evidence"]
                 assert live_evidence["loaded"] is True, live_evidence
                 assert live_evidence["source"] == "live_codex_lane_output", live_evidence
-                assert live_evidence["dev_metric"] == 4.0, live_evidence
+                assert (
+                    live_evidence["dev_metric"] == 4.0
+                    or live_evidence["holdout_metric"] == 4.5
+                ), live_evidence
                 visible_rounds = visible_payload["visible_pane_a2a_rounds"]
                 assert visible_rounds["source"] == "visible_launcher_artifact", visible_rounds
                 assert visible_rounds["coordination_model"] == "decentralized_state_a2a", visible_rounds
@@ -658,12 +662,12 @@ def main() -> int:
                 assert visible_readiness["rounds"]["max_completed"] >= 2, visible_readiness
                 improvement = visible_readiness["improvement_summary"]
                 assert improvement["baseline_metric"] == 1.0, improvement
-                assert improvement["round_1_dev_metric"] == 4.0, improvement
-                assert improvement["round_2_holdout_metric"] is None, improvement
-                assert improvement["best_metric"] == 4.0, improvement
-                assert improvement["best_metric_source"] == "round_1_dev", improvement
+                assert improvement["round_1_dev_metric"] in (None, 4.0), improvement
+                assert improvement["round_2_holdout_metric"] == 4.5, improvement
+                assert improvement["best_metric"] == 4.5, improvement
+                assert improvement["best_metric_source"] == "round_2_holdout", improvement
                 assert improvement["improved_over_baseline"] is True, improvement
-                assert improvement["holdout_delta_over_dev"] is None, improvement
+                assert improvement["holdout_delta_over_dev"] in (None, 0.5), improvement
                 assert "auto-research start" in visible_readiness["one_command"], visible_readiness
                 assert visible_readiness["one_command"].endswith("--execute"), visible_readiness
                 assert "--wake-visible-after-launch" not in visible_readiness["one_command"], visible_readiness

@@ -133,6 +133,17 @@ def _start_attach_visible(args: argparse.Namespace, *, wake_visible_after_launch
     )
 
 
+def _start_codex_trust_workspace(args: argparse.Namespace) -> bool:
+    """Return whether visible start should avoid Codex's workspace trust prompt."""
+
+    if not args.execute or args.headless:
+        return False
+    trust_setting = getattr(args, "codex_trust_workspace", None)
+    if trust_setting is None:
+        return True
+    return bool(trust_setting)
+
+
 def _resolve_demo_goal_surface(
     *,
     goal_id: str | None,
@@ -882,6 +893,7 @@ def handle_auto_research_command(
                 args,
                 wake_visible_after_launch=wake_visible_after_launch,
             )
+            codex_trust_visible_workspace = _start_codex_trust_workspace(args)
             if launch_visible:
                 def visible_launcher(
                     supervisor: dict[str, object],
@@ -896,11 +908,6 @@ def handle_auto_research_command(
                         else args.workspace
                     )
                     create_visible_workspace = True if default_start_workspace else args.create_workspace
-                    codex_trust_workspace = (
-                        default_start_workspace
-                        if args.codex_trust_workspace is None
-                        else bool(args.codex_trust_workspace)
-                    )
                     return _execute_auto_research_demo_supervisor(
                         supervisor,
                         registry_path=visible_registry_path,
@@ -913,7 +920,7 @@ def handle_auto_research_command(
                         replace_existing=args.replace_existing,
                         workspace=visible_workspace,
                         create_workspace=create_visible_workspace,
-                        codex_trust_workspace=codex_trust_workspace,
+                        codex_trust_workspace=codex_trust_visible_workspace,
                     )
 
                 def visible_wake(session: str, lanes: list[str]) -> dict[str, object]:
