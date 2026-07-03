@@ -81,6 +81,12 @@ from .projections.autonomous_candidates import (
     autonomous_priority_rank as _autonomous_priority_rank,
     autonomous_todo_candidates as _autonomous_todo_candidates,
 )
+from .projections.agent_lane_recommendation import (
+    compact_agent_lane_recommendation as _compact_agent_lane_recommendation_read_model,
+    is_status_neutral_run as _is_status_neutral_run_read_model,
+    latest_agent_lane_run as _latest_agent_lane_run_read_model,
+    latest_run_recommended_action_for_projection as _latest_run_recommended_action_for_projection_read_model,
+)
 from .projections.autonomous_replan_ack import (
     autonomous_replan_ack_recorded as _autonomous_replan_ack_recorded_read_model,
     compact_autonomous_replan_ack as _compact_autonomous_replan_ack_read_model,
@@ -7473,46 +7479,26 @@ def collect_global_registry_health(
 
 
 def is_status_neutral_run(run: dict[str, Any]) -> bool:
-    return (
-        str(run.get("classification") or "") in STATUS_NEUTRAL_CLASSIFICATIONS
-        or str(run.get("progress_scope") or "") == AGENT_LANE_PROGRESS_SCOPE
+    return _is_status_neutral_run_read_model(
+        run,
+        status_neutral_classifications=STATUS_NEUTRAL_CLASSIFICATIONS,
+        agent_lane_progress_scope=AGENT_LANE_PROGRESS_SCOPE,
     )
 
 
 def latest_agent_lane_run(goal: dict[str, Any]) -> dict[str, Any] | None:
-    runs = goal.get("latest_runs")
-    if not isinstance(runs, list):
-        return None
-    for run in runs:
-        if not isinstance(run, dict):
-            continue
-        if str(run.get("progress_scope") or "") == AGENT_LANE_PROGRESS_SCOPE:
-            return run
-    return None
+    return _latest_agent_lane_run_read_model(
+        goal,
+        agent_lane_progress_scope=AGENT_LANE_PROGRESS_SCOPE,
+    )
 
 
 def compact_agent_lane_recommendation(run: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(run, dict):
-        return None
-    action = public_safe_compact_text(run.get("recommended_action"), limit=220)
-    if not action:
-        return None
-    compact: dict[str, Any] = {
-        "schema_version": "agent_lane_recommendation_v0",
-        "progress_scope": AGENT_LANE_PROGRESS_SCOPE,
-        "recommended_action": action,
-    }
-    for field in (
-        "agent_id",
-        "agent_lane",
-        "classification",
-        "generated_at",
-        "delivery_batch_scale",
-        "delivery_outcome",
-    ):
-        if run.get(field) is not None:
-            compact[field] = run.get(field)
-    return compact
+    return _compact_agent_lane_recommendation_read_model(
+        run,
+        agent_lane_progress_scope=AGENT_LANE_PROGRESS_SCOPE,
+        public_safe_compact_text=public_safe_compact_text,
+    )
 
 
 def latest_run_recommended_action_for_projection(
@@ -7522,41 +7508,15 @@ def latest_run_recommended_action_for_projection(
     active_state_next_action: Any = None,
     limit: int = 320,
 ) -> tuple[str | None, str | None]:
-    latest_action = public_safe_compact_text(
-        current_status_run.get("recommended_action")
-        if isinstance(current_status_run, dict)
-        else None,
+    return _latest_run_recommended_action_for_projection_read_model(
+        current_status_run=current_status_run,
+        agent_lane_recommendation=agent_lane_recommendation,
+        active_state_next_action=active_state_next_action,
         limit=limit,
+        public_safe_compact_text=public_safe_compact_text,
+        actions_are_projection_aligned=actions_are_projection_aligned,
+        parse_timestamp=parse_timestamp,
     )
-    if not isinstance(agent_lane_recommendation, dict):
-        return latest_action, "latest_status_run" if latest_action else None
-
-    lane_action = public_safe_compact_text(
-        agent_lane_recommendation.get("recommended_action"),
-        limit=limit,
-    )
-    if not lane_action:
-        return latest_action, "latest_status_run" if latest_action else None
-    if not active_state_next_action or not actions_are_projection_aligned(
-        active_state_next_action,
-        lane_action,
-    ):
-        return latest_action, "latest_status_run" if latest_action else None
-
-    latest_aligned = bool(
-        latest_action
-        and actions_are_projection_aligned(active_state_next_action, latest_action)
-    )
-    lane_dt = parse_timestamp(agent_lane_recommendation.get("generated_at"))
-    latest_dt = parse_timestamp(
-        current_status_run.get("generated_at")
-        if isinstance(current_status_run, dict)
-        else None
-    )
-    lane_is_newer = bool(lane_dt and latest_dt and lane_dt >= latest_dt)
-    if not latest_action or not latest_aligned or lane_is_newer:
-        return lane_action, "agent_lane_recommendation"
-    return latest_action, "latest_status_run"
 
 
 def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
