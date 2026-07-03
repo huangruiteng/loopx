@@ -6,7 +6,7 @@ from typing import Any
 DEFAULT_MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = 12
 DEFAULT_MONITOR_SIGNAL_WAITING_ON = "monitor_signal"
 DEFAULT_MONITOR_DISPLAY_STOP_CONDITION = (
-    "keep monitoring quietly until the observed signal changes or a user/controller gate appears"
+    "stop until a material monitor transition, regression, or concrete blocker appears"
 )
 
 

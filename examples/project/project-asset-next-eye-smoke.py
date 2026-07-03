@@ -17,6 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.status import (  # noqa: E402
+    MONITOR_DISPLAY_STOP_CONDITION,
+    MONITOR_SIGNAL_WAITING_ON,
     build_project_asset,
     enrich_project_asset,
     project_asset_summary_is_public_safe,
@@ -123,6 +125,23 @@ def assert_status_project_asset_safe_command_contract() -> None:
     assert project_asset_summary_is_public_safe(asset), asset
 
 
+def assert_status_project_asset_monitor_display_contract() -> None:
+    asset = build_project_asset(
+        status="monitor_quiet_skip",
+        waiting_on=MONITOR_SIGNAL_WAITING_ON,
+        recommended_action="No immediate agent work; keep monitoring quietly.",
+        operator_question=None,
+        agent_command=None,
+        missing_gates=None,
+        next_handoff_condition=None,
+    )
+    assert asset["owner"] == MONITOR_SIGNAL_WAITING_ON, asset
+    assert asset["gate"] == "none", asset
+    assert asset["support_mode"] == "read_only_observer", asset
+    assert asset["stop_condition"] == MONITOR_DISPLAY_STOP_CONDITION, asset
+    assert project_asset_summary_is_public_safe(asset), asset
+
+
 def assert_dashboard_first_screen_render_contract() -> None:
     dashboard = (REPO_ROOT / "apps/dashboard/src/views/dashboard-page.tsx").read_text(
         encoding="utf-8"
@@ -146,6 +165,7 @@ def assert_dashboard_first_screen_render_contract() -> None:
 def main() -> int:
     assert_status_project_asset_next_eye()
     assert_status_project_asset_safe_command_contract()
+    assert_status_project_asset_monitor_display_contract()
     assert_dashboard_first_screen_render_contract()
     print("project-asset-next-eye-smoke ok")
     return 0
