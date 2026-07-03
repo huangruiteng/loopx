@@ -149,8 +149,8 @@ Frontstage consumers should treat this as an input snapshot:
   required capabilities, workspace guards, or task leases.
 
 The first product-path fixture lives in `loopx.frontstage` and is covered
-by `examples/goal-channel-projection-smoke.py` plus
-`examples/goal-channel-frontstage-fixture-smoke.py`. It intentionally stays
+by `examples/project/goal-channel-projection-smoke.py` plus
+`examples/project/goal-channel-frontstage-fixture-smoke.py`. It intentionally stays
 read-only: callers pass already-compact status, quota, run-history,
 review-packet, artifact, and lease/claim payloads; the builder emits
 `source_warnings` when raw or private-looking fields appear instead of copying

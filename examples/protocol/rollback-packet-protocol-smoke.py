@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "rollback-packet-v0.md"
 INDEX_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "README.md"
 LONG_HORIZON_PATH = (
@@ -95,7 +95,7 @@ def main() -> int:
         "explicit user or maintainer approval",
         "support_request",
         "todo_compensation",
-        "python3 examples/rollback-packet-protocol-smoke.py",
+        "python3 examples/protocol/rollback-packet-protocol-smoke.py",
     ]:
         assert_contains(contract, needle, "rollback contract")
     assert_contains(index, "rollback_packet_v0", "protocol index")

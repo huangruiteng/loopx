@@ -36,7 +36,7 @@ The agent's output should use a `suggested_todos` list. Each item uses
   "candidate_id": "suggested_todo_repo_smoke_gap",
   "title": "Add a smoke for the new setup path",
   "why_now": "Recent docs changed the setup flow, but no smoke covers the wording.",
-  "evidence": ["README.md", "examples/project-prompt-smoke.py"],
+  "evidence": ["README.md", "examples/project/project-prompt-smoke.py"],
   "first_safe_action": "Inspect the existing setup smoke and draft one failing assertion.",
   "requires_user_decision": false,
   "risk": "low",

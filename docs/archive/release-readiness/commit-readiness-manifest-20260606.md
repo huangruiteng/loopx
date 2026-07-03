@@ -359,9 +359,9 @@ Candidate files:
 - `loopx/state_refresh.py`
 - `loopx/project_prompt.py`
 - `examples/blocker-push-runtime-smoke.py`
-- `examples/global-registry-sync-smoke.py`
+- `examples/project/global-registry-sync-smoke.py`
 - `examples/control_plane/heartbeat-prompt-smoke.py`
-- `examples/operator-gate-resume-contract-smoke.py`
+- `examples/project/operator-gate-resume-contract-smoke.py`
 - `examples/control_plane/quota-contract-smoke.py`
 - `examples/control_plane/quota-plan-smoke.py`
 - `examples/control_plane/review-packet-cli-smoke.py`
@@ -370,12 +370,12 @@ Candidate files:
 Validation already observed in recent slices:
 
 - `python3 examples/control_plane/heartbeat-prompt-smoke.py`
-- `python3 examples/operator-gate-resume-contract-smoke.py`
+- `python3 examples/project/operator-gate-resume-contract-smoke.py`
 - `python3 examples/control_plane/quota-contract-smoke.py`
 - `python3 examples/control_plane/quota-plan-smoke.py`
 - `python3 examples/control_plane/review-packet-cli-smoke.py`
 - `python3 examples/control_plane/review-packet-smoke.py`
-- `python3 examples/global-registry-sync-smoke.py`
+- `python3 examples/project/global-registry-sync-smoke.py`
 
 Review notes:
 

@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "global-manager-command-v0.md"
 INDEX_PATH = REPO_ROOT / "docs" / "reference" / "protocols" / "README.md"
 LONG_HORIZON_PATH = (
@@ -98,7 +98,7 @@ def main() -> int:
         "Action Ladder",
         "Privacy Boundary",
         "global_manager_command_response_v0",
-        "python3 examples/global-manager-command-protocol-smoke.py",
+        "python3 examples/project/global-manager-command-protocol-smoke.py",
     ]:
         assert_contains(contract, needle, "global manager command contract")
 

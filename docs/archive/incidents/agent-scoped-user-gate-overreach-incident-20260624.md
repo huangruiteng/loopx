@@ -90,7 +90,7 @@ The durable repair landed in PR #629:
   - unscoped user gates remain global gates.
 - `examples/control_plane/work-lane-contract-smoke.py`
 - `examples/control_plane/quota-action-scope-guard-smoke.py`
-- `examples/protocol-action-packet-smoke.py`
+- `examples/protocol/protocol-action-packet-smoke.py`
 - `examples/control_plane/quota-plan-smoke.py`
 - a real active-state quota check confirmed the non-target agent returned
   `decision=run`, `requires_user_action=false`, and `delivery_allowed=true`

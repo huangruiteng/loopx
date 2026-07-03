@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DOC = REPO_ROOT / "docs" / "session-runtime-control-plane-adapter.md"
 DOCS_INDEX = REPO_ROOT / "docs" / "README.md"
 ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
@@ -31,7 +31,7 @@ def main() -> int:
             "Phase 1: Read-Only Projection",
             "Phase 2: Controlled Writeback",
             "build_session_runtime_readonly_projection",
-            "python3 examples/session-runtime-readonly-projection-smoke.py",
+            "python3 examples/session_runtime/session-runtime-readonly-projection-smoke.py",
             "quota decision as a scheduler hint, not billing",
             "These metrics are goal-control metrics, not model-quality scores.",
         ],

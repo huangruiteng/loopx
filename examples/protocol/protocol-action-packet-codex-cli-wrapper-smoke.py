@@ -13,8 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-COMPARISON_SMOKE = REPO_ROOT / "examples" / "protocol-action-packet-router-comparison-smoke.py"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+COMPARISON_SMOKE = REPO_ROOT / "examples" / "protocol" / "protocol-action-packet-router-comparison-smoke.py"
 
 
 def load_comparison_module() -> Any:

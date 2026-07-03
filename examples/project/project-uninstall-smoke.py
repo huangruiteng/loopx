@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 TARGET_GOAL_ID = "project-uninstall-target"
 KEEP_GOAL_ID = "project-uninstall-keep"
 OTHER_GOAL_ID = "other-project-goal"

@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import loopx.state_refresh as state_refresh
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
@@ -124,7 +124,7 @@ def run_cli_json(args: list[str]) -> subprocess.CompletedProcess[str]:
             "from loopx.cli import main; raise SystemExit(main())",
             *args,
         ],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[2],
         text=True,
         capture_output=True,
         check=False,

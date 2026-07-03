@@ -157,7 +157,7 @@ summaries, then returns:
 Run:
 
 ```bash
-python3 examples/session-runtime-readonly-projection-smoke.py
+python3 examples/session_runtime/session-runtime-readonly-projection-smoke.py
 ```
 
 OpenViking-style issue-fix memory is covered by the public specialization
