@@ -176,6 +176,7 @@ def main() -> int:
         assert "LOOPX_PANE_WORKER_TURN" in command, lane
         assert "LOOPX_PANE_LOOPX_JSON" in command, lane
         assert "LOOPX_PANE_ARTIFACT_DIR" in command, lane
+        assert "pane-a2a-tick.output.txt" in command, lane
         assert "exec python3 -c" in command, lane
         assert "codex exec" not in command, lane
         assert "codex_stream_filter" not in command, lane

@@ -168,8 +168,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert lane["pane_local_a2a"]["tick_sleep_seconds"] == 3, lane
         assert lane["lane_timeline"] == [
             "role_profile",
-            "codex_tui",
             "auto_start_pane_local_a2a_tick",
+            "codex_tui",
             "frontier",
         ], lane
 
@@ -178,7 +178,11 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "LOOPX_PANE_WORKER_TURN" in command, lane
         assert "LOOPX_PANE_TICK_ROUNDS=3" in command, lane
         assert "LOOPX_PANE_TICK_SLEEP_SECONDS=3" in command, lane
+        assert "pane-a2a-tick.output.txt" in command, lane
         assert "auto-research worker-turn" in command, lane
+        assert "--visible-lanes-accepted" in command, lane
+        assert "LOOPX_VISIBLE_LANE_COUNT" in command, lane
+        assert "live-codex-e2e-evidence.public.json" in command, lane
         assert "--complete-selected-todo" in command, lane
         assert "LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1" in command, lane
         assert "LOOPX_CODEX_TUI_MODE=interactive" in command, lane

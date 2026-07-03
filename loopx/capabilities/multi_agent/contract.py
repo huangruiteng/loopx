@@ -112,7 +112,8 @@ def generic_role_prompt(
             "",
             "How to work:",
             "- Treat LoopX state as the shared A2A surface.",
-            "- First action: immediately run `$LOOPX_PANE_A2A_TICK` in this Codex TUI. Do not ask the user to start it.",
+            "- The launcher runs `$LOOPX_PANE_A2A_TICK` before this Codex TUI opens.",
+            "- If the tick artifact is missing or the user asks, rerun `$LOOPX_PANE_A2A_TICK` in this TUI.",
             "- The tick reads your quota/frontier and then runs this role's worker-turn when configured.",
             "- When the tick completes, summarize what changed, what remains blocked, and stay interactive for user takeover.",
             "- For machine reads, run `$LOOPX_PANE_LOOPX_JSON` as the command and redirect output into `$LOOPX_PANE_ARTIFACT_DIR/<name>.public.json`; it defaults to `--format json`.",
@@ -193,7 +194,7 @@ def build_tui_multi_agent_runner_contract(
         },
         "pane_local_a2a": {
             "tick_command": "$LOOPX_PANE_A2A_TICK",
-            "first_action": "run $LOOPX_PANE_A2A_TICK inside the Codex TUI",
+            "first_action": "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens",
             "reads": ["quota should-run", "agent-scoped frontier"],
             "runs": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
             "bounded_rounds_env": "LOOPX_PANE_TICK_ROUNDS",

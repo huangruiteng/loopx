@@ -39,6 +39,9 @@ AUTO_RESEARCH_PROJECTION_SCHEMA_VERSION = "decentralized_auto_research_projectio
 RESEARCH_EVIDENCE_GRAPH_SCHEMA_VERSION = "research_evidence_graph_v0"
 RESEARCH_FRONTIER_SCHEMA_VERSION = "decentralized_research_frontier_v0"
 ROLLOUT_EVIDENCE_GRAPH_SOURCE_KIND = "loopx_rollout_event_log"
+AUTO_RESEARCH_ACTION_ALIASES = {
+    "run_read_only_adapter_tick": "run_dev_eval",
+}
 
 
 def load_auto_research_fixture(path: str | Path) -> dict[str, Any]:
@@ -113,6 +116,11 @@ def _claimed_by_current_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> 
     return not claimed_by or claimed_by == agent_id
 
 
+def normalize_auto_research_action(action: object) -> str:
+    raw = str(action or "").strip()
+    return AUTO_RESEARCH_ACTION_ALIASES.get(raw, raw)
+
+
 def _todo_frontier_item(
     item: dict[str, Any],
     *,
@@ -149,7 +157,7 @@ def _todo_frontier_item(
         summary["blocked_by"] = _compact_public_text(blocked_by, field="live.blocked_by", max_len=160)
     else:
         summary["allowed_action"] = _compact_optional_text(
-            item.get("action_kind") or "advance_todo",
+            normalize_auto_research_action(item.get("action_kind") or "advance_todo"),
             field="live.allowed_action",
             default="advance_todo",
             max_len=96,

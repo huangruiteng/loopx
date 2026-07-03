@@ -428,8 +428,13 @@ def main() -> int:
                 ), visible_supervisor
                 visible_proof = visible_payload["visible_worker_proof"]
                 assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
-                assert visible_proof["lane_authored_evidence_loaded"] is False, visible_proof
+                assert visible_proof["lane_authored_evidence_loaded"] is True, visible_proof
+                assert visible_proof["evidence_source"] == "visible_launcher_artifact", visible_proof
                 assert visible_proof["visible_lanes_launched"] is True, visible_proof
+                live_evidence = visible_payload["live_worker_evidence"]
+                assert live_evidence["loaded"] is True, live_evidence
+                assert live_evidence["source"] == "live_codex_lane_output", live_evidence
+                assert live_evidence["dev_metric"] == 4.0, live_evidence
                 launch = visible_payload["visible_launch"]["launch_result"]
                 assert launch["started_lane_count"] == 4, visible_payload
                 assert "frontier" not in launch["started_lanes"], visible_payload

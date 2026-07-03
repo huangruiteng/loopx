@@ -184,6 +184,9 @@ def auto_research_worker_turn_command(*, goal_id: str, agent_id: str, objective:
         f"--goal-id {shlex.quote(goal_id)} "
         f"--agent-id {shlex.quote(agent_id)} "
         f"--objective {shlex.quote(objective)} "
+        '--lane-count "${LOOPX_VISIBLE_LANE_COUNT:-1}" '
+        "--visible-lanes-accepted "
+        '--live-evidence-output "$LOOPX_PANE_ARTIFACT_DIR/live-codex-e2e-evidence.public.json" '
         "--execute --complete-selected-todo"
     )
 

@@ -21,7 +21,7 @@ from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e
 from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
     build_auto_research_demo_supervisor_plan,
 )
-from loopx.todos import add_goal_todo  # noqa: E402
+from loopx.todos import add_goal_todo, update_goal_todo  # noqa: E402
 
 
 GOAL_ID = "loopx-auto-research-demo"
@@ -273,15 +273,25 @@ def main() -> int:
             reasoning_effort="high",
         )
         four_lane_root = temp / "four-lane-queue"
-        _summary, four_registry, four_runtime_root = _seed_visible_demo_control_plane(
+        summary, four_registry, four_runtime_root = _seed_visible_demo_control_plane(
             demo_root=four_lane_root,
             goal_id=GOAL_ID,
             objective="Prove every visible auto-research role can run one LoopX-selected worker turn.",
             supervisor=supervisor,
         )
+        evidence_seed = next(
+            item for item in summary["seeded_todos"] if item["agent_id"] == EVIDENCE_AGENT_ID
+        )
+        alias_update = update_goal_todo(
+            registry_path=four_registry,
+            goal_id=GOAL_ID,
+            todo_id=str(evidence_seed["todo_id"]),
+            action_kind="run_read_only_adapter_tick",
+        )
+        assert alias_update["action_kind"] == "run_read_only_adapter_tick", alias_update
         four_workspace = four_lane_root / "visible-control-plane"
         for agent in [CURATOR_AGENT_ID, MAPPER_AGENT_ID, EVIDENCE_AGENT_ID]:
-            run_worker_turn(
+            turn = run_worker_turn(
                 registry=four_registry,
                 runtime_root=four_runtime_root,
                 workspace=four_workspace,
@@ -289,6 +299,22 @@ def main() -> int:
                 execute=True,
                 complete=True,
             )
+            if agent == EVIDENCE_AGENT_ID:
+                assert turn["mode"] == "execute", turn
+                assert turn["selected_action"] == "run_dev_eval", turn
+                assert turn["frontier"]["frontier"]["selected"]["mechanism_family"] == (
+                    "run_read_only_adapter_tick"
+                ), turn
+                assert turn["frontier"]["frontier"]["selected"]["allowed_action"] == "run_dev_eval", turn
+                assert turn["live_evidence"]["written"] is True, turn
+        alias_evidence = run_worker_turn(
+            registry=four_registry,
+            runtime_root=four_runtime_root,
+            workspace=four_workspace,
+            agent_id=EVIDENCE_AGENT_ID,
+            execute=False,
+        )
+        assert alias_evidence["mode"] == "no_action", alias_evidence
         verifier = run_worker_turn(
             registry=four_registry,
             runtime_root=four_runtime_root,

@@ -168,6 +168,8 @@ def assert_three_layer_minimality() -> None:
         assert lane["pane_local_a2a"]["auto_start"] is True, lane
         assert lane["bootstrap_message"] == "role_prompt_inside_codex_tui", lane
         assert "LOOPX_PANE_A2A_TICK" in lane["visible_launch_command"], lane
+        assert "pane-a2a-tick.output.txt" in lane["visible_launch_command"], lane
+        assert "--visible-lanes-accepted" in lane["visible_launch_command"], lane
         assert "codex exec" not in lane["visible_launch_command"], lane
         assert "codex_stream_filter" not in lane["visible_launch_command"], lane
 

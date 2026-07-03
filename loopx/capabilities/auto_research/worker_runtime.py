@@ -29,6 +29,7 @@ from .research_state import (
     build_live_auto_research_projection,
     build_research_decision_candidates,
     build_research_evidence_graph_from_rollout_events,
+    normalize_auto_research_action,
 )
 from ...agent_registry import registered_agent_ids_from_registry
 from ...history import load_registry
@@ -628,7 +629,8 @@ def run_auto_research_worker_turn(
         workspace=workspace,
     )
     selected = frontier_packet["frontier"].get("selected") if isinstance(frontier_packet["frontier"], dict) else None
-    action = str((selected or {}).get("allowed_action") or "")
+    raw_action = str((selected or {}).get("allowed_action") or "")
+    action = normalize_auto_research_action(raw_action)
     todo_id = str((selected or {}).get("todo_id") or "")
     if not selected or not todo_id:
         return {

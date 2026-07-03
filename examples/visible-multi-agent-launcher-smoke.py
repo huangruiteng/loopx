@@ -106,7 +106,7 @@ def main() -> int:
     assert "loopx-pane-a2a-tick" in launcher_source
     assert "LOOPX_PANE_WORKER_TURN" in launcher_source
     assert "LOOPX_PANE_TICK_ROUNDS" in launcher_source
-    assert "First action: immediately run `$LOOPX_PANE_A2A_TICK`" in contract_source
+    assert "The launcher runs `$LOOPX_PANE_A2A_TICK` before this Codex TUI opens." in contract_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
     assert "machine_json_command=$LOOPX_PANE_LOOPX_JSON artifact_dir=$LOOPX_PANE_ARTIFACT_DIR" in runtime_source
     assert "$LOOPX_PANE_LOOPX_JSON is a command path, not an output file." in runtime_source
@@ -163,7 +163,7 @@ def main() -> int:
     assert runner_contract["tmux_lifecycle"]["stop_command"] == dry_packet["commands"]["stop"]
     assert runner_contract["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK"
     assert runner_contract["pane_local_a2a"]["first_action"] == (
-        "run $LOOPX_PANE_A2A_TICK inside the Codex TUI"
+        "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens"
     )
     assert runner_contract["pane_local_a2a"]["bounded_rounds_env"] == (
         "LOOPX_PANE_TICK_ROUNDS"
@@ -229,6 +229,7 @@ def main() -> int:
     assert "$LOOPX_PANE_ARTIFACT_DIR/quota.public.json" in generic_lane["quota_guard"], generic_lane
     assert "LOOPX_PANE_TICK_ROUNDS=2" in generic_lane["visible_launch_command"], generic_lane
     assert "LOOPX_PANE_TICK_SLEEP_SECONDS=1" in generic_lane["visible_launch_command"], generic_lane
+    assert "pane-a2a-tick.output.txt" in generic_lane["visible_launch_command"], generic_lane
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)

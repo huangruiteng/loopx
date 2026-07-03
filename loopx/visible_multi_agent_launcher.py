@@ -171,6 +171,7 @@ def build_visible_lane_command(
     worker_loop_command: str | None = None,
     tick_rounds: int | None = None,
     tick_sleep_seconds: int | None = None,
+    visible_lane_count: int | None = None,
 ) -> str:
     codex_exec_env = (
         f"export LOOPX_CODEX_BIN={_q(codex_bin)}; "
@@ -203,6 +204,8 @@ def build_visible_lane_command(
         pane_a2a_env += f"export LOOPX_PANE_TICK_ROUNDS={_q(tick_rounds)}; "
     if tick_sleep_seconds and tick_sleep_seconds > 0:
         pane_a2a_env += f"export LOOPX_PANE_TICK_SLEEP_SECONDS={_q(tick_sleep_seconds)}; "
+    if visible_lane_count and visible_lane_count > 0:
+        pane_a2a_env += f"export LOOPX_VISIBLE_LANE_COUNT={_q(visible_lane_count)}; "
     return (
         "set -uo pipefail; "
         "export LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1; "
@@ -224,6 +227,13 @@ def build_visible_lane_command(
         "printf '\\n[LoopX blocked reason]\\n'; "
         "printf 'bootstrap_command_failed exit=%s\\n' \"$BOOTSTRAP_STATUS\"; "
         "exec /bin/sh -i; "
+        "fi; "
+        'PANE_A2A_TICK_ARTIFACT="$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-tick.output.txt"; '
+        '"$LOOPX_PANE_A2A_TICK" > "$PANE_A2A_TICK_ARTIFACT" 2>&1; '
+        "PANE_A2A_TICK_STATUS=$?; "
+        "if [ \"$PANE_A2A_TICK_STATUS\" -ne 0 ]; then "
+        "printf '\\n[LoopX pane A2A blocked]\\n'; "
+        "printf 'tick_exit=%s artifact=%s\\n' \"$PANE_A2A_TICK_STATUS\" \"$PANE_A2A_TICK_ARTIFACT\"; "
         "fi; "
         "export LOOPX_CODEX_TUI_MODE=interactive; "
         "export LOOPX_CODEX_TUI_PROMPT_ARTIFACT=\"$BOOTSTRAP_ARTIFACT\"; "
@@ -480,12 +490,13 @@ def build_visible_multi_agent_payload_from_spec(
                 worker_loop_command=worker_loop_command,
                 tick_rounds=tick_rounds,
                 tick_sleep_seconds=tick_sleep_seconds,
+                visible_lane_count=len(roles),
             ),
             "reasoning_effort": reasoning_effort,
             "lane_timeline": [
                 "role_profile",
-                "codex_tui",
                 "auto_start_pane_local_a2a_tick",
+                "codex_tui",
                 "frontier",
             ],
         }
@@ -772,6 +783,7 @@ def _launch_with_tmux(
             name=lane_id,
             command=runtime_shell_command(
                 f"export LOOPX_CODEX_TRUST_WORKSPACE={_q('1' if codex_trust_workspace else '0')}; "
+                f"export LOOPX_VISIBLE_LANE_COUNT={_q(len(lanes))}; "
                 f"{launch_command}",
                 project=lane_project,
                 registry=registry,
