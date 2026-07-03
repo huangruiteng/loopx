@@ -5387,6 +5387,13 @@ def _side_agent_workspace_guard(
 ) -> dict[str, Any] | None:
     if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
         return None
+    workspace_guard_policy = (
+        goal.get("workspace_guard_policy")
+        if isinstance(goal.get("workspace_guard_policy"), dict)
+        else {}
+    )
+    if workspace_guard_policy.get("side_agent_independent_worktree_required") is False:
+        return None
     repo_value = goal.get("repo") or goal.get("project") or goal.get("root")
     if not repo_value:
         return None
@@ -6618,6 +6625,15 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             "latest_run_generated_at": latest.get("generated_at"),
             "quota": quota,
         }
+        workspace_guard_policy = (
+            goal.get("workspace_guard_policy")
+            if isinstance(goal.get("workspace_guard_policy"), dict)
+            else status_goal.get("workspace_guard_policy")
+            if isinstance(status_goal.get("workspace_guard_policy"), dict)
+            else None
+        )
+        if workspace_guard_policy:
+            item["workspace_guard_policy"] = workspace_guard_policy
         if control_plane:
             item["control_plane"] = control_plane
         if project_asset:
