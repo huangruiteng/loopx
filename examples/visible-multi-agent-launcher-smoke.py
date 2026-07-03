@@ -111,8 +111,10 @@ def main() -> int:
     assert "LOOPX_PANE_TICK_SUMMARY" in launcher_source
     assert "LOOPX_PANE_TICK_OUTPUT_ARTIFACT" in launcher_source
     assert "The launcher runs `$LOOPX_PANE_A2A_TICK` before this Codex TUI opens." in contract_source
-    assert "First inspect `$LOOPX_PANE_TICK_SUMMARY`" in contract_source
-    assert "instead of immediately rerunning the tick" in contract_source
+    assert "Treat `$LOOPX_PANE_TICK_SUMMARY` as previous evidence" in contract_source
+    assert "not a gate that cancels later fixed wakes" in contract_source
+    assert "Use $loopx-project" in contract_source
+    assert "Use $loopx-doc-registry" in contract_source
     assert "LOOPX_VISIBLE_FORCE_MARKDOWN" in launcher_source
     assert "machine_json_command=$LOOPX_PANE_LOOPX_JSON artifact_dir=$LOOPX_PANE_ARTIFACT_DIR" in runtime_source
     assert "$LOOPX_PANE_LOOPX_JSON is a command path, not an output file." in runtime_source
@@ -185,14 +187,20 @@ def main() -> int:
     assert driver["broadcaster"]["runs_worker_turn"] is False, driver
     assert driver["pane"]["decision_owner"] == "codex_tui_agent_via_loopx_state", driver
     assert driver["prompt"]["pre_tick_summary_ref"] == "$LOOPX_PANE_TICK_SUMMARY", driver
-    assert "launcher_pre_tick_summary" in driver["pane"]["reads"], driver
+    assert "launcher_pre_tick_summary_evidence" in driver["pane"]["reads"], driver
     assert driver["pane"]["cadence_action"] == (
-        "fixed_prompt_wakeup_then_pre_tick_review_or_local_tick"
+        "fixed_prompt_wakeup_then_own_quota_frontier_tick_when_runnable"
+    ), driver
+    assert driver["prompt"]["wake_round"] == "fresh_agent_scoped_quota_frontier_check", driver
+    assert (
+        driver["prompt"]["pre_tick_summary_semantics"]
+        == "prior_evidence_not_a_tick_skip_gate"
     ), driver
     assert driver["acceptance"]["each_pane_decides_from_state"] is True, driver
+    assert driver["acceptance"]["pre_tick_summary_does_not_gate_wake_tick"] is True, driver
     assert runner_contract["pane_local_a2a"]["first_action"] == (
         "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens; "
-        "live wake reviews $LOOPX_PANE_TICK_SUMMARY before rerun"
+        "live wake checks own quota/frontier and ticks when runnable"
     )
     assert runner_contract["pane_local_a2a"]["bounded_rounds_env"] == (
         "LOOPX_PANE_TICK_ROUNDS"
@@ -216,7 +224,14 @@ def main() -> int:
     assert runner_contract["pane_local_a2a"]["pre_tick_output"] == (
         "$LOOPX_PANE_TICK_OUTPUT_ARTIFACT"
     )
-    assert runner_contract["role_prompt_and_skill"]["worker_local_skill_only"] is True
+    assert runner_contract["role_prompt_and_skill"]["default_kernel_skills"] == [
+        "loopx-project",
+        "loopx-doc-registry",
+    ]
+    assert (
+        runner_contract["role_prompt_and_skill"]["worker_local_skill_scope"]
+        == "role_specific_semantics_only"
+    )
     assert runner_contract["debug_artifacts"]["machine_json"] == (
         "redirected_public_artifacts_only"
     )
@@ -557,7 +572,8 @@ def main() -> int:
             assert wake["mode"] == "execute", wake
             assert wake["wakeup_model"] == "fixed_prompt_broadcast", wake
             assert "$LOOPX_PANE_TICK_SUMMARY" in wake["prompt"], wake
-            assert "only run $LOOPX_PANE_A2A_TICK" in wake["prompt"], wake
+            assert "Treat this fixed wake as a fresh decentralized round" in wake["prompt"], wake
+            assert "Run the bounded $LOOPX_PANE_A2A_TICK once" in wake["prompt"], wake
             assert wake["pane_input_ready_verified"] is True, wake
             assert wake["prompt_delivery"] == (
                 "tmux_paste_buffer_after_codex_tui_first_turn_ready"

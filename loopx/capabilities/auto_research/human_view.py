@@ -382,7 +382,7 @@ def _render_supervisor(payload: dict[str, object]) -> str:
             "## One-Click Dry Run",
             "",
             f"- mode: `{one_click.get('mode')}`",
-            "- command: `loopx auto-research demo-e2e --execute`",
+            "- command: `loopx auto-research start \"<open question>\" --execute`",
             f"- machine_json_policy: `{cli_contract.get('machine_json_policy')}`",
         ]
     )

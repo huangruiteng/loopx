@@ -27,25 +27,17 @@ Identity comes from LoopX control-plane metadata:
 No role owns the full graph. Do not infer role from pane title, branch name,
 tmux window name, or the section of this skill that happens to be visible.
 
-## First Commands
+## Pane Tick Contract
 
-Before doing research work, resolve identity and frontier from LoopX:
+The generic multi-agent kernel prompt already points panes at `$loopx-project`
+and `$loopx-doc-registry`. This skill should stay role-specific: use it after
+the pane-local tick has resolved identity, quota, and frontier from LoopX.
 
-```bash
-loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" \
-  --runtime-root "$HOME/.codex/loopx" \
-  quota should-run --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"
+Compact frontier command: `loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"`. Also honor `quota should-run`.
 
-loopx --format json auto-research frontier \
-  --goal-id "$LOOPX_GOAL_ID" \
-  --agent-id "$LOOPX_AGENT_ID"
-```
-
-Equivalent compact frontier command: `loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"`.
-
-If the launcher exported `LOOPX_ROLE_ID`, `LOOPX_ROLE_PROFILE_REF`,
-`LOOPX_ROLE_PHASE`, or a profile JSON path, compare those values with the quota
-and frontier packets. Stop when they disagree. Do not guess the intended role.
+If the launcher exported `LOOPX_ROLE_ID`, `LOOPX_ROLE_PROFILE_REF`, or a profile
+JSON path, compare those values with the quota and frontier packets. Stop when
+they disagree. Do not guess the intended role.
 
 If the role profile includes `successor_todos`, treat those declarations as the
 only role-local way to create the next agent todo. A successor declaration must
@@ -55,16 +47,10 @@ may render and run that declared command after a successful action and generic
 condition check. Do not invent an extra continuation plan in prose, and do not
 ask a leader pane to pick the next role.
 
-For a visible demo rehearsal, inspect the dry-run supervisor before execution:
-
-```bash
-loopx --format json auto-research demo-supervisor \
-  --goal-id "$LOOPX_GOAL_ID"
-```
-
-Only run with `--execute` when the user explicitly opted into starting visible
-local panes. The default rehearsal must not start Codex, write LoopX state, or
-spend quota by itself.
+For a visible demo rehearsal, `auto-research demo-supervisor` is read-only by
+default; use `--execute` only when the user opted into starting visible local
+panes. The default rehearsal must not start Codex, write LoopX state, or spend
+quota by itself.
 
 ## Role Resolution
 
@@ -170,61 +156,16 @@ Allowed actions:
 - create only the role-declared successor todo, such as a holdout validation
   todo, when the profile's `successor_todos.condition` is satisfied.
 
-Successor todo command example:
+Successor routing belongs here, not in a central projector: the role profile
+must name the target agent and provide the `todo_command_template`, typically a
+normal `loopx todo add ... --claimed-by {target_agent_id_shell}` command. The
+kernel only validates the target agent and executes the normal LoopX todo
+writer.
 
-```bash
-loopx todo add --goal-id "$LOOPX_GOAL_ID" --role agent \
-  --text "$LOOPX_SUCCESSOR_TODO_TEXT" \
-  --task-class advancement_task \
-  --action-kind run_holdout_eval \
-  --claimed-by codex-main-control \
-  --unblocks-todo-id "$LOOPX_SELECTED_TODO_ID"
-```
-
-This skill owns the role-local routing intent; the kernel only validates the
-target agent and executes the normal LoopX todo writer.
-
-Useful command after a protected eval result exists:
-
-```bash
-loopx --format json auto-research evidence \
-  --contract "$RESEARCH_CONTRACT_JSON" \
-  --eval-result "$EVAL_RESULT_JSON" \
-  --hypothesis-id "$HYPOTHESIS_ID" \
-  --todo-id "$TODO_ID" \
-  --agent-id "$LOOPX_AGENT_ID" \
-  --claimed-by "$LOOPX_AGENT_ID" \
-  --mechanism-family "$MECHANISM_FAMILY" \
-  --hypothesis "$HYPOTHESIS_TEXT"
-```
-
-Append only after review of the packet and boundary:
-
-```bash
-loopx --format json auto-research append-evidence \
-  --packet "$AUTO_RESEARCH_EVIDENCE_PACKET_JSON" \
-  --dry-run
-
-append_result="${APPEND_RESULT_JSON:-.local/evidence-runner/append-result.public.json}"
-loopx --format json auto-research append-evidence \
-  --packet "$AUTO_RESEARCH_EVIDENCE_PACKET_JSON" \
-  --output "$append_result"
-```
-
-After a real append succeeds in a visible lane, capture compact live evidence
-from the lane-authored packet and append result:
-
-```bash
-live_evidence="${LIVE_CODEX_E2E_EVIDENCE_JSON:-.local/evidence-runner/live-codex-e2e-evidence.public.json}"
-loopx --format json auto-research capture-live-evidence \
-  --packet "$AUTO_RESEARCH_EVIDENCE_PACKET_JSON" \
-  --append-result "$append_result" \
-  --agent-id "$LOOPX_AGENT_ID" \
-  --lane-count "${LOOPX_VISIBLE_LANE_COUNT:-1}" \
-  --visible-lanes-accepted \
-  --output "$live_evidence" \
-  --execute
-```
+Evidence writeback should use the auto-research worker-turn/evidence commands
+exposed by the current LoopX state. Append only after reviewing packet boundary,
+then capture compact live evidence from the lane-authored packet when visible
+lanes are accepted.
 
 Must not:
 

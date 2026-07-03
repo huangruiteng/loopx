@@ -90,6 +90,10 @@ Example product recipe:
 The kernel expands that spec into a visible launcher packet with role profiles,
 scoped LoopX wrappers, `$LOOPX_PANE_A2A_TICK`, artifact-only machine JSON, and
 tmux host controls.
+Every pane also receives the generic `$loopx-project` and `$loopx-doc-registry`
+skill hints from the kernel role prompt. Product worker skills should not copy
+those generic project/doc-registry instructions; they should only say how this
+role decides, writes evidence, and hands off todos.
 
 ## Worker Skill Snippet
 
@@ -152,11 +156,7 @@ loopx multi-agent launch \
 For the auto-research preset, the product path remains:
 
 ```bash
-loopx auto-research demo-e2e \
-  --agent-id codex-side-bypass \
-  --reasoning-effort high \
-  --execute \
-  --replace-existing
+loopx auto-research start "<open question>" --execute
 ```
 
 Both commands should open real interactive Codex CLI TUI panes. The first

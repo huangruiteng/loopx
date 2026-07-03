@@ -141,7 +141,14 @@ def main() -> int:
     assert driver["broadcaster"]["decides_work"] is False, driver
     assert driver["pane"]["decision_owner"] == "codex_tui_agent_via_loopx_state", driver
     assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
-    assert runner["role_prompt_and_skill"]["worker_local_skill_only"] is True, runner
+    assert runner["role_prompt_and_skill"]["default_kernel_skills"] == [
+        "loopx-project",
+        "loopx-doc-registry",
+    ], runner
+    assert (
+        runner["role_prompt_and_skill"]["worker_local_skill_scope"]
+        == "role_specific_semantics_only"
+    ), runner
     assert runner["boundaries"]["domain_specific_research_logic"] is False, runner
     direct_runner = build_tui_multi_agent_runner_contract(
         session_name="loopx-direct-kernel-smoke",

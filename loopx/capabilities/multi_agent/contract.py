@@ -17,11 +17,13 @@ GENERIC_MULTI_AGENT_COMPACT_STATUS_SCHEMA_VERSION = "generic_multi_agent_compact
 THREE_LAYER_MINIMALITY_CONTRACT_SCHEMA_VERSION = (
     "multi_agent_three_layer_minimality_contract_v0"
 )
+GENERIC_MULTI_AGENT_DEFAULT_KERNEL_SKILLS = ("loopx-project", "loopx-doc-registry")
 
 PANE_LOCAL_A2A_WAKEUP_PROMPT = (
     "LoopX pane-local A2A wakeup: read $LOOPX_CODEX_TUI_PROMPT_ARTIFACT for role/scope if needed. "
-    "First inspect $LOOPX_PANE_TICK_SUMMARY and summarize completed launcher pre-tick evidence when present; "
-    "only run $LOOPX_PANE_A2A_TICK if that summary is missing, the user asked for another round, or a fresh own-frontier check shows runnable work. "
+    "Treat this fixed wake as a fresh decentralized round. "
+    "Inspect $LOOPX_PANE_TICK_SUMMARY only as prior launcher pre-tick evidence, then read your own LoopX quota/frontier. "
+    "Run the bounded $LOOPX_PANE_A2A_TICK once when your own state shows runnable work or the user asked for another round. "
     "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
     "if no runnable frontier remains, stay quiet with a brief no-action note; "
     "if advanced, summarize public evidence and next handoff. "
@@ -95,6 +97,7 @@ def build_generic_role_profile(
         "agent_scope": scope,
         "responsibility": responsibility,
         "handoff_hints": handoff_hints,
+        "default_kernel_skills": list(GENERIC_MULTI_AGENT_DEFAULT_KERNEL_SKILLS),
     }
     if isinstance(extra_profile, dict):
         role_profile.update(extra_profile)
@@ -124,11 +127,21 @@ def generic_role_prompt(
     lines.extend(
         [
             "",
+            "Default LoopX skills:",
+            "- Use $loopx-project for LoopX state, quota/frontier, todo, rationale, and repo-goal coordination.",
+            "- Use $loopx-doc-registry when durable project material, wiki/doc authority, or source registration matters.",
+            "- Keep worker-local skills focused on role semantics; generic LoopX mechanics belong to the kernel prompt and state.",
+        ]
+    )
+    lines.extend(
+        [
+            "",
             "How to work:",
             "- Treat LoopX state as the shared A2A surface.",
             "- The launcher runs `$LOOPX_PANE_A2A_TICK` before this Codex TUI opens.",
-            "- First inspect `$LOOPX_PANE_TICK_SUMMARY`; if it shows completed launcher rounds, summarize that evidence instead of immediately rerunning the tick.",
-            "- Rerun `$LOOPX_PANE_A2A_TICK` only when the summary is missing, the user asks for another round, or a fresh own-frontier check shows runnable work.",
+            "- Treat `$LOOPX_PANE_TICK_SUMMARY` as previous evidence; it is not a gate that cancels later fixed wakes.",
+            "- On each fixed wake, read your own LoopX quota/frontier and run the bounded `$LOOPX_PANE_A2A_TICK` once when runnable work remains or the user asks for another round.",
+            "- If no runnable frontier remains, stay quiet with a brief no-action note.",
             "- The tick reads your quota/frontier and then runs this role's worker-turn when configured.",
             "- When the tick completes, summarize what changed, what remains blocked, and stay interactive for user takeover.",
             "- For machine reads, run `$LOOPX_PANE_LOOPX_JSON` as the command and redirect output into `$LOOPX_PANE_ARTIFACT_DIR/<name>.public.json`; it defaults to `--format json`.",
@@ -163,6 +176,8 @@ def build_decentralized_a2a_driver_contract(
             "target_role_embedded": False,
             "target_role_artifact_ref": "$LOOPX_CODEX_TUI_PROMPT_ARTIFACT",
             "pre_tick_summary_ref": "$LOOPX_PANE_TICK_SUMMARY",
+            "wake_round": "fresh_agent_scoped_quota_frontier_check",
+            "pre_tick_summary_semantics": "prior_evidence_not_a_tick_skip_gate",
         },
         "broadcaster": {
             "command": wake_command,
@@ -178,13 +193,13 @@ def build_decentralized_a2a_driver_contract(
             "decision_owner": "codex_tui_agent_via_loopx_state",
             "tick_command": "$LOOPX_PANE_A2A_TICK",
             "first_action": "launcher_pre_tui_tick",
-            "cadence_action": "fixed_prompt_wakeup_then_pre_tick_review_or_local_tick",
+            "cadence_action": "fixed_prompt_wakeup_then_own_quota_frontier_tick_when_runnable",
             "reads": [
                 "own_LOOPX_GOAL_ID",
                 "own_LOOPX_AGENT_ID",
-                "quota_should_run",
-                "agent_scoped_frontier",
-                "launcher_pre_tick_summary",
+                "own_quota_should_run",
+                "own_agent_scoped_frontier",
+                "launcher_pre_tick_summary_evidence",
             ],
             "may_run": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
             "writes": ["public_safe_evidence", "todo_completion_when_worker_turn_configured"],
@@ -205,6 +220,7 @@ def build_decentralized_a2a_driver_contract(
             "broadcaster_is_not_workflow": True,
             "no_leader_frontier_scan": True,
             "each_pane_decides_from_state": True,
+            "pre_tick_summary_does_not_gate_wake_tick": True,
             "user_and_preset_do_not_own_tick_driver": True,
         },
     }
@@ -273,20 +289,21 @@ def build_tui_multi_agent_runner_contract(
         "role_prompt_and_skill": {
             "bootstrap_prompt": "written_to_public_artifact_for_fixed_wake_context",
             "role_profile": "role-local public json artifact",
+            "default_kernel_skills": list(GENERIC_MULTI_AGENT_DEFAULT_KERNEL_SKILLS),
             "skill_materialization": ".codex/skills/<skill>/SKILL.md",
-            "worker_local_skill_only": True,
+            "worker_local_skill_scope": "role_specific_semantics_only",
         },
         "decentralized_a2a_driver": driver_contract,
         "pane_local_a2a": {
             "tick_command": driver_contract["pane"]["tick_command"],
             "first_action": (
                 "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens; "
-                "live wake reviews $LOOPX_PANE_TICK_SUMMARY before rerun"
+                "live wake checks own quota/frontier and ticks when runnable"
             ),
             "cadence_wakeup_command": driver_contract["broadcaster"]["command"],
             "cadence_wakeup_model": driver_contract["broadcaster"]["model"],
             "cadence_broadcaster_decides_work": driver_contract["broadcaster"]["decides_work"],
-            "reads": ["pre-tick summary", "quota should-run", "agent-scoped frontier"],
+            "reads": ["pre-tick evidence", "own quota should-run", "own agent-scoped frontier"],
             "runs": driver_contract["pane"]["may_run"],
             "bounded_rounds_env": driver_contract["pane"]["rounds_env"],
             "rounds_artifact": driver_contract["pane"]["rounds_artifact"],
@@ -417,7 +434,7 @@ def build_compact_human_status(payload: dict[str, object]) -> dict[str, object]:
         "roles": role_summaries,
         "attach": commands.get("attach"),
         "stop": commands.get("stop"),
-        "first_action": "pre_tick_summary_then_$LOOPX_PANE_A2A_TICK_when_needed",
+        "first_action": "$LOOPX_PANE_A2A_TICK",
         "driver_model": driver.get("driver_model")
         or "fixed_prompt_broadcast_plus_pane_local_state_tick",
         "coordination_pattern": driver.get("coordination_pattern")

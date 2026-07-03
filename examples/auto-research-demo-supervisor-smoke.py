@@ -127,7 +127,14 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert driver["owner_layer"] == "generic_multi_agent_kernel", driver
     assert driver["broadcaster"]["decides_work"] is False, driver
     assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
-    assert runner["role_prompt_and_skill"]["worker_local_skill_only"] is True, runner
+    assert runner["role_prompt_and_skill"]["default_kernel_skills"] == [
+        "loopx-project",
+        "loopx-doc-registry",
+    ], runner
+    assert (
+        runner["role_prompt_and_skill"]["worker_local_skill_scope"]
+        == "role_specific_semantics_only"
+    ), runner
 
     tui = payload["interactive_tui_contract"]
     assert tui["codex_surface"] == "interactive_cli_tui", tui
@@ -359,7 +366,7 @@ def main() -> int:
     assert "accept when:" not in markdown, markdown
     assert "tmux attach -t loopx-auto-research" in markdown, markdown
     assert "start_script: `machine_json_only`" in markdown, markdown
-    assert "loopx auto-research demo-e2e --execute" in markdown, markdown
+    assert 'loopx auto-research start "<open question>" --execute' in markdown, markdown
     assert "tmux new-session" not in markdown, markdown
     assert "LOOPX_ROLE_PROFILE_JSON" not in markdown, markdown
 

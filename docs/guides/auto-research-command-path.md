@@ -77,6 +77,9 @@ runs its own `$LOOPX_PANE_A2A_TICK` against LoopX quota/frontier state and write
 compact public evidence before the operator takes over. This is still
 decentralized A2A, not a workflow driver: the broadcaster does not select todos,
 run worker turns, or write LoopX state.
+The launcher pre-tick summary is prior evidence for the pane to read, not a
+skip gate for the fixed wake. Later wake rounds still ask each role to check its
+own LoopX state and tick when runnable work remains.
 
 The user still only supplies one open question; agent ids, pane-local tick
 commands, evidence schemas, and runner wiring stay inside the kernel. Pass
@@ -304,28 +307,29 @@ The one-command E2E path must not record raw logs, private artifacts,
 credentials, or local absolute workspace paths. It writes only public rollout
 evidence through the normal LoopX runtime root when `--execute` is present.
 
-## 1. Preview The One-Command Demo
+## 1. Preview The One-Command Start
 
-The default path starts from a fresh demo-local goal surface and visible Codex
-TUI lanes. It does not reuse the internal default goal unless
-`--inherit-default-goal` is passed.
+The default user path starts from one open question and previews the visible
+Codex TUI lane packet without starting processes.
 
 ```bash
-loopx --format json auto-research demo-e2e \
-  --agent-id codex-side-bypass
+loopx --format json auto-research start \
+  "How should we evaluate autonomous research agents?"
 ```
 
 When the preview is acceptable, launch the visible lanes:
 
 ```bash
-loopx --format json auto-research demo-e2e \
-  --agent-id codex-side-bypass \
+loopx --format json auto-research start \
+  "How should we evaluate autonomous research agents?" \
   --execute
 ```
 
-The visible lanes use the same tiny kernel path as the headless proof:
-frontier/todo selection, built-in lightweight metric evidence, rollout append,
-and compact live evidence. Raw JSON is written only to local artifacts.
+The visible lanes use the same tiny kernel path as the maintainer E2E proof:
+frontier/todo selection, role-local worker-turn, rollout append, and compact
+live evidence. Raw JSON is written only to local artifacts. Lower-level
+`demo-e2e` commands remain available for maintainers, but they are not the
+user-facing entrypoint.
 
 ## 2. Inspect The Visible Employee Plan
 

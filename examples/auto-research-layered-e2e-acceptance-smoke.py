@@ -160,7 +160,14 @@ def assert_three_layer_minimality() -> None:
     assert runner["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", runner
     assert runner["pane_local_a2a"]["human_default"] == "markdown_status_inside_codex_tui", runner
     assert runner["pane_local_a2a"]["machine_json_destination"] == "$LOOPX_PANE_ARTIFACT_DIR/*.public.json", runner
-    assert runner["role_prompt_and_skill"]["worker_local_skill_only"] is True, runner
+    assert runner["role_prompt_and_skill"]["default_kernel_skills"] == [
+        "loopx-project",
+        "loopx-doc-registry",
+    ], runner
+    assert (
+        runner["role_prompt_and_skill"]["worker_local_skill_scope"]
+        == "role_specific_semantics_only"
+    ), runner
 
     lanes = supervisor["lanes"]
     assert len(lanes) == 4, supervisor

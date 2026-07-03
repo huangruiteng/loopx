@@ -63,6 +63,9 @@ def main() -> int:
         "worker-local role playbook",
         "not a global LoopX skill",
         "Identity comes from LoopX control-plane metadata",
+        "Pane Tick Contract",
+        "$loopx-project",
+        "$loopx-doc-registry",
         "auto_research_role_profile_v0",
         'loopx --format json auto-research frontier --goal-id "$LOOPX_GOAL_ID" --agent-id "$LOOPX_AGENT_ID"',
         "No role owns the full graph",
@@ -91,6 +94,7 @@ def main() -> int:
         "leader agent required",
         "coordinator owns the graph",
         "promote without evidence",
+        "First Commands",
     ]
     lowered = compact_skill.lower()
     for term in forbidden_skill_terms:
