@@ -153,24 +153,43 @@ def next_action_projection_warning(
         return None
     if actions_are_projection_aligned(active_text, latest_text):
         return None
+    lane_preserves_goal_next_action = (
+        isinstance(agent_lane_next_action, dict)
+        and agent_lane_next_action.get("preserves_goal_next_action") is True
+    )
     warning: dict[str, Any] = {
         "schema_version": NEXT_ACTION_PROJECTION_WARNING_SCHEMA_VERSION,
         "kind": "next_action_projection_mismatch",
-        "severity": "warning",
-        "requires_state_writeback": True,
+        "severity": "info" if lane_preserves_goal_next_action else "warning",
+        "requires_state_writeback": not lane_preserves_goal_next_action,
         "active_state_next_action": active_text,
         "latest_run_recommended_action": latest_text,
-        "reason": (
+    }
+    if lane_preserves_goal_next_action:
+        warning["reason"] = (
+            "current agent lane action differs from the durable goal route while "
+            "explicitly preserving the active-state Next Action"
+        )
+        warning["recommended_action"] = (
+            "run the agent-lane action without mutating active-state Next Action; "
+            "only the primary/goal route should write a new durable Next Action"
+        )
+    else:
+        warning["reason"] = (
             "latest run recommended_action differs from the durable active-state "
             "Next Action"
-        ),
-        "recommended_action": (
+        )
+        warning["recommended_action"] = (
             "if the latest run action is the intended durable route, write it back "
             "explicitly with refresh-state --next-action; otherwise keep treating "
             "the run recommendation and active-state Next Action as separate signals"
-        ),
-    }
-    lane_text = _action_projection_text(agent_lane_next_action)
+        )
+    lane_value = (
+        agent_lane_next_action.get("text")
+        if isinstance(agent_lane_next_action, dict)
+        else agent_lane_next_action
+    )
+    lane_text = _action_projection_text(lane_value)
     if lane_text:
         warning["agent_lane_next_action"] = lane_text
     return warning

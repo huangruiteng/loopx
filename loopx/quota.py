@@ -7396,14 +7396,10 @@ def build_quota_should_run(
             or project_asset.get("latest_run_recommended_action"),
             limit=320,
         )
-        agent_lane_next_action_text = _protocol_action_text(
-            agent_lane_next_action.get("text") if isinstance(agent_lane_next_action, dict) else None,
-            limit=320,
-        )
         next_action_warning = next_action_projection_warning(
             active_state_next_action=active_state_next_action_text,
             latest_run_recommended_action=latest_run_recommended_action_text,
-            agent_lane_next_action=agent_lane_next_action_text,
+            agent_lane_next_action=agent_lane_next_action,
         )
         goal_route_hint = build_goal_route_hint(
             agent_identity=agent_identity,

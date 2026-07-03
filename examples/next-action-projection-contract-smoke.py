@@ -184,7 +184,10 @@ def main() -> None:
             assert first_item["next_action_projection_warning"]["requires_state_writeback"] is True, first_item
             assert first_decision["active_state_next_action"] == ACTIVE_NEXT_ACTION, first_decision
             assert first_decision["latest_run_recommended_action"] == RUN_RECOMMENDATION, first_decision
-            assert first_decision["next_action_projection_warning"]["requires_state_writeback"] is True, first_decision
+            first_warning = first_decision["next_action_projection_warning"]
+            assert first_warning["severity"] == "info", first_decision
+            assert first_warning["requires_state_writeback"] is False, first_decision
+            assert first_warning["agent_lane_next_action"] == "[P1] Polish the hosted frontstage public case card.", first_decision
 
             state_refresh.now_local = lambda: "2026-06-22T00:02:00+00:00"
             explicit_payload = state_refresh.refresh_state_run(
@@ -223,9 +226,19 @@ def main() -> None:
             assert lane["todo_id"] == "todo_side", second_decision
             assert lane["title"] == SIDE_AGENT_ACTION, second_decision
             assert SIDE_AGENT_ACTION in lane["text"], second_decision
+            warning = second_decision["next_action_projection_warning"]
+            assert warning["severity"] == "info", second_decision
+            assert warning["requires_state_writeback"] is False, second_decision
             assert (
-                second_decision["next_action_projection_warning"]["agent_lane_next_action"]
-                == lane["text"]
+                warning["reason"]
+                == "current agent lane action differs from the durable goal route while explicitly preserving the active-state Next Action"
+            ), second_decision
+            assert (
+                warning["recommended_action"]
+                == "run the agent-lane action without mutating active-state Next Action; only the primary/goal route should write a new durable Next Action"
+            ), second_decision
+            assert (
+                warning["agent_lane_next_action"] == lane["text"]
             ), second_decision
             assert "active_state_next_action" in status_markdown, status_markdown
             assert "latest_run_recommended_action" in status_markdown, status_markdown
