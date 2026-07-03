@@ -1803,6 +1803,14 @@ def assert_side_agent_replans_when_deferred_successor_is_ready() -> None:
     assert frontier["quiet_noop_allowed"] is False, frontier
     assert frontier["requires_replan"] is True, frontier
     assert frontier["deferred_resume_candidates"][0]["todo_id"] == "todo_issue_surface_deferred", frontier
+    goal_frontier = guard["goal_frontier_projection"]
+    deferred_successors = goal_frontier["deferred_successors"]
+    assert deferred_successors["ready_count"] == 1, goal_frontier
+    assert deferred_successors["blocked_count"] == 0, goal_frontier
+    assert deferred_successors["current_agent_ready_count"] == 1, goal_frontier
+    assert deferred_successors["top_ready_todo_id"] == "todo_issue_surface_deferred", goal_frontier
+    assert deferred_successors["ready_todo_ids"] == ["todo_issue_surface_deferred"], goal_frontier
+    assert goal_frontier["acceptance_gaps"] == [], goal_frontier
     hint = guard["agent_lane_frontier_hint"]
     assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
     assert hint["decision"] == "add_next_advancement", hint
