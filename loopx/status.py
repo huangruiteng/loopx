@@ -83,6 +83,8 @@ from .projections.autonomous_candidates import (
 )
 from .projections.monitor_display import (
     attention_item_is_monitor_quiet_display_candidate as _attention_item_is_monitor_quiet_display_candidate,
+    normalize_monitor_quiet_attention_display as _normalize_monitor_quiet_attention_display,
+    quiet_monitor_display_action as _quiet_monitor_display_action,
     todo_summary_lane_items as _todo_summary_lane_items,
     todo_summary_open_count as _todo_summary_open_count,
 )
@@ -8343,51 +8345,21 @@ def attention_item_is_monitor_quiet_display_candidate(item: dict[str, Any]) -> b
 
 
 def quiet_monitor_display_action(raw_action: str | None) -> str:
-    action = str(raw_action or "").strip()
-    if not action:
-        return MONITOR_DISPLAY_FALLBACK_ACTION
-    lowered = action.lower()
-    if lowered.startswith("no immediate agent work"):
-        return action
-    if lowered.startswith("quiet monitor only until "):
-        suffix = action[len("Quiet monitor only until ") :].strip()
-        if suffix:
-            return f"No immediate agent work; keep the monitor quiet until {suffix}"
-    if lowered.startswith("wait quietly"):
-        return f"No immediate agent work; {action[0].lower()}{action[1:]}"
-    return f"No immediate agent work; monitor quietly. Context: {action}"
+    return _quiet_monitor_display_action(
+        raw_action,
+        fallback_action=MONITOR_DISPLAY_FALLBACK_ACTION,
+    )
 
 
 def normalize_monitor_quiet_attention_display(item: dict[str, Any]) -> None:
-    if not attention_item_is_monitor_quiet_display_candidate(item):
-        return
-    old_waiting_on = str(item.get("waiting_on") or "")
-    old_severity = str(item.get("severity") or "")
-    display_action = quiet_monitor_display_action(str(item.get("recommended_action") or ""))
-    item["execution_waiting_on"] = old_waiting_on
-    item["waiting_on"] = MONITOR_SIGNAL_WAITING_ON
-    item["severity"] = "watch"
-    item["recommended_action"] = display_action
-    item["monitor_display"] = {
-        "schema_version": MONITOR_DISPLAY_SCHEMA_VERSION,
-        "mode": "monitor_quiet",
-        "no_immediate_agent_work": True,
-        "execution_waiting_on": old_waiting_on,
-        "execution_severity": old_severity,
-        "waiting_on": MONITOR_SIGNAL_WAITING_ON,
-        "severity": "watch",
-        "material_transition": (
-            "write back only a material monitor transition, regression, or concrete blocker"
-        ),
-    }
-    project_asset = item.get("project_asset")
-    if isinstance(project_asset, dict):
-        project_asset["owner"] = MONITOR_SIGNAL_WAITING_ON
-        project_asset["gate"] = "none"
-        project_asset["support_mode"] = "read_only_observer"
-        project_asset["next_action"] = display_action
-        project_asset["stop_condition"] = MONITOR_DISPLAY_STOP_CONDITION
-        project_asset["monitor_display"] = dict(item["monitor_display"])
+    _normalize_monitor_quiet_attention_display(
+        item,
+        is_monitor_quiet_display_candidate=attention_item_is_monitor_quiet_display_candidate,
+        display_fallback_action=MONITOR_DISPLAY_FALLBACK_ACTION,
+        monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
+        monitor_display_schema_version=MONITOR_DISPLAY_SCHEMA_VERSION,
+        monitor_display_stop_condition=MONITOR_DISPLAY_STOP_CONDITION,
+    )
 
 
 def compact_global_registry_shadow_finding(finding: dict[str, Any]) -> dict[str, Any]:

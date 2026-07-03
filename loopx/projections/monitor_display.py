@@ -78,3 +78,66 @@ def attention_item_is_monitor_quiet_display_candidate(
     if any(todo_item_is_actionable_open(todo) for todo in executable_items):
         return False
     return len(monitor_items) == open_count
+
+
+def quiet_monitor_display_action(
+    raw_action: str | None,
+    *,
+    fallback_action: str,
+) -> str:
+    action = str(raw_action or "").strip()
+    if not action:
+        return fallback_action
+    lowered = action.lower()
+    if lowered.startswith("no immediate agent work"):
+        return action
+    if lowered.startswith("quiet monitor only until "):
+        suffix = action[len("Quiet monitor only until ") :].strip()
+        if suffix:
+            return f"No immediate agent work; keep the monitor quiet until {suffix}"
+    if lowered.startswith("wait quietly"):
+        return f"No immediate agent work; {action[0].lower()}{action[1:]}"
+    return f"No immediate agent work; monitor quietly. Context: {action}"
+
+
+def normalize_monitor_quiet_attention_display(
+    item: dict[str, Any],
+    *,
+    is_monitor_quiet_display_candidate: Callable[[dict[str, Any]], bool],
+    display_fallback_action: str,
+    monitor_signal_waiting_on: str,
+    monitor_display_schema_version: str,
+    monitor_display_stop_condition: str,
+) -> None:
+    if not is_monitor_quiet_display_candidate(item):
+        return
+    old_waiting_on = str(item.get("waiting_on") or "")
+    old_severity = str(item.get("severity") or "")
+    display_action = quiet_monitor_display_action(
+        str(item.get("recommended_action") or ""),
+        fallback_action=display_fallback_action,
+    )
+    item["execution_waiting_on"] = old_waiting_on
+    item["waiting_on"] = monitor_signal_waiting_on
+    item["severity"] = "watch"
+    item["recommended_action"] = display_action
+    item["monitor_display"] = {
+        "schema_version": monitor_display_schema_version,
+        "mode": "monitor_quiet",
+        "no_immediate_agent_work": True,
+        "execution_waiting_on": old_waiting_on,
+        "execution_severity": old_severity,
+        "waiting_on": monitor_signal_waiting_on,
+        "severity": "watch",
+        "material_transition": (
+            "write back only a material monitor transition, regression, or concrete blocker"
+        ),
+    }
+    project_asset = item.get("project_asset")
+    if isinstance(project_asset, dict):
+        project_asset["owner"] = monitor_signal_waiting_on
+        project_asset["gate"] = "none"
+        project_asset["support_mode"] = "read_only_observer"
+        project_asset["next_action"] = display_action
+        project_asset["stop_condition"] = monitor_display_stop_condition
+        project_asset["monitor_display"] = dict(item["monitor_display"])
