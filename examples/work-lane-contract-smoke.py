@@ -245,7 +245,7 @@ def assert_contract_word_alone_does_not_trigger_outcome_followthrough() -> None:
     assert "outcome_followthrough" not in lane, lane
 
 
-def assert_monitor_only_todo_waits_quietly() -> None:
+def assert_monitor_only_todo_requires_replan_before_quiet() -> None:
     guard = build_quota_should_run(
         status_payload(
             status="typed_task_lane_planning_writeback",
@@ -269,10 +269,10 @@ def assert_monitor_only_todo_waits_quietly() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["decision"] == "skip", guard
-    assert guard["should_run"] is False, guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
     assert guard["normal_delivery_allowed"] is False, guard
-    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["schema_version"] == "work_lane_contract_v1", lane
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "todo_monitor", lane
@@ -280,14 +280,21 @@ def assert_monitor_only_todo_waits_quietly() -> None:
     assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
     assert lane["must_attempt_work"] is False, lane
     assert lane["reason_codes"] == ["monitor_todo_only"], lane
-    assert guard["heartbeat_recommendation"]["recommended_mode"] == "monitor_quiet_until_material_transition", guard
-    assert guard["execution_obligation"]["kind"] == "monitor_quiet_skip", guard
-    assert guard["execution_obligation"]["must_attempt_work"] is False, guard
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+    assert guard["execution_obligation"]["kind"] == "autonomous_replan_required", guard
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
+    assert guard["autonomous_replan_decision"]["not_disturbed_by"] == [
+        "monitor_quiet_skip",
+        "agent_scope_wait",
+        "agent_scope_exhausted",
+    ], guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert [item["task_class"] for item in first_items] == ["continuous_monitor", "continuous_monitor"], guard
     markdown = render_quota_should_run_markdown(guard)
     assert "work_lane_contract: lane=continuous_monitor next=continuous_monitor" in markdown, markdown
     assert "obligation=quiet_until_material_monitor_transition" in markdown, markdown
+    assert "autonomous_replan_decision: decision=autonomous_replan_required" in markdown, markdown
 
 
 def assert_monitor_only_with_user_todo_surfaces_user_action_without_transition() -> None:
@@ -671,9 +678,13 @@ def assert_structured_monitor_registration_beats_action_text() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["should_run"] is False, guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
     first_items = guard["agent_todo_summary"]["first_open_items"]
     assert first_items[0]["task_class"] == TODO_TASK_CLASS_MONITOR, guard
     assert first_items[0]["action_kind"] == "monitor", guard
@@ -715,7 +726,7 @@ def assert_mixed_monitor_and_advancement_routes_to_advancement() -> None:
     assert [item["task_class"] for item in first_items] == ["advancement_task", "continuous_monitor"], guard
 
 
-def assert_not_due_monitor_only_waits_quietly() -> None:
+def assert_not_due_monitor_only_requires_replan_before_quiet() -> None:
     guard = build_quota_should_run(
         status_payload(
             status="monitor_schedule_waiting",
@@ -735,11 +746,13 @@ def assert_not_due_monitor_only_waits_quietly() -> None:
         goal_id=GOAL_ID,
     )
     lane = guard["work_lane_contract"]
-    assert guard["decision"] == "skip", guard
-    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "todo_monitor", lane
     assert lane["must_attempt_work"] is False, lane
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == "autonomous_replan_required", guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
     assert guard["agent_todo_summary"]["monitor_due_count"] == 0, guard
 
 
@@ -1229,19 +1242,17 @@ def assert_side_agent_monitor_watch_without_handle_stays_quiet() -> None:
         agent_id="codex-side-bypass",
     )
     lane = guard["work_lane_contract"]
-    assert guard["decision"] == "skip", guard
-    assert guard["should_run"] is False, guard
-    assert guard["effective_action"] == "monitor_quiet_skip", guard
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
     assert lane["lane"] == "continuous_monitor", lane
     assert lane["monitor_kind"] == "todo_monitor", lane
     assert lane["must_attempt_work"] is False, lane
     assert "external_evidence_observation" not in guard, guard
-    assert guard["execution_obligation"]["must_attempt_work"] is False, guard
+    assert guard["execution_obligation"]["must_attempt_work"] is True, guard
     interaction = guard["interaction_contract"]
-    assert interaction["mode"] == "monitor_quiet_skip", interaction
-    assert interaction["agent_channel"]["quiet_noop_allowed"] is True, interaction
-    hint = guard["agent_lane_frontier_hint"]
-    assert hint["reason_code"] == "only_current_agent_monitor_work_remains", hint
+    assert interaction["mode"] == "autonomous_replan", interaction
+    assert interaction["agent_channel"]["quiet_noop_allowed"] is False, interaction
 
 
 def assert_side_agent_monitor_watch_with_handle_requires_observation() -> None:
@@ -2246,7 +2257,7 @@ def main() -> int:
     assert_structured_surface_only_run_requires_outcome_followthrough()
     assert_blocker_writeback_satisfies_contract_followthrough()
     assert_contract_word_alone_does_not_trigger_outcome_followthrough()
-    assert_monitor_only_todo_waits_quietly()
+    assert_monitor_only_todo_requires_replan_before_quiet()
     assert_monitor_only_with_user_todo_surfaces_user_action_without_transition()
     assert_blocked_agent_todo_with_user_gate_notifies_without_execution()
     assert_monitor_only_with_planning_next_action_materializes_advancement()
@@ -2256,7 +2267,7 @@ def main() -> int:
     assert_structured_todo_lane_registration_beats_text_fallback()
     assert_structured_monitor_registration_beats_action_text()
     assert_mixed_monitor_and_advancement_routes_to_advancement()
-    assert_not_due_monitor_only_waits_quietly()
+    assert_not_due_monitor_only_requires_replan_before_quiet()
     assert_due_monitor_only_requires_attempt()
     assert_due_monitor_lower_priority_does_not_preempt_advancement()
     assert_due_monitor_higher_priority_preempts_advancement()

@@ -193,16 +193,16 @@ def assert_blocked_priority_fallback_visible() -> None:
     )
     assert decision["should_run"] is True, decision
     fallback = decision["blocked_priority_fallback"]
-    assert fallback["notify_user"] is True, fallback
+    assert fallback["notify_user"] is False, fallback
     assert fallback["requires_user_action"] is False, fallback
     assert fallback["blocked_items"][0]["text"] == BLOCKED_CORE_TODO, fallback
     assert fallback["selected_executable"]["text"] == FALLBACK_TODO, fallback
-    assert decision["heartbeat_recommendation"]["notify"] == "NOTIFY", decision
+    assert decision["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", decision
     user_channel = decision["interaction_contract"]["user_channel"]
     assert user_channel["action_required"] is False, user_channel
-    assert user_channel["notify"] == "NOTIFY", user_channel
+    assert user_channel["notify"] == "DONT_NOTIFY", user_channel
     markdown = render_quota_should_run_markdown(decision)
-    assert "blocked_priority_fallback: notify_user=True" in markdown, markdown
+    assert "blocked_priority_fallback: notify_user=False" in markdown, markdown
     assert f"blocked_priority_item[1]: {BLOCKED_CORE_TODO}" in markdown, markdown
     assert f"blocked_priority_selected: {FALLBACK_TODO}" in markdown, markdown
 

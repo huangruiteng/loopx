@@ -2593,7 +2593,7 @@ def _blocked_priority_fallback(
         "schema_version": "blocked_priority_fallback_v0",
         "kind": "blocked_priority_fallback",
         "severity": "warning",
-        "notify_user": True,
+        "notify_user": False,
         "requires_user_action": False,
         "reason": (
             "a higher-priority agent todo is blocked or deferred before the "
@@ -2602,7 +2602,7 @@ def _blocked_priority_fallback(
         "blocked_items": blocked_items[:3],
         "selected_executable": selected_item,
         "recommended_action": (
-            "Surface the blocked core todo and why fallback is being selected; "
+            "Keep the blocked core todo visible in status while selecting fallback; "
             "continue the fallback only if it still matches the latest user priority."
         ),
     }
@@ -4874,6 +4874,23 @@ def _interaction_spend_policy(
     return "no spend without validated transition"
 
 
+def _blocked_priority_fallback_user_reason(payload: dict[str, Any]) -> str | None:
+    fallback = (
+        payload.get("blocked_priority_fallback")
+        if isinstance(payload.get("blocked_priority_fallback"), dict)
+        else {}
+    )
+    if not fallback:
+        return None
+    if (
+        fallback.get("requires_user_action") is not True
+        and fallback.get("notify_user") is not True
+    ):
+        return None
+    reason = str(fallback.get("reason") or "").strip()
+    return reason or None
+
+
 def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     execution_obligation = (
         payload.get("execution_obligation")
@@ -4943,11 +4960,7 @@ def _interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
         payload.get("open_todo_notify_reason")
         or payload.get("gate_prompt")
         or payload.get("operator_question")
-        or (
-            payload.get("blocked_priority_fallback", {}).get("reason")
-            if isinstance(payload.get("blocked_priority_fallback"), dict)
-            else None
-        )
+        or _blocked_priority_fallback_user_reason(payload)
         or (
             payload.get("scoped_user_gate_fallback", {}).get("reason")
             if isinstance(payload.get("scoped_user_gate_fallback"), dict)
@@ -7212,11 +7225,15 @@ def build_quota_should_run(
         if blocked_priority_fallback and should_run:
             heartbeat_recommendation = {
                 **heartbeat_recommendation,
-                "notify": "NOTIFY",
-                "reason": blocked_priority_fallback.get("reason")
-                or heartbeat_recommendation.get("reason"),
                 "blocked_priority_fallback": blocked_priority_fallback,
             }
+            if blocked_priority_fallback.get("notify_user") is True:
+                heartbeat_recommendation = {
+                    **heartbeat_recommendation,
+                    "notify": "NOTIFY",
+                    "reason": blocked_priority_fallback.get("reason")
+                    or heartbeat_recommendation.get("reason"),
+                }
         external_evidence_observation = _external_evidence_observation_obligation(
             item,
             state=state,
