@@ -321,6 +321,7 @@ def _review_handoff_agent(
     *,
     coordination: dict[str, Any],
     profile: dict[str, Any],
+    identity: dict[str, Any],
     role: str | None,
 ) -> str | None:
     review_policy = profile.get("review_policy")
@@ -328,6 +329,9 @@ def _review_handoff_agent(
         handoff_agent = normalize_todo_claimed_by(review_policy.get("handoff_agent"))
         if handoff_agent:
             return handoff_agent
+    handoff_agent = normalize_todo_claimed_by(identity.get("handoff_agent"))
+    if handoff_agent:
+        return handoff_agent
     if role == "side-agent":
         return normalize_todo_claimed_by(coordination.get("side_agent_handoff_agent"))
     return None
@@ -431,6 +435,7 @@ def _build_agent_member_projection(
     handoff_agent = _review_handoff_agent(
         coordination=coordination,
         profile=profile,
+        identity=identity,
         role=role,
     )
     if handoff_agent:

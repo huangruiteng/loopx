@@ -30,7 +30,7 @@ from loopx.status import (  # noqa: E402
     render_status_markdown,
 )
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from loopx.cli_commands.status import attach_agent_lane_next_actions  # noqa: E402
+from loopx.cli_commands.status import attach_agent_lane_next_actions, _review_handoff_agent  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.handoff_budget import PROJECT_AGENT_HANDOFF_BUDGET  # noqa: E402
 
@@ -1608,6 +1608,27 @@ def assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list
     assert "claims=todo_selected_lane,todo_visible_stale_claim_0" in markdown, markdown
 
 
+def assert_status_agent_member_handoff_uses_quota_identity() -> None:
+    assert (
+        _review_handoff_agent(
+            coordination={},
+            profile={},
+            identity={"handoff_agent": "codex-product-capability"},
+            role="side-agent",
+        )
+        == "codex-product-capability"
+    )
+    assert (
+        _review_handoff_agent(
+            coordination={"side_agent_handoff_agent": "codex-main-control"},
+            profile={},
+            identity={"handoff_agent": "codex-product-capability"},
+            role="side-agent",
+        )
+        == "codex-product-capability"
+    )
+
+
 def assert_status_contract_health_projection() -> None:
     projection = build_contract_health_projection(
         {
@@ -2576,6 +2597,7 @@ def main() -> int:
     assert_promotion_readiness_warning_in_quota_guard()
     assert_status_agent_lane_next_action_projection()
     assert_status_agent_member_selected_lane_claim_survives_truncated_claim_list()
+    assert_status_agent_member_handoff_uses_quota_identity()
     assert_status_agent_lane_frontier_hint_projection()
     print("status-markdown-smoke ok")
     return 0
