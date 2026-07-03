@@ -103,6 +103,7 @@ from .projections.autonomous_replan_ack import (
 from .projections.autonomous_replan_obligation import (
     autonomous_replan_obligation_from_runs as _autonomous_replan_obligation_from_runs_read_model,
     autonomous_replan_periodic_review_from_runs as _autonomous_replan_periodic_review_from_runs_read_model,
+    build_autonomous_replan_obligation as _build_autonomous_replan_obligation_read_model,
     normalized_run_history_stall_signature as _normalized_run_history_stall_signature_read_model,
     run_history_monitor_target as _run_history_monitor_target_read_model,
     run_history_monitor_wait_already_acknowledged as _run_history_monitor_wait_already_acknowledged_read_model,
@@ -6134,130 +6135,15 @@ def build_autonomous_replan_obligation(
     *,
     agent_todos: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    if not evidence:
-        return None
-
-    dead_monitor_evidence = next(
-        (item for item in evidence if item.get("kind") == "dead_monitor_repeat"),
-        None,
+    return _build_autonomous_replan_obligation_read_model(
+        evidence,
+        agent_todos=agent_todos,
+        public_safe_compact_text=public_safe_compact_text,
+        autonomous_replan_schema_version=AUTONOMOUS_REPLAN_SCHEMA_VERSION,
+        autonomous_replan_stall_threshold=AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+        dead_monitor_repeat_threshold=DEAD_MONITOR_REPEAT_THRESHOLD,
+        dead_monitor_repeat_schema_version=DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
     )
-    first_open: dict[str, Any] = {}
-    if isinstance(agent_todos, dict):
-        open_items = agent_todos.get("first_open_items")
-        if isinstance(open_items, list) and open_items and isinstance(open_items[0], dict):
-            first_open = open_items[0]
-
-    todo_actions: list[dict[str, Any]] = []
-    first_open_text = public_safe_compact_text(first_open.get("text"), limit=140)
-    if first_open_text:
-        action: dict[str, Any] = {
-            "action": "split",
-            "role": "agent",
-            "text": first_open_text,
-        }
-        if first_open.get("priority"):
-            action["priority"] = first_open.get("priority")
-        todo_actions.append(action)
-    if dead_monitor_evidence:
-        todo_actions.append(
-            {
-                "action": "add",
-                "role": "agent",
-                "priority": "P1",
-                "text": (
-                    "resolve the repeated monitor target with watch-lane expiry, "
-                    "a concrete blocker, todo supersede, or successor runnable todo"
-                ),
-            }
-        )
-    else:
-        todo_actions.append(
-            {
-                "action": "add",
-                "role": "agent",
-                "priority": "P1",
-                "text": (
-                    "write a compact replan record naming trigger, selected next slice, "
-                    "validation command, and stop condition"
-                ),
-            }
-        )
-    if any(item.get("kind") in {"no_progress_streak", "repeated_action_loop"} for item in evidence):
-        todo_actions.append(
-            {
-                "action": "retire",
-                "role": "agent",
-                "priority": "P2",
-                "text": "retire or downgrade stale monitor-only next actions after the executable replan is selected",
-            }
-        )
-    if any(item.get("kind") in {"periodic_review", "periodic_review_due"} for item in evidence):
-        todo_actions.append(
-            {
-                "action": "ask_decision",
-                "role": "user",
-                "priority": "P2",
-                "text": (
-                    "ask the operator only if the review changes benchmark family, public claims, "
-                    "resource budget, or protected scope"
-                ),
-            }
-        )
-
-    if dead_monitor_evidence:
-        recommended_action = (
-            "resolve a dead monitor loop: record watch-lane continuation with expiry, "
-            "a concrete blocker, todo supersede, or successor runnable todo before "
-            "another quiet monitor poll"
-        )
-    elif any(item.get("kind") in {"periodic_review", "periodic_review_due"} for item in evidence):
-        recommended_action = (
-            "run a bounded autonomous periodic review: keep, split, add, retire, or ask for "
-            "a decision; then update todos and select the next validated slice"
-        )
-    else:
-        recommended_action = (
-            "run an autonomous replan after two consecutive stalled turns before another "
-            "monitor-only or repeated action consumes the eligible turn"
-        )
-
-    result = {
-        "schema_version": AUTONOMOUS_REPLAN_SCHEMA_VERSION,
-        "required": True,
-        "stall_threshold": (
-            DEAD_MONITOR_REPEAT_THRESHOLD
-            if dead_monitor_evidence
-            else AUTONOMOUS_REPLAN_STALL_THRESHOLD
-        ),
-        "trigger_count": len(evidence),
-        "triggers": evidence,
-        "guidance_actions": (
-            ["set_watch_expiry", "write_blocker", "supersede_monitor", "create_successor"]
-            if dead_monitor_evidence
-            else ["keep", "split", "add", "retire", "ask_decision"]
-        ),
-        "todo_actions": todo_actions[:3],
-        "next_validation_command": "python3 examples/autonomous-replan-obligation-smoke.py",
-        "stop_condition": (
-            "stop if the replan requires private material, credentials, destructive git, "
-            "production actions, or owner-only decisions"
-        ),
-        "recommended_action": recommended_action,
-    }
-    if dead_monitor_evidence:
-        result["dead_monitor_detector"] = {
-            "schema_version": DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
-            "monitor_target_id": dead_monitor_evidence.get("monitor_target_id"),
-            "run_count": dead_monitor_evidence.get("run_count"),
-            "threshold": dead_monitor_evidence.get("threshold"),
-            "required_resolution": [
-                "watch_lane_expiry",
-                "blocker",
-                "todo_supersede",
-                "successor_runnable_todo",
-            ],
-        }
-    return result
 
 
 def _normalized_run_history_stall_signature(value: str) -> str:
