@@ -87,6 +87,10 @@ from .projections.agent_lane_recommendation import (
     latest_agent_lane_run as _latest_agent_lane_run_read_model,
     latest_run_recommended_action_for_projection as _latest_run_recommended_action_for_projection_read_model,
 )
+from .projections.attention_fields import (
+    operator_gate_attention_fields as _operator_gate_attention_fields_read_model,
+    readiness_attention_fields as _readiness_attention_fields_read_model,
+)
 from .projections.autonomous_replan_ack import (
     autonomous_replan_ack_recorded as _autonomous_replan_ack_recorded_read_model,
     compact_autonomous_replan_ack as _compact_autonomous_replan_ack_read_model,
@@ -7591,42 +7595,19 @@ def goal_lifecycle_fields(goal: dict[str, Any], current_run: dict[str, Any] | No
 
 
 def readiness_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]:
-    if not isinstance(run, dict):
-        return {}
-    readiness = compact_controller_readiness(run.get("controller_readiness"))
-    if not readiness:
-        return {}
-    fields: dict[str, Any] = {}
-    if readiness.get("classification"):
-        fields["controller_stage"] = readiness.get("classification")
-    missing = readiness.get("missing_gates")
-    if isinstance(missing, list):
-        public_missing = [str(gate) for gate in missing if gate]
-        if public_missing:
-            fields["missing_gates"] = public_missing
-    if readiness.get("next_handoff_condition"):
-        fields["next_handoff_condition"] = readiness.get("next_handoff_condition")
-    return fields
+    return _readiness_attention_fields_read_model(
+        run,
+        compact_controller_readiness=compact_controller_readiness,
+    )
 
 
 def operator_gate_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]:
-    if not isinstance(run, dict):
-        return {}
-    operator_gate = compact_operator_gate(run.get("operator_gate"))
-    if not operator_gate:
-        return {}
-    fields: dict[str, Any] = {}
-    if operator_gate.get("decision") != "approve" and operator_gate.get("operator_question"):
-        fields["operator_question"] = normalize_operator_question(
-            str(operator_gate.get("operator_question") or ""),
-            goal_id=str(run.get("goal_id") or ""),
-            gate=str(operator_gate.get("gate") or DEFAULT_OPERATOR_GATE),
-        )
-    if operator_gate.get("decision") == "approve" and operator_gate.get("agent_command"):
-        fields["agent_command"] = operator_gate.get("agent_command")
-    if operator_gate.get("follow_up"):
-        fields["next_handoff_condition"] = operator_gate.get("follow_up")
-    return fields
+    return _operator_gate_attention_fields_read_model(
+        run,
+        compact_operator_gate=compact_operator_gate,
+        normalize_operator_question=normalize_operator_question,
+        default_operator_gate=DEFAULT_OPERATOR_GATE,
+    )
 
 
 def compact_server_planning_contract(value: Any) -> dict[str, Any]:
