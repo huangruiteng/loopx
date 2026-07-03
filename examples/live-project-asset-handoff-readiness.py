@@ -28,12 +28,23 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--goal-id", required=True, help="Live goal id to check.")
     parser.add_argument(
+        "--agent-id",
+        help=(
+            "Registered agent id to use for identity-scoped status, quota, "
+            "and handoff packet checks."
+        ),
+    )
+    parser.add_argument(
         "--registry",
         default=str(Path.home() / ".codex" / "loopx" / "registry.global.json"),
         help="LoopX registry path. Defaults to the shared global registry.",
     )
     parser.add_argument("--runtime-root", help="Optional LoopX runtime root.")
     return parser.parse_args()
+
+
+def agent_id_args(args: argparse.Namespace) -> list[str]:
+    return ["--agent-id", args.agent_id] if args.agent_id else []
 
 
 def run_loopx(args: argparse.Namespace, *command: str) -> dict[str, Any]:
@@ -68,7 +79,15 @@ def assert_public_safe_text(text: str, *, label: str) -> None:
 
 
 def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
-    status_payload = run_loopx(args, "status", "--limit", "20")
+    status_payload = run_loopx(
+        args,
+        "status",
+        "--limit",
+        "20",
+        "--goal-id",
+        args.goal_id,
+        *agent_id_args(args),
+    )
     assert status_payload.get("ok") is True, status_payload
     item = attention_item(status_payload, args.goal_id)
     project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
@@ -91,10 +110,35 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
     ):
         assert checks.get(check) is True, readiness
 
-    should_run = run_loopx(args, "quota", "should-run", "--goal-id", args.goal_id)
+    should_run = run_loopx(
+        args,
+        "quota",
+        "should-run",
+        "--goal-id",
+        args.goal_id,
+        *agent_id_args(args),
+    )
     assert should_run.get("ok") is True, should_run
     assert should_run.get("project_asset_source") == "project_asset", should_run
-    assert should_run.get("recommended_action") == project_asset.get("next_action"), should_run
+    agent_lane_next_action = (
+        item.get("agent_lane_next_action")
+        if isinstance(item.get("agent_lane_next_action"), dict)
+        else {}
+    )
+    expected_action = project_asset.get("next_action")
+    if args.agent_id and agent_lane_next_action:
+        expected_action = agent_lane_next_action.get("text")
+        should_run_agent_lane = (
+            should_run.get("agent_lane_next_action")
+            if isinstance(should_run.get("agent_lane_next_action"), dict)
+            else {}
+        )
+        assert should_run_agent_lane.get("todo_id") == agent_lane_next_action.get("todo_id"), should_run
+        assert str(should_run.get("recommended_action") or "").startswith(
+            str(expected_action or "")[:200]
+        ), should_run
+    else:
+        assert should_run.get("recommended_action") == expected_action, should_run
     assert should_run.get("state") == project_asset.get("quota", {}).get("state"), should_run
     assert should_run.get("quota", {}).get("compute") == project_asset.get("quota", {}).get("compute"), should_run
     assert should_run.get("goal_boundary", {}).get("stop_condition") == project_asset.get("stop_condition"), should_run
@@ -111,10 +155,23 @@ def assert_project_asset_handoff(args: argparse.Namespace) -> dict[str, Any]:
         if not asset_todos:
             continue
         summary = should_run.get(summary_key) if isinstance(should_run.get(summary_key), dict) else {}
+        if args.agent_id and field == "agent_todos":
+            assert summary.get("current_agent_claimed_open_count") is not None, should_run
+            assert summary.get("claim_scope", {}).get("agent_id") == args.agent_id, should_run
+            continue
         assert summary.get("open_count") == asset_todos.get("open"), should_run
         assert summary.get("total_count") == asset_todos.get("total"), should_run
 
-    handoff = run_loopx(args, "review-packet", "--goal-id", args.goal_id, "--handoff-only", "--limit", "20")
+    handoff = run_loopx(
+        args,
+        "review-packet",
+        "--goal-id",
+        args.goal_id,
+        "--handoff-only",
+        "--limit",
+        "20",
+        *agent_id_args(args),
+    )
     assert handoff.get("ok") is True, handoff
     assert handoff.get("handoff_only") is True, handoff
     handoff_text = str(handoff.get("handoff_text") or "")

@@ -12,6 +12,13 @@ DEFAULT_MONITOR_DISPLAY_STOP_CONDITION = (
 TODO_PROJECTION_VIEW_SCHEMA_VERSION = "todo_projection_view_v0"
 TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION = "todo_projection_detail_pointer_v0"
 PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION = "project_asset_todo_projection_gap_v0"
+PROJECT_ASSET_HANDOFF_STATE_TRACE_CHECK_KEYS = (
+    "project_asset_backed",
+    "same_source_should_run",
+    "handoff_has_next_action",
+    "handoff_has_stop_condition",
+    "handoff_sanitized_surface",
+)
 LOCAL_PATH_SURFACE_PATTERN = re.compile(
     r"(?<!<)/(?:Users|Volumes|var/folders|tmp|private/tmp)/[^\s`'\"<>]+"
 )
@@ -187,6 +194,41 @@ def project_asset_latest_validation(run: dict[str, Any] | None) -> dict[str, Any
 def project_asset_summary_is_public_safe(project_asset: dict[str, Any]) -> bool:
     text = repr(project_asset)
     return not LOCAL_PATH_SURFACE_PATTERN.search(text) and not SECRET_LIKE_SURFACE_PATTERN.search(text)
+
+
+def project_asset_handoff_check_projection(item: dict[str, Any]) -> dict[str, Any] | None:
+    project_asset = item.get("project_asset")
+    if not isinstance(project_asset, dict):
+        return None
+
+    quota = project_asset.get("quota") if isinstance(project_asset.get("quota"), dict) else {}
+    if not quota and isinstance(item.get("quota"), dict):
+        quota = item["quota"]
+
+    next_action = str(project_asset.get("next_action") or "").strip()
+    item_action = str(item.get("recommended_action") or "").strip()
+    stop_condition = str(project_asset.get("stop_condition") or "").strip()
+    quota_state = str(quota.get("state") or "").strip()
+    waiting_on = str(item.get("waiting_on") or "").strip()
+    codex_ready = waiting_on == "codex" and quota_state == "eligible"
+    checks = {
+        "project_asset_backed": True,
+        "same_source_should_run": bool(
+            quota and next_action and (not item_action or item_action == next_action)
+        ),
+        "codex_ready": codex_ready,
+        "handoff_has_next_action": bool(next_action),
+        "handoff_has_stop_condition": bool(stop_condition),
+        "handoff_sanitized_surface": project_asset_summary_is_public_safe(project_asset),
+    }
+    return {
+        "checks": checks,
+        "codex_ready": codex_ready,
+        "quota_state": quota_state or "unknown",
+        "state_trace_ready": all(
+            checks[key] for key in PROJECT_ASSET_HANDOFF_STATE_TRACE_CHECK_KEYS
+        ),
+    }
 
 
 def project_asset_next_safe_command(agent_command: str | None) -> str | None:

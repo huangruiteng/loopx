@@ -67,6 +67,7 @@ from .projections.project_asset import (
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     build_project_asset,
     completed_todo_archive_warning,
+    project_asset_handoff_check_projection,
     project_asset_latest_validation,
     project_asset_quota_summary,
     project_asset_summary_is_public_safe,
@@ -8108,46 +8109,22 @@ def project_asset_handoff_readiness(
     if not isinstance(project_asset, dict):
         return None
 
-    quota = project_asset.get("quota") if isinstance(project_asset.get("quota"), dict) else {}
-    if not quota and isinstance(item.get("quota"), dict):
-        quota = item["quota"]
-
-    next_action = str(project_asset.get("next_action") or "").strip()
-    item_action = str(item.get("recommended_action") or "").strip()
-    stop_condition = str(project_asset.get("stop_condition") or "").strip()
-    quota_state = str(quota.get("state") or "").strip()
-    waiting_on = str(item.get("waiting_on") or "").strip()
+    check_projection = project_asset_handoff_check_projection(item)
+    if not check_projection:
+        return None
+    checks = check_projection["checks"]
     goal_id = str(item.get("goal_id") or "").strip()
-    codex_ready = waiting_on == "codex" and quota_state == "eligible"
-    checks = {
-        "project_asset_backed": True,
-        "same_source_should_run": bool(quota and next_action and (not item_action or item_action == next_action)),
-        "codex_ready": codex_ready,
-        "handoff_has_next_action": bool(next_action),
-        "handoff_has_stop_condition": bool(stop_condition),
-        "handoff_sanitized_surface": project_asset_summary_is_public_safe(project_asset),
-    }
-    state_trace_ready = all(
-        checks[key]
-        for key in (
-            "project_asset_backed",
-            "same_source_should_run",
-            "handoff_has_next_action",
-            "handoff_has_stop_condition",
-            "handoff_sanitized_surface",
-        )
-    )
     readiness: dict[str, Any] = {
         "ready": all(checks.values()),
-        "codex_ready": codex_ready,
+        "codex_ready": bool(check_projection.get("codex_ready")),
         "source": "project_asset",
-        "quota_state": quota_state or "unknown",
+        "quota_state": check_projection.get("quota_state") or "unknown",
         "handoff_interface_budget": handoff_budget_contract(),
         "checks": checks,
     }
     readiness.update(
         project_asset_handoff_state(
-            ready=state_trace_ready,
+            ready=bool(check_projection.get("state_trace_ready")),
             project_asset=project_asset,
             latest_runs=latest_runs,
         )
