@@ -64,6 +64,12 @@ def build_agent_todo_summary() -> dict[str, Any]:
                 todo_id="todo_advancement_p2",
             ),
             todo(
+                5,
+                "[P2] Monitor unscheduled public smoke signal after schedule metadata is added.",
+                task_class=TODO_TASK_CLASS_MONITOR,
+                todo_id="todo_monitor_unscheduled",
+            ),
+            todo(
                 2,
                 "[P0] Monitor public smoke signal and only write back if it changed.",
                 task_class=TODO_TASK_CLASS_MONITOR,
@@ -152,6 +158,10 @@ def assert_status_summary_lanes(summary: dict[str, Any]) -> None:
         "todo_monitor_p0",
     ], summary
     assert summary["monitor_due_count"] == 1, summary
+    assert [item["todo_id"] for item in summary["monitor_schedule_gap_items"]] == [
+        "todo_monitor_unscheduled",
+    ], summary
+    assert summary["monitor_schedule_gap_count"] == 1, summary
 
 
 def assert_shared_ordering_parity(summary: dict[str, Any]) -> None:
@@ -189,6 +199,10 @@ def assert_quota_uses_executable_advancement(summary: dict[str, Any]) -> None:
     assert quota_summary["first_open_items"][0]["todo_id"] == "todo_advancement_p0", payload
     assert quota_summary["first_executable_items"][0]["todo_id"] == "todo_advancement_p0", payload
     assert quota_summary["monitor_open_items"][0]["todo_id"] == "todo_monitor_p0", payload
+    assert quota_summary["monitor_schedule_gap_items"][0]["todo_id"] == (
+        "todo_monitor_unscheduled"
+    ), payload
+    assert quota_summary["monitor_schedule_gap_count"] == 1, payload
     assert quota_todo_task_class(quota_summary["monitor_open_items"][0]) == TODO_TASK_CLASS_MONITOR
     assert quota_todo_task_class(
         quota_summary["first_executable_items"][0]

@@ -117,6 +117,7 @@ from .todo_projection import (
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
     todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
     todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
+    todo_item_missing_monitor_schedule as projection_todo_item_missing_monitor_schedule,
     todo_item_next_due_at as projection_todo_item_next_due_at,
     todo_item_task_class as projection_todo_item_task_class,
     todo_priority_parts as projection_todo_priority_parts,
@@ -6002,6 +6003,18 @@ def todo_item_is_due_monitor(item: dict[str, Any], *, now: datetime | None = Non
     return projection_todo_item_is_due_monitor(item, now=now, task_text_keys=("text",))
 
 
+def todo_item_missing_monitor_schedule(
+    item: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    return projection_todo_item_missing_monitor_schedule(
+        item,
+        now=now,
+        task_text_keys=("text",),
+    )
+
+
 def todo_priority_rank(priority: Any) -> int:
     return projection_todo_priority_rank(priority)
 
@@ -6280,6 +6293,11 @@ def compact_todo_group(
         for item in monitor_items
         if todo_item_is_due_monitor(item)
     ]
+    monitor_schedule_gap_items = [
+        item
+        for item in monitor_items
+        if todo_item_missing_monitor_schedule(item)
+    ]
     claimed_advancement_items = [
         item
         for item in claimed_open_items
@@ -6327,6 +6345,11 @@ def compact_todo_group(
         "monitor_due_items": [
             compact_todo_item(item)
             for item in monitor_due_items[:MAX_MONITOR_DUE_ITEMS]
+        ],
+        "monitor_schedule_gap_count": len(monitor_schedule_gap_items),
+        "monitor_schedule_gap_items": [
+            compact_todo_item(item)
+            for item in monitor_schedule_gap_items[:MAX_MONITOR_DUE_ITEMS]
         ],
         "unclaimed_priority_open_items": [
             compact_todo_item(item)
