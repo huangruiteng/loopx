@@ -214,7 +214,47 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
         "goal_frontier_projection",
         "autonomous_replan_decision",
     )
-    return {key: quota.get(key) for key in keys if key in quota}
+    signals = {key: quota.get(key) for key in keys if key in quota}
+    scheduler_hint = _compact_scheduler_hint(_as_dict(quota.get("scheduler_hint")))
+    if scheduler_hint:
+        signals["scheduler_hint"] = scheduler_hint
+    return signals
+
+
+def _compact_scheduler_hint(scheduler_hint: dict[str, Any]) -> dict[str, Any]:
+    if not scheduler_hint:
+        return {}
+    codex_app = _as_dict(scheduler_hint.get("codex_app"))
+    stateful_backoff = _as_dict(codex_app.get("stateful_backoff"))
+    reset_policy = _as_dict(scheduler_hint.get("reset_policy"))
+    unchanged_poll = _as_dict(scheduler_hint.get("unchanged_poll"))
+    return {
+        "schema_version": "diagnose_scheduler_hint_summary_v0",
+        "action": scheduler_hint.get("action"),
+        "cadence_class": scheduler_hint.get("cadence_class"),
+        "reason": scheduler_hint.get("reason"),
+        "codex_app": {
+            "apply": codex_app.get("apply"),
+            "host_action": codex_app.get("host_action"),
+            "recommended_rrule": codex_app.get("recommended_rrule"),
+            "recommended_interval_minutes": codex_app.get("recommended_interval_minutes"),
+            "current_rrule": stateful_backoff.get("current_rrule"),
+            "apply_needed": stateful_backoff.get("apply_needed"),
+            "no_spend_for_cadence_change": codex_app.get("no_spend_for_cadence_change"),
+        },
+        "unchanged_poll": {
+            "final_quota_replan_check_enabled": unchanged_poll.get(
+                "final_quota_replan_check_enabled"
+            ),
+            "final_quota_replan_check_action": unchanged_poll.get(
+                "final_quota_replan_check_action"
+            ),
+        },
+        "reset_policy": {
+            "reset_token": reset_policy.get("reset_token"),
+            "codex_app_initial_rrule": reset_policy.get("codex_app_initial_rrule"),
+        },
+    }
 
 
 def _goal_frontier_projection_line(goal_frontier: dict[str, Any]) -> str | None:
@@ -262,6 +302,24 @@ def _goal_frontier_projection_line(goal_frontier: dict[str, Any]) -> str | None:
         f"monitor_only={monitor_only_lanes.get('present')} "
         f"acceptance_gaps={len(acceptance_gaps)} "
         f"autonomy_blockers={len(autonomy_blockers)}"
+    )
+
+
+def _scheduler_hint_line(scheduler_hint: dict[str, Any]) -> str | None:
+    if not scheduler_hint:
+        return None
+    codex_app = _as_dict(scheduler_hint.get("codex_app"))
+    unchanged_poll = _as_dict(scheduler_hint.get("unchanged_poll"))
+    return (
+        "- scheduler_hint: "
+        f"action={scheduler_hint.get('action')} "
+        f"cadence={scheduler_hint.get('cadence_class')} "
+        f"codex_app_apply={codex_app.get('apply')} "
+        f"apply_needed={codex_app.get('apply_needed')} "
+        f"recommended_rrule={codex_app.get('recommended_rrule')} "
+        f"current_rrule={codex_app.get('current_rrule')} "
+        f"final_replan_check={unchanged_poll.get('final_quota_replan_check_enabled')} "
+        f"no_spend_for_cadence_change={codex_app.get('no_spend_for_cadence_change')}"
     )
 
 
@@ -446,6 +504,9 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
         )
         if goal_frontier_line:
             lines.append(goal_frontier_line)
+        scheduler_hint_line = _scheduler_hint_line(_as_dict(quota.get("scheduler_hint")))
+        if scheduler_hint_line:
+            lines.append(scheduler_hint_line)
 
     checklist = _as_list(selected.get("agent_reasoning_checklist"))
     if checklist:
