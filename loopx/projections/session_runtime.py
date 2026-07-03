@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import AbstractSet, Any, Callable, Optional
 
 from ..session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION
 
@@ -14,6 +14,67 @@ PublicSafeText = Callable[..., Optional[str]]
 PublicSafeList = Callable[..., list[str]]
 AttentionItemBuilder = Callable[..., dict[str, Any]]
 GoalLifecycleFields = Callable[[dict[str, Any], Optional[dict[str, Any]]], dict[str, Any]]
+
+
+def legacy_runtime_goal_attention(
+    goal: dict[str, Any],
+    current_run: dict[str, Any] | None,
+    readiness_fields: dict[str, Any],
+    *,
+    attention_item: AttentionItemBuilder,
+    goal_lifecycle_fields: GoalLifecycleFields,
+    blocking_classifications: AbstractSet[str],
+    user_or_controller_classifications: AbstractSet[str],
+    codex_ready_classifications: AbstractSet[str],
+) -> dict[str, Any] | None:
+    if not goal.get("legacy_runtime_goal") or not current_run:
+        return None
+
+    goal_id = str(goal.get("id") or "unknown-goal")
+    json_exists = bool(current_run.get("json_exists"))
+    markdown_exists = bool(current_run.get("markdown_exists"))
+    classification = str(current_run.get("classification") or "unknown")
+    lifecycle_fields = goal_lifecycle_fields(goal, current_run)
+
+    actionable_classification = (
+        classification in blocking_classifications
+        or classification in user_or_controller_classifications
+        or classification in codex_ready_classifications
+    )
+    if not actionable_classification and json_exists and markdown_exists:
+        return None
+
+    if not json_exists or not markdown_exists:
+        severity = "high"
+        action = (
+            "repair this unregistered runtime goal or preview cleanup with "
+            f"`loopx archive-runtime --goal-id {goal_id}` before trusting multi-project status"
+        )
+    elif classification in blocking_classifications:
+        severity = "high"
+        action = (
+            f"latest classification is {classification}; add this runtime goal to the registry "
+            f"or preview cleanup with `loopx archive-runtime --goal-id {goal_id}` "
+            "so multi-project status stays authoritative"
+        )
+    else:
+        severity = "action"
+        action = (
+            f"latest classification is {classification}; add this runtime goal to the registry "
+            f"or preview cleanup with `loopx archive-runtime --goal-id {goal_id}` "
+            "so multi-project status stays authoritative"
+        )
+
+    return attention_item(
+        goal_id=goal_id,
+        status="unregistered_runtime_goal",
+        waiting_on="controller",
+        severity=severity,
+        recommended_action=action,
+        source="run_history",
+        **readiness_fields,
+        **lifecycle_fields,
+    )
 
 
 def compact_session_runtime_source(

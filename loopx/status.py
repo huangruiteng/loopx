@@ -131,6 +131,7 @@ from .projections.session_runtime import (
     compact_session_runtime_projection_from_run as _compact_session_runtime_projection_from_run_read_model,
     compact_session_runtime_readonly_projection as _compact_session_runtime_readonly_projection_read_model,
     attach_session_runtime_projection as _attach_session_runtime_projection_read_model,
+    legacy_runtime_goal_attention as _legacy_runtime_goal_attention_read_model,
     session_runtime_projection_attention as _session_runtime_projection_attention_read_model,
     session_runtime_status_label as _session_runtime_status_label_read_model,
     session_runtime_status_waiting_on as _session_runtime_status_waiting_on_read_model,
@@ -7659,53 +7660,15 @@ def legacy_runtime_goal_attention(
     current_run: dict[str, Any] | None,
     readiness_fields: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not goal.get("legacy_runtime_goal") or not current_run:
-        return None
-
-    goal_id = str(goal.get("id") or "unknown-goal")
-    json_exists = bool(current_run.get("json_exists"))
-    markdown_exists = bool(current_run.get("markdown_exists"))
-    classification = str(current_run.get("classification") or "unknown")
-    lifecycle_fields = goal_lifecycle_fields(goal, current_run)
-
-    actionable_classification = (
-        classification in BLOCKING_CLASSIFICATIONS
-        or classification in USER_OR_CONTROLLER_CLASSIFICATIONS
-        or classification in CODEX_READY_CLASSIFICATIONS
-    )
-    if not actionable_classification and json_exists and markdown_exists:
-        return None
-
-    if not json_exists or not markdown_exists:
-        severity = "high"
-        action = (
-            "repair this unregistered runtime goal or preview cleanup with "
-            f"`loopx archive-runtime --goal-id {goal_id}` before trusting multi-project status"
-        )
-    elif classification in BLOCKING_CLASSIFICATIONS:
-        severity = "high"
-        action = (
-            f"latest classification is {classification}; add this runtime goal to the registry "
-            f"or preview cleanup with `loopx archive-runtime --goal-id {goal_id}` "
-            "so multi-project status stays authoritative"
-        )
-    else:
-        severity = "action"
-        action = (
-            f"latest classification is {classification}; add this runtime goal to the registry "
-            f"or preview cleanup with `loopx archive-runtime --goal-id {goal_id}` "
-            "so multi-project status stays authoritative"
-        )
-
-    return attention_item(
-        goal_id=goal_id,
-        status="unregistered_runtime_goal",
-        waiting_on="controller",
-        severity=severity,
-        recommended_action=action,
-        source="run_history",
-        **readiness_fields,
-        **lifecycle_fields,
+    return _legacy_runtime_goal_attention_read_model(
+        goal,
+        current_run,
+        readiness_fields,
+        attention_item=attention_item,
+        goal_lifecycle_fields=goal_lifecycle_fields,
+        blocking_classifications=BLOCKING_CLASSIFICATIONS,
+        user_or_controller_classifications=USER_OR_CONTROLLER_CLASSIFICATIONS,
+        codex_ready_classifications=CODEX_READY_CLASSIFICATIONS,
     )
 
 
