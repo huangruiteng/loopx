@@ -85,6 +85,57 @@ def todo_projection_sort_key(
     return (todo_priority_rank(item, text_mode=text_mode), todo_index_rank(item))
 
 
+def todo_claimed_visibility_items(
+    items: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if limit <= 0 or len(items) <= limit:
+        return items[:limit]
+    claim_order: list[str] = []
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if not claimed_by:
+            continue
+        if claimed_by not in buckets:
+            buckets[claimed_by] = []
+            claim_order.append(claimed_by)
+        buckets[claimed_by].append(item)
+    if not buckets:
+        return items[:limit]
+
+    original_index = {id(item): index for index, item in enumerate(items)}
+    per_claimant_cap = max(1, limit // len(buckets))
+    selected: list[dict[str, Any]] = []
+    selected_ids: set[int] = set()
+    for claimed_by in claim_order:
+        taken = 0
+        for item in buckets[claimed_by]:
+            if taken >= per_claimant_cap:
+                break
+            if len(selected) >= limit:
+                break
+            selected.append(item)
+            selected_ids.add(id(item))
+            taken += 1
+        if len(selected) >= limit:
+            break
+
+    if len(selected) < limit:
+        for item in items:
+            if id(item) in selected_ids:
+                continue
+            selected.append(item)
+            selected_ids.add(id(item))
+            if len(selected) >= limit:
+                break
+
+    return sorted(selected, key=lambda item: original_index.get(id(item), TODO_MISSING_INDEX))[
+        :limit
+    ]
+
+
 def todo_item_task_text(
     item: dict[str, Any],
     *,

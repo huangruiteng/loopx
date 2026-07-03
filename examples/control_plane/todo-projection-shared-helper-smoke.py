@@ -13,16 +13,22 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import (  # noqa: E402
+    _claimed_visibility_items as quota_claimed_visibility_items,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
     _todo_task_class as quota_todo_task_class,
     build_quota_should_run,
 )
-from loopx.status import compact_todo_group, todo_projection_sort_key  # noqa: E402
+from loopx.status import (  # noqa: E402
+    claimed_visibility_items as status_claimed_visibility_items,
+    compact_todo_group,
+    todo_projection_sort_key,
+)
 from loopx.todo_contract import (  # noqa: E402
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
 )
 from loopx.todo_projection import (  # noqa: E402
+    todo_claimed_visibility_items as shared_claimed_visibility_items,
     todo_projection_sort_key as shared_todo_projection_sort_key,
 )
 
@@ -189,6 +195,51 @@ def assert_shared_ordering_parity(summary: dict[str, Any]) -> None:
     assert quota_todo_projection_sort_key(embedded_priority) == (0, 9), embedded_priority
 
 
+def assert_claimed_visibility_parity() -> None:
+    items = [
+        todo(
+            1,
+            "[P1] Claimed by A one.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            todo_id="todo_a1",
+            claimed_by="agent-a",
+        ),
+        todo(
+            2,
+            "[P1] Claimed by A two.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            todo_id="todo_a2",
+            claimed_by="agent-a",
+        ),
+        todo(
+            3,
+            "[P1] Claimed by B one.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            todo_id="todo_b1",
+            claimed_by="agent-b",
+        ),
+        todo(
+            4,
+            "[P1] Unclaimed filler.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            todo_id="todo_unclaimed",
+        ),
+    ]
+    for selector in (
+        shared_claimed_visibility_items,
+        status_claimed_visibility_items,
+        quota_claimed_visibility_items,
+    ):
+        selected_two = selector(items, limit=2)
+        assert [item["todo_id"] for item in selected_two] == ["todo_a1", "todo_b1"], selected_two
+        selected_three = selector(items, limit=3)
+        assert [item["todo_id"] for item in selected_three] == [
+            "todo_a1",
+            "todo_a2",
+            "todo_b1",
+        ], selected_three
+
+
 def assert_quota_uses_executable_advancement(summary: dict[str, Any]) -> None:
     payload = build_quota_should_run(
         status_payload(summary),
@@ -216,6 +267,7 @@ def main() -> int:
     summary = build_agent_todo_summary()
     assert_status_summary_lanes(summary)
     assert_shared_ordering_parity(summary)
+    assert_claimed_visibility_parity()
     assert_quota_uses_executable_advancement(summary)
     return 0
 
