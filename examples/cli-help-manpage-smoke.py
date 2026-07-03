@@ -26,6 +26,9 @@ def assert_concise_default_help(output: str) -> None:
     assert "LoopX keeps long-running agent work moving" in output, output
     assert "Start here:" in output, output
     assert "/loopx <goal text>" in output, output
+    assert "Run the loop:" in output, output
+    assert "Codex App" in output, output
+    assert "Claude Code" in output, output
     assert "loopx commands" in output, output
     assert "man loopx" in output, output
     assert LONG_TAIL_COMMAND not in output, output
@@ -49,6 +52,8 @@ def assert_command_reference_surface() -> None:
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
     assert "LoopX command reference" in result.stdout, result.stdout
     assert "Daily operator commands" in result.stdout, result.stdout
+    assert "Loop driver hints" in result.stdout, result.stdout
+    assert "Claude Code /loop" in result.stdout, result.stdout
     assert "Maintainer and adapter commands" in result.stdout, result.stdout
     assert "loopx <command> --help" in result.stdout, result.stdout
     assert "codex-cli-bootstrap-message" in result.stdout, result.stdout
@@ -110,6 +115,8 @@ def assert_installer_manpage_surface() -> None:
         with gzip.open(manpage, "rt", encoding="utf-8") as handle:
             man_text = handle.read()
         assert ".TH LOOPX 1" in man_text, man_text
+        assert ".SH LOOP DRIVERS" in man_text, man_text
+        assert "Codex App automation" in man_text, man_text
         assert "loopx commands" in man_text, man_text
         assert "loopx COMMAND --help" in man_text, man_text
 
@@ -126,6 +133,7 @@ def assert_installer_manpage_surface() -> None:
         assert man.returncode == 0, (man.returncode, man.stdout, man.stderr)
         assert "LOOPX(1)" in man.stdout, man.stdout
         assert "LoopX keeps long-running agent work moving" in man.stdout, man.stdout
+        assert "heartbeat automation" in man.stdout, man.stdout
 
 
 def main() -> int:

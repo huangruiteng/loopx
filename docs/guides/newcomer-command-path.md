@@ -24,6 +24,19 @@ Examples:
 /loopx split this refactor into PR-sized slices and stop at unsafe gates
 ```
 
+## Choose The Loop Driver
+
+LoopX preserves goal state, gates, todos, quota, and evidence. It does not
+replace the app or CLI that runs the next agent turn. Pick the driver that
+matches the surface you already use:
+
+| Surface | Start with | What keeps it moving |
+| --- | --- | --- |
+| Codex App | `/loopx <goal text>` in the project thread | The app heartbeat automation. Let the agent install or refresh the generated LoopX heartbeat body; start at the bootstrap cadence, then follow `quota should-run.scheduler_hint`. |
+| Codex CLI | `codex` from the project root, then `/loopx <goal text>` | The visible TUI goal. Use `loopx codex-cli-bootstrap-message --project .` when you need a generated setup prompt, and keep the executor visible to the user. |
+| Claude Code | Enable the opt-in LoopX adapter, then `/loopx <goal text>` | Claude Code's native `/loop`, gated by LoopX `should_run`, drives each tick. |
+| Other agent or shell | `loopx bootstrap-command-pack --project .` | A CLI, task, automation, heartbeat, or scheduler hook must run the next turn. If the surface has no such hook, LoopX can track state but the user drives it manually. |
+
 ## One CLI Quickstart
 
 Use this when an agent asks for the manual shell path, or when you are setting

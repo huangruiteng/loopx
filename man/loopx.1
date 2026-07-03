@@ -50,6 +50,24 @@ Show todo add, claim, complete, update, supersede, and archive forms.
 .TP
 .B loopx quota should-run
 Decide whether the next agent turn should run.
+.SH LOOP DRIVERS
+.TP
+.B Codex App automation
+Use \fB/loopx <goal>\fR and let the app create or refresh the LoopX heartbeat
+automation. Start at the bootstrap cadence, then follow LoopX scheduler hints.
+.TP
+.B Codex CLI visible goal
+Keep the Codex CLI TUI as the visible executor. Use
+\fBloopx codex-cli-bootstrap-message\fR when a generated setup message is
+needed.
+.TP
+.B Claude Code /loop
+Enable the opt-in LoopX adapter, start \fB/loopx <goal>\fR, then use Claude
+Code's native \fB/loop\fR to drive each tick.
+.TP
+.B Other agents or shell
+Use LoopX only with a CLI, task, automation, heartbeat, or scheduler hook that
+can run the next turn. Without such a hook, run LoopX commands manually.
 .SH MORE COMMANDS
 .TP
 .B loopx commands

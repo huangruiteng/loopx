@@ -48,6 +48,27 @@ COMMAND_GROUPS: list[dict[str, object]] = [
         ],
     },
     {
+        "title": "Loop driver hints",
+        "commands": [
+            {
+                "command": "Codex App automation",
+                "purpose": "Use `/loopx <goal>` and let the app create or refresh the heartbeat automation.",
+            },
+            {
+                "command": "Codex CLI visible goal",
+                "purpose": "Stay in the visible TUI; use `loopx codex-cli-bootstrap-message` for setup when needed.",
+            },
+            {
+                "command": "Claude Code /loop",
+                "purpose": "Enable the opt-in adapter, start `/loopx <goal>`, then let Claude Code `/loop` tick it.",
+            },
+            {
+                "command": "Other agent or shell",
+                "purpose": "Use a CLI, task, automation, heartbeat, or scheduler hook; otherwise drive LoopX manually.",
+            },
+        ],
+    },
+    {
         "title": "Setup and automation commands",
         "commands": [
             {"command": "loopx bootstrap / loopx connect", "purpose": "Create or connect project-local state."},
@@ -134,6 +155,12 @@ def render_concise_help(program: str = "loopx") -> str:
             "  loopx diagnose --goal-id ID    Build a compact evidence packet.",
             "  loopx todo --help              Add, claim, complete, update, or archive todos.",
             "  loopx quota should-run         Decide whether the next agent turn should run.",
+            "",
+            "Run the loop:",
+            "  Codex App      use /loopx <goal>; let the app set the heartbeat automation.",
+            "  Codex CLI      keep visible TUI; run loopx codex-cli-bootstrap-message.",
+            "  Claude Code    enable the adapter, start /loopx <goal>, then run /loop.",
+            "  Other agents   need a CLI/task/automation/loop hook, or run LoopX manually.",
             "",
             "Global options:",
             "  --registry PATH   --runtime-root PATH   --format markdown|json",
