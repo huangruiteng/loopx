@@ -15,12 +15,14 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.quota import (  # noqa: E402
     _claimed_visibility_items as quota_claimed_visibility_items,
     _first_executable_todo_item as quota_first_executable_todo_item,
-    _todo_item_claimed_by_agent_or_unclaimed as quota_todo_item_claimed_by_agent_or_unclaimed,
     _todo_item_is_deferred as quota_todo_item_is_deferred,
     _todo_summary_monitor_items as quota_todo_summary_monitor_items,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
     _todo_task_class as quota_todo_task_class,
     build_quota_should_run,
+)
+from loopx.projections.agent_scope import (  # noqa: E402
+    _todo_item_claimed_by_agent_or_unclaimed as agent_scope_todo_item_claimed_by_agent_or_unclaimed,
 )
 from loopx.status import (  # noqa: E402
     claimed_visibility_items as status_claimed_visibility_items,
@@ -252,7 +254,7 @@ def assert_claimed_visibility_parity() -> None:
     unclaimed = items[3]
     for predicate in (
         shared_todo_item_claimed_by_agent_or_unclaimed,
-        quota_todo_item_claimed_by_agent_or_unclaimed,
+        agent_scope_todo_item_claimed_by_agent_or_unclaimed,
     ):
         assert predicate(claimed_by_current, agent_id="agent-a") is True, claimed_by_current
         assert predicate(claimed_by_other, agent_id="agent-a") is False, claimed_by_other

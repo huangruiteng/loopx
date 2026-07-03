@@ -74,10 +74,13 @@ The next module-boundary PR should therefore:
 1. add agent-scope/user-gate/frontier characterization fixtures first,
    starting with
    `examples/control_plane/agent-scope-projection-characterization-smoke.py`;
-2. extract a small read-only projection module only after parity is pinned;
+2. extract the first read-only projection module under
+   `loopx/projections/agent_scope.py` only after parity is pinned;
 3. keep `quota.py` as the policy/orchestration layer until the new module is
    covered by the focused smoke profile;
-4. validate with the shared todo-projection helper smoke, the status/quota
+4. split `agent_scope.py` further by user-gate, frontier, and hint projections
+   only after the current seam stays green through the focused profile;
+5. validate with the shared todo-projection helper smoke, the status/quota
    review-packet parity smoke, and the `core-control-plane` smoke profile.
 
 ## Quota Rule Families
