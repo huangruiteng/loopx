@@ -113,7 +113,7 @@ def monitor_item(
     target_key: str,
     next_due_at: str | None = None,
     cadence: str | None = "15m",
-    claimed_by: str = AGENT_ID,
+    claimed_by: str | None = AGENT_ID,
     expires_at: str | None = None,
 ) -> dict:
     item = {
@@ -125,9 +125,10 @@ def monitor_item(
         "priority": priority,
         "task_class": "continuous_monitor",
         "action_kind": "monitor",
-        "claimed_by": claimed_by,
         "target_key": target_key,
     }
+    if claimed_by:
+        item["claimed_by"] = claimed_by
     if cadence:
         item["cadence"] = cadence
     if next_due_at:
@@ -135,6 +136,22 @@ def monitor_item(
     if expires_at:
         item["expires_at"] = expires_at
     return item
+
+
+def blocking_handoff_item(*, index: int, todo_id: str = "todo_primary_handoff") -> dict:
+    return {
+        "index": index,
+        "text": "[P1] Primary review gate that blocks the product-capability lane.",
+        "todo_id": todo_id,
+        "role": "agent",
+        "status": "open",
+        "priority": "P1",
+        "task_class": "advancement_task",
+        "action_kind": "pr_review_merge",
+        "claimed_by": "codex-main-control",
+        "blocks_agent": AGENT_ID,
+        "unblocks_todo_id": "todo_after_handoff",
+    }
 
 
 def advancement_item(*, index: int, priority: str = "P1", claimed_by: str = AGENT_ID) -> dict:
@@ -216,6 +233,36 @@ def assert_unscheduled_monitor_requires_metadata_repair() -> None:
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
     assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is False, guard
     assert guard["scheduler_hint"]["cadence_class"] == "active_work", guard
+
+
+def assert_unscheduled_monitor_repair_survives_handoff_gates() -> None:
+    guard = guard_for(
+        [
+            monitor_item(
+                index=1,
+                todo_id="todo_monitor_unscheduled",
+                priority="P1",
+                target_key="update-note-draft-pr",
+                cadence=None,
+                next_due_at=None,
+                claimed_by=None,
+            ),
+            blocking_handoff_item(index=2),
+        ],
+        coordination={
+            "registered_agents": ["codex-main-control", AGENT_ID],
+            "primary_agent": "codex-main-control",
+        },
+    )
+    lane = guard["work_lane_contract"]
+    assert guard["decision"] == "run", guard
+    assert guard["effective_action"] == "normal_run", guard
+    assert "agent_scope_frontier" not in guard, guard
+    frontier_hint = guard.get("agent_lane_frontier_hint", {})
+    assert frontier_hint.get("decision") != "quiet_noop_blocker", guard
+    assert lane["monitor_kind"] == "todo_monitor_schedule_gap", lane
+    assert lane["obligation"] == "repair_monitor_schedule_metadata", lane
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
 
 
 def assert_due_monitor_requires_explicit_attempt() -> None:
@@ -461,6 +508,7 @@ def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> N
 def main() -> int:
     assert_not_due_monitor_waits_quietly()
     assert_unscheduled_monitor_requires_metadata_repair()
+    assert_unscheduled_monitor_repair_survives_handoff_gates()
     assert_due_monitor_requires_explicit_attempt()
     assert_expired_monitor_does_not_catch_up()
     assert_due_monitor_priority_does_not_steal_advancement_lane()

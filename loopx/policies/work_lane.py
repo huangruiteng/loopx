@@ -4,6 +4,32 @@ from typing import Any
 
 
 WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v1"
+WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS = {
+    "attempt_due_monitor",
+    "repair_monitor_schedule_metadata",
+    "repair_resume_gate_or_close_standing_monitor",
+}
+
+
+def work_lane_contract_requires_current_agent_attempt(
+    contract: dict[str, Any] | None,
+) -> bool:
+    """Return true when the work-lane contract is itself an actionable lane.
+
+    This intentionally covers monitor-derived repair/attempt obligations, not
+    every `advancement_task` contract. A generic advancement contract may still
+    describe goal-level work claimed by another agent; monitor-derived contracts
+    are built from current-agent/unclaimed monitor projections and must not be
+    collapsed into agent-scope wait just because no ordinary advancement todo
+    exists.
+    """
+
+    if not isinstance(contract, dict):
+        return False
+    if contract.get("must_attempt_work") is not True:
+        return False
+    obligation = str(contract.get("obligation") or "")
+    return obligation in WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS
 
 
 def build_work_lane_contract(

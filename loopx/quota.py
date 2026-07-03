@@ -52,6 +52,7 @@ from .policies.scheduler_hint import (
 from .policies.work_lane import (
     WORK_LANE_CONTRACT_SCHEMA_VERSION,
     build_work_lane_contract as build_work_lane_contract_policy,
+    work_lane_contract_requires_current_agent_attempt,
 )
 from .scheduler_state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -3160,6 +3161,8 @@ def _agent_lane_frontier_hint(
 
     if _work_lane_due_monitor_attempt(work_lane_contract):
         return None
+    if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
+        return None
 
     frontier = agent_scope_frontier if isinstance(agent_scope_frontier, dict) else {}
     frontier_action = _agent_scope_frontier_action(frontier.get("action"))
@@ -3528,6 +3531,8 @@ def _agent_scope_no_candidate_frontier(
     if isinstance(agent_lane_next_action, dict):
         return None
     if _work_lane_due_monitor_attempt(work_lane_contract):
+        return None
+    if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
         return None
     has_advancement_contract = (
         isinstance(work_lane_contract, dict)
