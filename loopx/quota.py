@@ -84,6 +84,7 @@ from .todo_contract import (
 )
 from .todo_handoff_gate import HandoffGateState, build_todo_handoff_gate_states
 from .todo_projection import (
+    todo_claimed_visibility_items as projection_todo_claimed_visibility_items,
     todo_index_rank as projection_todo_index_rank,
     todo_item_expires_at as projection_todo_item_expires_at,
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
@@ -1395,48 +1396,7 @@ def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
 
 
 def _claimed_visibility_items(items: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
-    if limit <= 0 or len(items) <= limit:
-        return items[:limit]
-    claim_order: list[str] = []
-    buckets: dict[str, list[dict[str, Any]]] = {}
-    for item in items:
-        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
-        if not claimed_by:
-            continue
-        if claimed_by not in buckets:
-            buckets[claimed_by] = []
-            claim_order.append(claimed_by)
-        buckets[claimed_by].append(item)
-    if not buckets:
-        return items[:limit]
-
-    original_index = {id(item): index for index, item in enumerate(items)}
-    per_claimant_cap = max(1, limit // len(buckets))
-    selected: list[dict[str, Any]] = []
-    selected_ids: set[int] = set()
-    for claimed_by in claim_order:
-        taken = 0
-        for item in buckets[claimed_by]:
-            if taken >= per_claimant_cap:
-                break
-            if len(selected) >= limit:
-                break
-            selected.append(item)
-            selected_ids.add(id(item))
-            taken += 1
-        if len(selected) >= limit:
-            break
-
-    if len(selected) < limit:
-        for item in items:
-            if id(item) in selected_ids:
-                continue
-            selected.append(item)
-            selected_ids.add(id(item))
-            if len(selected) >= limit:
-                break
-
-    return sorted(selected, key=lambda item: original_index.get(id(item), 999999))[:limit]
+    return projection_todo_claimed_visibility_items(items, limit=limit)
 
 
 def _agent_claim_scoped_open_items(
