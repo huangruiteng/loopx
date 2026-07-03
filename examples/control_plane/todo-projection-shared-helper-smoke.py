@@ -283,8 +283,11 @@ def assert_deferred_helper_parity() -> None:
 
 
 def assert_monitor_item_collection_parity(summary: dict[str, Any]) -> None:
-    # Preserve legacy object-identity de-duplication: projected copies of the
-    # same todo_id can appear more than once across monitor summary lanes.
+    # Preserve current lane-projection semantics: repeated references to the
+    # same dict object are de-duplicated, while separate projected copies of the
+    # same todo_id can appear across monitor summary lanes. This is not a
+    # long-term identity contract; pin it before replacing it with stable lane
+    # keys.
     expected_ids = [
         "todo_monitor_p0",
         "todo_monitor_p0",

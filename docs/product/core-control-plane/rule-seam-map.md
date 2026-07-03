@@ -27,6 +27,57 @@ private evidence migration, production actions, or public first-screen copy.
 | `loopx/quota.py` | Quota eligibility, work-lane routing, agent-lane selection, monitor-poll writeback, scheduler hints, interaction contracts, spend events, and quota markdown. | Policy, projection, writeback, and rendering rules can start depending on each other by accident. |
 | `loopx/status.py` | Active-state parsing, todo projections, event projection fallback, attention queue, task graph, project assets, status contract, and status markdown. | Read-model construction and display shaping can blur; Markdown parsing remains flexible but weakly typed. |
 
+## Status/Quota Boundary Checkpoint
+
+The current safe extraction frontier is the shared todo read model. The
+following pure helpers now belong in `loopx/todo_projection.py` or call through
+that module:
+
+- todo priority labels, ranks, index values, and sort keys;
+- task text/class, actionable-open checks, deferred checks, and claimed
+  visibility checks;
+- due monitor, schedule-gap, and monitor-expiration checks;
+- claimed-by/unclaimed agent visibility;
+- claim-scope agent ids and monitor writeback support flags;
+- monitor summary item collection;
+- first executable advancement item selection.
+
+This checkpoint should stop the micro-helper loop unless the next candidate is
+also a pure read-model helper and already has cheap parity coverage. The next
+valuable slice is not another one-line wrapper in `quota.py`; it is
+characterization-first extraction of the agent-scoped frontier and user-gate
+read model.
+
+One subtle case is monitor item aggregation across summary lanes. The current
+projection de-duplicates repeated references to the same dict object while
+still allowing the same `todo_id` to appear through different lane projections.
+That behavior should not be justified as legacy compatibility or treated as a
+long-term API. Before changing it, characterize the intended lane-projection
+identity and then migrate to a stable key such as `todo_id` plus projection
+lane/source.
+
+Keep these areas in `quota.py` until the characterization fixture exists:
+
+- agent-scoped user-gate filtering and fallback selection;
+- handoff gate, cleared-successor, deferred-resume, and
+  monitor-blocked-resume selection;
+- work-lane contract assembly and effective-action choice;
+- protocol action packet, scheduler hint, quota spend, monitor-poll, and
+  scheduler-ack write paths.
+
+Those areas mix projection with policy. Moving them without a parity fixture
+can silently change which todo a side-agent sees, whether a monitor item is due,
+or whether automation reports quiet wait versus required progress.
+
+The next module-boundary PR should therefore:
+
+1. add agent-scope/user-gate/frontier characterization fixtures first;
+2. extract a small read-only projection module only after parity is pinned;
+3. keep `quota.py` as the policy/orchestration layer until the new module is
+   covered by the focused smoke profile;
+4. validate with the shared todo-projection helper smoke, the status/quota
+   review-packet parity smoke, and the `core-control-plane` smoke profile.
+
 ## Quota Rule Families
 
 | Family | Current anchors | Target seam | Extraction guard |
