@@ -114,8 +114,9 @@ def main() -> None:
         assert payload["ok"] is True, payload
         assert "reward-overlay-goal: reward overlay rows raw=2 unique=1 overlays=1" in checks, payload
         assert "reward-overlay-goal: duplicate index rows" not in warnings, payload
-        assert "plain-duplicate-goal: duplicate index rows raw=2 unique=1" in warnings, payload
-        assert "loopx history inspect-index-duplicates --goal-id plain-duplicate-goal" in warnings, payload
+        assert "plain-duplicate-goal: duplicate index rows raw=2 unique=1 unexpected=1" in warnings, payload
+        assert "loopx history --goal-id plain-duplicate-goal inspect-index-duplicates" in warnings, payload
+        assert "loopx history --goal-id plain-duplicate-goal repair-index-duplicates" in warnings, payload
         assert not any(".local/managed_doc" in item for item in payload["errors"]), payload
 
     print("contract-reward-overlay-smoke ok")

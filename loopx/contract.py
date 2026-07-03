@@ -203,11 +203,28 @@ def _index_duplicate_summary(index_path: Path) -> dict[str, Any]:
     }
 
 
-def _index_duplicate_warning(goal_id: object, raw: int, unique: int) -> str:
+def _index_duplicate_warning(
+    goal_id: object,
+    raw: int,
+    unique: int,
+    duplicate_summary: dict[str, Any] | None = None,
+) -> str:
     safe_goal_id = str(goal_id)
+    duplicate_summary = duplicate_summary or {}
+    detail_parts = []
+    unexpected_rows = int(duplicate_summary.get("unexpected_duplicate_rows") or 0)
+    reward_overlay_rows = int(duplicate_summary.get("reward_overlay_rows") or 0)
+    if unexpected_rows:
+        detail_parts.append(f"unexpected={unexpected_rows}")
+    if reward_overlay_rows:
+        detail_parts.append(f"reward_overlays={reward_overlay_rows}")
+    if not detail_parts and raw > unique:
+        detail_parts.append(f"duplicates={raw - unique}")
+    detail = f" {' '.join(detail_parts)}" if detail_parts else ""
     return (
-        f"{safe_goal_id}: duplicate index rows raw={raw} unique={unique}; "
-        f"inspect with `loopx history inspect-index-duplicates --goal-id {safe_goal_id}`"
+        f"{safe_goal_id}: duplicate index rows raw={raw} unique={unique}{detail}; "
+        f"inspect with `loopx history --goal-id {safe_goal_id} inspect-index-duplicates`; "
+        f"preview repair with `loopx history --goal-id {safe_goal_id} repair-index-duplicates`"
     )
 
 
@@ -486,14 +503,14 @@ def check_contract(
         if raw > unique:
             duplicate_summary = _index_duplicate_summary(Path(str(item.get("index_path") or "")))
             if duplicate_summary.get("unexpected_duplicate_rows"):
-                warnings.append(_index_duplicate_warning(item.get("id"), raw, unique))
+                warnings.append(_index_duplicate_warning(item.get("id"), raw, unique, duplicate_summary))
             elif duplicate_summary.get("reward_overlay_rows"):
                 checks.append(
                     f"{item.get('id')}: reward overlay rows raw={raw} unique={unique} "
                     f"overlays={duplicate_summary.get('reward_overlay_rows')}"
                 )
             else:
-                warnings.append(_index_duplicate_warning(item.get("id"), raw, unique))
+                warnings.append(_index_duplicate_warning(item.get("id"), raw, unique, duplicate_summary))
 
     boundary = scan_public_boundary(scan_roots, registry=registry)
     if boundary.get("ok"):
