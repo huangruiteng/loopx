@@ -185,12 +185,13 @@ def _agent_commands(
     diagnose = f"loopx --registry {registry_arg} diagnose"
     status = f"loopx --registry {registry_arg} status"
     agent_arg = f" --agent-id {shlex.quote(agent_id)}" if agent_id else ""
+    goal_arg = f" --goal-id {shlex.quote(goal_id)}" if goal_id else ""
     if scan_args:
         diagnose = f"{diagnose} {scan_args}"
         status = f"{status} {scan_args}"
     commands = [
-        f"{diagnose}{agent_arg} --limit {max(1, limit)}",
-        f"{status}{agent_arg} --limit {max(1, limit)}",
+        f"{diagnose}{goal_arg}{agent_arg} --limit {max(1, limit)}",
+        f"{status}{goal_arg}{agent_arg} --limit {max(1, limit)}",
     ]
     if goal_id:
         quoted_goal = shlex.quote(goal_id)

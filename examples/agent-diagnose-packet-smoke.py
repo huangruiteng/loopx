@@ -261,6 +261,14 @@ def main() -> int:
         assert "local_scheduler" not in str(scheduler_hint), scheduler_hint
         assert scheduler_hint["codex_app"]["no_spend_for_cadence_change"] is True, scheduler_hint
         assert selected["agent_reasoning_checklist"], selected
+        assert any(
+            " diagnose " in command and f"--goal-id {GOAL_ID}" in command
+            for command in selected["agent_commands"]
+        ), selected
+        assert any(
+            " status " in command and f"--goal-id {GOAL_ID}" in command
+            for command in selected["agent_commands"]
+        ), selected
 
         markdown = run_markdown("--registry", str(registry), "diagnose", "--goal-id", GOAL_ID)
         assert "LoopX is not making the final diagnosis" in markdown, markdown
@@ -311,6 +319,9 @@ def main() -> int:
         assert any("--agent-id codex-main-control" in command for command in scoped_selected["agent_commands"]), (
             scoped_selected
         )
+        assert any(
+            f"--goal-id {SCOPED_GOAL_ID}" in command for command in scoped_selected["agent_commands"]
+        ), scoped_selected
 
     print("agent-diagnose-packet-smoke ok")
     return 0
