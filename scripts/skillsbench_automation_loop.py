@@ -1108,6 +1108,8 @@ def _host_local_acp_launch_command(
                         int(getattr(args, "app_server_goal_followup_max", 0) or 0),
                     )
                 ),
+                "--app-server-goal-prompt-style",
+                str(getattr(args, "app_server_goal_prompt_style", "native-goal")),
             ]
         )
         if worker_trace_dir:
@@ -7930,6 +7932,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     reasoning_effort = _effective_reasoning_effort(args)
     app_server_reasoning_effort = _effective_app_server_reasoning_effort(args)
     codex_cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
+    app_server_goal_prompt_style = str(
+        getattr(args, "app_server_goal_prompt_style", "native-goal")
+        or "native-goal"
+    )
     codex_api_egress_preflight = _public_codex_api_egress_contract(
         args,
         status=(
@@ -8017,6 +8023,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             cwd="<skillsbench-task-workspace>",
             model=args.model,
             reasoning_effort=app_server_reasoning_effort,
+            prompt_style=app_server_goal_prompt_style,
             sandbox="workspace-write",
             approval_policy="never",
             no_upload=True,
@@ -8053,6 +8060,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             max(0, int(args.app_server_goal_followup_max or 0))
             if is_app_server_goal_route
             else 0
+        ),
+        "app_server_goal_prompt_style": (
+            app_server_goal_prompt_style
+            if is_app_server_goal_route
+            else ""
         ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
@@ -8557,6 +8569,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "reasoning_effort",
         "codex_cli_reasoning_effort",
         "app_server_reasoning_effort",
+        "app_server_goal_prompt_style",
         "sandbox",
         "run_group_id",
         "job_name",
@@ -14708,6 +14721,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "completed codex-app-server-goal-baseline turns. The follow-up "
             "prompt provides no verifier/reward/pass-fail feedback to the "
             "worker. 0 preserves the native single-turn baseline."
+        ),
+    )
+    parser.add_argument(
+        "--app-server-goal-prompt-style",
+        choices=("native-goal", "cli-exec-like"),
+        default="native-goal",
+        help=(
+            "Prompt framing for codex-app-server-goal-baseline. native-goal "
+            "preserves the existing app-server Goal closeout/lifecycle "
+            "framing; cli-exec-like keeps the worker prompt closer to the "
+            "Codex exec bridge prompt for diagnostic canaries."
         ),
     )
     parser.add_argument("--max-verifier-output-chars", type=int, default=0)

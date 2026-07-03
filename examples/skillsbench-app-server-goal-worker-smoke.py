@@ -760,6 +760,8 @@ def test_launcher_plan_only_uses_native_worker_route() -> None:
                 ROUTE,
                 "--jobs-dir",
                 str(Path(tmp) / "jobs"),
+                "--app-server-goal-prompt-style",
+                "cli-exec-like",
                 "--plan-only",
             ],
             cwd=REPO_ROOT,
@@ -771,8 +773,10 @@ def test_launcher_plan_only_uses_native_worker_route() -> None:
     assert payload["ok"] is True, payload
     plan = payload["launch_plan"]
     assert_plan_prerequisites(plan)
+    assert plan["app_server_goal_prompt_style"] == "cli-exec-like", plan
     contract = plan["app_server_goal_worker_contract"]
     assert contract["route"] == ROUTE, contract
+    assert contract["worker_adapter"]["prompt_style"] == "cli-exec-like", contract
     assert contract["worker_plan"]["schema_version"] == "codex_app_server_goal_worker_v0", contract
     assert plan["app_server_goal_worker_trace_dir"].endswith(
         "app_server_goal_worker_traces"
@@ -1178,8 +1182,10 @@ def test_host_worker_contract_only_cli() -> None:
     assert contract["route"] == ROUTE, contract
     assert contract["worker_adapter"]["script"] == "scripts/skillsbench_host_codex_goal_worker.py", contract
     assert contract["worker_adapter"]["reasoning_effort"] == "high", contract
+    assert contract["worker_adapter"]["prompt_style"] == "native-goal", contract
     assert payload["loopx_mode"] == "codex_goal_mode_baseline", payload
     assert payload["loopx_access_packet_mode"] == "none", payload
+    assert payload["app_server_goal_prompt_style"] == "native-goal", payload
     assert payload["loopx_case_lifecycle_packet_injected"] is False, payload
     assert payload["benchmark_case_lifecycle_contract"] is None, payload
 
@@ -1228,6 +1234,34 @@ def test_host_worker_treatment_lifecycle_packet_is_public_safe() -> None:
     assert "official SkillsBench/BenchFlow verifier authoritative" in prompt
     assert "Private task instruction placeholder." in prompt
     assert "/Users/" not in prompt
+
+
+def test_host_worker_cli_exec_like_prompt_style_suppresses_lifecycle_packet() -> None:
+    worker = _load_worker_module()
+    args = worker.parse_args(
+        [
+            "--task-id",
+            "tictoc-unnecessary-abort-detection",
+            "--contract-only",
+            "--app-server-goal-prompt-style",
+            "cli-exec-like",
+            "--loopx-mode",
+            "codex_loopx",
+            "--loopx-access-packet-mode",
+            "compact",
+            "--loopx-case-id",
+            "tictoc-unnecessary-abort-detection",
+            "--loopx-arm-id",
+            "loopx_prompt_polling_test",
+            "--loopx-max-rounds",
+            "5",
+        ]
+    )
+    packet, contract = worker.build_loopx_case_lifecycle_packet(args)
+    assert packet == ""
+    assert contract is None
+    payload = worker.build_contract_payload(args)
+    assert payload["worker_adapter"]["prompt_style"] == "cli-exec-like", payload
 
 
 def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> None:
@@ -2471,6 +2505,7 @@ def _app_server_goal_command_args(first_action_timeout: int | None) -> Namespace
         local_acp_relay_command="",
         route=ROUTE,
         app_server_reasoning_effort="high",
+        app_server_goal_prompt_style="native-goal",
         app_server_acp_heartbeat_interval_sec=120.0,
         dataset="skillsbench@1.1",
         task_id="llm-prefix-cache-replay",
@@ -2490,6 +2525,19 @@ def _app_server_goal_command_args(first_action_timeout: int | None) -> Namespace
         remote_command_file_bridge_probe_timeout_sec=10,
         remote_command_file_bridge_agent_command="",
     )
+
+
+def test_app_server_goal_launcher_carries_prompt_style() -> None:
+    runner = _load_runner_module()
+    args = _app_server_goal_command_args(first_action_timeout=30)
+    args.app_server_goal_prompt_style = "cli-exec-like"
+    command = runner._host_local_acp_launch_command(
+        args,
+        {"app_server_goal_worker_trace_dir": "/tmp/worker-traces"},
+    )
+    assert "--app-server-goal-prompt-style" in command, command
+    index = command.index("--app-server-goal-prompt-style")
+    assert command[index + 1] == "cli-exec-like", command
 
 
 def test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge() -> None:
@@ -2977,6 +3025,7 @@ if __name__ == "__main__":
     test_launcher_plan_only_marks_bridge_ready_when_explicit()
     test_launcher_plan_only_marks_runner_ready_with_host_acp_launch()
     test_host_worker_contract_only_cli()
+    test_host_worker_cli_exec_like_prompt_style_suppresses_lifecycle_packet()
     test_host_worker_waits_for_completion_and_keeps_public_json_compact()
     test_host_worker_recovers_when_first_turn_only_echoes_context()
     test_host_worker_can_run_normal_no_reward_followup()
@@ -2993,6 +3042,7 @@ if __name__ == "__main__":
     test_acp_relay_fails_fast_when_app_server_worker_never_uses_bridge()
     test_app_server_goal_launcher_defaults_first_action_watchdog()
     test_app_server_goal_launcher_allows_explicit_first_action_disable()
+    test_app_server_goal_launcher_carries_prompt_style()
     test_acp_relay_fails_fast_when_app_server_worker_only_uses_status_bridge()
     test_acp_relay_yields_after_task_output_quiet_timeout()
     test_launcher_plan_only_records_independent_retry_config()

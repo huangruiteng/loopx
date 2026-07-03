@@ -114,6 +114,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--app-server-goal-prompt-style",
+        choices=("native-goal", "cli-exec-like"),
+        default="native-goal",
+        help=(
+            "Prompt framing for --app-server-goal-worker. native-goal keeps "
+            "the app-server closeout/lifecycle framing; cli-exec-like keeps "
+            "the worker prompt closer to the Codex exec bridge prompt for "
+            "diagnostic canaries."
+        ),
+    )
+    parser.add_argument(
         "--bridge-idle-timeout-sec",
         type=float,
         default=0.0,
@@ -209,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
             first_action_timeout_sec=args.first_action_timeout_sec,
             app_server_goal_followup_max=args.app_server_goal_followup_max,
+            app_server_goal_prompt_style=args.app_server_goal_prompt_style,
             bridge_idle_timeout_sec=args.bridge_idle_timeout_sec,
             task_output_quiet_timeout_sec=args.task_output_quiet_timeout_sec,
             worker_public_trace_dir=args.worker_public_trace_dir,

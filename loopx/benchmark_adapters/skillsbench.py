@@ -799,6 +799,7 @@ def build_skillsbench_app_server_goal_worker_contract(
     cwd: str = "<skillsbench-task-workspace>",
     model: str = SKILLSBENCH_DEFAULT_MODEL,
     reasoning_effort: str = "high",
+    prompt_style: str = "native-goal",
     codex_bin: str = "codex",
     sandbox: str = "workspace-write",
     approval_policy: str = "never",
@@ -824,6 +825,10 @@ def build_skillsbench_app_server_goal_worker_contract(
     safe_dataset = _skillsbench_public_safe_label(dataset, limit=80)
     safe_task_id = _skillsbench_public_safe_label(task_id, limit=120)
     blockers = [str(item) for item in known_blockers if str(item)]
+    safe_prompt_style = _skillsbench_public_safe_label(prompt_style, limit=40)
+    if safe_prompt_style not in {"native-goal", "cli-exec-like"}:
+        blockers.append("skillsbench_app_server_goal_prompt_style_invalid")
+        safe_prompt_style = "native-goal"
     if not safe_dataset:
         safe_dataset = SKILLSBENCH_DEFAULT_DATASET
         blockers.append("skillsbench_dataset_not_public_safe")
@@ -890,6 +895,7 @@ def build_skillsbench_app_server_goal_worker_contract(
                 reasoning_effort, limit=40
             )
             or "high",
+            "prompt_style": safe_prompt_style,
             "agent_execution_mode": "host_codex_app_server_goal_worker",
             "worker_surface": "codex_app_server",
             "native_goal_methods_required": list(worker_plan["methods"]),

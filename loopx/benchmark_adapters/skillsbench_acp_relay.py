@@ -466,6 +466,13 @@ def _prompt_with_app_server_closeout_instruction(prompt_text: str) -> str:
     )
 
 
+def _normalized_app_server_goal_prompt_style(style: str | None) -> str:
+    text = str(style or "").strip().lower()
+    if text in {"native-goal", "cli-exec-like"}:
+        return text
+    return "native-goal"
+
+
 def _recoverable_codex_turn_failure_message(category: str) -> str:
     return (
         "LoopX recoverable Codex turn failure: "
@@ -519,6 +526,7 @@ class CodexExecConfig:
     stream_heartbeat_interval_sec: float = 120.0
     first_action_timeout_sec: float = 0.0
     app_server_goal_followup_max: int = 0
+    app_server_goal_prompt_style: str = "native-goal"
     bridge_idle_timeout_sec: float = 0.0
     task_output_quiet_timeout_sec: float = 0.0
     reasoning_effort: str | None = None
@@ -2043,9 +2051,16 @@ raise SystemExit(proc.returncode)
                     bridge_probe=bridge_probe,
                     bridge_command_for_agent=str(instrumented_bridge),
                 )
-            prompt_for_worker = _prompt_with_app_server_closeout_instruction(
-                prompt_for_worker
+            app_server_goal_prompt_style = _normalized_app_server_goal_prompt_style(
+                self._config.app_server_goal_prompt_style
             )
+            app_server_goal_closeout_injected = (
+                app_server_goal_prompt_style == "native-goal"
+            )
+            if app_server_goal_closeout_injected:
+                prompt_for_worker = _prompt_with_app_server_closeout_instruction(
+                    prompt_for_worker
+                )
             prompt_path.write_text(prompt_for_worker, encoding="utf-8")
             worker_script = (
                 Path(self._config.worker_script).expanduser()
@@ -2090,6 +2105,8 @@ raise SystemExit(proc.returncode)
                 str(worker_first_action_timeout_sec),
                 "--normal-followup-max",
                 str(max(0, int(self._config.app_server_goal_followup_max or 0))),
+                "--app-server-goal-prompt-style",
+                app_server_goal_prompt_style,
                 "--reasoning-effort",
                 str(self._config.reasoning_effort or "high"),
                 "--runner-integration-ready",
@@ -2423,6 +2440,7 @@ raise SystemExit(proc.returncode)
                 worker_adapter,
                 (
                     "reasoning_effort",
+                    "prompt_style",
                     "agent_execution_mode",
                     "worker_surface",
                     "context_only_followup_supported",
@@ -2430,7 +2448,7 @@ raise SystemExit(proc.returncode)
             ),
             "prompt": compact_dict(
                 payload.get("prompt"),
-                ("sha256", "chars", "raw_recorded"),
+                ("sha256", "chars", "raw_recorded", "style"),
             ),
             "turn": compact_dict(
                 payload.get("turn"),

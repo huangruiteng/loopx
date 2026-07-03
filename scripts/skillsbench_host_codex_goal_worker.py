@@ -42,6 +42,7 @@ SKILLS_INSTRUCTIONS_END_MARKER = "</skills_instructions>"
 NORMAL_FOLLOWUP_PROMPT = """Continue the same SkillsBench task in this existing Goal thread.
 Do not use or infer verifier, reward, pass/fail, hidden-test, or gold-answer feedback; none is being provided.
 Review your prior work, improve the scored output if needed using only the visible task, workspace, and bridge context already available in this thread, and end the turn once the best task-required output exists."""
+APP_SERVER_GOAL_PROMPT_STYLES = ("native-goal", "cli-exec-like")
 
 
 def _json_default(value: Any) -> str:
@@ -65,6 +66,16 @@ def _public_safe_label(value: Any, *, limit: int = 80) -> str:
     return label[:limit]
 
 
+def _app_server_goal_prompt_style(args: argparse.Namespace) -> str:
+    style = str(
+        getattr(args, "app_server_goal_prompt_style", "native-goal")
+        or "native-goal"
+    )
+    if style in APP_SERVER_GOAL_PROMPT_STYLES:
+        return style
+    return "native-goal"
+
+
 def build_contract_payload(args: argparse.Namespace) -> dict[str, Any]:
     return build_skillsbench_app_server_goal_worker_contract(
         dataset=args.dataset,
@@ -72,6 +83,7 @@ def build_contract_payload(args: argparse.Namespace) -> dict[str, Any]:
         cwd="<skillsbench-task-workspace>",
         model=args.model,
         reasoning_effort=args.reasoning_effort,
+        prompt_style=_app_server_goal_prompt_style(args),
         codex_bin=args.codex_bin,
         sandbox=args.sandbox,
         approval_policy=args.approval_policy,
@@ -85,6 +97,8 @@ def build_contract_payload(args: argparse.Namespace) -> dict[str, Any]:
 def build_loopx_case_lifecycle_packet(
     args: argparse.Namespace,
 ) -> tuple[str, dict[str, object] | None]:
+    if _app_server_goal_prompt_style(args) == "cli-exec-like":
+        return "", None
     if args.loopx_mode != "codex_loopx":
         return "", None
     if args.loopx_access_packet_mode == "none":
@@ -216,6 +230,7 @@ def _compact_worker_turn(
             "assistant_message_context_only": _assistant_message_context_only(turn),
             "post_context_assistant_chars": _post_context_assistant_chars(turn),
             "reasoning_effort": _public_safe_label(args.reasoning_effort) or "high",
+            "app_server_goal_prompt_style": _app_server_goal_prompt_style(args),
             "loopx_mode": args.loopx_mode,
             "loopx_access_packet_mode": args.loopx_access_packet_mode,
             "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
@@ -268,10 +283,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     objective = args.objective or f"Complete SkillsBench task {args.task_id}"
     work_dir.mkdir(parents=True, exist_ok=True)
     lifecycle_packet, lifecycle_contract = build_loopx_case_lifecycle_packet(args)
-    effective_prompt = _prompt_with_loopx_case_lifecycle_packet(
-        prompt,
-        lifecycle_packet,
-    )
+    effective_prompt = _prompt_with_loopx_case_lifecycle_packet(prompt, lifecycle_packet)
     turn = start_codex_app_server_goal_turn(
         codex_bin=args.codex_bin,
         work_dir=work_dir,
@@ -504,6 +516,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
         "rollout_name": args.rollout_name,
         "loopx_mode": args.loopx_mode,
         "loopx_access_packet_mode": args.loopx_access_packet_mode,
+        "app_server_goal_prompt_style": _app_server_goal_prompt_style(args),
         "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
         "benchmark_case_lifecycle_contract": lifecycle_contract,
         "worker_contract": worker_contract,
@@ -513,6 +526,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             "effective_sha256": stable_text_digest(effective_prompt),
             "effective_chars": len(effective_prompt),
             "raw_recorded": False,
+            "style": _app_server_goal_prompt_style(args),
         },
         "turn": compact,
         "turn_attempts": attempt_compacts,
@@ -617,6 +631,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--app-server-goal-prompt-style",
+        choices=APP_SERVER_GOAL_PROMPT_STYLES,
+        default="native-goal",
+        help=(
+            "Prompt framing for native app-server Goal worker turns. "
+            "native-goal preserves the current app-server Goal contract; "
+            "cli-exec-like suppresses app-only lifecycle prompt injection so "
+            "canaries can isolate task framing versus Codex exec."
+        ),
+    )
+    parser.add_argument(
         "--no-wait-for-completion",
         action="store_true",
         help=(
@@ -682,6 +707,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "loopx_mode": args.loopx_mode,
                 "loopx_access_packet_mode": args.loopx_access_packet_mode,
+                "app_server_goal_prompt_style": _app_server_goal_prompt_style(args),
                 "loopx_case_lifecycle_packet_injected": bool(lifecycle_packet),
                 "benchmark_case_lifecycle_contract": lifecycle_contract,
             }
