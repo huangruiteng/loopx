@@ -110,6 +110,13 @@ from .projections.monitor_display import (
 from .projections.issue_meta_surface import (
     parse_issue_meta_surface as _parse_issue_meta_surface_read_model,
 )
+from .projections.lifecycle import (
+    goal_lifecycle_fields as _goal_lifecycle_fields_read_model,
+    ordered_lifecycle_flags as _ordered_lifecycle_flags_read_model,
+    primary_lifecycle_phase as _primary_lifecycle_phase_read_model,
+    run_lifecycle_flags as _run_lifecycle_flags_read_model,
+    run_lifecycle_phase as _run_lifecycle_phase_read_model,
+)
 from .projections.session_runtime import (
     compact_session_runtime_projection_from_run as _compact_session_runtime_projection_from_run_read_model,
     compact_session_runtime_readonly_projection as _compact_session_runtime_readonly_projection_read_model,
@@ -7537,78 +7544,50 @@ def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def ordered_lifecycle_flags(flags: list[str]) -> list[str]:
-    seen: set[str] = set()
-    deduped = [flag for flag in flags if flag and not (flag in seen or seen.add(flag))]
-    priority = {phase: index for index, phase in enumerate(LIFECYCLE_PRIORITY)}
-    return sorted(deduped, key=lambda phase: priority.get(phase, len(priority)))
+    return _ordered_lifecycle_flags_read_model(
+        flags,
+        lifecycle_priority=LIFECYCLE_PRIORITY,
+    )
 
 
 def primary_lifecycle_phase(flags: list[str], fallback: str = "registered") -> str:
-    ordered = ordered_lifecycle_flags(flags)
-    return ordered[0] if ordered else fallback
+    return _primary_lifecycle_phase_read_model(
+        flags,
+        lifecycle_priority=LIFECYCLE_PRIORITY,
+        fallback=fallback,
+    )
 
 
 def run_lifecycle_flags(run: dict[str, Any] | None) -> list[str]:
-    if not isinstance(run, dict):
-        return []
-
-    flags: list[str] = []
-    classification = str(run.get("classification") or "")
-    if classification == "state_refreshed":
-        flags.append("refreshed")
-    elif classification == "read_only_project_map" or isinstance(run.get("project_map"), dict):
-        flags.append("mapped")
-    elif classification:
-        flags.append("adapter_inspected")
-    else:
-        flags.append("run_recorded")
-
-    if compact_human_reward(run.get("human_reward")):
-        flags.append("reward_judged")
-
-    operator_gate = compact_operator_gate(run.get("operator_gate"))
-    if operator_gate:
-        if operator_gate.get("decision") == "approve":
-            flags.append("operator_approved")
-        else:
-            flags.append("operator_gated")
-
-    readiness = compact_controller_readiness(run.get("controller_readiness"))
-    if readiness:
-        if readiness.get("decision_advisor_ready") or readiness.get("write_controller_ready"):
-            flags.append("controller_ready")
-        elif readiness.get("read_only_observer_ready") or readiness.get("classification"):
-            flags.append("controller_gated")
-
-    return ordered_lifecycle_flags(flags)
+    return _run_lifecycle_flags_read_model(
+        run,
+        lifecycle_priority=LIFECYCLE_PRIORITY,
+        compact_human_reward=compact_human_reward,
+        compact_operator_gate=compact_operator_gate,
+        compact_controller_readiness=compact_controller_readiness,
+    )
 
 
 def run_lifecycle_phase(run: dict[str, Any] | None) -> str:
-    return primary_lifecycle_phase(run_lifecycle_flags(run), fallback="run_recorded")
+    return _run_lifecycle_phase_read_model(
+        run,
+        lifecycle_priority=LIFECYCLE_PRIORITY,
+        compact_human_reward=compact_human_reward,
+        compact_operator_gate=compact_operator_gate,
+        compact_controller_readiness=compact_controller_readiness,
+    )
 
 
 def goal_lifecycle_fields(goal: dict[str, Any], current_run: dict[str, Any] | None) -> dict[str, Any]:
-    if current_run:
-        flags = run_lifecycle_flags(current_run)
-        return {
-            "lifecycle_phase": primary_lifecycle_phase(flags),
-            "lifecycle_flags": flags,
-        }
-
-    adapter_status = str(goal.get("adapter_status") or "")
-    status = str(goal.get("status") or "")
-    flags: list[str]
-    if adapter_status in CONNECTED_ADAPTER_STATUSES:
-        flags = ["connected"]
-    elif "planned" in status or adapter_status == "planned":
-        flags = ["planned"]
-    else:
-        flags = ["registered"]
-    flags = ordered_lifecycle_flags(flags)
-    return {
-        "lifecycle_phase": primary_lifecycle_phase(flags),
-        "lifecycle_flags": flags,
-    }
+    return _goal_lifecycle_fields_read_model(
+        goal,
+        current_run,
+        lifecycle_priority=LIFECYCLE_PRIORITY,
+        connected_adapter_statuses=CONNECTED_ADAPTER_STATUSES,
+        compact_human_reward=compact_human_reward,
+        compact_operator_gate=compact_operator_gate,
+        compact_controller_readiness=compact_controller_readiness,
+    )
 
 
 def readiness_attention_fields(run: dict[str, Any] | None) -> dict[str, Any]:
