@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 from collections.abc import Iterable
+from hashlib import sha256
 from pathlib import Path
 
 from .capabilities.multi_agent.contract import (
@@ -32,11 +33,103 @@ def _q(value: object) -> str:
     return shlex.quote(str(value))
 
 
+PANE_A2A_WAKEUP_SCHEMA_VERSION = "multi_agent_pane_a2a_wakeup_v0"
+PANE_A2A_WAKEUP_PROMPT = (
+    "LoopX pane-local A2A wakeup: run $LOOPX_PANE_A2A_TICK now. "
+    "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
+    "if no runnable frontier, stay quiet with a brief no-action note; "
+    "if advanced, summarize public evidence and next handoff. "
+    "Do not ask the broadcaster for direction; LoopX state is the source of truth."
+)
+
+
 def require_executable(command: str, *, field: str) -> str:
     path = shutil.which(command)
     if not path:
         raise ValueError(f"{field} executable not found on PATH: {command}")
     return path
+
+
+def build_pane_a2a_wakeup_prompt() -> str:
+    """Return the fixed prompt broadcast to live Codex TUI panes."""
+
+    return PANE_A2A_WAKEUP_PROMPT
+
+
+def wake_visible_multi_agent_panes(
+    *,
+    session_name: str,
+    tmux_bin: str = "tmux",
+    lanes: Iterable[str] | None = None,
+    execute: bool = False,
+    prompt: str | None = None,
+) -> dict[str, object]:
+    """Broadcast the fixed A2A prompt; each pane still decides via LoopX state."""
+
+    session = str(session_name or "").strip()
+    if not session:
+        raise ValueError("multi-agent wake requires --session-name")
+    prompt_text = str(prompt or build_pane_a2a_wakeup_prompt()).strip()
+    if not prompt_text:
+        raise ValueError("multi-agent wake prompt must not be empty")
+    prompt_hash = sha256(prompt_text.encode("utf-8")).hexdigest()[:16]
+    target_lanes = [str(lane).strip() for lane in lanes or [] if str(lane).strip()]
+
+    if execute:
+        require_executable(tmux_bin, field="tmux_bin")
+        env = os.environ.copy()
+        if not target_lanes:
+            listed = subprocess.run(
+                [tmux_bin, "list-windows", "-t", session, "-F", "#{window_name}"],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            target_lanes = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
+        if not target_lanes:
+            raise ValueError("multi-agent wake found no target panes")
+        buffer_name = f"loopx-pane-a2a-wakeup-{prompt_hash}"
+        subprocess.run(
+            [tmux_bin, "set-buffer", "-b", buffer_name, "--", prompt_text],
+            check=True,
+            env=env,
+        )
+        for lane in target_lanes:
+            target = f"{session}:{lane}"
+            subprocess.run(
+                [tmux_bin, "paste-buffer", "-b", buffer_name, "-t", target],
+                check=True,
+                env=env,
+            )
+            subprocess.run(
+                [tmux_bin, "send-keys", "-t", target, "Enter"],
+                check=True,
+                env=env,
+            )
+
+    return {
+        "ok": True,
+        "schema_version": PANE_A2A_WAKEUP_SCHEMA_VERSION,
+        "mode": "execute" if execute else "dry_run",
+        "session_name": session,
+        "target_lanes": target_lanes if target_lanes else ["<all-session-windows>"],
+        "prompt": prompt_text,
+        "prompt_hash": prompt_hash,
+        "coordination_model": "decentralized_state_a2a",
+        "wakeup_model": "fixed_prompt_broadcast",
+        "workflow_driver": False,
+        "broadcaster_reads_frontier": False,
+        "broadcaster_selects_todo": False,
+        "pane_decision_owner": "codex_tui_agent_via_loopx_state",
+        "boundary": {
+            "writes_loopx_state": False,
+            "spends_loopx_quota": False,
+            "reads_raw_transcripts": False,
+            "reads_credentials": False,
+            "runs_worker_turn_directly": False,
+        },
+    }
 
 
 def _codex_config_path() -> Path:

@@ -195,6 +195,9 @@ def build_tui_multi_agent_runner_contract(
         "pane_local_a2a": {
             "tick_command": "$LOOPX_PANE_A2A_TICK",
             "first_action": "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens",
+            "cadence_wakeup_command": "loopx multi-agent wake --session-name <session>",
+            "cadence_wakeup_model": "fixed_prompt_broadcast",
+            "cadence_broadcaster_decides_work": False,
             "reads": ["quota should-run", "agent-scoped frontier"],
             "runs": ["LOOPX_PANE_WORKER_TURN", "LOOPX_PANE_WORKER_LOOP"],
             "bounded_rounds_env": "LOOPX_PANE_TICK_ROUNDS",

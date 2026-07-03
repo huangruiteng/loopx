@@ -10,6 +10,7 @@ from ..paths import resolve_runtime_root
 from ..visible_multi_agent_launcher import (
     build_visible_multi_agent_payload_from_spec,
     execute_visible_multi_agent_launcher,
+    wake_visible_multi_agent_panes,
 )
 
 
@@ -53,6 +54,20 @@ def register_multi_agent_commands(
         default=False,
         help="Pass a trusted project config to each Codex TUI lane.",
     )
+    wake = multi_agent_sub.add_parser(
+        "wake",
+        help="Broadcast the fixed pane-local A2A prompt to live visible Codex TUI panes.",
+    )
+    add_subcommand_format(wake)
+    wake.add_argument("--session-name", required=True, help="tmux session to wake.")
+    wake.add_argument(
+        "--lane",
+        action="append",
+        default=[],
+        help="Specific pane/window name to wake. Repeat to target multiple panes. Omit with --execute to list the session windows.",
+    )
+    wake.add_argument("--tmux-bin", default="tmux")
+    wake.add_argument("--execute", action="store_true", help="Send the fixed prompt to tmux panes.")
 
 
 def _load_spec(path: Path) -> dict[str, object]:
@@ -96,6 +111,21 @@ def _render_multi_agent_launch_markdown(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _render_multi_agent_wake_markdown(payload: dict[str, object]) -> str:
+    if not payload.get("ok"):
+        return f"LoopX multi-agent wake failed: {payload.get('error')}"
+    lines = [
+        "# LoopX Multi-Agent Wake",
+        f"- mode: {payload.get('mode')}",
+        f"- session: {payload.get('session_name')}",
+        f"- wakeup_model: {payload.get('wakeup_model')}",
+        f"- coordination_model: {payload.get('coordination_model')}",
+        f"- workflow_driver: {payload.get('workflow_driver')}",
+        f"- target_lanes: {', '.join(str(item) for item in payload.get('target_lanes') or [])}",
+    ]
+    return "\n".join(lines)
+
+
 def handle_multi_agent_command(
     args: argparse.Namespace,
     *,
@@ -107,8 +137,17 @@ def handle_multi_agent_command(
     if args.command != "multi-agent":
         return None
     try:
+        if args.multi_agent_command == "wake":
+            payload = wake_visible_multi_agent_panes(
+                session_name=args.session_name,
+                tmux_bin=args.tmux_bin,
+                lanes=args.lane,
+                execute=bool(args.execute),
+            )
+            print_payload(payload, output_format(args), _render_multi_agent_wake_markdown)
+            return 0
         if args.multi_agent_command != "launch":
-            raise ValueError("multi-agent requires the `launch` subcommand")
+            raise ValueError("multi-agent requires the `launch` or `wake` subcommand")
         spec_path = Path(args.spec).expanduser()
         spec = _load_spec(spec_path)
         if args.session_name:

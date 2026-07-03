@@ -162,6 +162,11 @@ def main() -> int:
     assert runner_contract["tmux_lifecycle"]["attach_command"] == dry_packet["commands"]["attach"]
     assert runner_contract["tmux_lifecycle"]["stop_command"] == dry_packet["commands"]["stop"]
     assert runner_contract["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK"
+    assert runner_contract["pane_local_a2a"]["cadence_wakeup_command"] == (
+        "loopx multi-agent wake --session-name <session>"
+    )
+    assert runner_contract["pane_local_a2a"]["cadence_wakeup_model"] == "fixed_prompt_broadcast"
+    assert runner_contract["pane_local_a2a"]["cadence_broadcaster_decides_work"] is False
     assert runner_contract["pane_local_a2a"]["first_action"] == (
         "launcher runs $LOOPX_PANE_A2A_TICK before Codex TUI opens"
     )

@@ -82,6 +82,46 @@ def run_launch_command(
     return json.loads(completed.stdout)
 
 
+def run_wake_command(
+    env: dict[str, str],
+    *,
+    registry: Path,
+    runtime_root: Path,
+    session_name: str,
+    execute: bool,
+    lanes: list[str] | None = None,
+) -> dict[str, object]:
+    command = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry),
+        "--runtime-root",
+        str(runtime_root),
+        "--format",
+        "json",
+        "multi-agent",
+        "wake",
+        "--session-name",
+        session_name,
+        "--tmux-bin",
+        "tmux",
+    ]
+    for lane in lanes or []:
+        command.extend(["--lane", lane])
+    if execute:
+        command.append("--execute")
+    completed = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return json.loads(completed.stdout)
+
+
 def assert_public_safe(value: object, label: str) -> None:
     text = json.dumps(value, sort_keys=True).lower()
     leaked = [marker for marker in PRIVATE_MARKERS if marker.lower() in text]
@@ -200,6 +240,13 @@ def main() -> int:
         assert dry_packet["runner_contract"]["runner_surface"] == "tmux_codex_cli_tui", dry_packet
         assert dry_packet["runner_contract"]["coordination_model"]["leader_required"] is False, dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", dry_packet
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["cadence_wakeup_command"] == (
+            "loopx multi-agent wake --session-name <session>"
+        ), dry_packet
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["cadence_wakeup_model"] == (
+            "fixed_prompt_broadcast"
+        ), dry_packet
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["cadence_broadcaster_decides_work"] is False, dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["machine_json_destination"] == (
             "$LOOPX_PANE_ARTIFACT_DIR/*.public.json"
         ), dry_packet
@@ -247,6 +294,35 @@ def main() -> int:
         skill_items = launch["worker_skill_materialization"]
         assert skill_items and skill_items[0]["materialized"] is True, launch
         assert (workspace / ".codex" / "skills" / "loopx-planner-worker" / "SKILL.md").is_file()
+        dry_wake = run_wake_command(
+            env,
+            registry=registry,
+            runtime_root=runtime_root,
+            session_name="loopx-generic-multi-agent-smoke",
+            execute=False,
+            lanes=["planner"],
+        )
+        assert dry_wake["schema_version"] == "multi_agent_pane_a2a_wakeup_v0", dry_wake
+        assert dry_wake["mode"] == "dry_run", dry_wake
+        assert dry_wake["target_lanes"] == ["planner"], dry_wake
+        assert dry_wake["coordination_model"] == "decentralized_state_a2a", dry_wake
+        assert dry_wake["wakeup_model"] == "fixed_prompt_broadcast", dry_wake
+        assert dry_wake["workflow_driver"] is False, dry_wake
+        assert dry_wake["broadcaster_reads_frontier"] is False, dry_wake
+        assert dry_wake["broadcaster_selects_todo"] is False, dry_wake
+        assert "$LOOPX_PANE_A2A_TICK" in dry_wake["prompt"], dry_wake
+        assert "\n" not in dry_wake["prompt"], dry_wake
+        exec_wake = run_wake_command(
+            env,
+            registry=registry,
+            runtime_root=runtime_root,
+            session_name="loopx-generic-multi-agent-smoke",
+            execute=True,
+        )
+        assert exec_wake["mode"] == "execute", exec_wake
+        assert exec_wake["target_lanes"] == ["planner", "critic"], exec_wake
+        assert exec_wake["boundary"]["writes_loopx_state"] is False, exec_wake
+        assert exec_wake["boundary"]["runs_worker_turn_directly"] is False, exec_wake
         assert_public_safe(
             {
                 "product_spec": exec_packet["product_spec"],
@@ -260,7 +336,11 @@ def main() -> int:
         )
 
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
-        env_snapshots = [entry["env"] for entry in log_entries]
+        env_snapshots = [
+            entry["env"]
+            for entry in log_entries
+            if entry["env"].get("LOOPX_REGISTRY")
+        ]
         assert env_snapshots, log_entries
         for snapshot in env_snapshots:
             assert snapshot["LOOPX_REGISTRY"] == str(registry), snapshot
@@ -283,6 +363,11 @@ def main() -> int:
         assert all("exec python3 -c" in command for command in start_payloads), start_payloads
         assert all("LOOPX_PANE_ARTIFACT_DIR" in command for command in start_payloads), start_payloads
         assert all("codex exec" not in command for command in start_payloads), start_payloads
+        wake_entries = [entry["argv"] for entry in log_entries if entry["argv"][:1] in (["set-buffer"], ["paste-buffer"], ["send-keys"])]
+        assert any(entry[:1] == ["set-buffer"] for entry in wake_entries), wake_entries
+        assert sum(1 for entry in wake_entries if entry[:1] == ["paste-buffer"]) == 2, wake_entries
+        assert sum(1 for entry in wake_entries if entry[:1] == ["send-keys"] and entry[-1] == "Enter") == 2, wake_entries
+        assert any("$LOOPX_PANE_A2A_TICK" in " ".join(entry) for entry in wake_entries), wake_entries
         launcher_source = (ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
             encoding="utf-8"
         )
