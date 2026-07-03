@@ -61,6 +61,7 @@ Stage only the AgentIssue hunks from these mixed tracked files:
 loopx/benchmark.py
 loopx/benchmark_adapters/agentissue.py
 loopx/cli.py
+loopx/cli_commands/agentissue_runner_flow.py
 loopx/status.py
 docs/research/long-horizon-agent-benchmarks/README.md
 ```
@@ -68,7 +69,7 @@ docs/research/long-horizon-agent-benchmarks/README.md
 These files currently contain unrelated dirty hunks from other benchmark lanes,
 so do not stage them with a whole-file `git add`. Use hunk-level staging or an
 equivalent cached patch that selects only the AgentIssue runner-flow symbols,
-CLI command, compact `read_boundary` preservation, README bullets, and
+CLI command module, compact `read_boundary` preservation, README bullets, and
 smoke/doc index entries. In a clean PR worktree based directly on `origin/main`,
 these same hunks may appear as whole-file staged changes because no unrelated
 local hunks are present.
@@ -159,6 +160,7 @@ python3 -m py_compile \
   loopx/benchmark.py \
   loopx/benchmark_adapters/agentissue.py \
   loopx/cli.py \
+  loopx/cli_commands/agentissue_runner_flow.py \
   loopx/status.py \
   examples/agentissue-bench-codex-cli-runner-contract-smoke.py \
   examples/agentissue-bench-codex-cli-runner-flow-smoke.py \
@@ -176,6 +178,7 @@ loopx check \
   --scan-path loopx/benchmark.py \
   --scan-path loopx/benchmark_adapters/agentissue.py \
   --scan-path loopx/cli.py \
+  --scan-path loopx/cli_commands/agentissue_runner_flow.py \
   --scan-path loopx/status.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-contract-v0.md \

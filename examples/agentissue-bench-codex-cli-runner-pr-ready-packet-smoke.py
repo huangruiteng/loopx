@@ -11,7 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 TOPIC_DIR = REPO_ROOT / "docs" / "research" / "long-horizon-agent-benchmarks"
 README = TOPIC_DIR / "README.md"
 BENCHMARK = REPO_ROOT / "loopx" / "benchmark.py"
-CLI = REPO_ROOT / "loopx" / "cli.py"
+AGENTISSUE_ADAPTER = REPO_ROOT / "loopx" / "benchmark_adapters" / "agentissue.py"
+AGENTISSUE_RUNNER_FLOW = REPO_ROOT / "loopx" / "cli_commands" / "agentissue_runner_flow.py"
 
 DOCS = [
     "agentissue-bench-codex-cli-runner-contract-v0.md",
@@ -114,7 +115,7 @@ def assert_packet_contract() -> None:
 
 
 def assert_source_contract() -> None:
-    source = read(BENCHMARK) + "\n" + read(CLI)
+    source = read(BENCHMARK) + "\n" + read(AGENTISSUE_ADAPTER) + "\n" + read(AGENTISSUE_RUNNER_FLOW)
     missing = [snippet for snippet in REQUIRED_SOURCE_SNIPPETS if snippet not in source]
     assert not missing, missing
     assert source.count("real_codex_invoked") >= 1, "missing Codex no-run flag"

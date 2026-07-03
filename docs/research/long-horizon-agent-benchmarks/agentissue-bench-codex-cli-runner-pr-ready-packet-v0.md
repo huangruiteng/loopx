@@ -95,11 +95,13 @@ this packet.
 python3 examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
 python3 -m py_compile \
   loopx/benchmark.py \
-  loopx/cli.py \
+  loopx/benchmark_adapters/agentissue.py \
+  loopx/cli_commands/agentissue_runner_flow.py \
   examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py
 loopx check \
   --scan-path loopx/benchmark.py \
-  --scan-path loopx/cli.py \
+  --scan-path loopx/benchmark_adapters/agentissue.py \
+  --scan-path loopx/cli_commands/agentissue_runner_flow.py \
   --scan-path examples/agentissue-bench-codex-cli-runner-pr-ready-packet-smoke.py \
   --scan-path docs/research/long-horizon-agent-benchmarks/agentissue-bench-codex-cli-runner-pr-ready-packet-v0.md \
   --scan-path docs/research/long-horizon-agent-benchmarks/README.md

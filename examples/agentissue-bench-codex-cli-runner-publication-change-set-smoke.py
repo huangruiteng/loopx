@@ -14,6 +14,7 @@ PACKET = TOPIC_DIR / "agentissue-bench-codex-cli-runner-publication-change-set-v
 BENCHMARK = REPO_ROOT / "loopx" / "benchmark.py"
 CLI = REPO_ROOT / "loopx" / "cli.py"
 AGENTISSUE_ADAPTER = REPO_ROOT / "loopx" / "benchmark_adapters" / "agentissue.py"
+AGENTISSUE_RUNNER_FLOW = REPO_ROOT / "loopx" / "cli_commands" / "agentissue_runner_flow.py"
 
 DOCS = [
     "agentissue-bench-codex-cli-runner-contract-v0.md",
@@ -47,6 +48,7 @@ MIXED_TRACKED_FILES = [
     "loopx/benchmark.py",
     "loopx/benchmark_adapters/agentissue.py",
     "loopx/cli.py",
+    "loopx/cli_commands/agentissue_runner_flow.py",
     "loopx/status.py",
     "docs/research/long-horizon-agent-benchmarks/README.md",
 ]
@@ -160,8 +162,12 @@ def git_changed_lines(path: str) -> list[str] | None:
 
 def agentissue_cli_behavior_changed() -> bool:
     changed_lines = git_changed_lines("loopx/cli.py")
+    module_changed_lines = git_changed_lines("loopx/cli_commands/agentissue_runner_flow.py")
     if changed_lines is None:
         return True
+    if module_changed_lines is None:
+        return True
+    changed_lines.extend(module_changed_lines)
     return any(
         marker in line
         for line in changed_lines
@@ -189,7 +195,7 @@ def assert_include_lists() -> None:
 
 
 def assert_source_and_readme_contract() -> None:
-    source = read(BENCHMARK) + "\n" + read(CLI) + "\n" + read(AGENTISSUE_ADAPTER)
+    source = read(BENCHMARK) + "\n" + read(AGENTISSUE_ADAPTER) + "\n" + read(AGENTISSUE_RUNNER_FLOW)
     missing = [snippet for snippet in REQUIRED_SOURCE_SNIPPETS if snippet not in source]
     assert not missing, missing
     readme = read(README)
