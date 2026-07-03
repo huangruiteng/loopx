@@ -147,6 +147,7 @@ from .projections.stale_latest_run import (
     active_state_projection_warning as _active_state_projection_warning_read_model,
 )
 from .projections.todo_summary import (
+    active_state_todo_attention_item as _active_state_todo_attention_item_read_model,
     active_next_action_todo_ids,
     apply_resume_conditions,
     claimed_visibility_items,
@@ -7175,65 +7176,16 @@ def active_state_todo_attention_item(
     fields: dict[str, Any],
     current_run: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Surface active-state todos even when the latest run classification is passive."""
-
-    user_todos = fields.get("user_todos") if isinstance(fields.get("user_todos"), dict) else None
-    agent_todos = fields.get("agent_todos") if isinstance(fields.get("agent_todos"), dict) else None
-    active_next_action = public_safe_compact_text(
-        fields.get("active_state_next_action"),
-        limit=320,
+    return _active_state_todo_attention_item_read_model(
+        goal,
+        fields,
+        current_run,
+        public_safe_compact_text=public_safe_compact_text,
+        first_open_todo_text=first_open_todo_text,
+        todo_summary_open_count=todo_summary_open_count,
+        goal_lifecycle_fields=goal_lifecycle_fields,
+        attention_item=attention_item,
     )
-    user_action = public_safe_compact_text(first_open_todo_text(user_todos), limit=320)
-    agent_action = public_safe_compact_text(first_open_todo_text(agent_todos), limit=320)
-    lifecycle_fields = goal_lifecycle_fields(goal, current_run)
-    goal_id = str(goal.get("id") or "unknown-goal")
-
-    if user_action or todo_summary_open_count(user_todos) > 0:
-        return attention_item(
-            goal_id=goal_id,
-            status="active_state_user_todo",
-            waiting_on="controller",
-            severity="action",
-            recommended_action=(
-                user_action
-                or active_next_action
-                or "resolve the open user todo from the active goal state"
-            ),
-            source="active_state",
-            **lifecycle_fields,
-        )
-
-    if agent_action or todo_summary_open_count(agent_todos) > 0:
-        return attention_item(
-            goal_id=goal_id,
-            status="active_state_agent_todo",
-            waiting_on="codex",
-            severity="action",
-            recommended_action=(
-                agent_action
-                or active_next_action
-                or "run the open agent todo from the active goal state"
-            ),
-            source="active_state",
-            **lifecycle_fields,
-        )
-
-    projection_gap = fields.get("state_projection_gap")
-    if isinstance(projection_gap, dict):
-        return attention_item(
-            goal_id=goal_id,
-            status="state_projection_gap",
-            waiting_on="codex",
-            severity="action",
-            recommended_action=str(
-                projection_gap.get("recommended_action")
-                or "expand the active-state Next Action into parseable todos"
-            ),
-            source="active_state",
-            **lifecycle_fields,
-        )
-
-    return None
 
 
 def todo_summary_open_count(summary: dict[str, Any] | None) -> int:
