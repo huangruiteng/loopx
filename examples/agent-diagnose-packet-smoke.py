@@ -11,6 +11,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.diagnose import _first_agent_todo_text  # noqa: E402
+
 GOAL_ID = "diagnose-smoke-goal"
 SCOPED_GOAL_ID = "diagnose-smoke-agent-scoped"
 
@@ -42,6 +46,22 @@ def write_project(root: Path, name: str) -> Path:
     project.mkdir()
     (project / "README.md").write_text("# Diagnose fixture\n", encoding="utf-8")
     return project
+
+
+def assert_selected_agent_todo_preferred() -> None:
+    selected = "[P0] Run the selected lane-local kernel slice."
+    blocked = "[P0] Old blocked item that should not headline diagnose."
+    executable = "[P1] Fallback executable item."
+    assert (
+        _first_agent_todo_text(
+            {"agent_lane_next_action": {"text": selected}},
+            {
+                "backlog_items": [{"status": "blocked", "text": blocked}],
+                "first_executable_items": [{"status": "open", "text": executable}],
+            },
+        )
+        == selected
+    )
 
 
 def bootstrap_project(project: Path, runtime: Path, goal_id: str, *, onboarding: bool) -> dict:
@@ -138,6 +158,7 @@ def write_agent_scoped_registry(root: Path, runtime: Path) -> Path:
 
 
 def main() -> int:
+    assert_selected_agent_todo_preferred()
     with tempfile.TemporaryDirectory(prefix="loopx-agent-diagnose-smoke-") as tmp:
         root = Path(tmp)
         runtime = root / "runtime"

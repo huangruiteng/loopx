@@ -48,6 +48,18 @@ def _first_text(summary: dict[str, Any]) -> str | None:
     return None
 
 
+def _first_agent_todo_text(quota: dict[str, Any], summary: dict[str, Any]) -> str | None:
+    selected = _as_dict(quota.get("agent_lane_next_action"))
+    if selected.get("text"):
+        return str(selected.get("text"))
+    if selected.get("title"):
+        return str(selected.get("title"))
+    for item in _as_list(summary.get("first_executable_items")):
+        if isinstance(item, dict) and item.get("text"):
+            return str(item.get("text"))
+    return _first_text(summary)
+
+
 def _open_count(summary: dict[str, Any]) -> int:
     for key in ("open_count", "open"):
         value = summary.get(key)
@@ -282,7 +294,7 @@ def _build_goal_packet(
             "user_open_count": _open_count(user_summary),
             "agent_open_count": _open_count(agent_summary),
             "first_user_todo": _first_text(user_summary),
-            "first_agent_todo": _first_text(agent_summary),
+            "first_agent_todo": _first_agent_todo_text(quota, agent_summary),
         },
         "quota_signals": _compact_quota_signals(quota),
         "agent_id": agent_id,
