@@ -11,6 +11,11 @@ from ..handoff_budget import build_handoff_interface_budget
 from ..quota import build_quota_should_run
 from ..review_packet import build_review_packet, render_review_packet_markdown
 from ..status import collect_status, render_status_markdown
+from ..status_projection_cache import (
+    load_status_projection_cache,
+    resolve_status_projection_cache_runtime_root,
+    write_status_projection_cache,
+)
 from ..todo_contract import normalize_todo_claimed_by
 
 
@@ -80,6 +85,26 @@ def register_status_commands(
             "Default status output keeps this graph on the cold path to stay "
             "inside the dashboard hot-path budget."
         ),
+    )
+    status_parser.add_argument(
+        "--use-projection-cache",
+        action="store_true",
+        help=(
+            "Read a fresh status_projection_cache_v0 snapshot before running "
+            "the full status collector. Misses and expired snapshots fall back "
+            "to the full collector."
+        ),
+    )
+    status_parser.add_argument(
+        "--write-projection-cache",
+        action="store_true",
+        help="Write the collected status projection to the cache after a full collection.",
+    )
+    status_parser.add_argument(
+        "--projection-cache-ttl-seconds",
+        type=int,
+        default=120,
+        help="Freshness window for --use-projection-cache. Defaults to 120 seconds.",
     )
 
     diagnose_parser = subparsers.add_parser(
@@ -232,14 +257,47 @@ def handle_status_command(
     print_payload: PrintPayload,
 ) -> int:
     try:
-        payload = collect_status(
+        scan_roots = _scan_roots(args)
+        limit = max(0, args.limit)
+        runtime_root = resolve_status_projection_cache_runtime_root(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
-            scan_roots=_scan_roots(args),
-            limit=max(0, args.limit),
-            include_task_graph=args.include_task_graph,
-            goal_id=args.goal_id,
         )
+        payload = None
+        cache_metadata = None
+        if args.use_projection_cache:
+            payload, cache_metadata = load_status_projection_cache(
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+                scan_roots=scan_roots,
+                limit=limit,
+                include_task_graph=args.include_task_graph,
+                goal_id=args.goal_id,
+                max_age_seconds=args.projection_cache_ttl_seconds,
+            )
+        if payload is None:
+            payload = collect_status(
+                registry_path=registry_path,
+                runtime_root_override=runtime_root_arg,
+                scan_roots=scan_roots,
+                limit=limit,
+                include_task_graph=args.include_task_graph,
+                goal_id=args.goal_id,
+            )
+            if args.write_projection_cache:
+                cache_metadata = write_status_projection_cache(
+                    registry_path=registry_path,
+                    runtime_root=runtime_root,
+                    scan_roots=scan_roots,
+                    limit=limit,
+                    include_task_graph=args.include_task_graph,
+                    goal_id=args.goal_id,
+                    payload=payload,
+                    max_age_seconds=args.projection_cache_ttl_seconds,
+                )
+                payload["projection_cache"] = cache_metadata
+            elif cache_metadata:
+                payload["projection_cache"] = cache_metadata
         if args.agent_id:
             attach_agent_lane_next_actions(payload, agent_id=args.agent_id)
     except Exception as exc:

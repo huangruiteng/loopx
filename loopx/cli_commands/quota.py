@@ -18,6 +18,11 @@ from ..quota import (
     void_quota_slot,
 )
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
+from ..status_projection_cache import (
+    load_status_projection_cache,
+    resolve_status_projection_cache_runtime_root,
+    write_status_projection_cache,
+)
 
 
 PrintPayload = Callable[
@@ -109,6 +114,26 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         default=[],
         help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
     )
+    quota_parser.add_argument(
+        "--use-projection-cache",
+        action="store_true",
+        help=(
+            "Read a fresh status_projection_cache_v0 snapshot before building "
+            "quota decisions. Misses and expired snapshots fall back to full "
+            "status collection."
+        ),
+    )
+    quota_parser.add_argument(
+        "--write-projection-cache",
+        action="store_true",
+        help="Write the status projection cache after a full quota status collection.",
+    )
+    quota_parser.add_argument(
+        "--projection-cache-ttl-seconds",
+        type=int,
+        default=120,
+        help="Freshness window for --use-projection-cache. Defaults to 120 seconds.",
+    )
     quota_parser.add_argument("--limit", type=int, default=5)
 
 
@@ -127,12 +152,42 @@ def handle_quota_command(
         status_limit = max(0, args.limit)
         if args.quota_command in {"should-run", "scheduler-ack"}:
             status_limit = max(status_limit, AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK)
-        status_payload = collect_status(
+        runtime_root = resolve_status_projection_cache_runtime_root(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
-            scan_roots=scan_roots,
-            limit=status_limit,
         )
+        status_payload = None
+        cache_metadata = None
+        if args.use_projection_cache:
+            status_payload, cache_metadata = load_status_projection_cache(
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+                scan_roots=scan_roots,
+                limit=status_limit,
+                include_task_graph=False,
+                goal_id=None,
+                max_age_seconds=args.projection_cache_ttl_seconds,
+            )
+        if status_payload is None:
+            status_payload = collect_status(
+                registry_path=registry_path,
+                runtime_root_override=runtime_root_arg,
+                scan_roots=scan_roots,
+                limit=status_limit,
+            )
+            if args.write_projection_cache:
+                cache_metadata = write_status_projection_cache(
+                    registry_path=registry_path,
+                    runtime_root=runtime_root,
+                    scan_roots=scan_roots,
+                    limit=status_limit,
+                    include_task_graph=False,
+                    goal_id=None,
+                    payload=status_payload,
+                    max_age_seconds=args.projection_cache_ttl_seconds,
+                )
+        elif isinstance(status_payload.get("projection_cache"), dict):
+            cache_metadata = dict(status_payload["projection_cache"])
         if args.quota_command == "should-run":
             if not args.goal_id:
                 raise ValueError("`loopx quota should-run` requires --goal-id")
@@ -217,6 +272,8 @@ def handle_quota_command(
             )
         else:
             payload = build_quota_plan(status_payload, mode=args.quota_command)
+        if cache_metadata:
+            payload["status_projection_cache"] = cache_metadata
     except Exception as exc:
         if args.quota_command in {"should-run", "monitor-poll", "scheduler-ack", "spend-slot", "void-slot"}:
             payload = {
