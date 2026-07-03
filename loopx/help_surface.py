@@ -80,6 +80,14 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "command": "loopx codex-cli-bootstrap-message",
                 "purpose": "Generate the visible Codex CLI TUI setup message.",
             },
+            {
+                "command": "loopx codex-cli-tui-bootstrap-smoke-bundle",
+                "purpose": "Generate a transcript-free Codex CLI first-run smoke bundle.",
+            },
+            {
+                "command": "loopx codex-cli-visible-attach-acceptance",
+                "purpose": "Check public-safe visible Codex CLI attach evidence.",
+            },
             {"command": "loopx heartbeat-prompt", "purpose": "Generate a guarded heartbeat automation body."},
             {"command": "loopx upgrade-plan", "purpose": "Plan default heartbeat upgrade propagation."},
             {"command": "loopx update", "purpose": "Check, dry-run, or execute the no-clone update path."},
