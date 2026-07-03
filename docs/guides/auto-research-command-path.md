@@ -209,11 +209,11 @@ Expected minimal E2E result:
 
 - `execution_kind` is `loopx_worker_loop`;
 - `result_source` is `loopx_worker_loop_public_evidence`;
-- `worker_loop.executed_turn_count` is `5`;
+- `worker_loop.executed_turn_count` is at least `6`;
 - `worker_loop.selected_actions` is
   `write_research_contract`, `propose_hypothesis`, `run_dev_eval`,
   `summarize_evidence`,
-  `run_holdout_eval`;
+  `run_holdout_eval`, and `write_evaluation_summary`;
 - `tonight_experience.coordination_pattern` is `decentralized_state_a2a`;
 - `tonight_experience.dev_metric` is `4.0`;
 - `tonight_experience.holdout_metric` is `4.5`;
@@ -232,6 +232,49 @@ python3 examples/auto-research-layered-e2e-acceptance-smoke.py
 That smoke checks the shortest layered contract, the visible Codex TUI runner
 contract, todo handoff, public evidence writes, and two metric-improving rounds
 without making the auto-research preset own generic runner machinery.
+
+Concrete KNN proof command:
+
+```bash
+loopx --format json auto-research start \
+  "KNN demo: prove partial selection improves over full sort" \
+  --execute \
+  --headless \
+  --worker-loop-rounds 4 \
+  --demo-run-id knn-multiround-proof
+```
+
+This is the maintainer proof for state-mediated continuation, not the visible
+operator experience. The matching visible path is still the one-command start:
+
+```bash
+loopx auto-research start \
+  "KNN demo: prove partial selection improves over full sort" \
+  --execute
+```
+
+The validated KNN run demonstrates that the second round is carried by LoopX
+state and role-declared successor todos: the evidence runner owns
+`run_holdout_eval` after dev evidence is summarized, and the verifier owns
+`write_evaluation_summary` after holdout evidence exists. A generic continuation
+projector is not required for this preset; the role skill declares the next todo
+target and the kernel validates the target agent before writing state.
+
+KNN proof acceptance:
+
+- baseline metric is `1.0`;
+- dev metric is `4.0`;
+- holdout metric is `4.5`;
+- selected actions include `run_dev_eval`, `run_holdout_eval`, and
+  `write_evaluation_summary`;
+- the coordination pattern remains `decentralized_state_a2a`;
+- the public boundary records no raw logs, private artifacts, credentials, or
+  local absolute paths.
+
+Remaining boundary: the headless KNN proof validates the LoopX todo/state
+multi-round path. It is not, by itself, a claim that visible Codex panes authored
+the research result. That higher claim still needs compact lane-authored evidence
+or a visible readiness packet loaded through the public evidence path below.
 
 Evidence boundary:
 

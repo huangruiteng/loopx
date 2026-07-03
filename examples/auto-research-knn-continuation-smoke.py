@@ -63,6 +63,11 @@ def main() -> int:
     assert holdout_turns, worker_loop
     assert holdout_turns[0]["holdout_metric"] == 4.5, holdout_turns
     assert holdout_turns[0]["live_evidence_written"] is True, holdout_turns
+    tonight = payload["tonight_experience"]
+    assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight
+    assert tonight["dev_metric"] == 4.0, tonight
+    assert tonight["holdout_metric"] == 4.5, tonight
+    assert tonight["positive_result"] is True, tonight
     assert payload["public_boundary"]["raw_logs_recorded"] is False, payload
     return 0
 
