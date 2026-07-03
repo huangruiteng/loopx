@@ -1113,8 +1113,21 @@ def assert_outcome_floor_projected_blocker_quiet_noop() -> None:
     monitor_item["project_asset"]["agent_todos"]["items"][0]["action_kind"] = "monitor"
     monitor_decision = build_quota_should_run(monitor_payload, goal_id=goal_id)
     assert "outcome_floor_blocker_projected" not in monitor_decision["quota"], monitor_decision
-    assert monitor_decision["effective_action"] == "outcome_floor_recovery", monitor_decision
+    assert monitor_decision["effective_action"] == "autonomous_replan_required", monitor_decision
     assert monitor_decision["should_run"] is True, monitor_decision
+    assert monitor_decision["safe_bypass_kind"] == "outcome_floor_recovery", monitor_decision
+    assert (
+        monitor_decision["heartbeat_recommendation"]["recommended_mode"]
+        == "autonomous_replan_required"
+    ), monitor_decision
+    assert (
+        monitor_decision["autonomous_replan_decision"]["decision_plane"]
+        == "goal_frontier_before_lane_quiet_or_agent_scope_wait"
+    ), monitor_decision
+    monitor_contract = monitor_decision["interaction_contract"]
+    assert monitor_contract["mode"] == "autonomous_replan", monitor_contract
+    assert monitor_contract["agent_channel"]["must_attempt"] is True, monitor_contract
+    assert monitor_contract["agent_channel"]["quiet_noop_allowed"] is False, monitor_contract
 
 
 def assert_control_plane_health_self_repair_should_run() -> None:
