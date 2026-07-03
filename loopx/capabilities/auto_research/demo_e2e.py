@@ -227,6 +227,7 @@ def _command_text(
     attach: bool = False,
     no_attach: bool = False,
     live_evidence: bool = False,
+    wake_visible_after_launch: bool = False,
     tracking_goal_id: str | None = None,
 ) -> str:
     parts = [
@@ -256,6 +257,8 @@ def _command_text(
         parts.append("--no-attach")
     if live_evidence:
         parts.extend(["--live-evidence", "<public-safe-live-evidence.json>"])
+    if wake_visible_after_launch:
+        parts.append("--wake-visible-after-launch")
     return " ".join(parts)
 
 
@@ -566,6 +569,102 @@ def _load_visible_wake_into_payload(
         )
 
 
+def _numeric_metric(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
+    proof = (
+        payload.get("visible_worker_proof")
+        if isinstance(payload.get("visible_worker_proof"), dict)
+        else {}
+    )
+    rounds = (
+        payload.get("visible_pane_a2a_rounds")
+        if isinstance(payload.get("visible_pane_a2a_rounds"), dict)
+        else {}
+    )
+    evidence = (
+        payload.get("live_worker_evidence")
+        if isinstance(payload.get("live_worker_evidence"), dict)
+        else {}
+    )
+    wake = payload.get("visible_wake") if isinstance(payload.get("visible_wake"), dict) else {}
+    baseline = 1.0
+    dev_metric = _numeric_metric(evidence.get("dev_metric"))
+    holdout_metric = _numeric_metric(evidence.get("holdout_metric"))
+    best_metric = holdout_metric if holdout_metric is not None else dev_metric
+    best_source = (
+        "round_2_holdout"
+        if holdout_metric is not None
+        else "round_1_dev"
+        if dev_metric is not None
+        else None
+    )
+    protected_scope_clean = evidence.get("protected_scope_clean") is True
+    checks = {
+        "visible_lanes_accepted": proof.get("visible_lanes_accepted") is True,
+        "cadence_wake_verified": proof.get("cadence_wake_verified") is True,
+        "pane_local_multi_round_verified": rounds.get("multi_round_verified") is True,
+        "lane_authored_evidence_loaded": proof.get("lane_authored_evidence_loaded") is True,
+        "protected_scope_clean": protected_scope_clean,
+        "positive_metric_over_baseline": (
+            best_metric is not None and best_metric > baseline
+        ),
+        "workflow_driver_false": (
+            rounds.get("workflow_driver") is False and wake.get("workflow_driver") is False
+        ),
+    }
+    ready = all(checks.values())
+    return {
+        "schema_version": "auto_research_visible_readiness_v0",
+        "ready": ready,
+        "readiness_level": "ready" if ready else "collecting_evidence",
+        "one_command": payload.get("commands", {}).get("one_command_visible_wake_demo")
+        if isinstance(payload.get("commands"), dict)
+        else None,
+        "coordination_pattern": "decentralized_state_a2a",
+        "wake_model": wake.get("wakeup_model"),
+        "workflow_model": "fixed_prompt_wakeup_plus_pane_local_state_tick",
+        "leader_agent_required": False,
+        "manual_artifact_inspection_required": not ready,
+        "checks": checks,
+        "missing_requirements": [key for key, passed in checks.items() if not passed],
+        "rounds": {
+            "max_completed": rounds.get("max_rounds_completed"),
+            "total_completed": rounds.get("rounds_completed_total"),
+            "lane_count": rounds.get("lane_count"),
+        },
+        "improvement_summary": {
+            "baseline_metric": baseline,
+            "round_1_dev_metric": dev_metric,
+            "round_2_holdout_metric": holdout_metric,
+            "best_metric": best_metric,
+            "best_metric_source": best_source,
+            "improved_over_baseline": best_metric is not None and best_metric > baseline,
+            "holdout_delta_over_dev": (
+                holdout_metric - dev_metric
+                if holdout_metric is not None and dev_metric is not None
+                else None
+            ),
+        },
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "credentials_recorded": False,
+        },
+    }
+
+
+def _load_visible_readiness_into_payload(payload: dict[str, object]) -> None:
+    payload["visible_readiness"] = _build_visible_readiness(payload)
+
+
 def run_auto_research_demo_e2e(
     *,
     agent_id: str,
@@ -691,8 +790,18 @@ def run_auto_research_demo_e2e(
                 goal_id=goal_id,
                 agent_id=agent_id,
                 execute=True,
-                run_worker_loop=True,
+                launch_visible=True,
                 no_attach=True,
+                tracking_goal_id=tracking_goal or None,
+            ),
+            "one_command_visible_wake_demo": _command_text(
+                cli_bin=cli_bin,
+                goal_id=goal_id,
+                agent_id=agent_id,
+                execute=True,
+                launch_visible=True,
+                no_attach=True,
+                wake_visible_after_launch=True,
                 tracking_goal_id=tracking_goal or None,
             ),
             "one_command_worker_loop_with_visible_lanes": _command_text(
@@ -924,6 +1033,7 @@ def run_auto_research_demo_e2e(
                     evidence=live_evidence,
                     evidence_source="visible_launcher_artifact",
                 )
+            _load_visible_readiness_into_payload(payload)
         payload["workspace_retained"] = keep_workspace or launch_visible
         if live_evidence_path:
             live_evidence = load_live_codex_e2e_evidence(
