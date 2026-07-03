@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from loopx import status as status_module  # noqa: E402
 from loopx.projections import autonomous_candidates as autonomous_read_model  # noqa: E402
+from loopx.projections import global_registry_shadow as global_registry_shadow_read_model  # noqa: E402
 from loopx.projections import todo_summary as todo_read_model  # noqa: E402
 
 
@@ -189,10 +190,29 @@ def assert_autonomous_candidate_parity() -> None:
     )
 
 
+def assert_global_registry_shadow_parity() -> None:
+    finding = {
+        "kind": "state_shadow",
+        "severity": "warning",
+        "message": "registry points at stale projection",
+        "recommended_action": "refresh the public-safe state projection",
+    }
+    assert status_module.compact_global_registry_shadow_finding(
+        finding
+    ) == global_registry_shadow_read_model.compact_global_registry_shadow_finding(finding)
+
+    status_item = {"project_asset": {"goal_id": "loopx-meta"}}
+    direct_item = deepcopy(status_item)
+    status_module.attach_global_registry_shadow_finding(status_item, finding)
+    global_registry_shadow_read_model.attach_global_registry_shadow_finding(direct_item, finding)
+    assert status_item == direct_item
+
+
 def main() -> None:
     assert_wrapper_parity()
     assert_dependency_blocker_parity()
     assert_autonomous_candidate_parity()
+    assert_global_registry_shadow_parity()
 
 
 if __name__ == "__main__":

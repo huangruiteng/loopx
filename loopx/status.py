@@ -125,6 +125,10 @@ from .projections.monitor_display import (
     todo_summary_lane_items as _todo_summary_lane_items,
     todo_summary_open_count as _todo_summary_open_count,
 )
+from .projections.global_registry_shadow import (
+    attach_global_registry_shadow_finding as _attach_global_registry_shadow_finding_read_model,
+    compact_global_registry_shadow_finding as _compact_global_registry_shadow_finding_read_model,
+)
 from .projections.issue_meta_surface import (
     parse_issue_meta_surface as _parse_issue_meta_surface_read_model,
 )
@@ -6998,33 +7002,11 @@ def normalize_monitor_quiet_attention_display(item: dict[str, Any]) -> None:
 
 
 def compact_global_registry_shadow_finding(finding: dict[str, Any]) -> dict[str, Any]:
-    compact: dict[str, Any] = {
-        "kind": str(finding.get("kind") or "global_registry_finding"),
-        "severity": str(finding.get("severity") or "action"),
-        "source": "global_registry",
-    }
-    if finding.get("message"):
-        compact["message"] = str(finding.get("message"))
-    if finding.get("recommended_action"):
-        compact["recommended_action"] = str(finding.get("recommended_action"))
-    return compact
+    return _compact_global_registry_shadow_finding_read_model(finding)
 
 
 def attach_global_registry_shadow_finding(item: dict[str, Any], finding: dict[str, Any]) -> None:
-    shadows = item.setdefault("global_registry_shadow_findings", [])
-    if isinstance(shadows, list):
-        shadows.append(compact_global_registry_shadow_finding(finding))
-    project_asset = item.get("project_asset")
-    if not isinstance(project_asset, dict):
-        return
-    summary = project_asset.setdefault("global_registry_shadow_findings", {"open": 0, "kinds": []})
-    if not isinstance(summary, dict):
-        return
-    summary["open"] = int(summary.get("open") or 0) + 1
-    kinds = summary.setdefault("kinds", [])
-    kind = str(finding.get("kind") or "global_registry_finding")
-    if isinstance(kinds, list) and kind not in kinds:
-        kinds.append(kind)
+    _attach_global_registry_shadow_finding_read_model(item, finding)
 
 
 def parse_timestamp(value: Any) -> datetime | None:
