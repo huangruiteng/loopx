@@ -1450,6 +1450,9 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert next_action["todo_id"] == "todo_side_tui", next_action
     assert next_action["agent_id"] == "codex-side-bypass", next_action
     assert next_action["preserves_goal_next_action"] is True, next_action
+    goal_frontier = item["goal_frontier_projection"]
+    assert goal_frontier["deferred_successors"]["ready_count"] == 0, goal_frontier
+    assert goal_frontier["acceptance_gaps"] == [], goal_frontier
     assert item["recommended_action"] == primary_action, item
     assert item["project_asset"]["next_action"] == primary_action, item
     member = item["agent_member"]
@@ -1475,6 +1478,8 @@ def assert_status_agent_lane_next_action_projection() -> None:
     assert "claims=todo_side_tui" in markdown, markdown
     assert "current_agent_todo: agent=codex-side-bypass todo_id=todo_side_tui" in markdown, markdown
     assert "source=agent_lane_next_action" in markdown, markdown
+    assert "goal_frontier_projection: replan_required=False" in markdown, markdown
+    assert "deferred_ready=0 acceptance_gaps=0" in markdown, markdown
     assert side_action in markdown, markdown
     assert f"next_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
     assert f"asset_agent_todo: {primary_action} claimed_by=codex-main-control scope=goal_all_agents" in markdown, markdown
@@ -1570,6 +1575,14 @@ def assert_status_agent_lane_frontier_hint_projection() -> None:
     assert "agent_lane_next_action" not in item, item
     frontier = item["agent_scope_frontier"]
     assert frontier["action"] == "agent_scope_wait", frontier
+    goal_frontier = item["goal_frontier_projection"]
+    assert goal_frontier["remaining_advancement_frontier"] == {
+        "current_agent_claimed_advancement_count": 0,
+        "unclaimed_advancement_count": 0,
+        "other_agent_claimed_advancement_count": 1,
+    }, goal_frontier
+    assert goal_frontier["deferred_successors"]["ready_count"] == 0, goal_frontier
+    assert goal_frontier["acceptance_gaps"] == [], goal_frontier
     hint = item["agent_lane_frontier_hint"]
     assert hint["schema_version"] == "agent_lane_frontier_hint_v0", hint
     assert hint["decision"] == "quiet_noop_blocker", hint
@@ -1583,6 +1596,8 @@ def assert_status_agent_lane_frontier_hint_projection() -> None:
     assert "agent_lane_frontier_hint: agent=codex-side-bypass" in markdown, markdown
     assert "decision=quiet_noop_blocker" in markdown, markdown
     assert "target_todo_id=todo_primary_route" in markdown, markdown
+    assert "goal_frontier_projection: replan_required=False" in markdown, markdown
+    assert "other_agent_advancement=1 deferred_ready=0 acceptance_gaps=0" in markdown, markdown
 
 
 def assert_quota_should_run(
