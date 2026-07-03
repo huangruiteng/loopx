@@ -205,6 +205,54 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
     return {key: quota.get(key) for key in keys if key in quota}
 
 
+def _goal_frontier_projection_line(goal_frontier: dict[str, Any]) -> str | None:
+    if not goal_frontier:
+        return None
+    normalized_progress = (
+        goal_frontier.get("normalized_progress")
+        if isinstance(goal_frontier.get("normalized_progress"), dict)
+        else {}
+    )
+    remaining = (
+        goal_frontier.get("remaining_advancement_frontier")
+        if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
+        else {}
+    )
+    deferred_successors = (
+        goal_frontier.get("deferred_successors")
+        if isinstance(goal_frontier.get("deferred_successors"), dict)
+        else {}
+    )
+    monitor_only_lanes = (
+        goal_frontier.get("monitor_only_lanes")
+        if isinstance(goal_frontier.get("monitor_only_lanes"), dict)
+        else {}
+    )
+    acceptance_gaps = (
+        goal_frontier.get("acceptance_gaps")
+        if isinstance(goal_frontier.get("acceptance_gaps"), list)
+        else []
+    )
+    autonomy_blockers = (
+        goal_frontier.get("autonomy_blockers")
+        if isinstance(goal_frontier.get("autonomy_blockers"), list)
+        else []
+    )
+    return (
+        "- goal_frontier_projection: "
+        f"replan_required={goal_frontier.get('replan_required')} "
+        f"user_open={normalized_progress.get('user_open_count')} "
+        f"agent_open={normalized_progress.get('agent_open_count')} "
+        f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
+        f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
+        f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')} "
+        f"deferred_ready={deferred_successors.get('ready_count')} "
+        f"monitor_only={monitor_only_lanes.get('present')} "
+        f"acceptance_gaps={len(acceptance_gaps)} "
+        f"autonomy_blockers={len(autonomy_blockers)}"
+    )
+
+
 def _build_goal_packet(
     *,
     status_payload: dict[str, Any],
@@ -379,6 +427,11 @@ def render_diagnosis_markdown(payload: dict[str, Any]) -> str:
                 f"- quota_reason: {quota.get('reason')}",
             ]
         )
+        goal_frontier_line = _goal_frontier_projection_line(
+            _as_dict(quota.get("goal_frontier_projection"))
+        )
+        if goal_frontier_line:
+            lines.append(goal_frontier_line)
 
     checklist = _as_list(selected.get("agent_reasoning_checklist"))
     if checklist:

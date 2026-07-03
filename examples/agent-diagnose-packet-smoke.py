@@ -174,12 +174,18 @@ def main() -> int:
         assert "can_self_drive" not in selected, selected
         assert selected["todo_evidence"]["agent_open_count"] == 1, selected
         assert selected["quota_signals"]["should_run"] is True, selected
+        assert selected["quota_signals"]["goal_frontier_projection"]["replan_required"] is False, (
+            selected
+        )
         assert selected["agent_reasoning_checklist"], selected
 
         markdown = run_markdown("--registry", str(registry), "diagnose", "--goal-id", GOAL_ID)
         assert "LoopX is not making the final diagnosis" in markdown, markdown
         assert "Agent Reasoning Checklist" in markdown, markdown
         assert "These are for the agent to run" in markdown, markdown
+        assert "goal_frontier_projection: replan_required=False" in markdown, markdown
+        assert "current_agent_advancement=0" in markdown, markdown
+        assert "unclaimed_advancement=1" in markdown, markdown
 
         gated_project = write_project(root, "gated-project")
         gated_goal_id = "diagnose-smoke-gated"
