@@ -125,6 +125,12 @@ from .projections.monitor_display import (
     todo_summary_lane_items as _todo_summary_lane_items,
     todo_summary_open_count as _todo_summary_open_count,
 )
+from .projections.run_compaction import (
+    compact_controller_readiness as _compact_controller_readiness_read_model,
+    compact_human_reward as _compact_human_reward_read_model,
+    compact_operator_gate as _compact_operator_gate_read_model,
+    compact_operator_gate_resume_contract as _compact_operator_gate_resume_contract_read_model,
+)
 from .projections.global_registry_shadow import (
     attach_global_registry_shadow_finding as _attach_global_registry_shadow_finding_read_model,
     compact_global_registry_shadow_finding as _compact_global_registry_shadow_finding_read_model,
@@ -461,53 +467,6 @@ RUN_COMPACT_FIELDS = (
     "markdown_exists",
 )
 USAGE_PROXY_NOTE = "run-history proxy; excludes token counts and raw thread logs"
-HUMAN_REWARD_COMPACT_FIELDS = (
-    "recorded_at",
-    "decision",
-    "reward",
-    "reason_summary",
-    "follow_up",
-    "lesson",
-)
-OPERATOR_GATE_COMPACT_FIELDS = (
-    "recorded_at",
-    "gate",
-    "decision",
-    "operator_question",
-    "reason_summary",
-    "follow_up",
-    "agent_command",
-)
-OPERATOR_GATE_RESUME_CONTRACT_COMPACT_FIELDS = (
-    "version",
-    "goal_id",
-    "run_id",
-    "gate_id",
-    "created_state_ref",
-    "created_policy_version",
-    "allowed_decisions",
-    "operator_decision",
-    "latest_state_ref",
-    "freshness_check",
-    "precondition_check",
-    "migration_or_rebase_result",
-    "resulting_action",
-    "validation_after_resume",
-)
-CONTROLLER_READINESS_COMPACT_FIELDS = (
-    "classification",
-    "read_only_observer_ready",
-    "decision_advisor_ready",
-    "write_controller_ready",
-    "missing_gates",
-    "review_judgment",
-    "next_handoff_condition",
-)
-CONTROLLER_READINESS_GATE_FIELDS = (
-    "id",
-    "ok",
-    "review",
-)
 LIFECYCLE_PRIORITY = (
     "controller_ready",
     "reward_judged",
@@ -7895,60 +7854,19 @@ def build_attention_queue(
 
 
 def compact_human_reward(reward: Any) -> dict[str, Any] | None:
-    if not isinstance(reward, dict):
-        return None
-    compact = {field: reward[field] for field in HUMAN_REWARD_COMPACT_FIELDS if field in reward}
-    lesson = compact.get("lesson")
-    if isinstance(lesson, dict):
-        compact["lesson"] = {
-            field: lesson[field]
-            for field in ("schema_version", "kind", "summary", "avoid", "prefer")
-            if field in lesson
-        }
-    return compact or None
+    return _compact_human_reward_read_model(reward)
 
 
 def compact_operator_gate(operator_gate: Any) -> dict[str, Any] | None:
-    if not isinstance(operator_gate, dict):
-        return None
-    compact = {field: operator_gate[field] for field in OPERATOR_GATE_COMPACT_FIELDS if field in operator_gate}
-    return compact or None
+    return _compact_operator_gate_read_model(operator_gate)
 
 
 def compact_operator_gate_resume_contract(contract: Any) -> dict[str, Any] | None:
-    if not isinstance(contract, dict):
-        return None
-    compact = {
-        field: contract[field]
-        for field in OPERATOR_GATE_RESUME_CONTRACT_COMPACT_FIELDS
-        if field in contract
-    }
-    interrupt = contract.get("interrupt_payload") if isinstance(contract.get("interrupt_payload"), dict) else {}
-    if interrupt:
-        compact["interrupt_payload"] = {
-            field: interrupt[field]
-            for field in ("question", "choices")
-            if field in interrupt
-        }
-    return compact or None
+    return _compact_operator_gate_resume_contract_read_model(contract)
 
 
 def compact_controller_readiness(readiness: Any) -> dict[str, Any] | None:
-    if not isinstance(readiness, dict):
-        return None
-    compact = {
-        field: readiness[field]
-        for field in CONTROLLER_READINESS_COMPACT_FIELDS
-        if field in readiness
-    }
-    gates = []
-    for gate in readiness.get("gates") or []:
-        if not isinstance(gate, dict):
-            continue
-        gates.append({field: gate[field] for field in CONTROLLER_READINESS_GATE_FIELDS if field in gate})
-    if gates:
-        compact["gates"] = gates
-    return compact or None
+    return _compact_controller_readiness_read_model(readiness)
 
 
 def compact_run(run: dict[str, Any]) -> dict[str, Any]:
