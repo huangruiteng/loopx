@@ -1139,18 +1139,15 @@ def handle_auto_research_command(
             launch_visible = bool(args.launch_visible or auto_visible_launch)
             if args.no_attach and args.attach:
                 raise ValueError("--attach cannot be combined with --no-attach")
-            if args.wake_visible_after_launch and args.attach:
+            wake_visible_after_launch = _start_wake_visible_after_launch(args)
+            if args.wake_visible_after_launch is True and args.attach:
                 raise ValueError(
                     "--wake-visible-after-launch cannot be combined with --attach; "
                     "wake evidence must be recorded before operator takeover"
                 )
-            attach_visible = bool(
-                args.attach
-                or (
-                    auto_visible_launch
-                    and not args.no_attach
-                    and not args.wake_visible_after_launch
-                )
+            attach_visible = _start_attach_visible(
+                args,
+                wake_visible_after_launch=wake_visible_after_launch,
             )
             if launch_visible:
                 def visible_launcher(
@@ -1218,7 +1215,7 @@ def handle_auto_research_command(
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,
                 visible_wake=visible_wake,
-                wake_visible_after_launch=bool(args.wake_visible_after_launch),
+                wake_visible_after_launch=wake_visible_after_launch,
                 visible_live_evidence_wait_seconds=args.visible_live_evidence_wait_seconds,
             )
         else:

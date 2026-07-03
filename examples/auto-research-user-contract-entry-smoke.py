@@ -149,6 +149,12 @@ def run_cli(temp_dir: Path, *args: str) -> str:
 
 
 def assert_start_wake_contract() -> None:
+    cli_source = (REPO_ROOT / "loopx/capabilities/auto_research/cli.py").read_text(
+        encoding="utf-8"
+    )
+    assert "wake_visible_after_launch=bool(args.wake_visible_after_launch)" not in cli_source
+    assert cli_source.count("wake_visible_after_launch = _start_wake_visible_after_launch(args)") == 2
+
     default_visible = Namespace(
         execute=True,
         headless=False,
