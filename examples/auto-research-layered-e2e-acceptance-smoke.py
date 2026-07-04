@@ -267,6 +267,10 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert evaluation_turn["round"] == 2, evaluation_turn
     assert evaluation_turn["completion_status"] == "done", evaluation_turn
     assert sum(int(turn.get("appended_count") or 0) for turn in turns) >= 3, turns
+    collective_rounds = payload["collective_research_rounds"]
+    assert collective_rounds["round_unit"] == "collective_agent_pass", collective_rounds
+    assert collective_rounds["collective_round_count"] == 2, collective_rounds
+    assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
 
     tonight = payload["tonight_experience"]
     assert tonight["ready"] is True, tonight

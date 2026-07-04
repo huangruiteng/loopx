@@ -64,6 +64,9 @@ def main() -> int:
     assert holdout_turns, worker_loop
     assert holdout_turns[0]["holdout_metric"] == 4.5, holdout_turns
     assert holdout_turns[0]["live_evidence_written"] is True, holdout_turns
+    collective_rounds = payload["collective_research_rounds"]
+    assert collective_rounds["collective_round_count"] == 2, collective_rounds
+    assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
     tonight = payload["tonight_experience"]
     assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight
     assert tonight["dev_metric"] == 4.0, tonight
