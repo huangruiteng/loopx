@@ -26,6 +26,7 @@ from .user_contract import build_auto_research_user_contract
 from .worker_loop import run_auto_research_worker_loop
 from ..multi_agent.collective_round_ledger import (
     build_multi_agent_collective_round_ledger,
+    summarize_multi_agent_pane_tick_artifacts,
 )
 
 
@@ -382,50 +383,9 @@ def _compact_live_worker_evidence(evidence: dict[str, object]) -> dict[str, obje
 
 
 def _compact_visible_pane_a2a_rounds(artifacts: list[dict[str, object]]) -> dict[str, object]:
-    lanes = []
-    for artifact in artifacts:
-        rounds = artifact.get("rounds") if isinstance(artifact.get("rounds"), list) else []
-        completed = int(artifact.get("rounds_completed") or 0)
-        requested = int(artifact.get("rounds_requested") or 0)
-        lanes.append(
-            {
-                "agent_id": artifact.get("agent_id"),
-                "role_id": artifact.get("role_id"),
-                "status": artifact.get("status"),
-                "rounds_requested": requested,
-                "rounds_completed": completed,
-                "worker_label": artifact.get("worker_label"),
-                "worker_configured": bool(artifact.get("worker_configured")),
-                "round_count": len(rounds),
-            }
-        )
-    max_completed = max((int(lane.get("rounds_completed") or 0) for lane in lanes), default=0)
-    max_requested = max((int(lane.get("rounds_requested") or 0) for lane in lanes), default=0)
-    total_completed = sum(int(lane.get("rounds_completed") or 0) for lane in lanes)
-    return {
-        "schema_version": "auto_research_visible_pane_a2a_rounds_summary_v0",
-        "loaded": bool(lanes),
-        "source": "visible_launcher_artifact",
-        "coordination_model": "decentralized_state_a2a",
-        "workflow_driver": False,
-        "round_unit": "pane_local_tick",
-        "research_round_unit": "collective_agent_pass",
-        "counts_as_collective_research_round": False,
-        "lane_count": len(lanes),
-        "rounds_completed_total": total_completed,
-        "max_rounds_requested": max_requested,
-        "max_rounds_completed": max_completed,
-        "multi_round_verified": max_completed >= 2,
-        "pane_local_multi_tick_verified": max_completed >= 2,
-        "lanes": lanes,
-        "public_boundary": {
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "absolute_paths_recorded": False,
-            "credentials_recorded": False,
-            "local_workspace_path_redacted": True,
-        },
-    }
+    summary = summarize_multi_agent_pane_tick_artifacts(artifacts)
+    summary["schema_version"] = "auto_research_visible_pane_a2a_rounds_summary_v0"
+    return summary
 
 
 def _build_collective_round_summary(
@@ -444,17 +404,15 @@ def _build_collective_round_summary(
     role_declared_successor_todos: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     baseline = 1.0
-    dev_sequence = list(dev_metric_sequence or ([] if dev_metric is None else [dev_metric]))
-    holdout_sequence = list(
-        holdout_metric_sequence or ([] if holdout_metric is None else [holdout_metric])
-    )
     integrated_evidence: dict[str, object] = {
         "dev_metric": dev_metric,
         "holdout_metric": holdout_metric,
-        "dev_metric_sequence": dev_sequence,
-        "holdout_metric_sequence": holdout_sequence,
         "evidence_event_count": evidence_event_count,
     }
+    if dev_metric_sequence is not None:
+        integrated_evidence["dev_metric_sequence"] = list(dev_metric_sequence)
+    if holdout_metric_sequence is not None:
+        integrated_evidence["holdout_metric_sequence"] = list(holdout_metric_sequence)
     if holdout_improvement_count is not None:
         integrated_evidence["holdout_improvement_count"] = holdout_improvement_count
     kernel_ledger = build_multi_agent_collective_round_ledger(
@@ -606,12 +564,18 @@ def _collective_summary_from_visible_panes_and_evidence(
     pane_rounds: dict[str, object],
     evidence: dict[str, object],
     agent_count: int | None,
+    expected_lanes: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     max_completed = (
         int(pane_rounds.get("max_rounds_completed"))
         if isinstance(pane_rounds.get("max_rounds_completed"), int)
         and not isinstance(pane_rounds.get("max_rounds_completed"), bool)
         else 0
+    )
+    lane_outcomes = (
+        pane_rounds.get("lane_outcomes")
+        if isinstance(pane_rounds.get("lane_outcomes"), list)
+        else []
     )
     return _build_collective_round_summary(
         source="visible_live_evidence_plus_pane_local_ticks",
@@ -625,9 +589,9 @@ def _collective_summary_from_visible_panes_and_evidence(
             and not isinstance(evidence.get("evidence_event_count"), bool)
             else None
         ),
-        expected_lanes=(
-            pane_rounds.get("lanes") if isinstance(pane_rounds.get("lanes"), list) else None
-        ),
+        expected_lanes=expected_lanes
+        or (pane_rounds.get("lanes") if isinstance(pane_rounds.get("lanes"), list) else None),
+        lane_outcomes=lane_outcomes,
     )
 
 
@@ -675,7 +639,7 @@ def _discover_visible_pane_a2a_rounds(
         if artifacts:
             summary = _compact_visible_pane_a2a_rounds(artifacts)
             if (
-                bool(summary.get("pane_local_multi_tick_verified"))
+                bool(summary.get("all_requested_rounds_completed"))
                 or int(summary.get("max_rounds_requested") or 0) < 2
                 or time.monotonic() >= deadline
             ):
@@ -1477,6 +1441,15 @@ def run_auto_research_demo_e2e(
                             and not isinstance(pane_rounds.get("lane_count"), bool)
                             else None
                         ),
+                        expected_lanes=[
+                            {
+                                "agent_id": lane.get("agent_id"),
+                                "lane_id": lane.get("lane_id"),
+                                "role_id": lane.get("role_id"),
+                            }
+                            for lane in supervisor.get("lanes") or []
+                            if isinstance(lane, dict)
+                        ],
                     )
                     _load_collective_research_rounds_into_payload(
                         payload=payload,

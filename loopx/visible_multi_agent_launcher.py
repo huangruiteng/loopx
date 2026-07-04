@@ -435,6 +435,7 @@ def build_visible_lane_command(
     role_profile_ref: str,
     role_profile_command: str,
     bootstrap_command: str,
+    cli_bin: str,
     codex_bin: str,
     reasoning_effort: str,
     goal_id: str | None = None,
@@ -450,7 +451,7 @@ def build_visible_lane_command(
         f"export LOOPX_CODEX_REASONING_EFFORT={_q(reasoning_effort)}; "
     )
     scoped_loopx_wrapper = (
-        'LOOPX_REAL_CLI="$(command -v loopx)"; '
+        f"LOOPX_REAL_CLI=\"$(command -v {_q(cli_bin)})\"; "
         "export LOOPX_REAL_CLI; "
         'mkdir -p "$LOOPX_PROJECT/.local/bin"; '
         f"python3 -c {_q(_SCOPED_LOOPX_WRAPPER_PY)}; "
@@ -772,6 +773,7 @@ def build_visible_multi_agent_payload_from_spec(
                 role_profile_ref=role_profile_ref,
                 role_profile_command=role_profile_command,
                 bootstrap_command=bootstrap_command,
+                cli_bin=cli_bin,
                 codex_bin=codex_bin,
                 reasoning_effort=reasoning_effort,
                 goal_id=goal_id,

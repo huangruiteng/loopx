@@ -17,8 +17,8 @@ AUTO_RESEARCH_REQUIRED_SKILL = "loopx-auto-research"
 AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
     "loopx/capabilities/auto_research/worker_skill/SKILL.md"
 )
-AUTO_RESEARCH_DEMO_TICK_ROUNDS = 4
-AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS = 3
+AUTO_RESEARCH_DEMO_TICK_ROUNDS = 8
+AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS = 1
 AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = (
     "[P0-auto-research-live] Run held-out validation for the dev-supported "
     "hypothesis from {source_todo_id}, append public-safe evidence, and "
