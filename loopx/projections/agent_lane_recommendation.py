@@ -70,6 +70,7 @@ def latest_run_recommended_action_for_projection(
     current_status_run: dict[str, Any] | None,
     agent_lane_recommendation: dict[str, Any] | None,
     active_state_next_action: Any = None,
+    preferred_agent_id: str | None = None,
     limit: int = 320,
     public_safe_compact_text: PublicSafeText,
     actions_are_projection_aligned: ActionAlignment,
@@ -90,6 +91,20 @@ def latest_run_recommended_action_for_projection(
     )
     if not lane_action:
         return latest_action, "latest_status_run" if latest_action else None
+    lane_dt = parse_timestamp(agent_lane_recommendation.get("generated_at"))
+    latest_dt = parse_timestamp(
+        current_status_run.get("generated_at")
+        if isinstance(current_status_run, dict)
+        else None
+    )
+    lane_agent_id = str(agent_lane_recommendation.get("agent_id") or "").strip()
+    preferred_agent = str(preferred_agent_id or "").strip()
+    lane_matches_preferred_agent = bool(
+        preferred_agent and lane_agent_id and lane_agent_id == preferred_agent
+    )
+    lane_is_newer = bool(lane_dt and latest_dt and lane_dt >= latest_dt)
+    if lane_is_newer and lane_matches_preferred_agent:
+        return lane_action, "agent_lane_recommendation"
     if not active_state_next_action or not actions_are_projection_aligned(
         active_state_next_action,
         lane_action,
@@ -100,13 +115,6 @@ def latest_run_recommended_action_for_projection(
         latest_action
         and actions_are_projection_aligned(active_state_next_action, latest_action)
     )
-    lane_dt = parse_timestamp(agent_lane_recommendation.get("generated_at"))
-    latest_dt = parse_timestamp(
-        current_status_run.get("generated_at")
-        if isinstance(current_status_run, dict)
-        else None
-    )
-    lane_is_newer = bool(lane_dt and latest_dt and lane_dt >= latest_dt)
-    if not latest_action or not latest_aligned or lane_is_newer:
+    if not latest_action or not latest_aligned:
         return lane_action, "agent_lane_recommendation"
     return latest_action, "latest_status_run"
