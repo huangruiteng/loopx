@@ -13,7 +13,7 @@ DECISION_DOC = TOPIC_DIR / "terminal-bench-no-submit-approval-packet-projection-
 PACKET_DOC = TOPIC_DIR / "terminal-bench-no-submit-approval-packet-v0.md"
 STATUS = REPO_ROOT / "loopx" / "status.py"
 REVIEW_PACKET = REPO_ROOT / "loopx" / "review_packet.py"
-HOT_PATH_SMOKE = REPO_ROOT / "examples" / "hot-path-interface-budget-smoke.py"
+HOT_PATH_SMOKE = REPO_ROOT / "examples" / "control_plane" / "hot-path-interface-budget-smoke.py"
 
 PACKET_SCHEMA = "terminal_bench_no_submit_approval_packet_v0"
 DECISION_DOC_NAME = "terminal-bench-no-submit-approval-packet-projection-decision-v0.md"
