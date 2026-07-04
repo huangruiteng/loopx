@@ -208,16 +208,17 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "quota should-run" in lane["quota_guard"], lane
         assert f"--agent-id {lane['agent_id']}" in lane["quota_guard"], lane
         assert lane["frontier"] == "agent-scoped LoopX todo/quota/frontier projection", lane
-        assert lane["bootstrap_message"] == "role_prompt_public_artifact_for_fixed_wake", lane
+        assert lane["bootstrap_message"] == "role_prompt_public_artifact_for_first_turn_and_fixed_wake", lane
         assert lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", lane
         assert lane["pane_local_a2a"]["worker_turn_configured"] is True, lane
         assert lane["pane_local_a2a"]["auto_start"] is True, lane
+        assert lane["pane_local_a2a"]["auto_start_owner"] == "codex_tui_first_turn_prompt", lane
         assert lane["pane_local_a2a"]["tick_rounds"] == 8, lane
         assert lane["pane_local_a2a"]["tick_sleep_seconds"] == 1, lane
         assert lane["lane_timeline"] == [
             "role_profile",
-            "auto_start_pane_local_a2a_tick",
             "codex_tui",
+            "tui_first_turn_pane_local_a2a_tick",
             "frontier",
         ], lane
 
@@ -252,7 +253,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
 
     start_script = "\n".join(payload["commands"]["start_script"])
     assert "tmux new-session" in start_script, start_script
-    assert "tmux new-window" in start_script, start_script
+    assert "tmux split-window" in start_script, start_script
+    assert "tmux select-layout" in start_script and "tiled" in start_script, start_script
     assert "LOOPX_PROJECT" in start_script, start_script
     assert "LOOPX_CODEX_TUI_MODE=interactive" in start_script, start_script
     assert "LOOPX_CODEX_BIN=codex" in start_script, start_script
@@ -266,10 +268,13 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert one_click["schema_version"] == "auto_research_one_click_demo_v1", payload
     assert one_click["mode"] == "visible_codex_tui_lanes", payload
     assert one_click["default_safe"] is True, payload
-    assert "each window starts a real interactive Codex CLI TUI" in " ".join(
+    assert "one tmux window with tiled role panes" in " ".join(
         one_click["expected_visible_result"]
     ), one_click
-    assert "starts by running $LOOPX_PANE_A2A_TICK" in " ".join(
+    assert "each pane starts a real interactive Codex CLI TUI" in " ".join(
+        one_click["expected_visible_result"]
+    ), one_click
+    assert "Codex TUI first turn runs $LOOPX_PANE_A2A_TICK" in " ".join(
         one_click["expected_visible_result"]
     ), one_click
 

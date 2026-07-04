@@ -204,7 +204,7 @@ def register_auto_research_commands(
         default=None,
         help=(
             "After launching visible panes, broadcast the fixed decentralized A2A wake prompt. "
-            "This is the default for visible --execute and is kept for explicitness."
+            "Omit for the default operator-visible launch where each Codex TUI runs its own first tick."
         ),
     )
     start_parser.add_argument(
@@ -212,8 +212,7 @@ def register_auto_research_commands(
         dest="wake_visible_after_launch",
         action="store_false",
         help=(
-            "Disable the default fixed-prompt wake after visible launch while keeping "
-            "the tmux session in the background unless --attach is also passed."
+            "Keep the post-launch wake disabled while preserving the normal visible launch."
         ),
     )
     start_parser.add_argument(
@@ -864,9 +863,9 @@ def handle_auto_research_command(
             launch_visible = bool(args.execute and not args.headless)
             visible_policy = resolve_visible_launch_policy(
                 args,
-                launch_visible=launch_visible,
-                default_wake_allowed=launch_visible,
-                default_attach_allowed=launch_visible,
+            launch_visible=launch_visible,
+            default_wake_allowed=False,
+            default_attach_allowed=launch_visible,
                 attach_wake_conflict_message=(
                     "--attach cannot be combined with --wake-visible-after-launch; "
                     "choose operator takeover (--attach) or evidence-first wake (--no-attach)"

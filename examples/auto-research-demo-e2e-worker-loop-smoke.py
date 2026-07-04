@@ -65,7 +65,7 @@ def main() -> int:
     assert "$LOOPX_PANE_LOOPX_JSON is a command path, not an output file." in runtime_scripts_source
     assert "LOOPX_PANE_WORKER_TURN" in launcher_source
     assert "loopx-pane-a2a-tick" in runtime_scripts_source
-    assert "role_prompt_public_artifact_for_fixed_wake" in launcher_source
+    assert "role_prompt_public_artifact_for_first_turn_and_fixed_wake" in launcher_source
     assert "model_reasoning_effort" in launcher_source
     assert "codex_stream_filter" not in launcher_source
     assert "build_auto_research_quickstart" not in demo_e2e_source
@@ -272,8 +272,8 @@ def main() -> int:
                 "session_name": session,
                 "target_lanes": target_lanes,
                 "prompt": (
-                    "LoopX pane-local A2A wakeup: inspect $LOOPX_PANE_TICK_SUMMARY, "
-                    "then run $LOOPX_PANE_A2A_TICK only when another round is needed."
+                    "LoopX pane-local A2A wakeup: read the pane-local role prompt, "
+                    "then run $LOOPX_PANE_A2A_TICK for this visible research round."
                 ),
                 "prompt_hash": "wakehash",
                 "coordination_model": "decentralized_state_a2a",
@@ -480,6 +480,10 @@ def main() -> int:
             "printf '│ model: gpt-5.5 high    │\\n'\n"
             "printf '╰────────────────────────╯\\n\\n'\n"
             "printf '› Implement {feature}\\n'\n"
+            "if [ -n \"${LOOPX_PANE_A2A_TICK:-}\" ] && [ -x \"$LOOPX_PANE_A2A_TICK\" ]; then\n"
+            "  \"$LOOPX_PANE_A2A_TICK\" > \"${LOOPX_PANE_TICK_OUTPUT_ARTIFACT:-/dev/null}\" 2>&1\n"
+            "  printf 'LoopX pane-local tick completed by visible Codex TUI.\\n'\n"
+            "fi\n"
             "sleep 30\n",
             encoding="utf-8",
         )

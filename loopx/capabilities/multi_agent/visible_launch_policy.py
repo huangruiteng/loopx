@@ -46,11 +46,11 @@ def resolve_visible_launch_policy(
         )
 
     wake = False
-    if launch_visible and default_wake_allowed:
-        if wake_setting is None and attach_requested:
-            wake = False
-        else:
-            wake = bool(wake_setting is not False)
+    if launch_visible:
+        if wake_setting is True:
+            wake = True
+        elif default_wake_allowed:
+            wake = bool(wake_setting is not False and not attach_requested)
 
     attach = bool(
         attach_requested

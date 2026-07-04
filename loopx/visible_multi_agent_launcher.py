@@ -73,16 +73,17 @@ def _wait_for_tmux_pane_input_ready(
     tmux_bin: str,
     session: str,
     lane: str,
+    target: str | None = None,
     env: dict[str, str],
     timeout_seconds: float = PANE_A2A_INPUT_READY_TIMEOUT_SECONDS,
 ) -> dict[str, object]:
     deadline = time.monotonic() + max(0.25, timeout_seconds)
     attempts = 0
-    target = f"{session}:{lane}"
+    tmux_target = target or f"{session}:{lane}"
     while True:
         attempts += 1
         capture = subprocess.run(
-            [tmux_bin, "capture-pane", "-pt", target, "-S", "-80"],
+            [tmux_bin, "capture-pane", "-pt", tmux_target, "-S", "-80"],
             check=False,
             capture_output=True,
             text=True,
@@ -92,6 +93,7 @@ def _wait_for_tmux_pane_input_ready(
         if ready:
             return {
                 "lane": lane,
+                "target": tmux_target,
                 "ready": True,
                 "attempt_count": attempts,
                 "capture_ok": True,
@@ -100,6 +102,7 @@ def _wait_for_tmux_pane_input_ready(
         if time.monotonic() >= deadline:
             return {
                 "lane": lane,
+                "target": tmux_target,
                 "ready": False,
                 "attempt_count": attempts,
                 "capture_ok": capture.returncode == 0,
@@ -107,6 +110,61 @@ def _wait_for_tmux_pane_input_ready(
                 "not_ready_reason": "codex_tui_busy_or_not_ready",
             }
         time.sleep(0.25)
+
+
+def _list_tmux_lane_targets(
+    *,
+    tmux_bin: str,
+    session: str,
+    env: dict[str, str],
+) -> list[dict[str, str]]:
+    listed = subprocess.run(
+        [tmux_bin, "list-panes", "-a", "-t", session, "-F", "#{pane_id}\t#{pane_title}\t#{window_name}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    panes: list[dict[str, str]] = []
+    if listed.returncode == 0:
+        for line in listed.stdout.splitlines():
+            pane_id, pane_title, window_name = (line.split("\t") + ["", "", ""])[:3]
+            pane_id = pane_id.strip()
+            label = pane_title.strip() or window_name.strip() or pane_id
+            if pane_id:
+                panes.append({"lane": label, "target": pane_id})
+    return panes
+
+
+def _resolve_tmux_lane_targets(
+    *,
+    tmux_bin: str,
+    session: str,
+    lanes: Iterable[str],
+    env: dict[str, str],
+) -> list[dict[str, str]]:
+    target_lanes = [str(lane).strip() for lane in lanes if str(lane).strip()]
+    pane_targets = _list_tmux_lane_targets(tmux_bin=tmux_bin, session=session, env=env)
+    by_label = {item["lane"]: item["target"] for item in pane_targets}
+    by_target = {item["target"]: item["target"] for item in pane_targets}
+    if not target_lanes:
+        if pane_targets:
+            return pane_targets
+        listed = subprocess.run(
+            [tmux_bin, "list-windows", "-t", session, "-F", "#{window_name}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        target_lanes = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
+    resolved: list[dict[str, str]] = []
+    for lane in target_lanes:
+        target = by_label.get(lane) or by_target.get(lane)
+        if not target:
+            target = lane if lane.startswith("%") else f"{session}:{lane}"
+        resolved.append({"lane": lane, "target": target})
+    return resolved
 
 
 def _prompt_still_waiting_for_submit(capture: str, prompt: str) -> bool:
@@ -202,22 +260,21 @@ def wake_visible_multi_agent_panes(
     if execute:
         require_executable(tmux_bin, field="tmux_bin")
         env = os.environ.copy()
-        if not target_lanes:
-            listed = subprocess.run(
-                [tmux_bin, "list-windows", "-t", session, "-F", "#{window_name}"],
-                check=True,
-                capture_output=True,
-                text=True,
-                env=env,
-            )
-            target_lanes = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
-        if not target_lanes:
+        target_specs = _resolve_tmux_lane_targets(
+            tmux_bin=tmux_bin,
+            session=session,
+            lanes=target_lanes,
+            env=env,
+        )
+        if not target_specs:
             raise ValueError("multi-agent wake found no target panes")
+        resolved_target_lanes = [str(spec["lane"]) for spec in target_specs]
         input_ready_checks = [
             _wait_for_tmux_pane_input_ready(
                 tmux_bin=tmux_bin,
                 session=session,
-                lane=lane,
+                lane=spec["lane"],
+                target=spec["target"],
                 env=env,
                 timeout_seconds=(
                     PANE_A2A_INPUT_READY_TIMEOUT_SECONDS
@@ -225,7 +282,7 @@ def wake_visible_multi_agent_panes(
                     else input_ready_timeout_seconds
                 ),
             )
-            for lane in target_lanes
+            for spec in target_specs
         ]
         ready_lanes = [
             str(check.get("lane"))
@@ -239,8 +296,13 @@ def wake_visible_multi_agent_panes(
                 check=True,
                 env=env,
             )
+            ready_targets = {
+                str(spec["lane"]): str(spec["target"])
+                for spec in target_specs
+                if str(spec["lane"]) in ready_lanes
+            }
             for lane in ready_lanes:
-                target = f"{session}:{lane}"
+                target = ready_targets[lane]
                 prompt_submit_checks.append(
                     _paste_and_submit_tmux_prompt(
                         tmux_bin=tmux_bin,
@@ -258,6 +320,7 @@ def wake_visible_multi_agent_panes(
     else:
         ready_lanes = []
         not_ready = []
+        resolved_target_lanes = target_lanes
 
     if not execute:
         prompt_delivery = "dry_run"
@@ -273,7 +336,7 @@ def wake_visible_multi_agent_panes(
         "schema_version": PANE_A2A_WAKEUP_SCHEMA_VERSION,
         "mode": "execute" if execute else "dry_run",
         "session_name": session,
-        "target_lanes": target_lanes if target_lanes else ["<all-session-windows>"],
+        "target_lanes": resolved_target_lanes if resolved_target_lanes else ["<all-session-panes>"],
         "prompt": prompt_text,
         "prompt_hash": prompt_hash,
         "coordination_model": "decentralized_state_a2a",
@@ -479,8 +542,8 @@ def build_visible_lane_command(
         pane_a2a_env += f"export LOOPX_PANE_TICK_ROUNDS={_q(tick_rounds)}; "
     if tick_sleep_seconds and tick_sleep_seconds > 0:
         pane_a2a_env += f"export LOOPX_PANE_TICK_SLEEP_SECONDS={_q(tick_sleep_seconds)}; "
-    if visible_lane_count and visible_lane_count > 0:
-        pane_a2a_env += f"export LOOPX_VISIBLE_LANE_COUNT={_q(visible_lane_count)}; "
+        if visible_lane_count and visible_lane_count > 0:
+            pane_a2a_env += f"export LOOPX_VISIBLE_LANE_COUNT={_q(visible_lane_count)}; "
     return (
         "set -uo pipefail; "
         "export LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1; "
@@ -505,12 +568,6 @@ def build_visible_lane_command(
         "fi; "
         'export LOOPX_PANE_TICK_SUMMARY="$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-rounds.public.json"; '
         'export LOOPX_PANE_TICK_OUTPUT_ARTIFACT="$LOOPX_PANE_ARTIFACT_DIR/pane-a2a-tick.output.txt"; '
-        '"$LOOPX_PANE_A2A_TICK" > "$LOOPX_PANE_TICK_OUTPUT_ARTIFACT" 2>&1; '
-        "PANE_A2A_TICK_STATUS=$?; "
-        "if [ \"$PANE_A2A_TICK_STATUS\" -ne 0 ]; then "
-        "printf '\\n[LoopX pane A2A blocked]\\n'; "
-        "printf 'tick_exit=%s artifact=%s\\n' \"$PANE_A2A_TICK_STATUS\" \"$LOOPX_PANE_TICK_OUTPUT_ARTIFACT\"; "
-        "fi; "
         'VISIBLE_PROMPT_ARTIFACT="$LOOPX_PANE_ARTIFACT_DIR/codex-visible-first-prompt.public.txt"; '
         'export LOOPX_CODEX_FULL_BOOTSTRAP_ARTIFACT="$BOOTSTRAP_ARTIFACT"; '
         '"$LOOPX_PANE_BOOTSTRAP_PROMPT" "$BOOTSTRAP_ARTIFACT" "$VISIBLE_PROMPT_ARTIFACT"; '
@@ -535,6 +592,7 @@ def build_visible_multi_agent_payload(
     session = str(session_name or "loopx-visible-agents")
     attach_command = f"{_q(tmux_bin)} attach -t {_q(session)}"
     stop_command = f"{_q(tmux_bin)} kill-session -t {_q(session)}"
+    window_name = "four-up" if len(lane_list) == 4 else "roles"
     retry_command = (
         "rerun the same visible launcher packet after refreshing quota, "
         "frontier, and bootstrap"
@@ -567,14 +625,24 @@ def build_visible_multi_agent_payload(
         if index == 0:
             start_script.append(
                 f"{_q(tmux_bin)} new-session -d -s {_q(session)} "
-                f"-n {_q(lane_id)} bash -lc {_q(launch_command)}"
+                f"-n {_q(window_name)} bash -lc {_q(launch_command)}"
+            )
+            start_script.append(
+                f"{_q(tmux_bin)} select-pane -t {_q(session + ':' + window_name)} "
+                f"-T {_q(lane_id)}"
             )
             start_script.append(f"{_q(tmux_bin)} set-option -t {_q(session)} remain-on-exit on")
         else:
+            pane_var = f"LOOPX_TMUX_PANE_{index}"
             start_script.append(
-                f"{_q(tmux_bin)} new-window -d -t {_q(session)} "
-                f"-n {_q(lane_id)} bash -lc {_q(launch_command)}"
+                f"{pane_var}=\"$({_q(tmux_bin)} split-window -d -P "
+                f"-F '#{{pane_id}}' -t {_q(session + ':' + window_name)} "
+                f"bash -lc {_q(launch_command)})\""
             )
+            start_script.append(
+                f"{_q(tmux_bin)} select-pane -t \"${pane_var}\" -T {_q(lane_id)}"
+            )
+            start_script.append(f"{_q(tmux_bin)} select-layout -t {_q(session + ':' + window_name)} tiled")
     start_script.append(
         f"{_q(tmux_bin)} display-message -t {_q(session)} "
         f"{_q('LoopX visible multi-agent Codex TUI session started; each window is interactive')}"
@@ -625,8 +693,9 @@ def build_visible_multi_agent_payload(
         "acceptance": {
             "schema_version": VISIBLE_LAUNCHER_ACCEPTANCE_CONTRACT_SCHEMA_VERSION,
             "required_runtime_shape": [
-                "one_tmux_window_per_role",
-                "each_role_window_execs_codex_cli_tui",
+                "single_tmux_window_with_role_panes",
+                "recording_friendly_tiled_layout",
+                "each_role_pane_execs_codex_cli_tui",
                 "no_frontier_or_json_status_window",
                 "no_pre_codex_character_stream",
             ],
@@ -764,10 +833,11 @@ def build_visible_multi_agent_payload_from_spec(
                 "worker_turn_configured": bool(worker_turn_command),
                 "worker_loop_configured": bool(worker_loop_command),
                 "auto_start": True,
+                "auto_start_owner": "codex_tui_first_turn_prompt",
                 "tick_rounds": tick_rounds,
                 "tick_sleep_seconds": tick_sleep_seconds,
             },
-            "bootstrap_message": "role_prompt_public_artifact_for_fixed_wake",
+            "bootstrap_message": "role_prompt_public_artifact_for_first_turn_and_fixed_wake",
             "visible_launch_command": build_visible_lane_command(
                 role_id=role_id,
                 role_profile_ref=role_profile_ref,
@@ -787,8 +857,8 @@ def build_visible_multi_agent_payload_from_spec(
             "reasoning_effort": reasoning_effort,
             "lane_timeline": [
                 "role_profile",
-                "auto_start_pane_local_a2a_tick",
                 "codex_tui",
+                "tui_first_turn_pane_local_a2a_tick",
                 "frontier",
             ],
         }
@@ -1062,7 +1132,9 @@ def _launch_with_tmux(
 
     script_dir = runtime_root / "visible-launcher" / _script_slug(session)
     started_lanes = []
+    lane_targets: dict[str, str] = {}
     launcher_scripts: dict[str, str] = {}
+    window_name = "four-up" if len(lanes) == 4 else "roles"
     for index, lane in enumerate(lanes):
         lane_id = str(lane.get("lane_id") or lane_default)
         launch_command = str(lane.get("visible_launch_command") or "")
@@ -1094,7 +1166,7 @@ def _launch_with_tmux(
                     "-s",
                     session,
                     "-n",
-                    lane_id,
+                    window_name,
                     "bash",
                     str(lane_script),
                 ],
@@ -1106,23 +1178,44 @@ def _launch_with_tmux(
                 check=False,
                 env=env,
             )
+            pane_id = subprocess.run(
+                [tmux_bin, "display-message", "-p", "-t", f"{session}:{window_name}", "#{pane_id}"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+            ).stdout.strip() or f"{session}:{window_name}"
         else:
-            subprocess.run(
+            pane_id = subprocess.run(
                 [
                     tmux_bin,
-                    "new-window",
+                    "split-window",
                     "-d",
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
                     "-t",
-                    session,
-                    "-n",
-                    lane_id,
+                    f"{session}:{window_name}",
                     "bash",
                     str(lane_script),
                 ],
                 check=True,
+                capture_output=True,
+                text=True,
                 env=env,
-            )
+            ).stdout.strip() or f"{session}:{window_name}"
+        subprocess.run(
+            [tmux_bin, "select-pane", "-t", pane_id, "-T", lane_id],
+            check=False,
+            env=env,
+        )
+        subprocess.run(
+            [tmux_bin, "select-layout", "-t", f"{session}:{window_name}", "tiled"],
+            check=False,
+            env=env,
+        )
         started_lanes.append(lane_id)
+        lane_targets[lane_id] = pane_id
         launcher_scripts[lane_id] = str(lane_script)
     if attach:
         subprocess.run([tmux_bin, "attach", "-t", session], check=True, env=env)
@@ -1130,6 +1223,7 @@ def _launch_with_tmux(
         tmux_bin=tmux_bin,
         session=session,
         expected_lanes=started_lanes,
+        lane_targets=lane_targets,
         env=env,
         schema_version=acceptance_schema,
         lane_scripts=launcher_scripts,
@@ -1142,6 +1236,7 @@ def _launch_with_tmux(
         "session_name": session,
         "started_lane_count": len(started_lanes),
         "started_lanes": started_lanes,
+        "started_lane_targets": lane_targets,
         "surviving_lane_count": len(acceptance["surviving_lanes"]),
         "surviving_lanes": acceptance["surviving_lanes"],
         "attach_command": f"{tmux_bin} attach -t {session}",
@@ -1159,6 +1254,12 @@ def _launch_with_tmux(
         "attach_requested": attach,
         "operator_takeover": "attach to the tmux session, interrupt any lane, or kill the session",
         "visible_acceptance": acceptance,
+        "tmux_layout": {
+            "window_name": window_name,
+            "single_window": True,
+            "layout": "tiled",
+            "recording_friendly": True,
+        },
     }
 
 
@@ -1167,6 +1268,7 @@ def _tmux_acceptance(
     tmux_bin: str,
     session: str,
     expected_lanes: list[str],
+    lane_targets: dict[str, str],
     env: dict[str, str],
     schema_version: str,
     lane_scripts: dict[str, str],
@@ -1178,25 +1280,37 @@ def _tmux_acceptance(
     for attempt in range(32):
         time.sleep(0.25)
         list_result = subprocess.run(
-            [tmux_bin, "list-windows", "-t", session, "-F", "#{window_name}"],
+            [tmux_bin, "list-panes", "-a", "-t", session, "-F", "#{pane_id}\t#{pane_title}\t#{window_name}"],
             check=False,
             capture_output=True,
             text=True,
             env=env,
         )
-        observed = [line.strip() for line in list_result.stdout.splitlines() if line.strip()]
-        surviving = [lane for lane in expected_lanes if lane in observed]
+        observed_targets: set[str] = set()
+        observed_titles: set[str] = set()
+        for line in list_result.stdout.splitlines():
+            pane_id, pane_title, _window_name = (line.split("\t") + ["", "", ""])[:3]
+            if pane_id.strip():
+                observed_targets.add(pane_id.strip())
+            if pane_title.strip():
+                observed_titles.add(pane_title.strip())
+        surviving = [
+            lane
+            for lane in expected_lanes
+            if lane_targets.get(lane) in observed_targets or lane in observed_titles
+        ]
         pane_checks = []
         for lane in expected_lanes:
+            target = lane_targets.get(lane) or f"{session}:{lane}"
             capture = subprocess.run(
-                [tmux_bin, "capture-pane", "-pt", f"{session}:{lane}", "-S", "-200"],
+                [tmux_bin, "capture-pane", "-pt", target, "-S", "-200"],
                 check=False,
                 capture_output=True,
                 text=True,
                 env=env,
             ).stdout
             current_command = subprocess.run(
-                [tmux_bin, "display-message", "-p", "-t", f"{session}:{lane}", "#{pane_current_command}"],
+                [tmux_bin, "display-message", "-p", "-t", target, "#{pane_current_command}"],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -1240,6 +1354,7 @@ def _tmux_acceptance(
             pane_checks.append(
                 {
                     "lane_id": lane,
+                    "pane_target": target,
                     "accepted": ok,
                     "blocked_before_bootstrap": blocked_before_bootstrap,
                     "trust_prompt_blocked": trust_prompt_blocked,

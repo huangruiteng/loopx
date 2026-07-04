@@ -148,6 +148,20 @@ def fake_tmux_script() -> str:
             "if len(sys.argv) > 1 and sys.argv[1] == 'list-windows':",
             "    print('planner\\ncritic')",
             "    raise SystemExit(0)",
+            "if len(sys.argv) > 1 and sys.argv[1] == 'list-panes':",
+            "    print('%0\\tplanner\\troles')",
+            "    print('%1\\tcritic\\troles')",
+            "    raise SystemExit(0)",
+            "if len(sys.argv) > 1 and sys.argv[1] == 'split-window':",
+            "    lines = []",
+            "    try:",
+            "        with open(os.environ['FAKE_TMUX_LOG'], encoding='utf-8') as read_log:",
+            "            lines = read_log.readlines()",
+            "    except Exception:",
+            "        pass",
+            "    split_count = sum(1 for line in lines if 'split-window' in line)",
+            "    print(f'%{split_count}')",
+            "    raise SystemExit(0)",
             "if len(sys.argv) > 1 and sys.argv[1] == 'capture-pane':",
             "    print('╭────────────────────────╮')",
             "    print('│ >_ OpenAI Codex        │')",
@@ -155,6 +169,12 @@ def fake_tmux_script() -> str:
             "    print('╰────────────────────────╯')",
             "    print()",
             "    print('› Implement {feature}')",
+            "    raise SystemExit(0)",
+            "if len(sys.argv) > 1 and sys.argv[1] == 'display-message':",
+            "    if '#{pane_id}' in sys.argv:",
+            "        print('%0')",
+            "    elif '#{pane_current_command}' in sys.argv:",
+            "        print('codex')",
             "    raise SystemExit(0)",
             "raise SystemExit(0)",
             "",
@@ -263,22 +283,23 @@ def main() -> int:
         ), driver
         assert driver["broadcaster"]["decides_work"] is False, driver
         assert driver["pane"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", driver
-        assert driver["prompt"]["pre_tick_summary_ref"] == "$LOOPX_PANE_TICK_SUMMARY", driver
-        assert "launcher_pre_tick_summary_evidence" in driver["pane"]["reads"], driver
+        assert driver["prompt"]["tick_summary_ref"] == "$LOOPX_PANE_TICK_SUMMARY", driver
+        assert "own_prior_tick_summary_evidence" in driver["pane"]["reads"], driver
         assert driver["pane"]["cadence_action"] == (
             "fixed_prompt_wakeup_then_own_quota_frontier_tick_when_runnable"
         ), driver
-        assert driver["prompt"]["pre_tick_summary_semantics"] == (
-            "prior_evidence_not_a_tick_skip_gate"
+        assert driver["prompt"]["tick_summary_semantics"] == (
+            "prior_pane_tick_evidence_not_a_tick_skip_gate"
         ), driver
         assert (
-            driver["acceptance"]["pre_tick_summary_does_not_gate_wake_tick"] is True
+            driver["acceptance"]["tick_summary_does_not_gate_wake_tick"] is True
         ), driver
+        assert driver["acceptance"]["tui_first_turn_owns_tick"] is True, driver
         assert driver["acceptance"]["user_and_preset_do_not_own_tick_driver"] is True, driver
-        assert dry_packet["runner_contract"]["pane_local_a2a"]["pre_tick_summary"] == (
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["tick_summary"] == (
             "$LOOPX_PANE_TICK_SUMMARY"
         ), dry_packet
-        assert dry_packet["runner_contract"]["pane_local_a2a"]["pre_tick_output"] == (
+        assert dry_packet["runner_contract"]["pane_local_a2a"]["tick_output"] == (
             "$LOOPX_PANE_TICK_OUTPUT_ARTIFACT"
         ), dry_packet
         assert dry_packet["runner_contract"]["pane_local_a2a"]["machine_json_destination"] == (
@@ -328,6 +349,12 @@ def main() -> int:
         assert exec_packet["boundary"]["spends_loopx_quota"] is False, exec_packet
         assert launch["schema_version"] == "multi_agent_visible_launch_result_v0", launch
         assert launch["started_lanes"] == ["planner", "critic"], launch
+        assert launch["tmux_layout"] == {
+            "window_name": "roles",
+            "single_window": True,
+            "layout": "tiled",
+            "recording_friendly": True,
+        }, launch
         assert launch["visible_acceptance"]["accepted"] is True, launch
         assert launch["visible_acceptance"]["missing_lanes"] == [], launch
         assert all(
@@ -357,7 +384,7 @@ def main() -> int:
         assert "$LOOPX_PANE_A2A_TICK" in dry_wake["prompt"], dry_wake
         assert "$LOOPX_PANE_TICK_SUMMARY" in dry_wake["prompt"], dry_wake
         assert "Treat this fixed wake as a fresh decentralized round" in dry_wake["prompt"], dry_wake
-        assert "prior launcher pre-tick evidence" in dry_wake["prompt"], dry_wake
+        assert "prior pane-local tick evidence" in dry_wake["prompt"], dry_wake
         assert "Run the bounded $LOOPX_PANE_A2A_TICK once" in dry_wake["prompt"], dry_wake
         assert "\n" not in dry_wake["prompt"], dry_wake
         exec_wake = run_wake_command(
@@ -401,7 +428,7 @@ def main() -> int:
         start_commands = [
             entry["argv"][-1]
             for entry in log_entries
-            if entry["argv"][:1] in (["new-session"], ["new-window"])
+            if entry["argv"][:1] in (["new-session"], ["split-window"])
         ]
         assert len(start_commands) == 2, log_entries
         start_payloads = []

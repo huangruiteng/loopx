@@ -115,9 +115,9 @@ def build_auto_research_demo_supervisor_plan(
                 "mode": "visible_codex_tui_lanes",
                 "default_safe": True,
                 "expected_visible_result": [
-                    "one tmux window per role",
-                    "each window starts a real interactive Codex CLI TUI",
-                    "each pane starts by running $LOOPX_PANE_A2A_TICK against its own frontier",
+                    "one tmux window with tiled role panes",
+                    "each pane starts a real interactive Codex CLI TUI",
+                    "the Codex TUI first turn runs $LOOPX_PANE_A2A_TICK against its own frontier",
                     "each pane performs bounded role-local polling so successor todos can flow across lanes",
                 ],
             },

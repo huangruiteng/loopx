@@ -201,7 +201,7 @@ def assert_start_wake_contract() -> None:
         return resolve_visible_launch_policy(
             args,
             launch_visible=bool(args.execute and not args.headless),
-            default_wake_allowed=bool(args.execute and not args.headless),
+            default_wake_allowed=False,
             default_attach_allowed=bool(args.execute and not args.headless),
         )
 
@@ -221,9 +221,9 @@ def assert_start_wake_contract() -> None:
         codex_trust_workspace=None,
     )
     default_policy = start_policy(default_visible)
-    assert default_policy.wake_visible_after_launch is True
+    assert default_policy.wake_visible_after_launch is False
     assert trust(default_visible) is True
-    assert default_policy.attach is False
+    assert default_policy.attach is True
 
     attach_takeover = Namespace(
         execute=True,

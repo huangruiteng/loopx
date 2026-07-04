@@ -115,6 +115,7 @@ def main() -> int:
             "scope",
             "skill",
             "handoff_hints",
+            "output_language",
             "reasoning_effort",
             "worker_turn_command",
             "worker_loop_command",
@@ -202,7 +203,7 @@ def main() -> int:
         assert "raw_frontier_json" not in command, lane
         assert "$LOOPX_PANE_LOOPX_JSON quota should-run" in lane["quota_guard"], lane
         assert "> \"$LOOPX_PANE_ARTIFACT_DIR/quota.public.json\"" in lane["quota_guard"], lane
-        assert "auto_start_pane_local_a2a_tick" in lane["lane_timeline"], lane
+        assert "tui_first_turn_pane_local_a2a_tick" in lane["lane_timeline"], lane
 
     assert payload["cli_contract"]["machine_json_policy"] == "artifact_only_in_visible_panes", payload
     compact = payload["compact_human_status"]

@@ -39,12 +39,12 @@ def assert_start_policy() -> None:
     policy = resolve_visible_launch_policy(
         ns(),
         launch_visible=True,
-        default_wake_allowed=True,
+        default_wake_allowed=False,
         default_attach_allowed=True,
     )
     require(policy.launch_visible is True, "start should launch visible panes")
-    require(policy.wake_visible_after_launch is True, "start should default to evidence-first wake")
-    require(policy.attach is False, "start should not attach before the default wake")
+    require(policy.wake_visible_after_launch is False, "start first tick belongs to the visible TUI")
+    require(policy.attach is True, "start should attach for operator-visible research")
     require(
         resolve_codex_trust_workspace(ns(), launch_visible=True, default=True) is True,
         "start default workspace should be trusted to avoid first-screen trust prompt",
@@ -53,10 +53,10 @@ def assert_start_policy() -> None:
     takeover = resolve_visible_launch_policy(
         ns(attach=True),
         launch_visible=True,
-        default_wake_allowed=True,
+        default_wake_allowed=False,
         default_attach_allowed=True,
     )
-    require(takeover.wake_visible_after_launch is False, "operator takeover should disable default wake")
+    require(takeover.wake_visible_after_launch is False, "operator takeover should not add a background wake")
     require(takeover.attach is True, "explicit attach should attach")
 
 
