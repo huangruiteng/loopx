@@ -10,6 +10,7 @@ from typing import Any, Iterable
 
 from .file_lock import exclusive_file_lock
 from .control_plane.todos.contract import (
+    TODO_MONITOR_METADATA_FIELDS,
     TODO_STATUS_DONE,
     TODO_STATUS_BLOCKED,
     TODO_STATUS_DEFERRED,
@@ -555,6 +556,9 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
         todo["task_class"] = task_class
     if action_kind:
         todo["action_kind"] = action_kind
+    for key in TODO_MONITOR_METADATA_FIELDS:
+        if payload.get(key):
+            todo[key] = compact_text(payload[key])
     if claimed_by:
         todo["claimed_by"] = claimed_by
     return todo
@@ -569,6 +573,9 @@ def _update_todo_from_event(todo: dict[str, Any], event: dict[str, Any]) -> None
             todo["claimed_by"] = claimed_by
     elif event_type == TODO_UPDATED:
         for key in ("priority", "role", "title", "task_class", "action_kind"):
+            if payload.get(key):
+                todo[key] = compact_text(payload[key])
+        for key in TODO_MONITOR_METADATA_FIELDS:
             if payload.get(key):
                 todo[key] = compact_text(payload[key])
         if payload.get("text") or payload.get("title"):
@@ -684,12 +691,17 @@ def render_todo_markdown(item: dict[str, Any]) -> list[str]:
     if not text.startswith("[") and item.get("priority"):
         text = f"[{compact_text(item.get('priority'))}] {text}"
     lines = [f"- [{marker}] {text}"]
+    monitor_metadata = {
+        key: item.get(key)
+        for key in TODO_MONITOR_METADATA_FIELDS
+    }
     metadata = format_todo_metadata_line(
         todo_id=item.get("todo_id"),
         status=status,
         task_class=item.get("task_class"),
         action_kind=item.get("action_kind"),
         claimed_by=item.get("claimed_by"),
+        **monitor_metadata,
         note=item.get("note"),
         evidence=item.get("evidence"),
         reason=item.get("reason"),
