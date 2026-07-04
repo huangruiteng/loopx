@@ -51,6 +51,7 @@ def main() -> int:
             ).stdout
         )
         assert dry["schema_version"] == "loopx_slash_command_install_v0", dry
+        assert dry["operation"] == "install", dry
         assert dry["execute"] is False, dry
         assert dry["summary"]["status_counts"]["would_create"] >= 20, dry
         assert dry["summary"]["status_counts"]["unsupported_host_surface"] >= 1, dry
@@ -71,6 +72,7 @@ def main() -> int:
             ).stdout
         )
         assert payload["execute"] is True, payload
+        assert payload["operation"] == "install", payload
         assert payload["summary"]["codex_prompt_dir"] is None, payload
         assert payload["summary"]["codex_skill_dir"] == str(codex_home / "skills"), payload
         assert payload["summary"]["claude_skill_dir"] == str(claude_home / "skills"), payload
@@ -98,6 +100,8 @@ def main() -> int:
         ]
         assert codex_cli_rows, payload
         assert codex_cli_rows[0]["status"] == "unsupported_host_surface", codex_cli_rows
+        assert codex_cli_rows[0]["native_registry_supported"] is False, codex_cli_rows
+        assert codex_cli_rows[0]["failure_policy"] == "fail_closed_to_explicit_skill", codex_cli_rows
         assert "$loopx" in codex_cli_rows[0]["fallback"], codex_cli_rows
 
         codex_skill = codex_home / "skills" / "loopx" / "SKILL.md"
@@ -204,6 +208,110 @@ def main() -> int:
         assert codex_only["summary"]["codex_skill_dir"] == str(root / "codex-only" / "skills"), codex_only
         assert codex_only["summary"]["claude_skill_dir"] is None, codex_only
         assert codex_only["summary"]["status_counts"]["unsupported_host_surface"] == 10, codex_only
+
+        legacy_codex_home = root / "legacy-codex"
+        legacy_claude_home = root / "legacy-claude"
+        legacy_skill = legacy_codex_home / "skills" / "loopx" / "SKILL.md"
+        legacy_skill.parent.mkdir(parents=True)
+        legacy_skill.write_text(
+            "# Legacy LoopX\n\nloopx goal-mode setup (NOT Claude Code's built-in /goal)\n",
+            encoding="utf-8",
+        )
+        legacy_install = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--install",
+                "--surface",
+                "codex",
+                "--codex-home",
+                str(legacy_codex_home),
+                "--claude-home",
+                str(legacy_claude_home),
+            ).stdout
+        )
+        assert statuses_for(legacy_install, legacy_skill) == ["upgraded_legacy_managed"], legacy_install
+        assert "loopx-managed-slash-command:v1 command=/loopx surface=codex-skills" in legacy_skill.read_text(encoding="utf-8")
+
+        uninstall_codex_home = root / "uninstall-codex"
+        uninstall_claude_home = root / "uninstall-claude"
+        uninstall_seed = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--install",
+                "--codex-home",
+                str(uninstall_codex_home),
+                "--claude-home",
+                str(uninstall_claude_home),
+            ).stdout
+        )
+        assert uninstall_seed["summary"]["status_counts"]["created"] >= 20, uninstall_seed
+        uninstall_user_skill = uninstall_codex_home / "skills" / "loopx-global-risks" / "SKILL.md"
+        uninstall_user_skill.write_text("# user-owned LoopX helper\n", encoding="utf-8")
+        managed_legacy_prompt = uninstall_codex_home / "prompts" / "loopx.md"
+        managed_legacy_prompt.parent.mkdir(parents=True)
+        managed_legacy_prompt.write_text(
+            "<!-- loopx-managed-slash-command:v1 command=/loopx surface=codex-prompts -->\n",
+            encoding="utf-8",
+        )
+        dry_uninstall = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--uninstall",
+                "--dry-run",
+                "--codex-home",
+                str(uninstall_codex_home),
+                "--claude-home",
+                str(uninstall_claude_home),
+            ).stdout
+        )
+        assert dry_uninstall["operation"] == "uninstall", dry_uninstall
+        assert dry_uninstall["execute"] is False, dry_uninstall
+        assert dry_uninstall["summary"]["status_counts"]["would_retire_managed_file"] >= 20, dry_uninstall
+        assert statuses_for(dry_uninstall, uninstall_user_skill) == ["skipped_user_file"], dry_uninstall
+        assert uninstall_user_skill.exists(), dry_uninstall
+
+        uninstall = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--uninstall",
+                "--codex-home",
+                str(uninstall_codex_home),
+                "--claude-home",
+                str(uninstall_claude_home),
+            ).stdout
+        )
+        assert uninstall["operation"] == "uninstall", uninstall
+        assert uninstall["execute"] is True, uninstall
+        assert uninstall["summary"]["status_counts"]["retired_managed_file"] >= 20, uninstall
+        assert statuses_for(uninstall, uninstall_user_skill) == ["skipped_user_file"], uninstall
+        assert not (uninstall_codex_home / "skills" / "loopx" / "SKILL.md").exists()
+        assert not (uninstall_codex_home / "skills" / "loopx" / "agents" / "openai.yaml").exists()
+        assert not (uninstall_claude_home / "skills" / "loopx" / "SKILL.md").exists()
+        assert not managed_legacy_prompt.exists()
+        assert uninstall_user_skill.read_text(encoding="utf-8") == "# user-owned LoopX helper\n"
+        assert not (uninstall_user_skill.parent / "agents" / "openai.yaml").exists()
+
+        uninstall_again = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--uninstall",
+                "--codex-home",
+                str(uninstall_codex_home),
+                "--claude-home",
+                str(uninstall_claude_home),
+            ).stdout
+        )
+        assert uninstall_again["summary"]["status_counts"]["absent"] >= 20, uninstall_again
 
     print("slash-command-install-smoke ok")
     return 0

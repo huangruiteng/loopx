@@ -36,10 +36,16 @@ def register_slash_commands_command(
         action="store_true",
         help="Hide legacy /loop-global-* aliases from the command catalog.",
     )
-    parser.add_argument(
+    install_group = parser.add_mutually_exclusive_group()
+    install_group.add_argument(
         "--install",
         action="store_true",
         help="Install LoopX command skill files for supported hosts.",
+    )
+    install_group.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="Remove LoopX-managed command skill files for supported hosts while preserving user-owned files.",
     )
     parser.add_argument(
         "--surface",
@@ -73,9 +79,10 @@ def handle_slash_commands_command(
 ) -> int | None:
     if args.command != "slash-commands":
         return None
-    if args.install or args.dry_run:
+    if args.install or args.uninstall or args.dry_run:
         payload = install_slash_commands(
-            execute=bool(args.install and not args.dry_run),
+            execute=bool((args.install or args.uninstall) and not args.dry_run),
+            uninstall=bool(args.uninstall),
             surfaces=args.surface,
             cli_bin=args.cli_bin,
             include_legacy_aliases=not bool(args.no_legacy_aliases),

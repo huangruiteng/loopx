@@ -208,6 +208,10 @@ def _retire_managed_file(path: Path, *, execute: bool) -> str | None:
     return "retired_managed_file" if execute else "would_retire_managed_file"
 
 
+def _retire_status(path: Path, *, execute: bool) -> str:
+    return _retire_managed_file(path, execute=execute) or "absent"
+
+
 def _codex_home(value: str | None = None) -> Path:
     raw = value or os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")
     return Path(raw).expanduser()
@@ -239,6 +243,7 @@ def _normalize_surfaces(surfaces: list[str] | None) -> list[str]:
 def install_slash_commands(
     *,
     execute: bool,
+    uninstall: bool = False,
     surfaces: list[str] | None = None,
     cli_bin: str = "loopx",
     include_legacy_aliases: bool = True,
@@ -255,6 +260,20 @@ def install_slash_commands(
         prompt_dir = codex_root / "prompts"
         for spec in specs:
             prompt_path = prompt_dir / f"{spec['name']}.md"
+            if uninstall:
+                retire_status = _retire_status(prompt_path, execute=execute)
+                installed.append(
+                    {
+                        "surface": "codex",
+                        "host_surfaces": ["codex-cli", "codex-ide", "codex-app"],
+                        "mechanism": "retired_codex_custom_prompt",
+                        "command": spec["command"],
+                        "path": str(prompt_path),
+                        "status": retire_status,
+                        "invoke_as": [],
+                    }
+                )
+                continue
             retire_status = _retire_managed_file(prompt_path, execute=execute)
             if retire_status:
                 installed.append(
@@ -272,6 +291,33 @@ def install_slash_commands(
         skill_dir = codex_root / "skills"
         for spec in specs:
             skill_path = skill_dir / str(spec["name"]) / "SKILL.md"
+            metadata_path = skill_path.parent / "agents" / "openai.yaml"
+            if uninstall:
+                skill_status = _retire_status(skill_path, execute=execute)
+                installed.append(
+                    {
+                        "surface": "codex",
+                        "host_surfaces": ["codex-cli", "codex-ide", "codex-app"],
+                        "mechanism": "codex_explicit_skills",
+                        "command": spec["command"],
+                        "path": str(skill_path),
+                        "status": skill_status,
+                        "invoke_as": [f"${spec['name']}", "/skills"],
+                    }
+                )
+                metadata_status = _retire_status(metadata_path, execute=execute)
+                installed.append(
+                    {
+                        "surface": "codex",
+                        "host_surfaces": ["codex-cli", "codex-ide", "codex-app"],
+                        "mechanism": "codex_skill_openai_metadata",
+                        "command": spec["command"],
+                        "path": str(metadata_path),
+                        "status": metadata_status,
+                        "invoke_as": [f"${spec['name']}", "/skills"],
+                    }
+                )
+                continue
             skill_content = _skill_body(
                 command=str(spec["command"]),
                 title=f"LoopX {spec['command']}",
@@ -293,7 +339,6 @@ def install_slash_commands(
                     "invoke_as": [f"${spec['name']}", "/skills"],
                 }
             )
-            metadata_path = skill_path.parent / "agents" / "openai.yaml"
             if skill_status not in {"skipped_user_file", "preserved_existing_loopx_skill"}:
                 metadata = _openai_skill_metadata(
                     command=str(spec["command"]),
@@ -340,6 +385,8 @@ def install_slash_commands(
                         "Current Codex does not support user-defined native top-level slash "
                         "commands. Use explicit skills instead."
                     ),
+                    "native_registry_supported": False,
+                    "failure_policy": "fail_closed_to_explicit_skill",
                     "fallback": "Use `$loopx` or `/skills` to explicitly invoke the LoopX skill; for the visible TUI loop, run `loopx codex-cli-bootstrap-message --project .`, paste the setup message, then set `/goal <thin task_body>`.",
                 }
             )
@@ -348,6 +395,19 @@ def install_slash_commands(
         skills_dir = claude_root / "skills"
         for spec in specs:
             path = skills_dir / str(spec["name"]) / "SKILL.md"
+            if uninstall:
+                status = _retire_status(path, execute=execute)
+                installed.append(
+                    {
+                        "surface": "claude-code",
+                        "mechanism": "claude_code_skills",
+                        "command": spec["command"],
+                        "path": str(path),
+                        "status": status,
+                        "invoke_as": [str(spec["command"])],
+                    }
+                )
+                continue
             content = _skill_body(
                 command=str(spec["command"]),
                 title=f"LoopX {spec['command']}",
@@ -377,6 +437,7 @@ def install_slash_commands(
     return {
         "ok": True,
         "schema_version": SCHEMA_VERSION,
+        "operation": "uninstall" if uninstall else "install",
         "execute": execute,
         "requested_surfaces": surfaces or ["all"],
         "effective_surfaces": effective_surfaces,
@@ -389,21 +450,28 @@ def install_slash_commands(
             "codex_skill_dir": str(codex_root / "skills") if "codex" in effective_surfaces else None,
             "claude_skill_dir": str(claude_root / "skills") if "claude-code" in effective_surfaces else None,
             "status_counts": status_counts,
-            "skip_policy": "LoopX-managed files are upgraded; same-name user files without a LoopX managed marker or legacy signature are never overwritten",
+            "skip_policy": (
+                "Uninstall removes only LoopX-managed files; user files without a LoopX managed marker are preserved"
+                if uninstall
+                else "LoopX-managed files are upgraded; same-name user files without a LoopX managed marker or legacy signature are never overwritten"
+            ),
         },
         "installed": installed,
         "notes": [
             "Codex does not currently support user-defined native top-level slash commands; use explicit skill invocation through `$loopx` or `/skills`.",
             "Only explicit LoopX command-facade skills are installed with agents/openai.yaml policy allow_implicit_invocation=false; richer workflow skills stay implicit.",
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
+            "Uninstall is fail-closed: it retires only files carrying the LoopX managed marker and leaves user-owned files in place.",
         ],
     }
 
 
 def render_slash_command_install_markdown(payload: dict[str, Any]) -> str:
+    operation = str(payload.get("operation") or "install")
     lines = [
-        "# LoopX Slash Command Install",
+        "# LoopX Slash Command Uninstall" if operation == "uninstall" else "# LoopX Slash Command Install",
         "",
+        f"- operation: `{operation}`",
         f"- execute: `{payload.get('execute')}`",
         f"- surfaces: `{','.join(payload.get('effective_surfaces') or [])}`",
         f"- skip policy: `{payload.get('summary', {}).get('skip_policy')}`",
