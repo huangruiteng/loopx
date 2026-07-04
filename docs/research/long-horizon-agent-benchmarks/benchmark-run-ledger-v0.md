@@ -118,14 +118,14 @@ available for route inspection:
 PYTHONPATH=<loopx-repo> python3 -m loopx.cli \
   benchmark run skillsbench \
   --goal-id loopx-meta \
-  --skillsbench-route codex-goal-mode-baseline \
+  --skillsbench-route codex-cli-goal-baseline \
   --include-task-name citation-check
 ```
 
 This command is not case evidence: it does not run BenchFlow, Docker, Codex, a
 model API, or leaderboard upload. Real SkillsBench runner closeout should write
 or provide a compact `benchmark_run_v0`, then call `benchmark run-ledger-upsert`.
-The ledger infers route arms such as `codex_goal_mode_baseline`,
+The ledger infers route arms such as `codex_cli_goal_baseline`,
 `loopx_automation_loop_treatment`, and `curated_skills_baseline` from
 compact run modes.
 

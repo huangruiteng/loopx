@@ -48,7 +48,6 @@ SKILLSBENCH_ROUTES = (
     "loopx-blind-loop-treatment",
     "loopx-prompt-polling-test",
     "codex-app-server-goal-baseline",
-    "codex-goal-mode-baseline",
     "curated-skills-baseline",
     SKILLSBENCH_RAW_CODEX_AUTONOMOUS_ROUTE,
     SKILLSBENCH_LOOPX_PRODUCT_MODE_ROUTE,
@@ -326,35 +325,6 @@ def skillsbench_route_contract(route: str) -> dict[str, Any]:
                     "replan/status writeback, and LoopX CLI/ledger surfaces; do not "
                     "return official reward or verifier feedback during execution"
                 )
-            ),
-        }
-    if route == "codex-goal-mode-baseline":
-        return {
-            "mode": "codex_goal_mode_baseline",
-            "arm_id": "codex_goal_mode_baseline",
-            "source_runner": "loopx_skillsbench_codex_goal_mode_baseline_skeleton",
-            "inner_codex_goal_mode": True,
-            "native_goal_mode_requested": True,
-            "native_goal_mode_invoked": False,
-            "native_goal_mode_confirmation_status": (
-                "unconfirmed_acp_prompt_text_not_interactive_cli_slash_command"
-            ),
-            "codex_acp_protocol_used": True,
-            "skillsbench_route_semantics": "codex_acp_goal_prompt_request_no_reward_followup_unconfirmed_native_goal_mode",
-            "curated_skills_visible": False,
-            "loopx_automation_loop": False,
-            "loopx_inside_case": False,
-            "blind_loop": False,
-            "official_feedback_blinded": True,
-            "reward_feedback_forwarded": False,
-            "case_semantics_changed_by_harness": False,
-            "official_score_comparable_to_native_codex": True,
-            "official_score_comparable_to_loopx_treatment": True,
-            "first_blocker": "skillsbench_adapter_skeleton_no_real_case",
-            "next_action": (
-                "run a real no-skill Codex goal-mode SkillsBench baseline, ingest "
-                "only compact benchmark_run_v0, and require attributable failure "
-                "before any automation-loop treatment"
             ),
         }
     if route == "codex-app-server-goal-baseline":
@@ -1865,13 +1835,6 @@ def build_skillsbench_benchmark_run(
             "model": model,
             "kwargs_keys": (
                 [
-                    "codex_goal_mode_invocation_surface",
-                    "fixture_only",
-                    "no_upload",
-                    "single_task_planned",
-                ]
-                if route == "codex-goal-mode-baseline"
-                else [
                     "codex_app_server_goal_worker",
                     "thread_goal_set_get",
                     "turn_start",
@@ -2040,8 +2003,6 @@ def build_skillsbench_benchmark_run(
                     "raw-codex-autonomous-max5",
                     *SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES,
                 }
-                else "codex_acp_goal_prompt_request_unconfirmed_native_goal_mode"
-                if route == "codex-goal-mode-baseline"
                 else "host_codex_app_server_goal_worker"
                 if route == "codex-app-server-goal-baseline"
                 else "host_codex_cli_goal_tui_worker"
@@ -3525,8 +3486,6 @@ def build_skillsbench_benchflow_result_benchmark_run(
             "raw-codex-autonomous-max5",
             *SKILLSBENCH_LOOPX_PRODUCT_MODE_TREATMENT_ROUTES,
         }
-        else "codex_acp_goal_prompt_request_unconfirmed_native_goal_mode"
-        if route == "codex-goal-mode-baseline"
         else "host_codex_cli_goal_tui_worker"
         if route == "codex-cli-goal-baseline"
         else "codex_acp_with_curated_skills"

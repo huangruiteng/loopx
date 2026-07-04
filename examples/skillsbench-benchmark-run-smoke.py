@@ -188,6 +188,13 @@ def test_skillsbench_default_blind_loop_budget_is_sixteen() -> None:
     assert args.max_rounds == DEFAULT_MAX_ROUNDS == 16, args
     assert "blind-loop" in args.route, args
     assert args.route != "codex-goal-mode-baseline", args
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            parse_args(["--route", "codex-goal-mode-baseline"])
+        except SystemExit as exc:
+            assert exc.code == 2, exc
+        else:
+            raise AssertionError("deprecated codex-goal-mode-baseline route parsed")
 
 
 def test_skillsbench_default_ledger_is_private_unless_published() -> None:
@@ -235,6 +242,7 @@ def test_codex_app_server_goal_requires_public_safe_codex_api_tunnel_contract() 
                 "citation-check",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--host-local-acp-launch",
                 "--remote-command-file-bridge-ready",
                 "--codex-api-egress-mode",
@@ -720,6 +728,7 @@ def test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme() -> None
                 "citation-check",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--host-local-acp-launch",
                 "--remote-command-file-bridge-ready",
                 "--codex-api-egress-mode",
@@ -773,6 +782,7 @@ def test_codex_app_server_goal_blocks_without_codex_api_egress() -> None:
                         "citation-check",
                         "--route",
                         "codex-app-server-goal-baseline",
+                        "--allow-deprecated-app-server-goal-route",
                         "--host-local-acp-launch",
                         "--remote-command-file-bridge-ready",
                         "--skillsbench-root",
@@ -882,6 +892,7 @@ def test_skillsbench_batch_case_cli_filters_internal_aggregate_flag() -> None:
             "2",
             "--route",
             "codex-app-server-goal-baseline",
+            "--allow-deprecated-app-server-goal-route",
             "--update-ledger",
             "--plan-only",
         ]
@@ -4429,24 +4440,26 @@ def test_skillsbench_skeleton_builder() -> None:
     assert blind_baseline["official_feedback_blinded"] is True, blind_baseline
     assert blind_baseline["reward_feedback_forwarded"] is False, blind_baseline
 
-    baseline = compact_benchmark_run(
+    cli_goal_baseline = compact_benchmark_run(
         build_skillsbench_benchmark_run(
-            route="codex-goal-mode-baseline",
+            route="codex-cli-goal-baseline",
             task_id="citation-check",
         )
     )
-    assert baseline is not None
-    assert baseline["mode"] == "codex_goal_mode_baseline", baseline
-    assert baseline["native_goal_mode_requested"] is True, baseline
-    assert baseline["native_goal_mode_invoked"] is False, baseline
-    assert baseline["native_goal_mode_confirmation_status"] == (
-        "unconfirmed_acp_prompt_text_not_interactive_cli_slash_command"
-    ), baseline
-    assert baseline["codex_acp_protocol_used"] is True, baseline
-    assert baseline["inner_codex_goal_mode"] is True, baseline
-    assert baseline["skillsbench_route_semantics"] == (
-        "codex_acp_goal_prompt_request_no_reward_followup_unconfirmed_native_goal_mode"
-    ), baseline
+    assert cli_goal_baseline is not None
+    assert cli_goal_baseline["mode"] == "skillsbench_codex_cli_goal_baseline", (
+        cli_goal_baseline
+    )
+    assert cli_goal_baseline["native_goal_mode_requested"] is True, cli_goal_baseline
+    assert cli_goal_baseline["native_goal_mode_invoked"] is True, cli_goal_baseline
+    assert cli_goal_baseline["native_goal_mode_confirmation_status"] == (
+        "requires_cli_slash_goal_compact_proof"
+    ), cli_goal_baseline
+    assert cli_goal_baseline["codex_acp_protocol_used"] is False, cli_goal_baseline
+    assert cli_goal_baseline["inner_codex_goal_mode"] is True, cli_goal_baseline
+    assert cli_goal_baseline["skillsbench_route_semantics"] == (
+        "host_codex_cli_tui_slash_goal_no_reward_feedback"
+    ), cli_goal_baseline
 
     raw_product_baseline = compact_benchmark_run(
         build_skillsbench_benchmark_run(
@@ -4507,7 +4520,7 @@ def test_skillsbench_official_result_builder() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -4609,7 +4622,7 @@ def test_skillsbench_result_reward_artifact_recovery() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -4720,7 +4733,7 @@ def test_skillsbench_app_mount_failure_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -4743,7 +4756,7 @@ def test_skillsbench_app_skills_failure_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -5204,7 +5217,7 @@ def test_skillsbench_codex_acp_libssl_failure_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -5222,7 +5235,7 @@ def test_skillsbench_codex_acp_glibc_failure_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -5242,7 +5255,7 @@ def test_skillsbench_codex_acp_launch_preflight_attribution() -> None:
         compact = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 result_path,
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
         assert compact is not None
@@ -6605,7 +6618,7 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
                 "--task-id",
                 "software-dependency-audit",
                 "--route",
-                "codex-goal-mode-baseline",
+                "codex-acp-blind-loop-baseline",
                 "--jobs-dir",
                 str(root / "jobs"),
                 "--plan-only",
@@ -6618,7 +6631,7 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
         payload = json.loads(result.stdout)
         plan = payload["launch_plan"]
         assert plan["schema_version"] == "skillsbench_runner_launch_plan_v0", plan
-        assert plan["route"] == "codex-goal-mode-baseline", plan
+        assert plan["route"] == "codex-acp-blind-loop-baseline", plan
         assert plan["include_task_skills"] is False, plan
         observable = plan["observable_handle_registration"]
         assert observable["schema_version"] == "benchmark_launch_observable_handle_v0", (
@@ -6695,7 +6708,7 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
         assert "/var/cache/apt/archives" in CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
         assert "/opt/benchflow/bin/codex-acp" in CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD
         assert '"$agent_bin" --version' in CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD
-        assert plan["rollout_name"].endswith("__codex_goal_mode_baseline"), plan
+        assert plan["rollout_name"].endswith("__codex_acp_blind_loop"), plan
         assert plan["public_boundary"]["leaderboard_upload"] is False, plan
 
 
@@ -8552,17 +8565,17 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         baseline = compact_benchmark_run(
             build_skillsbench_benchflow_result_benchmark_run(
                 write_official_skillsbench_result(root / "baseline", reward=0.0),
-                route="codex-goal-mode-baseline",
+                route="codex-acp-blind-loop-baseline",
             )
         )
-        assert baseline["native_goal_mode_requested"] is True, baseline
+        assert baseline["native_goal_mode_requested"] is False, baseline
         assert baseline["native_goal_mode_invoked"] is False, baseline
         assert baseline["native_goal_mode_confirmation_status"] == (
-            "unconfirmed_acp_prompt_text_not_interactive_cli_slash_command"
+            "not_requested"
         ), baseline
         assert baseline["codex_acp_protocol_used"] is True, baseline
         assert baseline["skillsbench_route_semantics"] == (
-            "codex_acp_goal_prompt_request_no_reward_followup_unconfirmed_native_goal_mode"
+            "codex_acp_ordinary_agent_blind_loop_no_goal_no_reward_feedback"
         ), baseline
         comparison = {
             "schema_version": "benchmark_comparison_v0",
@@ -10352,6 +10365,7 @@ def test_app_server_goal_worker_skips_plain_codex_exec_preflight() -> None:
                 "3d-scan-calc",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--host-local-acp-launch",
                 "--host-local-acp-codex-exec-preflight",
                 "--remote-command-file-bridge-ready",
@@ -10382,6 +10396,7 @@ def test_app_server_goal_first_action_timeout_respects_agent_idle_timeout() -> N
                 "energy-ac-optimal-power-flow",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--host-local-acp-launch",
                 "--agent-idle-timeout",
                 "900",
@@ -10404,6 +10419,7 @@ def test_app_server_goal_first_action_timeout_respects_agent_idle_timeout() -> N
                 "energy-ac-optimal-power-flow",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--host-local-acp-launch",
                 "--agent-idle-timeout",
                 "900",
@@ -11264,7 +11280,7 @@ def test_cli_dry_run_skillsbench_official_result() -> None:
                 "--goal-id",
                 GOAL_ID,
                 "--skillsbench-route",
-                "codex-goal-mode-baseline",
+                "codex-acp-blind-loop-baseline",
                 "--skillsbench-result-json",
                 str(result_path),
             ],
@@ -11335,7 +11351,7 @@ def test_cli_skillsbench_result_root_discovers_nested_case_result_for_ledger() -
                 "--goal-id",
                 GOAL_ID,
                 "--skillsbench-route",
-                "codex-goal-mode-baseline",
+                "codex-acp-blind-loop-baseline",
                 "--include-task-name",
                 task_id,
                 "--skillsbench-result-root",
@@ -11346,7 +11362,7 @@ def test_cli_skillsbench_result_root_discovers_nested_case_result_for_ledger() -
                 "--run-group-id",
                 run_group_id,
                 "--arm-id",
-                "codex_goal_mode_baseline",
+                "codex_acp_blind_loop_baseline",
                 "--execute",
                 "--no-global-sync",
             ],
@@ -11411,6 +11427,7 @@ def test_skillsbench_parallel_batch_isolates_case_process_argv() -> None:
             "2",
             "--route",
             "codex-app-server-goal-baseline",
+            "--allow-deprecated-app-server-goal-route",
             "--run-group-id",
             "skillsbench-goal-baseline-30case-test",
             "--job-name",
@@ -11468,6 +11485,7 @@ def test_skillsbench_single_task_ids_replaces_default_task_id() -> None:
             "bike-rebalance",
             "--route",
             "codex-app-server-goal-baseline",
+            "--allow-deprecated-app-server-goal-route",
             "--plan-only",
         ]
     )
@@ -11482,6 +11500,7 @@ def test_skillsbench_parallel_batch_recovers_child_payload_from_mixed_stderr() -
             "suricata-custom-exfil",
             "--route",
             "codex-app-server-goal-baseline",
+            "--allow-deprecated-app-server-goal-route",
             "--host-local-acp-launch",
             "--remote-command-file-bridge-ready",
         ]
@@ -11722,6 +11741,7 @@ def test_skillsbench_run_group_ledger_inherits_and_syncs_global_ledger() -> None
                 "tictoc-unnecessary-abort-detection",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--ledger-path",
                 str(run_group_ledger),
                 "--global-ledger-path",
@@ -11771,7 +11791,7 @@ def test_skillsbench_runner_failure_compact_closeout() -> None:
                 "--task-id",
                 "debug-trl-grpo",
                 "--route",
-                "codex-goal-mode-baseline",
+                "codex-acp-blind-loop-baseline",
                 "--jobs-dir",
                 str(Path(tmp) / "jobs"),
                 "--job-name",
@@ -11791,14 +11811,14 @@ def test_skillsbench_runner_failure_compact_closeout() -> None:
         ), compact
         assert compact["task_id"] == "debug-trl-grpo", compact
         assert compact["case_id"] == "debug-trl-grpo", compact
-        assert compact["route"] == "codex-goal-mode-baseline", compact
+        assert compact["route"] == "codex-acp-blind-loop-baseline", compact
         assert compact["job_name"] == "skillsbench-debug-trl-grpo-failure-fixture", (
             compact
         )
-        assert compact["rollout_name"] == "debug-trl-grpo__codex_goal_mode_baseline", (
+        assert compact["rollout_name"] == "debug-trl-grpo__codex_acp_blind_loop", (
             compact
         )
-        assert compact["mode"] == "codex_goal_mode_baseline", compact
+        assert compact["mode"] == "skillsbench_codex_acp_blind_loop_baseline", compact
         assert compact["real_run"] is True, compact
         assert compact["official_score_status"] == "missing", compact
         assert compact["first_blocker"] == (
@@ -12804,6 +12824,7 @@ def test_skillsbench_host_local_attempt_cleanup_targets_current_attempt_only() -
                 "bike-rebalance",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--jobs-dir",
                 str(Path(tmp) / "jobs"),
                 "--job-name",
@@ -12898,6 +12919,7 @@ def test_independent_goal_retry_records_attempt_cleanup_after_exception() -> Non
                 "bike-rebalance",
                 "--route",
                 "codex-app-server-goal-baseline",
+                "--allow-deprecated-app-server-goal-route",
                 "--jobs-dir",
                 str(Path(tmp) / "jobs"),
                 "--job-name",
@@ -12978,8 +13000,7 @@ def test_skillsbench_reduce_only_missing_result_records_closeout_exit_zero() -> 
                     "--task-id",
                     "pddl-airport-planning",
                     "--route",
-                    "codex-goal-mode-baseline",
-                    "--allow-unverified-goal-prefix-baseline",
+                    "codex-acp-blind-loop-baseline",
                     "--jobs-dir",
                     str(jobs_dir),
                     "--job-name",
@@ -13040,8 +13061,7 @@ def test_skillsbench_reduce_only_discovers_nested_official_result() -> None:
                     "--task-id",
                     "pddl-airport-planning",
                     "--route",
-                    "codex-goal-mode-baseline",
-                    "--allow-unverified-goal-prefix-baseline",
+                    "codex-acp-blind-loop-baseline",
                     "--jobs-dir",
                     str(jobs_dir),
                     "--job-name",
