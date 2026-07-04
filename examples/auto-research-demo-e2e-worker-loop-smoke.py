@@ -528,6 +528,13 @@ def main() -> int:
         assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
         assert collective_rounds["dev_metric"] == 4.0, collective_rounds
         assert collective_rounds["holdout_metric"] == 4.5, collective_rounds
+        kernel_ledger = collective_rounds["kernel_ledger"]
+        assert kernel_ledger["schema_version"] == "multi_agent_collective_round_ledger_v0"
+        assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
+        assert kernel_ledger["expected_lane_count"] == 4, kernel_ledger
+        assert kernel_ledger["collective_round_count"] == 2, kernel_ledger
+        assert kernel_ledger["multi_round_interaction_verified"] is True, kernel_ledger
+        assert kernel_ledger["successor_todo_count"] >= 1, kernel_ledger
         tonight = payload["tonight_experience"]
         assert tonight["ready"] is True, tonight
         assert tonight["positive_result"] is True, tonight

@@ -24,6 +24,9 @@ from .preset import (
 from .rollout_append import append_auto_research_rollout_events
 from .user_contract import build_auto_research_user_contract
 from .worker_loop import run_auto_research_worker_loop
+from ..multi_agent.collective_round_ledger import (
+    build_multi_agent_collective_round_ledger,
+)
 
 
 AppendEvidence = Callable[[str], dict[str, object]]
@@ -433,6 +436,9 @@ def _build_collective_round_summary(
     dev_metric: float | None,
     holdout_metric: float | None,
     evidence_event_count: int | None = None,
+    expected_lanes: list[dict[str, object]] | None = None,
+    lane_outcomes: list[dict[str, object]] | None = None,
+    role_declared_successor_todos: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     baseline = 1.0
     multi_round_research_verified = (
@@ -442,11 +448,23 @@ def _build_collective_round_summary(
         and dev_metric > baseline
         and holdout_metric > dev_metric
     )
+    kernel_ledger = build_multi_agent_collective_round_ledger(
+        source=source,
+        expected_lanes=expected_lanes,
+        lane_outcomes=lane_outcomes,
+        integrated_evidence={
+            "dev_metric": dev_metric,
+            "holdout_metric": holdout_metric,
+            "evidence_event_count": evidence_event_count,
+        },
+        role_declared_successor_todos=role_declared_successor_todos,
+    )
     return {
         "schema_version": "auto_research_collective_round_summary_v0",
         "loaded": collective_round_count > 0 or dev_metric is not None or holdout_metric is not None,
         "source": source,
         "round_unit": "collective_agent_pass",
+        "kernel_ledger": kernel_ledger,
         "definition": (
             "one collective research round means each configured research lane has "
             "one quota/frontier/worker-turn opportunity; pane-local tick loops are "
@@ -506,12 +524,26 @@ def _collective_summary_from_worker_loop(
         ),
         None,
     )
+    successors = [
+        successor
+        for turn in turns
+        if isinstance(turn, dict) and isinstance(turn.get("successor_todos"), list)
+        for successor in turn.get("successor_todos", [])
+        if isinstance(successor, dict)
+    ]
     return _build_collective_round_summary(
         source="worker_loop_collective_agent_passes",
         agent_count=agent_count,
         collective_round_count=len(round_indexes),
         dev_metric=dev_metric,
         holdout_metric=holdout_metric,
+        expected_lanes=[
+            {"agent_id": turn.get("agent_id")}
+            for turn in turns
+            if isinstance(turn, dict) and turn.get("round") == 1
+        ],
+        lane_outcomes=[turn for turn in turns if isinstance(turn, dict)],
+        role_declared_successor_todos=successors,
     )
 
 
@@ -538,6 +570,9 @@ def _collective_summary_from_visible_panes_and_evidence(
             if isinstance(evidence.get("evidence_event_count"), int)
             and not isinstance(evidence.get("evidence_event_count"), bool)
             else None
+        ),
+        expected_lanes=(
+            pane_rounds.get("lanes") if isinstance(pane_rounds.get("lanes"), list) else None
         ),
     )
 

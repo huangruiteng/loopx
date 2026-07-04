@@ -18,6 +18,14 @@ def _compact_turn(turn: dict[str, object], *, round_index: int) -> dict[str, obj
     evaluation_summary = (
         turn.get("evaluation_summary") if isinstance(turn.get("evaluation_summary"), dict) else {}
     )
+    successor_todos = (
+        turn.get("successor_todos") if isinstance(turn.get("successor_todos"), dict) else {}
+    )
+    successors = (
+        successor_todos.get("successors")
+        if isinstance(successor_todos.get("successors"), list)
+        else []
+    )
     return {
         "round": round_index,
         "agent_id": turn.get("agent_id"),
@@ -32,6 +40,19 @@ def _compact_turn(turn: dict[str, object], *, round_index: int) -> dict[str, obj
         "claim_allowed": evaluation_summary.get("claim_allowed"),
         "best_holdout_metric": evaluation_summary.get("best_holdout_metric"),
         "live_evidence_written": bool(live_evidence.get("written")),
+        "successor_todo_count": len(successors),
+        "successor_todos": [
+            {
+                "todo_id": successor.get("todo_id"),
+                "target_agent_id": successor.get("target_agent_id")
+                or successor.get("claimed_by"),
+                "target_role_id": successor.get("target_role_id"),
+                "source_todo_id": successor.get("unblocks_todo_id"),
+                "action_kind": successor.get("action_kind"),
+            }
+            for successor in successors
+            if isinstance(successor, dict)
+        ],
     }
 
 

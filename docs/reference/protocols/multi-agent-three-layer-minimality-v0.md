@@ -80,6 +80,14 @@ decentralized A2A research loop on the shared LoopX kernel. The slogan must not
 claim that tmux launch, Codex TUI bootstrap, quota/frontier, evidence routing,
 or status projection are reimplemented inside the auto-research preset.
 
+## Collective Round Ledger
+
+`multi_agent_collective_round_ledger_v0` is the kernel-owned proof surface for
+multi-agent rounds. It records expected lanes, per-lane quota/frontier/turn
+outcomes, integrated evidence, and role-declared successor todos. Product
+presets may wrap the ledger with domain metrics, but they should not fork its
+round definition or introduce a coordinator to decide work.
+
 ## Acceptance
 
 A change satisfies this contract only when:

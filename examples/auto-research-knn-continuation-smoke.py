@@ -67,6 +67,12 @@ def main() -> int:
     collective_rounds = payload["collective_research_rounds"]
     assert collective_rounds["collective_round_count"] == 2, collective_rounds
     assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
+    kernel_ledger = collective_rounds["kernel_ledger"]
+    assert kernel_ledger["schema_version"] == "multi_agent_collective_round_ledger_v0"
+    assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
+    assert kernel_ledger["collective_round_count"] == 2, kernel_ledger
+    assert kernel_ledger["multi_round_interaction_verified"] is True, kernel_ledger
+    assert kernel_ledger["successor_todo_count"] >= 1, kernel_ledger
     tonight = payload["tonight_experience"]
     assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight
     assert tonight["dev_metric"] == 4.0, tonight
