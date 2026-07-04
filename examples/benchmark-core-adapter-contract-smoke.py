@@ -264,9 +264,13 @@ def test_adapter_rollout_matrix_records_current_migration_order() -> None:
     ).read_text(encoding="utf-8")
     assert "## Adapter Rollout Matrix" in doc
     assert "| Terminal-Bench | `loopx.benchmark_adapters.terminal_bench` | First migration target." in doc
-    assert "Map goal-start `/loopx` raw/new runs into the same launch/observe/ingest/classify/ledger fields" in doc
+    assert "`run_permission_policy_v0`, and `benchmark_attempt_accounting_v0` adoption" in doc
+    assert "Goal-start `/loopx` raw/new mapping remains blocked on transport monitor `todo_45357c108d81`" in doc
+    assert "no solver output and no new-arm compact artifact" in doc
     assert "| SWE-Marathon | no dedicated adapter yet |" in doc
+    assert "Deferred: create the adapter only after a second SWE-Marathon route" in doc
     assert "do not add SWE-specific conventions to `benchmark_core`" in doc
+    assert "Keep SkillsBench goal-start matrix rows blocked until compact transport" in doc
 
 
 def main() -> int:
