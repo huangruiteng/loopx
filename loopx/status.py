@@ -169,6 +169,10 @@ from .control_plane.runtime.decision_freshness import (
     decision_event_kinds as _decision_event_kinds_read_model,
     decision_freshness_reason as _decision_freshness_reason_read_model,
 )
+from .control_plane.runtime.promotion_readiness import (
+    PROMOTION_READINESS_PROXY_NOTE,
+    build_promotion_readiness_summary as _build_promotion_readiness_summary_read_model,
+)
 from .control_plane.handoff.handoff_runs import (
     is_custom_post_handoff_work_run as _is_custom_post_handoff_work_run_read_model,
     is_handoff_ready_run as _is_handoff_ready_run_read_model,
@@ -418,9 +422,6 @@ MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
 STATUS_CONTRACT_SIGNAL_LIMIT = 3
 MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
-PROMOTION_READINESS_PROXY_NOTE = (
-    "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
-)
 EVENT_LEDGER_DECISION_CLASSIFICATIONS = USER_OR_CONTROLLER_CLASSIFICATIONS | {
     "operator_gate_approved",
 }
@@ -7723,68 +7724,19 @@ def build_promotion_readiness_summary(
     runtime_root: Path | None = None,
     goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
-    latest: dict[str, Any] | None = None
-    latest_at: datetime | None = None
-    sample_count = 0
-    source = "run_history"
-    for run in history.get("runs") or []:
-        if not isinstance(run, dict):
-            continue
-        classification = str(run.get("classification") or "")
-        if classification not in PROMOTION_READINESS_CLASSIFICATIONS:
-            continue
-        sample_count += 1
-        generated_at = parse_timestamp(run.get("generated_at"))
-        if generated_at is None:
-            continue
-        if latest_at is None or generated_at > latest_at:
-            latest_at = generated_at
-            latest = run
-
-    if latest is None and runtime_root is not None:
-        full_scan_latest = latest_promotion_readiness_event(
-            runtime_root,
+    return _build_promotion_readiness_summary_read_model(
+        history,
+        parse_timestamp=parse_timestamp,
+        readiness_classifications=PROMOTION_READINESS_CLASSIFICATIONS,
+        add_promotion_readiness_freshness=add_promotion_readiness_freshness,
+        latest_promotion_readiness_event=lambda root: latest_promotion_readiness_event(
+            root,
             goal_id=goal_id_filter,
-        )
-        if full_scan_latest.get("available"):
-            latest = full_scan_latest
-            source = "run_history_full_scan"
-
-    if latest is None:
-        readiness = add_promotion_readiness_freshness(
-            {
-                "available": False,
-                "source": source,
-                "reason": (
-                    "no canary promotion readiness run found in full run history"
-                    if runtime_root is not None
-                    else "no canary promotion readiness run found in sampled history"
-                ),
-            }
-        )
-    else:
-        readiness = add_promotion_readiness_freshness(
-            {
-                "available": True,
-                "source": source,
-                "goal_id": latest.get("goal_id"),
-                "generated_at": latest.get("generated_at"),
-                "classification": latest.get("classification"),
-                "delivery_batch_scale": latest.get("delivery_batch_scale"),
-                "delivery_outcome": latest.get("delivery_outcome"),
-                "recommended_action": latest.get("recommended_action"),
-                "json_exists": bool(latest.get("json_exists")),
-                "markdown_exists": bool(latest.get("markdown_exists")),
-            }
-        )
-    readiness.update(
-        {
-            "sample_run_count": sample_count,
-            "proxy_note": PROMOTION_READINESS_PROXY_NOTE,
-            "freshness_window_hours": PROMOTION_READINESS_FRESHNESS_HOURS,
-        }
+        ),
+        freshness_hours=PROMOTION_READINESS_FRESHNESS_HOURS,
+        runtime_root=runtime_root,
+        proxy_note=PROMOTION_READINESS_PROXY_NOTE,
     )
-    return readiness
 
 
 def build_status_contract() -> dict[str, Any]:
