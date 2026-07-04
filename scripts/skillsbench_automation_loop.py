@@ -9906,6 +9906,57 @@ def _new_controller_trace(route: str, *, max_rounds: int | None = None) -> dict[
     return trace
 
 
+def _apply_app_server_goal_round_semantics_to_controller_trace(
+    trace: dict[str, Any],
+    plan: dict[str, Any],
+) -> None:
+    round_semantics = (
+        plan.get("app_server_goal_round_semantics")
+        if isinstance(plan.get("app_server_goal_round_semantics"), dict)
+        else {}
+    )
+    independent_retry = (
+        plan.get("independent_goal_retry")
+        if isinstance(plan.get("independent_goal_retry"), dict)
+        else {}
+    )
+    same_thread_followup_budget = max(
+        0,
+        int(
+            round_semantics.get("same_thread_followup_budget")
+            if isinstance(round_semantics.get("same_thread_followup_budget"), int)
+            and not isinstance(round_semantics.get("same_thread_followup_budget"), bool)
+            else plan.get("app_server_goal_followup_max")
+            or 0
+        ),
+    )
+    independent_attempt_budget = max(
+        1,
+        int(
+            round_semantics.get("independent_attempt_budget")
+            if isinstance(round_semantics.get("independent_attempt_budget"), int)
+            and not isinstance(round_semantics.get("independent_attempt_budget"), bool)
+            else independent_retry.get("attempt_budget")
+            or 1
+        ),
+    )
+    trace["native_goal_worker_route"] = True
+    trace["native_goal_worker_session_policy"] = str(
+        round_semantics.get("session_policy")
+        or (
+            "single_thread_with_blinded_followups"
+            if same_thread_followup_budget
+            else "single_initial_goal_turn"
+        )
+    )[:120]
+    trace["native_goal_worker_same_thread_followup_budget"] = (
+        same_thread_followup_budget
+    )
+    trace["native_goal_worker_independent_attempt_budget"] = (
+        independent_attempt_budget
+    )
+
+
 def _write_controller_trace(plan: dict[str, Any], trace: dict[str, Any] | None) -> None:
     if not trace:
         return
@@ -13813,7 +13864,10 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         controller_user = _build_codex_goal_mode_baseline_user()
     elif args.route == "codex-app-server-goal-baseline":
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
-        controller_trace["native_goal_worker_route"] = True
+        _apply_app_server_goal_round_semantics_to_controller_trace(
+            controller_trace,
+            plan,
+        )
         controller_trace["last_decision"] = "host_app_server_goal_worker_selected"
 
     original_user_loop = install_benchflow_user_loop_final_verify_recovery(

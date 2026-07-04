@@ -52,6 +52,10 @@ class CodexAppServerGoalTurn:
     goal_reactivation_succeeded: bool = False
     goal_reactivation_previous_status: str = ""
     goal_reactivation_result_status: str = ""
+    post_turn_goal_refresh_attempted: bool = False
+    post_turn_goal_refresh_succeeded: bool = False
+    post_turn_goal_status: str = ""
+    post_turn_goal_refresh_error_type: str = ""
     notifications: list[str] = field(default_factory=list)
     _responses: "queue.Queue[dict[str, Any] | Exception] | None" = field(
         default=None,
@@ -567,6 +571,59 @@ def _wait_for_turn_completion(
         raise CodexAppServerGoalDriverError("timed out waiting for turn completion")
 
 
+def refresh_codex_app_server_goal_status(
+    turn: CodexAppServerGoalTurn,
+    *,
+    response_timeout_sec: float = 5.0,
+) -> bool:
+    """Refresh goal status after turn completion without recording raw output."""
+    turn.post_turn_goal_refresh_attempted = True
+    if turn._responses is None:
+        turn.post_turn_goal_refresh_error_type = "codex_app_server_no_response_queue"
+        return False
+    if not turn.thread_id:
+        turn.post_turn_goal_refresh_error_type = "codex_app_server_thread_id_missing"
+        return False
+    request_id = int(turn.next_request_id or 6)
+    turn.next_request_id = request_id + 1
+    side_events: list[dict[str, Any]] = []
+    try:
+        _send_json(
+            turn.process,
+            {
+                "id": request_id,
+                "method": "thread/goal/get",
+                "params": {"threadId": turn.thread_id},
+            },
+        )
+        goal_result = _wait_for_response(
+            turn.process,
+            turn._responses,
+            request_id,
+            notifications=turn.notifications,
+            timeout_sec=max(0.1, float(response_timeout_sec or 0.1)),
+            side_events=side_events,
+        )
+    except CodexAppServerGoalDriverError as exc:
+        detail = str(exc)
+        turn.post_turn_goal_refresh_error_type = (
+            detail
+            if detail.startswith("codex_app_server_")
+            else "codex_app_server_goal_refresh_failed"
+        )
+        return False
+    for event in side_events:
+        _record_turn_event(turn, event, raise_on_error=False)
+    goal_status = _extract_goal_status(goal_result)
+    turn.post_turn_goal_status = goal_status
+    if not goal_status:
+        turn.post_turn_goal_refresh_error_type = "codex_app_server_goal_status_missing"
+        return False
+    turn.post_turn_goal_refresh_succeeded = True
+    turn.post_turn_goal_refresh_error_type = ""
+    return True
+
+
 def start_codex_app_server_goal_turn(
     *,
     codex_bin: str,
@@ -1063,6 +1120,15 @@ def compact_turn_metadata(turn: CodexAppServerGoalTurn) -> dict[str, Any]:
         "goal_reactivation_succeeded": bool(turn.goal_reactivation_succeeded),
         "goal_reactivation_previous_status": turn.goal_reactivation_previous_status,
         "goal_reactivation_result_status": turn.goal_reactivation_result_status,
+        "post_turn_goal_refresh_attempted": bool(
+            turn.post_turn_goal_refresh_attempted
+        ),
+        "post_turn_goal_refresh_succeeded": bool(
+            turn.post_turn_goal_refresh_succeeded
+        ),
+        "post_turn_goal_get_present": bool(turn.post_turn_goal_status),
+        "post_turn_goal_status": turn.post_turn_goal_status,
+        "post_turn_goal_refresh_error_type": turn.post_turn_goal_refresh_error_type,
         "assistant_message_present": bool(assistant_message),
         "assistant_message_chars": len(assistant_message),
         "assistant_message_sha256": sha256(assistant_message.encode()).hexdigest()

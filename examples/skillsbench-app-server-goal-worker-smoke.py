@@ -1459,11 +1459,21 @@ def test_host_worker_can_run_normal_no_reward_followup() -> None:
         assert payload["turn"]["normal_followup_succeeded"] is True, payload
         assert payload["turn"]["normal_followup_start_attempted_count"] == 1, payload
         assert payload["turn"]["normal_followup_start_succeeded_count"] == 1, payload
+        assert payload["turn"]["post_turn_goal_refresh_attempted"] is True, payload
+        assert payload["turn"]["post_turn_goal_refresh_succeeded"] is True, payload
+        assert payload["turn"]["post_turn_goal_status"] == "active", payload
+        assert (
+            payload["turn"]["post_turn_goal_active_after_completed_turn"] is True
+        ), payload
+        assert payload["turn"]["turn_completion_shape_unclean"] is False, payload
         assert payload["normal_followup"]["enabled"] is True, payload
         assert payload["normal_followup"]["verifier_feedback_provided"] is False, payload
         assert payload["normal_followup"]["reward_feedback_provided"] is False, payload
         assert len(payload["turn_attempts"]) == 2, payload
         assert payload["turn_attempts"][0]["assistant_message_context_only"] is False, payload
+        assert (
+            payload["turn_attempts"][0]["post_turn_goal_refresh_succeeded"] is True
+        ), payload
         assert payload["turn_attempts"][1]["selected_final_turn"] is True, payload
         assert private_response.read_text(encoding="utf-8") == (
             "private worker answer after normal followup"

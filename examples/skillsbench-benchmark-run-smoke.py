@@ -122,6 +122,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     VERIFIER_BENCHMARK_EGRESS_PROXY_BEGIN,
     VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
     _tail,
+    _apply_app_server_goal_round_semantics_to_controller_trace,
     _apply_agent_message_only_no_tool_calls_attribution,
     _apply_native_goal_worker_finish_guard_attribution,
     _blind_loop_persistent_continuation_clause,
@@ -141,6 +142,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     _merge_acp_trajectory_summary,
     _merge_final_result_round_reward,
     _merge_host_local_acp_relay_trace_summary,
+    _new_controller_trace,
     _summarize_host_local_acp_preflight_bridge_trace,
     _round_result_declared_done,
     build_compose_setup_diagnostic,
@@ -8675,6 +8677,32 @@ def test_app_server_goal_round_semantics_survive_compact_and_ledger() -> None:
         assert current["max_rounds_budget_applies_to"] == (
             "benchflow_outer_controller_budget_not_native_goal_attempts"
         ), current
+
+
+def test_app_server_goal_round_semantics_seed_controller_trace_from_plan() -> None:
+    trace = _new_controller_trace(
+        "codex-app-server-goal-baseline",
+        max_rounds=16,
+    )
+    plan = {
+        "route": "codex-app-server-goal-baseline",
+        "app_server_goal_followup_max": 2,
+        "app_server_goal_round_semantics": {
+            "session_policy": "single_thread_with_blinded_followups",
+            "same_thread_followup_budget": 2,
+            "independent_attempt_budget": 3,
+        },
+        "independent_goal_retry": {"attempt_budget": 3},
+    }
+
+    _apply_app_server_goal_round_semantics_to_controller_trace(trace, plan)
+
+    assert trace["native_goal_worker_route"] is True, trace
+    assert trace["native_goal_worker_session_policy"] == (
+        "single_thread_with_blinded_followups"
+    ), trace
+    assert trace["native_goal_worker_same_thread_followup_budget"] == 2, trace
+    assert trace["native_goal_worker_independent_attempt_budget"] == 3, trace
 
 
 def test_skillsbench_product_mode_declared_done_is_compacted() -> None:

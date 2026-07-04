@@ -34,6 +34,7 @@ from scripts.codex_app_server_goal_driver import (  # noqa: E402
     CodexAppServerGoalDriverError,
     compact_turn_metadata,
     observe_codex_app_server_goal_turn,
+    refresh_codex_app_server_goal_status,
     start_codex_app_server_goal_followup_turn,
     start_codex_app_server_goal_turn,
 )
@@ -215,7 +216,18 @@ def _turn_completion_shape_unclean(compact: dict[str, Any]) -> bool:
     if compact.get("turn_completed_observed") is not True:
         return True
     status = str(compact.get("turn_status") or "").strip()
+    if not status and compact.get("post_turn_goal_refresh_succeeded") is True:
+        status = str(compact.get("post_turn_goal_status") or "").strip()
     return bool(status and status not in COMPLETE_TURN_STATUSES)
+
+
+def _refresh_completed_turn_goal_status(turn: Any, args: argparse.Namespace) -> None:
+    if getattr(turn, "turn_completed_observed", False) is not True:
+        return
+    refresh_codex_app_server_goal_status(
+        turn,
+        response_timeout_sec=max(0.1, float(args.response_timeout_sec or 0.1)),
+    )
 
 
 def _compact_worker_turn(
@@ -226,10 +238,17 @@ def _compact_worker_turn(
     lifecycle_contract: dict[str, object] | None,
 ) -> dict[str, Any]:
     compact = compact_turn_metadata(turn)
+    post_turn_goal_status = str(compact.get("post_turn_goal_status") or "").strip()
+    turn_status = str(compact.get("turn_status") or "").strip()
     compact.update(
         {
             "completion_hard_gate": False,
             "completion_source_of_truth": "codex_turn_completion",
+            "post_turn_goal_active_after_completed_turn": bool(
+                compact.get("turn_completed_observed") is True
+                and turn_status in COMPLETE_TURN_STATUSES
+                and post_turn_goal_status == "active"
+            ),
             "first_action_timeout_sec": max(
                 0.0, float(args.first_action_timeout_sec or 0.0)
             ),
@@ -335,6 +354,7 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                         raise TimeoutError(
                             "timed out waiting for app-server worker turn completion"
                         )
+                    _refresh_completed_turn_goal_status(active_turn, args)
                 except (TimeoutError, CodexAppServerGoalDriverError) as exc:
                     if str(exc) == "codex_exec_first_action_timeout":
                         worker_error_type = "codex_exec_first_action_timeout"
