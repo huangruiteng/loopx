@@ -304,6 +304,27 @@ def assert_unchanged_writeback() -> None:
         records = monitor_poll_records(registry_path)
         assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
 
+        followup = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+        )
+        assert followup["decision"] == "autonomous_replan_required", followup
+        assert followup["effective_action"] == "autonomous_replan_required", followup
+        assert followup["scheduler_hint"]["cadence_class"] == "active_work", followup
+        lane = followup["work_lane_contract"]
+        assert lane["lane"] == "continuous_monitor", lane
+        assert lane["obligation"] == "quiet_until_material_monitor_transition", lane
+        frontier = followup["goal_frontier_projection"]
+        assert frontier["monitor_only_lanes"]["present"] is True, frontier
+        assert frontier["monitor_only_lanes"]["quiet_until_material_transition"] is True, frontier
+        assert frontier["replan_required"] is True, frontier
+        assert followup["interaction_contract"]["mode"] == "autonomous_replan", followup
+
 
 def assert_material_transition_followup() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-material-") as tmp:
@@ -343,9 +364,37 @@ def assert_material_transition_followup() -> None:
         ]
         assert successors, agent_todos(state_file)
         assert successors[0]["task_class"] == "advancement_task", successors[0]
+        successor_id = successors[0]["todo_id"]
         records = monitor_poll_records(registry_path)
         assert [record["classification"] for record in records] == ["quota_monitor_poll"], records
         assert records[0]["delivery_outcome"] == "outcome_progress", records[0]
+
+        handoff = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+        )
+        assert handoff["ok"] is True, handoff
+        assert handoff["decision"] == "run", handoff
+        assert handoff["effective_action"] == "normal_run", handoff
+        assert handoff["agent_lane_next_action"]["todo_id"] == successor_id, handoff
+        lane = handoff["work_lane_contract"]
+        assert lane["lane"] == "advancement_task", lane
+        assert lane["obligation"] == "advance_one_bounded_segment", lane
+        assert "due_monitor_context" not in lane.get("reason_codes", []), lane
+        monitor_after = find_todo(state_file, TODO_ID)
+        assert monitor_after["next_due_at"] != "2026-01-01T00:00:00+00:00", monitor_after
+        scheduler = handoff["scheduler_hint"]
+        assert scheduler["action"] == "run_now", scheduler
+        assert scheduler["cadence_class"] == "active_work", scheduler
+        assert scheduler["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
+        contract = handoff["interaction_contract"]
+        assert contract["agent_channel"]["must_attempt"] is True, contract
+        assert contract["cli_channel"]["spend_after_validation"] is True, contract
 
 
 def assert_due_monitor_poll_allowed_with_open_user_gate() -> None:
