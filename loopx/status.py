@@ -92,6 +92,9 @@ from .projections.active_state_sections import (
     active_state_section_entries as _active_state_section_entries_read_model,
     active_state_sections as _active_state_sections_read_model,
 )
+from .projections.active_state_todos import (
+    active_state_todo_fields as _active_state_todo_fields_read_model,
+)
 from .projections.attention_item import (
     attention_item as _attention_item_read_model,
 )
@@ -6583,85 +6586,25 @@ def active_state_todo_fields(
     *,
     runtime_root: Path | None = None,
 ) -> dict[str, Any]:
-    state_path = resolve_goal_local_path(goal.get("state_file"), goal, fallback_base=Path.cwd())
-    if state_path is None or not state_path.exists():
-        return {}
-    try:
-        state_text = state_path.read_text(encoding="utf-8")
-    except OSError:
-        return {}
-    next_action_entries = active_state_next_action_entries(state_text, limit=3)
-    preferred_todo_ids: set[str] = set()
-    for entry in next_action_entries:
-        preferred_todo_ids.update(active_next_action_todo_ids(entry))
-    rollout_events: list[dict[str, Any]] = []
-    goal_id = str(goal.get("id") or "").strip()
-    if runtime_root is not None and goal_id:
-        rollout_events = load_rollout_events(
-            rollout_event_log_path(runtime_root, goal_id),
-            limit=MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
-        )
-    event_fields = active_state_event_projection_fields(
+    return _active_state_todo_fields_read_model(
         goal,
-        state_path=state_path,
-        preferred_todo_ids=preferred_todo_ids,
-        rollout_events=rollout_events,
+        runtime_root=runtime_root,
+        resolve_goal_local_path=resolve_goal_local_path,
+        active_state_next_action_entries=active_state_next_action_entries,
+        active_next_action_todo_ids=active_next_action_todo_ids,
+        load_rollout_events=load_rollout_events,
+        rollout_event_log_path=rollout_event_log_path,
+        max_todo_index_rollout_events_per_goal=MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
+        active_state_event_projection_fields=active_state_event_projection_fields,
+        attach_monitor_writeback_contract=attach_monitor_writeback_contract,
+        parse_active_state_todos=parse_active_state_todos,
+        parse_issue_meta_surface=parse_issue_meta_surface,
+        backlog_hygiene_warning=backlog_hygiene_warning,
+        completed_todo_archive_warning=completed_todo_archive_warning,
+        autonomous_replan_obligation=autonomous_replan_obligation,
+        state_projection_gap_warning=state_projection_gap_warning,
+        redacted_status_todo_fields=redacted_status_todo_fields,
     )
-    if event_fields.get("user_todos") or event_fields.get("agent_todos"):
-        fields = event_fields
-        attach_monitor_writeback_contract(
-            fields,
-            supported=False,
-            source="event_projection_read_model",
-        )
-    else:
-        fields = parse_active_state_todos(
-            state_text,
-            goal=goal,
-            state_path=state_path,
-            preferred_todo_ids=preferred_todo_ids,
-            rollout_events=rollout_events,
-        )
-        attach_monitor_writeback_contract(
-            fields,
-            supported=True,
-            source="markdown_active_state",
-        )
-        if event_fields:
-            fields.update(event_fields)
-    issue_meta_surface = parse_issue_meta_surface(state_text)
-    if issue_meta_surface:
-        fields["issue_meta_surface"] = issue_meta_surface
-    if next_action_entries:
-        fields["active_state_next_action"] = next_action_entries[0]
-        fields["active_state_next_action_entries"] = next_action_entries
-    warning = backlog_hygiene_warning(
-        state_text,
-        agent_todos=fields.get("agent_todos") if isinstance(fields.get("agent_todos"), dict) else None,
-    )
-    if warning:
-        fields["backlog_hygiene_warning"] = warning
-    archive_warning = completed_todo_archive_warning(
-        fields.get("agent_todos") if isinstance(fields.get("agent_todos"), dict) else None
-    )
-    if archive_warning:
-        fields["completed_todo_archive_warning"] = archive_warning
-    replan_obligation = autonomous_replan_obligation(
-        state_text,
-        agent_todos=fields.get("agent_todos") if isinstance(fields.get("agent_todos"), dict) else None,
-    )
-    if replan_obligation:
-        fields["autonomous_replan_obligation"] = replan_obligation
-    projection_gap = state_projection_gap_warning(
-        state_text,
-        user_todos=fields.get("user_todos") if isinstance(fields.get("user_todos"), dict) else None,
-        agent_todos=fields.get("agent_todos") if isinstance(fields.get("agent_todos"), dict) else None,
-    )
-    if projection_gap:
-        fields["state_projection_gap"] = projection_gap
-    if fields:
-        fields = redacted_status_todo_fields(fields)
-    return fields
 
 
 def attention_item(
