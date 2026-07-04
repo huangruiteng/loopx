@@ -123,6 +123,7 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN,
     _tail,
     _apply_agent_message_only_no_tool_calls_attribution,
+    _apply_native_goal_worker_finish_guard_attribution,
     _blind_loop_persistent_continuation_clause,
     _build_goal_start_product_mode_control_score,
     _build_product_mode_user,
@@ -8172,6 +8173,149 @@ def test_skillsbench_round_trace_records_best_round_score() -> None:
         assert context_only_compact["attempt_accounting"][
             "failure_class"
         ] == "job_materialization_failed", context_only_compact
+
+        incomplete_no_activity_trace_dir = root / "native-worker-inprogress-no-activity"
+        incomplete_no_activity_trace_dir.mkdir()
+        write_json(
+            incomplete_no_activity_trace_dir / "worker-inprogress.compact.json",
+            {
+                "schema_version": "skillsbench_host_codex_goal_worker_public_trace_v0",
+                "ok": True,
+                "route": "codex-app-server-goal-baseline",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "travel-planning",
+                "worker_contract": {
+                    "schema_version": "skillsbench_app_server_goal_worker_contract_v0",
+                    "route": "codex-app-server-goal-baseline",
+                    "ready": True,
+                    "runner_integration_ready": True,
+                    "first_blocker": "ready_for_skillsbench_app_server_goal_worker",
+                },
+                "turn": {
+                    "thread_id_present": True,
+                    "goal_get_present": True,
+                    "turn_id_present": True,
+                    "turn_status": "inProgress",
+                    "turn_completed_observed": True,
+                    "assistant_message_present": True,
+                    "assistant_message_chars": 4012,
+                    "raw_transcript_recorded": False,
+                    "raw_assistant_message_recorded": False,
+                },
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                },
+            },
+        )
+        write_json(
+            incomplete_no_activity_trace_dir / "bridge-agent-empty.compact.json",
+            {
+                "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
+                "ok": True,
+                "route": "codex-app-server-goal-baseline",
+                "trace_kind": "remote_command_file_bridge_agent_operations",
+                "benchmark_id": "skillsbench@1.1",
+                "task_id": "travel-planning",
+                "remote_command_file_bridge_agent_operations": {
+                    "schema_version": (
+                        "skillsbench_remote_command_file_bridge_agent_operations_v0"
+                    ),
+                    "request_count": 0,
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "operation_counts": {},
+                    "returncode_counts": {},
+                    "failure_category_counts": {},
+                    "task_facing_operation_count": 0,
+                    "task_facing_success_count": 0,
+                    "task_facing_failure_count": 0,
+                    "raw_material_recorded": False,
+                },
+                "boundary": {
+                    "raw_command_recorded": False,
+                    "raw_stdout_recorded": False,
+                    "raw_stderr_recorded": False,
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "credential_values_recorded": False,
+                    "host_paths_recorded": False,
+                    "remote_paths_recorded": False,
+                    "upload_performed": False,
+                    "submit_performed": False,
+                },
+            },
+        )
+        incomplete_no_activity_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "codex-app-server-goal-baseline",
+            "trace_publicness": "public_counts_only_no_task_text_no_verifier_output",
+            "native_goal_worker_route": True,
+            "native_goal_worker_connected": True,
+            "native_goal_worker_connect_count": 1,
+            "raw_task_text_recorded": False,
+            "raw_verifier_output_recorded": False,
+            "raw_agent_trajectory_recorded": False,
+        }
+        _merge_app_server_goal_worker_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(incomplete_no_activity_trace_dir),
+            },
+            incomplete_no_activity_trace,
+        )
+        _merge_host_local_acp_relay_trace_summary(
+            {
+                "route": "codex-app-server-goal-baseline",
+                "app_server_goal_worker_trace_dir": str(incomplete_no_activity_trace_dir),
+            },
+            incomplete_no_activity_trace,
+        )
+        incomplete_no_activity_compact = compact_benchmark_run(
+            build_skillsbench_benchflow_result_benchmark_run(
+                write_official_skillsbench_result(
+                    root / "native-worker-inprogress-no-activity-result",
+                    reward=0.0,
+                    task_id="travel-planning",
+                ),
+                route="codex-app-server-goal-baseline",
+                controller_trace=incomplete_no_activity_trace,
+            )
+        )
+        assert incomplete_no_activity_compact is not None
+        _apply_native_goal_worker_finish_guard_attribution(
+            incomplete_no_activity_compact
+        )
+        expected_finish_guard_failure = (
+            "skillsbench_native_goal_worker_incomplete_turn_without_task_activity"
+        )
+        assert (
+            incomplete_no_activity_compact["score_failure_attribution"]
+            == expected_finish_guard_failure
+        ), incomplete_no_activity_compact
+        assert "official_verifier_solution_failure" not in (
+            incomplete_no_activity_compact["failure_attribution_labels"]
+        ), incomplete_no_activity_compact
+        assert incomplete_no_activity_compact[
+            "official_score_comparable_to_native_codex"
+        ] is False, incomplete_no_activity_compact
+        finish_guard_counters = incomplete_no_activity_compact["interaction_counters"]
+        assert (
+            finish_guard_counters[
+                "native_goal_worker_incomplete_after_completion_event_count"
+            ]
+            == 1
+        ), incomplete_no_activity_compact
+        assert incomplete_no_activity_compact["native_goal_worker_contract"][
+            "countable_baseline"
+        ] is False, incomplete_no_activity_compact
+        assert incomplete_no_activity_compact["attempt_accounting"][
+            "case_attempt_countable"
+        ] is False, incomplete_no_activity_compact
 
         bridge_quiet_result_path = write_official_skillsbench_result(
             root / "native-worker-bridge-quiet-result",

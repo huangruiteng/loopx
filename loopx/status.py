@@ -1538,6 +1538,16 @@ def _compact_benchmark_interaction_counters(value: Any) -> dict[str, Any]:
         "native_goal_worker_context_only_recovery_succeeded_count",
         "native_goal_worker_context_only_followup_start_attempted_count",
         "native_goal_worker_context_only_followup_start_succeeded_count",
+        "native_goal_worker_normal_followup_attempted_count",
+        "native_goal_worker_normal_followup_succeeded_count",
+        "native_goal_worker_normal_followup_start_attempted_count",
+        "native_goal_worker_normal_followup_start_succeeded_count",
+        "native_goal_worker_finish_guard_followup_attempted_count",
+        "native_goal_worker_finish_guard_followup_succeeded_count",
+        "native_goal_worker_finish_guard_followup_start_attempted_count",
+        "native_goal_worker_finish_guard_followup_start_succeeded_count",
+        "native_goal_worker_incomplete_turn_status_count",
+        "native_goal_worker_incomplete_after_completion_event_count",
         "native_goal_worker_transport_reconnect_attempted_count",
         "native_goal_worker_transport_reconnect_succeeded_count",
         "native_goal_worker_goal_reactivation_attempted_count",
@@ -1801,6 +1811,16 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
         "context_only_recovery_succeeded_count",
         "context_only_followup_start_attempted_count",
         "context_only_followup_start_succeeded_count",
+        "normal_followup_attempted_count",
+        "normal_followup_succeeded_count",
+        "normal_followup_start_attempted_count",
+        "normal_followup_start_succeeded_count",
+        "finish_guard_followup_attempted_count",
+        "finish_guard_followup_succeeded_count",
+        "finish_guard_followup_start_attempted_count",
+        "finish_guard_followup_start_succeeded_count",
+        "incomplete_turn_status_count",
+        "incomplete_after_completion_event_count",
         "transport_reconnect_attempted_count",
         "transport_reconnect_succeeded_count",
         "goal_reactivation_attempted_count",
@@ -1828,6 +1848,12 @@ def _compact_native_goal_worker_contract(value: Any) -> dict[str, Any]:
         text = public_safe_compact_text(value.get(field), limit=140)
         if text:
             compact[field] = text
+    incomplete_statuses = public_safe_compact_list(
+        value.get("incomplete_turn_statuses"),
+        limit=MAX_BENCHMARK_RUN_LIST_ITEMS,
+    )
+    if incomplete_statuses:
+        compact["incomplete_turn_statuses"] = incomplete_statuses
     return compact
 
 
@@ -3889,6 +3915,16 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         "native_goal_worker_context_only_recovery_succeeded_count",
         "native_goal_worker_context_only_followup_start_attempted_count",
         "native_goal_worker_context_only_followup_start_succeeded_count",
+        "native_goal_worker_normal_followup_attempted_count",
+        "native_goal_worker_normal_followup_succeeded_count",
+        "native_goal_worker_normal_followup_start_attempted_count",
+        "native_goal_worker_normal_followup_start_succeeded_count",
+        "native_goal_worker_finish_guard_followup_attempted_count",
+        "native_goal_worker_finish_guard_followup_succeeded_count",
+        "native_goal_worker_finish_guard_followup_start_attempted_count",
+        "native_goal_worker_finish_guard_followup_start_succeeded_count",
+        "native_goal_worker_incomplete_turn_status_count",
+        "native_goal_worker_incomplete_after_completion_event_count",
         "native_goal_worker_transport_reconnect_attempted_count",
         "native_goal_worker_transport_reconnect_succeeded_count",
         "native_goal_worker_goal_reactivation_attempted_count",

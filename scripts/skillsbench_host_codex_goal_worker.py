@@ -43,6 +43,7 @@ NORMAL_FOLLOWUP_PROMPT = """Continue the same SkillsBench task in this existing 
 Do not use or infer verifier, reward, pass/fail, hidden-test, or gold-answer feedback; none is being provided.
 Review your prior work, improve the scored output if needed using only the visible task, workspace, and bridge context already available in this thread, and end the turn once the best task-required output exists."""
 APP_SERVER_GOAL_PROMPT_STYLES = ("bridge-only", "native-goal", "cli-exec-like")
+COMPLETE_TURN_STATUSES = {"completed"}
 
 
 def _json_default(value: Any) -> str:
@@ -210,6 +211,13 @@ def _terminal_app_server_failure(turn: Any) -> str:
     return ""
 
 
+def _turn_completion_shape_unclean(compact: dict[str, Any]) -> bool:
+    if compact.get("turn_completed_observed") is not True:
+        return True
+    status = str(compact.get("turn_status") or "").strip()
+    return bool(status and status not in COMPLETE_TURN_STATUSES)
+
+
 def _compact_worker_turn(
     turn: Any,
     *,
@@ -302,12 +310,18 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
     try:
         followup_budget = max(0, int(args.context_only_followup_max or 0))
         normal_followup_budget = max(0, int(args.normal_followup_max or 0))
+        finish_guard_followup_budget = max(
+            0, int(args.finish_guard_followup_max or 0)
+        )
         context_only_followup_start_attempted = False
         context_only_followup_start_succeeded = False
         context_only_followup_start_error_type = ""
         normal_followup_start_attempted_count = 0
         normal_followup_start_succeeded_count = 0
         normal_followup_start_error_type = ""
+        finish_guard_followup_start_attempted_count = 0
+        finish_guard_followup_start_succeeded_count = 0
+        finish_guard_followup_start_error_type = ""
         attempt_number = 1
         while True:
             if not args.no_wait_for_completion:
@@ -343,7 +357,17 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             attempt_compacts.append(compact)
             if worker_error_type or args.no_wait_for_completion:
                 break
-            if compact.get("assistant_message_context_only") is True:
+            if _turn_completion_shape_unclean(compact):
+                if finish_guard_followup_budget <= 0:
+                    worker_error_type = (
+                        "codex_app_server_turn_incomplete_after_completion_event"
+                    )
+                    break
+                finish_guard_followup_budget -= 1
+                followup_prompt = NORMAL_FOLLOWUP_PROMPT
+                followup_error_kind = "finish_guard"
+                finish_guard_followup_start_attempted_count += 1
+            elif compact.get("assistant_message_context_only") is True:
                 if followup_budget <= 0:
                     worker_error_type = "codex_app_server_context_only_assistant_message"
                     break
@@ -377,6 +401,8 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 if followup_error_kind == "context_only":
                     context_only_followup_start_succeeded = True
+                elif followup_error_kind == "finish_guard":
+                    finish_guard_followup_start_succeeded_count += 1
                 else:
                     normal_followup_start_succeeded_count += 1
             except CodexAppServerGoalDriverError as exc:
@@ -385,10 +411,14 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                     worker_error_type = detail
                 elif followup_error_kind == "context_only":
                     worker_error_type = "codex_app_server_context_only_followup_start_failed"
+                elif followup_error_kind == "finish_guard":
+                    worker_error_type = "codex_app_server_finish_guard_followup_start_failed"
                 else:
                     worker_error_type = "codex_app_server_normal_followup_start_failed"
                 if followup_error_kind == "context_only":
                     context_only_followup_start_error_type = worker_error_type
+                elif followup_error_kind == "finish_guard":
+                    finish_guard_followup_start_error_type = worker_error_type
                 else:
                     normal_followup_start_error_type = worker_error_type
                 break
@@ -461,6 +491,31 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
                     normal_followup_start_succeeded_count
                 ),
                 "normal_followup_start_error_type": normal_followup_start_error_type,
+                "finish_guard_followup_max": max(
+                    0, int(args.finish_guard_followup_max or 0)
+                ),
+                "finish_guard_followup_attempted": bool(
+                    finish_guard_followup_start_attempted_count
+                ),
+                "finish_guard_followup_succeeded": bool(
+                    finish_guard_followup_start_attempted_count
+                    and finish_guard_followup_start_succeeded_count
+                    == finish_guard_followup_start_attempted_count
+                    and not worker_error_type
+                    and not _turn_completion_shape_unclean(compact)
+                ),
+                "finish_guard_followup_start_attempted_count": (
+                    finish_guard_followup_start_attempted_count
+                ),
+                "finish_guard_followup_start_succeeded_count": (
+                    finish_guard_followup_start_succeeded_count
+                ),
+                "finish_guard_followup_start_error_type": (
+                    finish_guard_followup_start_error_type
+                ),
+                "turn_completion_shape_unclean": _turn_completion_shape_unclean(
+                    compact
+                ),
             }
         )
         if attempt_compacts:
@@ -479,6 +534,8 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             worker_error_type = "codex_app_server_context_only_assistant_message"
         if worker_error_type and compact.get("normal_followup_attempted") is True:
             compact["normal_followup_succeeded"] = False
+        if worker_error_type and compact.get("finish_guard_followup_attempted") is True:
+            compact["finish_guard_followup_succeeded"] = False
         private_response_written = False
         if args.response_text_file and turn.assistant_message:
             response_path = Path(args.response_text_file).expanduser()
@@ -567,6 +624,24 @@ def run_worker(args: argparse.Namespace) -> dict[str, Any]:
             "reward_feedback_provided": False,
             "verifier_feedback_provided": False,
         },
+        "finish_guard_followup": {
+            "enabled": max(0, int(args.finish_guard_followup_max or 0)) > 0,
+            "max_followups": max(0, int(args.finish_guard_followup_max or 0)),
+            "attempted": bool(compact.get("finish_guard_followup_attempted")),
+            "succeeded": bool(compact.get("finish_guard_followup_succeeded")),
+            "followup_start_attempted_count": int(
+                compact.get("finish_guard_followup_start_attempted_count") or 0
+            ),
+            "followup_start_succeeded_count": int(
+                compact.get("finish_guard_followup_start_succeeded_count") or 0
+            ),
+            "followup_start_error_type": str(
+                compact.get("finish_guard_followup_start_error_type") or ""
+            ),
+            "turn_attempt_count": int(compact.get("turn_attempt_count") or 1),
+            "reward_feedback_provided": False,
+            "verifier_feedback_provided": False,
+        },
         "private_response_text": {
             "written": private_response_written,
             "path_recorded": False,
@@ -628,6 +703,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "completed app-server Goal turns. The continuation prompt provides "
             "no verifier, reward, pass/fail, hidden-test, or gold-answer "
             "feedback; default 0 preserves baseline single-turn behavior."
+        ),
+    )
+    parser.add_argument(
+        "--finish-guard-followup-max",
+        type=int,
+        default=1,
+        help=(
+            "Same-thread continuation budget when the app-server reports a "
+            "turn completion event but the public turn status is not completed. "
+            "This guard prevents in-progress turns from being scored as clean "
+            "solution attempts without verifier, reward, hidden-test, or gold "
+            "feedback."
         ),
     )
     parser.add_argument(

@@ -4552,6 +4552,110 @@ def _apply_host_local_acp_prereq_failure_attribution(
     return True
 
 
+def _apply_native_goal_worker_finish_guard_attribution(
+    compact: dict[str, Any],
+) -> bool:
+    official_score = compact.get("official_score")
+    if (
+        isinstance(official_score, (int, float))
+        and not isinstance(official_score, bool)
+        and official_score >= 1.0
+    ):
+        return False
+    counters = compact.get("interaction_counters")
+    if not isinstance(counters, dict):
+        return False
+    worker_contract = compact.get("native_goal_worker_contract")
+    if not isinstance(worker_contract, dict):
+        worker_contract = {}
+    if counters.get("native_goal_worker_route") is not True:
+        return False
+    incomplete_count = counters.get(
+        "native_goal_worker_incomplete_after_completion_event_count"
+    )
+    if not isinstance(incomplete_count, int) or isinstance(incomplete_count, bool):
+        incomplete_count = worker_contract.get(
+            "incomplete_after_completion_event_count"
+        )
+    if not (
+        isinstance(incomplete_count, int)
+        and not isinstance(incomplete_count, bool)
+        and incomplete_count > 0
+    ):
+        return False
+    task_ops = counters.get(
+        "remote_command_file_bridge_agent_task_facing_operation_count"
+    )
+    task_success = counters.get(
+        "remote_command_file_bridge_agent_task_facing_success_count"
+    )
+    if (
+        isinstance(task_ops, int)
+        and not isinstance(task_ops, bool)
+        and task_ops > 0
+    ) or (
+        isinstance(task_success, int)
+        and not isinstance(task_success, bool)
+        and task_success > 0
+    ):
+        return False
+
+    label = "skillsbench_native_goal_worker_incomplete_turn_without_task_activity"
+    compact["score_failure_attribution"] = label
+    compact["first_blocker"] = label
+    compact["official_score_comparable_to_native_codex"] = False
+    compact["official_score_comparable_to_loopx_treatment"] = False
+    existing_labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str)
+        and item
+        not in {
+            "official_score_zero_case_failure",
+            "official_verifier_solution_failure",
+            "verifier_infrastructure_failure",
+        }
+    ]
+    for item in (label, "skillsbench_runner_setup_error"):
+        if item not in existing_labels:
+            existing_labels.append(item)
+    compact["failure_attribution_labels"] = existing_labels
+    runner_failure = compact.setdefault("runner_failure", {})
+    if isinstance(runner_failure, dict):
+        runner_failure["exception_type"] = label
+        runner_failure["failure_class"] = label
+        runner_failure["native_goal_worker"] = {
+            "failure_category": label,
+            "incomplete_after_completion_event_count": incomplete_count,
+            "task_facing_operation_count": max(0, int(task_ops or 0)),
+            "raw_material_recorded": False,
+        }
+    if isinstance(worker_contract, dict):
+        worker_contract["countable_baseline"] = False
+        worker_contract["failure_category"] = label
+        worker_contract["first_blocker"] = label
+        worker_contract["countability_source"] = "native_goal_worker_finish_guard"
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
+        for key in (
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+            "official_score_attempt_countable",
+        ):
+            attempt_accounting[key] = False
+        attempts = attempt_accounting.get("attempts")
+        if isinstance(attempts, dict):
+            for key in ("case", "solver", "verifier", "official_score"):
+                attempt = attempts.get(key)
+                if isinstance(attempt, dict):
+                    attempt["countable"] = False
+    return True
+
+
 def _case_timeline_safe_string(value: Any, *, limit: int = 140) -> str:
     if not isinstance(value, str):
         return ""
@@ -9712,6 +9816,13 @@ def _merge_app_server_goal_worker_trace_summary(
     normal_followup_succeeded_count = 0
     normal_followup_start_attempted_count = 0
     normal_followup_start_succeeded_count = 0
+    finish_guard_followup_attempted_count = 0
+    finish_guard_followup_succeeded_count = 0
+    finish_guard_followup_start_attempted_count = 0
+    finish_guard_followup_start_succeeded_count = 0
+    incomplete_turn_status_count = 0
+    incomplete_after_completion_event_count = 0
+    incomplete_turn_statuses: list[str] = []
     transport_reconnect_attempted_count = 0
     transport_reconnect_succeeded_count = 0
     goal_reactivation_attempted_count = 0
@@ -9856,6 +9967,58 @@ def _merge_app_server_goal_worker_trace_summary(
                 normal_successes, bool
             ):
                 normal_followup_start_succeeded_count += max(0, normal_successes)
+        finish_guard_followup = (
+            payload.get("finish_guard_followup")
+            if isinstance(payload.get("finish_guard_followup"), dict)
+            else {}
+        )
+        if (
+            turn.get("finish_guard_followup_attempted") is True
+            or finish_guard_followup.get("attempted") is True
+        ):
+            finish_guard_followup_attempted_count += 1
+        if (
+            turn.get("finish_guard_followup_succeeded") is True
+            or finish_guard_followup.get("succeeded") is True
+        ):
+            finish_guard_followup_succeeded_count += 1
+        finish_attempts = turn.get("finish_guard_followup_start_attempted_count")
+        if isinstance(finish_attempts, int) and not isinstance(
+            finish_attempts, bool
+        ):
+            finish_guard_followup_start_attempted_count += max(0, finish_attempts)
+        else:
+            finish_attempts = finish_guard_followup.get(
+                "followup_start_attempted_count"
+            )
+            if isinstance(finish_attempts, int) and not isinstance(
+                finish_attempts, bool
+            ):
+                finish_guard_followup_start_attempted_count += max(
+                    0, finish_attempts
+                )
+        finish_successes = turn.get("finish_guard_followup_start_succeeded_count")
+        if isinstance(finish_successes, int) and not isinstance(
+            finish_successes, bool
+        ):
+            finish_guard_followup_start_succeeded_count += max(0, finish_successes)
+        else:
+            finish_successes = finish_guard_followup.get(
+                "followup_start_succeeded_count"
+            )
+            if isinstance(finish_successes, int) and not isinstance(
+                finish_successes, bool
+            ):
+                finish_guard_followup_start_succeeded_count += max(
+                    0, finish_successes
+                )
+        turn_status = str(turn.get("turn_status") or "").strip()
+        if turn_status and turn_status != "completed":
+            incomplete_turn_status_count += 1
+            if turn_status[:80] not in incomplete_turn_statuses:
+                incomplete_turn_statuses.append(turn_status[:80])
+            if turn.get("turn_completed_observed") is True:
+                incomplete_after_completion_event_count += 1
         if turn.get("transport_reconnect_attempted") is True:
             transport_reconnect_attempted_count += 1
         if turn.get("transport_reconnect_succeeded") is True:
@@ -10011,6 +10174,25 @@ def _merge_app_server_goal_worker_trace_summary(
     trace["native_goal_worker_normal_followup_start_succeeded_count"] = (
         normal_followup_start_succeeded_count
     )
+    trace["native_goal_worker_finish_guard_followup_attempted_count"] = (
+        finish_guard_followup_attempted_count
+    )
+    trace["native_goal_worker_finish_guard_followup_succeeded_count"] = (
+        finish_guard_followup_succeeded_count
+    )
+    trace["native_goal_worker_finish_guard_followup_start_attempted_count"] = (
+        finish_guard_followup_start_attempted_count
+    )
+    trace["native_goal_worker_finish_guard_followup_start_succeeded_count"] = (
+        finish_guard_followup_start_succeeded_count
+    )
+    trace["native_goal_worker_incomplete_turn_status_count"] = (
+        incomplete_turn_status_count
+    )
+    trace["native_goal_worker_incomplete_after_completion_event_count"] = (
+        incomplete_after_completion_event_count
+    )
+    trace["native_goal_worker_incomplete_turn_statuses"] = incomplete_turn_statuses
     trace["native_goal_worker_transport_reconnect_attempted_count"] = (
         transport_reconnect_attempted_count
     )
@@ -10061,6 +10243,13 @@ def _merge_app_server_goal_worker_trace_summary(
         "native_goal_worker_normal_followup_succeeded_count",
         "native_goal_worker_normal_followup_start_attempted_count",
         "native_goal_worker_normal_followup_start_succeeded_count",
+        "native_goal_worker_finish_guard_followup_attempted_count",
+        "native_goal_worker_finish_guard_followup_succeeded_count",
+        "native_goal_worker_finish_guard_followup_start_attempted_count",
+        "native_goal_worker_finish_guard_followup_start_succeeded_count",
+        "native_goal_worker_incomplete_turn_status_count",
+        "native_goal_worker_incomplete_after_completion_event_count",
+        "native_goal_worker_incomplete_turn_statuses",
         "native_goal_worker_transport_reconnect_attempted_count",
         "native_goal_worker_transport_reconnect_succeeded_count",
         "native_goal_worker_goal_reactivation_attempted_count",
@@ -13736,6 +13925,7 @@ def reduce_result(
             compact,
             runner_prerequisites,
         )
+    _apply_native_goal_worker_finish_guard_attribution(compact)
     prereq_failure = _runner_prerequisite_failure_attribution(
         plan.get("runner_prerequisites")
     )
