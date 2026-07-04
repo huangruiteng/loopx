@@ -1053,9 +1053,10 @@ for `turn/completed`, and writes the assistant response only to a private
 response file for the surrounding runner. The public JSON records compact turn
 proof, assistant-message hash/size, and method counters only. Do not copy raw
 task text, raw assistant response, raw trajectory, raw logs, LoopX state,
-credentials, or host paths into the compact result. Keep
-`codex-goal-mode-baseline` for historical slash-prefix probes only; it is not a
-scored Codex Goal baseline.
+credentials, or host paths into the compact result. The old
+`codex-goal-mode-baseline` slash-prefix probe route is removed from SkillsBench
+runner choices; use `codex-cli-goal-baseline` for the scored Codex Goal
+baseline.
 
 For a scored SkillsBench route, the worker should be called with an explicit
 private output target:
@@ -1336,9 +1337,8 @@ The app-server Goal launcher now exposes a public worker contract for
 Terminal-Bench case launch returns compact `turn/start` proof plus no-upload
 case proof, this mode must still return `execution_ready=false`,
 `first_blocker=terminal_bench_app_server_goal_turn_start_proof_missing`, and
-`codex_goal_mode_baseline_claim_allowed=false`. The older `codex-goal-mode`
-launcher remains a slash-command fallback and must not be used as a scored
-Codex Goal baseline.
+`codex_goal_mode_baseline_claim_allowed=false`. Older slash-command fallback
+launchers must not be used as scored Codex Goal baselines.
 
 Default cloud ECS host readiness:
 

@@ -29,14 +29,6 @@ SkillsBench product-mode research. Official verifier artifacts may be reduced
 into private metrics and public-safe compact counters only after the agent turn;
 they must not become continuation prompts or case-local LoopX todos.
 
-For the ``codex-goal-mode-baseline`` route it uses BenchFlow's user hook only
-to request a slash-goal-style initial prompt, with no reward follow-up, no Goal
-Harness controller state, and no verifier feedback. This is not sufficient by
-itself to prove native Codex CLI goal mode; that requires separate CLI
-slash-command/goal-state evidence. Full execution of this route is blocked by
-default until that evidence exists; use it only for explicit slash-prefix
-experiments.
-
 The historical ``codex-app-server-goal-baseline`` route remains in the codebase
 for compatibility and reducer forensics, but it is deprecated for SkillsBench
 treatment/baseline collection. Normal executions fail closed unless an explicit
@@ -12295,31 +12287,6 @@ def _build_blind_loop_user(
     return BlindLoopUser()
 
 
-def _build_codex_goal_mode_baseline_user():
-    from benchflow.sandbox.user import BaseUser, RoundResult
-
-    class CodexGoalModeBaselineUser(BaseUser):
-        """Scheduler-side user that sends one slash-goal-style prompt request."""
-
-        async def run(
-            self,
-            round: int,
-            instruction: str,
-            round_result: RoundResult | None = None,
-        ) -> str | None:
-            if round != 0:
-                return None
-            return (
-                "/goal Complete the following SkillsBench task. Keep working "
-                "until the task is done, validated, or blocked by the benchmark "
-                "environment. Do not use external LoopX CLI, upload, "
-                "submit, or ask the human for routine execution choices.\n\n"
-                "--- TASK INSTRUCTION ---\n"
-                f"{instruction}"
-            )
-
-    return CodexGoalModeBaselineUser()
-
 def _build_product_mode_user(
     *,
     route: str,
@@ -14041,8 +14008,6 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
             plan=plan,
             case_payload=product_mode_case_payload,
         )
-    elif args.route == "codex-goal-mode-baseline":
-        controller_user = _build_codex_goal_mode_baseline_user()
     elif args.route == CODEX_CLI_GOAL_BASELINE_ROUTE:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         controller_trace["last_decision"] = "host_codex_cli_tui_goal_worker_selected"
@@ -15425,11 +15390,10 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, An
         "loopx-goal-start-product-mode": "skillsbench_loopx_goal_start_product_mode_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
         "codex-app-server-goal-baseline": "skillsbench_codex_app_server_goal_baseline_result_v0",
-        "codex-goal-mode-baseline": "skillsbench_codex_goal_mode_baseline_result_v0",
     }
     classification = classification_by_route.get(
         args.route,
-        "skillsbench_codex_goal_mode_baseline_result_v0",
+        "skillsbench_unknown_route_result_v0",
     )
     cmd = [
         sys.executable,
@@ -15575,10 +15539,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "with a compact ranked todo plan before selected-P0 lifecycle; "
             "codex-app-server-goal-baseline is a deprecated legacy app-server "
             "Goal route retained for explicit compatibility experiments only; "
-            "codex-goal-mode-baseline sends one /goal-prefixed prompt request "
-            "with no reward follow-up, but native goal-mode invocation remains "
-            "unconfirmed without CLI slash-command/goal-state evidence and is "
-            "blocked by default except for --plan-only or explicit experiments. "
             "Routes that return official verifier feedback to the agent are "
             "unsupported because they leak oracle signal into the loop."
         ),
@@ -15645,15 +15605,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Also applies to loopx-prompt-polling-test. "
             "baseline-safe keeps treatment routing/ledger metadata while using "
             "the baseline-style first prompt to isolate ACP prompt-wrapper issues."
-        ),
-    )
-    parser.add_argument(
-        "--allow-unverified-goal-prefix-baseline",
-        action="store_true",
-        help=(
-            "Allow the codex-goal-mode-baseline route to run as an explicit "
-            "slash-prefix experiment. This does not prove native Codex Goal "
-            "mode and must not be used for A/B uplift claims."
         ),
     )
     parser.add_argument(
@@ -16951,28 +16902,6 @@ async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[st
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     logging.getLogger().setLevel(logging.WARNING)
-    if (
-        args.route == "codex-goal-mode-baseline"
-        and not args.plan_only
-        and not args.allow_unverified_goal_prefix_baseline
-    ):
-        payload = {
-            "ok": False,
-            "error_type": "CodexGoalModeBaselineUnverified",
-            "route": args.route,
-            "reason": (
-                "codex-goal-mode-baseline currently sends a slash-goal-style "
-                "prompt through BenchFlow; it is not proven to enter native "
-                "Codex Goal mode or attach persistent goal state"
-            ),
-            "next_action": (
-                "prove a stable Codex CLI /goal trigger with goal-state evidence, "
-                "or rerun with --allow-unverified-goal-prefix-baseline only as a "
-                "non-claiming slash-prefix experiment"
-            ),
-        }
-        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
-        return 2
     if (
         args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
         and not args.plan_only
