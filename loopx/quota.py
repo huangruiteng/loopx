@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 import fnmatch
-import hashlib
 import json
 import re
 import subprocess
@@ -72,6 +71,11 @@ from .control_plane.scheduler.monitor_todo import (
     monitor_cadence_delta as scheduler_monitor_cadence_delta,
     monitor_next_due_at as scheduler_monitor_next_due_at,
     parse_monitor_counter as scheduler_parse_monitor_counter,
+)
+from .control_plane.scheduler.monitor_target import (
+    QUOTA_MONITOR_TARGET_SCHEMA_VERSION,
+    build_quota_monitor_target as scheduler_build_quota_monitor_target,
+    monitor_target_summary as scheduler_monitor_target_summary,
 )
 from .control_plane.scheduler.state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -238,7 +242,6 @@ SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
 AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
 SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = AGENT_CLAIM_SCOPE_SCHEMA_VERSION
 AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
-QUOTA_MONITOR_TARGET_SCHEMA_VERSION = "quota_monitor_target_v0"
 PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES = {
     "private_boundary_no_authorized_read",
 }
@@ -7122,38 +7125,11 @@ def record_quota_scheduler_ack(
 
 
 def _monitor_target_summary(value: Any, *, limit: int = 160) -> str:
-    text = re.sub(r"\s+", " ", str(value or "").strip())
-    if len(text) <= limit:
-        return text
-    return text[: limit - 3].rstrip() + "..."
+    return scheduler_monitor_target_summary(value, limit=limit)
 
 
 def _quota_monitor_target(before: dict[str, Any], *, monitor_mode: str) -> dict[str, Any]:
-    action_summary = _monitor_target_summary(
-        before.get("recommended_action") or before.get("reason") or "",
-        limit=160,
-    )
-    agent_id = _quota_decision_agent_id(before) or ""
-    parts = {
-        "goal_id": str(before.get("goal_id") or ""),
-        "agent_id": agent_id,
-        "monitor_mode": str(monitor_mode or ""),
-        "effective_action": str(before.get("effective_action") or ""),
-        "action_summary": action_summary,
-    }
-    target_id = hashlib.sha256(
-        json.dumps(parts, ensure_ascii=True, sort_keys=True).encode("utf-8")
-    ).hexdigest()[:16]
-    target: dict[str, Any] = {
-        "schema_version": QUOTA_MONITOR_TARGET_SCHEMA_VERSION,
-        "target_id": target_id,
-        "monitor_mode": parts["monitor_mode"],
-        "effective_action": parts["effective_action"],
-        "action_summary": action_summary,
-    }
-    if agent_id:
-        target["agent_id"] = agent_id
-    return target
+    return scheduler_build_quota_monitor_target(before, monitor_mode=monitor_mode)
 
 
 def _work_lane_reason_codes(work_lane_contract: dict[str, Any]) -> set[str]:
