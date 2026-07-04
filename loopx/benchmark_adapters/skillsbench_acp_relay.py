@@ -31,6 +31,7 @@ from loopx.benchmark_case_state import (
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
+from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
 
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
@@ -1115,7 +1116,10 @@ class SkillsBenchLocalAcpRelay:
                     bridge_command_for_agent=str(instrumented_bridge),
                 )
             prompt_path = tmp_path / "goal-prompt.txt"
-            prompt_path.write_text(prompt_for_codex, encoding="utf-8")
+            prompt_path.write_text(
+                build_codex_cli_goal_tui_input(prompt_for_codex),
+                encoding="utf-8",
+            )
             tmux_name = f"gh-sb-cli-goal-{uuid.uuid4().hex[:10]}"
             cmd = self._codex_cli_tui_command(cwd=cwd, model=session.get("model"))
             shell_command = self._codex_cli_tui_shell_command(cmd)
@@ -1157,8 +1161,6 @@ class SkillsBenchLocalAcpRelay:
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
                     )
-                self._tmux_send_literal(tmux_name, "/goal ")
-                time.sleep(0.2)
                 subprocess.run(
                     ["tmux", "load-buffer", "-b", f"{tmux_name}-prompt", str(prompt_path)],
                     check=True,

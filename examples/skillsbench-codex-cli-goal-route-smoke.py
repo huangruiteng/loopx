@@ -261,6 +261,24 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
     )
 
 
+def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
+
+    objective = "Solve the task.\nUse the private bridge."
+    assert build_codex_cli_goal_tui_input(objective) == (
+        "/goal Solve the task.\nUse the private bridge."
+    )
+    for relative in (
+        "loopx/benchmark_adapters/skillsbench_acp_relay.py",
+        "scripts/harbor_host_codex_goal_agent.py",
+        "scripts/terminal_bench_host_codex_goal_agent.py",
+    ):
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        assert '"/goal", "C-m"' not in source, relative
+        assert '_tmux_send_literal(tmux_name, "/goal ")' not in source, relative
+
+
 def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
@@ -315,6 +333,7 @@ def main() -> int:
     _assert_cli_goal_plan_and_relay_command()
     _assert_cli_goal_trace_merges_into_public_prerequisites()
     _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings()
+    _assert_cli_goal_input_is_submitted_as_one_buffer()
     _assert_cli_goal_codex_api_proxy_is_runtime_only()
     print("skillsbench-codex-cli-goal-route-smoke ok")
     return 0

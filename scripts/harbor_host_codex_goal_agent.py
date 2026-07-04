@@ -61,6 +61,7 @@ from loopx.benchmark_core.loop_protocol import (
     render_loop_contract_packet_lines,
 )
 from loopx.control_plane.todos.contract import todo_terminal_for_status
+from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
 
 LONG_RUN_DEFAULT_GOAL_TIMEOUT_SEC = 21600.0
 
@@ -1479,7 +1480,10 @@ class HarborHostCodexGoalAgent(BaseAgent):
             task_workdir=self.task_workdir,
             loopx_access_packet=loopx_access_packet,
         )
-        prompt_path.write_text(prompt, encoding="utf-8")
+        prompt_path.write_text(
+            build_codex_cli_goal_tui_input(prompt),
+            encoding="utf-8",
+        )
 
         if self.goal_surface == "app_server":
             try:
@@ -2105,8 +2109,6 @@ class HarborHostCodexGoalAgent(BaseAgent):
         )
         await asyncio.sleep(self.startup_delay_sec)
         self._tmux("send-keys", "-t", tmux_name, "C-m", check=False)
-        await asyncio.sleep(self.startup_delay_sec)
-        self._tmux("send-keys", "-t", tmux_name, "/goal", "C-m", check=False)
         await asyncio.sleep(self.startup_delay_sec)
         self._tmux("load-buffer", "-b", f"gh_prompt_{run_id}", str(prompt_path), check=True)
         self._tmux("paste-buffer", "-d", "-b", f"gh_prompt_{run_id}", "-t", tmux_name, check=True)
