@@ -156,6 +156,11 @@ globals().update(
     }
 )
 
+INDEPENDENT_GOAL_RETRY_ROUTES = {
+    CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
+    CODEX_CLI_GOAL_BASELINE_ROUTE,
+}
+
 
 def _is_loopx_product_mode_route(route: str) -> bool:
     return route in LOOPX_PRODUCT_MODE_FAMILY_ROUTES
@@ -8548,7 +8553,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     )
     independent_goal_attempt_budget = (
         max(1, int(getattr(args, "independent_goal_retries", 1) or 1))
-        if is_app_server_goal_route
+        if route in INDEPENDENT_GOAL_RETRY_ROUTES
         else 1
     )
     codex_api_egress_preflight = _public_codex_api_egress_contract(
@@ -8716,7 +8721,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "skillsbench_independent_goal_retry_config_v0",
             "enabled": bool(independent_goal_attempt_budget > 1),
             "attempt_budget": independent_goal_attempt_budget,
-            "route_supported": route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
+            "route_supported": route in INDEPENDENT_GOAL_RETRY_ROUTES,
             "fresh_goal_thread_per_attempt": True,
             "stop_policy": (
                 "stop_after_first_official_reward_1_or_first_terminal_"
@@ -15722,8 +15727,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=1,
         help=(
-            "Run the same codex-app-server-goal-baseline case as multiple "
-            "independent native Goal attempts. Each attempt gets a fresh "
+            "Run the same native Goal case as multiple independent attempts "
+            "for supported goal routes. Each attempt gets a fresh "
             "job/rollout/thread; official verifier reward is observed only by "
             "the runner to decide whether to stop before the retry budget, and "
             "is never forwarded to the worker."
@@ -16342,10 +16347,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if args.independent_goal_retries < 1:
         parser.error("--independent-goal-retries must be >= 1")
     if args.independent_goal_retries > 1:
-        if args.route != "codex-app-server-goal-baseline":
+        if args.route not in INDEPENDENT_GOAL_RETRY_ROUTES:
             parser.error(
                 "--independent-goal-retries currently applies only to "
-                "codex-app-server-goal-baseline"
+                "native Goal routes"
             )
         if args.reduce_only:
             parser.error("--independent-goal-retries is not compatible with --reduce-only")

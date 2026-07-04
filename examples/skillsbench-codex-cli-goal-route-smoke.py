@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import contextlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -150,6 +152,63 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
         proxy_index = proxy_command.index("--codex-api-proxy")
         assert proxy_command[proxy_index + 1] == proxy_url, proxy_command
         assert proxy_url not in json.dumps(proxy_plan, sort_keys=True), proxy_plan
+
+        retry_args = parse_args(
+            [
+                "--route",
+                CODEX_CLI_GOAL_BASELINE_ROUTE,
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--remote-command-file-bridge-solver-command",
+                "python bridge.py",
+                "--independent-goal-retries",
+                "2",
+                "--plan-only",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(temp_path / "jobs-with-retry"),
+                "--ledger-path",
+                str(temp_path / "ledger-with-retry.json"),
+                "--global-ledger-path",
+                str(temp_path / "global-ledger-with-retry.json"),
+            ]
+        )
+        retry_plan = build_plan(retry_args)
+        retry_config = retry_plan["independent_goal_retry"]
+        assert retry_config["enabled"] is True, retry_config
+        assert retry_config["attempt_budget"] == 2, retry_config
+        assert retry_config["route_supported"] is True, retry_config
+
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                parse_args(
+                    [
+                        "--route",
+                        CODEX_CLI_GOAL_BASELINE_ROUTE,
+                        "--host-local-acp-launch",
+                        "--remote-command-file-bridge-ready",
+                        "--remote-command-file-bridge-solver-command",
+                        "python bridge.py",
+                        "--independent-goal-retries",
+                        "2",
+                        "--task-ids",
+                        "react-performance-debugging,citation-check",
+                        "--plan-only",
+                        "--skillsbench-root",
+                        str(skillsbench_root),
+                        "--jobs-dir",
+                        str(temp_path / "jobs-with-invalid-retry"),
+                        "--ledger-path",
+                        str(temp_path / "ledger-with-invalid-retry.json"),
+                        "--global-ledger-path",
+                        str(temp_path / "global-ledger-with-invalid-retry.json"),
+                    ]
+                )
+        except SystemExit as exc:
+            assert exc.code == 2
+        else:
+            raise AssertionError("multi-case independent retries should be rejected")
 
 
 def _assert_cli_goal_trace_merges_into_public_prerequisites() -> None:
