@@ -8,6 +8,7 @@ on legacy presentation helpers.
 from __future__ import annotations
 
 from .evidence_packet import AUTO_RESEARCH_ROLLOUT_APPEND_SCHEMA_VERSION
+from .preset import build_auto_research_minimal_a2a_recipe
 from .user_contract import AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION
 
 
@@ -201,20 +202,12 @@ def _render_operator_commands(payload: dict[str, object]) -> list[str]:
 
 
 def _render_user_contract(payload: dict[str, object]) -> str:
-    brief = payload.get("research_brief") if isinstance(payload.get("research_brief"), dict) else {}
+    brief = _dict_value(payload, "research_brief")
     plan = payload.get("action_plan") if isinstance(payload.get("action_plan"), list) else []
-    evidence = payload.get("evidence_refs") if isinstance(payload.get("evidence_refs"), dict) else {}
-    one_click_start = (
-        payload.get("one_click_start")
-        if isinstance(payload.get("one_click_start"), dict)
-        else {}
-    )
-    next_step = (
-        payload.get("next_executable_step")
-        if isinstance(payload.get("next_executable_step"), dict)
-        else {}
-    )
-    gate = payload.get("gate") if isinstance(payload.get("gate"), dict) else {}
+    evidence = _dict_value(payload, "evidence_refs")
+    one_click_start = _dict_value(payload, "one_click_start")
+    next_step = _dict_value(payload, "next_executable_step")
+    gate = _dict_value(payload, "gate")
     gates = gate.get("user_judgment_needed") if isinstance(gate.get("user_judgment_needed"), list) else []
     lines = [
         "# LoopX Auto Research",
@@ -287,9 +280,9 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
         return f"# LoopX Auto Research\n\n- ok: `False`\n- error: `{payload.get('error')}`\n"
     if "frontier" not in payload or "evidence_graph" not in payload:
         return _render_generic(payload)
-    frontier = payload["frontier"]  # type: ignore[index]
-    graph = payload["evidence_graph"]  # type: ignore[index]
-    selected = frontier.get("selected") if isinstance(frontier, dict) else None
+    frontier = _dict_value(payload, "frontier")
+    graph = _dict_value(payload, "evidence_graph")
+    selected = _dict_value(frontier, "selected")
     lines = [
         "# LoopX Auto Research Frontier",
         "",
@@ -307,23 +300,15 @@ def render_auto_research_projection_markdown(payload: dict[str, object]) -> str:
 
 
 def _render_worker_turn(payload: dict[str, object]) -> str:
-    frontier_packet = payload.get("frontier") if isinstance(payload.get("frontier"), dict) else {}
-    quota = frontier_packet.get("quota") if isinstance(frontier_packet.get("quota"), dict) else {}
-    frontier = (
-        frontier_packet.get("frontier")
-        if isinstance(frontier_packet.get("frontier"), dict)
-        else {}
-    )
-    selected = frontier.get("selected") if isinstance(frontier.get("selected"), dict) else {}
-    completion = payload.get("completion") if isinstance(payload.get("completion"), dict) else {}
-    append = payload.get("append") if isinstance(payload.get("append"), dict) else {}
-    live_evidence = (
-        payload.get("live_evidence")
-        if isinstance(payload.get("live_evidence"), dict)
-        else {}
-    )
-    artifact = payload.get("artifact") if isinstance(payload.get("artifact"), dict) else {}
-    artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), dict) else {}
+    frontier_packet = _dict_value(payload, "frontier")
+    quota = _dict_value(frontier_packet, "quota")
+    frontier = _dict_value(frontier_packet, "frontier")
+    selected = _dict_value(frontier, "selected")
+    completion = _dict_value(payload, "completion")
+    append = _dict_value(payload, "append")
+    live_evidence = _dict_value(payload, "live_evidence")
+    artifact = _dict_value(payload, "artifact")
+    artifacts = _dict_value(payload, "artifacts")
     lines = [
         "# LoopX Auto Research Worker Turn",
         "",
@@ -389,57 +374,27 @@ def _render_worker_loop(payload: dict[str, object]) -> str:
 
 
 def _render_demo_e2e(payload: dict[str, object]) -> str:
-    worker_loop = payload.get("worker_loop") if isinstance(payload.get("worker_loop"), dict) else {}
-    user_contract = (
-        payload.get("user_contract")
-        if isinstance(payload.get("user_contract"), dict)
-        else {}
-    )
-    tonight = (
-        payload.get("tonight_experience")
-        if isinstance(payload.get("tonight_experience"), dict)
-        else {}
-    )
-    supervisor = payload.get("supervisor") if isinstance(payload.get("supervisor"), dict) else {}
-    preset = supervisor.get("preset") if isinstance(supervisor.get("preset"), dict) else {}
-    minimal_recipe = (
-        preset.get("minimal_a2a_recipe")
-        if isinstance(preset.get("minimal_a2a_recipe"), dict)
-        else {}
-    )
-    route = payload.get("route_contract") if isinstance(payload.get("route_contract"), dict) else {}
-    live = payload.get("visible_worker_proof") if isinstance(payload.get("visible_worker_proof"), dict) else {}
-    pane_rounds = (
-        payload.get("visible_pane_a2a_rounds")
-        if isinstance(payload.get("visible_pane_a2a_rounds"), dict)
-        else {}
-    )
-    collective_rounds = (
-        payload.get("collective_research_rounds")
-        if isinstance(payload.get("collective_research_rounds"), dict)
-        else {}
-    )
-    readiness = (
-        payload.get("visible_readiness")
-        if isinstance(payload.get("visible_readiness"), dict)
-        else {}
-    )
-    contract_acceptance = (
-        payload.get("contract_acceptance")
-        if isinstance(payload.get("contract_acceptance"), dict)
-        else {}
-    )
-    commands = payload.get("commands") if isinstance(payload.get("commands"), dict) else {}
-    improvement = (
-        readiness.get("improvement_summary")
-        if isinstance(readiness.get("improvement_summary"), dict)
-        else {}
-    )
-    participation_gap = (
-        collective_rounds.get("full_participation_requirement_gap")
-        if isinstance(collective_rounds.get("full_participation_requirement_gap"), dict)
-        else {}
-    )
+    worker_loop = _dict_value(payload, "worker_loop")
+    user_contract = _dict_value(payload, "user_contract")
+    language_payload = _dict_value(user_contract, "output_language")
+    tonight = _dict_value(payload, "tonight_experience")
+    supervisor = _dict_value(payload, "supervisor")
+    preset = _dict_value(supervisor, "preset")
+    minimal_recipe = _dict_value(preset, "minimal_a2a_recipe")
+    if not minimal_recipe:
+        minimal_recipe = build_auto_research_minimal_a2a_recipe(
+            open_question=user_contract.get("open_question"),
+            output_language=str(language_payload.get("resolved") or payload.get("output_language") or "en"),
+        )
+    route = _dict_value(payload, "route_contract")
+    live = _dict_value(payload, "visible_worker_proof")
+    pane_rounds = _dict_value(payload, "visible_pane_a2a_rounds")
+    collective_rounds = _dict_value(payload, "collective_research_rounds")
+    readiness = _dict_value(payload, "visible_readiness")
+    contract_acceptance = _dict_value(payload, "contract_acceptance")
+    commands = _dict_value(payload, "commands")
+    improvement = _dict_value(readiness, "improvement_summary")
+    participation_gap = _dict_value(collective_rounds, "full_participation_requirement_gap")
     role_cycle_shortfall = participation_gap.get("shortfall_by_agent") or {}
     lines = [
         "# LoopX Auto Research Minimal E2E Demo",
@@ -550,39 +505,15 @@ def _render_live_evidence(payload: dict[str, object]) -> str:
 
 def _render_supervisor(payload: dict[str, object]) -> str:
     lanes = payload.get("lanes") if isinstance(payload.get("lanes"), list) else []
-    preset = payload.get("preset") if isinstance(payload.get("preset"), dict) else {}
-    minimal_recipe = (
-        preset.get("minimal_a2a_recipe")
-        if isinstance(preset.get("minimal_a2a_recipe"), dict)
-        else {}
-    )
-    route = payload.get("goal_surface_route") if isinstance(payload.get("goal_surface_route"), dict) else {}
-    boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
-    coordination = (
-        payload.get("coordination_model")
-        if isinstance(payload.get("coordination_model"), dict)
-        else {}
-    )
-    runner = (
-        payload.get("runner_contract")
-        if isinstance(payload.get("runner_contract"), dict)
-        else {}
-    )
-    tmux_lifecycle = (
-        runner.get("tmux_lifecycle")
-        if isinstance(runner.get("tmux_lifecycle"), dict)
-        else {}
-    )
-    one_click = (
-        payload.get("one_click_demo")
-        if isinstance(payload.get("one_click_demo"), dict)
-        else {}
-    )
-    cli_contract = (
-        payload.get("cli_contract")
-        if isinstance(payload.get("cli_contract"), dict)
-        else {}
-    )
+    preset = _dict_value(payload, "preset")
+    minimal_recipe = _dict_value(preset, "minimal_a2a_recipe")
+    route = _dict_value(payload, "goal_surface_route")
+    boundary = _dict_value(payload, "boundary")
+    coordination = _dict_value(payload, "coordination_model")
+    runner = _dict_value(payload, "runner_contract")
+    tmux_lifecycle = _dict_value(runner, "tmux_lifecycle")
+    one_click = _dict_value(payload, "one_click_demo")
+    cli_contract = _dict_value(payload, "cli_contract")
     lines = [
         "# LoopX Auto Research Demo Supervisor",
         "",
@@ -607,11 +538,7 @@ def _render_supervisor(payload: dict[str, object]) -> str:
     for lane in lanes:
         if not isinstance(lane, dict):
             continue
-        profile = (
-            lane.get("role_profile")
-            if isinstance(lane.get("role_profile"), dict)
-            else {}
-        )
+        profile = _dict_value(lane, "role_profile")
         lines.append(
             f"- `{lane.get('lane_id')}` agent `{lane.get('agent_id')}` role `{lane.get('role_id')}`"
         )
@@ -655,12 +582,8 @@ def _render_supervisor(payload: dict[str, object]) -> str:
 
 
 def _render_evidence_packet(payload: dict[str, object]) -> str:
-    hypothesis = payload.get("hypothesis") if isinstance(payload.get("hypothesis"), dict) else {}
-    summary = (
-        payload.get("evidence_summary")
-        if isinstance(payload.get("evidence_summary"), dict)
-        else {}
-    )
+    hypothesis = _dict_value(payload, "hypothesis")
+    summary = _dict_value(payload, "evidence_summary")
     lines = [
         "# LoopX Auto Research Evidence Packet",
         "",

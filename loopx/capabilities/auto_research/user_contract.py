@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shlex
-from typing import Any
 
 AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION = "auto_research_user_contract_v0"
 
@@ -18,20 +17,12 @@ def infer_auto_research_output_language(
     return "zh" if any("\u4e00" <= char <= "\u9fff" for char in question) else "en"
 
 
-def _language_flag(question: str, *, output_language: str) -> str:
-    resolved = infer_auto_research_output_language(
-        question,
-        output_language=output_language,
-    )
-    return f" --language {shlex.quote(resolved)}" if resolved != "en" else ""
-
-
 def build_auto_research_user_contract(
     open_question: str,
     *,
     max_todos: int = 5,
     output_language: str = "auto",
-) -> dict[str, Any]:
+) -> dict[str, object]:
     question = " ".join(str(open_question or "").strip().split())
     if not question:
         raise ValueError('auto-research requires an open question, e.g. loopx auto-research "..."')
@@ -50,7 +41,7 @@ def build_auto_research_user_contract(
             ("P2", "Summarize gates and unresolved evidence gaps without expanding the user contract.", "auto_research_preset"),
         ][:todo_limit]
     ]
-    language_flag = _language_flag(question, output_language=resolved_language)
+    language_flag = f" --language {shlex.quote(resolved_language)}" if resolved_language != "en" else ""
     start_command = (
         f"loopx auto-research start {shlex.quote(question)}{language_flag} --execute"
     )
