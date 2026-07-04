@@ -8,11 +8,16 @@ import os
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.status_projection_cache import write_status_projection_cache
+
 GOAL_ID = "status-projection-cache-fixture"
 AGENT_ID = "codex-main-control"
 PRIVATE_DOC_MARKER = "https://" + "la" + "rk" + "office.example/doc"
@@ -239,6 +244,25 @@ def main() -> int:
         cache_dir = runtime / "status-projection-cache"
         assert cache_dir.exists(), cache_dir
         assert list(cache_dir.glob("*.json")), cache_dir
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            writes = list(
+                executor.map(
+                    lambda index: write_status_projection_cache(
+                        registry_path=registry_path,
+                        runtime_root=runtime,
+                        scan_roots=[public_doc],
+                        limit=5,
+                        include_task_graph=False,
+                        goal_id=GOAL_ID,
+                        payload={"ok": True, "concurrent_write": index},
+                        max_age_seconds=120,
+                    ),
+                    range(16),
+                )
+            )
+        assert all(item.get("written") is True for item in writes), writes
+        concurrent_cache_path = Path(str(writes[-1]["path"]))
+        assert json.loads(concurrent_cache_path.read_text(encoding="utf-8"))["payload"]["ok"] is True
 
     print("status-projection-cache-smoke ok")
     return 0

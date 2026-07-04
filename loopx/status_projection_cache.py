@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -197,12 +199,18 @@ def write_status_projection_cache(
         "generated_at": now_utc_iso(),
         "payload": stored_payload,
     }
-    temp_path = path.with_suffix(".tmp")
-    temp_path.write_text(
-        json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    temp_path.replace(path)
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(
+            json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temp_path.replace(path)
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
     metadata.update(
         {
             "hit": False,
