@@ -328,6 +328,7 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "official_score_missing",
         "official_result_json_materialized",
         "case_attempt_budget_should_count",
+        "setup_stall_timeout_capped",
         "runner_launch_preflight_passed",
         "apt_setup_risk_detected",
         "apt_retry_patch_required",
@@ -352,6 +353,8 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "trajectory_tool_call_count",
         "loopx_cli_call_count",
         "round_reward_count",
+        "setup_stall_timeout_requested_sec",
+        "setup_stall_timeout_sec",
         "progress_completed_trials",
         "progress_errored_trials",
     ):
