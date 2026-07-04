@@ -86,7 +86,6 @@ def main() -> int:
         open_todo_items=open_todo_items,
         todo_item_is_actionable_open=todo_item_is_actionable_open,
         normalize_todo_text=normalize_todo_text,
-        limit=6,
     )
     assert direct_backlog == backlog, (direct_backlog, backlog)
     status_payload = {

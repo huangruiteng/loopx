@@ -70,6 +70,7 @@ from .control_plane.handoff.project_handoff import (
     project_asset_handoff_state as _project_asset_handoff_state_read_model,
 )
 from .control_plane.work_items.autonomous_candidates import (
+    MAX_AUTONOMOUS_TODO_CANDIDATES as _MAX_AUTONOMOUS_TODO_CANDIDATES,
     autonomous_backlog_candidates as _autonomous_backlog_candidates_read_model,
     autonomous_monitor_candidates as _autonomous_monitor_candidates_read_model,
     autonomous_priority_label as _autonomous_priority_label,
@@ -554,7 +555,7 @@ MAX_TODO_VISIBILITY_LANE_ITEMS = _TODO_SUMMARY_MAX_TODO_VISIBILITY_LANE_ITEMS
 MAX_DEFERRED_TODO_VISIBILITY_ITEMS = _TODO_SUMMARY_MAX_DEFERRED_TODO_VISIBILITY_ITEMS
 MAX_MONITOR_DUE_ITEMS = _TODO_SUMMARY_MAX_MONITOR_DUE_ITEMS
 MAX_DEPENDENCY_BLOCKERS = _TODO_SUMMARY_MAX_DEPENDENCY_BLOCKERS
-MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
+MAX_AUTONOMOUS_BACKLOG_CANDIDATES = _MAX_AUTONOMOUS_TODO_CANDIDATES
 MAX_SUBAGENT_SCOPE_ITEMS = 4
 MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = 3
 MAX_AUTONOMOUS_REPLAN_TRIGGERS = 3

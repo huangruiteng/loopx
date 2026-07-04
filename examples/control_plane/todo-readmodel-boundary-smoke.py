@@ -159,7 +159,6 @@ def assert_autonomous_candidate_parity() -> None:
         todo_item_is_actionable_open=status_module.todo_item_is_actionable_open,
         normalize_todo_text=status_module.normalize_todo_text,
         advancement_task_class=status_module.TODO_TASK_CLASS_ADVANCEMENT,
-        limit=status_module.MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
     )
     assert status_module.autonomous_monitor_candidates(items) == autonomous_read_model.autonomous_monitor_candidates(
         items,
@@ -168,7 +167,6 @@ def assert_autonomous_candidate_parity() -> None:
         normalize_todo_text=status_module.normalize_todo_text,
         monitor_task_class=status_module.TODO_TASK_CLASS_MONITOR,
         monitor_signal_waiting_on=status_module.MONITOR_SIGNAL_WAITING_ON,
-        limit=status_module.MAX_AUTONOMOUS_BACKLOG_CANDIDATES,
     )
 
 

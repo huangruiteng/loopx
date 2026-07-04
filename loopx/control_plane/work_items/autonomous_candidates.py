@@ -7,6 +7,8 @@ from ...todo_contract import normalize_todo_action_kind, normalize_todo_task_cla
 
 
 AUTONOMOUS_PRIORITY_PATTERN = re.compile(r"^\s*\[(P[0-4][^\]]*)\]\s*(.+)$", re.I)
+MAX_AUTONOMOUS_TODO_CANDIDATES = 6
+MAX_AUTONOMOUS_BACKLOG_CANDIDATES = MAX_AUTONOMOUS_TODO_CANDIDATES
 
 
 def autonomous_priority_label(text: str) -> str | None:
@@ -33,7 +35,7 @@ def autonomous_todo_candidates(
     todo_item_is_actionable_open: Callable[[dict[str, Any]], bool],
     normalize_todo_text: Callable[..., str],
     allowed_waiting_on: set[str] | None = None,
-    limit: int,
+    limit: int = MAX_AUTONOMOUS_TODO_CANDIDATES,
 ) -> dict[str, Any] | None:
     allowed_waiting_on = allowed_waiting_on or {"codex"}
     candidates: list[dict[str, Any]] = []
@@ -100,7 +102,7 @@ def autonomous_backlog_candidates(
     todo_item_is_actionable_open: Callable[[dict[str, Any]], bool],
     normalize_todo_text: Callable[..., str],
     advancement_task_class: str,
-    limit: int,
+    limit: int = MAX_AUTONOMOUS_TODO_CANDIDATES,
 ) -> dict[str, Any] | None:
     return autonomous_todo_candidates(
         items,
@@ -120,7 +122,7 @@ def autonomous_monitor_candidates(
     normalize_todo_text: Callable[..., str],
     monitor_task_class: str,
     monitor_signal_waiting_on: str,
-    limit: int,
+    limit: int = MAX_AUTONOMOUS_TODO_CANDIDATES,
 ) -> dict[str, Any] | None:
     return autonomous_todo_candidates(
         items,
