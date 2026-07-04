@@ -16,7 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.policies.scheduler_hint import build_scheduler_hint  # noqa: E402
+from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint  # noqa: E402
+from loopx.policies import scheduler_hint as legacy_scheduler_hint  # noqa: E402
 from loopx.quota import AgentScopeFrontierAction  # noqa: E402
 from loopx.scheduler_state import SCHEDULER_STATE_SCHEMA_VERSION  # noqa: E402
 from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK  # noqa: E402
@@ -408,6 +409,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
 
 
 def main() -> int:
+    assert legacy_scheduler_hint.build_scheduler_hint is build_scheduler_hint
     assert_policy_state_progression()
     assert_active_work_keeps_initial_cadence()
     assert_cli_scheduler_ack_progression()

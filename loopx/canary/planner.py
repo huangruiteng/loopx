@@ -316,7 +316,10 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "blocks_agent",
             "unblocks_todo_id",
             "successor",
+            "loopx/control_plane/scheduler/monitor_todo.py",
+            "loopx/control_plane/scheduler/scheduler_hint.py",
             "loopx/policies/monitor_todo.py",
+            "loopx/policies/scheduler_hint.py",
             "loopx/todo_handoff_gate.py",
         ),
         "checks": [

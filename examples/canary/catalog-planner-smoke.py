@@ -174,7 +174,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     )
 
     work_lane_policy_payload = build_catalog_canary_plan(
-        changed_files=["loopx/policies/monitor_todo.py"],
+        changed_files=["loopx/control_plane/scheduler/monitor_todo.py"],
         surfaces=["resume_when resume_ready work-lane policy seam"],
         max_checks_per_profile=4,
     )

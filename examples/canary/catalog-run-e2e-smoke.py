@@ -81,7 +81,7 @@ def assert_install_update_preview_stays_dashboard_free() -> None:
 
 def assert_domain_checks_precede_family_checks() -> None:
     payload = build_catalog_canary_run(
-        changed_files=["loopx/policies/monitor_todo.py"],
+        changed_files=["loopx/control_plane/scheduler/monitor_todo.py"],
         surfaces=["resume_when work-lane policy seam"],
         max_checks_per_family=1,
         max_checks_per_profile=3,

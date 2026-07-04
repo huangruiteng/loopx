@@ -61,7 +61,7 @@ from .control_plane.goals.goal_frontier import (
 )
 from .policies.goal_route_hint import build_goal_route_hint
 from .policies.outcome_followthrough import build_outcome_followthrough_hint
-from .policies.scheduler_hint import (
+from .control_plane.scheduler.scheduler_hint import (
     build_codex_app_scheduler_ack_event,
     build_scheduler_hint,
     normalize_scheduler_rrule,
