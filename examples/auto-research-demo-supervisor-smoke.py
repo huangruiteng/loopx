@@ -185,6 +185,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         ), profile
         assert profile["default_kernel_skills_owner"] == "generic_multi_agent_kernel", profile
         assert profile["fixed_a2a_wake_prompt_owner"] == "generic_multi_agent_kernel", profile
+        assert profile["output_language"] in {"en", "zh"}, profile
+        assert lane["output_language"] == profile["output_language"], lane
         assert profile["worker_skill_source"].endswith("auto_research/worker_skill/SKILL.md"), profile
         assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile
@@ -218,11 +220,15 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
 
         command = lane["visible_launch_command"]
         assert "LOOPX_PANE_A2A_TICK" in command, lane
+        assert "LOOPX_PANE_BOOTSTRAP_PROMPT" in command, lane
+        assert "LOOPX_ROLE_PROFILE_ARTIFACT" in command, lane
         assert "LOOPX_PANE_WORKER_TURN" in command, lane
         assert "LOOPX_PANE_TICK_ROUNDS=3" in command, lane
         assert "LOOPX_PANE_TICK_SLEEP_SECONDS=3" in command, lane
         assert "pane-a2a-tick.output.txt" in command, lane
         assert "auto-research worker-turn" in command, lane
+        assert "LOOPX_AUTO_RESEARCH_OUTPUT_LANGUAGE" in command, lane
+        assert "LOOPX_PANE_LOOPX_JSON" in command, lane
         assert "--visible-lanes-accepted" in command, lane
         assert "LOOPX_VISIBLE_LANE_COUNT" in command, lane
         assert "live-codex-e2e-evidence.public.json" in command, lane
@@ -335,7 +341,9 @@ def main() -> int:
     payload = build_auto_research_demo_supervisor_plan(
         goal_id=GOAL_ID,
         agent_specs=LANES,
+        output_language="zh",
     )
+    assert payload["auto_research"]["output_language"] == "zh", payload
     assert_supervisor_contract(payload)
 
     try:

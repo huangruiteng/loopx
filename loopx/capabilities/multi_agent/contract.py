@@ -27,6 +27,7 @@ PANE_LOCAL_A2A_WAKEUP_PROMPT = (
     "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
     "if no runnable frontier remains, stay quiet with a brief no-action note; "
     "if advanced, summarize public evidence and next handoff. "
+    "Honor the role prompt's human output language for summaries while keeping machine artifact schema keys unchanged. "
     "Do not ask the broadcaster for direction; LoopX state is the source of truth."
 )
 
@@ -113,6 +114,7 @@ def generic_role_prompt(
     scope: str,
     handoff_hints: list[str],
     skill_name: str | None,
+    output_language: str | None = None,
 ) -> str:
     lines = [
         "LoopX multi-agent role",
@@ -124,6 +126,19 @@ def generic_role_prompt(
         lines.extend(["", "Scope:", scope])
     if skill_name:
         lines.extend(["", "Local skill:", f"Use ${skill_name} when it applies to this role."])
+    if output_language:
+        language_label = "Chinese" if output_language == "zh" else "English"
+        lines.extend(
+            [
+                "",
+                "Human output language:",
+                (
+                    f"- Use {language_label} for human-readable progress, summaries, "
+                    "and blockers in this pane."
+                ),
+                "- Keep LoopX commands, schema keys, todo ids, and artifact filenames unchanged.",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -269,6 +284,7 @@ def build_tui_multi_agent_runner_contract(
             "role_identity": [
                 "LOOPX_ROLE_ID",
                 "LOOPX_ROLE_PROFILE_REF",
+                "LOOPX_ROLE_PROFILE_ARTIFACT",
                 "LOOPX_GOAL_ID",
                 "LOOPX_AGENT_ID",
             ],
@@ -277,6 +293,7 @@ def build_tui_multi_agent_runner_contract(
                 "LOOPX_PANE_LOOPX_JSON",
                 "LOOPX_PANE_ARTIFACT_DIR",
                 "LOOPX_PANE_A2A_TICK",
+                "LOOPX_PANE_BOOTSTRAP_PROMPT",
                 "LOOPX_PANE_TICK_SUMMARY",
                 "LOOPX_PANE_TICK_OUTPUT_ARTIFACT",
                 "LOOPX_PANE_WORKER_TURN",

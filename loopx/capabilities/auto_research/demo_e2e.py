@@ -230,6 +230,7 @@ def _command_text(
     live_evidence: bool = False,
     wake_visible_after_launch: bool = False,
     tracking_goal_id: str | None = None,
+    output_language: str = "en",
 ) -> str:
     parts = [
         shlex.quote(cli_bin),
@@ -244,6 +245,8 @@ def _command_text(
     ]
     if tracking_goal_id:
         parts.extend(["--tracking-goal-id", shlex.quote(tracking_goal_id)])
+    if output_language and output_language != "en":
+        parts.extend(["--language", shlex.quote(output_language)])
     if execute:
         parts.append("--execute")
     if run_worker_loop:
@@ -275,6 +278,7 @@ def _start_command_text(
     headless: bool = False,
     no_attach: bool = False,
     wake_visible_after_launch: bool = False,
+    output_language: str = "en",
 ) -> str:
     parts = [
         shlex.quote(cli_bin),
@@ -284,6 +288,8 @@ def _start_command_text(
     ]
     if execute:
         parts.append("--execute")
+    if output_language and output_language != "en":
+        parts.extend(["--language", shlex.quote(output_language)])
     if headless:
         parts.append("--headless")
     if no_attach:
@@ -863,6 +869,7 @@ def run_auto_research_demo_e2e(
     codex_bin: str,
     tmux_bin: str,
     reasoning_effort: str,
+    output_language: str,
     live_evidence_path: str | None,
     append_evidence: AppendEvidence,
     visible_launcher: VisibleLauncher | None = None,
@@ -896,7 +903,10 @@ def run_auto_research_demo_e2e(
     effective_agent_specs = list(agent_specs or [])
     if (run_worker_loop or launch_visible) and not effective_agent_specs:
         effective_agent_specs = default_auto_research_agent_specs()
-    user_contract = build_auto_research_user_contract(objective)
+    user_contract = build_auto_research_user_contract(
+        objective,
+        output_language=output_language,
+    )
     contract_acceptance = _contract_acceptance(user_contract)
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,
@@ -906,6 +916,7 @@ def run_auto_research_demo_e2e(
         codex_bin=codex_bin,
         tmux_bin=tmux_bin,
         reasoning_effort=reasoning_effort,
+        output_language=output_language,
     )
     execution_kind = (
         "loopx_worker_loop"
@@ -950,6 +961,7 @@ def run_auto_research_demo_e2e(
         },
         "agent_id": agent_id,
         "reasoning_effort": reasoning_effort,
+        "output_language": output_language,
         "user_contract": user_contract,
         "contract_acceptance": contract_acceptance,
         "commands": {
@@ -961,15 +973,18 @@ def run_auto_research_demo_e2e(
                 cli_bin=cli_bin,
                 objective=objective,
                 execute=True,
+                output_language=output_language,
             ),
             "one_question_start_preview": _start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
+                output_language=output_language,
             ),
             "one_question_start_with_visible_wake": _start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
                 execute=True,
+                output_language=output_language,
             ),
             "one_command_worker_loop": _command_text(
                 cli_bin=cli_bin,
@@ -978,6 +993,7 @@ def run_auto_research_demo_e2e(
                 execute=True,
                 run_worker_loop=True,
                 tracking_goal_id=tracking_goal or None,
+                output_language=output_language,
             ),
             "headless_worker_loop": _command_text(
                 cli_bin=cli_bin,
@@ -987,6 +1003,7 @@ def run_auto_research_demo_e2e(
                 run_worker_loop=True,
                 headless=True,
                 tracking_goal_id=tracking_goal or None,
+                output_language=output_language,
             ),
             "start_visible_lanes_without_attach": _command_text(
                 cli_bin=cli_bin,
@@ -996,6 +1013,7 @@ def run_auto_research_demo_e2e(
                 launch_visible=True,
                 no_attach=True,
                 tracking_goal_id=tracking_goal or None,
+                output_language=output_language,
             ),
             "one_command_visible_wake_demo": _command_text(
                 cli_bin=cli_bin,
@@ -1006,6 +1024,7 @@ def run_auto_research_demo_e2e(
                 no_attach=True,
                 wake_visible_after_launch=True,
                 tracking_goal_id=tracking_goal or None,
+                output_language=output_language,
             ),
             "one_command_worker_loop_with_visible_lanes": _command_text(
                 cli_bin=cli_bin,
@@ -1016,6 +1035,7 @@ def run_auto_research_demo_e2e(
                 launch_visible=True,
                 attach=True,
                 tracking_goal_id=tracking_goal or None,
+                output_language=output_language,
             ),
             "load_live_worker_evidence": _command_text(
                 cli_bin=cli_bin,
@@ -1024,6 +1044,7 @@ def run_auto_research_demo_e2e(
                 execute=True,
                 live_evidence=True,
                 tracking_goal_id=tracking_goal or None,
+                output_language=output_language,
             ),
             "wake_visible_lanes": (
                 f"{shlex.quote(cli_bin)} --format json multi-agent wake --session-name "

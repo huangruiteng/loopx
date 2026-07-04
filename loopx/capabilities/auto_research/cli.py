@@ -29,7 +29,10 @@ from .worker_runtime import run_auto_research_worker_turn
 from .rollout_append import (
     append_auto_research_rollout_events as _append_auto_research_rollout_events,
 )
-from .user_contract import build_auto_research_user_contract
+from .user_contract import (
+    build_auto_research_user_contract,
+    infer_auto_research_output_language,
+)
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
@@ -194,6 +197,12 @@ def register_auto_research_commands(
         default=5,
         help="Maximum action-plan todos, capped at 5.",
     )
+    contract_parser.add_argument(
+        "--language",
+        choices=["auto", "zh", "en"],
+        default="auto",
+        help="Human-readable output language for the research process.",
+    )
 
     start_parser = auto_research_sub.add_parser(
         "start",
@@ -201,6 +210,12 @@ def register_auto_research_commands(
     )
     add_subcommand_format(start_parser)
     start_parser.add_argument("open_question", help="Quoted open research question.")
+    start_parser.add_argument(
+        "--language",
+        choices=["auto", "zh", "en"],
+        default="auto",
+        help="Human-readable output language for visible role panes.",
+    )
     start_parser.add_argument(
         "--execute",
         action="store_true",
@@ -568,6 +583,12 @@ def register_auto_research_commands(
         help="Reasoning effort passed to visible Codex lanes through model_reasoning_effort.",
     )
     demo_supervisor_parser.add_argument(
+        "--language",
+        choices=["auto", "zh", "en"],
+        default="auto",
+        help="Human-readable output language for visible role panes.",
+    )
+    demo_supervisor_parser.add_argument(
         "--execute",
         action="store_true",
         help=(
@@ -659,6 +680,12 @@ def register_auto_research_commands(
         "--objective",
         default=AUTO_RESEARCH_DEFAULT_OBJECTIVE,
         help="Compact public-safe research objective for the generated contract.",
+    )
+    demo_e2e_parser.add_argument(
+        "--language",
+        choices=["auto", "zh", "en"],
+        default="auto",
+        help="Human-readable output language for visible role panes.",
     )
     demo_e2e_parser.add_argument(
         "--output-dir",
@@ -862,6 +889,7 @@ def handle_auto_research_command(
             payload = build_auto_research_user_contract(
                 args.open_question,
                 max_todos=args.max_todos,
+                output_language=args.language,
             )
         elif args.auto_research_command == "start":
             if args.no_attach and args.attach:
@@ -876,6 +904,10 @@ def handle_auto_research_command(
                 goal_id=args.goal_id,
                 demo_run_id=args.demo_run_id,
                 inherit_default_goal=False,
+            )
+            output_language = infer_auto_research_output_language(
+                args.open_question,
+                output_language=args.language,
             )
 
             def append_start_evidence(packet_path: str) -> dict[str, object]:
@@ -951,6 +983,7 @@ def handle_auto_research_command(
                 codex_bin=args.codex_bin,
                 tmux_bin=args.tmux_bin,
                 reasoning_effort=args.reasoning_effort,
+                output_language=output_language,
                 live_evidence_path=None,
                 append_evidence=append_start_evidence,
                 visible_launcher=visible_launcher,
@@ -1099,6 +1132,10 @@ def handle_auto_research_command(
                 codex_bin=args.codex_bin,
                 tmux_bin=args.tmux_bin,
                 reasoning_effort=args.reasoning_effort,
+                output_language=infer_auto_research_output_language(
+                    "",
+                    output_language=args.language,
+                ),
             )
             payload["goal_surface_route"] = {
                 "schema_version": "auto_research_demo_goal_surface_v0",
@@ -1218,6 +1255,10 @@ def handle_auto_research_command(
                 codex_bin=args.codex_bin,
                 tmux_bin=args.tmux_bin,
                 reasoning_effort=args.reasoning_effort,
+                output_language=infer_auto_research_output_language(
+                    args.objective,
+                    output_language=args.language,
+                ),
                 live_evidence_path=args.live_evidence,
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,

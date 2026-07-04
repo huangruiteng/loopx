@@ -430,9 +430,11 @@ def build_visible_lane_command(
         'chmod +x "$LOOPX_PROJECT/.local/bin/loopx"; '
         'chmod +x "$LOOPX_PROJECT/.local/bin/loopx-json"; '
         'chmod +x "$LOOPX_PROJECT/.local/bin/loopx-pane-a2a-tick"; '
+        'chmod +x "$LOOPX_PROJECT/.local/bin/loopx-build-codex-bootstrap-prompt"; '
         'export LOOPX_PANE_LOOPX="$LOOPX_PROJECT/.local/bin/loopx"; '
         'export LOOPX_PANE_LOOPX_JSON="$LOOPX_PROJECT/.local/bin/loopx-json"; '
         'export LOOPX_PANE_A2A_TICK="$LOOPX_PROJECT/.local/bin/loopx-pane-a2a-tick"; '
+        'export LOOPX_PANE_BOOTSTRAP_PROMPT="$LOOPX_PROJECT/.local/bin/loopx-build-codex-bootstrap-prompt"; '
         'export LOOPX_VISIBLE_FORCE_MARKDOWN="${LOOPX_VISIBLE_FORCE_MARKDOWN:-1}"; '
         'export PATH="$LOOPX_PROJECT/.local/bin:$PATH"; '
     )
@@ -481,6 +483,7 @@ def build_visible_lane_command(
         "printf '\\n[LoopX pane A2A blocked]\\n'; "
         "printf 'tick_exit=%s artifact=%s\\n' \"$PANE_A2A_TICK_STATUS\" \"$LOOPX_PANE_TICK_OUTPUT_ARTIFACT\"; "
         "fi; "
+        '"$LOOPX_PANE_BOOTSTRAP_PROMPT" "$BOOTSTRAP_ARTIFACT"; '
         "export LOOPX_CODEX_TUI_MODE=interactive; "
         "export LOOPX_CODEX_TUI_PROMPT_ARTIFACT=\"$BOOTSTRAP_ARTIFACT\"; "
         f"{codex_exec_env}"
@@ -668,6 +671,15 @@ def build_visible_multi_agent_payload_from_spec(
         reasoning_effort = str(raw_role.get("reasoning_effort") or default_reasoning_effort)
         worker_turn_command = str(raw_role.get("worker_turn_command") or "").strip()
         worker_loop_command = str(raw_role.get("worker_loop_command") or "").strip()
+        output_language = str(
+            raw_role.get("output_language")
+            or (
+                raw_role.get("role_profile", {}).get("output_language")
+                if isinstance(raw_role.get("role_profile"), dict)
+                else ""
+            )
+            or ""
+        ).strip()
         tick_rounds = _positive_int_value(
             raw_role.get("tick_rounds") or raw_role.get("auto_tick_rounds"),
             default=1,
@@ -686,8 +698,9 @@ def build_visible_multi_agent_payload_from_spec(
         role_profile_json = json.dumps(role_profile, ensure_ascii=False, sort_keys=True)
         role_profile_command = (
             "mkdir -p \"$LOOPX_VISIBLE_ARTIFACT_DIR\"; "
+            f"export LOOPX_ROLE_PROFILE_ARTIFACT=\"$LOOPX_VISIBLE_ARTIFACT_DIR/{lane_slug}.role-profile.public.json\"; "
             f"printf '%s\\n' {_q(role_profile_json)} "
-            f"> \"$LOOPX_VISIBLE_ARTIFACT_DIR/{lane_slug}.role-profile.public.json\"; "
+            "> \"$LOOPX_ROLE_PROFILE_ARTIFACT\"; "
         )
         prompt = _generic_role_prompt(
             goal_id=goal_id,
@@ -696,6 +709,7 @@ def build_visible_multi_agent_payload_from_spec(
             scope=scope,
             handoff_hints=handoff_hints,
             skill_name=skill_profile.get("required_skill"),
+            output_language=output_language or None,
         )
         bootstrap_command = f"printf '%s\\n' {_q(prompt)}"
         lane = {
@@ -707,6 +721,7 @@ def build_visible_multi_agent_payload_from_spec(
             "handoff_hints": handoff_hints,
             "role_profile": role_profile,
             "role_profile_ref": role_profile_ref,
+            "output_language": output_language or None,
             "quota_guard": (
                 "mkdir -p \"$LOOPX_PANE_ARTIFACT_DIR\" && "
                 "$LOOPX_PANE_LOOPX_JSON quota should-run "
@@ -767,6 +782,7 @@ def build_visible_multi_agent_payload_from_spec(
                     "scope",
                     "skill",
                     "handoff_hints",
+                    "output_language",
                     "reasoning_effort",
                     "worker_turn_command",
                     "worker_loop_command",

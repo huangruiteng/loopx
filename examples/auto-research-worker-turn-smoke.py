@@ -235,6 +235,7 @@ def main() -> int:
             codex_bin="codex",
             tmux_bin="tmux",
             reasoning_effort="high",
+            output_language="en",
             live_evidence_path=None,
             append_evidence=fake_append_evidence,
             visible_launcher=fake_visible_launcher,
@@ -409,6 +410,17 @@ def main() -> int:
             complete=True,
         )
         assert cleanup["mode"] == "execute", cleanup
+        if cleanup["selected_action"] == "write_evaluation_summary":
+            assert cleanup["artifact_status"] == "evaluation_summary_written", cleanup
+            assert cleanup["claim_allowed"] is True, cleanup
+            cleanup = run_worker_turn(
+                registry=four_registry,
+                runtime_root=four_runtime_root,
+                workspace=four_workspace,
+                agent_id=VERIFIER_AGENT_ID,
+                execute=True,
+                complete=True,
+            )
         assert cleanup["selected_action"] == "advance_todo", cleanup
         assert cleanup["artifact_status"] == "satisfied_generic_handoff_closed", cleanup
         assert cleanup["completion"]["status"] == "done", cleanup

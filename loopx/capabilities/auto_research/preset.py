@@ -284,9 +284,16 @@ def auto_research_successor_specs_for_action(*, role_id: str, action: str) -> li
     ]
 
 
-def auto_research_worker_turn_command(*, goal_id: str, agent_id: str, objective: str) -> str:
+def auto_research_worker_turn_command(
+    *,
+    goal_id: str,
+    agent_id: str,
+    objective: str,
+    output_language: str = "en",
+) -> str:
     return (
-        "$LOOPX_PANE_LOOPX auto-research worker-turn "
+        f"LOOPX_AUTO_RESEARCH_OUTPUT_LANGUAGE={shlex.quote(output_language)} "
+        '"${LOOPX_PANE_LOOPX_JSON:-$LOOPX_PANE_LOOPX}" auto-research worker-turn '
         f"--goal-id {shlex.quote(goal_id)} "
         f"--agent-id {shlex.quote(agent_id)} "
         f"--objective {shlex.quote(objective)} "
@@ -318,6 +325,7 @@ def build_auto_research_preset_role(
     lane: dict[str, str],
     goal_id: str = AUTO_RESEARCH_DEFAULT_GOAL_ID,
     reasoning_effort: str = "high",
+    output_language: str = "en",
 ) -> dict[str, object]:
     role_id = lane["role_id"]
     agent_id = lane["agent_id"]
@@ -326,12 +334,14 @@ def build_auto_research_preset_role(
         goal_id=goal_id,
         agent_id=agent_id,
     )
+    role_profile["output_language"] = output_language
     return {
         "agent_id": agent_id,
         "lane_id": lane["lane_id"],
         "role_id": role_id,
         "scope": lane["scope"],
         "responsibility": lane["scope"],
+        "output_language": output_language,
         "role_profile_ref": f"{AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION}:{role_id}",
         "role_profile": role_profile,
         "skill": {
@@ -343,6 +353,7 @@ def build_auto_research_preset_role(
             goal_id=goal_id,
             agent_id=agent_id,
             objective="Run the next bounded auto-research frontier item.",
+            output_language=output_language,
         ),
         "tick_rounds": AUTO_RESEARCH_DEMO_TICK_ROUNDS,
         "tick_sleep_seconds": AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS,

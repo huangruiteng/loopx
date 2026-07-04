@@ -27,6 +27,7 @@ def build_auto_research_demo_supervisor_plan(
     codex_bin: str = "codex",
     tmux_bin: str = "tmux",
     reasoning_effort: str = "high",
+    output_language: str = "en",
 ) -> dict[str, Any]:
     """Build the auto-research visible TUI plan from a small role spec.
 
@@ -42,6 +43,7 @@ def build_auto_research_demo_supervisor_plan(
             lane=lane,
             goal_id=goal,
             reasoning_effort=reasoning_effort,
+            output_language=output_language,
         )
         for lane in lanes
     ]
@@ -87,6 +89,7 @@ def build_auto_research_demo_supervisor_plan(
                     "todo_evidence_status_protocol",
                 ],
                 "worker_turn_owner": "generic_multi_agent_kernel",
+                "output_language": output_language,
                 "presentation_layers_in_kernel": False,
             },
             "coordination_model": {

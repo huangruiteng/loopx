@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
     AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION,
     build_auto_research_user_contract,
+    infer_auto_research_output_language,
 )
 from loopx.capabilities.auto_research.cli import (  # noqa: E402
     _default_auto_research_start_workspace,
@@ -55,6 +56,7 @@ def assert_contract(payload: dict[str, Any]) -> None:
     assert payload["mode"] == "user_contract", payload
     assert payload["product_id"] == "auto-research", payload
     assert payload["open_question"] == QUESTION, payload
+    assert payload["output_language"]["resolved"] in {"en", "zh"}, payload
 
     layering = payload["layering"]
     assert layering["user_layer"] == "one open question", layering
@@ -69,6 +71,7 @@ def assert_contract(payload: dict[str, Any]) -> None:
         == 'loopx auto-research start "<open question>" --execute'
     )
     assert command_contract["user_required_inputs"] == ["open_question"], command_contract
+    assert command_contract["user_optional_inputs"] == ["output_language"], command_contract
     assert command_contract["max_action_plan_todos"] == 5, command_contract
     assert command_contract["auto_research_required_outputs"] == [
         "research_brief",
@@ -294,6 +297,12 @@ def assert_start_wake_contract() -> None:
 def main() -> None:
     payload = build_auto_research_user_contract(QUESTION)
     assert_contract(payload)
+    assert infer_auto_research_output_language("如何评估 multi-agent auto research 是否有收益?") == "zh"
+    zh_payload = build_auto_research_user_contract(
+        "如何评估 multi-agent auto research 是否有收益?"
+    )
+    assert zh_payload["output_language"]["resolved"] == "zh", zh_payload
+    assert " --language zh --execute" in zh_payload["one_click_start"]["command"], zh_payload
     assert_start_wake_contract()
     default_workspace = Path(
         _default_auto_research_start_workspace("loopx-auto-research-demo-smoke")

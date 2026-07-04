@@ -309,6 +309,7 @@ def main() -> int:
             codex_bin="codex",
             tmux_bin="tmux",
             reasoning_effort="medium",
+            output_language="en",
             live_evidence_path=None,
             append_evidence=lambda _path: {"ok": True},
             visible_launcher=visible_launcher,

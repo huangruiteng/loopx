@@ -45,6 +45,7 @@ def main() -> int:
             codex_bin="codex",
             tmux_bin="tmux",
             reasoning_effort="high",
+            output_language="en",
             live_evidence_path=None,
             append_evidence=lambda _packet: {},
         )

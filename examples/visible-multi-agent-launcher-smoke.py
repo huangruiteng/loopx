@@ -110,6 +110,12 @@ def main() -> int:
     assert "LOOPX_PANE_TICK_ROUNDS" in launcher_source
     assert "LOOPX_PANE_TICK_SUMMARY" in launcher_source
     assert "LOOPX_PANE_TICK_OUTPUT_ARTIFACT" in launcher_source
+    assert "LOOPX_PANE_BOOTSTRAP_PROMPT" in launcher_source
+    assert "loopx-build-codex-bootstrap-prompt" in runtime_source
+    assert "LoopX Agent Bootstrap Context" in runtime_source
+    assert "selected_todo_id" in runtime_source
+    assert "claim_allowed_rule" in runtime_source
+    assert "Honor the role prompt's human output language" in contract_source
     assert "The launcher runs `$LOOPX_PANE_A2A_TICK` before this Codex TUI opens." in contract_source
     assert "Treat `$LOOPX_PANE_TICK_SUMMARY` as previous evidence" in contract_source
     assert "not a gate that cancels later fixed wakes" in contract_source
@@ -599,6 +605,8 @@ def main() -> int:
                 capture_output=True,
                 text=True,
             )
+            prompt_artifact = temp / "bootstrap.prompt.txt"
+            prompt_artifact.write_text("planner prompt", encoding="utf-8")
             subprocess.run(
                 [sys.executable, "-c", _CODEX_TUI_EXEC_PY],
                 env={
@@ -606,7 +614,7 @@ def main() -> int:
                     "LOOPX_CODEX_BIN": str(fake_bin / "codex"),
                     "LOOPX_PROJECT": str(git_root_workspace),
                     "LOOPX_CODEX_REASONING_EFFORT": "high",
-                    "BOOTSTRAP_PROMPT": "planner prompt",
+                    "LOOPX_CODEX_TUI_PROMPT_ARTIFACT": str(prompt_artifact),
                     "LOOPX_CODEX_TRUST_WORKSPACE": "1",
                 },
                 check=True,
@@ -615,8 +623,7 @@ def main() -> int:
             )
             codex_args = json.loads(codex_argv_log.read_text(encoding="utf-8"))
             assert "-C" in codex_args and str(git_root_workspace) in codex_args, codex_args
-            assert "planner prompt" not in codex_args, codex_args
-            assert codex_args[-1] == str(git_root_workspace), codex_args
+            assert codex_args[-1] == "planner prompt", codex_args
             trust_args = [
                 item
                 for index, item in enumerate(codex_args)
