@@ -254,6 +254,24 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         for check in work_lane_profiles["control-plane-refactor"]["checks"]
     ), work_lane_profiles["control-plane-refactor"]
 
+    monitor_target_payload = build_catalog_canary_plan(
+        changed_files=["loopx/control_plane/scheduler/monitor_target.py"],
+        surfaces=["monitor_target scheduler_hint state-machine"],
+        max_checks_per_profile=5,
+    )
+    monitor_target_profiles = {
+        profile["id"]: profile for profile in monitor_target_payload["domain_profiles"]
+    }
+    assert "control-plane-refactor" in monitor_target_profiles, monitor_target_payload
+    assert "control-plane-state-machine" in monitor_target_profiles, monitor_target_payload
+    monitor_target_state_machine_commands = [
+        check["command"]
+        for check in monitor_target_profiles["control-plane-state-machine"]["checks"]
+    ]
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in (
+        monitor_target_state_machine_commands
+    ), monitor_target_profiles["control-plane-state-machine"]
+
     status_payload = build_catalog_canary_plan(
         changed_files=["loopx/status.py"],
         surfaces=["status --goal-id read-path"],
