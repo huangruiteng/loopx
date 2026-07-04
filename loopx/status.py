@@ -99,6 +99,9 @@ from .control_plane.goals.active_state_event_projection import (
 from .control_plane.todos.active_state_todos import (
     active_state_todo_fields as _active_state_todo_fields_read_model,
 )
+from .control_plane.todos.active_state_todo_parser import (
+    parse_active_state_todos as _parse_active_state_todos_read_model,
+)
 from .control_plane.work_items.attention_item import (
     attention_item as _attention_item_read_model,
 )
@@ -5932,92 +5935,14 @@ def parse_active_state_todos(
     rollout_events: list[dict[str, Any]] | None = None,
     item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
 ) -> dict[str, Any]:
-    role: str | None = None
-    source_sections: dict[str, str | None] = {"user": None, "agent": None}
-    items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
-    archive_items: list[dict[str, Any]] = []
-    archive_mode = False
-    archive_source_section: str | None = None
-    current_todo: dict[str, Any] | None = None
-
-    for line in state_text.splitlines():
-        if line.startswith("## "):
-            heading = line.lstrip("#").strip()
-            normalized_heading = heading.strip().lower()
-            archive_mode = any(
-                marker in normalized_heading for marker in TODO_ARCHIVE_HEADER_MARKERS
-            )
-            archive_source_section = heading if archive_mode else None
-            role = todo_role_for_heading(heading)
-            current_todo = None
-            if role and source_sections[role] is None:
-                source_sections[role] = heading
-            continue
-        if role is None and not archive_mode:
-            continue
-        match = TODO_TASK_PATTERN.match(line)
-        if match:
-            marker, text = match.groups()
-            status = todo_status_from_marker(marker)
-            target_items = archive_items if archive_mode else items[str(role)]
-            todo: dict[str, Any] = {
-                "index": len(target_items) + 1,
-                "done": todo_done_for_status(status),
-                "status": status,
-                "text": normalize_todo_text(text),
-            }
-            if archive_mode:
-                todo["archive_state"] = "archive"
-                todo["source_section"] = archive_source_section
-            else:
-                todo["archive_state"] = "active"
-                todo["source_section"] = source_sections[str(role)]
-                todo["role"] = role
-            if goal is not None:
-                materials = extract_review_materials(text, goal=goal, state_path=state_path)
-                if materials:
-                    todo["review_materials"] = materials
-            target_items.append(todo)
-            current_todo = todo
-            continue
-        if current_todo is None or not line.startswith((" ", "\t")):
-            continue
-        metadata = parse_todo_metadata_line(line)
-        if metadata:
-            current_todo.update(metadata)
-            continue
-        continuation = line.strip()
-        if continuation:
-            current_todo["text"] = normalize_todo_text(f"{current_todo.get('text', '')} {continuation}")
-
-    result: dict[str, Any] = {}
-    archived_resume_source_items = [
-        item for item in archive_items if normalize_todo_id(item.get("todo_id"))
-    ]
-    resume_source_items = [*items["user"], *items["agent"], *archived_resume_source_items]
-    user = compact_todo_group(
-        items["user"],
-        source_section=source_sections["user"],
-        role="user",
+    return _parse_active_state_todos_read_model(
+        state_text,
+        goal=goal,
+        state_path=state_path,
         preferred_todo_ids=preferred_todo_ids,
-        resume_source_items=resume_source_items,
         rollout_events=rollout_events,
         item_limit=item_limit,
     )
-    agent = compact_todo_group(
-        items["agent"],
-        source_section=source_sections["agent"],
-        role="agent",
-        preferred_todo_ids=preferred_todo_ids,
-        resume_source_items=resume_source_items,
-        rollout_events=rollout_events,
-        item_limit=item_limit,
-    )
-    if user:
-        result["user_todos"] = user
-    if agent:
-        result["agent_todos"] = agent
-    return result
 
 
 def state_event_log_candidates(goal: dict[str, Any], *, state_path: Path) -> list[Path]:

@@ -12,6 +12,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
+from loopx.control_plane.todos.active_state_todo_parser import (  # noqa: E402
+    parse_active_state_todos as parse_active_state_todos_read_model,
+)
 from loopx.projections.project_asset import build_project_asset_todo_summary  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.status import (  # noqa: E402
@@ -115,6 +118,7 @@ def parse_multiline_deep_open_todo() -> dict:
         f"- [ ] {THIRD_OPEN_TODO}\n"
         f"- [ ] {APPENDED_P0_TODO}\n"
     )
+    assert parse_active_state_todos(state_text) == parse_active_state_todos_read_model(state_text)
     group = parse_active_state_todos(state_text)["agent_todos"]
     assert len(group["items"]) == 12, group
     assert [item["index"] for item in group["items"][:3]] == [17, 14, 15], group
