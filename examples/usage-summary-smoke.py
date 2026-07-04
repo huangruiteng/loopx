@@ -15,7 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.status import collect_status  # noqa: E402
+from loopx import status as status_module  # noqa: E402
+from loopx.control_plane.quota.usage_summary import build_usage_summary as build_usage_summary_read_model  # noqa: E402
+from loopx.history import collect_history  # noqa: E402
 
 
 FORBIDDEN_USAGE_KEYS = {
@@ -183,10 +185,16 @@ def main() -> int:
             delivery_outcome="primary_goal_outcome",
         )
 
-        payload = collect_status(
+        payload = status_module.collect_status(
             registry_path=registry_path,
             runtime_root_override=str(runtime),
             scan_roots=[root / "project"],
+            limit=20,
+        )
+        history = collect_history(
+            registry_path=registry_path,
+            runtime_root=runtime,
+            goal_id=None,
             limit=20,
         )
         status_contract = payload["status_contract"]
@@ -196,6 +204,15 @@ def main() -> int:
         assert status_contract["reload_hint"] == "scripts/macos-dashboard-launchagent.sh restart", status_contract
 
         usage = payload["usage_summary"]
+        wrapper_usage = status_module.build_usage_summary(history)
+        direct_usage = build_usage_summary_read_model(
+            history,
+            parse_timestamp=status_module.parse_timestamp,
+        )
+        wrapper_usage["generated_at"] = usage["generated_at"]
+        direct_usage["generated_at"] = usage["generated_at"]
+        assert wrapper_usage == usage, (wrapper_usage, usage)
+        assert direct_usage == usage, (direct_usage, usage)
         totals = usage["totals"]
         assert usage["available"] is True, usage
         assert usage["source"] == "run_history", usage
