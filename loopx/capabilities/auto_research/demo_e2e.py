@@ -405,11 +405,15 @@ def _compact_visible_pane_a2a_rounds(artifacts: list[dict[str, object]]) -> dict
         "source": "visible_launcher_artifact",
         "coordination_model": "decentralized_state_a2a",
         "workflow_driver": False,
+        "round_unit": "pane_local_tick",
+        "research_round_unit": "collective_agent_pass",
+        "counts_as_collective_research_round": False,
         "lane_count": len(lanes),
         "rounds_completed_total": total_completed,
         "max_rounds_requested": max_requested,
         "max_rounds_completed": max_completed,
         "multi_round_verified": max_completed >= 2,
+        "pane_local_multi_tick_verified": max_completed >= 2,
         "lanes": lanes,
         "public_boundary": {
             "raw_logs_recorded": False,
@@ -419,6 +423,123 @@ def _compact_visible_pane_a2a_rounds(artifacts: list[dict[str, object]]) -> dict
             "local_workspace_path_redacted": True,
         },
     }
+
+
+def _build_collective_round_summary(
+    *,
+    source: str,
+    agent_count: int | None,
+    collective_round_count: int,
+    dev_metric: float | None,
+    holdout_metric: float | None,
+    evidence_event_count: int | None = None,
+) -> dict[str, object]:
+    baseline = 1.0
+    multi_round_research_verified = (
+        collective_round_count >= 2
+        and dev_metric is not None
+        and holdout_metric is not None
+        and dev_metric > baseline
+        and holdout_metric > dev_metric
+    )
+    return {
+        "schema_version": "auto_research_collective_round_summary_v0",
+        "loaded": collective_round_count > 0 or dev_metric is not None or holdout_metric is not None,
+        "source": source,
+        "round_unit": "collective_agent_pass",
+        "definition": (
+            "one collective research round means each configured research lane has "
+            "one quota/frontier/worker-turn opportunity; pane-local tick loops are "
+            "reported separately and do not by themselves prove multi-round research"
+        ),
+        "agent_count": agent_count,
+        "collective_round_count": collective_round_count,
+        "evidence_stage_count": int(dev_metric is not None) + int(holdout_metric is not None),
+        "multi_round_research_verified": multi_round_research_verified,
+        "improvement_over_rounds": multi_round_research_verified,
+        "baseline_metric": baseline,
+        "dev_metric": dev_metric,
+        "holdout_metric": holdout_metric,
+        "holdout_delta_over_dev": (
+            holdout_metric - dev_metric
+            if holdout_metric is not None and dev_metric is not None
+            else None
+        ),
+        "evidence_event_count": evidence_event_count,
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "credentials_recorded": False,
+            "local_workspace_path_redacted": True,
+        },
+    }
+
+
+def _collective_summary_from_worker_loop(
+    worker_loop: dict[str, object],
+    *,
+    agent_count: int,
+) -> dict[str, object]:
+    turns = worker_loop.get("turns") if isinstance(worker_loop.get("turns"), list) else []
+    round_indexes = {
+        turn.get("round")
+        for turn in turns
+        if isinstance(turn, dict)
+        and turn.get("executed") is True
+        and isinstance(turn.get("round"), int)
+        and not isinstance(turn.get("round"), bool)
+    }
+    dev_metric = next(
+        (
+            _numeric_metric(turn.get("dev_metric"))
+            for turn in turns
+            if isinstance(turn, dict) and _numeric_metric(turn.get("dev_metric")) is not None
+        ),
+        None,
+    )
+    holdout_metric = next(
+        (
+            _numeric_metric(turn.get("holdout_metric"))
+            for turn in turns
+            if isinstance(turn, dict) and _numeric_metric(turn.get("holdout_metric")) is not None
+        ),
+        None,
+    )
+    return _build_collective_round_summary(
+        source="worker_loop_collective_agent_passes",
+        agent_count=agent_count,
+        collective_round_count=len(round_indexes),
+        dev_metric=dev_metric,
+        holdout_metric=holdout_metric,
+    )
+
+
+def _collective_summary_from_visible_panes_and_evidence(
+    *,
+    pane_rounds: dict[str, object],
+    evidence: dict[str, object],
+    agent_count: int | None,
+) -> dict[str, object]:
+    max_completed = (
+        int(pane_rounds.get("max_rounds_completed"))
+        if isinstance(pane_rounds.get("max_rounds_completed"), int)
+        and not isinstance(pane_rounds.get("max_rounds_completed"), bool)
+        else 0
+    )
+    return _build_collective_round_summary(
+        source="visible_live_evidence_plus_pane_local_ticks",
+        agent_count=agent_count,
+        collective_round_count=max_completed,
+        dev_metric=_numeric_metric(evidence.get("dev_metric")),
+        holdout_metric=_numeric_metric(evidence.get("holdout_metric")),
+        evidence_event_count=(
+            int(evidence.get("evidence_event_count"))
+            if isinstance(evidence.get("evidence_event_count"), int)
+            and not isinstance(evidence.get("evidence_event_count"), bool)
+            else None
+        ),
+    )
 
 
 def _discover_visible_pane_a2a_rounds(
@@ -465,7 +586,7 @@ def _discover_visible_pane_a2a_rounds(
         if artifacts:
             summary = _compact_visible_pane_a2a_rounds(artifacts)
             if (
-                bool(summary.get("multi_round_verified"))
+                bool(summary.get("pane_local_multi_tick_verified"))
                 or int(summary.get("max_rounds_requested") or 0) < 2
                 or time.monotonic() >= deadline
             ):
@@ -520,7 +641,13 @@ def _discover_visible_live_evidence(
                 continue
         for evidence in loaded:
             if evidence.get("holdout_metric") is not None:
-                return evidence
+                merged = dict(evidence)
+                if merged.get("dev_metric") is None:
+                    for other in loaded:
+                        if other.get("dev_metric") is not None:
+                            merged["dev_metric"] = other.get("dev_metric")
+                            break
+                return merged
         if loaded and time.monotonic() >= deadline:
             return loaded[0]
         if time.monotonic() >= deadline:
@@ -553,8 +680,26 @@ def _load_visible_pane_a2a_rounds_into_payload(
     if isinstance(visible_proof, dict):
         visible_proof["pane_local_a2a_rounds_loaded"] = bool(rounds.get("loaded"))
         visible_proof["pane_local_a2a_round_count"] = rounds.get("max_rounds_completed")
+        visible_proof["pane_local_a2a_multi_tick_verified"] = bool(
+            rounds.get("pane_local_multi_tick_verified")
+        )
+        visible_proof["decentralized_a2a_rounds_verified"] = False
+
+
+def _load_collective_research_rounds_into_payload(
+    *,
+    payload: dict[str, object],
+    rounds: dict[str, object],
+) -> None:
+    payload["collective_research_rounds"] = rounds
+    visible_proof = payload["visible_worker_proof"]
+    if isinstance(visible_proof, dict):
+        visible_proof["collective_research_rounds_loaded"] = bool(rounds.get("loaded"))
+        visible_proof["collective_research_round_count"] = rounds.get(
+            "collective_round_count"
+        )
         visible_proof["decentralized_a2a_rounds_verified"] = bool(
-            rounds.get("multi_round_verified")
+            rounds.get("multi_round_research_verified")
         )
 
 
@@ -630,6 +775,11 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         if isinstance(payload.get("visible_pane_a2a_rounds"), dict)
         else {}
     )
+    collective_rounds = (
+        payload.get("collective_research_rounds")
+        if isinstance(payload.get("collective_research_rounds"), dict)
+        else {}
+    )
     evidence = (
         payload.get("live_worker_evidence")
         if isinstance(payload.get("live_worker_evidence"), dict)
@@ -650,6 +800,10 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
     baseline = 1.0
     dev_metric = _numeric_metric(evidence.get("dev_metric"))
     holdout_metric = _numeric_metric(evidence.get("holdout_metric"))
+    if dev_metric is None:
+        dev_metric = _numeric_metric(collective_rounds.get("dev_metric"))
+    if holdout_metric is None:
+        holdout_metric = _numeric_metric(collective_rounds.get("holdout_metric"))
     best_metric = holdout_metric if holdout_metric is not None else dev_metric
     best_source = (
         "round_2_holdout"
@@ -663,7 +817,10 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         "user_contract_accepted": contract_acceptance.get("accepted") is True,
         "visible_lanes_accepted": proof.get("visible_lanes_accepted") is True,
         "cadence_wake_verified": proof.get("cadence_wake_verified") is True,
-        "pane_local_multi_round_verified": rounds.get("multi_round_verified") is True,
+        "pane_local_tick_loaded": rounds.get("loaded") is True,
+        "collective_research_multi_round_verified": (
+            collective_rounds.get("multi_round_research_verified") is True
+        ),
         "lane_authored_evidence_loaded": proof.get("lane_authored_evidence_loaded") is True,
         "protected_scope_clean": protected_scope_clean,
         "positive_metric_over_baseline": (
@@ -706,9 +863,20 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
             else False,
         },
         "rounds": {
+            "scope": "pane_local_tick",
             "max_completed": rounds.get("max_rounds_completed"),
             "total_completed": rounds.get("rounds_completed_total"),
             "lane_count": rounds.get("lane_count"),
+            "counts_as_collective_research_round": False,
+        },
+        "collective_research_rounds": {
+            "scope": collective_rounds.get("round_unit") or "collective_agent_pass",
+            "count": collective_rounds.get("collective_round_count"),
+            "multi_round_verified": collective_rounds.get(
+                "multi_round_research_verified"
+            )
+            is True,
+            "stages": collective_rounds.get("stages") or [],
         },
         "improvement_summary": {
             "baseline_metric": baseline,
@@ -1022,6 +1190,14 @@ def run_auto_research_demo_e2e(
                 max_rounds=worker_loop_rounds,
             )
             payload["worker_loop"] = worker_loop
+            collective_rounds = _collective_summary_from_worker_loop(
+                worker_loop,
+                agent_count=len(worker_agent_ids),
+            )
+            _load_collective_research_rounds_into_payload(
+                payload=payload,
+                rounds=collective_rounds,
+            )
             turns = worker_loop.get("turns") if isinstance(worker_loop.get("turns"), list) else []
             dev_metric = next(
                 (turn.get("dev_metric") for turn in turns if isinstance(turn, dict) and turn.get("dev_metric") is not None),
@@ -1046,6 +1222,12 @@ def run_auto_research_demo_e2e(
                 "driver_role": "polling_driver_only",
                 "leader_agent_required": False,
                 "worker_loop_round_count": worker_loop.get("round_count"),
+                "collective_research_round_count": collective_rounds.get(
+                    "collective_round_count"
+                ),
+                "collective_multi_round_verified": collective_rounds.get(
+                    "multi_round_research_verified"
+                ),
                 "executed_turn_count": worker_loop.get("executed_turn_count"),
                 "completed_turn_count": worker_loop.get("completed_turn_count"),
                 "selected_actions": worker_loop.get("selected_actions"),
@@ -1131,6 +1313,7 @@ def run_auto_research_demo_e2e(
                     payload=payload,
                     rounds=pane_rounds,
                 )
+            collective_rounds = None
             live_evidence = _discover_visible_live_evidence(
                 runtime_root_arg=visible_runtime_root_arg,
                 session_name=str(launch_result.get("session_name") or session_name),
@@ -1143,6 +1326,21 @@ def run_auto_research_demo_e2e(
                     evidence=live_evidence,
                     evidence_source="visible_launcher_artifact",
                 )
+                if collective_rounds is None and pane_rounds is not None:
+                    collective_rounds = _collective_summary_from_visible_panes_and_evidence(
+                        pane_rounds=pane_rounds,
+                        evidence=payload["live_worker_evidence"],
+                        agent_count=(
+                            int(pane_rounds.get("lane_count"))
+                            if isinstance(pane_rounds.get("lane_count"), int)
+                            and not isinstance(pane_rounds.get("lane_count"), bool)
+                            else None
+                        ),
+                    )
+                    _load_collective_research_rounds_into_payload(
+                        payload=payload,
+                        rounds=collective_rounds,
+                    )
             _load_visible_readiness_into_payload(payload)
         payload["workspace_retained"] = keep_workspace or launch_visible
         if live_evidence_path:

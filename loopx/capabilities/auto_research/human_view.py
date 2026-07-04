@@ -264,6 +264,11 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         if isinstance(payload.get("visible_pane_a2a_rounds"), dict)
         else {}
     )
+    collective_rounds = (
+        payload.get("collective_research_rounds")
+        if isinstance(payload.get("collective_research_rounds"), dict)
+        else {}
+    )
     readiness = (
         payload.get("visible_readiness")
         if isinstance(payload.get("visible_readiness"), dict)
@@ -306,8 +311,11 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- tonight_positive_result: `{tonight.get('positive_result')}`",
         f"- visible_lanes_launched: `{live.get('visible_lanes_launched')}`",
         f"- visible_lanes_accepted: `{live.get('visible_lanes_accepted')}`",
-        f"- visible_pane_a2a_rounds: `{pane_rounds.get('max_rounds_completed')}`",
-        f"- decentralized_a2a_rounds_verified: `{pane_rounds.get('multi_round_verified')}`",
+        f"- visible_pane_local_ticks: `{pane_rounds.get('max_rounds_completed')}`",
+        f"- pane_ticks_count_as_research_rounds: `{pane_rounds.get('counts_as_collective_research_round')}`",
+        f"- collective_research_rounds: `{collective_rounds.get('collective_round_count')}`",
+        f"- collective_research_rounds_verified: `{collective_rounds.get('multi_round_research_verified')}`",
+        f"- decentralized_a2a_rounds_verified: `{live.get('decentralized_a2a_rounds_verified')}`",
         f"- visible_readiness_ready: `{readiness.get('ready')}`",
         f"- visible_readiness_level: `{readiness.get('readiness_level')}`",
         f"- visible_best_metric: `{improvement.get('best_metric')}`",
