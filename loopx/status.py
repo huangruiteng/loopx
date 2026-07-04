@@ -152,6 +152,14 @@ from .control_plane.runtime.run_compaction import (
     compact_operator_gate as _compact_operator_gate_read_model,
     compact_operator_gate_resume_contract as _compact_operator_gate_resume_contract_read_model,
 )
+from .control_plane.runtime.event_ledger import (
+    EVENT_LEDGER_CLASSES,
+    EVENT_LEDGER_PROXY_NOTE,
+    blank_event_class_counts as _blank_event_class_counts_read_model,
+    blank_event_ledger_goal as _blank_event_ledger_goal_read_model,
+    build_event_ledger_summary as _build_event_ledger_summary_read_model,
+    event_ledger_event_class as _event_ledger_event_class_read_model,
+)
 from .control_plane.handoff.handoff_runs import (
     is_custom_post_handoff_work_run as _is_custom_post_handoff_work_run_read_model,
     is_handoff_ready_run as _is_handoff_ready_run_read_model,
@@ -371,14 +379,6 @@ BENCHMARK_VALIDATION_NEUTRAL_FALSE_FIELDS = {
     "probe_contract_result_present",
     "assisted_collaboration_claim_allowed",
 }
-EVENT_LEDGER_CLASSES = (
-    "accounting",
-    "decision",
-    "evidence",
-    "state",
-    "work",
-)
-EVENT_LEDGER_PROXY_NOTE = "append-only run-history projection; compact event-class counts only"
 BENCHMARK_RUN_SCHEMA_VERSION = "benchmark_run_v0"
 BENCHMARK_RESULT_SCHEMA_VERSION = "benchmark_result_v0"
 BENCHMARK_COMPARISON_SCHEMA_VERSION = "benchmark_comparison_v0"
@@ -7679,150 +7679,37 @@ def blank_usage_goal(goal_id: str) -> dict[str, Any]:
 
 
 def blank_event_class_counts() -> dict[str, int]:
-    return {event_class: 0 for event_class in EVENT_LEDGER_CLASSES}
+    return _blank_event_class_counts_read_model()
 
 
 def blank_event_ledger_goal(goal_id: str) -> dict[str, Any]:
-    return {
-        "goal_id": goal_id,
-        "events_24h": 0,
-        "events_7d": 0,
-        "benchmark_runs_24h": 0,
-        "benchmark_runs_7d": 0,
-        "by_class_24h": blank_event_class_counts(),
-        "by_class_7d": blank_event_class_counts(),
-        "latest_event_class": None,
-        "latest_event_at": None,
-        "latest_benchmark_run": None,
-    }
+    return _blank_event_ledger_goal_read_model(goal_id)
 
 
 def event_ledger_event_class(run: dict[str, Any]) -> str:
-    classification = str(run.get("classification") or "").lower()
-    if classification == "quota_slot_spent" or isinstance(run.get("quota_event"), dict):
-        return "accounting"
-    if (
-        compact_benchmark_run(run)
-        or compact_benchmark_result(run)
-        or compact_benchmark_comparison(run)
-        or compact_benchmark_learning_ledger(run)
-        or compact_benchmark_experiment_report(run)
-        or compact_active_user_assisted_pilot(run)
-    ):
-        return "evidence"
-    if (
-        classification in EVENT_LEDGER_DECISION_CLASSIFICATIONS
-        or "operator_gate" in classification
-        or "human_reward" in classification
-        or "reward" in classification
-        or isinstance(run.get("human_reward"), dict)
-        or isinstance(run.get("operator_gate"), dict)
-        or isinstance(run.get("operator_gate_resume_contract"), dict)
-    ):
-        return "decision"
-    if classification in EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS:
-        return "evidence"
-    if run_has_external_evidence_watch_signal(run):
-        return "evidence"
-    if any(hint in classification for hint in EVENT_LEDGER_EVIDENCE_HINTS):
-        return "evidence"
-    if any(
-        key in run
-        for key in (
-            "active_priorities",
-            "active_task_count",
-            "artifact",
-            "artifacts",
-            "cache_check",
-            "controller_readiness",
-            "project_map",
-        )
-    ):
-        return "evidence"
-    if classification in EVENT_LEDGER_STATE_CLASSIFICATIONS or classification.endswith("_refreshed"):
-        return "state"
-    return "work"
+    return _event_ledger_event_class_read_model(
+        run,
+        compact_benchmark_run=compact_benchmark_run,
+        compact_benchmark_result=compact_benchmark_result,
+        compact_benchmark_comparison=compact_benchmark_comparison,
+        compact_benchmark_learning_ledger=compact_benchmark_learning_ledger,
+        compact_benchmark_experiment_report=compact_benchmark_experiment_report,
+        compact_active_user_assisted_pilot=compact_active_user_assisted_pilot,
+        run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
+        decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
+        evidence_classifications=EVENT_LEDGER_EVIDENCE_CLASSIFICATIONS,
+        evidence_hints=EVENT_LEDGER_EVIDENCE_HINTS,
+        state_classifications=EVENT_LEDGER_STATE_CLASSIFICATIONS,
+    )
 
 
 def build_event_ledger_summary(history: dict[str, Any]) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
-    cutoff_24h = now - timedelta(hours=24)
-    cutoff_7d = now - timedelta(days=7)
-    totals = {
-        "events_24h": 0,
-        "events_7d": 0,
-        "benchmark_runs_24h": 0,
-        "benchmark_runs_7d": 0,
-        "by_class_24h": blank_event_class_counts(),
-        "by_class_7d": blank_event_class_counts(),
-    }
-    goals: dict[str, dict[str, Any]] = {}
-    sample_count = 0
-
-    for run in history.get("runs") or []:
-        if not isinstance(run, dict):
-            continue
-        sample_count += 1
-        generated_at = parse_timestamp(run.get("generated_at"))
-        if generated_at is None:
-            continue
-        event_class = event_ledger_event_class(run)
-        goal_id = str(run.get("goal_id") or "unknown-goal")
-        goal = goals.setdefault(goal_id, blank_event_ledger_goal(goal_id))
-        latest_event_at = parse_timestamp(goal.get("latest_event_at"))
-        if latest_event_at is None or generated_at > latest_event_at:
-            goal["latest_event_class"] = event_class
-            goal["latest_event_at"] = generated_at.isoformat()
-        benchmark_run = compact_benchmark_run(run)
-        if benchmark_run:
-            latest_benchmark_at = parse_timestamp(
-                (goal.get("latest_benchmark_run") or {}).get("generated_at")
-                if isinstance(goal.get("latest_benchmark_run"), dict)
-                else None
-            )
-            if latest_benchmark_at is None or generated_at > latest_benchmark_at:
-                goal["latest_benchmark_run"] = {
-                    "generated_at": generated_at.isoformat(),
-                    "classification": run.get("classification"),
-                    **benchmark_run,
-                }
-
-        if generated_at >= cutoff_7d:
-            totals["events_7d"] += 1
-            totals["by_class_7d"][event_class] += 1
-            goal["events_7d"] += 1
-            goal["by_class_7d"][event_class] += 1
-            if benchmark_run:
-                totals["benchmark_runs_7d"] += 1
-                goal["benchmark_runs_7d"] += 1
-        if generated_at >= cutoff_24h:
-            totals["events_24h"] += 1
-            totals["by_class_24h"][event_class] += 1
-            goal["events_24h"] += 1
-            goal["by_class_24h"][event_class] += 1
-            if benchmark_run:
-                totals["benchmark_runs_24h"] += 1
-                goal["benchmark_runs_24h"] += 1
-
-    goal_rows = sorted(
-        goals.values(),
-        key=lambda item: (
-            item["events_24h"],
-            item["events_7d"],
-            item["goal_id"],
-        ),
-        reverse=True,
+    return _build_event_ledger_summary_read_model(
+        history,
+        parse_timestamp=parse_timestamp,
+        event_class_for_run=event_ledger_event_class,
+        compact_benchmark_run=compact_benchmark_run,
     )
-    return {
-        "available": True,
-        "source": "run_history",
-        "generated_at": now.isoformat(),
-        "sample_run_count": sample_count,
-        "proxy_note": EVENT_LEDGER_PROXY_NOTE,
-        "event_classes": list(EVENT_LEDGER_CLASSES),
-        "totals": totals,
-        "goals": goal_rows,
-    }
 
 
 def build_promotion_readiness_summary(
