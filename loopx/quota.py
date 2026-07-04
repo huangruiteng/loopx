@@ -67,15 +67,15 @@ from .control_plane.scheduler.scheduler_hint import (
     normalize_scheduler_rrule,
     scheduler_backoff_packet,
 )
-from .policies.work_lane import (
-    build_work_lane_contract as build_work_lane_contract_policy,
-)
-from .scheduler_state import (
+from .control_plane.scheduler.state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     CODEX_APP_SURFACE,
     load_scheduler_state,
     scheduler_state_path,
     write_scheduler_state,
+)
+from .policies.work_lane import (
+    build_work_lane_contract as build_work_lane_contract_policy,
 )
 from .state_projection import is_user_wait_text, next_action_projection_warning
 from .control_plane.todos.contract import (

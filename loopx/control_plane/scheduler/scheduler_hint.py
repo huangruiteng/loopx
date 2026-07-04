@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ...delivery_outcome import DeliveryOutcome
-from ...scheduler_state import (
+from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
     CODEX_APP_SURFACE,
     SCHEDULER_STATE_SCHEMA_VERSION,

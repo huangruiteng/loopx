@@ -225,7 +225,7 @@ def assert_not_due_monitor_scheduler_honors_monitor_cadence() -> None:
     assert guard["effective_action"] == "monitor_quiet_skip", guard
     assert scheduler["cadence_class"] == "monitor_wait", scheduler
     assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
-    assert codex_app["example_progression_minutes"] == [3, 3, 3], scheduler
+    assert codex_app["example_progression_minutes"] == [3, 3, 3, 3], scheduler
     assert stateful["current_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
 
 

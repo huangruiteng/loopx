@@ -12,6 +12,7 @@ LEGACY_IMPORT = "loopx.projections"
 LEGACY_PACKAGE_PREFIX = "loopx/projections/"
 LEGACY_ROOT_MODULES = {
     "loopx/decision_scope.py": "loopx.control_plane.todos.decision_scope",
+    "loopx/scheduler_state.py": "loopx.control_plane.scheduler.state",
     "loopx/task_lease.py": "loopx.control_plane.work_items.task_lease",
 }
 TEXT_SUFFIXES = {".py", ".md"}

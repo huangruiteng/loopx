@@ -17,8 +17,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint  # noqa: E402
+from loopx.control_plane.scheduler.state import SCHEDULER_STATE_SCHEMA_VERSION  # noqa: E402
 from loopx.quota import AgentScopeFrontierAction  # noqa: E402
-from loopx.scheduler_state import SCHEDULER_STATE_SCHEMA_VERSION  # noqa: E402
 from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK  # noqa: E402
 
 
