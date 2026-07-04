@@ -70,35 +70,19 @@ def fixture_todos() -> dict:
 def assert_wrapper_parity() -> None:
     todos = fixture_todos()
 
-    assert status_module.open_todo_items(todos) == todo_read_model.open_todo_items(
-        todos,
-        limit=status_module.MAX_PROJECT_ASSET_TODO_ITEMS,
-        text_limit=220,
-    )
+    assert status_module.open_todo_items(todos) == todo_read_model.open_todo_items(todos)
     assert status_module.todo_lane_items(todos, "monitor_open_items") == todo_read_model.todo_lane_items(
         todos,
         "monitor_open_items",
-        limit=status_module.MAX_STATUS_TODOS_PER_ROLE,
-        text_limit=220,
     )
-    assert status_module.first_open_todo_text(todos) == todo_read_model.first_open_todo_text(
-        todos,
-        item_limit=220,
-    )
-    assert status_module.first_open_todo_item(todos) == todo_read_model.first_open_todo_item(
-        todos,
-        item_limit=status_module.MAX_PROJECT_ASSET_TODO_ITEMS,
-        text_limit=220,
-    )
+    assert status_module.first_open_todo_text(todos) == todo_read_model.first_open_todo_text(todos)
+    assert status_module.first_open_todo_item(todos) == todo_read_model.first_open_todo_item(todos)
     assert status_module.project_asset_todo_summary(
         todos,
         role="agent",
     ) == todo_read_model.project_asset_todo_summary(
         todos,
         role="agent",
-        item_limit=status_module.MAX_PROJECT_ASSET_TODO_ITEMS,
-        deferred_item_limit=status_module.MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
-        advancement_task_class=status_module.TODO_TASK_CLASS_ADVANCEMENT,
     )
 
 
@@ -136,16 +120,12 @@ def assert_dependency_blocker_parity() -> None:
     ) == todo_read_model.dependency_blocker_summary(
         items,
         current_goal_id="current",
-        limit=status_module.MAX_DEPENDENCY_BLOCKERS,
     )
 
     status_items = deepcopy(items)
     direct_items = deepcopy(items)
     status_module.attach_dependency_blockers(status_items)
-    todo_read_model.attach_dependency_blockers(
-        direct_items,
-        limit=status_module.MAX_DEPENDENCY_BLOCKERS,
-    )
+    todo_read_model.attach_dependency_blockers(direct_items)
     assert status_items == direct_items
 
 

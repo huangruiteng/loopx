@@ -230,6 +230,13 @@ from .control_plane.work_items.status_contract import (
     compact_status_contract_signals as _compact_status_contract_signals_read_model,
 )
 from .control_plane.todos.todo_summary import (
+    MAX_DEFERRED_TODO_VISIBILITY_ITEMS as _TODO_SUMMARY_MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
+    MAX_DEPENDENCY_BLOCKERS as _TODO_SUMMARY_MAX_DEPENDENCY_BLOCKERS,
+    MAX_MONITOR_DUE_ITEMS as _TODO_SUMMARY_MAX_MONITOR_DUE_ITEMS,
+    MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS as _TODO_SUMMARY_MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS,
+    MAX_PROJECT_ASSET_TODO_ITEMS as _TODO_SUMMARY_MAX_PROJECT_ASSET_TODO_ITEMS,
+    MAX_STATUS_TODOS_PER_ROLE as _TODO_SUMMARY_MAX_STATUS_TODOS_PER_ROLE,
+    MAX_TODO_VISIBILITY_LANE_ITEMS as _TODO_SUMMARY_MAX_TODO_VISIBILITY_LANE_ITEMS,
     active_state_todo_attention_item as _active_state_todo_attention_item_read_model,
     active_next_action_todo_ids,
     attach_dependency_blockers as _attach_dependency_blockers_read_model,
@@ -539,14 +546,14 @@ LIFECYCLE_PRIORITY = (
     "run_recorded",
 )
 SECTION_HEADING_PATTERN = re.compile(r"^##+\s+(.+?)\s*$")
-MAX_STATUS_TODOS_PER_ROLE = 12
+MAX_STATUS_TODOS_PER_ROLE = _TODO_SUMMARY_MAX_STATUS_TODOS_PER_ROLE
 MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = MAX_STATUS_TODOS_PER_ROLE
-MAX_PROJECT_ASSET_TODO_ITEMS = 3
-MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
-MAX_TODO_VISIBILITY_LANE_ITEMS = 16
-MAX_DEFERRED_TODO_VISIBILITY_ITEMS = 8
-MAX_MONITOR_DUE_ITEMS = 1
-MAX_DEPENDENCY_BLOCKERS = 4
+MAX_PROJECT_ASSET_TODO_ITEMS = _TODO_SUMMARY_MAX_PROJECT_ASSET_TODO_ITEMS
+MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = _TODO_SUMMARY_MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS
+MAX_TODO_VISIBILITY_LANE_ITEMS = _TODO_SUMMARY_MAX_TODO_VISIBILITY_LANE_ITEMS
+MAX_DEFERRED_TODO_VISIBILITY_ITEMS = _TODO_SUMMARY_MAX_DEFERRED_TODO_VISIBILITY_ITEMS
+MAX_MONITOR_DUE_ITEMS = _TODO_SUMMARY_MAX_MONITOR_DUE_ITEMS
+MAX_DEPENDENCY_BLOCKERS = _TODO_SUMMARY_MAX_DEPENDENCY_BLOCKERS
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = 6
 MAX_SUBAGENT_SCOPE_ITEMS = 4
 MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = 3
@@ -6140,7 +6147,7 @@ def todo_lane_items(
 
 
 def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
-    return _first_open_todo_text_read_model(todos, item_limit=220)
+    return _first_open_todo_text_read_model(todos)
 
 
 def project_asset_todo_summary(
@@ -6151,9 +6158,6 @@ def project_asset_todo_summary(
     return _project_asset_todo_summary_read_model(
         todos,
         role=role,
-        item_limit=MAX_PROJECT_ASSET_TODO_ITEMS,
-        deferred_item_limit=MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
-        advancement_task_class=TODO_TASK_CLASS_ADVANCEMENT,
     )
 
 
@@ -6171,15 +6175,11 @@ def dependency_blocker_summary(
 
 
 def attach_dependency_blockers(items: list[dict[str, Any]]) -> None:
-    _attach_dependency_blockers_read_model(items, limit=MAX_DEPENDENCY_BLOCKERS)
+    _attach_dependency_blockers_read_model(items)
 
 
 def first_open_todo_item(todos: dict[str, Any] | None) -> dict[str, Any] | None:
-    return _first_open_todo_item_read_model(
-        todos,
-        item_limit=MAX_PROJECT_ASSET_TODO_ITEMS,
-        text_limit=220,
-    )
+    return _first_open_todo_item_read_model(todos)
 
 
 def autonomous_priority_label(text: str) -> str | None:

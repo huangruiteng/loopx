@@ -43,10 +43,12 @@ from ..work_items.project_asset import build_project_asset_todo_summary
 
 
 MAX_STATUS_TODOS_PER_ROLE = 12
+MAX_PROJECT_ASSET_TODO_ITEMS = 3
 MAX_PROJECT_ASSET_TODO_BACKLOG_ITEMS = 8
 MAX_TODO_VISIBILITY_LANE_ITEMS = 16
 MAX_DEFERRED_TODO_VISIBILITY_ITEMS = 8
 MAX_MONITOR_DUE_ITEMS = 1
+MAX_DEPENDENCY_BLOCKERS = 4
 
 TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
 AttentionItemBuilder = Callable[..., dict[str, Any]]
@@ -361,8 +363,8 @@ def todo_item_is_deferred(item: dict[str, Any]) -> bool:
 def open_todo_items(
     todos: dict[str, Any] | None,
     *,
-    limit: int,
-    text_limit: int,
+    limit: int = MAX_PROJECT_ASSET_TODO_ITEMS,
+    text_limit: int = 220,
     source_keys: tuple[str, ...] = ("first_open_items", "items"),
 ) -> list[dict[str, Any]]:
     if not isinstance(todos, dict):
@@ -396,8 +398,8 @@ def todo_lane_items(
     todos: dict[str, Any] | None,
     lane: str,
     *,
-    limit: int,
-    text_limit: int,
+    limit: int = MAX_STATUS_TODOS_PER_ROLE,
+    text_limit: int = 220,
 ) -> list[dict[str, Any]]:
     return open_todo_items(
         todos,
@@ -410,7 +412,7 @@ def todo_lane_items(
 def first_open_todo_text(
     todos: dict[str, Any] | None,
     *,
-    item_limit: int,
+    item_limit: int = 220,
 ) -> str | None:
     items = open_todo_items(todos, limit=1, text_limit=item_limit)
     if not items:
@@ -421,8 +423,8 @@ def first_open_todo_text(
 def first_open_todo_item(
     todos: dict[str, Any] | None,
     *,
-    item_limit: int,
-    text_limit: int,
+    item_limit: int = MAX_PROJECT_ASSET_TODO_ITEMS,
+    text_limit: int = 220,
 ) -> dict[str, Any] | None:
     for todo in open_todo_items(todos, limit=item_limit, text_limit=text_limit):
         if not isinstance(todo, dict) or todo.get("done"):
@@ -435,8 +437,8 @@ def project_asset_todo_summary(
     todos: dict[str, Any] | None,
     *,
     role: str | None = None,
-    item_limit: int,
-    deferred_item_limit: int,
+    item_limit: int = MAX_PROJECT_ASSET_TODO_ITEMS,
+    deferred_item_limit: int = MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
     advancement_task_class: str = TODO_TASK_CLASS_ADVANCEMENT,
 ) -> dict[str, Any] | None:
     return build_project_asset_todo_summary(
@@ -467,7 +469,7 @@ def dependency_blocker_summary(
     items: list[dict[str, Any]],
     *,
     current_goal_id: str,
-    limit: int,
+    limit: int = MAX_DEPENDENCY_BLOCKERS,
 ) -> dict[str, Any] | None:
     blockers: list[dict[str, Any]] = []
     for item in items:
@@ -503,7 +505,11 @@ def dependency_blocker_summary(
     }
 
 
-def attach_dependency_blockers(items: list[dict[str, Any]], *, limit: int) -> None:
+def attach_dependency_blockers(
+    items: list[dict[str, Any]],
+    *,
+    limit: int = MAX_DEPENDENCY_BLOCKERS,
+) -> None:
     for item in items:
         if not isinstance(item, dict):
             continue
