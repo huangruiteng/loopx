@@ -89,6 +89,11 @@ TODO_METADATA_FIELDS = (
 )
 
 
+def _is_primary_review_action_kind(value: Any) -> bool:
+    action_kind = str(value or "").strip()
+    return action_kind == "primary_review" or action_kind.startswith("primary_review_")
+
+
 def _attach_todo_write_correctness_dry_run_packet(
     payload: dict[str, Any],
     *,
@@ -1639,6 +1644,14 @@ def complete_goal_todo(
         side_agent_completion = bool(
             effective_claimed_by and primary_agent and effective_claimed_by != primary_agent
         )
+        explicit_primary_review_handoff = bool(
+            side_agent_completion
+            and next_agent_todo
+            and not side_agent_self_merged
+            and primary_agent
+            and effective_next_claimed_by == primary_agent
+            and _is_primary_review_action_kind(next_action_kind)
+        )
         if side_agent_completion:
             if side_agent_self_merged and not evidence:
                 raise ValueError(
@@ -1661,11 +1674,12 @@ def complete_goal_todo(
                 not side_agent_self_merged
                 and effective_next_claimed_by
                 and effective_next_claimed_by != handoff_agent
+                and not explicit_primary_review_handoff
             ):
                 raise ValueError(
                     f"side-agent completion handoff todo must be claimed_by handoff_agent={handoff_agent!r}"
                 )
-            if next_agent_todo and not side_agent_self_merged:
+            if next_agent_todo and not side_agent_self_merged and not effective_next_claimed_by:
                 effective_next_claimed_by = handoff_agent
         if effective_next_claimed_by and not next_agent_todo:
             raise ValueError("--next-claimed-by requires --next-agent-todo")
