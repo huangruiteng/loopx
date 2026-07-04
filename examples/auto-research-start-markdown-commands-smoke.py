@@ -51,7 +51,7 @@ def main() -> int:
     require("- user_plus_preset_lines: `5`", markdown)
     require("- shared_kernel_counted: `False`", markdown)
     require(
-        "- preset: `hypothesis-proposer:hypothesis-proposer:hypothesis_proposer`",
+        "- preset_role: hypothesis-proposer / 假设生成",
         markdown,
     )
     require(

@@ -380,10 +380,35 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert_public_safe(payload)
 
 
+def assert_markdown_explains_research_rounds(payload: dict[str, Any]) -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.capabilities.auto_research.human_view import render_auto_research_markdown
+
+    markdown = render_auto_research_markdown(payload)
+    assert "## Research Roles / 研究角色" in markdown, markdown
+    for role in [
+        "research-curator / 研究策展",
+        "hypothesis-proposer / 假设生成",
+        "research-executor / 研究执行",
+        "evaluator-promoter / 评估推进",
+    ]:
+        assert role in markdown, markdown
+    assert "## Collective Rounds / 集体研究轮次" in markdown, markdown
+    assert "rounds: `4`" in markdown, markdown
+    assert "completed_turns: `10/16`" in markdown, markdown
+    assert "dev_metric_sequence: `4.0 -> 4.8`" in markdown, markdown
+    assert "holdout_metric_sequence: `4.5 -> 5.2`" in markdown, markdown
+    assert "holdout_improvement_count: `2` (required `2`)" in markdown, markdown
+    assert "Round 4: executed `research-executor:run_holdout_eval holdout=5.2" in markdown, markdown
+    assert "round_semantics: one round is one quota/frontier opportunity" in markdown, markdown
+    assert_public_safe(markdown)
+
+
 def main() -> int:
     assert_three_layer_minimality()
     payload = run_headless_demo()
     assert_two_round_outcome(payload)
+    assert_markdown_explains_research_rounds(payload)
     print("auto-research-layered-e2e-acceptance-smoke ok")
     return 0
 

@@ -32,6 +32,132 @@ def _string_value(payload: dict[str, object], key: str) -> str | None:
     return None
 
 
+def _metric_sequence(value: object) -> str:
+    if isinstance(value, list) and value:
+        return " -> ".join(str(item) for item in value)
+    return "none"
+
+
+_ROLE_DESCRIPTIONS = {
+    "research_curator": "research-curator / 研究策展：界定问题、指标和证据边界",
+    "hypothesis_proposer": "hypothesis-proposer / 假设生成：提出下一轮可验证假设",
+    "research_executor": "research-executor / 研究执行：运行 dev/holdout 证据",
+    "evaluator_promoter": "evaluator-promoter / 评估推进：判断提升并触发后续 todo",
+}
+
+_AGENT_ROLE_IDS = {
+    "research-curator": "research_curator",
+    "hypothesis-proposer": "hypothesis_proposer",
+    "research-executor": "research_executor",
+    "evaluator-promoter": "evaluator_promoter",
+}
+
+
+def _role_description(agent_id: object, role_id: object) -> str:
+    role = str(role_id or "").strip()
+    agent = str(agent_id or "").strip()
+    if not role:
+        role = _AGENT_ROLE_IDS.get(agent, "")
+    label = _ROLE_DESCRIPTIONS.get(role)
+    if label:
+        return label
+    return agent or role or "unknown-role"
+
+
+def _role_description_from_spec_line(raw: object) -> str:
+    parts = [part.strip() for part in str(raw).split(":")]
+    agent_id = parts[0] if parts else ""
+    role_id = parts[2] if len(parts) >= 3 else ""
+    return _role_description(agent_id, role_id)
+
+
+def _render_research_roles(
+    *,
+    minimal_recipe: dict[str, object],
+    collective_rounds: dict[str, object],
+) -> list[str]:
+    kernel = _dict_value(collective_rounds, "kernel_ledger")
+    lanes = kernel.get("expected_lanes") if isinstance(kernel.get("expected_lanes"), list) else []
+    role_lines: list[str] = []
+    for lane in lanes:
+        if isinstance(lane, dict):
+            role_lines.append(
+                f"- {_role_description(lane.get('agent_id'), lane.get('role_id'))}"
+            )
+    if not role_lines:
+        for raw in minimal_recipe.get("preset_recipe_lines") or []:
+            role_lines.append(f"- {_role_description_from_spec_line(raw)}")
+    if not role_lines:
+        return []
+    return ["", "## Research Roles / 研究角色", "", *role_lines]
+
+
+def _render_collective_round_summary(
+    *,
+    worker_loop: dict[str, object],
+    collective_rounds: dict[str, object],
+) -> list[str]:
+    if not collective_rounds:
+        return []
+    kernel = _dict_value(collective_rounds, "kernel_ledger")
+    outcomes = kernel.get("lane_outcomes") if isinstance(kernel.get("lane_outcomes"), list) else []
+    by_round: dict[int, list[dict[str, object]]] = {}
+    for outcome in outcomes:
+        if not isinstance(outcome, dict):
+            continue
+        try:
+            round_index = int(outcome.get("round") or 0)
+        except (TypeError, ValueError):
+            continue
+        if round_index > 0:
+            by_round.setdefault(round_index, []).append(outcome)
+
+    completed_turns = worker_loop.get("completed_turn_count")
+    expected_turns = kernel.get("lane_outcome_count")
+    lines = [
+        "",
+        "## Collective Rounds / 集体研究轮次",
+        "",
+        (
+            f"- verified: `{collective_rounds.get('multi_round_research_verified')}`; "
+            f"rounds: `{collective_rounds.get('collective_round_count')}`; "
+            f"completed_turns: `{completed_turns}/{expected_turns}`"
+        ),
+        (
+            f"- dev_metric_sequence: `{_metric_sequence(collective_rounds.get('dev_metric_sequence'))}`; "
+            f"holdout_metric_sequence: `{_metric_sequence(collective_rounds.get('holdout_metric_sequence'))}`"
+        ),
+        (
+            f"- holdout_improvement_count: `{collective_rounds.get('holdout_improvement_count')}` "
+            f"(required `{collective_rounds.get('required_holdout_improvement_count')}`)"
+        ),
+        (
+            "- round_semantics: one round is one quota/frontier opportunity for each "
+            "research role; empty lanes are shown as no-op instead of hidden."
+        ),
+        "",
+    ]
+    for round_index in sorted(by_round):
+        executed: list[str] = []
+        noops: list[str] = []
+        for outcome in by_round[round_index]:
+            agent_id = str(outcome.get("agent_id") or "").strip()
+            action = str(outcome.get("selected_action") or "").strip()
+            if outcome.get("executed"):
+                metric = ""
+                if outcome.get("dev_metric") is not None:
+                    metric = f" dev={outcome.get('dev_metric')}"
+                if outcome.get("holdout_metric") is not None:
+                    metric = f" holdout={outcome.get('holdout_metric')}"
+                executed.append(f"{agent_id}:{action}{metric}")
+            else:
+                noops.append(agent_id)
+        executed_text = "; ".join(executed) if executed else "none"
+        noops_text = "; ".join(noops) if noops else "none"
+        lines.append(f"- Round {round_index}: executed `{executed_text}`; no_op `{noops_text}`")
+    return lines
+
+
 def _render_operator_commands(payload: dict[str, object]) -> list[str]:
     commands = _dict_value(payload, "commands")
     user_contract = _dict_value(payload, "user_contract") or payload
@@ -139,7 +265,7 @@ def _render_user_contract(payload: dict[str, object]) -> str:
     for line in minimal_recipe.get("user_recipe_lines") or []:
         lines.append(f"- user: `{line}`")
     for line in minimal_recipe.get("preset_recipe_lines") or []:
-        lines.append(f"- preset: `{line}`")
+        lines.append(f"- preset_role: {_role_description_from_spec_line(line)}")
     lines.extend(_render_operator_commands(payload))
     lines.extend(
         [
@@ -354,6 +480,18 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- visible_holdout_delta_over_dev: `{improvement.get('holdout_delta_over_dev')}`",
         f"- supervisor_lanes: `{supervisor.get('lane_count')}`",
     ]
+    lines.extend(
+        _render_research_roles(
+            minimal_recipe=minimal_recipe,
+            collective_rounds=collective_rounds,
+        )
+    )
+    lines.extend(
+        _render_collective_round_summary(
+            worker_loop=worker_loop,
+            collective_rounds=collective_rounds,
+        )
+    )
     if minimal_recipe:
         lines.extend(
             [
@@ -368,7 +506,7 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
             ]
         )
         for line in minimal_recipe.get("preset_recipe_lines") or []:
-            lines.append(f"- preset: `{line}`")
+            lines.append(f"- preset_role: {_role_description_from_spec_line(line)}")
     lines.extend(_render_operator_commands(payload))
     return "\n".join(lines) + "\n"
 

@@ -56,7 +56,7 @@ def build_auto_research_user_contract(
         },
         {
             "priority": "P1",
-            "todo": "Run a decentralized multi-agent pass: curator maps sources, mapper proposes claims, runner gathers evidence, verifier checks boundaries.",
+            "todo": "Run a decentralized multi-agent pass: research-curator frames the boundary, hypothesis-proposer grows claims, research-executor gathers evidence, and evaluator-promoter checks promotion readiness.",
             "owner_layer": "generic_kernel_runner",
         },
         {
