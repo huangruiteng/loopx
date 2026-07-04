@@ -69,28 +69,8 @@ def assert_contract(payload: dict[str, Any]) -> None:
     assert "multi-agent runner" in layering["kernel_layer"], layering
     assert "pane-local tick" in layering["kernel_layer"], layering
 
-    minimal_recipe = payload["minimal_a2a_recipe"]
-    assert minimal_recipe["schema_version"] == "auto_research_minimal_a2a_recipe_v0", minimal_recipe
-    assert minimal_recipe["line_unit"] == "declarative_recipe_line", minimal_recipe
-    assert minimal_recipe["user_line_count"] == 1, minimal_recipe
-    assert minimal_recipe["preset_role_spec_line_count"] == 4, minimal_recipe
-    assert minimal_recipe["user_plus_preset_line_count"] == 5, minimal_recipe
-    assert minimal_recipe["shared_kernel_counted_as_recipe_lines"] is False, minimal_recipe
-    assert minimal_recipe["coordination_model"] == "decentralized_state_a2a", minimal_recipe
-    assert minimal_recipe["user_recipe_lines"] == [
-        f"loopx auto-research start {QUESTION!r} --execute"
-    ], minimal_recipe
-    assert minimal_recipe["preset_recipe_lines"] == [
-        "research-curator:research-curator:research_curator",
-        "hypothesis-proposer:hypothesis-proposer:hypothesis_proposer",
-        "research-executor:research-executor:research_executor",
-        "evaluator-promoter:evaluator-promoter:evaluator_promoter",
-    ], minimal_recipe
-    proof = minimal_recipe["a2a_proof_contract"]
-    assert proof["broadcaster_selects_todo"] is False, proof
-    assert proof["broadcaster_runs_worker_turn"] is False, proof
-    assert proof["each_pane_reads_own_quota_frontier"] is True, proof
-    assert proof["leader_agent_required"] is False, proof
+    assert "minimal_a2a_recipe" not in payload, payload
+    assert "thin_surface" not in payload, payload
 
     command_contract = payload["command_contract"]
     assert command_contract["canonical_invocation"] == 'loopx auto-research "<open question>"'

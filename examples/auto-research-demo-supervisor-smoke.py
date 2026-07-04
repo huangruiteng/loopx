@@ -89,6 +89,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     preset = payload["preset"]
     assert preset["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, preset
     assert preset["role_count"] == 4, preset
+    assert "minimal_a2a_recipe" not in payload, payload
+    minimal_recipe = preset["minimal_a2a_recipe"]
+    assert minimal_recipe["schema_version"] == "auto_research_minimal_a2a_recipe_v0", preset
+    assert minimal_recipe["user_plus_preset_line_count"] == 5, preset
     assert preset["owns"] == [
         "research_roles",
         "handoff_hints",

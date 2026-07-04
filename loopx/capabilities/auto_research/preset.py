@@ -19,94 +19,13 @@ AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
 )
 AUTO_RESEARCH_DEMO_TICK_ROUNDS = 8
 AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS = 1
-AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Run held-out validation for the dev-supported "
-    "hypothesis from {source_todo_id}, append public-safe evidence, and "
-    "summarize promotion readiness."
-)
-AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Summarize held-out validation from {source_todo_id}, "
-    "promotion readiness, and the public claim boundary for the supported hypothesis."
-)
-AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Grow the next evidence-backed hypothesis from the "
-    "validated branch {source_todo_id} and route a second dev attempt."
-)
-AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Run the refined hypothesis from {source_todo_id} on "
-    "the dev split, append public-safe evidence, and hand off the second holdout check."
-)
-AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Re-check the research contract and protected scope after "
-    "{source_todo_id}, then keep the next collective round honest."
-)
-AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Review the current hypothesis frontier after "
-    "{source_todo_id}, record whether another candidate is needed, and keep the "
-    "round participation visible."
-)
-AUTO_RESEARCH_PROMOTION_READINESS_REVIEW_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Review promotion readiness after {source_todo_id}, "
-    "record the current evidence gap, and wait for the holdout handoff."
-)
-AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION = {
-    "all": [
-        {
-            "path": "decision_summary.dev_candidate_pending_holdout_count",
-            "op": "gt",
-            "value": 0,
-            "fail_reason": "no_dev_promotion_candidate",
-        }
-    ]
-}
-AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_CONDITION = {
-    "all": [
-        {
-            "path": "decision_summary.validated_promotion_candidate_count",
-            "op": "gt",
-            "value": 0,
-            "fail_reason": "no_validated_promotion_candidate",
-        },
-    ]
-}
-AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION = {
-    "all": [
-        {
-            "path": "decision_summary.validated_promotion_candidate_count",
-            "op": "gt",
-            "value": 0,
-            "fail_reason": "no_validated_promotion_candidate",
-        },
-        {
-            "path": "decision_summary.holdout_improvement_count",
-            "op": "lt",
-            "value": 2,
-            "fail_reason": "target_holdout_improvements_reached",
-        },
-    ]
-}
-AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION = {
-    "all": [
-        {
-            "path": "decision_summary.holdout_improvement_count",
-            "op": "gt",
-            "value": 0,
-            "fail_reason": "initial_seed_dev_already_exists",
-        },
-        {
-            "path": "decision_summary.holdout_improvement_count",
-            "op": "lt",
-            "value": 2,
-            "fail_reason": "target_holdout_improvements_reached",
-        },
-        {
-            "path": "decision_summary.dev_candidate_pending_holdout_count",
-            "op": "eq",
-            "value": 0,
-            "fail_reason": "dev_candidate_already_pending_holdout",
-        },
-    ]
-}
+AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = "[P0-auto-research-live] Run held-out validation for the dev-supported hypothesis from {source_todo_id}, append public-safe evidence, and summarize promotion readiness."
+AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT = "[P0-auto-research-live] Summarize held-out validation from {source_todo_id}, promotion readiness, and the public claim boundary for the supported hypothesis."
+AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT = "[P0-auto-research-live] Grow the next evidence-backed hypothesis from the validated branch {source_todo_id} and route a second dev attempt."
+AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_TEXT = "[P0-auto-research-live] Run the refined hypothesis from {source_todo_id} on the dev split, append public-safe evidence, and hand off the second holdout check."
+AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT = "[P0-auto-research-live] Re-check the research contract and protected scope after {source_todo_id}, then keep the next collective round honest."
+AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT = "[P0-auto-research-live] Review the current hypothesis frontier after {source_todo_id}, record whether another candidate is needed, and keep the round participation visible."
+AUTO_RESEARCH_PROMOTION_READINESS_REVIEW_SUCCESSOR_TEXT = "[P0-auto-research-live] Review promotion readiness after {source_todo_id}, record the current evidence gap, and wait for the holdout handoff."
 AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE = (
     "loopx todo add --goal-id {goal_id_shell} --role agent "
     "--text {text_shell} --task-class {task_class_shell} "
@@ -114,39 +33,60 @@ AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE = (
     "--unblocks-todo-id {source_todo_id_shell}"
 )
 
-AUTO_RESEARCH_DEFAULT_LANES = (
-    (
-        "research-curator",
-        "research-curator",
-        "research_curator",
-        "Frame the question, metric, protected boundary, and first research todo.",
-    ),
-    (
-        "hypothesis-proposer",
-        "hypothesis-proposer",
-        "hypothesis_proposer",
-        "Grow the hypothesis frontier and route the next bounded research attempt.",
-    ),
-    (
-        "research-executor",
-        "research-executor",
-        "research_executor",
-        "Run dev/holdout evidence for selected hypotheses and append public-safe evidence.",
-    ),
-    (
-        "evaluator-promoter",
-        "evaluator-promoter",
-        "evaluator_promoter",
-        "Prune or promote claims, summarize validation, and trigger the next research round.",
-    ),
+
+def _condition(path: str, op: str, value: object, fail_reason: str) -> dict[str, object]:
+    return {"path": path, "op": op, "value": value, "fail_reason": fail_reason}
+
+
+def _all(*conditions: dict[str, object]) -> dict[str, object]:
+    return {"all": list(conditions)}
+
+
+AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION = _all(
+    _condition("decision_summary.dev_candidate_pending_holdout_count", "gt", 0, "no_dev_promotion_candidate")
+)
+AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_CONDITION = _all(
+    _condition("decision_summary.validated_promotion_candidate_count", "gt", 0, "no_validated_promotion_candidate")
+)
+AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION = _all(
+    _condition("decision_summary.validated_promotion_candidate_count", "gt", 0, "no_validated_promotion_candidate"),
+    _condition("decision_summary.holdout_improvement_count", "lt", 2, "target_holdout_improvements_reached"),
+)
+AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION = _all(
+    _condition("decision_summary.holdout_improvement_count", "gt", 0, "initial_seed_dev_already_exists"),
+    _condition("decision_summary.holdout_improvement_count", "lt", 2, "target_holdout_improvements_reached"),
+    _condition("decision_summary.dev_candidate_pending_holdout_count", "eq", 0, "dev_candidate_already_pending_holdout"),
 )
 
-AUTO_RESEARCH_ROLE_PROFILE_ORDER = (
-    "research_curator",
-    "hypothesis_proposer",
-    "research_executor",
-    "evaluator_promoter",
+
+def _successor(
+    after_action: str,
+    condition: dict[str, object],
+    target_agent_id: str,
+    target_role_id: str,
+    action_kind: str,
+    text: str,
+) -> dict[str, object]:
+    return {
+        "after_action": after_action,
+        "condition": condition,
+        "target_agent_id": target_agent_id,
+        "target_role_id": target_role_id,
+        "task_class": "advancement_task",
+        "action_kind": action_kind,
+        "text": text,
+        "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
+    }
+
+
+AUTO_RESEARCH_DEFAULT_LANES = (
+    ("research-curator", "research-curator", "research_curator", "Frame the question, metric, protected boundary, and first research todo."),
+    ("hypothesis-proposer", "hypothesis-proposer", "hypothesis_proposer", "Grow the hypothesis frontier and route the next bounded research attempt."),
+    ("research-executor", "research-executor", "research_executor", "Run dev/holdout evidence for selected hypotheses and append public-safe evidence."),
+    ("evaluator-promoter", "evaluator-promoter", "evaluator_promoter", "Prune or promote claims, summarize validation, and trigger the next research round."),
 )
+
+AUTO_RESEARCH_ROLE_PROFILE_ORDER = ("research_curator", "hypothesis_proposer", "research_executor", "evaluator_promoter")
 
 AUTO_RESEARCH_ROLE_PROFILE_ALIASES = {
     "research-curator": "research_curator",
@@ -182,26 +122,8 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
         "write_scope": ["research_hypothesis_v0", "todo_item_v0"],
         "handoff": ["Create or unblock a research-executor todo."],
         "successor_todos": [
-            {
-                "after_action": "propose_hypothesis",
-                "condition": AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION,
-                "target_agent_id": "research-executor",
-                "target_role_id": "research_executor",
-                "task_class": "advancement_task",
-                "action_kind": "run_dev_eval",
-                "text": AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
-            {
-                "after_action": "propose_hypothesis",
-                "condition": AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION,
-                "target_agent_id": "evaluator-promoter",
-                "target_role_id": "evaluator_promoter",
-                "task_class": "advancement_task",
-                "action_kind": "review_promotion_readiness",
-                "text": AUTO_RESEARCH_PROMOTION_READINESS_REVIEW_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            }
+            _successor("propose_hypothesis", AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION, "research-executor", "research_executor", "run_dev_eval", AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_TEXT),
+            _successor("propose_hypothesis", AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION, "evaluator-promoter", "evaluator_promoter", "review_promotion_readiness", AUTO_RESEARCH_PROMOTION_READINESS_REVIEW_SUCCESSOR_TEXT),
         ],
     },
     "research_executor": {
@@ -212,26 +134,8 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
             "Append scored evidence, complete the selected todo, and create the declared successor todo when the role profile says another split is due."
         ],
         "successor_todos": [
-            {
-                "after_action": "run_dev_eval",
-                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
-                "target_agent_id": "research-executor",
-                "target_role_id": "research_executor",
-                "task_class": "advancement_task",
-                "action_kind": "run_holdout_eval",
-                "text": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
-            {
-                "after_action": "run_holdout_eval",
-                "condition": AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_CONDITION,
-                "target_agent_id": "evaluator-promoter",
-                "target_role_id": "evaluator_promoter",
-                "task_class": "advancement_task",
-                "action_kind": "write_evaluation_summary",
-                "text": AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            }
+            _successor("run_dev_eval", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "research-executor", "research_executor", "run_holdout_eval", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT),
+            _successor("run_holdout_eval", AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_CONDITION, "evaluator-promoter", "evaluator_promoter", "write_evaluation_summary", AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT),
         ],
     },
     "evaluator_promoter": {
@@ -245,66 +149,12 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
         "write_scope": ["research_evidence_graph_v0", "todo_item_v0"],
         "handoff": ["Add a role-declared successor todo when evidence needs another bounded split."],
         "successor_todos": [
-            {
-                "after_action": "summarize_evidence",
-                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
-                "target_agent_id": "research-curator",
-                "target_role_id": "research_curator",
-                "task_class": "advancement_task",
-                "action_kind": "review_research_contract",
-                "text": AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
-            {
-                "after_action": "summarize_evidence",
-                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
-                "target_agent_id": "hypothesis-proposer",
-                "target_role_id": "hypothesis_proposer",
-                "task_class": "advancement_task",
-                "action_kind": "review_hypothesis_frontier",
-                "text": AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
-            {
-                "after_action": "write_evaluation_summary",
-                "condition": AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION,
-                "target_agent_id": "hypothesis-proposer",
-                "target_role_id": "hypothesis_proposer",
-                "task_class": "advancement_task",
-                "action_kind": "propose_hypothesis",
-                "text": AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
-            {
-                "after_action": "write_evaluation_summary",
-                "condition": AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION,
-                "target_agent_id": "research-curator",
-                "target_role_id": "research_curator",
-                "task_class": "advancement_task",
-                "action_kind": "review_research_contract",
-                "text": AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
-            {
-                "after_action": "review_promotion_readiness",
-                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
-                "target_agent_id": "research-curator",
-                "target_role_id": "research_curator",
-                "task_class": "advancement_task",
-                "action_kind": "review_research_contract",
-                "text": AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
-            {
-                "after_action": "review_promotion_readiness",
-                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
-                "target_agent_id": "hypothesis-proposer",
-                "target_role_id": "hypothesis_proposer",
-                "task_class": "advancement_task",
-                "action_kind": "review_hypothesis_frontier",
-                "text": AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT,
-                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            },
+            _successor("summarize_evidence", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
+            _successor("summarize_evidence", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "review_hypothesis_frontier", AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT),
+            _successor("write_evaluation_summary", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "propose_hypothesis", AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT),
+            _successor("write_evaluation_summary", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
+            _successor("review_promotion_readiness", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
+            _successor("review_promotion_readiness", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "review_hypothesis_frontier", AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT),
         ],
     },
 }
@@ -324,34 +174,16 @@ AUTO_RESEARCH_ACTION_ROLE_IDS = {
 }
 
 AUTO_RESEARCH_SEED_TITLES = {
-    "write_research_contract": (
-        "Write the public-safe research contract for the shared demo hypothesis."
-    ),
-    "propose_hypothesis": (
-        "Map the first shared idea into a todo-backed research hypothesis."
-    ),
+    "write_research_contract": "Write the public-safe research contract for the shared demo hypothesis.",
+    "propose_hypothesis": "Map the first shared idea into a todo-backed research hypothesis.",
     "claim_attempt": "Claim one visible attempt boundary for the selected hypothesis.",
-    "run_dev_eval": (
-        "Run the selected hypothesis on the dev split, write public-safe evidence, append it, and capture live evidence."
-    ),
-    "run_holdout_eval": (
-        "Run held-out validation for the dev-supported hypothesis, append public-safe evidence, and summarize promotion readiness."
-    ),
-    "write_evaluation_summary": (
-        "Verify the evidence packet and open the next validation or promotion gate."
-    ),
-    "summarize_evidence": (
-        "Summarize dev evidence and hand off holdout validation when the hypothesis is supported."
-    ),
-    "review_research_contract": (
-        "Re-check the research contract and protected scope for the next collective round."
-    ),
-    "review_hypothesis_frontier": (
-        "Review the hypothesis frontier and record whether another bounded candidate is needed."
-    ),
-    "review_promotion_readiness": (
-        "Review promotion readiness and record the current evidence gap."
-    ),
+    "run_dev_eval": "Run the selected hypothesis on the dev split, write public-safe evidence, append it, and capture live evidence.",
+    "run_holdout_eval": "Run held-out validation for the dev-supported hypothesis, append public-safe evidence, and summarize promotion readiness.",
+    "write_evaluation_summary": "Verify the evidence packet and open the next validation or promotion gate.",
+    "summarize_evidence": "Summarize dev evidence and hand off holdout validation when the hypothesis is supported.",
+    "review_research_contract": "Re-check the research contract and protected scope for the next collective round.",
+    "review_hypothesis_frontier": "Review the hypothesis frontier and record whether another bounded candidate is needed.",
+    "review_promotion_readiness": "Review promotion readiness and record the current evidence gap.",
 }
 
 
@@ -552,10 +384,20 @@ def build_auto_research_preset_role(
     }
 
 
-def build_auto_research_preset_summary(*, role_count: int) -> dict[str, object]:
+def build_auto_research_preset_summary(
+    *,
+    role_count: int,
+    open_question: object | None = None,
+    output_language: str = "en",
+    role_specs: Iterable[object] | None = None,
+) -> dict[str, object]:
     return {
         "schema_version": AUTO_RESEARCH_PRESET_SCHEMA_VERSION,
-        "minimal_a2a_recipe": build_auto_research_minimal_a2a_recipe(),
+        "minimal_a2a_recipe": build_auto_research_minimal_a2a_recipe(
+            open_question=open_question,
+            output_language=output_language,
+            role_specs=role_specs,
+        ),
         "owns": [
             "research_roles",
             "handoff_hints",

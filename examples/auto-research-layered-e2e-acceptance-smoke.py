@@ -147,7 +147,9 @@ def assert_three_layer_minimality() -> None:
         assert mechanic in layering["kernel_layer"]["owns"], layering
     assert layering["acceptance"]["preset_has_no_runner_process_logic"] is True, layering
 
-    minimal_recipe = supervisor["minimal_a2a_recipe"]
+    assert "minimal_a2a_recipe" not in supervisor, supervisor
+    preset = supervisor["preset"]
+    minimal_recipe = preset["minimal_a2a_recipe"]
     assert minimal_recipe["schema_version"] == "auto_research_minimal_a2a_recipe_v0"
     assert minimal_recipe["user_plus_preset_line_count"] == 5, minimal_recipe
     assert minimal_recipe["user_line_count"] == 1, minimal_recipe
@@ -162,7 +164,6 @@ def assert_three_layer_minimality() -> None:
         "leader_agent_required": False,
     }, minimal_recipe
 
-    preset = supervisor["preset"]
     assert preset["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, preset
     assert preset["minimal_a2a_recipe"]["user_plus_preset_line_count"] == 5, preset
     assert preset["owns"] == layering["preset_layer"]["owns"], preset
@@ -216,7 +217,7 @@ def assert_three_layer_minimality() -> None:
     ], supervisor
     for lane in lanes:
         assert lane["pane_local_a2a"]["auto_start"] is True, lane
-        assert lane["bootstrap_message"] == "role_prompt_public_artifact_for_fixed_wake", lane
+        assert lane["bootstrap_message"] == "role_prompt_public_artifact_for_first_turn_and_fixed_wake", lane
         assert "LOOPX_PANE_A2A_TICK" in lane["visible_launch_command"], lane
         assert "pane-a2a-tick.output.txt" in lane["visible_launch_command"], lane
         assert "--visible-lanes-accepted" in lane["visible_launch_command"], lane

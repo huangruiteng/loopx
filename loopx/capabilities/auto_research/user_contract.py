@@ -3,9 +3,6 @@ from __future__ import annotations
 import shlex
 from typing import Any
 
-from .preset import build_auto_research_minimal_a2a_recipe
-
-
 AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION = "auto_research_user_contract_v0"
 
 
@@ -44,32 +41,15 @@ def build_auto_research_user_contract(
         output_language=output_language,
     )
     action_plan = [
-        {
-            "priority": "P0",
-            "todo": "Define the research brief and claim boundary before making factual claims.",
-            "owner_layer": "auto_research_preset",
-        },
-        {
-            "priority": "P0",
-            "todo": "Collect evidence refs from allowed code, docs, benchmarks, issues, and PRs.",
-            "owner_layer": "generic_kernel_agents",
-        },
-        {
-            "priority": "P1",
-            "todo": "Run a decentralized multi-agent pass: research-curator frames the boundary, hypothesis-proposer grows claims, research-executor gathers evidence, and evaluator-promoter checks promotion readiness.",
-            "owner_layer": "generic_kernel_runner",
-        },
-        {
-            "priority": "P1",
-            "todo": "Produce the next executable step and say whether it can run automatically.",
-            "owner_layer": "auto_research_preset",
-        },
-        {
-            "priority": "P2",
-            "todo": "Summarize gates and unresolved evidence gaps without expanding the user contract.",
-            "owner_layer": "auto_research_preset",
-        },
-    ][:todo_limit]
+        {"priority": priority, "todo": todo, "owner_layer": owner}
+        for priority, todo, owner in [
+            ("P0", "Define the research brief and claim boundary before making factual claims.", "auto_research_preset"),
+            ("P0", "Collect evidence refs from allowed code, docs, benchmarks, issues, and PRs.", "generic_kernel_agents"),
+            ("P1", "Run a decentralized multi-agent pass: research-curator frames the boundary, hypothesis-proposer grows claims, research-executor gathers evidence, and evaluator-promoter checks promotion readiness.", "generic_kernel_runner"),
+            ("P1", "Produce the next executable step and say whether it can run automatically.", "auto_research_preset"),
+            ("P2", "Summarize gates and unresolved evidence gaps without expanding the user contract.", "auto_research_preset"),
+        ][:todo_limit]
+    ]
     language_flag = _language_flag(question, output_language=resolved_language)
     start_command = (
         f"loopx auto-research start {shlex.quote(question)}{language_flag} --execute"
@@ -92,10 +72,6 @@ def build_auto_research_user_contract(
             "auto_research_layer": "fixed output contract only",
             "kernel_layer": "multi-agent runner, Codex TUI panes, pane-local tick, todo/evidence/status protocol",
         },
-        "minimal_a2a_recipe": build_auto_research_minimal_a2a_recipe(
-            open_question=question,
-            output_language=resolved_language,
-        ),
         "command_contract": {
             "canonical_invocation": 'loopx auto-research "<open question>"',
             "explicit_invocation": 'loopx auto-research contract "<open question>"',
