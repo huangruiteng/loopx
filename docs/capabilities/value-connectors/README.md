@@ -72,7 +72,7 @@ association, timestamp, and URL metadata, then emits either
 | `github_public_channel` | implemented starter | yes | none |
 | `github_public_reply_monitor` | implemented starter | yes | none |
 | `social_browser_x` | ego-browser-backed profile | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
-| `finance_market_snapshot` | planned finance profile | plan and user prompt surface | account, private portfolio, trading, and paid-data gates required |
+| `finance_market_snapshot` | probed candidate profile | plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
 | `botmail_identity` | host connector profile | install-check only | exact send gate required |
 | `community_channel` | host/browser connector profile | install-check and plan | exact account/message gate required |
 
@@ -191,6 +191,13 @@ loopx value-connectors plan \
   --kill-condition "source terms, freshness, or symbol mapping cannot be verified" \
   --format json
 ```
+
+See the [no-credential probe packet](finance-market-snapshot-probe.md) for the
+current source findings. The short version: Eastmoney public quote metadata is
+reachable as a `source_unverified` canary, GitHub OSS wrappers are fallback
+candidates that still need source-origin checks, and Futu/OpenD is gated until
+the user provides a local daemon, account permission, API agreements, and quote
+rights.
 
 ## Protocol
 

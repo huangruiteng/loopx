@@ -77,6 +77,7 @@ loopx value-connectors plan \
 | `github_public_channel_probe_packet_v0` | Starter connector output for public GitHub issue/PR/discussion metadata. |
 | `github_public_reply_monitor_packet_v0` | Starter connector output for public maintainer reply detection after a LoopX comment. |
 | `finance_market_snapshot_profile_v0` | Candidate profile for quote/fund/news/announcement pulls with source, freshness, uncertainty, and no-investment-advice gates. |
+| `finance_market_snapshot_probe_packet_v0` | No-credential public-source probe packet for Eastmoney/Futu/GitHub OSS source readiness, gates, and fallback decisions. |
 | `value_connector_install_check_packet_v0` | Local install/use checklist for connector starters. |
 
 ## Boundaries
