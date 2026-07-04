@@ -63,6 +63,7 @@ from .projections.project_asset import (
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     build_project_asset,
     completed_todo_archive_warning,
+    enrich_project_asset as _enrich_project_asset_read_model,
     project_asset_handoff_check_projection,
     project_asset_latest_validation,
     project_asset_quota_state,
@@ -6551,59 +6552,27 @@ def enrich_project_asset(
     subagent_activity: dict[str, Any] | None = None,
     interface_budget_cadence: dict[str, Any] | None = None,
 ) -> None:
-    project_asset = item.get("project_asset")
-    if not isinstance(project_asset, dict):
-        return
-    user_summary = project_asset_todo_summary(user_todos, role="user")
-    if user_summary:
-        project_asset["user_todos"] = user_summary
-    agent_summary = project_asset_todo_summary(agent_todos, role="agent")
-    if agent_summary:
-        project_asset["agent_todos"] = agent_summary
-    todo_projection_gap = project_asset_todo_projection_gap(
+    _enrich_project_asset_read_model(
+        item,
         user_todos=user_todos,
         agent_todos=agent_todos,
-    )
-    if todo_projection_gap:
-        project_asset["todo_projection_gap"] = todo_projection_gap
-        item["todo_projection_gap"] = todo_projection_gap
-    else:
-        project_asset.pop("todo_projection_gap", None)
-        item.pop("todo_projection_gap", None)
-    quota_summary = project_asset_quota_summary(quota)
-    if quota_summary:
-        project_asset["quota"] = quota_summary
-    if execution_profile is not None:
-        project_asset["execution_profile"] = compact_execution_profile(execution_profile)
-    if orchestration is not None:
-        project_asset["orchestration"] = compact_orchestration_policy(orchestration)
-    if subagent_activity:
-        project_asset["subagent_activity"] = subagent_activity
-    if interface_budget_cadence:
-        project_asset["interface_budget_cadence"] = interface_budget_cadence
-    if latest_validation:
-        project_asset["latest_validation"] = latest_validation
-    readiness = project_asset_handoff_readiness(item, latest_runs=latest_runs)
-    if readiness:
-        item["handoff_readiness"] = readiness
-    quota_state = project_asset_quota_state(quota=quota, project_asset=project_asset)
-    user_todo_open_count = project_asset_user_todo_open_count(
-        user_todos=user_todos,
-        project_asset=project_asset,
-    )
-    cadence_hint = build_long_task_cadence_hint(
-        execution_profile=(
-            project_asset.get("execution_profile")
-            if isinstance(project_asset.get("execution_profile"), dict)
-            else None
-        ),
+        quota=quota,
+        latest_validation=latest_validation,
         latest_runs=latest_runs,
-        handoff_readiness=readiness,
-        quota_state=quota_state,
-        user_todo_open_count=user_todo_open_count,
+        execution_profile=execution_profile,
+        orchestration=orchestration,
+        subagent_activity=subagent_activity,
+        interface_budget_cadence=interface_budget_cadence,
+        project_asset_todo_summary=project_asset_todo_summary,
+        project_asset_todo_projection_gap=project_asset_todo_projection_gap,
+        project_asset_quota_summary=project_asset_quota_summary,
+        compact_execution_profile=compact_execution_profile,
+        compact_orchestration_policy=compact_orchestration_policy,
+        project_asset_handoff_readiness=project_asset_handoff_readiness,
+        project_asset_quota_state=project_asset_quota_state,
+        project_asset_user_todo_open_count=project_asset_user_todo_open_count,
+        build_long_task_cadence_hint=build_long_task_cadence_hint,
     )
-    project_asset["long_task_cadence_hint"] = cadence_hint
-    item["long_task_cadence_hint"] = cadence_hint
 
 
 def active_state_todo_fields(

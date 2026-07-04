@@ -223,6 +223,83 @@ def project_asset_latest_validation(run: dict[str, Any] | None) -> dict[str, Any
     return signal or None
 
 
+def enrich_project_asset(
+    item: dict[str, Any],
+    *,
+    user_todos: dict[str, Any] | None,
+    agent_todos: dict[str, Any] | None,
+    quota: dict[str, Any] | None,
+    latest_validation: dict[str, Any] | None,
+    latest_runs: list[dict[str, Any]] | None,
+    execution_profile: dict[str, Any] | None,
+    orchestration: dict[str, Any] | None,
+    subagent_activity: dict[str, Any] | None,
+    interface_budget_cadence: dict[str, Any] | None,
+    project_asset_todo_summary: Callable[..., dict[str, Any] | None],
+    project_asset_todo_projection_gap: Callable[..., dict[str, Any] | None],
+    project_asset_quota_summary: Callable[[dict[str, Any] | None], dict[str, Any] | None],
+    compact_execution_profile: Callable[[dict[str, Any] | None], dict[str, Any]],
+    compact_orchestration_policy: Callable[[dict[str, Any]], dict[str, Any]],
+    project_asset_handoff_readiness: Callable[..., dict[str, Any] | None],
+    project_asset_quota_state: Callable[..., str | None],
+    project_asset_user_todo_open_count: Callable[..., int | None],
+    build_long_task_cadence_hint: Callable[..., dict[str, Any]],
+) -> None:
+    project_asset = item.get("project_asset")
+    if not isinstance(project_asset, dict):
+        return
+    user_summary = project_asset_todo_summary(user_todos, role="user")
+    if user_summary:
+        project_asset["user_todos"] = user_summary
+    agent_summary = project_asset_todo_summary(agent_todos, role="agent")
+    if agent_summary:
+        project_asset["agent_todos"] = agent_summary
+    todo_projection_gap = project_asset_todo_projection_gap(
+        user_todos=user_todos,
+        agent_todos=agent_todos,
+    )
+    if todo_projection_gap:
+        project_asset["todo_projection_gap"] = todo_projection_gap
+        item["todo_projection_gap"] = todo_projection_gap
+    else:
+        project_asset.pop("todo_projection_gap", None)
+        item.pop("todo_projection_gap", None)
+    quota_summary = project_asset_quota_summary(quota)
+    if quota_summary:
+        project_asset["quota"] = quota_summary
+    if execution_profile is not None:
+        project_asset["execution_profile"] = compact_execution_profile(execution_profile)
+    if orchestration is not None:
+        project_asset["orchestration"] = compact_orchestration_policy(orchestration)
+    if subagent_activity:
+        project_asset["subagent_activity"] = subagent_activity
+    if interface_budget_cadence:
+        project_asset["interface_budget_cadence"] = interface_budget_cadence
+    if latest_validation:
+        project_asset["latest_validation"] = latest_validation
+    readiness = project_asset_handoff_readiness(item, latest_runs=latest_runs)
+    if readiness:
+        item["handoff_readiness"] = readiness
+    quota_state = project_asset_quota_state(quota=quota, project_asset=project_asset)
+    user_todo_open_count = project_asset_user_todo_open_count(
+        user_todos=user_todos,
+        project_asset=project_asset,
+    )
+    cadence_hint = build_long_task_cadence_hint(
+        execution_profile=(
+            project_asset.get("execution_profile")
+            if isinstance(project_asset.get("execution_profile"), dict)
+            else None
+        ),
+        latest_runs=latest_runs,
+        handoff_readiness=readiness,
+        quota_state=quota_state,
+        user_todo_open_count=user_todo_open_count,
+    )
+    project_asset["long_task_cadence_hint"] = cadence_hint
+    item["long_task_cadence_hint"] = cadence_hint
+
+
 def project_asset_summary_is_public_safe(project_asset: dict[str, Any]) -> bool:
     text = repr(project_asset)
     return not LOCAL_PATH_SURFACE_PATTERN.search(text) and not SECRET_LIKE_SURFACE_PATTERN.search(text)

@@ -9,6 +9,7 @@ the shared project_asset contract.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 import sys
 
@@ -20,9 +21,17 @@ from loopx.status import (  # noqa: E402
     MONITOR_DISPLAY_STOP_CONDITION,
     MONITOR_SIGNAL_WAITING_ON,
     build_project_asset,
+    build_long_task_cadence_hint,
+    compact_execution_profile,
+    compact_orchestration_policy,
     enrich_project_asset,
+    project_asset_handoff_readiness,
+    project_asset_quota_summary,
     project_asset_summary_is_public_safe,
+    project_asset_todo_projection_gap,
+    project_asset_todo_summary,
 )
+from loopx.projections import project_asset as project_asset_read_model  # noqa: E402
 from loopx.projections.project_asset import (  # noqa: E402
     project_asset_quota_state,
     project_asset_user_todo_open_count,
@@ -35,6 +44,40 @@ NEXT_ACTION = "Use the current project asset to choose one bounded delivery step
 STOP_CONDITION = "stop until the user or controller decision is recorded"
 VALIDATION_SUMMARY = "fixture validation passed; authority_sources 1"
 SAFE_AGENT_COMMAND = "loopx read-only-map --goal-id next-eye-fixture --dry-run"
+
+
+def _enrich_with_projection(
+    item: dict,
+    *,
+    user_todos: dict | None,
+    agent_todos: dict | None,
+    quota: dict | None,
+    latest_validation: dict | None,
+    latest_runs: list[dict] | None,
+    execution_profile: dict | None,
+    orchestration: dict | None,
+) -> None:
+    project_asset_read_model.enrich_project_asset(
+        item,
+        user_todos=user_todos,
+        agent_todos=agent_todos,
+        quota=quota,
+        latest_validation=latest_validation,
+        latest_runs=latest_runs,
+        execution_profile=execution_profile,
+        orchestration=orchestration,
+        subagent_activity=None,
+        interface_budget_cadence=None,
+        project_asset_todo_summary=project_asset_todo_summary,
+        project_asset_todo_projection_gap=project_asset_todo_projection_gap,
+        project_asset_quota_summary=project_asset_quota_summary,
+        compact_execution_profile=compact_execution_profile,
+        compact_orchestration_policy=compact_orchestration_policy,
+        project_asset_handoff_readiness=project_asset_handoff_readiness,
+        project_asset_quota_state=project_asset_quota_state,
+        project_asset_user_todo_open_count=project_asset_user_todo_open_count,
+        build_long_task_cadence_hint=build_long_task_cadence_hint,
+    )
 
 
 def assert_status_project_asset_next_eye() -> None:
@@ -76,6 +119,7 @@ def assert_status_project_asset_next_eye() -> None:
         "summary": VALIDATION_SUMMARY,
     }
 
+    projection_item = copy.deepcopy(item)
     enrich_project_asset(
         item,
         user_todos=user_todos,
@@ -85,6 +129,17 @@ def assert_status_project_asset_next_eye() -> None:
         execution_profile={"minimum_scale": "implementation"},
         orchestration={"mode": "default", "allowed": False, "max_children": 3},
     )
+    _enrich_with_projection(
+        projection_item,
+        user_todos=user_todos,
+        agent_todos=agent_todos,
+        quota=quota,
+        latest_validation=latest_validation,
+        latest_runs=None,
+        execution_profile={"minimum_scale": "implementation"},
+        orchestration={"mode": "default", "allowed": False, "max_children": 3},
+    )
+    assert item == projection_item, projection_item
 
     asset = item["project_asset"]
     for field in ("owner", "gate", "support_mode", "next_action", "stop_condition"):
