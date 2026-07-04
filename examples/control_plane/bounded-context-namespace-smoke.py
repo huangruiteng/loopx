@@ -10,37 +10,54 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LEGACY_IMPORT = "loopx.projections"
 LEGACY_PACKAGE_PREFIX = "loopx/projections/"
+TEXT_SUFFIXES = {".py", ".md"}
+SKIP_DIRS = {"__pycache__", ".git", ".pytest_cache"}
+
+
+def _git_ls_files(*patterns: str) -> list[str] | None:
+    completed = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", *patterns],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode != 0:
+        return None
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _fallback_repo_files() -> list[str]:
+    paths: list[str] = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+        if any(part in SKIP_DIRS for part in path.relative_to(REPO_ROOT).parts):
+            continue
+        paths.append(path.relative_to(REPO_ROOT).as_posix())
+    return sorted(paths)
 
 
 def tracked_text_files() -> list[Path]:
-    completed = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(REPO_ROOT),
-            "ls-files",
-            "*.py",
-            "*.md",
-        ],
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-    )
+    files = _git_ls_files("*.py", "*.md")
+    if files is None:
+        files = [
+            path
+            for path in _fallback_repo_files()
+            if Path(path).suffix in TEXT_SUFFIXES
+        ]
     return [
         REPO_ROOT / line.strip()
-        for line in completed.stdout.splitlines()
+        for line in files
         if line.strip() and (REPO_ROOT / line.strip()).exists()
     ]
 
 
 def tracked_files() -> list[str]:
-    completed = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files"],
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-    )
-    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    files = _git_ls_files()
+    if files is not None:
+        return files
+    return _fallback_repo_files()
 
 
 def assert_no_tracked_legacy_projection_package() -> None:
