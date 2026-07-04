@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent_registry import side_agent_handoff_agent_id_for_goal
-from .projections.agent_scope import (
+from .control_plane.agents.agent_scope import (
     AgentScopeFrontierAction,
     _action_scope_tokens_from_text,
     _agent_lane_frontier_hint,
@@ -23,7 +23,7 @@ from .projections.agent_scope import (
     _agent_scoped_user_gate_override,
     _scoped_user_gate_fallback,
 )
-from .projections.capability_gate import (
+from .control_plane.agents.capability_gate import (
     _agent_lane_candidate_sort_key,
     _capability_candidate_item,
     _capability_missing_action,

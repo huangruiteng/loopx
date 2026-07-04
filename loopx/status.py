@@ -48,13 +48,13 @@ from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
 from .paths import global_registry_path, resolve_runtime_root
-from .projections.task_graph import (
+from .control_plane.work_items.task_graph import (
     TASK_GRAPH_MAX_USER_GATE_NODES,
     TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
     TASK_GRAPH_SOURCE_OF_TRUTH,
     build_task_graph_projection as _build_task_graph_projection_read_model,
 )
-from .projections.project_asset import (
+from .control_plane.work_items.project_asset import (
     LOCAL_PATH_SURFACE_PATTERN,
     PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
     SECRET_LIKE_SURFACE_PATTERN,
@@ -71,49 +71,49 @@ from .projections.project_asset import (
     project_asset_todo_projection_gap,
     project_asset_user_todo_open_count,
 )
-from .projections.project_handoff import (
+from .control_plane.handoff.project_handoff import (
     project_asset_handoff_readiness as _project_asset_handoff_readiness_read_model,
     project_asset_handoff_state as _project_asset_handoff_state_read_model,
 )
-from .projections.autonomous_candidates import (
+from .control_plane.work_items.autonomous_candidates import (
     autonomous_backlog_candidates as _autonomous_backlog_candidates_read_model,
     autonomous_monitor_candidates as _autonomous_monitor_candidates_read_model,
     autonomous_priority_label as _autonomous_priority_label,
     autonomous_priority_rank as _autonomous_priority_rank,
 )
-from .projections.agent_lane_recommendation import (
+from .control_plane.agents.agent_lane_recommendation import (
     compact_agent_lane_recommendation as _compact_agent_lane_recommendation_read_model,
     is_status_neutral_run as _is_status_neutral_run_read_model,
     latest_agent_lane_run as _latest_agent_lane_run_read_model,
     latest_run_recommended_action_for_projection as _latest_run_recommended_action_for_projection_read_model,
 )
-from .projections.active_state_sections import (
+from .control_plane.goals.active_state_sections import (
     active_state_section_entries as _active_state_section_entries_read_model,
     active_state_sections as _active_state_sections_read_model,
 )
-from .projections.active_state_metadata import (
+from .control_plane.goals.active_state_metadata import (
     AGENT_TODO_HEADER_MARKERS,
     TODO_ARCHIVE_HEADER_MARKERS,
     USER_TODO_HEADER_MARKERS,
     parse_state_frontmatter as _parse_state_frontmatter_read_model,
     todo_role_for_heading as _todo_role_for_heading_read_model,
 )
-from .projections.active_state_todos import (
+from .control_plane.todos.active_state_todos import (
     active_state_todo_fields as _active_state_todo_fields_read_model,
 )
-from .projections.attention_item import (
+from .control_plane.work_items.attention_item import (
     attention_item as _attention_item_read_model,
 )
-from .projections.attention_fields import (
+from .control_plane.work_items.attention_fields import (
     operator_gate_attention_fields as _operator_gate_attention_fields_read_model,
     readiness_attention_fields as _readiness_attention_fields_read_model,
 )
-from .projections.autonomous_replan_ack import (
+from .control_plane.work_items.autonomous_replan_ack import (
     autonomous_replan_ack_recorded as _autonomous_replan_ack_recorded_read_model,
     compact_autonomous_replan_ack as _compact_autonomous_replan_ack_read_model,
     latest_autonomous_replan_ack_for_projection as _latest_autonomous_replan_ack_for_projection_read_model,
 )
-from .projections.autonomous_replan_obligation import (
+from .control_plane.work_items.autonomous_replan_obligation import (
     autonomous_replan_obligation_from_runs as _autonomous_replan_obligation_from_runs_read_model,
     autonomous_replan_periodic_review_from_runs as _autonomous_replan_periodic_review_from_runs_read_model,
     build_autonomous_replan_obligation as _build_autonomous_replan_obligation_read_model,
@@ -122,16 +122,16 @@ from .projections.autonomous_replan_obligation import (
     run_history_monitor_wait_already_acknowledged as _run_history_monitor_wait_already_acknowledged_read_model,
     run_history_stall_signal as _run_history_stall_signal_read_model,
 )
-from .projections.backlog_hygiene import (
+from .control_plane.work_items.backlog_hygiene import (
     backlog_hygiene_warning as _backlog_hygiene_warning_read_model,
 )
-from .projections.dreaming import (
+from .control_plane.goals.dreaming import (
     compact_dreaming_lane_badge as _compact_dreaming_lane_badge_read_model,
     compact_dreaming_proposal as _compact_dreaming_proposal_read_model,
     compact_server_planning_contract as _compact_server_planning_contract_read_model,
     dreaming_attention_fields as _dreaming_attention_fields_read_model,
 )
-from .projections.delivery_signals import (
+from .control_plane.work_items.delivery_signals import (
     classification_contains_any as _classification_contains_any_read_model,
     delivery_batch_scale_for_run as _delivery_batch_scale_for_run_read_model,
     delivery_outcome_for_run as _delivery_outcome_for_run_read_model,
@@ -139,43 +139,43 @@ from .projections.delivery_signals import (
     outcome_gap_streak as _outcome_gap_streak_read_model,
     small_delivery_batch_scale_streak as _small_delivery_batch_scale_streak_read_model,
 )
-from .projections.monitor_display import (
+from .control_plane.scheduler.monitor_display import (
     attention_item_is_monitor_quiet_display_candidate as _attention_item_is_monitor_quiet_display_candidate,
     normalize_monitor_quiet_attention_display as _normalize_monitor_quiet_attention_display,
     quiet_monitor_display_action as _quiet_monitor_display_action,
     todo_summary_lane_items as _todo_summary_lane_items,
     todo_summary_open_count as _todo_summary_open_count,
 )
-from .projections.run_compaction import (
+from .control_plane.runtime.run_compaction import (
     compact_controller_readiness as _compact_controller_readiness_read_model,
     compact_human_reward as _compact_human_reward_read_model,
     compact_operator_gate as _compact_operator_gate_read_model,
     compact_operator_gate_resume_contract as _compact_operator_gate_resume_contract_read_model,
 )
-from .projections.handoff_runs import (
+from .control_plane.handoff.handoff_runs import (
     is_custom_post_handoff_work_run as _is_custom_post_handoff_work_run_read_model,
     is_handoff_ready_run as _is_handoff_ready_run_read_model,
     run_has_external_evidence_watch_signal as _run_has_external_evidence_watch_signal_read_model,
 )
-from .projections.global_registry_shadow import (
+from .control_plane.goals.global_registry_shadow import (
     attach_global_registry_shadow_finding as _attach_global_registry_shadow_finding_read_model,
     compact_global_registry_shadow_finding as _compact_global_registry_shadow_finding_read_model,
 )
-from .projections.global_registry_health import (
+from .control_plane.goals.global_registry_health import (
     collect_global_registry_health as _collect_global_registry_health_read_model,
     global_registry_finding as _global_registry_finding_read_model,
 )
-from .projections.issue_meta_surface import (
+from .control_plane.work_items.issue_meta_surface import (
     parse_issue_meta_surface as _parse_issue_meta_surface_read_model,
 )
-from .projections.lifecycle import (
+from .control_plane.work_items.lifecycle import (
     goal_lifecycle_fields as _goal_lifecycle_fields_read_model,
     ordered_lifecycle_flags as _ordered_lifecycle_flags_read_model,
     primary_lifecycle_phase as _primary_lifecycle_phase_read_model,
     run_lifecycle_flags as _run_lifecycle_flags_read_model,
     run_lifecycle_phase as _run_lifecycle_phase_read_model,
 )
-from .projections.session_runtime import (
+from .control_plane.runtime.session_runtime import (
     compact_session_runtime_projection_from_run as _compact_session_runtime_projection_from_run_read_model,
     compact_session_runtime_readonly_projection as _compact_session_runtime_readonly_projection_read_model,
     attach_session_runtime_projection as _attach_session_runtime_projection_read_model,
@@ -184,22 +184,22 @@ from .projections.session_runtime import (
     session_runtime_status_label as _session_runtime_status_label_read_model,
     session_runtime_status_waiting_on as _session_runtime_status_waiting_on_read_model,
 )
-from .projections.subagent_activity import (
+from .control_plane.agents.subagent_activity import (
     MAX_SUBAGENT_ACTIVITY_ITEMS,
     compact_subagent_run as _compact_subagent_run_read_model,
     subagent_activity_for_goal as _subagent_activity_for_goal_read_model,
     subagent_quota_spend as _subagent_quota_spend_read_model,
     subagent_state as _subagent_state_read_model,
 )
-from .projections.stale_latest_run import (
+from .control_plane.work_items.stale_latest_run import (
     active_state_projection_warning as _active_state_projection_warning_read_model,
 )
-from .projections.status_contract import (
+from .control_plane.work_items.status_contract import (
     build_contract_health_projection as _build_contract_health_projection_read_model,
     build_status_contract as _build_status_contract_read_model,
     compact_status_contract_signals as _compact_status_contract_signals_read_model,
 )
-from .projections.todo_summary import (
+from .control_plane.todos.todo_summary import (
     active_state_todo_attention_item as _active_state_todo_attention_item_read_model,
     active_next_action_todo_ids,
     attach_dependency_blockers as _attach_dependency_blockers_read_model,

@@ -109,7 +109,7 @@ The next module-boundary PR should therefore:
 | Hygiene and repair signals | `backlog_hygiene_warning`, `build_autonomous_replan_obligation` | Health-signal module consumed by status and quota. | Repair obligations remain machine-readable and cannot be cleared by empty acknowledgements. |
 | Project assets | `build_project_asset` | Public-safe asset packer over status and run-history inputs. | Project-asset-backed queue items remain the only authority for owner/gate/stop-condition semantics. |
 | Attention queue | `build_attention_queue` | Queue builder over normalized goal status, todos, gates, and project assets. | Queue ordering and truncation limits remain explicit and stable. |
-| Task graph projection | `loopx.projections.task_graph.build_task_graph_projection` with `loopx.status.build_task_graph_projection` as the compatibility wrapper | Read-only graph projection module. | Node caps include truncation metadata; full cold-path detail remains outside the hot graph. |
+| Task graph projection | `loopx.control_plane.work_items.task_graph.build_task_graph_projection` with `loopx.status.build_task_graph_projection` and `loopx.projections.task_graph` as compatibility wrappers | Read-only graph projection module. | Node caps include truncation metadata; full cold-path detail remains outside the hot graph. |
 | Status contract assembly | `build_status_contract`, `collect_status` | Thin collector/orchestrator that wires registry, runtime, state, and read models. | CLI status JSON shape remains compatible. |
 | Markdown rendering | `render_status_markdown` plus `loopx/renderers/status_markdown.py` | Render-only module/helpers over the status payload. | Rendering cannot become the source of scheduler or quota truth. |
 

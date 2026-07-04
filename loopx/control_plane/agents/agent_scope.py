@@ -1,0 +1,1372 @@
+from __future__ import annotations
+
+from enum import Enum
+import re
+from typing import Any
+
+from ...decision_scope import todo_gate_relation, todo_gate_relation_blocks_agent
+from ...policies.work_lane import work_lane_contract_requires_current_agent_attempt
+from ...todo_contract import (
+    TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_MONITOR,
+    TODO_TASK_CLASS_USER_GATE,
+    normalize_required_write_scopes,
+    normalize_todo_blocks_agent,
+    normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
+    normalize_todo_id,
+    normalize_todo_required_decision_scopes,
+    normalize_todo_status,
+    normalize_todo_task_class,
+)
+from ...todo_handoff_gate import HandoffGateState
+from ...todo_projection import (
+    todo_item_claimed_by_agent_or_unclaimed,
+    todo_item_is_actionable_open,
+    todo_item_is_deferred,
+    todo_item_task_class,
+    todo_projection_sort_key,
+)
+
+
+AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
+AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION = "agent_lane_frontier_hint_v0"
+
+USER_GATE_ACTION_KIND_HINTS = (
+    "approval",
+    "approve",
+    "boundary",
+    "gate",
+    "blocker",
+    "credential",
+    "private",
+    "production",
+    "leaderboard",
+    "submission",
+    "public_claim",
+)
+
+_ACTION_SCOPE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "approve",
+    "approved",
+    "approval",
+    "before",
+    "blocked",
+    "continue",
+    "decide",
+    "decision",
+    "for",
+    "from",
+    "gate",
+    "gated",
+    "goal",
+    "harness",
+    "internal",
+    "material",
+    "next",
+    "open",
+    "owner",
+    "p0",
+    "p1",
+    "p2",
+    "p3",
+    "provide",
+    "read",
+    "registered",
+    "safe",
+    "should",
+    "sync",
+    "the",
+    "todo",
+    "until",
+    "user",
+    "whether",
+    "with",
+}
+
+
+class AgentScopeFrontierAction(str, Enum):
+    AGENT_SCOPE_EXHAUSTED = "agent_scope_exhausted"
+    AGENT_SCOPE_WAIT = "agent_scope_wait"
+    REASSIGNMENT_REQUIRED = "reassignment_required"
+    SUCCESSOR_REPLAN_REQUIRED = "successor_replan_required"
+
+
+class AgentLaneFrontierHintDecision(str, Enum):
+    CLAIM_UNOWNED_IN_SCOPE = "claim_unowned_in_scope"
+    ADD_NEXT_ADVANCEMENT = "add_next_advancement"
+    RECORD_NO_FOLLOWUP = "record_no_followup"
+    QUIET_NOOP_BLOCKER = "quiet_noop_blocker"
+
+
+def _todo_task_class(item: dict[str, Any]) -> str:
+    return todo_item_task_class(item)
+
+
+def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int, int, str]:
+    return todo_projection_sort_key(item)
+
+
+def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
+    return todo_item_is_actionable_open(item)
+
+
+def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "index": item.get("index"),
+        "text": text if text is not None else item.get("text"),
+    }
+    for key in (
+        "schema_version",
+        "todo_id",
+        "role",
+        "status",
+        "priority",
+        "title",
+        "archive_state",
+        "source_section",
+        "task_class",
+        "action_kind",
+        "required_write_scopes",
+        "required_capabilities",
+        "target_capabilities",
+        "decision_scope",
+        "required_decision_scopes",
+        "claimed_by",
+        "blocks_agent",
+        "unblocks_todo_id",
+        "resume_when",
+        "resume_condition",
+        "resume_ready",
+        "no_followup",
+        "target_key",
+        "cadence",
+        "next_due_at",
+        "expires_at",
+        "last_checked_at",
+        "result_hash",
+        "consecutive_no_change",
+        "material_change",
+        "max_no_change_before_replan",
+        "route_continuation_replan_required",
+        "route_continuation_reason",
+        "route_id",
+        "route_key",
+    ):
+        if item.get(key) is not None:
+            compact[key] = item.get(key)
+    required_write_scopes = normalize_required_write_scopes(compact.get("required_write_scopes"))
+    if required_write_scopes:
+        compact["required_write_scopes"] = required_write_scopes
+    else:
+        compact.pop("required_write_scopes", None)
+    decision_scope = normalize_todo_decision_scope(compact.get("decision_scope"))
+    if decision_scope:
+        compact["decision_scope"] = decision_scope
+    else:
+        compact.pop("decision_scope", None)
+    required_decision_scopes = normalize_todo_required_decision_scopes(
+        compact.get("required_decision_scopes")
+    )
+    if required_decision_scopes:
+        compact["required_decision_scopes"] = required_decision_scopes
+    else:
+        compact.pop("required_decision_scopes", None)
+    compact["task_class"] = _todo_task_class(compact)
+    return compact
+
+
+def _protocol_action_text(value: Any, *, limit: int = 220) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).strip().split())
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _open_todo_count(summary: dict[str, Any] | None) -> int:
+    if not isinstance(summary, dict):
+        return 0
+    try:
+        return max(0, int(summary.get("open_count") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_user_gate_todo_item(item: dict[str, Any]) -> bool:
+    if _todo_task_class(item) == TODO_TASK_CLASS_USER_GATE:
+        return True
+    action_kind = str(item.get("action_kind") or "").strip().lower()
+    if not action_kind:
+        return False
+    return any(hint in action_kind for hint in USER_GATE_ACTION_KIND_HINTS)
+
+
+def _open_user_gate_todo_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return []
+    candidates: list[dict[str, Any]] = []
+    for key in ("gate_open_items", "first_open_items"):
+        values = summary.get(key)
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict) or item.get("done") is True:
+                continue
+            if not _is_user_gate_todo_item(item):
+                continue
+            item_key = (item.get("todo_id"), item.get("index"), item.get("text"))
+            if any(
+                (existing.get("todo_id"), existing.get("index"), existing.get("text"))
+                == item_key
+                for existing in candidates
+            ):
+                continue
+            candidates.append(item)
+    return candidates
+
+
+def _action_scope_tokens_from_text(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(
+            r"[a-z0-9]+",
+            text.lower().replace("_", " ").replace("-", " "),
+        )
+        if len(token) > 1 and token not in _ACTION_SCOPE_STOPWORDS
+    }
+
+
+def _todo_action_kind_tokens(item: dict[str, Any]) -> set[str]:
+    return _action_scope_tokens_from_text(str(item.get("action_kind") or ""))
+
+
+def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
+    text = " ".join(
+        str(value or "")
+        for value in (item.get("action_kind"), item.get("title"), item.get("text"))
+        if str(value or "").strip()
+    )
+    return _action_scope_tokens_from_text(text)
+
+
+def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
+    return todo_gate_relation(gate, agent_item)
+
+
+def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
+    relation = _todo_gate_relation(gate, agent_item)
+    if relation:
+        return todo_gate_relation_blocks_agent(relation)
+
+    gate_action_tokens = _todo_action_kind_tokens(gate)
+    agent_action_tokens = _todo_action_kind_tokens(agent_item)
+    if gate_action_tokens and agent_action_tokens:
+        return bool(gate_action_tokens & agent_action_tokens)
+    if agent_action_tokens:
+        return False
+
+    gate_tokens = _todo_action_scope_tokens(gate)
+    agent_tokens = _todo_action_scope_tokens(agent_item)
+    if not gate_tokens or not agent_tokens:
+        return False
+    if gate_action_tokens:
+        return len(gate_action_tokens & agent_tokens) >= 2
+    return len(gate_tokens & agent_tokens) >= 3
+
+
+def _todo_item_claimed_by_agent_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> bool:
+    return todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+
+
+def _agent_scope_selectable_todo_item(
+    item: dict[str, Any],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(agent_identity, dict):
+        return True
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return True
+    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    if blocks_agent and blocks_agent != agent_id:
+        return False
+    return _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+
+
+def _agent_scope_filter_user_gate_items(
+    open_items: list[dict[str, Any]],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+    if not isinstance(agent_identity, dict):
+        return open_items, [], None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return open_items, [], None
+
+    current_agent_items: list[dict[str, Any]] = []
+    other_agent_scoped_items: list[dict[str, Any]] = []
+    for item in open_items:
+        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+        if blocks_agent:
+            if blocks_agent != agent_id:
+                other_agent_scoped_items.append(item)
+                continue
+            current_agent_items.append(item)
+            continue
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if claimed_by and claimed_by != agent_id:
+            other_agent_scoped_items.append(item)
+            continue
+        current_agent_items.append(item)
+    if not other_agent_scoped_items:
+        return open_items, [], None
+
+    return (
+        current_agent_items,
+        other_agent_scoped_items,
+        {
+            "schema_version": "agent_scoped_user_gate_filter_v0",
+            "agent_id": agent_id,
+            "policy": (
+                "user todos scoped to another agent by blocks_agent or claimed_by "
+                "remain visible but do not block this agent's quota lane"
+            ),
+            "current_agent_blocking_open_count": len(current_agent_items),
+            "other_agent_scoped_open_count": len(other_agent_scoped_items),
+        },
+    )
+
+
+def _scoped_user_gate_fallback(
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    capability_gate: dict[str, Any] | None = None,
+    allow_unrelated_gate: bool = False,
+) -> dict[str, Any] | None:
+    gates = _open_user_gate_todo_items(user_todo_summary)
+    if not gates or not isinstance(agent_todo_summary, dict):
+        return None
+
+    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
+        executable_items = (
+            capability_gate.get("runnable_candidates")
+            if isinstance(capability_gate.get("runnable_candidates"), list)
+            else []
+        )
+    else:
+        executable_items = (
+            agent_todo_summary.get("executable_backlog_items")
+            if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
+            else agent_todo_summary.get("first_executable_items")
+            if isinstance(agent_todo_summary.get("first_executable_items"), list)
+            else []
+        )
+    executable_items = [item for item in executable_items if isinstance(item, dict)]
+    claim_scope = (
+        agent_todo_summary.get("claim_scope")
+        if isinstance(agent_todo_summary.get("claim_scope"), dict)
+        else None
+    )
+    if claim_scope:
+        agent_id = normalize_todo_claimed_by(claim_scope.get("agent_id"))
+        executable_items = [
+            item
+            for item in executable_items
+            if normalize_todo_claimed_by(item.get("claimed_by")) in {"", agent_id}
+        ]
+    blocked_items: list[dict[str, Any]] = []
+    selected: dict[str, Any] | None = None
+    blocking_gate: dict[str, Any] | None = None
+    for item in executable_items:
+        matching_gate = next(
+            (gate for gate in gates if _user_gate_blocks_agent_item(gate, item)),
+            None,
+        )
+        if matching_gate:
+            blocking_gate = blocking_gate or matching_gate
+            text = str(item.get("text") or "").strip()
+            blocked_item = _compact_todo_summary_item(item, text=text)
+            relation = _todo_gate_relation(matching_gate, item)
+            if relation:
+                blocked_item["todo_gate_relation"] = relation
+            blocked_items.append(blocked_item)
+            continue
+        if selected is None:
+            selected = item
+
+    if selected is None:
+        return None
+    if not blocking_gate and not allow_unrelated_gate:
+        return None
+
+    selected_text = str(selected.get("text") or "").strip()
+    gate_to_surface = blocking_gate or gates[0]
+    selected_item = _compact_todo_summary_item(selected, text=selected_text)
+    selected_relation = _todo_gate_relation(gate_to_surface, selected)
+    if selected_relation:
+        selected_item["todo_gate_relation"] = selected_relation
+    gate_text = str(gate_to_surface.get("text") or "").strip()
+    reason = (
+        "an open user_gate blocks a scoped agent todo, but a non-dependent "
+        "executable fallback remains available"
+        if blocking_gate
+        else (
+            "an open user_gate blocks a different action scope, but the selected "
+            "executable agent todo is non-dependent and safe to advance"
+        )
+    )
+    return {
+        "schema_version": "scoped_user_gate_fallback_v0",
+        "kind": "scoped_user_gate_fallback",
+        "notify_user": True,
+        "requires_user_action": True,
+        "reason": reason,
+        "blocked_user_gate": _compact_todo_summary_item(gate_to_surface, text=gate_text),
+        "blocked_agent_items": blocked_items[:3],
+        "selected_executable": selected_item,
+        "recommended_action": (
+            "Notify the user about the scoped gate; then execute the selected "
+            "non-gated fallback and spend only after validated writeback."
+        ),
+    }
+
+
+def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> str | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    items = (
+        agent_todo_summary.get("first_executable_items")
+        if isinstance(agent_todo_summary.get("first_executable_items"), list)
+        else []
+    )
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not _todo_item_is_actionable_open(item):
+            continue
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        text = _protocol_action_text(item.get("text"), limit=320)
+        if text:
+            return text
+    return None
+
+
+def _first_monitor_todo_text(agent_todo_summary: dict[str, Any] | None) -> str | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    for key in ("monitor_due_items", "monitor_open_items"):
+        items = agent_todo_summary.get(key) if isinstance(agent_todo_summary.get(key), list) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if not _todo_item_is_actionable_open(item):
+                continue
+            if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+                continue
+            text = _protocol_action_text(item.get("text"), limit=320)
+            if text:
+                return text
+    return None
+
+
+def _agent_scoped_user_gate_override(
+    *,
+    state: str,
+    item: dict[str, Any],
+    user_todo_summary: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if state != "operator_gate":
+        return None
+    if not isinstance(agent_identity, dict):
+        return None
+    if not isinstance(user_todo_summary, dict):
+        return None
+    if _open_todo_count(user_todo_summary) > 0:
+        return None
+    other_count = _open_todo_count(
+        {"open_count": user_todo_summary.get("other_agent_scoped_open_count")}
+    )
+    if other_count <= 0:
+        return None
+    if item.get("operator_question") or item.get("missing_gates"):
+        return None
+    selected_action = _first_executable_todo_text(agent_todo_summary)
+    if not selected_action:
+        selected_action = _first_monitor_todo_text(agent_todo_summary)
+    if not selected_action:
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    return {
+        "schema_version": "agent_scoped_user_gate_override_v0",
+        "kind": "agent_scoped_user_gate_override",
+        "agent_id": agent_id,
+        "from_state": "operator_gate",
+        "to_state": "eligible",
+        "other_agent_scoped_open_count": other_count,
+        "selected_action": selected_action,
+        "reason": (
+            "the open user gate is scoped to another agent via blocks_agent or claimed_by; "
+            "this agent still has an executable in-scope todo"
+        ),
+    }
+
+
+def _count_advancement_items(items: Any, *, claimed_by: str | None = None) -> int:
+    if not isinstance(items, list):
+        return 0
+    count = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not _todo_item_is_actionable_open(item):
+            continue
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        item_claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if claimed_by == "__unclaimed__":
+            if item_claimed_by:
+                continue
+        elif claimed_by is not None and item_claimed_by != claimed_by:
+            continue
+        count += 1
+    return count
+
+
+def _agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
+    try:
+        return AgentScopeFrontierAction(str(value or ""))
+    except ValueError:
+        return None
+
+
+def _first_compact_todo_id(items: Any) -> str | None:
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        todo_id = normalize_todo_id(item.get("todo_id"))
+        if todo_id:
+            return todo_id
+    return None
+
+
+def _work_lane_due_monitor_attempt(work_lane_contract: dict[str, Any] | None) -> bool:
+    return bool(
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("monitor_kind") == "todo_monitor_due"
+        and work_lane_contract.get("must_attempt_work") is True
+    )
+
+
+def _agent_lane_frontier_hint(
+    *,
+    goal_id: str,
+    agent_identity: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    agent_lane_next_action: dict[str, Any] | None,
+    agent_scope_frontier: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return None
+    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+
+    def build_hint(
+        decision: AgentLaneFrontierHintDecision,
+        *,
+        source: str,
+        reason_code: str,
+        target_todo_id: str | None = None,
+        quiet_noop_allowed: bool,
+        next_cli_action: str | None = None,
+    ) -> dict[str, Any]:
+        hint: dict[str, Any] = {
+            "schema_version": AGENT_LANE_FRONTIER_HINT_SCHEMA_VERSION,
+            "decision": decision.value,
+            "agent_id": agent_id,
+            "primary_agent": primary_agent,
+            "source": source,
+            "reason_code": reason_code,
+            "quiet_noop_allowed": quiet_noop_allowed,
+            "uses_structured_frontier": True,
+        }
+        if target_todo_id:
+            hint["target_todo_id"] = target_todo_id
+        if next_cli_action:
+            hint["next_cli_action"] = next_cli_action
+        return hint
+
+    if isinstance(agent_lane_next_action, dict):
+        selected_by = str(agent_lane_next_action.get("selected_by") or "")
+        claim_required = agent_lane_next_action.get("claim_required_before_work") is True
+        target_todo_id = normalize_todo_id(agent_lane_next_action.get("todo_id"))
+        if selected_by == "unclaimed_todo" or claim_required:
+            action = None
+            if target_todo_id:
+                action = (
+                    f"loopx todo claim --goal-id {goal_id} --todo-id {target_todo_id} "
+                    f"--claimed-by {agent_id}"
+                )
+            return build_hint(
+                AgentLaneFrontierHintDecision.CLAIM_UNOWNED_IN_SCOPE,
+                source="agent_lane_next_action",
+                reason_code="unclaimed_advancement_selected",
+                target_todo_id=target_todo_id,
+                quiet_noop_allowed=False,
+                next_cli_action=action,
+            )
+
+    if _work_lane_due_monitor_attempt(work_lane_contract):
+        return None
+    if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
+        return None
+
+    frontier = agent_scope_frontier if isinstance(agent_scope_frontier, dict) else {}
+    frontier_action = _agent_scope_frontier_action(frontier.get("action"))
+    if frontier_action == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED:
+        cleared_todo_id = _first_compact_todo_id(
+            frontier.get("cleared_without_successor_handoff_gates")
+        )
+        if cleared_todo_id:
+            return build_hint(
+                AgentLaneFrontierHintDecision.RECORD_NO_FOLLOWUP,
+                source="agent_scope_frontier",
+                reason_code="cleared_handoff_without_successor",
+                target_todo_id=cleared_todo_id,
+                quiet_noop_allowed=False,
+                next_cli_action=(
+                    f"loopx todo complete --goal-id {goal_id} --todo-id {cleared_todo_id} "
+                    "--no-follow-up --evidence '<public-safe rationale>'"
+                ),
+            )
+        monitor_candidates = (
+            frontier.get("monitor_blocked_resume_candidates")
+            if isinstance(frontier.get("monitor_blocked_resume_candidates"), list)
+            else []
+        )
+        monitor_candidate = (
+            monitor_candidates[0]
+            if monitor_candidates and isinstance(monitor_candidates[0], dict)
+            else {}
+        )
+        monitor_blocker_id = normalize_todo_id(
+            monitor_candidate.get("blocking_monitor_todo_id")
+        )
+        if monitor_candidate:
+            target_todo_id = normalize_todo_id(monitor_candidate.get("todo_id"))
+            return build_hint(
+                AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+                source="agent_scope_frontier",
+                reason_code="resume_blocked_by_open_monitor",
+                target_todo_id=target_todo_id or monitor_blocker_id,
+                quiet_noop_allowed=False,
+                next_cli_action=(
+                    f"loopx todo complete --goal-id {goal_id} --todo-id {monitor_blocker_id} "
+                    "--evidence '<validated gate evidence>'"
+                    if monitor_blocker_id
+                    else None
+                ),
+            )
+        deferred_todo_id = _first_compact_todo_id(frontier.get("deferred_resume_candidates"))
+        route_todo_id = _first_compact_todo_id(
+            frontier.get("route_continuation_replan_candidates")
+        )
+        route_candidates = (
+            frontier.get("route_continuation_replan_candidates")
+            if isinstance(frontier.get("route_continuation_replan_candidates"), list)
+            else []
+        )
+        route_candidate = (
+            route_candidates[0]
+            if route_candidates and isinstance(route_candidates[0], dict)
+            else {}
+        )
+        route_target = (
+            route_todo_id
+            or normalize_todo_id(route_candidate.get("route_id"))
+            or normalize_todo_id(route_candidate.get("route_key"))
+        )
+        if route_candidate:
+            return build_hint(
+                AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+                source="agent_scope_frontier",
+                reason_code="route_continuation_replan_required",
+                target_todo_id=route_target,
+                quiet_noop_allowed=False,
+                next_cli_action=(
+                    f"loopx todo add --goal-id {goal_id} --role agent "
+                    "--text '<public-safe route continuation advancement todo>'"
+                ),
+            )
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="successor_replan_required",
+            target_todo_id=deferred_todo_id,
+            quiet_noop_allowed=False,
+        )
+
+    if frontier_action in {
+        AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
+        AgentScopeFrontierAction.REASSIGNMENT_REQUIRED,
+    }:
+        blocker_todo_id = _first_compact_todo_id(frontier.get("blocking_handoff_gates"))
+        if not blocker_todo_id:
+            blocker_todo_id = _first_compact_todo_id(frontier.get("other_agent_claimed_items"))
+        if blocker_todo_id:
+            return build_hint(
+                AgentLaneFrontierHintDecision.QUIET_NOOP_BLOCKER,
+                source="agent_scope_frontier",
+                reason_code="blocked_by_other_agent_frontier",
+                target_todo_id=blocker_todo_id,
+                quiet_noop_allowed=True,
+            )
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="no_current_agent_advancement_todo",
+            quiet_noop_allowed=True,
+        )
+
+    if frontier_action == AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED:
+        return build_hint(
+            AgentLaneFrontierHintDecision.ADD_NEXT_ADVANCEMENT,
+            source="agent_scope_frontier",
+            reason_code="agent_scope_exhausted",
+            quiet_noop_allowed=True,
+        )
+
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    current_advancement_count = int(
+        agent_todo_summary.get("current_agent_claimed_advancement_count") or 0
+    )
+    current_monitor_count = int(agent_todo_summary.get("current_agent_claimed_monitor_count") or 0)
+    unclaimed_count = _count_advancement_items(
+        agent_todo_summary.get("unclaimed_priority_open_items"),
+        claimed_by="__unclaimed__",
+    )
+    lane = str(work_lane_contract.get("lane") or "") if isinstance(work_lane_contract, dict) else ""
+    if current_advancement_count == 0 and unclaimed_count == 0 and current_monitor_count > 0:
+        return build_hint(
+            AgentLaneFrontierHintDecision.QUIET_NOOP_BLOCKER,
+            source="agent_todo_summary",
+            reason_code="only_current_agent_monitor_work_remains",
+            quiet_noop_allowed=lane != TODO_TASK_CLASS_ADVANCEMENT,
+        )
+    return None
+
+
+def _agent_scope_deferred_resume_candidates(
+    agent_todo_summary: dict[str, Any],
+    *,
+    agent_id: str,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for key in (
+        "current_agent_deferred_resume_candidates",
+        "unclaimed_deferred_resume_candidates",
+    ):
+        value = agent_todo_summary.get(key)
+        if isinstance(value, list):
+            candidates.extend(item for item in value if isinstance(item, dict))
+    if not candidates:
+        value = agent_todo_summary.get("deferred_resume_candidates")
+        if isinstance(value, list):
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+                if claimed_by and claimed_by != agent_id:
+                    continue
+                candidates.append(item)
+
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if item.get("resume_ready") is not True:
+            continue
+        if not todo_item_is_deferred(item):
+            continue
+        identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(_compact_todo_summary_item(item, text=str(item.get("text") or "").strip()))
+    return sorted(unique, key=_todo_projection_sort_key)
+
+
+def _agent_scope_monitor_blocked_resume_candidates(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(agent_todo_summary, dict):
+        return []
+    candidates: list[dict[str, Any]] = []
+    if agent_id:
+        for key in (
+            "current_agent_monitor_blocked_resume_candidates",
+            "unclaimed_monitor_blocked_resume_candidates",
+        ):
+            value = agent_todo_summary.get(key)
+            if isinstance(value, list):
+                candidates.extend(item for item in value if isinstance(item, dict))
+    else:
+        value = agent_todo_summary.get("monitor_blocked_resume_candidates")
+        if isinstance(value, list):
+            candidates.extend(item for item in value if isinstance(item, dict))
+
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        if item.get("resume_ready") is not False:
+            continue
+        condition = item.get("resume_condition") if isinstance(item.get("resume_condition"), dict) else {}
+        if normalize_todo_status(condition.get("target_status")) != TODO_STATUS_OPEN:
+            continue
+        target_todo_id = normalize_todo_id(
+            item.get("blocking_monitor_todo_id")
+            or condition.get("target_todo_id")
+            or condition.get("target")
+        )
+        target_task_class = normalize_todo_task_class(
+            condition.get("target_task_class"),
+            text="",
+        )
+        if target_task_class != TODO_TASK_CLASS_MONITOR and not target_todo_id:
+            continue
+        identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
+        if identity in seen:
+            continue
+        seen.add(identity)
+        compact = _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        if target_todo_id:
+            compact["blocking_monitor_todo_id"] = target_todo_id
+        unique.append(compact)
+    return sorted(unique, key=_todo_projection_sort_key)
+
+
+def _agent_scope_cleared_without_successor_handoff_gates(
+    agent_todo_summary: dict[str, Any],
+    *,
+    agent_id: str,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for key in (
+        "current_agent_cleared_without_successor_handoff_gates",
+        "handoff_gates",
+    ):
+        value = agent_todo_summary.get(key)
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            if normalize_todo_blocks_agent(item.get("blocks_agent")) != agent_id:
+                continue
+            if item.get("gate_state") != HandoffGateState.CLEARED_WITHOUT_SUCCESSOR.value:
+                continue
+            candidates.append(item)
+
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in candidates:
+        identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
+        if identity in seen:
+            continue
+        seen.add(identity)
+        compact = dict(item)
+        compact["text"] = str(item.get("text") or "").strip()
+        unique.append(compact)
+    return sorted(
+        unique,
+        key=lambda item: (
+            -int(item.get("index") or 0),
+            str(item.get("todo_id") or ""),
+        ),
+    )
+
+
+def _agent_scope_blocking_handoff_gates(
+    agent_todo_summary: dict[str, Any],
+    *,
+    agent_id: str,
+) -> list[dict[str, Any]]:
+    gates = agent_todo_summary.get("current_agent_handoff_gates")
+    if not isinstance(gates, list):
+        gates = agent_todo_summary.get("handoff_gates")
+    if not isinstance(gates, list):
+        return []
+    selected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in gates:
+        if not isinstance(item, dict):
+            continue
+        if normalize_todo_blocks_agent(item.get("blocks_agent")) != agent_id:
+            continue
+        if item.get("gate_state") != HandoffGateState.BLOCKING.value:
+            continue
+        identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
+        if identity in seen:
+            continue
+        seen.add(identity)
+        compact = dict(item)
+        compact["text"] = str(item.get("text") or "").strip()
+        selected.append(compact)
+    return sorted(selected, key=_todo_projection_sort_key)
+
+
+def _route_continuation_candidate_matches_agent(
+    item: dict[str, Any],
+    *,
+    agent_id: str,
+) -> bool:
+    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    if blocks_agent:
+        return blocks_agent == agent_id
+    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+    return not claimed_by or claimed_by == agent_id
+
+
+def _agent_scope_route_continuation_replan_candidates(
+    agent_todo_summary: dict[str, Any],
+    *,
+    agent_id: str,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for key in (
+        "current_agent_route_continuation_replan_candidates",
+        "unclaimed_route_continuation_replan_candidates",
+    ):
+        value = agent_todo_summary.get(key)
+        if isinstance(value, list):
+            candidates.extend(item for item in value if isinstance(item, dict))
+    if not candidates:
+        value = agent_todo_summary.get("route_continuation_replan_candidates")
+        if isinstance(value, list):
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                if not _route_continuation_candidate_matches_agent(item, agent_id=agent_id):
+                    continue
+                candidates.append(item)
+
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in candidates:
+        if item.get("route_continuation_replan_required") is False:
+            continue
+        identity = str(
+            item.get("todo_id")
+            or item.get("route_id")
+            or item.get("route_key")
+            or item.get("index")
+            or item.get("text")
+            or ""
+        )
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        compact = _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact["route_continuation_replan_required"] = True
+        if item.get("route_continuation_reason") is not None:
+            compact["route_continuation_reason"] = item.get("route_continuation_reason")
+        if item.get("route_id") is not None:
+            compact["route_id"] = item.get("route_id")
+        if item.get("route_key") is not None:
+            compact["route_key"] = item.get("route_key")
+        unique.append(compact)
+    return sorted(unique, key=_todo_projection_sort_key)
+
+
+def _agent_scope_no_candidate_frontier(
+    *,
+    agent_identity: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    agent_lane_next_action: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+    candidate_should_run: bool,
+) -> dict[str, Any] | None:
+    if not candidate_should_run:
+        return None
+    if not isinstance(agent_identity, dict) or agent_identity.get("role") != "side-agent":
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id or not isinstance(agent_todo_summary, dict):
+        return None
+    if isinstance(agent_lane_next_action, dict):
+        return None
+    if _work_lane_due_monitor_attempt(work_lane_contract):
+        return None
+    if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
+        return None
+    has_advancement_contract = (
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("lane") == TODO_TASK_CLASS_ADVANCEMENT
+        and work_lane_contract.get("must_attempt_work") is True
+    )
+
+    current_agent_count = int(agent_todo_summary.get("current_agent_claimed_advancement_count") or 0)
+    current_agent_count = max(
+        current_agent_count,
+        _count_advancement_items(
+            agent_todo_summary.get("current_agent_claimed_advancement_items"),
+            claimed_by=agent_id,
+        ),
+    )
+    unclaimed_count = _count_advancement_items(
+        agent_todo_summary.get("unclaimed_priority_open_items"),
+        claimed_by="__unclaimed__",
+    )
+    executable_items = agent_todo_summary.get("executable_backlog_items")
+    if isinstance(executable_items, list):
+        current_agent_count = max(
+            current_agent_count,
+            _count_advancement_items(executable_items, claimed_by=agent_id),
+        )
+        unclaimed_count = max(
+            unclaimed_count,
+            _count_advancement_items(executable_items, claimed_by="__unclaimed__"),
+        )
+    if current_agent_count > 0 or unclaimed_count > 0:
+        return None
+
+    monitor_blocked_resume_candidates = _agent_scope_monitor_blocked_resume_candidates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if monitor_blocked_resume_candidates:
+        first_candidate = monitor_blocked_resume_candidates[0]
+        candidate_todo_id = str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
+        monitor_todo_id = (
+            str(first_candidate.get("blocking_monitor_todo_id") or "").strip()
+            or "<monitor_todo_id>"
+        )
+        reason = (
+            f"current side-agent {agent_id} has advancement todo {candidate_todo_id} "
+            f"gated by open continuous_monitor {monitor_todo_id}; a standing monitor "
+            "cannot be the todo_done prerequisite for autonomous continuation"
+        )
+        recommended_action = (
+            "Run a bounded gate-model repair before quiet wait: close/supersede "
+            f"{monitor_todo_id} after validated evidence, or rewrite {candidate_todo_id} "
+            "to use a non-blocking monitor contract before delivery."
+        )
+        return {
+            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+            "agent_id": agent_id,
+            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "blocks_delivery": True,
+            "requires_replan": True,
+            "quiet_noop_allowed": False,
+            "spend_policy": "spend once after validated standing-monitor gate repair/todo writeback",
+            "reason": reason,
+            "recommended_action": recommended_action,
+            "candidate_counts": {
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "monitor_blocked_resume_candidate_count": len(monitor_blocked_resume_candidates),
+            },
+            "monitor_blocked_resume_candidates": monitor_blocked_resume_candidates[:3],
+        }
+
+    deferred_resume_candidates = _agent_scope_deferred_resume_candidates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if deferred_resume_candidates:
+        first_candidate = deferred_resume_candidates[0]
+        candidate_todo_id = str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
+        reason = (
+            f"current side-agent {agent_id} has no open current/unclaimed "
+            "advancement candidate, but a deferred successor resume condition is satisfied"
+        )
+        recommended_action = (
+            "Run a bounded successor replan before delivery: reopen, supersede, "
+            f"or record a no-follow-up rationale for {candidate_todo_id}."
+        )
+        return {
+            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+            "agent_id": agent_id,
+            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "blocks_delivery": True,
+            "requires_replan": True,
+            "quiet_noop_allowed": False,
+            "spend_policy": "spend once after validated successor replan/todo writeback",
+            "reason": reason,
+            "recommended_action": recommended_action,
+            "candidate_counts": {
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "deferred_resume_candidate_count": len(deferred_resume_candidates),
+            },
+            "deferred_resume_candidates": deferred_resume_candidates[:3],
+        }
+
+    route_continuation_replan_candidates = _agent_scope_route_continuation_replan_candidates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if route_continuation_replan_candidates:
+        first_candidate = route_continuation_replan_candidates[0]
+        route_label = (
+            str(
+                first_candidate.get("route_id")
+                or first_candidate.get("route_key")
+                or first_candidate.get("todo_id")
+                or ""
+            ).strip()
+            or "<route>"
+        )
+        reason = (
+            f"current side-agent {agent_id} has no open current/unclaimed "
+            "advancement candidate, but the route continuation projection "
+            f"requires a successor replan for {route_label}"
+        )
+        recommended_action = (
+            "Run a bounded route continuation replan before quiet wait: create or "
+            f"claim the next concrete {agent_id}/unclaimed advancement todo for "
+            f"{route_label}, or record an explicit no-follow-up rationale."
+        )
+        return {
+            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+            "agent_id": agent_id,
+            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "blocks_delivery": True,
+            "requires_replan": True,
+            "quiet_noop_allowed": False,
+            "spend_policy": "spend once after validated route continuation replan/todo writeback",
+            "reason": reason,
+            "recommended_action": recommended_action,
+            "candidate_counts": {
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "route_continuation_replan_candidate_count": len(
+                    route_continuation_replan_candidates
+                ),
+            },
+            "route_continuation_replan_candidates": route_continuation_replan_candidates[:3],
+        }
+
+    blocking_handoff_gates = _agent_scope_blocking_handoff_gates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if blocking_handoff_gates:
+        blocking_review_claimants = sorted(
+            {
+                claimed_by
+                for item in blocking_handoff_gates
+                for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
+                if claimed_by
+            }
+        )
+        owner = ", ".join(blocking_review_claimants) or "the owning agent"
+        reason = (
+            f"current side-agent {agent_id} has no current/unclaimed advancement "
+            f"candidate; blocking handoff work is claimed by {owner}"
+        )
+        recommended_action = (
+            f"Keep {agent_id} active but quiet: wait for {owner} to finish the "
+            "blocking handoff, reassign it, or create a concrete current-agent/"
+            "unclaimed advancement todo before delivery."
+        )
+        return {
+            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+            "agent_id": agent_id,
+            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            "action": AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
+            "effective_action": AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
+            "blocks_delivery": True,
+            "quiet_noop_allowed": True,
+            "spend_policy": "no quota spend while the current agent has no in-scope runnable candidate",
+            "reason": reason,
+            "recommended_action": recommended_action,
+            "candidate_counts": {
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "blocking_handoff_gate_count": len(blocking_handoff_gates),
+            },
+            "other_claimants": blocking_review_claimants,
+            "blocking_review_claimants": blocking_review_claimants,
+            "blocking_handoff_gates": blocking_handoff_gates[:3],
+        }
+
+    cleared_handoff_gates = _agent_scope_cleared_without_successor_handoff_gates(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if cleared_handoff_gates:
+        first_item = cleared_handoff_gates[0]
+        blocker_todo_id = str(first_item.get("todo_id") or "").strip() or "<todo_id>"
+        unblocks_todo_id = normalize_todo_id(first_item.get("unblocks_todo_id"))
+        target_text = (
+            f" for unblocked todo {unblocks_todo_id}"
+            if unblocks_todo_id
+            else ""
+        )
+        reason = (
+            f"current side-agent {agent_id} has no open current/unclaimed "
+            f"advancement candidate, but blocking handoff {blocker_todo_id}"
+            f"{target_text} is already done without a projected successor"
+        )
+        recommended_action = (
+            "Run a bounded successor replan before quiet wait: reopen or supersede "
+            f"{blocker_todo_id} into a concrete {agent_id}/unclaimed advancement todo, "
+            "or record an explicit no-follow-up rationale."
+        )
+        return {
+            "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+            "agent_id": agent_id,
+            "primary_agent": normalize_todo_claimed_by(agent_identity.get("primary_agent")),
+            "action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "effective_action": AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+            "blocks_delivery": True,
+            "requires_replan": True,
+            "quiet_noop_allowed": False,
+            "spend_policy": "spend once after validated successor replan/todo writeback",
+            "reason": reason,
+            "recommended_action": recommended_action,
+            "candidate_counts": {
+                "current_agent_claimed_advancement_count": current_agent_count,
+                "unclaimed_advancement_count": unclaimed_count,
+                "cleared_without_successor_handoff_count": len(cleared_handoff_gates),
+            },
+            "cleared_without_successor_handoff_gates": cleared_handoff_gates[:3],
+        }
+
+    claimed_advancement_items = (
+        agent_todo_summary.get("claimed_advancement_open_items")
+        if isinstance(agent_todo_summary.get("claimed_advancement_open_items"), list)
+        else []
+    )
+    other_advancement_items = [
+        item
+        for item in claimed_advancement_items
+        if isinstance(item, dict)
+        and _todo_item_is_actionable_open(item)
+        and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+        and normalize_todo_claimed_by(item.get("claimed_by")) not in {None, "", agent_id}
+    ]
+    other_claimants = sorted(
+        {
+            claimed_by
+            for item in other_advancement_items
+            for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
+            if claimed_by
+        }
+    )
+    blocking_review_items = [
+        item
+        for item in other_advancement_items
+        if normalize_todo_blocks_agent(item.get("blocks_agent")) == agent_id
+    ]
+    blocking_review_claimants = sorted(
+        {
+            claimed_by
+            for item in blocking_review_items
+            for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
+            if claimed_by
+        }
+    )
+    claim_scope = (
+        agent_todo_summary.get("claim_scope")
+        if isinstance(agent_todo_summary.get("claim_scope"), dict)
+        else {}
+    )
+    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+    if not has_advancement_contract and not other_advancement_items:
+        return None
+    if other_advancement_items:
+        if blocking_review_claimants:
+            action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
+            owner = ", ".join(blocking_review_claimants)
+            reason = (
+                f"current side-agent {agent_id} has no current/unclaimed advancement "
+                f"candidate; blocking handoff work is claimed by {owner}"
+            )
+            recommended_action = (
+                f"Keep {agent_id} active but quiet: wait for {owner} to finish the "
+                "blocking handoff, reassign it, or create a concrete current-agent/"
+                "unclaimed advancement todo before delivery."
+            )
+        else:
+            action = (
+                AgentScopeFrontierAction.AGENT_SCOPE_WAIT
+                if primary_agent and primary_agent in other_claimants
+                else AgentScopeFrontierAction.REASSIGNMENT_REQUIRED
+            )
+            owner = primary_agent or ", ".join(other_claimants) or "the owning agent"
+            reason = (
+                f"current side-agent {agent_id} has no current/unclaimed advancement "
+                f"candidate; visible advancement work is claimed by {owner}"
+            )
+            recommended_action = (
+                f"Keep {agent_id} active but quiet: wait for {owner} to finish, "
+                "reassign, or create a concrete current-agent/unclaimed advancement "
+                "todo before delivery."
+            )
+    else:
+        action = AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED
+        reason = (
+            f"current side-agent {agent_id} has no projected current/unclaimed "
+            "advancement candidate despite a goal-level advancement lane"
+        )
+        recommended_action = (
+            f"Keep {agent_id} active but quiet until LoopX projects a concrete "
+            "current-agent or unclaimed advancement todo, or the primary reassigns work."
+        )
+
+    return {
+        "schema_version": AGENT_SCOPE_FRONTIER_SCHEMA_VERSION,
+        "agent_id": agent_id,
+        "primary_agent": primary_agent,
+        "action": action.value,
+        "effective_action": action.value,
+        "blocks_delivery": True,
+        "quiet_noop_allowed": True,
+        "spend_policy": "no quota spend while the current agent has no in-scope runnable candidate",
+        "reason": reason,
+        "recommended_action": recommended_action,
+        "candidate_counts": {
+            "current_agent_claimed_advancement_count": current_agent_count,
+            "unclaimed_advancement_count": unclaimed_count,
+            "other_agent_claimed_advancement_count": len(other_advancement_items),
+            "other_agent_claimed_open_count": int(
+                claim_scope.get("other_agent_claimed_open_count") or 0
+            ),
+        },
+        "other_claimants": other_claimants,
+        "blocking_review_claimants": blocking_review_claimants,
+        "other_agent_claimed_items": [
+            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            for item in other_advancement_items[:3]
+        ],
+    }

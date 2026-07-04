@@ -9,6 +9,8 @@ LoopX learns a new long-running agent behavior:
   derived runtime state names the situation?
 - [State machine](state-machine.md): which transition is legal next, and who
   owns it?
+- [Bounded context layout](bounded-context-layout.md): where control-plane
+  kernel code belongs as it moves out of flat status/projection modules.
 - [Rule seam map](rule-seam-map.md): which runtime rule families should be
   characterized and extracted before moving code?
 - [Smoke failure classification ledger](smoke-failure-classification-ledger.md):

@@ -14,7 +14,7 @@ from .file_lock import exclusive_file_lock
 from .history import load_registry
 from .local_state_write_correctness import build_todo_write_correctness_dry_run_packet
 from .state_refresh import now_local, resolve_goal_state
-from .projections.active_state_metadata import todo_role_for_heading
+from .control_plane.goals.active_state_metadata import todo_role_for_heading
 from .status import (
     MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE,
     active_state_event_projection_fields,
