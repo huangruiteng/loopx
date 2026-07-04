@@ -67,6 +67,11 @@ def _render_user_contract(payload: dict[str, object]) -> str:
     brief = payload.get("research_brief") if isinstance(payload.get("research_brief"), dict) else {}
     plan = payload.get("action_plan") if isinstance(payload.get("action_plan"), list) else []
     evidence = payload.get("evidence_refs") if isinstance(payload.get("evidence_refs"), dict) else {}
+    minimal_recipe = (
+        payload.get("minimal_a2a_recipe")
+        if isinstance(payload.get("minimal_a2a_recipe"), dict)
+        else {}
+    )
     one_click_start = (
         payload.get("one_click_start")
         if isinstance(payload.get("one_click_start"), dict)
@@ -121,8 +126,20 @@ def _render_user_contract(payload: dict[str, object]) -> str:
             f"- preview: `{one_click_start.get('preview_command')}`",
             f"- starts: `{one_click_start.get('starts')}`",
             f"- coordination_model: `{one_click_start.get('coordination_model')}`",
+            "",
+            "## Minimal A2A Recipe",
+            "",
+            f"- user_lines: `{minimal_recipe.get('user_line_count')}`",
+            f"- preset_role_spec_lines: `{minimal_recipe.get('preset_role_spec_line_count')}`",
+            f"- user_plus_preset_lines: `{minimal_recipe.get('user_plus_preset_line_count')}`",
+            f"- shared_kernel_counted: `{minimal_recipe.get('shared_kernel_counted_as_recipe_lines')}`",
+            f"- claim_boundary: {minimal_recipe.get('claim_boundary')}",
         ]
     )
+    for line in minimal_recipe.get("user_recipe_lines") or []:
+        lines.append(f"- user: `{line}`")
+    for line in minimal_recipe.get("preset_recipe_lines") or []:
+        lines.append(f"- preset: `{line}`")
     lines.extend(_render_operator_commands(payload))
     lines.extend(
         [
@@ -251,6 +268,16 @@ def _render_worker_loop(payload: dict[str, object]) -> str:
 
 def _render_demo_e2e(payload: dict[str, object]) -> str:
     worker_loop = payload.get("worker_loop") if isinstance(payload.get("worker_loop"), dict) else {}
+    user_contract = (
+        payload.get("user_contract")
+        if isinstance(payload.get("user_contract"), dict)
+        else {}
+    )
+    minimal_recipe = (
+        user_contract.get("minimal_a2a_recipe")
+        if isinstance(user_contract.get("minimal_a2a_recipe"), dict)
+        else {}
+    )
     tonight = (
         payload.get("tonight_experience")
         if isinstance(payload.get("tonight_experience"), dict)
@@ -299,6 +326,8 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- user_contract_accepted: `{contract_acceptance.get('accepted')}`",
         f"- one_question_contract: `{commands.get('one_question_contract')}`",
         f"- one_question_start: `{commands.get('one_question_start')}`",
+        f"- minimal_a2a_user_plus_preset_lines: `{minimal_recipe.get('user_plus_preset_line_count')}`",
+        f"- minimal_a2a_shared_kernel_counted: `{minimal_recipe.get('shared_kernel_counted_as_recipe_lines')}`",
         f"- reasoning_effort: `{payload.get('reasoning_effort')}`",
         f"- worker_loop_executed_turns: `{worker_loop.get('executed_turn_count')}`",
         f"- worker_loop_completed_turns: `{worker_loop.get('completed_turn_count')}`",
@@ -322,6 +351,21 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- visible_holdout_delta_over_dev: `{improvement.get('holdout_delta_over_dev')}`",
         f"- supervisor_lanes: `{supervisor.get('lane_count')}`",
     ]
+    if minimal_recipe:
+        lines.extend(
+            [
+                "",
+                "## Minimal A2A Recipe",
+                "",
+                f"- user_plus_preset_lines: `{minimal_recipe.get('user_plus_preset_line_count')}`",
+                f"- user_lines: `{minimal_recipe.get('user_line_count')}`",
+                f"- preset_role_spec_lines: `{minimal_recipe.get('preset_role_spec_line_count')}`",
+                f"- shared_kernel_counted: `{minimal_recipe.get('shared_kernel_counted_as_recipe_lines')}`",
+                f"- coordination_model: `{minimal_recipe.get('coordination_model')}`",
+            ]
+        )
+        for line in minimal_recipe.get("preset_recipe_lines") or []:
+            lines.append(f"- preset: `{line}`")
     lines.extend(_render_operator_commands(payload))
     return "\n".join(lines) + "\n"
 
@@ -362,6 +406,11 @@ def _render_live_evidence(payload: dict[str, object]) -> str:
 
 def _render_supervisor(payload: dict[str, object]) -> str:
     lanes = payload.get("lanes") if isinstance(payload.get("lanes"), list) else []
+    minimal_recipe = (
+        payload.get("minimal_a2a_recipe")
+        if isinstance(payload.get("minimal_a2a_recipe"), dict)
+        else {}
+    )
     route = payload.get("goal_surface_route") if isinstance(payload.get("goal_surface_route"), dict) else {}
     boundary = payload.get("boundary") if isinstance(payload.get("boundary"), dict) else {}
     coordination = (
@@ -436,6 +485,15 @@ def _render_supervisor(payload: dict[str, object]) -> str:
         lines.append(f"- `{lane.get('lane_id')}`: `{' -> '.join(str(item) for item in timeline)}`")
     lines.extend(
         [
+            "",
+            "## Minimal A2A Recipe",
+            "",
+            f"- user_plus_preset_lines: `{minimal_recipe.get('user_plus_preset_line_count')}`",
+            f"- user_lines: `{minimal_recipe.get('user_line_count')}`",
+            f"- preset_role_spec_lines: `{minimal_recipe.get('preset_role_spec_line_count')}`",
+            f"- shared_kernel_counted: `{minimal_recipe.get('shared_kernel_counted_as_recipe_lines')}`",
+            f"- coordination_model: `{minimal_recipe.get('coordination_model')}`",
+            "",
             "",
             "## One-Click Dry Run",
             "",

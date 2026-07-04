@@ -7,6 +7,7 @@ from .defaults import AUTO_RESEARCH_DEFAULT_GOAL_ID
 
 
 AUTO_RESEARCH_PRESET_SCHEMA_VERSION = "auto_research_thin_preset_v0"
+AUTO_RESEARCH_MINIMAL_A2A_RECIPE_SCHEMA_VERSION = "auto_research_minimal_a2a_recipe_v0"
 AUTO_RESEARCH_ROLE_PROFILE_SCHEMA_VERSION = "auto_research_role_profile_v0"
 AUTO_RESEARCH_REQUIRED_SKILL = "loopx-auto-research"
 AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
@@ -206,6 +207,75 @@ def default_auto_research_agent_specs() -> list[str]:
     ]
 
 
+def _quoted_open_question(open_question: object | None) -> str:
+    question = str(open_question or "").strip()
+    if not question:
+        return '"<open question>"'
+    return shlex.quote(question)
+
+
+def build_auto_research_minimal_a2a_recipe(
+    *,
+    open_question: object | None = None,
+    output_language: str = "en",
+    role_specs: Iterable[object] | None = None,
+) -> dict[str, object]:
+    """Return the public line-count claim for the thin auto-research preset.
+
+    The count is deliberately about declarative recipe lines, not the shared
+    LoopX kernel implementation. That keeps the public claim reusable and
+    honest: other products can replace the four role specs without owning the
+    runner, fixed wake prompt, pane-local tick, or state protocol.
+    """
+
+    language = str(output_language or "en").strip()
+    language_flag = f" --language {shlex.quote(language)}" if language != "en" else ""
+    user_line = (
+        "loopx auto-research start "
+        f"{_quoted_open_question(open_question)}{language_flag} --execute"
+    )
+    raw_role_specs = (
+        role_specs if role_specs is not None else default_auto_research_agent_specs()
+    )
+    preset_lines = [str(spec).strip() for spec in raw_role_specs if str(spec).strip()]
+    user_line_count = 1
+    preset_line_count = len(preset_lines)
+    return {
+        "schema_version": AUTO_RESEARCH_MINIMAL_A2A_RECIPE_SCHEMA_VERSION,
+        "claim": (
+            "one user command plus the default four-line auto-research role spec "
+            "starts decentralized A2A on the shared LoopX multi-agent kernel"
+        ),
+        "line_unit": "declarative_recipe_line",
+        "user_line_count": user_line_count,
+        "preset_role_spec_line_count": preset_line_count,
+        "user_plus_preset_line_count": user_line_count + preset_line_count,
+        "shared_kernel_counted_as_recipe_lines": False,
+        "claim_boundary": (
+            "line count covers user intent and auto-research preset defaults only; "
+            "the reusable kernel owns visible process launch, fixed wake prompt, "
+            "pane-local quota/frontier tick, todo/evidence/status protocol, "
+            "and public artifact routing"
+        ),
+        "user_recipe_lines": [user_line],
+        "preset_recipe_lines": preset_lines,
+        "coordination_model": "decentralized_state_a2a",
+        "a2a_proof_contract": {
+            "broadcaster_selects_todo": False,
+            "broadcaster_runs_worker_turn": False,
+            "each_pane_reads_own_quota_frontier": True,
+            "successor_todos_declared_by_role_profile": True,
+            "leader_agent_required": False,
+        },
+        "kernel_reuse": [
+            "generic visible multi-agent runner",
+            "fixed prompt broadcast",
+            "pane-local A2A tick",
+            "LoopX todo/evidence/status protocol",
+        ],
+    }
+
+
 def auto_research_role_id(raw_role: str, *, index: int) -> str:
     raw = raw_role.strip()
     role_id = AUTO_RESEARCH_ROLE_PROFILE_ALIASES.get(raw, raw)
@@ -364,6 +434,7 @@ def build_auto_research_preset_role(
 def build_auto_research_preset_summary(*, role_count: int) -> dict[str, object]:
     return {
         "schema_version": AUTO_RESEARCH_PRESET_SCHEMA_VERSION,
+        "minimal_a2a_recipe": build_auto_research_minimal_a2a_recipe(),
         "owns": [
             "research_roles",
             "handoff_hints",

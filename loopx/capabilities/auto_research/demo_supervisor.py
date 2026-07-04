@@ -10,6 +10,7 @@ from .preset import (
     AUTO_RESEARCH_PRESET_SCHEMA_VERSION,
     build_auto_research_preset_role,
     build_auto_research_preset_summary,
+    build_auto_research_minimal_a2a_recipe,
     auto_research_lane_specs,
 )
 from ...visible_multi_agent_launcher import build_visible_multi_agent_payload_from_spec
@@ -75,6 +76,13 @@ def build_auto_research_demo_supervisor_plan(
             "schema_version": AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION,
             "mode": "dry_run",
             "layer_minimality_contract": build_auto_research_layer_contract(),
+            "minimal_a2a_recipe": build_auto_research_minimal_a2a_recipe(
+                output_language=output_language,
+                role_specs=[
+                    f"{lane['agent_id']}:{lane['lane_id']}:{lane['role_id']}"
+                    for lane in lanes
+                ],
+            ),
             "preset": build_auto_research_preset_summary(role_count=len(roles)),
             "auto_research": {
                 "schema_version": AUTO_RESEARCH_PRESET_SCHEMA_VERSION,

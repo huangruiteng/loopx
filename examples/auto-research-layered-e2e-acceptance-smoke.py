@@ -137,8 +137,24 @@ def assert_three_layer_minimality() -> None:
         assert mechanic in layering["kernel_layer"]["owns"], layering
     assert layering["acceptance"]["preset_has_no_runner_process_logic"] is True, layering
 
+    minimal_recipe = supervisor["minimal_a2a_recipe"]
+    assert minimal_recipe["schema_version"] == "auto_research_minimal_a2a_recipe_v0"
+    assert minimal_recipe["user_plus_preset_line_count"] == 5, minimal_recipe
+    assert minimal_recipe["user_line_count"] == 1, minimal_recipe
+    assert minimal_recipe["preset_role_spec_line_count"] == 4, minimal_recipe
+    assert minimal_recipe["shared_kernel_counted_as_recipe_lines"] is False, minimal_recipe
+    assert minimal_recipe["coordination_model"] == "decentralized_state_a2a", minimal_recipe
+    assert minimal_recipe["a2a_proof_contract"] == {
+        "broadcaster_selects_todo": False,
+        "broadcaster_runs_worker_turn": False,
+        "each_pane_reads_own_quota_frontier": True,
+        "successor_todos_declared_by_role_profile": True,
+        "leader_agent_required": False,
+    }, minimal_recipe
+
     preset = supervisor["preset"]
     assert preset["schema_version"] == AUTO_RESEARCH_PRESET_SCHEMA_VERSION, preset
+    assert preset["minimal_a2a_recipe"]["user_plus_preset_line_count"] == 5, preset
     assert preset["owns"] == layering["preset_layer"]["owns"], preset
     assert "multi_agent_runner" in preset["forbidden"], preset
     assert "real_codex_tui_panes" in preset["forbidden"], preset

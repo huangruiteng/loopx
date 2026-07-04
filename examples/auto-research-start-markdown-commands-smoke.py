@@ -47,6 +47,13 @@ def main() -> int:
     )
     markdown = result.stdout
     require("## Operator Commands", markdown)
+    require("## Minimal A2A Recipe", markdown)
+    require("- user_plus_preset_lines: `5`", markdown)
+    require("- shared_kernel_counted: `False`", markdown)
+    require(
+        "- preset: `codex-side-bypass:hypothesis-mapper:hypothesis_mapper`",
+        markdown,
+    )
     require(
         f"- evidence-first start: `loopx auto-research start '{QUESTION}' --execute`",
         markdown,

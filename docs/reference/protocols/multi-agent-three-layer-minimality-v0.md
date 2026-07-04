@@ -62,6 +62,24 @@ or replan state transitions.
 This keeps the public promise honest: a small auto-research recipe should prove
 that other products can also reuse the same kernel with their own thin preset.
 
+## Public Line-Count Claim
+
+The public "few lines of auto-research" claim counts declarative recipe lines,
+not the shared kernel implementation.
+
+For the default auto-research demo, the bounded claim is:
+
+| Layer | Counted Lines | Meaning |
+| --- | ---: | --- |
+| User | 1 | `loopx auto-research start "<open question>" --execute` |
+| Auto-research preset | 4 | default role specs: curator, mapper, runner, verifier |
+| Generic kernel | 0 | shared runner, Codex TUI panes, fixed wake prompt, pane-local tick, todo/evidence/status protocol |
+
+So the honest slogan is: one user line plus a four-line preset can start a
+decentralized A2A research loop on the shared LoopX kernel. The slogan must not
+claim that tmux launch, Codex TUI bootstrap, quota/frontier, evidence routing,
+or status projection are reimplemented inside the auto-research preset.
+
 ## Acceptance
 
 A change satisfies this contract only when:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import shlex
 from typing import Any
 
+from .preset import build_auto_research_minimal_a2a_recipe
+
 
 AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION = "auto_research_user_contract_v0"
 
@@ -90,6 +92,10 @@ def build_auto_research_user_contract(
             "auto_research_layer": "fixed output contract only",
             "kernel_layer": "multi-agent runner, Codex TUI panes, pane-local tick, todo/evidence/status protocol",
         },
+        "minimal_a2a_recipe": build_auto_research_minimal_a2a_recipe(
+            open_question=question,
+            output_language=resolved_language,
+        ),
         "command_contract": {
             "canonical_invocation": 'loopx auto-research "<open question>"',
             "explicit_invocation": 'loopx auto-research contract "<open question>"',

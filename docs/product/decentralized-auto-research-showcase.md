@@ -151,6 +151,24 @@ domain-specific problem code. The stable smoke metric still shows the product
 shape: baseline `1.0`, dev evidence `4.0`, holdout evidence `4.5`, and a clean
 public boundary.
 
+The public line-count claim is intentionally narrower than the kernel. The
+copyable recipe is one user command plus the four default auto-research role
+specs; the reusable kernel still owns the runner, visible Codex TUI panes,
+fixed wake prompt, pane-local A2A tick, todo/evidence/status protocol, and
+public artifact routing.
+
+```text
+loopx auto-research start "<open question>" --execute
+codex-product-capability:research-curator:research_curator
+codex-side-bypass:hypothesis-mapper:hypothesis_mapper
+codex-main-control:evidence-runner:evidence_runner
+codex-value-explorer:evidence-verifier:evidence_verifier
+```
+
+That is the marketing-safe claim: a five-line declarative recipe can start
+decentralized A2A communication because the generic LoopX kernel already knows
+how to wake each pane and let each pane read its own quota/frontier.
+
 The fixture-backed projection remains the read-only showcase state slice:
 
 ```bash
