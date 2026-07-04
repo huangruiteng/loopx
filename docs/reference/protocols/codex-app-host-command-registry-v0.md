@@ -11,6 +11,8 @@ This contract sits above:
   `/loopx` status entry and `/loopx <goal text>` start entry.
 - [`global_manager_command_v0`](global-manager-command-v0.md) for read-only
   `/loopx-global-*` manager commands.
+- [`pr_review_command_v0`](pr-review-command-v0.md) for the `/loopx-pr-review`
+  review queue command.
 - [`host_integration_surface_v0`](host-integration-surface-v0.md) for general
   host lifecycle reads and controlled writes.
 
@@ -29,6 +31,7 @@ The host registry should expose this minimal command set:
 | `/loopx-global-gates` | `global_manager_command_v0` gates request | Read-only gate inbox. |
 | `/loopx-global-todos` | `global_manager_command_v0` todos request | Read-only work queue view. |
 | `/loopx-global-risks` | `global_manager_command_v0` risks request | Read-only risk view. |
+| `/loopx-pr-review` | `pr_review_command_v0` review request | Must run the PR review CLI first; cannot be answered as a generic chat summary. |
 
 Legacy `/loop-global-*` forms may be accepted during migration, but the host
 must canonicalize packets, help, and user-visible labels to `/loopx-global-*`.
@@ -62,6 +65,13 @@ Example registry entry:
       "protocol": "global_manager_command_v0",
       "legacy_aliases": ["/loop-global-summary"],
       "mutation_policy": "read_only"
+    },
+    {
+      "command": "/loopx-pr-review",
+      "kind": "repo_pr_review",
+      "protocol": "pr_review_command_v0",
+      "cli_baseline": "loopx pr-review",
+      "mutation_policy": "must_run_cli_first"
     }
   ],
   "unknown_command_policy": "fail_closed_with_slash_help"
@@ -85,7 +95,9 @@ message:
 3. Treat `/loopx` with no trailing text as bootstrap/status preview.
 4. Treat text after `/loopx` as explicit task text. Preserve the exact
    user task text in the handoff packet, but quote it safely for CLI display.
-5. Fail closed for unknown `/loopx-*` commands and return `loopx slash-commands`
+5. Route `/loopx-pr-review` to the PR review command contract. Do not send it
+   through the project bootstrap command.
+6. Fail closed for unknown `/loopx-*` commands and return `loopx slash-commands`
    help instead of falling through to ordinary chat.
 
 Skill-level recognition may remain a fallback, but the preferred product path
@@ -160,6 +172,10 @@ visible user intent into the existing CLI lifecycle:
   `loopx agent-onboard`.
 - `/loopx-global-*` commands are read-only and must not approve gates, add
   todos, spend quota, merge PRs, publish externally, or pause/resume loops.
+- `/loopx-pr-review` must run the PR review CLI first and then review PRs under
+  the `pr_review_command_v0` response contract. It is not a project bootstrap
+  command and should not mutate project state unless the review contract
+  explicitly records a public-safe follow-up.
 - Destructive git, credentials, private material reads, production actions, and
   external publication still require explicit user/controller approval.
 
@@ -174,6 +190,7 @@ loopx agent-onboard --list-agent-types
 loopx agent-onboard --agent-type codex-cli --project .
 loopx bootstrap-command-pack --project .
 loopx bootstrap-command-pack --project . --goal-text "<goal text>"
+loopx pr-review
 loopx global-summary
 loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <goal-id> --agent-id <agent-id>
 ```
@@ -207,10 +224,11 @@ A host command registry implementation is acceptable when:
 1. `/loopx` and `/loopx <goal text>` route to `loopx_goal_command_v0`.
 2. `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, and
    `/loopx-global-risks` route to `global_manager_command_v0`.
-3. Legacy `/loop-global-*` inputs canonicalize to `/loopx-global-*`.
-4. Unknown `/loopx-*` commands fail closed with `loopx slash-commands` help.
-5. The handoff packet includes project root label, optional active state id,
+3. `/loopx-pr-review` routes to `pr_review_command_v0` and runs the CLI first.
+4. Legacy `/loop-global-*` inputs canonicalize to `/loopx-global-*`.
+5. Unknown `/loopx-*` commands fail closed with `loopx slash-commands` help.
+6. The handoff packet includes project root label, optional active state id,
    agent id, protocol, authority, and CLI fallback, without public local
    absolute paths.
-6. Host parsing is treated as the preferred path, while skill-level recognition
+7. Host parsing is treated as the preferred path, while skill-level recognition
    remains only a compatibility fallback.

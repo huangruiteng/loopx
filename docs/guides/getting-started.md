@@ -79,9 +79,24 @@ can discover user-installed skills:
   command family can appear as Claude Code slash commands without enabling the
   opt-in MCP/hook adapter.
 
+The command family is the same across surfaces, even when the host-specific
+entry point is different:
+
+| Command family | Host entry | CLI fallback |
+| --- | --- | --- |
+| Project goal start | `/loopx <goal text>` where the host exposes native slash commands; `$loopx <goal text>` or the `loopx` skill in Codex surfaces that use explicit skills. | `loopx bootstrap-command-pack --project . --goal-text "<goal text>"` |
+| Global manager views | `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, `/loopx-global-risks`. | `loopx slash-commands`, then run the listed global manager command for the view you need. |
+| PR review queue | `/loopx-pr-review`. | `loopx pr-review` |
+
+Treat the slash or skill entry as a UI convenience. The CLI remains the source
+of truth, and recovery should use the CLI instead of inventing a second state
+path. If a command disappears after an upgrade, first inspect and refresh the
+registered command files:
+
 To refresh those files after an upgrade, run:
 
 ```bash
+loopx slash-commands
 loopx slash-commands --install
 ```
 
@@ -89,6 +104,19 @@ The command updates files that LoopX owns, including older LoopX-generated
 files with known legacy signatures. If a same-name file has no LoopX managed
 marker or legacy signature, LoopX leaves it untouched and reports
 `skipped_user_file`.
+
+If a project-local goal command still cannot be invoked through the host, run
+the equivalent command pack from the project root:
+
+```bash
+loopx bootstrap-command-pack --project . --goal-text "<goal text>"
+```
+
+That preserves the `/loopx <goal text>` semantics: preserve the exact task
+text, plan before todo writeback, refresh state, run `quota should-run`, and
+continue only when the guard allows. For global manager or PR review commands,
+use `loopx slash-commands` to print the current canonical command list and
+fallback CLI shapes.
 
 ## Local State Backup
 

@@ -113,6 +113,14 @@ loopx bootstrap \
 `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`、`loopx status` 的下一步投影；
 这些本地状态必须被 gitignore，不要提交到公开仓库。
 
+命令注册是 host-specific 的，但状态路径不是。Codex 表面当前可通过 `$loopx`
+或 `/skills` 里的 `loopx` 命令 facade 进入；Claude Code 在 opt-in adapter
+安装后可用 `/loopx <任务>`，再用 `/loop` 推进。若某个 host 里看不到命令，先跑
+`loopx slash-commands` 查看当前命令清单；项目目标可用
+`loopx bootstrap-command-pack --project . --goal-text "<任务>"` 恢复同一语义。
+完整路由和恢复细节见 [Getting Started](docs/guides/getting-started.md) 与
+[host command registry contract](docs/reference/protocols/codex-app-host-command-registry-v0.md)。
+
 ## 看几个例子
 
 想先看证明，再读控制面细节，可以从三个短入口开始：
