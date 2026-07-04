@@ -160,6 +160,15 @@ from .control_plane.runtime.event_ledger import (
     build_event_ledger_summary as _build_event_ledger_summary_read_model,
     event_ledger_event_class as _event_ledger_event_class_read_model,
 )
+from .control_plane.runtime.decision_freshness import (
+    DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
+    DECISION_FRESHNESS_ITEM_LIMIT,
+    DECISION_FRESHNESS_PROXY_NOTE,
+    DECISION_FRESHNESS_WINDOW_DAYS,
+    build_decision_freshness_summary as _build_decision_freshness_summary_read_model,
+    decision_event_kinds as _decision_event_kinds_read_model,
+    decision_freshness_reason as _decision_freshness_reason_read_model,
+)
 from .control_plane.handoff.handoff_runs import (
     is_custom_post_handoff_work_run as _is_custom_post_handoff_work_run_read_model,
     is_handoff_ready_run as _is_handoff_ready_run_read_model,
@@ -409,17 +418,8 @@ MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
 STATUS_CONTRACT_SIGNAL_LIMIT = 3
 MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
-DECISION_FRESHNESS_WINDOW_DAYS = 7
-DECISION_FRESHNESS_ITEM_LIMIT = 12
-DECISION_FRESHNESS_PROXY_NOTE = (
-    "checkpointed decision freshness projection; rebase old decisions at the decision point before reuse"
-)
 PROMOTION_READINESS_PROXY_NOTE = (
     "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
-)
-DECISION_FRESHNESS_CLASSIFICATION_PREFIXES = (
-    "human_reward",
-    "reward_overlay",
 )
 EVENT_LEDGER_DECISION_CLASSIFICATIONS = USER_OR_CONTROLLER_CLASSIFICATIONS | {
     "operator_gate_approved",
@@ -7811,117 +7811,31 @@ def build_contract_health_projection(contract: dict[str, Any]) -> dict[str, Any]
 
 
 def decision_event_kinds(run: dict[str, Any]) -> list[str]:
-    kinds: list[str] = []
-    if isinstance(run.get("human_reward"), dict):
-        kinds.append("human_reward")
-    if isinstance(run.get("operator_gate"), dict):
-        kinds.append("operator_gate")
-    if isinstance(run.get("operator_gate_resume_contract"), dict):
-        kinds.append("operator_gate_resume_contract")
-
-    classification = str(run.get("classification") or "").lower()
-    if not kinds and (
-        classification in EVENT_LEDGER_DECISION_CLASSIFICATIONS
-        or classification.startswith(DECISION_FRESHNESS_CLASSIFICATION_PREFIXES)
-    ):
-        kinds.append("decision_classification")
-    return kinds
+    return _decision_event_kinds_read_model(
+        run,
+        decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
+        classification_prefixes=DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
+    )
 
 
 def decision_freshness_reason(*, stale_by_age: bool, newer_event_count: int) -> str:
-    if stale_by_age and newer_event_count:
-        return "decision older than freshness window and newer sampled events exist; rebase at decision point"
-    if stale_by_age:
-        return "decision older than freshness window; rebase at decision point"
-    if newer_event_count:
-        return "newer sampled events exist after decision; rebase at decision point"
-    return "no newer sampled events inside freshness window"
+    return _decision_freshness_reason_read_model(
+        stale_by_age=stale_by_age,
+        newer_event_count=newer_event_count,
+    )
 
 
 def build_decision_freshness_summary(history: dict[str, Any]) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=DECISION_FRESHNESS_WINDOW_DAYS)
-    runs = [run for run in history.get("runs") or [] if isinstance(run, dict)]
-    items: list[dict[str, Any]] = []
-    stale_count = 0
-    rebase_required_count = 0
-    fresh_count = 0
-
-    indexed_runs: list[tuple[dict[str, Any], datetime, str]] = []
-    for run in runs:
-        generated_at = parse_timestamp(run.get("generated_at"))
-        if generated_at is None:
-            continue
-        indexed_runs.append((run, generated_at, str(run.get("goal_id") or "unknown-goal")))
-
-    for run, decision_at, goal_id in indexed_runs:
-        for decision_kind in decision_event_kinds(run):
-            newer_class_counts = blank_event_class_counts()
-            newer_event_count = 0
-            for other_run, other_at, other_goal_id in indexed_runs:
-                if other_goal_id != goal_id or other_at <= decision_at or other_at < cutoff:
-                    continue
-                newer_event_count += 1
-                newer_class_counts[event_ledger_event_class(other_run)] += 1
-
-            stale_by_age = decision_at < cutoff
-            if stale_by_age:
-                stale_count += 1
-            requires_rebase = stale_by_age or newer_event_count > 0
-            if requires_rebase:
-                rebase_required_count += 1
-            else:
-                fresh_count += 1
-            if stale_by_age:
-                freshness_state = "stale_rebase_required"
-            elif newer_event_count:
-                freshness_state = "rebase_required"
-            else:
-                freshness_state = "fresh"
-
-            items.append(
-                {
-                    "goal_id": goal_id,
-                    "decision_kind": decision_kind,
-                    "decision_at": decision_at.isoformat(),
-                    "classification": run.get("classification"),
-                    "age_days": round(max(0.0, (now - decision_at).total_seconds() / 86400), 2),
-                    "stale_by_age": stale_by_age,
-                    "newer_event_count_7d": newer_event_count,
-                    "newer_event_classes_7d": newer_class_counts,
-                    "freshness_state": freshness_state,
-                    "requires_decision_point_rebase": requires_rebase,
-                    "reason": decision_freshness_reason(
-                        stale_by_age=stale_by_age,
-                        newer_event_count=newer_event_count,
-                    ),
-                }
-            )
-
-    items.sort(
-        key=lambda item: (
-            1 if item["requires_decision_point_rebase"] else 0,
-            item["age_days"],
-            item["newer_event_count_7d"],
-            item["decision_at"],
-        ),
-        reverse=True,
+    return _build_decision_freshness_summary_read_model(
+        history,
+        parse_timestamp=parse_timestamp,
+        decision_event_kinds=decision_event_kinds,
+        event_class_for_run=event_ledger_event_class,
+        blank_event_class_counts=blank_event_class_counts,
+        window_days=DECISION_FRESHNESS_WINDOW_DAYS,
+        item_limit=DECISION_FRESHNESS_ITEM_LIMIT,
+        proxy_note=DECISION_FRESHNESS_PROXY_NOTE,
     )
-    return {
-        "available": True,
-        "source": "run_history",
-        "generated_at": now.isoformat(),
-        "sample_run_count": len(runs),
-        "window_days": DECISION_FRESHNESS_WINDOW_DAYS,
-        "proxy_note": DECISION_FRESHNESS_PROXY_NOTE,
-        "summary": {
-            "decision_count": len(items),
-            "stale_count": stale_count,
-            "rebase_required_count": rebase_required_count,
-            "fresh_count": fresh_count,
-        },
-        "items": items[:DECISION_FRESHNESS_ITEM_LIMIT],
-    }
 
 
 def build_usage_summary(history: dict[str, Any]) -> dict[str, Any]:
