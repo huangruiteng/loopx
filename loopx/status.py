@@ -131,6 +131,11 @@ from .projections.run_compaction import (
     compact_operator_gate as _compact_operator_gate_read_model,
     compact_operator_gate_resume_contract as _compact_operator_gate_resume_contract_read_model,
 )
+from .projections.handoff_runs import (
+    is_custom_post_handoff_work_run as _is_custom_post_handoff_work_run_read_model,
+    is_handoff_ready_run as _is_handoff_ready_run_read_model,
+    run_has_external_evidence_watch_signal as _run_has_external_evidence_watch_signal_read_model,
+)
 from .projections.global_registry_shadow import (
     attach_global_registry_shadow_finding as _attach_global_registry_shadow_finding_read_model,
     compact_global_registry_shadow_finding as _compact_global_registry_shadow_finding_read_model,
@@ -6365,14 +6370,10 @@ def active_state_projection_warning(goal: dict[str, Any], current_run: dict[str,
 
 
 def is_handoff_ready_run(run: dict[str, Any]) -> bool:
-    classification = str(run.get("classification") or "")
-    if classification in HANDOFF_READY_CLASSIFICATIONS:
-        return True
-    operator_gate = compact_operator_gate(run.get("operator_gate"))
-    return bool(
-        operator_gate
-        and operator_gate.get("decision") == "approve"
-        and operator_gate.get("agent_command")
+    return _is_handoff_ready_run_read_model(
+        run,
+        handoff_ready_classifications=HANDOFF_READY_CLASSIFICATIONS,
+        compact_operator_gate=compact_operator_gate,
     )
 
 
@@ -6384,38 +6385,22 @@ def run_has_external_evidence_watch_signal(run: dict[str, Any]) -> bool:
     legacy external-evidence classifications, not broad classification prefixes.
     """
 
-    waiting_on = str(run.get("waiting_on") or "").strip()
-    execution_waiting_on = str(run.get("execution_waiting_on") or "").strip()
-    if waiting_on == "external_evidence" or execution_waiting_on == "external_evidence":
-        return True
-    if isinstance(run.get("external_evidence_observation"), dict):
-        return True
-    monitor_event = run.get("monitor_event")
-    if isinstance(monitor_event, dict):
-        event_waiting_on = str(monitor_event.get("waiting_on") or "").strip()
-        monitor_mode = str(monitor_event.get("monitor_mode") or "").strip()
-        monitor_kind = str(monitor_event.get("monitor_kind") or "").strip()
-        if event_waiting_on == "external_evidence":
-            return True
-        if monitor_mode.startswith("external_") or monitor_kind == "external_evidence":
-            return True
-    classification = str(run.get("classification") or "")
-    return classification.startswith(LEGACY_EXTERNAL_EVIDENCE_CLASSIFICATION_PREFIXES)
+    return _run_has_external_evidence_watch_signal_read_model(
+        run,
+        legacy_external_evidence_classification_prefixes=LEGACY_EXTERNAL_EVIDENCE_CLASSIFICATION_PREFIXES,
+    )
 
 
 def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
-    classification = str(run.get("classification") or "")
-    if not classification:
-        return False
-    if is_status_neutral_run(run) or is_handoff_ready_run(run):
-        return False
-    if classification in CODEX_READY_CLASSIFICATIONS:
-        return False
-    if classification in USER_OR_CONTROLLER_CLASSIFICATIONS or classification in BLOCKING_CLASSIFICATIONS:
-        return False
-    if run_has_external_evidence_watch_signal(run):
-        return False
-    return True
+    return _is_custom_post_handoff_work_run_read_model(
+        run,
+        is_status_neutral_run=is_status_neutral_run,
+        is_handoff_ready_run=is_handoff_ready_run,
+        run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
+        codex_ready_classifications=CODEX_READY_CLASSIFICATIONS,
+        user_or_controller_classifications=USER_OR_CONTROLLER_CLASSIFICATIONS,
+        blocking_classifications=BLOCKING_CLASSIFICATIONS,
+    )
 
 
 def delivery_batch_scale_for_run(run: dict[str, Any]) -> str:
