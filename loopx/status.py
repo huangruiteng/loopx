@@ -109,6 +109,9 @@ from .control_plane.todos.active_state_todo_parser import (
 from .control_plane.work_items.attention_item import (
     attention_item as _attention_item_read_model,
 )
+from .control_plane.work_items.attention_routing import (
+    goal_attention as _goal_attention_read_model,
+)
 from .control_plane.work_items.attention_fields import (
     operator_gate_attention_fields as _operator_gate_attention_fields_read_model,
     readiness_attention_fields as _readiness_attention_fields_read_model,
@@ -6838,161 +6841,29 @@ def session_runtime_projection_attention(
 
 
 def goal_attention(goal: dict[str, Any]) -> dict[str, Any] | None:
-    goal_id = str(goal.get("id") or "unknown-goal")
-    adapter_status = str(goal.get("adapter_status") or "")
-    adapter_kind = str(goal.get("adapter_kind") or "")
-    current_run = latest_run(goal)
-    readiness_fields = readiness_attention_fields(current_run)
-    operator_gate_fields = operator_gate_attention_fields(current_run)
-    dreaming_fields = dreaming_attention_fields(current_run)
-    attention_fields = {**readiness_fields, **operator_gate_fields, **dreaming_fields}
-    lifecycle_fields = goal_lifecycle_fields(goal, current_run)
-
-    if goal.get("legacy_runtime_goal"):
-        return legacy_runtime_goal_attention(goal, current_run, readiness_fields)
-
-    if not current_run:
-        if adapter_status in CONNECTED_ADAPTER_STATUSES:
-            return attention_item(
-                goal_id=goal_id,
-                status="connected_without_run",
-                waiting_on="codex",
-                severity="action",
-                recommended_action="run the first read-only adapter tick and save a compact run record",
-                source="run_history",
-                **lifecycle_fields,
-            )
-        if adapter_status == "planned" and adapter_kind.endswith("_read_only_map_v0"):
-            command = f"loopx read-only-map --goal-id {goal_id} --dry-run"
-            return attention_item(
-                goal_id=goal_id,
-                status=str(goal.get("status") or "planned"),
-                waiting_on="user_or_controller",
-                severity="action",
-                recommended_action=PLANNED_CONTROLLER_OPT_IN_RECOMMENDED_ACTION,
-                operator_question=default_operator_question(goal_id, DEFAULT_OPERATOR_GATE),
-                agent_command=command,
-                source="registry",
-                **lifecycle_fields,
-            )
-        return attention_item(
-            goal_id=goal_id,
-            status=str(goal.get("status") or "no_run"),
-            waiting_on="controller",
-            severity="action",
-            recommended_action="connect an adapter or run a read-only map before expecting runtime status",
-            source="registry",
-            **lifecycle_fields,
-        )
-
-    json_exists = bool(current_run.get("json_exists"))
-    markdown_exists = bool(current_run.get("markdown_exists"))
-    if not json_exists or not markdown_exists:
-        return attention_item(
-            goal_id=goal_id,
-            status="run_artifact_missing",
-            waiting_on="codex",
-            severity="high",
-            recommended_action="repair or regenerate the latest run artifacts before trusting status",
-            source="run_history",
-            **attention_fields,
-            **lifecycle_fields,
-        )
-
-    session_projection = compact_session_runtime_projection_from_run(current_run)
-    if session_projection:
-        return session_runtime_projection_attention(goal, current_run, session_projection)
-
-    classification = str(current_run.get("classification") or "unknown")
-    action = str(current_run.get("recommended_action") or "inspect the latest run and choose one next action")
-    registry_waiting_on = str(goal.get("waiting_on") or "")
-    if registry_waiting_on in REGISTRY_WAITING_ON_OVERRIDES:
-        registry_attention_fields = dict(attention_fields)
-        if goal.get("operator_question"):
-            registry_attention_fields["operator_question"] = normalize_operator_question(
-                str(goal.get("operator_question") or ""),
-                goal_id=goal_id,
-                gate=str(goal.get("operator_gate") or DEFAULT_OPERATOR_GATE),
-            )
-        if goal.get("next_handoff_condition"):
-            registry_attention_fields["next_handoff_condition"] = str(goal.get("next_handoff_condition") or "")
-        return attention_item(
-            goal_id=goal_id,
-            status=str(goal.get("attention_status") or classification),
-            waiting_on=registry_waiting_on,
-            severity="watch" if registry_waiting_on == "external_evidence" else "action",
-            recommended_action=str(goal.get("recommended_action") or action),
-            source="registry",
-            **registry_attention_fields,
-            **lifecycle_fields,
-        )
-    if classification in BLOCKING_CLASSIFICATIONS:
-        return attention_item(
-            goal_id=goal_id,
-            status=classification,
-            waiting_on="user_or_controller",
-            severity="high",
-            recommended_action=action,
-            source="latest_run",
-            **attention_fields,
-            **lifecycle_fields,
-        )
-    if classification in USER_OR_CONTROLLER_CLASSIFICATIONS:
-        return attention_item(
-            goal_id=goal_id,
-            status=classification,
-            waiting_on="user_or_controller",
-            severity="action",
-            recommended_action=action,
-            source="latest_run",
-            **attention_fields,
-            **lifecycle_fields,
-        )
-    if classification in CODEX_READY_CLASSIFICATIONS:
-        return attention_item(
-            goal_id=goal_id,
-            status=classification,
-            waiting_on="codex",
-            severity="action",
-            recommended_action=action,
-            source="latest_run",
-            **attention_fields,
-            **lifecycle_fields,
-        )
-    if adapter_status in CONNECTED_DELIVERY_ADAPTER_STATUSES:
-        return attention_item(
-            goal_id=goal_id,
-            status=classification,
-            waiting_on="codex",
-            severity="action",
-            recommended_action=action,
-            source="latest_run",
-            **attention_fields,
-            **lifecycle_fields,
-        )
-    if run_has_external_evidence_watch_signal(current_run):
-        return attention_item(
-            goal_id=goal_id,
-            status=classification,
-            waiting_on="external_evidence",
-            severity="watch",
-            recommended_action=action,
-            source="latest_run",
-            **attention_fields,
-            **lifecycle_fields,
-        )
-    if adapter_status in CONNECTED_ADAPTER_STATUSES:
-        return attention_item(
-            goal_id=goal_id,
-            status=classification,
-            waiting_on="codex",
-            severity="action",
-            recommended_action=action,
-            source="latest_run",
-            **attention_fields,
-            **lifecycle_fields,
-        )
-    return None
+    return _goal_attention_read_model(
+        goal,
+        latest_run=latest_run,
+        readiness_attention_fields=readiness_attention_fields,
+        operator_gate_attention_fields=operator_gate_attention_fields,
+        dreaming_attention_fields=dreaming_attention_fields,
+        goal_lifecycle_fields=goal_lifecycle_fields,
+        legacy_runtime_goal_attention=legacy_runtime_goal_attention,
+        compact_session_runtime_projection_from_run=compact_session_runtime_projection_from_run,
+        session_runtime_projection_attention=session_runtime_projection_attention,
+        attention_item=attention_item,
+        run_has_external_evidence_watch_signal=run_has_external_evidence_watch_signal,
+        default_operator_question=default_operator_question,
+        normalize_operator_question=normalize_operator_question,
+        default_operator_gate=DEFAULT_OPERATOR_GATE,
+        planned_controller_opt_in_recommended_action=PLANNED_CONTROLLER_OPT_IN_RECOMMENDED_ACTION,
+        connected_adapter_statuses=CONNECTED_ADAPTER_STATUSES,
+        connected_delivery_adapter_statuses=CONNECTED_DELIVERY_ADAPTER_STATUSES,
+        registry_waiting_on_overrides=REGISTRY_WAITING_ON_OVERRIDES,
+        blocking_classifications=BLOCKING_CLASSIFICATIONS,
+        user_or_controller_classifications=USER_OR_CONTROLLER_CLASSIFICATIONS,
+        codex_ready_classifications=CODEX_READY_CLASSIFICATIONS,
+    )
 
 
 def build_task_graph_projection(
