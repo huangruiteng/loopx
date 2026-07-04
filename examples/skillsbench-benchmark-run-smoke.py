@@ -10416,6 +10416,74 @@ def test_codex_cli_goal_worker_skips_plain_codex_exec_preflight() -> None:
         assert prereqs["container_codex_acp_install_skipped"] is True, prereqs
 
 
+def test_codex_cli_goal_official_score_without_task_activity_is_uncountable() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-cli-goal-countability-") as tmp:
+        root = Path(tmp)
+        result_path = write_official_skillsbench_result(root, reward=0.0)
+        args = parse_args(
+            [
+                "--task-id",
+                "azure-bgp-oscillation-route-leak",
+                "--route",
+                "codex-cli-goal-baseline",
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--remote-command-file-bridge-solver-command",
+                "/tmp/loopx-skillsbench-docker-bridge",
+                "--jobs-dir",
+                str(root / "jobs"),
+                "--job-name",
+                "skillsbench-cli-goal-countability-fixture",
+            ]
+        )
+        plan = build_plan(args)
+        plan["runner_prerequisites"].update(
+            {
+                "remote_command_file_bridge_agent_operation_trace_required": True,
+                "remote_command_file_bridge_agent_operation_trace_satisfied": False,
+                "remote_command_file_bridge_agent_operation_trace_status": (
+                    "agent_operation_trace_present_no_requests"
+                ),
+                "remote_command_file_bridge_agent_operation_trace_count": 1,
+                "remote_command_file_bridge_agent_request_count": 0,
+                "remote_command_file_bridge_agent_task_facing_operation_count": 0,
+                "remote_command_file_bridge_agent_task_facing_success_count": 0,
+                "codex_cli_goal_tui_trace_present": True,
+                "codex_cli_goal_tui_ok_count": 1,
+                "codex_cli_goal_tui_stage": "goal_achieved",
+                "codex_cli_goal_tui_task_facing_success_count": 0,
+                "codex_cli_goal_tui_raw_material_recorded": False,
+            }
+        )
+
+        compact = reduce_result(args, result_path, plan)
+
+        expected = "skillsbench_codex_cli_goal_uncountable_no_task_activity"
+        assert compact["official_score_status"] == "completed", compact
+        assert compact["official_score"] == 0.0, compact
+        assert compact["score_failure_attribution"] == expected, compact
+        assert compact["first_blocker"] == expected, compact
+        assert "official_verifier_solution_failure" not in compact[
+            "failure_attribution_labels"
+        ], compact
+        assert "skillsbench_codex_cli_goal_uncountable_baseline" in compact[
+            "failure_attribution_labels"
+        ], compact
+        contract = compact["codex_cli_goal_countability_contract"]
+        assert contract["countable_baseline"] is False, contract
+        assert contract["ok_count"] == 1, contract
+        assert contract["request_count"] == 0, contract
+        assert contract["task_facing_activity_count"] == 0, contract
+        assert contract["raw_material_recorded"] is False, contract
+        accounting = compact["attempt_accounting"]
+        assert accounting["failure_class"] == "job_materialization_failed", accounting
+        assert accounting["failure_label"] == expected, accounting
+        assert accounting["case_attempt_countable"] is False, accounting
+        assert accounting["solver_attempt_countable"] is False, accounting
+        assert accounting["verifier_attempt_countable"] is False, accounting
+        assert accounting["official_score_attempt_countable"] is False, accounting
+
+
 def test_app_server_goal_first_action_timeout_respects_agent_idle_timeout() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-app-server-timeout-") as tmp:
         args = parse_args(
@@ -14568,10 +14636,10 @@ def test_skillsbench_reduce_only_preserves_round_reward_trace() -> None:
         assert round_trace["records"][1]["passed"] is True, compact
         ledger = load_benchmark_run_ledger(Path(tmp) / "ledger.json")
         run = ledger["benchmarks"]["skillsbench@1.1"]["cases"]["sample-task"]["runs"][0]
-        assert run["round_reward_count"] == 0, run
-        assert run["round_success_observed"] is False, run
-        assert "round_rewards" not in run, run
-        assert "first_success_round" not in run, run
+        assert run["round_reward_count"] == 2, run
+        assert run["round_success_observed"] is True, run
+        assert [item["reward"] for item in run["round_rewards"]] == [0.0, 1.0], run
+        assert run["first_success_round"] == 2, run
 
 
 def test_skillsbench_reduce_only_preserves_persisted_public_prerequisites() -> None:
@@ -14801,6 +14869,8 @@ if __name__ == "__main__":
     test_product_mode_host_local_idle_no_output_progress_requires_new_trace()
     test_goal_start_host_local_defers_codex_exec_preflight_until_bridge_command()
     test_app_server_goal_worker_skips_plain_codex_exec_preflight()
+    test_codex_cli_goal_worker_skips_plain_codex_exec_preflight()
+    test_codex_cli_goal_official_score_without_task_activity_is_uncountable()
     test_app_server_goal_first_action_timeout_respects_agent_idle_timeout()
     test_goal_start_host_exec_failure_overrides_zero_score_recovery()
     test_skillsbench_product_mode_declared_done_below_passing_reward_is_compacted()

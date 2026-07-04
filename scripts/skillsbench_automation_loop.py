@@ -4810,6 +4810,137 @@ def _apply_native_goal_worker_finish_guard_attribution(
     return True
 
 
+def _apply_codex_cli_goal_countability_guard_attribution(
+    compact: dict[str, Any],
+) -> bool:
+    runner_config = compact.get("runner_config")
+    if not isinstance(runner_config, dict):
+        runner_config = {}
+    route = str(compact.get("route") or runner_config.get("route") or "")
+    mode = str(compact.get("mode") or "")
+    if (
+        route != CODEX_CLI_GOAL_BASELINE_ROUTE
+        and mode != "skillsbench_codex_cli_goal_baseline"
+    ):
+        return False
+    if compact.get("official_score_status") != "completed":
+        return False
+
+    counters = compact.get("interaction_counters")
+    if not isinstance(counters, dict):
+        counters = {}
+    runner_prerequisites = compact.get("runner_prerequisites")
+    if not isinstance(runner_prerequisites, dict):
+        runner_prerequisites = {}
+
+    def max_counter(*fields: str) -> int:
+        values: list[int] = []
+        for source in (counters, runner_prerequisites):
+            for field in fields:
+                value = source.get(field)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    values.append(max(0, value))
+        return max(values, default=0)
+
+    task_facing_count = max_counter(
+        "remote_command_file_bridge_agent_task_facing_success_count",
+        "remote_command_file_bridge_agent_task_facing_operation_count",
+        "codex_cli_goal_tui_task_facing_success_count",
+    )
+    request_count = max_counter(
+        "remote_command_file_bridge_agent_request_count",
+        "codex_cli_goal_tui_bridge_request_count",
+    )
+    ok_count = max_counter("codex_cli_goal_tui_ok_count")
+    trace_present = bool(
+        counters.get("codex_cli_goal_tui_trace_present") is True
+        or runner_prerequisites.get("codex_cli_goal_tui_trace_present") is True
+    )
+    operation_trace_status = str(
+        counters.get("remote_command_file_bridge_agent_operation_trace_status")
+        or runner_prerequisites.get(
+            "remote_command_file_bridge_agent_operation_trace_status"
+        )
+        or ""
+    )[:120]
+
+    missing_task_activity = task_facing_count <= 0 or request_count <= 0
+    goal_failed = trace_present and ok_count <= 0
+    if not (missing_task_activity or goal_failed):
+        return False
+
+    label = "skillsbench_codex_cli_goal_uncountable_no_task_activity"
+    if goal_failed and not missing_task_activity:
+        label = "skillsbench_codex_cli_goal_uncountable_goal_failed"
+    compact["score_failure_attribution"] = label
+    compact["first_blocker"] = label
+    compact["repeat_blocked_by"] = label
+    compact["official_score_comparable_to_native_codex"] = False
+    compact["official_score_comparable_to_loopx_treatment"] = False
+    existing_labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str)
+        and item
+        not in {
+            "official_score_zero_case_failure",
+            "official_verifier_solution_failure",
+            "verifier_infrastructure_failure",
+        }
+    ]
+    for item in (
+        label,
+        "skillsbench_codex_cli_goal_uncountable_baseline",
+    ):
+        if item not in existing_labels:
+            existing_labels.append(item)
+    compact["failure_attribution_labels"] = existing_labels
+    compact["codex_cli_goal_countability_contract"] = {
+        "schema_version": "skillsbench_codex_cli_goal_countability_contract_v0",
+        "required": True,
+        "countable_baseline": False,
+        "failure_category": label,
+        "first_blocker": label,
+        "trace_present": trace_present,
+        "ok_count": ok_count,
+        "request_count": request_count,
+        "task_facing_activity_count": task_facing_count,
+        "operation_trace_status": operation_trace_status,
+        "raw_material_recorded": False,
+    }
+    runner_failure = compact.setdefault("runner_failure", {})
+    if isinstance(runner_failure, dict):
+        runner_failure["exception_type"] = label
+        runner_failure["failure_class"] = label
+        runner_failure["codex_cli_goal"] = {
+            "failure_category": label,
+            "trace_present": trace_present,
+            "ok_count": ok_count,
+            "request_count": request_count,
+            "task_facing_activity_count": task_facing_count,
+            "raw_material_recorded": False,
+        }
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["lifecycle_phase"] = "runner_accepted_args"
+        for key in (
+            "case_attempt_countable",
+            "solver_attempt_countable",
+            "verifier_attempt_countable",
+            "official_score_attempt_countable",
+        ):
+            attempt_accounting[key] = False
+        attempts = attempt_accounting.get("attempts")
+        if isinstance(attempts, dict):
+            for key in ("case", "solver", "verifier", "official_score"):
+                attempt = attempts.get(key)
+                if isinstance(attempt, dict):
+                    attempt["countable"] = False
+    return True
+
+
 def _case_timeline_safe_string(value: Any, *, limit: int = 140) -> str:
     if not isinstance(value, str):
         return ""
@@ -14285,6 +14416,7 @@ def reduce_result(
             runner_prerequisites,
         )
     _apply_native_goal_worker_finish_guard_attribution(compact)
+    _apply_codex_cli_goal_countability_guard_attribution(compact)
     prereq_failure = _runner_prerequisite_failure_attribution(
         plan.get("runner_prerequisites")
     )
@@ -15234,6 +15366,7 @@ def build_runner_failure_compact(
     recovered = _recover_runner_failure_score_from_controller_trace(reduced, plan)
     if not recovered:
         _recover_runner_failure_score_from_verifier_artifact(reduced, plan)
+    _apply_codex_cli_goal_countability_guard_attribution(reduced)
     apply_skillsbench_verifier_bootstrap_missing_score_attribution(
         reduced,
         task_staging=_effective_public_task_staging(plan),
