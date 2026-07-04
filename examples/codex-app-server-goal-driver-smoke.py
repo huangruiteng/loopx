@@ -147,6 +147,31 @@ for line in sys.stdin:
                 "payload": {"type": "task_complete"},
             }), flush=True)
             continue
+        if "stale completion status" in prompt_text:
+            result = {
+                "turn": {"id": "turn-stale-completion-status", "status": "inProgress"}
+            }
+            print(json.dumps({"id": mid, "result": result}), flush=True)
+            print(json.dumps({
+                "method": "item/agentMessage/delta",
+                "params": {
+                    "threadId": "thread-smoke",
+                    "turnId": "turn-stale-completion-status",
+                    "itemId": "item-stale-completion-status",
+                    "delta": "Stale status final answer.",
+                },
+            }), flush=True)
+            print(json.dumps({
+                "method": "turn/completed",
+                "params": {
+                    "threadId": "thread-smoke",
+                    "turn": {
+                        "id": "turn-stale-completion-status",
+                        "status": "inProgress",
+                    },
+                },
+            }), flush=True)
+            continue
         if "session-file completion" in prompt_text:
             result = {"turn": {"id": "turn-session-file-smoke", "status": "running"}}
             print(json.dumps({"id": mid, "result": result}), flush=True)
@@ -388,6 +413,26 @@ def main() -> int:
             assert "Event style final answer." not in json.dumps(compact), compact
         finally:
             event_completed_turn.terminate()
+
+        stale_completion_status_turn = module.start_codex_app_server_goal_turn(
+            codex_bin=str(fake),
+            work_dir=root / "work-stale-completion-status",
+            objective="Synthetic objective.",
+            prompt="Synthetic stale completion status prompt.",
+            model_name="gpt-5.5",
+            reasoning_effort="high",
+            response_timeout_sec=5,
+            wait_for_completion=True,
+            turn_timeout_sec=5,
+        )
+        try:
+            compact = module.compact_turn_metadata(stale_completion_status_turn)
+            assert compact["turn_completed_observed"] is True, compact
+            assert compact["turn_status"] == "completed", compact
+            assert compact["assistant_message_present"] is True, compact
+            assert "Stale status final answer." not in json.dumps(compact), compact
+        finally:
+            stale_completion_status_turn.terminate()
 
         session_completed_turn = module.start_codex_app_server_goal_turn(
             codex_bin=str(fake),

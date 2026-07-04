@@ -112,7 +112,14 @@ for line in sys.stdin:
             "method": "turn/completed",
             "params": {
                 "threadId": "thread-skillsbench",
-                "turn": {"id": "turn-event-skillsbench"},
+                "turn": {
+                    "id": "turn-event-skillsbench",
+                    **(
+                        {"status": "inProgress"}
+                        if "stale completion status" in prompt_text
+                        else {}
+                    ),
+                },
             },
         }), flush=True)
         continue
@@ -1292,7 +1299,10 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         private_response = root / "private-response.txt"
         fake.write_text(FAKE_CODEX, encoding="utf-8")
         fake.chmod(0o755)
-        prompt.write_text("Private task instruction placeholder.", encoding="utf-8")
+        prompt.write_text(
+            "Private task instruction placeholder. stale completion status.",
+            encoding="utf-8",
+        )
         result = subprocess.run(
             [
                 sys.executable,
@@ -1343,6 +1353,7 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         public_json = json.dumps(payload)
         assert "private worker answer" not in public_json, payload
         assert "Private task instruction placeholder" not in public_json, payload
+        assert "stale completion status" not in public_json, payload
 
 
 def test_host_worker_recovers_when_first_turn_only_echoes_context() -> None:

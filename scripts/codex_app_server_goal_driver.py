@@ -434,10 +434,12 @@ def _record_turn_event(
     if event_name == "response_item:reasoning":
         return False
     if event_name == "event_msg:task_started":
-        turn.turn_status = "inProgress"
+        if not turn.turn_completed_observed:
+            turn.turn_status = "inProgress"
         return False
     if method == "turn/started":
-        turn.turn_status = _extract_turn_status(params) or turn.turn_status
+        if not turn.turn_completed_observed:
+            turn.turn_status = _extract_turn_status(params) or turn.turn_status
         return False
     if method == "item/completed":
         turn.item_completed_count += 1
@@ -455,7 +457,7 @@ def _record_turn_event(
         return False
     if method == "turn/completed":
         turn.turn_completed_observed = True
-        turn.turn_status = _extract_turn_status(params) or "completed"
+        turn.turn_status = "completed"
         turn.assistant_message = "".join(turn._assistant_message_parts)
         return True
     if event_name in {
@@ -464,7 +466,7 @@ def _record_turn_event(
         "event_msg:turn_completed",
     }:
         turn.turn_completed_observed = True
-        turn.turn_status = _extract_turn_status(params) or "completed"
+        turn.turn_status = "completed"
         turn.assistant_message = "".join(turn._assistant_message_parts)
         return True
     if method == "error":
