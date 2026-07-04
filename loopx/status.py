@@ -535,6 +535,7 @@ RUN_COMPACT_FIELDS = (
     "classification",
     "agent_id",
     "agent_lane",
+    "agent_vision",
     "progress_scope",
     "delivery_batch_scale",
     "delivery_outcome",
