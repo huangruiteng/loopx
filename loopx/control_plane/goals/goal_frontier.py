@@ -5,6 +5,7 @@ from typing import Any
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
 AUTONOMOUS_REPLAN_DECISION_SCHEMA_VERSION = "autonomous_replan_decision_v0"
+AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION = "autonomous_replan_scope_v0"
 AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
@@ -67,13 +68,102 @@ def autonomous_replan_decision_allowed(
     plan_ok: bool,
     workspace_blocked: bool,
     automation_prompt_upgrade_required: bool,
+    agent_id: str | None = None,
+    primary_agent_id: str | None = None,
 ) -> bool:
     return bool(
         autonomous_replan_is_required(replan_obligation)
+        and autonomous_replan_scope_decision(
+            replan_obligation,
+            agent_id=agent_id,
+            primary_agent_id=primary_agent_id,
+        ).get("applies")
         and plan_ok
         and not workspace_blocked
         and not automation_prompt_upgrade_required
     )
+
+
+def _normalize_replan_agent_id(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _autonomous_replan_owner_agent_ids(
+    replan_obligation: dict[str, Any] | None,
+) -> list[str]:
+    if not isinstance(replan_obligation, dict):
+        return []
+    owner_keys = (
+        "agent_id",
+        "claimed_by",
+        "owner_agent",
+        "target_agent",
+        "blocks_agent",
+    )
+    owners: list[str] = []
+
+    def append_owner(value: Any) -> None:
+        owner = _normalize_replan_agent_id(value)
+        if owner and owner not in owners:
+            owners.append(owner)
+
+    for key in owner_keys:
+        append_owner(replan_obligation.get(key))
+    triggers = (
+        replan_obligation.get("triggers")
+        if isinstance(replan_obligation.get("triggers"), list)
+        else []
+    )
+    for trigger in triggers:
+        if not isinstance(trigger, dict):
+            continue
+        for key in owner_keys:
+            append_owner(trigger.get(key))
+    return owners
+
+
+def autonomous_replan_scope_decision(
+    replan_obligation: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+    primary_agent_id: str | None,
+) -> dict[str, Any]:
+    """Return whether a replan obligation belongs to this agent lane.
+
+    Explicit agent-owned replans are consumed only by that agent. Unscoped
+    goal-level replans default to the primary/controller lane so side agents do
+    not repeatedly consume another lane's stalled Next Action.
+    """
+
+    normalized_agent_id = _normalize_replan_agent_id(agent_id)
+    normalized_primary_agent_id = _normalize_replan_agent_id(primary_agent_id)
+    owners = _autonomous_replan_owner_agent_ids(replan_obligation)
+    required = autonomous_replan_is_required(replan_obligation)
+    if not required:
+        applies = False
+        scope = "not_required"
+    elif not normalized_agent_id:
+        applies = True
+        scope = "unscoped_quota_call"
+    elif owners:
+        applies = normalized_agent_id in owners
+        scope = "explicit_agent_owner"
+    elif normalized_primary_agent_id:
+        applies = normalized_agent_id == normalized_primary_agent_id
+        scope = "default_primary_agent"
+    else:
+        applies = True
+        scope = "single_agent_or_unknown_primary"
+    return {
+        "schema_version": AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION,
+        "required": required,
+        "applies": applies,
+        "scope": scope,
+        "agent_id": normalized_agent_id,
+        "primary_agent_id": normalized_primary_agent_id,
+        "owner_agent_ids": owners,
+    }
 
 
 def _compact_projection_text(value: Any, *, limit: int = 360) -> str | None:

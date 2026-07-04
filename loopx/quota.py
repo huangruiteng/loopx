@@ -53,6 +53,7 @@ from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
     acceptance_gaps_from_agent_vision,
     autonomous_replan_decision_allowed,
+    autonomous_replan_scope_decision,
     build_autonomous_replan_recommendation,
     build_goal_frontier_projection_from_summaries,
     derive_goal_frontier_replan_obligation_from_summaries,
@@ -4987,6 +4988,7 @@ def _heartbeat_recommendation(
     work_lane_contract: dict[str, Any] | None = None,
     stall_self_repair: dict[str, Any] | None = None,
     replan_obligation: dict[str, Any] | None = None,
+    select_replan_obligation: bool = True,
 ) -> dict[str, Any]:
     status = str(item.get("status") or "")
     waiting_on = str(item.get("waiting_on") or "")
@@ -4999,6 +5001,8 @@ def _heartbeat_recommendation(
         replan_obligation
         if isinstance(replan_obligation, dict)
         else select_autonomous_replan_obligation(item, project_asset)
+        if select_replan_obligation
+        else None
     )
     has_user_todos = _open_todo_count(user_todo_summary) > 0
     has_agent_todos = _open_todo_count(agent_todo_summary) > 0
@@ -5880,12 +5884,24 @@ def build_quota_should_run(
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         work_lane_contract = _work_lane_contract(item, agent_todo_summary=agent_todo_summary)
-        replan_obligation = select_autonomous_replan_obligation(item, project_asset)
         agent_frontier_id = (
             normalize_todo_claimed_by(agent_identity.get("agent_id"))
             if isinstance(agent_identity, dict)
             else None
         )
+        primary_agent_id = (
+            normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+            if isinstance(agent_identity, dict)
+            else None
+        )
+        replan_obligation = select_autonomous_replan_obligation(item, project_asset)
+        replan_scope = autonomous_replan_scope_decision(
+            replan_obligation,
+            agent_id=agent_frontier_id,
+            primary_agent_id=primary_agent_id,
+        )
+        if replan_scope.get("required") and not replan_scope.get("applies"):
+            replan_obligation = None
         latest_agent_replan_ack = _latest_autonomous_replan_ack_for_agent(
             status_payload,
             goal_id=safe_goal_id,
@@ -5917,6 +5933,11 @@ def build_quota_should_run(
         )
         if frontier_replan_obligation:
             replan_obligation = frontier_replan_obligation
+            replan_scope = autonomous_replan_scope_decision(
+                replan_obligation,
+                agent_id=agent_frontier_id,
+                primary_agent_id=primary_agent_id,
+            )
         goal_frontier_projection = build_goal_frontier_projection_from_summaries(
             goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
@@ -6010,6 +6031,8 @@ def build_quota_should_run(
             plan_ok=bool(plan.get("ok")),
             workspace_blocked=bool(workspace_guard),
             automation_prompt_upgrade_required=automation_prompt_upgrade_required,
+            agent_id=agent_frontier_id,
+            primary_agent_id=primary_agent_id,
         )
         if replan_decision_allowed:
             normal_delivery_allowed = False
@@ -6034,6 +6057,7 @@ def build_quota_should_run(
             work_lane_contract=work_lane_contract,
             stall_self_repair=stall_self_repair,
             replan_obligation=replan_obligation,
+            select_replan_obligation=False,
         )
         if capability_gate and capability_gate.get("action") == "repair_bridge":
             heartbeat_recommendation = {
@@ -6376,6 +6400,8 @@ def build_quota_should_run(
         autonomous_replan_decision = goal_frontier_projection.get("autonomous_replan_decision")
         if isinstance(autonomous_replan_decision, dict):
             payload["autonomous_replan_decision"] = autonomous_replan_decision
+        if replan_scope.get("required"):
+            payload["autonomous_replan_scope"] = replan_scope
         if agent_identity:
             payload["agent_identity"] = agent_identity
         if agent_lane_next_action:

@@ -20,7 +20,7 @@ SIDE_AGENT = "codex-side-bypass"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
 
 
-REPLAN_OBLIGATION = {
+GLOBAL_REPLAN_OBLIGATION = {
     "schema_version": "autonomous_replan_obligation_v0",
     "required": True,
     "stall_threshold": 2,
@@ -28,6 +28,13 @@ REPLAN_OBLIGATION = {
     "triggers": [{"kind": "periodic_review_due", "source": "fixture"}],
     "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
     "stop_condition": "stop after one bounded replan slice writes back a concrete frontier delta",
+}
+
+SIDE_AGENT_REPLAN_OBLIGATION = {
+    **GLOBAL_REPLAN_OBLIGATION,
+    "triggers": [
+        {"kind": "periodic_review_due", "source": "fixture", "agent_id": SIDE_AGENT}
+    ],
 }
 
 
@@ -93,7 +100,7 @@ def blocking_handoff_review() -> dict:
 def status_payload(
     agent_todo_items: list[dict],
     *,
-    replan_obligation: dict | None = REPLAN_OBLIGATION,
+    replan_obligation: dict | None = GLOBAL_REPLAN_OBLIGATION,
     latest_runs: list[dict] | None = None,
 ) -> dict:
     agent_todos = compact_todo_group(
@@ -214,7 +221,10 @@ def assert_replan_beats_monitor_quiet_skip() -> None:
 
 def assert_replan_preserves_current_agent_runnable_frontier() -> None:
     guard = build_quota_should_run(
-        status_payload([monitor_item(), side_agent_claimed_advancement()]),
+        status_payload(
+            [monitor_item(), side_agent_claimed_advancement()],
+            replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION,
+        ),
         goal_id=GOAL_ID,
         agent_id=SIDE_AGENT,
     )
@@ -264,9 +274,12 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "deferred_ready=0 acceptance_gaps=1" in markdown, markdown
 
 
-def assert_replan_beats_agent_scope_wait() -> None:
+def assert_agent_scoped_replan_beats_agent_scope_wait() -> None:
     guard = build_quota_should_run(
-        status_payload([primary_claimed_advancement()]),
+        status_payload(
+            [primary_claimed_advancement()],
+            replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION,
+        ),
         goal_id=GOAL_ID,
         agent_id=SIDE_AGENT,
     )
@@ -284,6 +297,42 @@ def assert_replan_beats_agent_scope_wait() -> None:
     assert guard["goal_frontier_projection"]["deferred_successors"]["ready_count"] == 0, guard
     assert guard["goal_frontier_projection"]["acceptance_gaps"] == [], guard
     assert "agent_scope_wait" in guard["autonomous_replan_decision"]["not_disturbed_by"], guard
+
+
+def assert_unscoped_replan_defaults_to_primary_agent() -> None:
+    primary_guard = build_quota_should_run(
+        status_payload([primary_claimed_advancement()]),
+        goal_id=GOAL_ID,
+        agent_id=PRIMARY_AGENT,
+    )
+    assert primary_guard["decision"] == "autonomous_replan_required", primary_guard
+    assert primary_guard["effective_action"] == "autonomous_replan_required", primary_guard
+    assert primary_guard["autonomous_replan_scope"]["scope"] == "default_primary_agent", primary_guard
+    assert primary_guard["autonomous_replan_scope"]["applies"] is True, primary_guard
+
+    side_guard = build_quota_should_run(
+        status_payload([primary_claimed_advancement()]),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert side_guard["effective_action"] == "agent_scope_wait", side_guard
+    assert side_guard["should_run"] is False, side_guard
+    assert side_guard["interaction_contract"]["mode"] == "agent_scope_wait", side_guard
+    assert side_guard["autonomous_replan_scope"]["scope"] == "default_primary_agent", side_guard
+    assert side_guard["autonomous_replan_scope"]["applies"] is False, side_guard
+    assert side_guard.get("autonomous_replan_obligation") is None, side_guard
+    assert side_guard["goal_frontier_projection"]["replan_required"] is False, side_guard
+
+    monitor_side_guard = build_quota_should_run(
+        status_payload([monitor_item(), primary_claimed_advancement()]),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert monitor_side_guard["effective_action"] == "monitor_quiet_skip", monitor_side_guard
+    assert monitor_side_guard["should_run"] is False, monitor_side_guard
+    assert monitor_side_guard["interaction_contract"]["mode"] == "monitor_quiet_skip", monitor_side_guard
+    assert monitor_side_guard["autonomous_replan_scope"]["applies"] is False, monitor_side_guard
+    assert monitor_side_guard.get("autonomous_replan_obligation") is None, monitor_side_guard
 
 
 def assert_empty_monitor_frontier_derives_replan() -> None:
@@ -382,7 +431,8 @@ def main() -> None:
     assert_replan_beats_monitor_quiet_skip()
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_agent_vision_gap_derives_replan()
-    assert_replan_beats_agent_scope_wait()
+    assert_agent_scoped_replan_beats_agent_scope_wait()
+    assert_unscoped_replan_defaults_to_primary_agent()
     assert_empty_monitor_frontier_derives_replan()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()
     assert_blocking_handoff_gate_beats_derived_monitor_replan()
