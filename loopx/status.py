@@ -71,6 +71,9 @@ from .projections.project_asset import (
     project_asset_todo_projection_gap,
     project_asset_user_todo_open_count,
 )
+from .projections.project_handoff import (
+    project_asset_handoff_state as _project_asset_handoff_state_read_model,
+)
 from .projections.autonomous_candidates import (
     autonomous_backlog_candidates as _autonomous_backlog_candidates_read_model,
     autonomous_monitor_candidates as _autonomous_monitor_candidates_read_model,
@@ -6504,100 +6507,20 @@ def project_asset_handoff_state(
     project_asset: dict[str, Any],
     latest_runs: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
-    runs = [run for run in latest_runs or [] if isinstance(run, dict)]
-    profile = compact_execution_profile(
-        project_asset.get("execution_profile")
-        if isinstance(project_asset.get("execution_profile"), dict)
-        else None
+    return _project_asset_handoff_state_read_model(
+        ready=ready,
+        project_asset=project_asset,
+        latest_runs=latest_runs,
+        compact_execution_profile=compact_execution_profile,
+        parse_timestamp=parse_timestamp,
+        is_handoff_ready_run=is_handoff_ready_run,
+        is_custom_post_handoff_work_run=is_custom_post_handoff_work_run,
+        is_status_neutral_run=is_status_neutral_run,
+        compact_post_handoff_run=compact_post_handoff_run,
+        small_delivery_batch_scale_streak=small_delivery_batch_scale_streak,
+        outcome_floor_configured=outcome_floor_configured,
+        outcome_gap_streak=outcome_gap_streak,
     )
-    parsed_runs = [
-        (run, parse_timestamp(run.get("generated_at")))
-        for run in runs
-    ]
-    parsed_runs = [(run, generated_at) for run, generated_at in parsed_runs if generated_at]
-    parsed_runs.sort(key=lambda item: item[1], reverse=True)
-
-    handoff_run: dict[str, Any] | None = None
-    handoff_at: datetime | None = None
-    for run, generated_at in parsed_runs:
-        if is_handoff_ready_run(run):
-            handoff_run = run
-            handoff_at = generated_at
-            break
-
-    post_handoff_run: dict[str, Any] | None = None
-    recent_post_handoff_runs: list[dict[str, Any]] = []
-    if handoff_at is None and ready:
-        recent_post_handoff_runs = [
-            run
-            for run, _generated_at in parsed_runs
-            if is_custom_post_handoff_work_run(run)
-        ]
-        if recent_post_handoff_runs:
-            post_handoff_run = recent_post_handoff_runs[0]
-        latest_validation = (
-            project_asset.get("latest_validation")
-            if isinstance(project_asset.get("latest_validation"), dict)
-            else {}
-        )
-        if latest_validation and post_handoff_run is None:
-            latest_validation_run = {
-                "generated_at": latest_validation.get("generated_at"),
-                "classification": latest_validation.get("classification"),
-            }
-            if is_custom_post_handoff_work_run(latest_validation_run):
-                post_handoff_run = latest_validation_run
-                recent_post_handoff_runs = [latest_validation_run]
-            else:
-                handoff_at = parse_timestamp(latest_validation.get("generated_at"))
-                handoff_run = latest_validation_run
-
-    if handoff_at is not None and post_handoff_run is None:
-        for run, generated_at in parsed_runs:
-            if generated_at <= handoff_at:
-                continue
-            if is_status_neutral_run(run) or is_handoff_ready_run(run):
-                continue
-            recent_post_handoff_runs.append(run)
-        if recent_post_handoff_runs:
-            post_handoff_run = recent_post_handoff_runs[0]
-
-    if post_handoff_run and not recent_post_handoff_runs:
-        recent_post_handoff_runs = [post_handoff_run]
-    if len(recent_post_handoff_runs) > 3:
-        recent_post_handoff_runs = recent_post_handoff_runs[:3]
-
-    if post_handoff_run:
-        handoff_status = "post_handoff_run_seen"
-    elif ready:
-        handoff_status = "ready_waiting_for_run"
-    else:
-        handoff_status = "not_ready"
-
-    state: dict[str, Any] = {
-        "handoff_status": handoff_status,
-        "post_handoff_run_seen": bool(post_handoff_run),
-    }
-    if handoff_run and handoff_run.get("generated_at"):
-        state["handoff_ready_at"] = handoff_run.get("generated_at")
-    if handoff_run and handoff_run.get("classification"):
-        state["handoff_ready_classification"] = handoff_run.get("classification")
-    if post_handoff_run:
-        state["post_handoff_latest_run"] = compact_post_handoff_run(post_handoff_run, profile)
-    if recent_post_handoff_runs:
-        state["post_handoff_recent_runs"] = [
-            compact_post_handoff_run(run, profile)
-            for run in recent_post_handoff_runs
-        ]
-        state["post_handoff_small_scale_streak"] = small_delivery_batch_scale_streak(
-            recent_post_handoff_runs
-        )
-        if outcome_floor_configured(profile):
-            state["post_handoff_outcome_gap_streak"] = outcome_gap_streak(
-                recent_post_handoff_runs,
-                profile,
-            )
-    return state
 
 
 def project_asset_handoff_readiness(
