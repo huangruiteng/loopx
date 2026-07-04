@@ -37,7 +37,7 @@ def _q(value: object) -> str:
 
 PANE_A2A_WAKEUP_SCHEMA_VERSION = "multi_agent_pane_a2a_wakeup_v0"
 PANE_A2A_WAKEUP_PROMPT = PANE_LOCAL_A2A_WAKEUP_PROMPT
-PANE_A2A_INPUT_READY_TIMEOUT_SECONDS = 90.0
+PANE_A2A_INPUT_READY_TIMEOUT_SECONDS = 5.0
 
 
 def require_executable(command: str, *, field: str) -> str:
@@ -104,6 +104,7 @@ def _wait_for_tmux_pane_input_ready(
                 "attempt_count": attempts,
                 "capture_ok": capture.returncode == 0,
                 "ready_marker": None,
+                "not_ready_reason": "codex_tui_busy_or_not_ready",
             }
         time.sleep(0.25)
 
@@ -182,6 +183,7 @@ def wake_visible_multi_agent_panes(
     lanes: Iterable[str] | None = None,
     execute: bool = False,
     prompt: str | None = None,
+    input_ready_timeout_seconds: float | None = None,
 ) -> dict[str, object]:
     """Broadcast the fixed A2A prompt; each pane still decides via LoopX state."""
 
@@ -217,36 +219,54 @@ def wake_visible_multi_agent_panes(
                 session=session,
                 lane=lane,
                 env=env,
+                timeout_seconds=(
+                    PANE_A2A_INPUT_READY_TIMEOUT_SECONDS
+                    if input_ready_timeout_seconds is None
+                    else input_ready_timeout_seconds
+                ),
             )
             for lane in target_lanes
         ]
+        ready_lanes = [
+            str(check.get("lane"))
+            for check in input_ready_checks
+            if check.get("ready") is True
+        ]
+        if ready_lanes:
+            buffer_name = f"loopx-pane-a2a-wakeup-{prompt_hash}"
+            subprocess.run(
+                [tmux_bin, "set-buffer", "-b", buffer_name, "--", prompt_text],
+                check=True,
+                env=env,
+            )
+            for lane in ready_lanes:
+                target = f"{session}:{lane}"
+                prompt_submit_checks.append(
+                    _paste_and_submit_tmux_prompt(
+                        tmux_bin=tmux_bin,
+                        target=target,
+                        buffer_name=buffer_name,
+                        prompt=prompt_text,
+                        env=env,
+                    )
+                )
         not_ready = [
             str(check.get("lane"))
             for check in input_ready_checks
             if check.get("ready") is not True
         ]
-        if not_ready:
-            raise ValueError(
-                "multi-agent wake target pane input was not ready: "
-                + ", ".join(not_ready)
-            )
-        buffer_name = f"loopx-pane-a2a-wakeup-{prompt_hash}"
-        subprocess.run(
-            [tmux_bin, "set-buffer", "-b", buffer_name, "--", prompt_text],
-            check=True,
-            env=env,
-        )
-        for lane in target_lanes:
-            target = f"{session}:{lane}"
-            prompt_submit_checks.append(
-                _paste_and_submit_tmux_prompt(
-                    tmux_bin=tmux_bin,
-                    target=target,
-                    buffer_name=buffer_name,
-                    prompt=prompt_text,
-                    env=env,
-                )
-            )
+    else:
+        ready_lanes = []
+        not_ready = []
+
+    if not execute:
+        prompt_delivery = "dry_run"
+    elif not prompt_submit_checks:
+        prompt_delivery = "skipped_no_input_ready_panes"
+    elif not_ready:
+        prompt_delivery = "tmux_paste_buffer_after_ready_subset"
+    else:
+        prompt_delivery = "tmux_paste_buffer_after_codex_tui_first_turn_ready"
 
     return {
         "ok": True,
@@ -270,10 +290,17 @@ def wake_visible_multi_agent_panes(
         if execute
         else False,
         "pane_input_ready_checks": input_ready_checks,
+        "pane_input_ready_timeout_seconds": (
+            PANE_A2A_INPUT_READY_TIMEOUT_SECONDS
+            if input_ready_timeout_seconds is None
+            else input_ready_timeout_seconds
+        )
+        if execute
+        else None,
+        "ready_lanes": ready_lanes,
+        "not_ready_lanes": not_ready,
         "prompt_submit_checks": prompt_submit_checks,
-        "prompt_delivery": (
-            "tmux_paste_buffer_after_codex_tui_first_turn_ready" if execute else "dry_run"
-        ),
+        "prompt_delivery": prompt_delivery,
         "boundary": {
             "writes_loopx_state": False,
             "spends_loopx_quota": False,

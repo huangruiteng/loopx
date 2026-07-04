@@ -596,6 +596,30 @@ def main() -> int:
                 0,
                 0,
             ], wake
+            os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
+                "╭────────────────────────╮\n"
+                "│ >_ OpenAI Codex        │\n"
+                "│ model: gpt-5.5 high    │\n"
+                "╰────────────────────────╯\n\n"
+                "• Working (12s • esc to interrupt)\n"
+            )
+            busy_wake = wake_visible_multi_agent_panes(
+                session_name="loopx-visible-launcher-smoke",
+                tmux_bin="tmux",
+                lanes=["planner", "reviewer"],
+                execute=True,
+                input_ready_timeout_seconds=0.25,
+            )
+            assert busy_wake["ok"] is True, busy_wake
+            assert busy_wake["pane_input_ready_verified"] is False, busy_wake
+            assert busy_wake["prompt_delivery"] == "skipped_no_input_ready_panes", busy_wake
+            assert busy_wake["prompt_submit_checks"] == [], busy_wake
+            assert busy_wake["ready_lanes"] == [], busy_wake
+            assert busy_wake["not_ready_lanes"] == ["planner", "reviewer"], busy_wake
+            assert all(
+                item["not_ready_reason"] == "codex_tui_busy_or_not_ready"
+                for item in busy_wake["pane_input_ready_checks"]
+            ), busy_wake
 
             git_root_workspace = temp / "git-root" / "lanes" / "planner"
             git_root_workspace.mkdir(parents=True, exist_ok=True)

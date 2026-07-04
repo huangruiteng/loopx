@@ -707,6 +707,9 @@ def _load_visible_wake_into_payload(
         "pane_decision_owner": wake.get("pane_decision_owner"),
         "pane_input_ready_verified": wake.get("pane_input_ready_verified") is True,
         "pane_input_ready_checks": wake.get("pane_input_ready_checks") or [],
+        "pane_input_ready_timeout_seconds": wake.get("pane_input_ready_timeout_seconds"),
+        "ready_lanes": wake.get("ready_lanes") or [],
+        "not_ready_lanes": wake.get("not_ready_lanes") or [],
         "prompt_submit_checks": wake.get("prompt_submit_checks") or [],
         "prompt_delivery": wake.get("prompt_delivery"),
         "driver_contract_schema": driver.get("schema_version"),
@@ -716,6 +719,7 @@ def _load_visible_wake_into_payload(
     visible_proof = payload["visible_worker_proof"]
     if isinstance(visible_proof, dict):
         visible_proof["cadence_wake_loaded"] = True
+        prompt_delivery = wake.get("prompt_delivery")
         visible_proof["cadence_wake_verified"] = (
             wake.get("mode") == "execute"
             and wake.get("coordination_model") == "decentralized_state_a2a"
@@ -723,7 +727,12 @@ def _load_visible_wake_into_payload(
             and wake.get("workflow_driver") is False
             and wake.get("broadcaster_reads_frontier") is False
             and wake.get("broadcaster_selects_todo") is False
-            and wake.get("pane_input_ready_verified") is True
+            and prompt_delivery
+            in {
+                "tmux_paste_buffer_after_codex_tui_first_turn_ready",
+                "tmux_paste_buffer_after_ready_subset",
+                "skipped_no_input_ready_panes",
+            }
         )
 
 

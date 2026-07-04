@@ -628,12 +628,23 @@ def main() -> int:
                 assert visible_wake["workflow_driver"] is False, visible_wake
                 assert visible_wake["broadcaster_reads_frontier"] is False, visible_wake
                 assert visible_wake["broadcaster_selects_todo"] is False, visible_wake
-                assert visible_wake["pane_input_ready_verified"] is True, visible_wake
-                assert (
-                    visible_wake["prompt_delivery"]
-                    == "tmux_paste_buffer_after_codex_tui_first_turn_ready"
-                ), visible_wake
-                assert visible_wake["prompt_submit_checks"], visible_wake
+                assert visible_wake["prompt_delivery"] in {
+                    "tmux_paste_buffer_after_codex_tui_first_turn_ready",
+                    "tmux_paste_buffer_after_ready_subset",
+                    "skipped_no_input_ready_panes",
+                }, visible_wake
+                if visible_wake["pane_input_ready_verified"] is True:
+                    assert visible_wake["prompt_submit_checks"], visible_wake
+                    assert visible_wake["ready_lanes"], visible_wake
+                    assert visible_wake["not_ready_lanes"] == [], visible_wake
+                elif visible_wake["prompt_delivery"] == "tmux_paste_buffer_after_ready_subset":
+                    assert visible_wake["prompt_submit_checks"], visible_wake
+                    assert visible_wake["ready_lanes"], visible_wake
+                    assert visible_wake["not_ready_lanes"], visible_wake
+                else:
+                    assert visible_wake["prompt_submit_checks"] == [], visible_wake
+                    assert visible_wake["ready_lanes"] == [], visible_wake
+                    assert visible_wake["not_ready_lanes"], visible_wake
                 visible_readiness = visible_payload["visible_readiness"]
                 assert visible_readiness["schema_version"] == "auto_research_visible_readiness_v0", visible_readiness
                 assert visible_readiness["ready"] is True, visible_readiness
