@@ -116,21 +116,29 @@ def main() -> int:
         assert payload["ok"] is True, payload
         assert payload["schema_version"] == "auto_research_worker_loop_v0", payload
         assert payload["mode"] == "execute", payload
-        assert payload["executed_turn_count"] == 10, payload
-        assert payload["completed_turn_count"] == 10, payload
+        assert payload["executed_turn_count"] == 16, payload
+        assert payload["completed_turn_count"] == 16, payload
         assert payload["stop_reason"] == "max_rounds", payload
         assert payload["selected_actions"] == [
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
             "summarize_evidence",
+            "review_research_contract",
+            "review_hypothesis_frontier",
             "run_holdout_eval",
             "write_evaluation_summary",
+            "review_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
+            "review_promotion_readiness",
+            "review_research_contract",
+            "review_hypothesis_frontier",
             "run_holdout_eval",
             "write_evaluation_summary",
         ], payload
+        assert all(turn["executed"] is True for turn in payload["turns"]), payload
+        assert all(turn["completion_status"] == "done" for turn in payload["turns"]), payload
         evidence_turns = [
             turn for turn in payload["turns"] if turn.get("selected_action") == "run_dev_eval"
         ]

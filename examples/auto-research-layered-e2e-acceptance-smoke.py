@@ -25,10 +25,16 @@ EXPECTED_ACTIONS = [
     "propose_hypothesis",
     "run_dev_eval",
     "summarize_evidence",
+    "review_research_contract",
+    "review_hypothesis_frontier",
     "run_holdout_eval",
     "write_evaluation_summary",
+    "review_research_contract",
     "propose_hypothesis",
     "run_dev_eval",
+    "review_promotion_readiness",
+    "review_research_contract",
+    "review_hypothesis_frontier",
     "run_holdout_eval",
     "write_evaluation_summary",
 ]
@@ -266,12 +272,14 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert worker_loop["schema_version"] == "auto_research_worker_loop_v0", worker_loop
     assert worker_loop["mode"] == "execute", worker_loop
     assert worker_loop["selected_actions"] == EXPECTED_ACTIONS, worker_loop
-    assert worker_loop["executed_turn_count"] == 10, worker_loop
-    assert worker_loop["completed_turn_count"] == 10, worker_loop
+    assert worker_loop["executed_turn_count"] == 16, worker_loop
+    assert worker_loop["completed_turn_count"] == 16, worker_loop
     assert worker_loop["stop_reason"] == "max_rounds", worker_loop
 
     turns = worker_loop["turns"]
     executed = [turn for turn in turns if turn["executed"]]
+    assert len(executed) == 16, executed
+    assert all(turn["completion_status"] == "done" for turn in turns), turns
     assert {turn["round"] for turn in executed} == {1, 2, 3, 4}, executed
     dev_turn = next(
         turn
@@ -321,6 +329,8 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     collective_rounds = payload["collective_research_rounds"]
     assert collective_rounds["round_unit"] == "collective_agent_pass", collective_rounds
     assert collective_rounds["collective_round_count"] == 4, collective_rounds
+    assert collective_rounds["full_participation_round_count"] == 4, collective_rounds
+    assert collective_rounds["full_participation_verified"] is True, collective_rounds
     assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
     assert collective_rounds["dev_metric_sequence"] == [4.0, 4.8], collective_rounds
     assert collective_rounds["holdout_metric_sequence"] == [4.5, 5.2], collective_rounds
@@ -330,6 +340,8 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
     assert kernel_ledger["expected_lane_count"] == 4, kernel_ledger
     assert kernel_ledger["collective_round_count"] == 4, kernel_ledger
+    assert kernel_ledger["full_participation_round_count"] == 4, kernel_ledger
+    assert kernel_ledger["full_participation_verified"] is True, kernel_ledger
     assert kernel_ledger["integrated_evidence"]["dev_metric"] == 4.8, kernel_ledger
     assert kernel_ledger["integrated_evidence"]["holdout_metric"] == 5.2, kernel_ledger
     assert kernel_ledger["integrated_evidence"]["holdout_improvement_count"] == 2, kernel_ledger
@@ -395,11 +407,14 @@ def assert_markdown_explains_research_rounds(payload: dict[str, Any]) -> None:
         assert role in markdown, markdown
     assert "## Collective Rounds / 集体研究轮次" in markdown, markdown
     assert "rounds: `4`" in markdown, markdown
-    assert "completed_turns: `10/16`" in markdown, markdown
+    assert "full_participation_rounds: `4`" in markdown, markdown
+    assert "completed_turns: `16/16`" in markdown, markdown
     assert "dev_metric_sequence: `4.0 -> 4.8`" in markdown, markdown
     assert "holdout_metric_sequence: `4.5 -> 5.2`" in markdown, markdown
     assert "holdout_improvement_count: `2` (required `2`)" in markdown, markdown
-    assert "Round 4: executed `research-executor:run_holdout_eval holdout=5.2" in markdown, markdown
+    assert "Round 4: executed `" in markdown, markdown
+    assert "research-executor:run_holdout_eval holdout=5.2" in markdown, markdown
+    assert "Round 4:" in markdown and "no_op `none`" in markdown, markdown
     assert "round_semantics: one round is one quota/frontier opportunity" in markdown, markdown
     assert_public_safe(markdown)
 

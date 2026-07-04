@@ -140,6 +140,23 @@ def build_multi_agent_collective_round_ledger(
     completed_outcomes = [
         outcome for outcome in outcomes if outcome.get("completed") is True
     ]
+    expected_agent_ids = {
+        str(lane.get("agent_id") or "")
+        for lane in lanes
+        if str(lane.get("agent_id") or "").strip()
+    }
+    completed_agents_by_round: dict[int, set[str]] = {}
+    for outcome in completed_outcomes:
+        round_index = outcome.get("round")
+        agent_id = str(outcome.get("agent_id") or "").strip()
+        if isinstance(round_index, int) and agent_id:
+            completed_agents_by_round.setdefault(round_index, set()).add(agent_id)
+    full_participation_round_indexes = [
+        round_index
+        for round_index in round_indexes
+        if expected_agent_ids
+        and expected_agent_ids <= completed_agents_by_round.get(round_index, set())
+    ]
     evidence_event_count = _int_or_none(evidence.get("evidence_event_count"))
     if evidence_event_count is None:
         evidence_events = evidence.get("events")
@@ -161,6 +178,12 @@ def build_multi_agent_collective_round_ledger(
         "completed_lane_turn_count": len(completed_outcomes),
         "collective_round_indexes": round_indexes,
         "collective_round_count": len(round_indexes),
+        "full_participation_round_indexes": full_participation_round_indexes,
+        "full_participation_round_count": len(full_participation_round_indexes),
+        "full_participation_verified": (
+            bool(round_indexes)
+            and len(full_participation_round_indexes) == len(round_indexes)
+        ),
         "multi_round_interaction_verified": len(round_indexes) >= 2,
         "integrated_evidence": {
             "loaded": bool(evidence),

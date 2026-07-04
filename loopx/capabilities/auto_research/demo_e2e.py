@@ -457,13 +457,6 @@ def _build_collective_round_summary(
             previous = metric
     else:
         holdout_improvements = holdout_improvement_count
-    multi_round_research_verified = (
-        collective_round_count >= 4
-        and dev_metric is not None
-        and holdout_metric is not None
-        and dev_metric > baseline
-        and holdout_improvements >= 2
-    )
     kernel_ledger = build_multi_agent_collective_round_ledger(
         source=source,
         expected_lanes=expected_lanes,
@@ -477,6 +470,20 @@ def _build_collective_round_summary(
             "evidence_event_count": evidence_event_count,
         },
         role_declared_successor_todos=role_declared_successor_todos,
+    )
+    full_participation_round_count = kernel_ledger.get("full_participation_round_count")
+    if not isinstance(full_participation_round_count, int) or isinstance(
+        full_participation_round_count, bool
+    ):
+        full_participation_round_count = 0
+    full_participation_verified = kernel_ledger.get("full_participation_verified") is True
+    multi_round_research_verified = (
+        full_participation_round_count >= 4
+        and full_participation_verified
+        and dev_metric is not None
+        and holdout_metric is not None
+        and dev_metric > baseline
+        and holdout_improvements >= 2
     )
     return {
         "schema_version": "auto_research_collective_round_summary_v0",
@@ -493,6 +500,8 @@ def _build_collective_round_summary(
         "required_collective_round_count": 4,
         "required_holdout_improvement_count": 2,
         "collective_round_count": collective_round_count,
+        "full_participation_round_count": full_participation_round_count,
+        "full_participation_verified": full_participation_verified,
         "evidence_stage_count": len(dev_sequence) + len(holdout_sequence),
         "multi_round_research_verified": multi_round_research_verified,
         "improvement_over_rounds": multi_round_research_verified,

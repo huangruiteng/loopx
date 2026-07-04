@@ -121,6 +121,7 @@ def _render_collective_round_summary(
         (
             f"- verified: `{collective_rounds.get('multi_round_research_verified')}`; "
             f"rounds: `{collective_rounds.get('collective_round_count')}`; "
+            f"full_participation_rounds: `{collective_rounds.get('full_participation_round_count')}`; "
             f"completed_turns: `{completed_turns}/{expected_turns}`"
         ),
         (
@@ -133,7 +134,7 @@ def _render_collective_round_summary(
         ),
         (
             "- round_semantics: one round is one quota/frontier opportunity for each "
-            "research role; empty lanes are shown as no-op instead of hidden."
+            "research role; lanes without a selected todo are shown as no-op instead of hidden."
         ),
         "",
     ]

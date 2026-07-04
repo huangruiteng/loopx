@@ -99,6 +99,9 @@ def main() -> int:
     assert ledger["completed_lane_turn_count"] == 3, ledger
     assert ledger["collective_round_indexes"] == [1, 2], ledger
     assert ledger["collective_round_count"] == 2, ledger
+    assert ledger["full_participation_round_indexes"] == [1], ledger
+    assert ledger["full_participation_round_count"] == 1, ledger
+    assert ledger["full_participation_verified"] is False, ledger
     assert ledger["multi_round_interaction_verified"] is True, ledger
     assert ledger["integrated_evidence"]["evidence_event_count"] == 3, ledger
     assert ledger["integrated_evidence"]["dev_metric"] == 4.0, ledger

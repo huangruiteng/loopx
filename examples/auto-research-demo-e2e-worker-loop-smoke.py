@@ -511,24 +511,34 @@ def main() -> int:
         worker_loop = payload["worker_loop"]
         assert worker_loop["schema_version"] == "auto_research_worker_loop_v0", payload
         assert worker_loop["mode"] == "execute", payload
-        assert worker_loop["executed_turn_count"] == 10, payload
-        assert worker_loop["completed_turn_count"] == 10, payload
+        assert worker_loop["executed_turn_count"] == 16, payload
+        assert worker_loop["completed_turn_count"] == 16, payload
         assert worker_loop["selected_actions"] == [
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
             "summarize_evidence",
+            "review_research_contract",
+            "review_hypothesis_frontier",
             "run_holdout_eval",
             "write_evaluation_summary",
+            "review_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
+            "review_promotion_readiness",
+            "review_research_contract",
+            "review_hypothesis_frontier",
             "run_holdout_eval",
             "write_evaluation_summary",
         ], payload
+        assert all(turn["executed"] is True for turn in worker_loop["turns"]), worker_loop
+        assert all(turn["completion_status"] == "done" for turn in worker_loop["turns"]), worker_loop
         assert worker_loop["stop_reason"] == "max_rounds", payload
         collective_rounds = payload["collective_research_rounds"]
         assert collective_rounds["round_unit"] == "collective_agent_pass", collective_rounds
         assert collective_rounds["collective_round_count"] == 4, collective_rounds
+        assert collective_rounds["full_participation_round_count"] == 4, collective_rounds
+        assert collective_rounds["full_participation_verified"] is True, collective_rounds
         assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
         assert collective_rounds["dev_metric_sequence"] == [4.0, 4.8], collective_rounds
         assert collective_rounds["holdout_metric_sequence"] == [4.5, 5.2], collective_rounds
@@ -540,6 +550,8 @@ def main() -> int:
         assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
         assert kernel_ledger["expected_lane_count"] == 4, kernel_ledger
         assert kernel_ledger["collective_round_count"] == 4, kernel_ledger
+        assert kernel_ledger["full_participation_round_count"] == 4, kernel_ledger
+        assert kernel_ledger["full_participation_verified"] is True, kernel_ledger
         assert kernel_ledger["multi_round_interaction_verified"] is True, kernel_ledger
         assert kernel_ledger["successor_todo_count"] >= 1, kernel_ledger
         tonight = payload["tonight_experience"]
@@ -631,18 +643,19 @@ def main() -> int:
                 assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
                 assert visible_proof["owner_layer"] == "generic_multi_agent_kernel", visible_proof
                 assert visible_proof["user_facing_by_default"] is False, visible_proof
-                assert visible_proof["lane_authored_evidence_loaded"] is False, visible_proof
-                assert visible_proof["evidence_source"] == "visible_launcher", visible_proof
+                assert visible_proof["lane_authored_evidence_loaded"] is True, visible_proof
+                assert visible_proof["evidence_source"] == "visible_launcher_artifact", visible_proof
                 assert visible_proof["visible_lanes_launched"] is True, visible_proof
                 assert visible_proof["pane_local_a2a_rounds_loaded"] is True, visible_proof
                 assert visible_proof["pane_local_a2a_round_count"] >= 4, visible_proof
                 assert visible_proof["pane_local_a2a_multi_tick_verified"] is True, visible_proof
-                assert visible_proof.get("collective_research_rounds_loaded") in (None, False), visible_proof
+                assert visible_proof["collective_research_rounds_loaded"] is True, visible_proof
                 assert visible_proof["decentralized_a2a_rounds_verified"] is False, visible_proof
                 assert visible_proof["cadence_wake_loaded"] is True, visible_proof
                 assert visible_proof["cadence_wake_verified"] is True, visible_proof
                 live_evidence = visible_payload.get("live_worker_evidence", {"loaded": False})
-                assert live_evidence["loaded"] is False, live_evidence
+                assert live_evidence["loaded"] is True, live_evidence
+                assert live_evidence["holdout_metric"] == 4.5, live_evidence
                 visible_rounds = visible_payload["visible_pane_a2a_rounds"]
                 assert visible_rounds["source"] == "visible_launcher_artifact", visible_rounds
                 assert visible_rounds["coordination_model"] == "decentralized_state_a2a", visible_rounds
@@ -703,17 +716,14 @@ def main() -> int:
                     "cadence_wake_verified": True,
                     "pane_local_tick_loaded": True,
                     "collective_research_multi_round_verified": False,
-                    "lane_authored_evidence_loaded": False,
-                    "protected_scope_clean": False,
-                    "positive_metric_over_baseline": False,
+                    "lane_authored_evidence_loaded": True,
+                    "protected_scope_clean": True,
+                    "positive_metric_over_baseline": True,
                     "workflow_driver_false": True,
                     "kernel_driver_contract_loaded": True,
                 }, visible_readiness
                 assert visible_readiness["missing_requirements"] == [
                     "collective_research_multi_round_verified",
-                    "lane_authored_evidence_loaded",
-                    "protected_scope_clean",
-                    "positive_metric_over_baseline",
                 ], visible_readiness
                 assert visible_readiness["rounds"]["max_completed"] >= 4, visible_readiness
                 assert visible_readiness["rounds"]["counts_as_collective_research_round"] is False, visible_readiness
@@ -721,11 +731,11 @@ def main() -> int:
                 improvement = visible_readiness["improvement_summary"]
                 assert improvement["baseline_metric"] == 1.0, improvement
                 assert improvement["dev_metric_sequence"] == [], improvement
-                assert improvement["holdout_metric_sequence"] == [], improvement
-                assert improvement["holdout_improvement_count"] == 0, improvement
-                assert improvement["best_metric"] is None, improvement
-                assert improvement["best_metric_source"] is None, improvement
-                assert improvement["improved_over_baseline"] is False, improvement
+                assert improvement["holdout_metric_sequence"] == [4.5], improvement
+                assert improvement["holdout_improvement_count"] == 1, improvement
+                assert improvement["best_metric"] == 4.5, improvement
+                assert improvement["best_metric_source"] == "final_holdout", improvement
+                assert improvement["improved_over_baseline"] is True, improvement
                 assert improvement["holdout_delta_over_dev"] is None, improvement
                 assert "auto-research start" in visible_readiness["one_command"], visible_readiness
                 assert visible_readiness["one_command"].endswith("--execute"), visible_readiness

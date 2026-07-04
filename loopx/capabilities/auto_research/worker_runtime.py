@@ -51,13 +51,16 @@ AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION = "auto_research_worker_turn_v0"
 AUTO_RESEARCH_WORKER_FRONTIER_SCHEMA_VERSION = "auto_research_worker_frontier_v0"
 SUPPORTED_WORKER_ACTIONS = {
     "write_research_contract",
+    "review_research_contract",
     "propose_hypothesis",
+    "review_hypothesis_frontier",
     "run_dev_eval",
     "run_holdout_eval",
     "write_evidence",
     "classify_evidence",
     "summarize_evidence",
     "write_evaluation_summary",
+    "review_promotion_readiness",
 }
 GENERIC_VERIFIER_HANDOFF_KEYWORDS = (
     "verify",
@@ -764,6 +767,7 @@ def run_auto_research_worker_turn(
             todo_id=todo_id,
             agent_id=agent_id,
         )
+        role_id = auto_research_role_id_for_action(action)
         completion = (
             _complete_selected_todo(
                 registry_path=registry_path,
@@ -788,6 +792,7 @@ def run_auto_research_worker_turn(
             "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
             "artifact": _artifact_summary("research_contract", filename="research-contract.public.json"),
             "artifact_status": artifact["summary"]["status"],
+            "role_id": role_id,
             "completion": completion,
             "frontier": frontier_packet,
             "public_boundary": {
@@ -869,7 +874,14 @@ def run_auto_research_worker_turn(
             },
         }
 
-    if action in {"classify_evidence", "summarize_evidence", "write_evaluation_summary"}:
+    if action in {
+        "classify_evidence",
+        "summarize_evidence",
+        "write_evaluation_summary",
+        "review_research_contract",
+        "review_hypothesis_frontier",
+        "review_promotion_readiness",
+    }:
         artifact = _write_evaluation_summary_artifact(
             registry_path=registry_path,
             runtime_root_arg=runtime_root_arg,
