@@ -102,6 +102,7 @@ def _prompt_requires_bridge_first_action(prompt: str) -> bool:
         "mandatory product-mode solver checkpoint",
         "mandatory product-mode closeout checkpoint",
         "must start with either a task-facing sandbox bridge operation",
+        "first action required",
         "your first tool action should be a shell",
         "your first agent action must be a shell/tool call",
         "your first agent action must be a task-facing shell/tool call",
@@ -321,6 +322,7 @@ def _prompt_requires_meaningful_bridge_progress(prompt: str, *, route: str) -> b
         marker in lowered
         for marker in (
             "--- task instruction ---",
+            "first action required",
             "mandatory product-mode solver checkpoint",
             "mandatory host-local bridge recovery checkpoint",
             "must start with either a task-facing sandbox bridge operation",

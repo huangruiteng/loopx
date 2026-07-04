@@ -322,10 +322,32 @@ def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
 def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
+    from loopx.benchmark_adapters.skillsbench_acp_relay import (
+        CodexExecConfig,
+        SkillsBenchLocalAcpRelay,
+        _prompt_requires_bridge_first_action,
+        _prompt_requires_meaningful_bridge_progress,
+    )
 
     objective = "Solve the task.\nUse the private bridge."
     assert build_codex_cli_goal_tui_input(objective) == (
         "/goal Solve the task.\nUse the private bridge."
+    )
+    packet = SkillsBenchLocalAcpRelay(
+        CodexExecConfig(remote_command_file_bridge_command="/tmp/private-bridge")
+    )._prompt_with_remote_bridge_packet(
+        "Task",
+        bridge_probe={"operation_count": 1},
+        bridge_command_for_agent="/tmp/private-bridge",
+    )
+    assert "FIRST ACTION REQUIRED" in packet, packet
+    assert _prompt_requires_bridge_first_action(packet) is True
+    assert (
+        _prompt_requires_meaningful_bridge_progress(
+            packet,
+            route="codex-cli-goal-baseline",
+        )
+        is True
     )
     for relative in (
         "loopx/benchmark_adapters/skillsbench_acp_relay.py",
