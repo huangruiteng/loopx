@@ -24,7 +24,7 @@ The host registry should expose this minimal command set:
 | Command | Canonical target | Default authority |
 | --- | --- | --- |
 | `/loopx` | `loopx bootstrap-command-pack --project .` | Read/status-first. |
-| `/loopx <goal text>` | `loopx bootstrap-command-pack --project . --goal-text "<goal text>"` | Explicit project-local start intent. |
+| `/loopx <goal text>` | `loopx bootstrap-command-pack --project . --goal-text "<goal text>"` | Explicit project-local start intent; must activate or gate the host loop after todo writeback. |
 | `/loopx-global-summary` | `global_manager_command_v0` summary request | Read-only global control-plane digest. |
 | `/loopx-global-gates` | `global_manager_command_v0` gates request | Read-only gate inbox. |
 | `/loopx-global-todos` | `global_manager_command_v0` todos request | Read-only work queue view. |
@@ -67,6 +67,12 @@ Example registry entry:
   "unknown_command_policy": "fail_closed_with_slash_help"
 }
 ```
+
+Hosts that do not know their exact runtime type should first call
+`loopx agent-onboard --list-agent-types`, then pass a canonical value such as
+`codex-app`, `codex-cli`, or `claude-code`. Ambiguous values such as `codex`
+are invalid because Codex App heartbeat automation and Codex CLI `/goal` have
+different activation procedures.
 
 ## Host Parse Rules
 
@@ -145,8 +151,13 @@ visible user intent into the existing CLI lifecycle:
 - `/loopx` can read status and preview command packs. It stops before writes
   that need confirmation.
 - `/loopx <goal text>` is explicit intent to start project-local work: plan
-  first, write ordered todos, refresh state, run `quota should-run`, and
-  execute only when the guard allows.
+  first, write ordered todos, refresh state, activate the correct host loop
+  when missing/stale, run `quota should-run`, and execute only when the guard
+  allows.
+- Host loop activation is runtime-specific: Codex App uses heartbeat
+  automation, Codex CLI uses visible `/goal <task_body>`, Claude Code uses
+  native `/loop`, and custom agents must declare their loop driver through
+  `loopx agent-onboard`.
 - `/loopx-global-*` commands are read-only and must not approve gates, add
   todos, spend quota, merge PRs, publish externally, or pause/resume loops.
 - Destructive git, credentials, private material reads, production actions, and
@@ -159,6 +170,8 @@ Every host command must expose a deterministic CLI fallback:
 ```bash
 loopx slash-commands
 loopx slash-commands --install
+loopx agent-onboard --list-agent-types
+loopx agent-onboard --agent-type codex-cli --project .
 loopx bootstrap-command-pack --project .
 loopx bootstrap-command-pack --project . --goal-text "<goal text>"
 loopx global-summary

@@ -29,6 +29,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Generate a setup packet for a manual shell or first agent handoff.",
             },
             {
+                "command": "loopx agent-onboard --agent-type codex-cli --project .",
+                "purpose": "Generate the exact host-loop activation packet for one agent runtime.",
+            },
+            {
                 "command": "loopx slash-commands --install",
                 "purpose": "Refresh host slash-command prompt and skill files.",
             },
@@ -165,6 +169,8 @@ def render_concise_help(program: str = "loopx") -> str:
             "  loopx doctor                   Check install, PATH, release snapshot, and skills.",
             "  loopx bootstrap-command-pack --project .",
             "                                  Generate a setup packet for a manual shell path.",
+            "  loopx agent-onboard --list-agent-types",
+            "                                  Pick the exact host runtime before activation.",
             "",
             "Daily operator commands:",
             "  loopx status                   Show current goals, gates, and next action.",

@@ -5,6 +5,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..codex_cli_probe import DEFAULT_CODEX_BIN
+from ..agent_onboarding import (
+    AgentTypeError,
+    build_agent_onboarding_packet,
+    build_agent_type_catalog,
+    render_agent_onboarding_markdown,
+    render_agent_type_catalog_markdown,
+)
 from ..bootstrap_command_pack import (
     build_loopx_bootstrap_command_pack,
     render_loopx_bootstrap_command_pack_markdown,
@@ -30,6 +37,38 @@ PrintPayload = Callable[
 
 
 def register_starter_bootstrap_commands(subparsers: argparse._SubParsersAction) -> None:
+    agent_onboard_parser = subparsers.add_parser(
+        "agent-onboard",
+        help=(
+            "Generate a deterministic LoopX setup and host-loop activation packet "
+            "for one agent runtime."
+        ),
+    )
+    agent_onboard_parser.add_argument(
+        "--agent-type",
+        help="Agent runtime type: codex-app, codex-cli, claude-code, manual, or other-agent.",
+    )
+    agent_onboard_parser.add_argument(
+        "--list-agent-types",
+        action="store_true",
+        help="List canonical agent_type values, accepted aliases, and ambiguous inputs.",
+    )
+    agent_onboard_parser.add_argument("--project", default=".", help="Project directory to inspect.")
+    agent_onboard_parser.add_argument("--goal-id", help="Goal id. Defaults to <project-name>-goal.")
+    agent_onboard_parser.add_argument(
+        "--agent-id",
+        help="Registered LoopX agent id to include in quota/heartbeat commands.",
+    )
+    agent_onboard_parser.add_argument(
+        "--cli-bin",
+        default="loopx",
+        help="LoopX CLI binary name embedded in generated commands.",
+    )
+    agent_onboard_parser.add_argument(
+        "--task-text",
+        help="Optional first task text to include in the bootstrap command pack.",
+    )
+
     bootstrap_command_pack_parser = subparsers.add_parser(
         "bootstrap-command-pack",
         help="Preview the /loopx project bootstrap command pack without mutating state.",
@@ -171,6 +210,37 @@ def handle_new_project_prompt_command(
     return 0
 
 
+def handle_agent_onboard_command(
+    args: argparse.Namespace,
+    print_payload: PrintPayload,
+) -> int:
+    if bool(getattr(args, "list_agent_types", False)):
+        print_payload(build_agent_type_catalog(), args.format, render_agent_type_catalog_markdown)
+        return 0
+    if not args.agent_type:
+        exc = AgentTypeError(
+            value=None,
+            reason="--agent-type is required unless --list-agent-types is used",
+            suggestions=["codex-app", "codex-cli", "claude-code", "manual", "other-agent"],
+        )
+        print_payload(exc.to_payload(), args.format, render_agent_onboarding_markdown)
+        return 2
+    try:
+        payload = build_agent_onboarding_packet(
+            project=Path(args.project),
+            agent_type=args.agent_type,
+            goal_id=args.goal_id,
+            agent_id=args.agent_id,
+            cli_bin=args.cli_bin,
+            task_text=args.task_text,
+        )
+    except AgentTypeError as exc:
+        print_payload(exc.to_payload(), args.format, render_agent_onboarding_markdown)
+        return 2
+    print_payload(payload, args.format, render_agent_onboarding_markdown)
+    return 0
+
+
 def handle_loopx_bootstrap_command_pack_command(
     args: argparse.Namespace,
     print_payload: PrintPayload,
@@ -241,6 +311,7 @@ def handle_starter_bootstrap_command(
     print_payload: PrintPayload,
 ) -> int | None:
     handlers: dict[str, Callable[[argparse.Namespace, PrintPayload], int]] = {
+        "agent-onboard": handle_agent_onboard_command,
         "bootstrap-command-pack": handle_loopx_bootstrap_command_pack_command,
         "new-project-prompt": handle_new_project_prompt_command,
         "codex-cli-bootstrap-message": handle_codex_cli_bootstrap_message_command,

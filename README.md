@@ -128,6 +128,11 @@ runtime dependencies outside the standard library.
 
 Start agent-first: paste one setup message for the surface you already use,
 then start real work through the LoopX command entry for that host.
+Agents and host integrations can make this deterministic with
+`loopx agent-onboard --list-agent-types`, then pass an exact runtime such as
+`codex-app`, `codex-cli`, or `claude-code`. Ambiguous values such as `codex`
+are intentionally rejected because Codex App automation and Codex CLI `/goal`
+use different host-loop activation paths.
 
 Choose your surface:
 
@@ -136,7 +141,9 @@ Choose your surface:
   <complex task>` or choose `loopx` from `/skills`.
 - **Codex CLI**: best when the visible TUI should stay primary while LoopX keeps
   the state. Run `codex`, paste the setup message, then invoke `$loopx
-  <complex task>` or choose `loopx` from `/skills`.
+  <complex task>` or choose `loopx` from `/skills`; after todos are written,
+  LoopX must activate the visible `/goal <task_body>` loop or show the exact
+  pasteable gate.
 - **Claude Code**: best when Claude Code's native `/loop` should drive each tick.
   Install the opt-in adapter, run `/loopx <task>`, then `/loop`.
 - **Manual shell / other agents**: best when you want LoopX state without a
@@ -227,7 +234,10 @@ project state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
 and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
 execution. Then stop and report the project connection status, current user
 gate, top agent todo, and next safe action. After that I will start work with
-`$loopx <complex task>` or the `loopx` skill from `/skills`.
+`$loopx <complex task>` or the `loopx` skill from `/skills`. When that task
+writes LoopX todos, generate the thin task body and set this visible TUI to
+`/goal <task_body>`; if you cannot mutate `/goal`, show me the exact text to
+paste instead of saying the loop is active.
 ```
 
 That one message is the install, connect, and status check. The first useful
@@ -242,6 +252,8 @@ A successful connection looks like this:
 - the project has `.loopx/registry.json`;
 - the project has `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`;
 - `loopx status` shows who should act next;
+- Codex CLI has `/goal <task_body>` active, or the agent reported the exact
+  pasteable gate for setting it;
 - local runtime state is ignored, not committed.
 
 ### Claude Code

@@ -5,7 +5,7 @@
 | Command | Intent | Mutation policy |
 | --- | --- | --- |
 | `/loopx` | Inspect or preview project connection. | Read-first; ask before bootstrap/connect writes. |
-| `/loopx <goal text>` | Start a concrete goal, plan ranked todos, and enter the LoopX automation flow. | Explicit invocation may write project-local LoopX state and todos. |
+| `/loopx <goal text>` | Start a concrete goal, plan ranked todos, activate the host loop, and enter the LoopX automation flow. | Explicit invocation may write project-local LoopX state and todos, then must activate or gate the host loop. |
 
 This command is intentionally separate from `/loopx-global-*`: global commands
 summarize and manage visible control-plane state across projects, while
@@ -19,8 +19,27 @@ When the user provides text after `/loopx`, the host should:
 2. Connect project-local LoopX state if no matching registry goal exists.
 3. Plan before writing todos.
 4. Write planned todos in exact plan order.
-5. Run `refresh-state`, then `quota should-run`, then start the first bounded
-   segment only when the quota contract allows it.
+5. Run `refresh-state`.
+6. Activate the host loop if it is missing, unknown, or stale:
+   - `codex-app`: create or update the Codex App heartbeat automation from the
+     generated `heartbeat-prompt` task body.
+   - `codex-cli`: set the visible Codex CLI TUI to `/goal <task_body>`.
+   - `claude-code`: arm LoopX with `/loopx <task>`, then run native `/loop`.
+   - `manual` / `other-agent`: wire the external loop driver described by
+     `loopx agent-onboard`.
+7. If the host cannot mutate that surface, report the exact pasteable gate
+   instead of claiming autonomous setup complete.
+8. Run `quota should-run`, then start the first bounded segment only when the
+   quota contract allows it.
+
+New hosts should discover exact agent types with:
+
+```bash
+loopx agent-onboard --list-agent-types
+```
+
+Ambiguous values such as `codex` must fail closed because Codex App and Codex
+CLI use different host-loop activation paths.
 
 The command pack preview is still read-only. It describes the commands and
 contracts; the slash invocation is what authorizes project-local state writes.
@@ -93,4 +112,6 @@ Stop and ask the user instead of writing or executing when:
 - private source material must be read before a public-safe todo can be formed;
 - credentials or secrets are required;
 - destructive git or production actions are needed;
-- the host cannot execute shell/CLI/tool calls or persist LoopX state.
+- the host cannot execute shell/CLI/tool calls or persist LoopX state;
+- the host cannot activate or expose the required host loop and no concrete
+  pasteable gate can be shown.

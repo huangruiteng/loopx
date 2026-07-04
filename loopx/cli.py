@@ -190,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         not in {
             "bootstrap",
             "bootstrap-command-pack",
+            "agent-onboard",
             "connect",
             "codex-cli-bootstrap-message",
             "codex-cli-bounded-visible-pilot-adapter",
