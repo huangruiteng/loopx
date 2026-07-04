@@ -102,6 +102,30 @@ outcomes, integrated evidence, and role-declared successor todos. Product
 presets may wrap the ledger with domain metrics, but they should not fork its
 round definition or introduce a coordinator to decide work.
 
+## Canonical Auto-Research Recipe
+
+Auto-research should stay small enough that a developer can see the whole
+product-specific recipe at a glance:
+
+```text
+loopx auto-research start "<open question>" --execute
+research-curator:research-curator:research_curator
+hypothesis-proposer:hypothesis-proposer:hypothesis_proposer
+research-executor:research-executor:research_executor
+evaluator-promoter:evaluator-promoter:evaluator_promoter
+```
+
+Those five lines are the product recipe: one user question and four research
+role identities. The fixed decentralized wake prompt, real Codex TUI panes,
+pane-local quota/frontier tick, successor todo protocol, and
+`multi_agent_collective_round_ledger_v0` proof remain generic kernel behavior.
+
+For the KNN demo, the auto-research preset may declare the research metric and
+role successor hints, but it must not add a product-specific coordinator,
+workflow runner, or metric aggregator. The required proof is: four collective
+role rounds, at least two held-out metric improvements, public-safe evidence,
+and a generic collective-round ledger saying which lanes participated.
+
 ## Acceptance
 
 A change satisfies this contract only when:
