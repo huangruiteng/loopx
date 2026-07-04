@@ -1424,7 +1424,8 @@ matter when credentials cannot move, and it produced adapter/reducer seams that
 can be reused for compact evidence. Do not continue adding split-control bridge
 layers when a cloud-host route can answer the benchmark question directly.
 
-Treat split-control assets as a retained research branch, not a live default:
+Treat split-control assets as a retained experimental fallback, not a live
+default:
 
 - keep durable contracts, reducers, and boundary smokes that still protect
   public behavior;
@@ -1434,6 +1435,9 @@ Treat split-control assets as a retained research branch, not a live default:
   experimental branch or research issue;
 - remove or defer mainline split-control code once the cloud-host route has
   equivalent compact evidence for the same benchmark family.
+- mark retained machine contracts as `experimental_fallback_not_default` so
+  operator-facing projections do not select them as a default cloud-host or
+  app-server route.
 
 See
 [`benchmark-split-control-remote-executor-v0.md`](research/long-horizon-agent-benchmarks/benchmark-split-control-remote-executor-v0.md)
