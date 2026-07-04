@@ -187,6 +187,11 @@ from .projections.subagent_activity import (
 from .projections.stale_latest_run import (
     active_state_projection_warning as _active_state_projection_warning_read_model,
 )
+from .projections.status_contract import (
+    build_contract_health_projection as _build_contract_health_projection_read_model,
+    build_status_contract as _build_status_contract_read_model,
+    compact_status_contract_signals as _compact_status_contract_signals_read_model,
+)
 from .projections.todo_summary import (
     active_state_todo_attention_item as _active_state_todo_attention_item_read_model,
     active_next_action_todo_ids,
@@ -7902,12 +7907,11 @@ def build_promotion_readiness_summary(
 
 
 def build_status_contract() -> dict[str, Any]:
-    return {
-        "schema_version": STATUS_CONTRACT_SCHEMA_VERSION,
-        "minimum_dashboard_schema_version": MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION,
-        "producer": "loopx status",
-        "reload_hint": STATUS_CONTRACT_RELOAD_HINT,
-    }
+    return _build_status_contract_read_model(
+        schema_version=STATUS_CONTRACT_SCHEMA_VERSION,
+        minimum_dashboard_schema_version=MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION,
+        reload_hint=STATUS_CONTRACT_RELOAD_HINT,
+    )
 
 
 def _compact_status_contract_signals(
@@ -7915,27 +7919,14 @@ def _compact_status_contract_signals(
     *,
     limit: int = STATUS_CONTRACT_SIGNAL_LIMIT,
 ) -> dict[str, Any]:
-    items = [str(item).strip() for item in value or [] if str(item).strip()]
-    bounded = items[: max(0, limit)]
-    return {
-        "items": bounded,
-        "total_count": len(items),
-        "truncated": len(items) > len(bounded),
-    }
+    return _compact_status_contract_signals_read_model(value, limit=limit)
 
 
 def build_contract_health_projection(contract: dict[str, Any]) -> dict[str, Any]:
-    errors = _compact_status_contract_signals(contract.get("errors"))
-    warnings = _compact_status_contract_signals(contract.get("warnings"))
-    return {
-        "contract_summary": contract.get("summary"),
-        "contract_errors": errors["items"],
-        "contract_errors_total_count": errors["total_count"],
-        "contract_errors_truncated": errors["truncated"],
-        "contract_warnings": warnings["items"],
-        "contract_warnings_total_count": warnings["total_count"],
-        "contract_warnings_truncated": warnings["truncated"],
-    }
+    return _build_contract_health_projection_read_model(
+        contract,
+        signal_limit=STATUS_CONTRACT_SIGNAL_LIMIT,
+    )
 
 
 def decision_event_kinds(run: dict[str, Any]) -> list[str]:
