@@ -455,7 +455,7 @@ def _record_turn_event(
         return False
     if method == "turn/completed":
         turn.turn_completed_observed = True
-        turn.turn_status = _extract_turn_status(params) or turn.turn_status
+        turn.turn_status = _extract_turn_status(params) or "completed"
         turn.assistant_message = "".join(turn._assistant_message_parts)
         return True
     if event_name in {

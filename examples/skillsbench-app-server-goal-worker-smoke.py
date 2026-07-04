@@ -112,7 +112,7 @@ for line in sys.stdin:
             "method": "turn/completed",
             "params": {
                 "threadId": "thread-skillsbench",
-                "turn": {"id": "turn-event-skillsbench", "status": "completed"},
+                "turn": {"id": "turn-event-skillsbench"},
             },
         }), flush=True)
         continue
@@ -1323,6 +1323,8 @@ def test_host_worker_waits_for_completion_and_keeps_public_json_compact() -> Non
         payload = json.loads(output.read_text(encoding="utf-8"))
         assert payload["ok"] is True, payload
         assert payload["turn"]["turn_completed_observed"] is True, payload
+        assert payload["turn"]["turn_status"] == "completed", payload
+        assert payload["turn"]["turn_completion_shape_unclean"] is False, payload
         assert payload["turn"]["completion_source_of_truth"] == "codex_turn_completion", payload
         assert payload["turn"]["turn_id_source"] == "event_stream", payload
         assert payload["turn"]["turn_start_response_turn_id_present"] is True, payload
