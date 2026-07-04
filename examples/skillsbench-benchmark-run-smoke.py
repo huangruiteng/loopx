@@ -10388,6 +10388,34 @@ def test_app_server_goal_worker_skips_plain_codex_exec_preflight() -> None:
         ), prereqs
 
 
+def test_codex_cli_goal_worker_skips_plain_codex_exec_preflight() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-cli-goal-preflight-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "3d-scan-calc",
+                "--route",
+                "codex-cli-goal-baseline",
+                "--host-local-acp-launch",
+                "--host-local-acp-codex-exec-preflight",
+                "--remote-command-file-bridge-ready",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-cli-goal-preflight-fixture",
+            ]
+        )
+        plan = build_plan(args)
+        prereqs = plan["runner_prerequisites"]
+        assert prereqs["host_local_acp_codex_exec_preflight_requested"] is False, (
+            prereqs
+        )
+        assert prereqs["host_local_acp_codex_exec_preflight_status"] == "not_requested", (
+            prereqs
+        )
+        assert prereqs["container_codex_acp_install_skipped"] is True, prereqs
+
+
 def test_app_server_goal_first_action_timeout_respects_agent_idle_timeout() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-app-server-timeout-") as tmp:
         args = parse_args(
