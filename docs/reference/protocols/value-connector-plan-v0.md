@@ -111,6 +111,48 @@ comment author, author association, timestamps, and URL. It detects whether a
 public maintainer/member/collaborator replied after the LoopX comment and
 returns `prepare_public_triage_note`; otherwise it returns `wait_no_bump`.
 
+## Finance Market Snapshot Profile
+
+`finance_market_snapshot` is a planned finance profile for bounded market-fact
+pulls. The v0 surface is a plan and gate contract, not a live trading adapter
+and not an investment-advice engine.
+
+Supported pull intents:
+
+- quote snapshots for stocks, ETFs, and indexes;
+- fund snapshots such as NAV, fee, size, holding summary, and announcement
+  timestamp;
+- public news, company announcement, earnings, and regulatory-disclosure
+  snapshots;
+- compact watch todos for a user-provided public symbol list.
+
+Preferred source order:
+
+1. a user-owned terminal or daemon such as Futu OpenD when account permission,
+   local daemon state, and data entitlement are already available;
+2. public finance metadata pages/APIs such as Eastmoney for quote, fund, news,
+   and announcement facts;
+3. GitHub-hosted open-source wrappers or public datasets as fallback only after
+   terms, freshness, and source-origin checks.
+
+Every finance packet should project:
+
+- source id and source URL or provider label;
+- `observed_at` or provider timestamp;
+- freshness label: `live`, `delayed`, `cached`, `source_unverified`, or
+  `manual_review_required`;
+- missing-field list instead of silent fallback filling;
+- non-investment-advice disclaimer.
+
+Forbidden before an exact approval gate:
+
+- login, private portfolio reads, account identifiers, paid-data signup,
+  captcha handling, or credential collection;
+- trading, order placement, portfolio mutation, or production actions;
+- price targets, suitability claims, guaranteed-return language, or personal
+  investment advice;
+- raw paid-provider payloads or private account material in LoopX state.
+
 ## Browser Social Connector Profile
 
 `social_browser_x` is the first browser-backed value connector profile. It is
