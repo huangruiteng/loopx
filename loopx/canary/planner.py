@@ -389,6 +389,53 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "control-plane-state-machine",
+        "title": "Control-plane state-machine composition",
+        "purpose": (
+            "Run a bounded cross-state-machine canary when interaction, work-lane, "
+            "scheduler, frontier, writeback, or quota-spend transitions change together."
+        ),
+        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "trigger_hints": (
+            "state-machine",
+            "state machine",
+            "interaction_contract",
+            "work_lane_contract",
+            "scheduler_hint",
+            "goal_frontier",
+            "automation_liveness",
+            "spend-slot",
+            "scheduler-ack",
+            "control-plane-integrated-canary-smoke.py",
+            "docs/product/core-control-plane/state-machine.md",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/control_plane/control-plane-integrated-canary-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "exercises event-sourced todo projection, status, quota interaction contract, "
+                    "work-lane contract, scheduler ack, refresh-state, spend-slot, and review-packet handoff together"
+                ),
+            },
+            {
+                "command": "python3 examples/control_plane/heartbeat-quota-flow-smoke.py",
+                "tier": "default",
+                "reason": "guards the heartbeat writeback then spend lifecycle that the composition canary executes",
+            },
+            {
+                "command": "python3 examples/control_plane/quota-scheduler-state-ack-smoke.py",
+                "tier": "default",
+                "reason": "guards scheduler_hint stateful ack progression and no-spend cadence transitions",
+            },
+            {
+                "command": "python3 examples/control_plane/work-lane-contract-smoke.py",
+                "tier": "deep",
+                "reason": "covers additional work-lane policy branches outside the integrated active-work path",
+            },
+        ],
+    },
+    {
         "id": "status-read-path",
         "title": "Status read-path contract",
         "purpose": "Check scoped status reads, markdown rendering, and goal-channel status export before status/read-path changes ship.",

@@ -30,6 +30,7 @@ GOAL_ID = "control-plane-integrated-canary"
 AGENT_ID = "codex-product-capability"
 CANARY_TODO_ID = "todo_integrated_canary"
 CANARY_TODO_TITLE = "Design bounded status/quota/review-packet/event/read-path canary"
+VALIDATED_PROGRESS_CLASSIFICATION = "integrated_canary_validated_progress"
 DEFAULT_MAX_SECONDS = 120.0
 
 
@@ -210,6 +211,188 @@ def assert_event_projected_agent_todo(summary: dict[str, Any]) -> None:
     assert "todo_markdown_fallback" not in json.dumps(summary, sort_keys=True), summary
 
 
+def read_run_index(runtime_root: Path) -> list[dict[str, Any]]:
+    index_path = runtime_root / "goals" / GOAL_ID / "runs" / "index.jsonl"
+    if not index_path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def assert_bounded_delivery_state_machine_bundle(quota_payload: dict[str, Any]) -> None:
+    """Assert that the major hot-path state machines agree on active work."""
+
+    contract = quota_payload["interaction_contract"]
+    assert contract["mode"] == "bounded_delivery", quota_payload
+    assert contract["user_channel"] == {
+        "action_required": False,
+        "notify": "DONT_NOTIFY",
+    }, contract
+    agent_channel = contract["agent_channel"]
+    assert agent_channel["must_attempt"] is True, contract
+    assert agent_channel["delivery_allowed"] is True, contract
+    assert agent_channel["quiet_noop_allowed"] is False, contract
+    assert agent_channel["primary_action"].startswith(f"{CANARY_TODO_ID}: [P1]"), contract
+    cli_channel = contract["cli_channel"]
+    assert cli_channel["spend_allowed_now"] is False, contract
+    assert cli_channel["spend_after_validation"] is True, contract
+    assert cli_channel["spend_policy"] == "spend once after validated writeback", contract
+    assert any("refresh-state" in action for action in cli_channel["next_cli_actions"]), contract
+    assert any("spend-slot" in action for action in cli_channel["next_cli_actions"]), contract
+
+    lane = quota_payload["work_lane_contract"]
+    assert lane["schema_version"] == "work_lane_contract_v1", lane
+    assert lane["lane"] == "advancement_task", lane
+    assert lane["next_lane"] == "advancement_task", lane
+    assert lane["obligation"] == "advance_one_bounded_segment", lane
+    assert lane["must_attempt_work"] is True, lane
+    assert lane["reason_codes"] == ["open_agent_todo"], lane
+
+    scheduler = quota_payload["scheduler_hint"]
+    assert scheduler["action"] == "run_now", scheduler
+    assert scheduler["cadence_class"] == "active_work", scheduler
+    codex_app = scheduler["codex_app"]
+    assert codex_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=3", scheduler
+    assert codex_app["no_spend_for_cadence_change"] is True, scheduler
+    assert codex_app["stateful_backoff"]["apply_needed"] is True, scheduler
+
+    frontier = quota_payload["goal_frontier_projection"]
+    assert frontier["remaining_advancement_frontier"] == {
+        "current_agent_claimed_advancement_count": 1,
+        "unclaimed_advancement_count": 0,
+        "other_agent_claimed_advancement_count": 0,
+    }, frontier
+    assert frontier["monitor_only_lanes"]["present"] is False, frontier
+    assert frontier["replan_required"] is False, frontier
+
+    liveness = quota_payload["automation_liveness"]
+    assert liveness["keep_active"] is True, liveness
+    assert liveness["pause_allowed"] is False, liveness
+    assert liveness["automation_action"] == "execute_bounded_work", liveness
+
+
+def assert_scheduler_ack_state_machine(
+    registry_path: Path,
+    runtime_root: Path,
+    quota_payload: dict[str, Any],
+) -> dict[str, Any]:
+    codex_app = quota_payload["scheduler_hint"]["codex_app"]
+    backoff = codex_app["stateful_backoff"]
+    ack_payload = run_cli(
+        registry_path,
+        runtime_root,
+        "quota",
+        "scheduler-ack",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--surface",
+        "codex_app",
+        "--state-key",
+        backoff["state_key"],
+        "--applied-rrule",
+        codex_app["recommended_rrule"],
+        "--reset-token",
+        backoff["reset_token"],
+        "--identity-signature",
+        backoff["identity_signature"],
+        "--execute",
+    )
+    assert ack_payload["ok"] is True, ack_payload
+    assert ack_payload["mode"] == "scheduler-ack", ack_payload
+    assert ack_payload["dry_run"] is False, ack_payload
+
+    steady_payload = run_cli(
+        registry_path,
+        runtime_root,
+        "quota",
+        "should-run",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+    )
+    steady_codex_app = steady_payload["scheduler_hint"]["codex_app"]
+    assert steady_codex_app["stateful_backoff"]["apply_needed"] is False, steady_payload
+    assert steady_codex_app["stateful_backoff"]["state_status"] == "same_identity", steady_payload
+    assert steady_codex_app["host_action"] == "none", steady_payload
+    assert "recommended_rrule" not in steady_codex_app, steady_payload
+    return steady_payload
+
+
+def assert_refresh_and_spend_state_machine(registry_path: Path, runtime_root: Path) -> None:
+    refresh_payload = run_cli(
+        registry_path,
+        runtime_root,
+        "refresh-state",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--agent-lane",
+        "product_capability",
+        "--progress-scope",
+        "agent_lane",
+        "--classification",
+        VALIDATED_PROGRESS_CLASSIFICATION,
+        "--delivery-batch-scale",
+        "multi_surface",
+        "--delivery-outcome",
+        "outcome_progress",
+        "--recommended-action",
+        "Integrated canary fixture validated the active transition bundle.",
+    )
+    assert refresh_payload["ok"] is True, refresh_payload
+    assert refresh_payload["appended"] is True, refresh_payload
+    assert refresh_payload["classification"] == VALIDATED_PROGRESS_CLASSIFICATION, refresh_payload
+    assert refresh_payload["delivery_batch_scale"] == "multi_surface", refresh_payload
+    assert refresh_payload["delivery_outcome"] == "outcome_progress", refresh_payload
+
+    matching_runs = [
+        run for run in read_run_index(runtime_root)
+        if run.get("classification") == VALIDATED_PROGRESS_CLASSIFICATION
+    ]
+    assert len(matching_runs) == 1, matching_runs
+    assert matching_runs[0]["progress_scope"] == "agent_lane", matching_runs
+    assert matching_runs[0]["agent_id"] == AGENT_ID, matching_runs
+
+    spend_payload = run_cli(
+        registry_path,
+        runtime_root,
+        "quota",
+        "spend-slot",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--slots",
+        "1",
+        "--source",
+        "heartbeat",
+        "--execute",
+    )
+    assert spend_payload["ok"] is True, spend_payload
+    assert spend_payload["appended"] is True, spend_payload
+    assert spend_payload["dry_run"] is False, spend_payload
+
+    spent_payload = run_cli(
+        registry_path,
+        runtime_root,
+        "quota",
+        "should-run",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+    )
+    assert spent_payload["quota"]["spent_slots"] == 1, spent_payload
+    assert spent_payload["quota"]["state"] == "eligible", spent_payload
+
+
 def run_fixture_canary(root: Path) -> None:
     registry_path, _, event_log = write_fixture(root)
     runtime_root = root / "runtime"
@@ -252,6 +435,9 @@ def run_fixture_canary(root: Path) -> None:
     assert quota_payload["interaction_contract"]["agent_channel"]["must_attempt"] is True, quota_payload
     assert CANARY_TODO_TITLE in quota_payload["recommended_action"], quota_payload
     assert_event_projected_agent_todo(quota_payload["agent_todo_summary"])
+    assert_bounded_delivery_state_machine_bundle(quota_payload)
+    assert_scheduler_ack_state_machine(registry_path, runtime_root, quota_payload)
+    assert_refresh_and_spend_state_machine(registry_path, runtime_root)
 
     packet_payload = run_cli(
         registry_path,

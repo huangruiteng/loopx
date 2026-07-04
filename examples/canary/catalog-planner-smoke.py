@@ -48,6 +48,7 @@ def assert_profiles_come_from_catalog_matrix() -> None:
         "install-update",
         "control-plane-refactor",
         "repo-architecture-budget",
+        "control-plane-state-machine",
         "status-read-path",
         "review-packet-read-path",
         "event-sourced-read-path",
@@ -181,6 +182,33 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
     architecture_commands = [check["command"] for check in architecture_profile["checks"]]
     assert "python3 examples/control_plane/repo-python-line-budget-smoke.py" in architecture_commands, (
         architecture_profile
+    )
+
+    state_machine_payload = build_catalog_canary_plan(
+        changed_files=["examples/control_plane/control-plane-integrated-canary-smoke.py"],
+        surfaces=[
+            "complex control-plane state-machine interaction_contract "
+            "scheduler_hint work_lane_contract goal_frontier"
+        ],
+        max_checks_per_profile=3,
+    )
+    state_machine_profiles = {
+        profile["id"]: profile for profile in state_machine_payload["domain_profiles"]
+    }
+    assert "control-plane-state-machine" in state_machine_profiles, state_machine_payload
+    state_machine_profile = state_machine_profiles["control-plane-state-machine"]
+    state_machine_commands = [check["command"] for check in state_machine_profile["checks"]]
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in state_machine_commands, (
+        state_machine_profile
+    )
+    assert "python3 examples/control_plane/heartbeat-quota-flow-smoke.py" in state_machine_commands, (
+        state_machine_profile
+    )
+    assert "python3 examples/control_plane/quota-scheduler-state-ack-smoke.py" in state_machine_commands, (
+        state_machine_profile
+    )
+    assert all(check["tier"] == "default" for check in state_machine_profile["checks"]), (
+        state_machine_profile
     )
 
     work_lane_policy_payload = build_catalog_canary_plan(
