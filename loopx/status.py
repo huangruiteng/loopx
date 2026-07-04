@@ -15,13 +15,9 @@ from .contract import check_contract
 from .delivery_batch_scale import (
     SMALL_DELIVERY_BATCH_SCALES as STRUCTURED_SMALL_DELIVERY_BATCH_SCALES,
     UNKNOWN_DELIVERY_BATCH_SCALE,
-    DeliveryBatchScale,
-    normalize_delivery_batch_scale,
 )
 from .delivery_outcome import (
     DELIVERY_OUTCOME_NOT_CONFIGURED,
-    DELIVERY_OUTCOME_UNKNOWN,
-    DeliveryOutcome,
     PROGRESS_DELIVERY_OUTCOMES,
     delivery_turn_kind_for_run,
     normalize_delivery_outcome,
@@ -117,6 +113,14 @@ from .projections.dreaming import (
     compact_dreaming_proposal as _compact_dreaming_proposal_read_model,
     compact_server_planning_contract as _compact_server_planning_contract_read_model,
     dreaming_attention_fields as _dreaming_attention_fields_read_model,
+)
+from .projections.delivery_signals import (
+    classification_contains_any as _classification_contains_any_read_model,
+    delivery_batch_scale_for_run as _delivery_batch_scale_for_run_read_model,
+    delivery_outcome_for_run as _delivery_outcome_for_run_read_model,
+    outcome_floor_configured as _outcome_floor_configured_read_model,
+    outcome_gap_streak as _outcome_gap_streak_read_model,
+    small_delivery_batch_scale_streak as _small_delivery_batch_scale_streak_read_model,
 )
 from .projections.monitor_display import (
     attention_item_is_monitor_quiet_display_candidate as _attention_item_is_monitor_quiet_display_candidate,
@@ -6404,68 +6408,40 @@ def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
 
 
 def delivery_batch_scale_for_run(run: dict[str, Any]) -> str:
-    explicit = normalize_delivery_batch_scale(run.get("delivery_batch_scale"))
-    if explicit:
-        return explicit.value
-    if str(run.get("delivery_batch_scale") or "").strip():
-        return UNKNOWN_DELIVERY_BATCH_SCALE
-    classification = str(run.get("classification") or "")
-    if not classification:
-        return UNKNOWN_DELIVERY_BATCH_SCALE
-    normalized = classification.lower()
-    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS):
-        return DeliveryBatchScale.TEST_ONLY.value
-    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_MULTI_SURFACE_CLASSIFICATION_HINTS):
-        return DeliveryBatchScale.MULTI_SURFACE.value
-    if any(hint in normalized for hint in DELIVERY_BATCH_SCALE_IMPLEMENTATION_CLASSIFICATION_HINTS):
-        return DeliveryBatchScale.IMPLEMENTATION.value
-    return DeliveryBatchScale.SINGLE_SURFACE.value
+    return _delivery_batch_scale_for_run_read_model(
+        run,
+        test_only_hints=DELIVERY_BATCH_SCALE_TEST_ONLY_CLASSIFICATION_HINTS,
+        multi_surface_hints=DELIVERY_BATCH_SCALE_MULTI_SURFACE_CLASSIFICATION_HINTS,
+        implementation_hints=DELIVERY_BATCH_SCALE_IMPLEMENTATION_CLASSIFICATION_HINTS,
+    )
 
 
 def _classification_contains_any(classification: str, hints: list[Any]) -> bool:
-    normalized = classification.lower()
-    return any(str(hint or "").strip().lower() in normalized for hint in hints if str(hint or "").strip())
+    return _classification_contains_any_read_model(classification, hints)
 
 
 def delivery_outcome_for_run(run: dict[str, Any], profile: dict[str, Any] | None = None) -> str:
-    explicit = normalize_delivery_outcome(run.get("delivery_outcome"))
-    if explicit:
-        return explicit.value
-    if str(run.get("delivery_outcome") or "").strip():
-        return DELIVERY_OUTCOME_UNKNOWN
-    classification = str(run.get("classification") or "")
-    if not classification:
-        return DELIVERY_OUTCOME_UNKNOWN
-    floor = execution_profile_outcome_floor(profile)
-    outcome_markers = floor.get("outcome_markers") if isinstance(floor.get("outcome_markers"), list) else []
-    surface_hints = floor.get("surface_only_hints") if isinstance(floor.get("surface_only_hints"), list) else []
-    if not outcome_markers and not surface_hints:
-        return DELIVERY_OUTCOME_NOT_CONFIGURED
-    marker_hit = _classification_contains_any(classification, outcome_markers)
-    surface_hit = _classification_contains_any(classification, surface_hints)
-    if surface_hit:
-        return DeliveryOutcome.SURFACE_ONLY.value
-    if marker_hit:
-        return DeliveryOutcome.OUTCOME_PROGRESS.value
-    return DeliveryOutcome.OUTCOME_GAP.value
+    return _delivery_outcome_for_run_read_model(
+        run,
+        profile,
+        execution_profile_outcome_floor=execution_profile_outcome_floor,
+    )
 
 
 def outcome_floor_configured(profile: dict[str, Any] | None) -> bool:
-    floor = execution_profile_outcome_floor(profile)
-    return bool(floor.get("outcome_markers") or floor.get("surface_only_hints"))
+    return _outcome_floor_configured_read_model(
+        profile,
+        execution_profile_outcome_floor=execution_profile_outcome_floor,
+    )
 
 
 def outcome_gap_streak(runs: list[dict[str, Any]], profile: dict[str, Any] | None = None) -> int:
-    if not outcome_floor_configured(profile):
-        return 0
-    streak = 0
-    for run in runs:
-        outcome = delivery_outcome_for_run(run, profile)
-        normalized = normalize_delivery_outcome(outcome)
-        if normalized in PROGRESS_DELIVERY_OUTCOMES or outcome == DELIVERY_OUTCOME_NOT_CONFIGURED:
-            break
-        streak += 1
-    return streak
+    return _outcome_gap_streak_read_model(
+        runs,
+        profile,
+        delivery_outcome_for_run=delivery_outcome_for_run,
+        outcome_floor_configured=outcome_floor_configured,
+    )
 
 
 def compact_post_handoff_run(run: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -6515,12 +6491,11 @@ def compact_post_handoff_run(run: dict[str, Any], profile: dict[str, Any] | None
 
 
 def small_delivery_batch_scale_streak(runs: list[dict[str, Any]]) -> int:
-    streak = 0
-    for run in runs:
-        if delivery_batch_scale_for_run(run) not in SMALL_DELIVERY_BATCH_SCALES:
-            break
-        streak += 1
-    return streak
+    return _small_delivery_batch_scale_streak_read_model(
+        runs,
+        delivery_batch_scale_for_run=delivery_batch_scale_for_run,
+        small_delivery_batch_scales=SMALL_DELIVERY_BATCH_SCALES,
+    )
 
 
 def project_asset_handoff_state(
