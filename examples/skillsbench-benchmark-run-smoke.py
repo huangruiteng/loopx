@@ -625,6 +625,84 @@ def test_benchmark_egress_proxy_auto_falls_back_to_direct_without_leaking_proxy(
                 os.environ["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = previous
 
 
+def test_benchmark_egress_proxy_auto_ignores_shell_placeholder() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-benchmark-egress-placeholder-") as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--benchmark-egress-proxy",
+                "${BENCHMARK_PROXY}",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+            ]
+        )
+        plan = build_plan(args)
+        egress = plan["benchmark_egress_proxy"]
+        assert egress["status"] == "invalid_proxy_value", egress
+        assert egress["ready"] is True, egress
+        assert egress["proxy_configured"] is False, egress
+        assert egress["proxy_value_valid"] is False, egress
+        assert egress["proxy_invalid_reason"] == "unexpanded_placeholder", egress
+        assert egress["effective_mode"] == "direct", egress
+        assert "${BENCHMARK_PROXY}" not in json.dumps(plan, sort_keys=True), plan
+
+        assert skillsbench_loop._benchmark_egress_proxy_env(args) == {}
+        target_env = skillsbench_loop._host_local_acp_target_env({}, args=args)
+        assert "LOOPX_SKILLSBENCH_EGRESS_PROXY" not in target_env, target_env
+        assert "HTTP_PROXY" not in target_env, target_env
+
+
+def test_benchmark_egress_proxy_require_blocks_shell_placeholder() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-benchmark-egress-placeholder-require-"
+    ) as tmp:
+        root = Path(tmp)
+        skillsbench_root = root / "skillsbench"
+        task_dir = skillsbench_root / "tasks" / "citation-check"
+        task_dir.mkdir(parents=True)
+        (task_dir / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        args = parse_args(
+            [
+                "--task-id",
+                "citation-check",
+                "--benchmark-egress-proxy",
+                "${BENCHMARK_PROXY}",
+                "--benchmark-egress-proxy-mode",
+                "require",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(root / "jobs"),
+            ]
+        )
+        plan = build_plan(args)
+        try:
+            skillsbench_loop._run_benchmark_egress_proxy_preflight(args, plan)
+        except skillsbench_loop.SkillsBenchSetupPreflightBlocked:
+            pass
+        else:  # pragma: no cover - assertion path for script-style smoke
+            raise AssertionError("require mode placeholder should block preflight")
+
+        egress = plan["benchmark_egress_proxy"]
+        assert egress["status"] == "invalid_proxy_value", egress
+        assert egress["ready"] is False, egress
+        assert egress["proxy_configured"] is False, egress
+        assert egress["proxy_value_valid"] is False, egress
+        assert egress["proxy_invalid_reason"] == "unexpanded_placeholder", egress
+        assert egress["error_kind"] == "unexpanded_placeholder", egress
+        assert "${BENCHMARK_PROXY}" not in json.dumps(plan, sort_keys=True), plan
+
+
 def test_codex_app_server_goal_rejects_non_http_codex_api_proxy_scheme() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-codex-api-proxy-scheme-") as tmp:
         root = Path(tmp)
@@ -14524,6 +14602,8 @@ if __name__ == "__main__":
     test_benchmark_egress_proxy_env_is_public_safe_and_forwarded()
     test_benchmark_egress_proxy_require_mode_blocks_without_proxy()
     test_benchmark_egress_proxy_auto_falls_back_to_direct_without_leaking_proxy()
+    test_benchmark_egress_proxy_auto_ignores_shell_placeholder()
+    test_benchmark_egress_proxy_require_blocks_shell_placeholder()
     test_skillsbench_plan_only_batch_parallel_case_contract()
     test_skillsbench_batch_case_cli_filters_internal_aggregate_flag()
     test_skillsbench_formal_product_mode_rejects_tiny_round_budget()
