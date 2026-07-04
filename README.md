@@ -296,7 +296,7 @@ loopx quota spend-slot      # account for a completed automatic slice
 This is the shape used by advanced showcases such as
 [dynamic workflow orchestration](docs/showcases/cases/0619-dynamic-workflow-hardware-agent.html):
 your agents can orchestrate external tools, devices, domain-specific runners,
-or side agents, while LoopX keeps objectives, gates, todos, evidence, quota, and
+or side agents, while LoopX keeps goals, gates, todos, evidence, quota, and
 handoff state reviewable.
 
 Clone-based install is only for contributors who want the live canary wrapper:
@@ -409,8 +409,8 @@ or the
 
 ## What You Get
 
-- **Lifetime objectives**: durable project intentions that outlive one chat
-  thread, run, todo, or implementation plan. A lifetime objective does not
+- **Lifetime goals**: durable project intentions that outlive one chat
+  thread, run, todo, or implementation plan. A lifetime goal does not
   grant open-ended autonomy: only the next bounded transition is executable.
 - **User gates**: concrete human decisions that stay visible instead of
   disappearing into chat.
@@ -521,9 +521,9 @@ loopx quota spend-slot --goal-id your-project-goal --slots 1 --source heartbeat 
 ```
 
 The `next_automatic_turn` reported by `quota plan` is only an advisory
-scheduling hint: it chooses the highest-compute eligible objective, while
+scheduling hint: it chooses the highest-compute eligible goal, while
 operator-gated, focus-waiting, waiting, throttled, paused, and health-blocked
-objectives stay out of the eligible lane.
+goals stay out of the eligible lane.
 
 For stalled control-plane repair, `control_plane.self_repair.enabled=true` lets
 `quota should-run` return a bounded `decision=self_repair` contract; missing
@@ -577,14 +577,14 @@ see the [dashboard guide](apps/dashboard/README.md).
 
 LoopX starts with AI coding, research, and benchmark loops because those
 workflows make state drift easy to see. The broader product direction is a
-dynamic objective control plane for any long-running agent work where humans need
+dynamic goal control plane for any long-running agent work where humans need
 clear progress, gates, feedback, and recovery without reading raw logs.
 
 The near-term open-source path is maintainer-first: help people manage agents
 that read issues, propose fixes, open PRs, resolve review feedback, run
 benchmarks, and keep evidence attached to the work. That path is valuable even
 before LoopX controls execution, because it gives maintainers a readable queue
-of objectives, gates, todos, evidence, cost, and feedback.
+of goals, gates, todos, evidence, cost, and feedback.
 
 The broader product shape is a Loop Agent: an agent with a relatively stable
 responsibility, a continuing stream of external signals, and a recurring need
@@ -592,7 +592,7 @@ to prove that its output quality, cost, and human-attention footprint are
 improving. A Loop Agent could be a coding maintainer, an experiment optimizer,
 a research assistant, or a creator/operator assistant. LoopX is the control
 plane that keeps those loops reviewable before they become more autonomous.
-LoopX makes the "digital worker" idea operational: objectives, gates, evidence,
+LoopX makes the "digital worker" idea operational: goals, gates, evidence,
 cost, and feedback stay reviewable over time.
 
 A medium-term productization case is a creator-operator workflow: a
@@ -617,7 +617,7 @@ contract.
 - [Release readiness](docs/product/release-readiness.md): v0.x install/update
   paths, compatibility smoke gate, release-note checklist, and safe-to-depend-on
   surfaces.
-- [Architecture](docs/architecture.md): lifetime-objective invariant and core
+- [Architecture](docs/architecture.md): lifetime-goal invariant and core
   control-plane shape.
 - [State interaction model](docs/state-interaction-model.md): actor boundaries,
   state stores, interaction contract, and writeback model.
@@ -652,7 +652,7 @@ External contributors should start with
 [CONTRIBUTOR_TASKS.md](CONTRIBUTOR_TASKS.md) for public, claimable work and
 [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and boundary rules.
 
-LoopX keeps local active objective state separate from the public repository:
+LoopX keeps local active goal state separate from the public repository:
 do not commit `.loopx/`, `.codex/goals/`, live
 `ACTIVE_GOAL_STATE.md`, raw benchmark traces, or private operator artifacts.
 
@@ -670,7 +670,7 @@ loopx check \
 LoopX is early. It is not a full agent platform and not an autonomous
 production controller.
 
-The current milestone is a useful local substrate for objective state, run history,
+The current milestone is a useful local substrate for goal state, run history,
 operator gates, human reward, structured todos, scoped claims, quota-aware
 heartbeats, read-only project maps, benchmark control-plane evidence, runtime
 bridges, collaboration projections, and a small multi-project dashboard.
