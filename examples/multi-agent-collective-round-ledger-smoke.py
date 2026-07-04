@@ -104,14 +104,26 @@ def main() -> int:
     assert ledger["coordination_model"] == "decentralized_state_a2a", ledger
     assert ledger["round_unit"] == "collective_agent_pass", ledger
     assert ledger["expected_lane_count"] == 2, ledger
+    assert ledger["expected_agent_ids"] == ["agent-a", "agent-b"], ledger
     assert ledger["lane_outcome_count"] == 4, ledger
     assert ledger["completed_lane_turn_count"] == 3, ledger
+    assert ledger["completed_turn_count_by_agent"] == {"agent-a": 1, "agent-b": 2}, ledger
     assert ledger["collective_round_indexes"] == [1, 2], ledger
     assert ledger["collective_round_count"] == 2, ledger
     assert ledger["full_participation_round_indexes"] == [1], ledger
     assert ledger["synchronous_full_participation_round_count"] == 1, ledger
     assert ledger["asynchronous_full_participation_round_count"] == 1, ledger
     assert ledger["full_participation_round_count"] == 1, ledger
+    assert ledger["full_participation_count_basis"] == "synchronous_and_asynchronous", ledger
+    assert ledger["full_participation_requirement_gap"] == {
+        "schema_version": "multi_agent_full_participation_gap_v0",
+        "required_count": 1,
+        "count_basis": "synchronous_and_asynchronous",
+        "completed_turn_count_by_agent": {"agent-a": 1, "agent-b": 2},
+        "shortfall_by_agent": {},
+        "missing_agent_count": 0,
+        "met": True,
+    }, ledger
     assert ledger["full_participation_verified"] is False, ledger
     assert ledger["multi_round_interaction_verified"] is True, ledger
     assert ledger["integrated_evidence"]["evidence_event_count"] == 3, ledger
@@ -123,6 +135,8 @@ def main() -> int:
     verification = ledger["collective_research_verification"]
     assert verification["schema_version"] == "multi_agent_collective_research_verification_v0"
     assert verification["baseline_metric"] == 1.0, ledger
+    assert verification["completed_turn_count_by_agent"] == {"agent-a": 1, "agent-b": 2}
+    assert verification["full_participation_requirement_gap"]["met"] is True
     assert verification["full_participation_requirement_met"] is True, ledger
     assert verification["holdout_improvement_requirement_met"] is True, ledger
     assert verification["verified"] is True, ledger
@@ -135,6 +149,65 @@ def main() -> int:
         "credentials_recorded": False,
     }, ledger
     assert_public_safe(ledger)
+
+    gap_ledger = build_multi_agent_collective_round_ledger(
+        source="smoke-gap",
+        expected_lanes=[
+            {"agent_id": "agent-a", "lane_id": "curator", "role_id": "research_curator"},
+            {"agent_id": "agent-b", "lane_id": "runner", "role_id": "research_executor"},
+        ],
+        lane_outcomes=[
+            {
+                "round": 1,
+                "agent_id": "agent-a",
+                "selected_todo_id": "todo_contract",
+                "selected_action": "write_research_contract",
+                "executed": True,
+                "completion_status": "done",
+            },
+            {
+                "round": 1,
+                "agent_id": "agent-b",
+                "selected_todo_id": "todo_dev",
+                "selected_action": "run_dev_eval",
+                "executed": True,
+                "completion_status": "done",
+            },
+            {
+                "round": 2,
+                "agent_id": "agent-a",
+                "selected_todo_id": "todo_review",
+                "selected_action": "review_research_contract",
+                "executed": True,
+                "completion_status": "done",
+            },
+            {
+                "round": 2,
+                "agent_id": "agent-b",
+                "executed": True,
+                "completion_status": "done",
+            },
+        ],
+        baseline_metric=1.0,
+        required_full_participation_round_count=2,
+    )
+    assert gap_ledger["completed_turn_count_by_agent"] == {
+        "agent-a": 2,
+        "agent-b": 1,
+    }, gap_ledger
+    assert gap_ledger["full_participation_round_count"] == 1, gap_ledger
+    gap = gap_ledger["full_participation_requirement_gap"]
+    assert gap["count_basis"] == "synchronous_and_asynchronous", gap_ledger
+    assert gap["shortfall_by_agent"] == {"agent-b": 1}, gap_ledger
+    assert gap["missing_agent_count"] == 1, gap_ledger
+    assert gap["met"] is False, gap_ledger
+    assert (
+        gap_ledger["collective_research_verification"][
+            "full_participation_requirement_met"
+        ]
+        is False
+    ), gap_ledger
+    assert_public_safe(gap_ledger)
     print("multi-agent-collective-round-ledger-smoke ok")
     return 0
 

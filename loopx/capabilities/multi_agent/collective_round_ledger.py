@@ -217,6 +217,23 @@ def _normalize_successor(todo: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _sorted_count_map(counts: Mapping[str, int]) -> dict[str, int]:
+    return {key: int(counts.get(key, 0)) for key in sorted(counts)}
+
+
+def _full_participation_count_basis(
+    *,
+    synchronous_count: int,
+    asynchronous_count: int,
+    effective_count: int,
+) -> str:
+    if effective_count == synchronous_count == asynchronous_count:
+        return "synchronous_and_asynchronous"
+    if effective_count == asynchronous_count:
+        return "asynchronous_role_cycle"
+    return "synchronous_round_index"
+
+
 def build_multi_agent_collective_round_ledger(
     *,
     source: str,
@@ -259,6 +276,7 @@ def build_multi_agent_collective_round_ledger(
         for lane in lanes
         if str(lane.get("agent_id") or "").strip()
     }
+    expected_agent_id_list = sorted(expected_agent_ids)
     completed_agents_by_round: dict[int, set[str]] = {}
     completed_turn_count_by_agent: dict[str, int] = {}
     for outcome in completed_outcomes:
@@ -281,9 +299,15 @@ def build_multi_agent_collective_round_ledger(
         if expected_agent_ids
         else 0
     )
+    synchronous_full_participation_round_count = len(full_participation_round_indexes)
     effective_full_participation_round_count = max(
-        len(full_participation_round_indexes),
+        synchronous_full_participation_round_count,
         asynchronous_full_participation_round_count,
+    )
+    count_basis = _full_participation_count_basis(
+        synchronous_count=synchronous_full_participation_round_count,
+        asynchronous_count=asynchronous_full_participation_round_count,
+        effective_count=effective_full_participation_round_count,
     )
     evidence_event_count = _int_or_none(evidence.get("evidence_event_count"))
     if evidence_event_count is None:
@@ -329,6 +353,30 @@ def build_multi_agent_collective_round_ledger(
         if full_rounds_required is None
         else effective_full_participation_round_count >= full_rounds_required
     )
+    completed_turn_counts = _sorted_count_map(
+        {
+            agent_id: completed_turn_count_by_agent.get(agent_id, 0)
+            for agent_id in expected_agent_id_list
+        }
+    )
+    full_round_shortfall_by_agent = (
+        {}
+        if full_rounds_required is None
+        else {
+            agent_id: full_rounds_required - count
+            for agent_id, count in completed_turn_counts.items()
+            if count < full_rounds_required
+        }
+    )
+    full_participation_requirement_gap = {
+        "schema_version": "multi_agent_full_participation_gap_v0",
+        "required_count": full_rounds_required,
+        "count_basis": count_basis,
+        "completed_turn_count_by_agent": completed_turn_counts,
+        "shortfall_by_agent": full_round_shortfall_by_agent,
+        "missing_agent_count": len(full_round_shortfall_by_agent),
+        "met": full_round_requirement_met,
+    }
     holdout_improvement_requirement_met = (
         None
         if holdout_improvements_required is None
@@ -355,17 +403,21 @@ def build_multi_agent_collective_round_ledger(
         ),
         "expected_lanes": lanes,
         "expected_lane_count": len(lanes),
+        "expected_agent_ids": expected_agent_id_list,
         "lane_outcomes": outcomes,
         "lane_outcome_count": len(outcomes),
         "completed_lane_turn_count": len(completed_outcomes),
+        "completed_turn_count_by_agent": completed_turn_counts,
         "collective_round_indexes": round_indexes,
         "collective_round_count": len(round_indexes),
         "full_participation_round_indexes": full_participation_round_indexes,
-        "synchronous_full_participation_round_count": len(full_participation_round_indexes),
+        "synchronous_full_participation_round_count": synchronous_full_participation_round_count,
         "asynchronous_full_participation_round_count": (
             asynchronous_full_participation_round_count
         ),
         "full_participation_round_count": effective_full_participation_round_count,
+        "full_participation_count_basis": count_basis,
+        "full_participation_requirement_gap": full_participation_requirement_gap,
         "full_participation_verified": (
             bool(round_indexes)
             and len(full_participation_round_indexes) == len(round_indexes)
@@ -394,6 +446,9 @@ def build_multi_agent_collective_round_ledger(
             "asynchronous_full_participation_round_count": (
                 asynchronous_full_participation_round_count
             ),
+            "full_participation_count_basis": count_basis,
+            "completed_turn_count_by_agent": completed_turn_counts,
+            "full_participation_requirement_gap": full_participation_requirement_gap,
             "full_participation_requirement_met": full_round_requirement_met,
             "dev_metric_over_baseline": (
                 None

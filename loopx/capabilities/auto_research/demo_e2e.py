@@ -451,6 +451,14 @@ def _build_collective_round_summary(
     ):
         full_participation_round_count = 0
     full_participation_verified = kernel_ledger.get("full_participation_verified") is True
+    full_participation_gap = (
+        kernel_ledger.get("full_participation_requirement_gap")
+        if isinstance(kernel_ledger.get("full_participation_requirement_gap"), dict)
+        else {}
+    )
+    full_participation_count_basis = str(
+        kernel_ledger.get("full_participation_count_basis") or ""
+    )
     multi_round_research_verified = (
         verification.get("verified") is True
         and verification.get("dev_metric_over_baseline") is True
@@ -472,6 +480,8 @@ def _build_collective_round_summary(
         "required_holdout_improvement_count": 2,
         "collective_round_count": collective_round_count,
         "full_participation_round_count": full_participation_round_count,
+        "full_participation_count_basis": full_participation_count_basis,
+        "full_participation_requirement_gap": full_participation_gap,
         "full_participation_verified": full_participation_verified,
         "evidence_stage_count": len(dev_sequence) + len(holdout_sequence),
         "multi_round_research_verified": multi_round_research_verified,
@@ -967,6 +977,15 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
                 "multi_round_research_verified"
             )
             is True,
+            "full_participation_round_count": collective_rounds.get(
+                "full_participation_round_count"
+            ),
+            "full_participation_count_basis": collective_rounds.get(
+                "full_participation_count_basis"
+            ),
+            "full_participation_requirement_gap": collective_rounds.get(
+                "full_participation_requirement_gap"
+            ),
             "stages": collective_rounds.get("stages") or [],
             "holdout_improvement_count": holdout_improvement_count,
         },

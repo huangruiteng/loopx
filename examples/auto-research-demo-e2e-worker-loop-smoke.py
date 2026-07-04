@@ -340,6 +340,17 @@ def main() -> int:
         assert visible_loaded_collective["collective_round_count"] == 4, visible_loaded_collective
         assert visible_loaded_collective["full_participation_verified"] is False, visible_loaded_collective
         assert visible_loaded_collective["multi_round_research_verified"] is False, visible_loaded_collective
+        assert visible_loaded_collective["full_participation_count_basis"] == (
+            "synchronous_and_asynchronous"
+        ), visible_loaded_collective
+        assert visible_loaded_collective["full_participation_requirement_gap"][
+            "shortfall_by_agent"
+        ] == {
+            "evaluator-promoter": 4,
+            "hypothesis-proposer": 4,
+            "research-curator": 4,
+            "research-executor": 4,
+        }, visible_loaded_collective
         assert visible_loaded_collective["holdout_improvement_count"] == 1, visible_loaded_collective
         assert visible_loaded_wake["wakeup_model"] == "fixed_prompt_broadcast", visible_loaded_wake
         assert visible_loaded_wake["coordination_model"] == "decentralized_state_a2a", visible_loaded_wake
@@ -372,6 +383,14 @@ def main() -> int:
         assert visible_loaded_readiness["rounds"]["counts_as_collective_research_round"] is False, visible_loaded_readiness
         assert visible_loaded_readiness["collective_research_rounds"]["count"] == 4, visible_loaded_readiness
         assert visible_loaded_readiness["collective_research_rounds"]["holdout_improvement_count"] == 1, visible_loaded_readiness
+        assert visible_loaded_readiness["collective_research_rounds"][
+            "full_participation_requirement_gap"
+        ]["shortfall_by_agent"] == {
+            "evaluator-promoter": 4,
+            "hypothesis-proposer": 4,
+            "research-curator": 4,
+            "research-executor": 4,
+        }, visible_loaded_readiness
         loaded_improvement = visible_loaded_readiness["improvement_summary"]
         assert loaded_improvement["baseline_metric"] == 1.0, loaded_improvement
         assert loaded_improvement["dev_metric_sequence"] == [4.0], loaded_improvement
@@ -561,6 +580,7 @@ def main() -> int:
         assert kernel_ledger["expected_lane_count"] == 4, kernel_ledger
         assert kernel_ledger["collective_round_count"] == 4, kernel_ledger
         assert kernel_ledger["full_participation_round_count"] == 4, kernel_ledger
+        assert kernel_ledger["full_participation_requirement_gap"]["shortfall_by_agent"] == {}, kernel_ledger
         assert kernel_ledger["full_participation_verified"] is True, kernel_ledger
         assert kernel_ledger["multi_round_interaction_verified"] is True, kernel_ledger
         assert kernel_ledger["successor_todo_count"] >= 1, kernel_ledger
@@ -744,6 +764,11 @@ def main() -> int:
                 assert visible_readiness["collective_research_rounds"]["count"] >= 8, visible_readiness
                 assert visible_readiness["collective_research_rounds"]["multi_round_verified"] is False, visible_readiness
                 assert visible_readiness["collective_research_rounds"]["holdout_improvement_count"] == 2, visible_readiness
+                visible_gap = visible_readiness["collective_research_rounds"][
+                    "full_participation_requirement_gap"
+                ]
+                assert visible_gap["missing_agent_count"] >= 1, visible_readiness
+                assert visible_gap["shortfall_by_agent"], visible_readiness
                 improvement = visible_readiness["improvement_summary"]
                 assert improvement["baseline_metric"] == 1.0, improvement
                 assert improvement["dev_metric_sequence"] == [4.0, 4.8], improvement

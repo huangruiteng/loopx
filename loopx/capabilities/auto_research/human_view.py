@@ -114,6 +114,11 @@ def _render_collective_round_summary(
 
     completed_turns = worker_loop.get("completed_turn_count")
     expected_turns = kernel.get("lane_outcome_count")
+    participation_gap = (
+        collective_rounds.get("full_participation_requirement_gap")
+        if isinstance(collective_rounds.get("full_participation_requirement_gap"), dict)
+        else {}
+    )
     lines = [
         "",
         "## Collective Rounds / 集体研究轮次",
@@ -122,7 +127,12 @@ def _render_collective_round_summary(
             f"- verified: `{collective_rounds.get('multi_round_research_verified')}`; "
             f"rounds: `{collective_rounds.get('collective_round_count')}`; "
             f"full_participation_rounds: `{collective_rounds.get('full_participation_round_count')}`; "
+            f"basis: `{collective_rounds.get('full_participation_count_basis')}`; "
             f"completed_turns: `{completed_turns}/{expected_turns}`"
+        ),
+        (
+            f"- role_cycle_gap: `{participation_gap.get('shortfall_by_agent') or {}}` "
+            f"(required `{participation_gap.get('required_count')}`)"
         ),
         (
             f"- dev_metric_sequence: `{_metric_sequence(collective_rounds.get('dev_metric_sequence'))}`; "
@@ -440,6 +450,12 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         if isinstance(readiness.get("improvement_summary"), dict)
         else {}
     )
+    participation_gap = (
+        collective_rounds.get("full_participation_requirement_gap")
+        if isinstance(collective_rounds.get("full_participation_requirement_gap"), dict)
+        else {}
+    )
+    role_cycle_shortfall = participation_gap.get("shortfall_by_agent") or {}
     lines = [
         "# LoopX Auto Research Minimal E2E Demo",
         "",
@@ -472,6 +488,7 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- pane_ticks_count_as_research_rounds: `{pane_rounds.get('counts_as_collective_research_round')}`",
         f"- collective_research_rounds: `{collective_rounds.get('collective_round_count')}`",
         f"- collective_research_rounds_verified: `{collective_rounds.get('multi_round_research_verified')}`",
+        f"- collective_research_role_cycle_gap: `{role_cycle_shortfall}`",
         f"- holdout_metric_sequence: `{collective_rounds.get('holdout_metric_sequence')}`",
         f"- holdout_improvement_count: `{collective_rounds.get('holdout_improvement_count')}`",
         f"- decentralized_a2a_rounds_verified: `{live.get('decentralized_a2a_rounds_verified')}`",
