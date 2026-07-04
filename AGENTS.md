@@ -121,25 +121,27 @@ private/security-sensitive material that must not be posted publicly.
 Do not leave actionable PR blockers only in chat memory. The final user report
 should include the PR comment URL and a compact summary of the posted findings.
 
-## Engineering Quality And Minimality
+## Engineering Quality And Right-Sized Scope
 
 Treat code volume as a cost, especially during refactors. A good LoopX change
 should make the next change easier to localize, test, and revert; it should not
 turn a design possibility into unused production structure.
 
 Before adding a new module, builder, protocol field, CLI option, fixture, smoke
-section, or abstraction, pass a minimality review:
+section, or abstraction, pass a scope-fit review:
 
-- Identify the immediate shipped behavior or active call site that needs it.
-  If the only consumer is a future runner, a design note, or a hypothetical
-  extension, keep the design in docs or todo state until the real call site
-  appears.
-- Prefer the smallest behavior-preserving seam. For example, let the ledger
-  first recognize one compact public-safe row shape before adding a dedicated
-  benchmark-specific builder, arm constants, or wide field-level smoke.
+- Identify the shipped behavior, active call site, or explicit compatibility
+  contract that needs it. If the value is only an uncommitted future runner, a
+  design note, or a hypothetical extension with no validation contract, keep the
+  design in docs or todo state until the real call site appears.
+- Prefer a cohesive behavior-preserving seam. For example, let the ledger first
+  recognize one compact public-safe row shape before adding a dedicated
+  benchmark-specific builder, arm constants, or wide field-level smoke. Do not
+  split so narrowly that reviewers must reconstruct one logical behavior from
+  several dependent PRs.
 - Characterize before moving code. For status, quota, review-packet, scheduler,
   monitor, and handoff behavior, add or extend parity fixtures first, then
-  extract the smallest proven rule.
+  extract the proven rule or cohesive rule group.
 - Reuse existing repository patterns and bounded contexts. Add code where its
   change reason belongs, such as `control_plane/runtime`, `control_plane/quota`,
   or `control_plane/todos`; do not create generic sink directories or helper
@@ -161,15 +163,27 @@ section, or abstraction, pass a minimality review:
 - Fail fast with actionable context at input, config, permission, and state
   boundaries, but do not replace clear control flow with broad exception
   plumbing or silent fallback.
-- Ship small, reversible batches. Separate characterization/parity fixtures,
-  mechanical moves, behavior changes, and cleanup when that makes review and
-  rollback clearer. Avoid opportunistic rewrites, unrelated formatting, and
-  "while here" cleanup.
+- Ship right-sized, reversible batches. A PR should be theme-unified, locally
+  validated, and reviewable as a complete stage package. A few hundred to
+  roughly one or two thousand lines can be appropriate when the diff is cohesive
+  and avoids hidden future scaffolding; a 30-line PR can still be too small if it
+  leaves behavior split across follow-up PRs. Separate characterization/parity
+  fixtures, mechanical moves, behavior changes, and cleanup when that makes
+  review and rollback clearer.
+- Keep public PRs concise and current-purpose focused. Future extension points
+  are allowed when they reduce near-term churn, preserve compatibility, or
+  define a real contract that is documented and tested. Do not bundle
+  private/local experiment scaffolding, diagnostic run dumps, unused speculative
+  plumbing, or long background narratives with the code path needed by the
+  current behavior.
+- Compress rather than append. For docs, fixtures, dashboards, and examples,
+  replace or retire stale material when adding new current truth; do not let
+  canonical surfaces accumulate multiple versions of the same conclusion.
 
-Use this checklist to delete or defer code as actively as you add it. A PR that
-removes an unused abstraction, narrows a smoke to the real contract, or moves a
-rule into the right bounded context is often more valuable than one that adds a
-larger framework around the same behavior.
+Use this checklist to delete, defer, or right-size code as actively as you add
+it. A PR that removes an unused abstraction, narrows a smoke to the real
+contract, or moves a rule into the right bounded context is often more valuable
+than one that adds a larger framework around the same behavior.
 
 ## Automation And Monitor Todos
 
