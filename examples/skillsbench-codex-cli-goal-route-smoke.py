@@ -261,6 +261,64 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
     )
 
 
+def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.benchmark_adapters.skillsbench_acp_relay import (
+        CodexExecConfig,
+        SkillsBenchLocalAcpRelay,
+        _codex_cli_tui_retryable_startup_blocker_stage,
+    )
+    from scripts.skillsbench_automation_loop import (
+        _merge_host_local_acp_relay_trace_summary,
+        _public_runner_prerequisites,
+    )
+
+    assert (
+        _codex_cli_tui_retryable_startup_blocker_stage(
+            "Codex CLI\nrate limit reached\n› "
+        )
+        == "rate_limit_before_goal_active"
+    )
+    assert _codex_cli_tui_retryable_startup_blocker_stage("Goal active") == ""
+
+    with tempfile.TemporaryDirectory() as temp:
+        trace_dir = Path(temp) / "trace"
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(worker_public_trace_dir=str(trace_dir))
+        )
+        relay._publish_codex_cli_goal_trace(
+            ok=False,
+            stage="rate_limit_before_goal_active",
+            goal_active_observed=False,
+            goal_terminal_observed=False,
+            first_action_observed=False,
+            bridge_summary_path=None,
+        )
+        plan = {
+            "route": "codex-cli-goal-baseline",
+            "host_local_acp_relay_trace_dir": str(trace_dir),
+            "runner_prerequisites": {},
+        }
+        trace: dict[str, object] = {}
+        _merge_host_local_acp_relay_trace_summary(plan, trace)
+
+    prerequisites = plan["runner_prerequisites"]
+    assert trace["codex_cli_goal_tui_trace_present"] is True, trace
+    assert trace["codex_cli_goal_tui_ok_count"] == 0, trace
+    assert trace["codex_cli_goal_tui_stage"] == "rate_limit_before_goal_active"
+    assert trace["codex_cli_goal_tui_goal_active_observed_count"] == 0
+    assert trace["codex_cli_goal_tui_first_action_observed_count"] == 0
+    assert trace["codex_cli_goal_tui_raw_material_recorded"] is False, trace
+
+    public_prerequisites = _public_runner_prerequisites(prerequisites)
+    assert public_prerequisites["codex_cli_goal_tui_stage"] == (
+        "rate_limit_before_goal_active"
+    )
+    assert public_prerequisites["codex_cli_goal_tui_stages"] == [
+        "rate_limit_before_goal_active"
+    ]
+
+
 def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
@@ -333,6 +391,7 @@ def main() -> int:
     _assert_cli_goal_plan_and_relay_command()
     _assert_cli_goal_trace_merges_into_public_prerequisites()
     _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings()
+    _assert_cli_goal_rate_limit_is_public_safe_retryable_stage()
     _assert_cli_goal_input_is_submitted_as_one_buffer()
     _assert_cli_goal_codex_api_proxy_is_runtime_only()
     print("skillsbench-codex-cli-goal-route-smoke ok")

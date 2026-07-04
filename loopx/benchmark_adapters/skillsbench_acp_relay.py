@@ -482,6 +482,24 @@ def _recoverable_codex_turn_failure_message(category: str) -> str:
     )
 
 
+def _codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
+    """Classify public-safe Codex CLI TUI startup blockers from screen text."""
+
+    lowered = str(capture or "").lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "status 429",
+            "error 429",
+        )
+    ):
+        return "rate_limit_before_goal_active"
+    return ""
+
+
 def _write_process_stdin_async(
     proc: subprocess.Popen[str],
     stdin_text: str | None,
@@ -1231,6 +1249,28 @@ class SkillsBenchLocalAcpRelay:
                         goal_terminal_observed = True
                         goal_failed_observed = True
                         break
+                    retryable_startup_blocker_stage = ""
+                    if not goal_active_observed and not first_action_seen:
+                        retryable_startup_blocker_stage = (
+                            _codex_cli_tui_retryable_startup_blocker_stage(capture)
+                        )
+                    if retryable_startup_blocker_stage:
+                        self._tmux_kill_session(tmux_name)
+                        if bridge_summary_path is not None:
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage=retryable_startup_blocker_stage,
+                            goal_active_observed=goal_active_observed,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=first_action_seen,
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_cli_goal_" + retryable_startup_blocker_stage
+                        )
                     if bridge_summary_path is not None:
                         try:
                             current_bridge_summary_size = bridge_summary_path.stat().st_size
