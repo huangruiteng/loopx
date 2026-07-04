@@ -18,6 +18,9 @@ from loopx.event_sourced_state import (  # noqa: E402
     TODO_CLAIMED,
     make_state_event,
 )
+from loopx.control_plane.goals.active_state_event_projection import (  # noqa: E402
+    active_state_event_projection_fields as active_state_event_projection_fields_read_model,
+)
 from loopx.projections import active_state_todos as active_state_todos_read_model  # noqa: E402
 from loopx.status import active_state_todo_fields  # noqa: E402
 from loopx import status as status_module  # noqa: E402
@@ -108,6 +111,17 @@ def direct_active_state_todo_fields(goal: dict, *, runtime_root: Path | None = N
     )
 
 
+def direct_active_state_event_projection_fields(goal: dict, *, state_path: Path) -> dict:
+    return active_state_event_projection_fields_read_model(
+        goal,
+        state_path=state_path,
+        resolve_goal_local_path=status_module.resolve_goal_local_path,
+        parse_active_state_todos=status_module.parse_active_state_todos,
+        item_limit=status_module.MAX_STATUS_TODOS_PER_ROLE,
+        event_log_basename=status_module.STATE_EVENT_LOG_BASENAME,
+    )
+
+
 def test_event_projection_preferred() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-event-status-") as tmp:
         project = Path(tmp)
@@ -120,6 +134,10 @@ def test_event_projection_preferred() -> None:
             "repo": str(project),
             "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
         }
+        projection_fields = status_module.active_state_event_projection_fields(goal, state_path=state_path)
+        assert projection_fields == direct_active_state_event_projection_fields(goal, state_path=state_path), (
+            projection_fields
+        )
         fields = active_state_todo_fields(goal)
         assert fields == direct_active_state_todo_fields(goal), fields
         assert fields["state_event_projection"]["source"] == "event_log", fields
@@ -140,12 +158,24 @@ def test_markdown_fallback_without_valid_event_log() -> None:
             "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
         }
 
+        projection_fields = status_module.active_state_event_projection_fields(goal, state_path=state_path)
+        assert projection_fields == direct_active_state_event_projection_fields(goal, state_path=state_path), (
+            projection_fields
+        )
         fields = active_state_todo_fields(goal)
         assert fields == direct_active_state_todo_fields(goal), fields
         assert event_todo_ids(fields) == ["todo_markdown_stale"], fields
         assert "state_event_projection" not in fields, fields
 
         state_path.with_name("events.jsonl").write_text("{not json\n", encoding="utf-8")
+        corrupted_projection_fields = status_module.active_state_event_projection_fields(
+            goal,
+            state_path=state_path,
+        )
+        assert corrupted_projection_fields == direct_active_state_event_projection_fields(
+            goal,
+            state_path=state_path,
+        ), corrupted_projection_fields
         corrupted_fields = active_state_todo_fields(goal)
         assert corrupted_fields == direct_active_state_todo_fields(goal), corrupted_fields
         assert event_todo_ids(corrupted_fields) == ["todo_markdown_stale"], corrupted_fields
