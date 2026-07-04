@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -36,13 +35,16 @@ from .research_state import (
     build_research_evidence_graph_from_rollout_events,
     normalize_auto_research_action,
 )
-from ...agent_registry import registered_agent_ids_from_registry
+from ..multi_agent.role_successor import (
+    apply_role_successor_todos,
+    first_successor_followup,
+)
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
 from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from ...status import collect_status
-from ...todos import add_goal_todo, complete_goal_todo
+from ...todos import complete_goal_todo
 
 
 AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION = "auto_research_worker_turn_v0"
@@ -350,136 +352,6 @@ def _select_holdout_candidate(graph: dict[str, object]) -> dict[str, object]:
     )[0]
 
 
-def _value_at_path(payload: dict[str, object], path: str) -> object:
-    current: object = payload
-    for part in [part for part in path.split(".") if part]:
-        if not isinstance(current, dict) or part not in current:
-            return None
-        current = current[part]
-    return current
-
-
-def _compare_condition_value(actual: object, *, op: str, expected: object) -> bool:
-    if op in {"truthy", "exists"}:
-        return bool(actual)
-    if op in {"falsy", "missing"}:
-        return not bool(actual)
-    if op in {"eq", "=="}:
-        return actual == expected
-    if op in {"ne", "!="}:
-        return actual != expected
-    if op in {"gt", "gte", "lt", "lte", ">", ">=", "<", "<="}:
-        try:
-            actual_number = float(actual)  # type: ignore[arg-type]
-            expected_number = float(expected)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            return False
-        return {
-            "gt": actual_number > expected_number,
-            ">": actual_number > expected_number,
-            "gte": actual_number >= expected_number,
-            ">=": actual_number >= expected_number,
-            "lt": actual_number < expected_number,
-            "<": actual_number < expected_number,
-            "lte": actual_number <= expected_number,
-            "<=": actual_number <= expected_number,
-        }[op]
-    return False
-
-
-def _successor_condition_met(
-    condition: object,
-    *,
-    decision_summary: dict[str, object],
-) -> tuple[bool, str]:
-    if not condition:
-        return True, "always"
-    if condition == "always":
-        return True, "always"
-    if not isinstance(condition, dict):
-        return False, "unsupported_successor_condition_shape"
-
-    context: dict[str, object] = {"decision_summary": decision_summary}
-    predicates = condition.get("all")
-    if not isinstance(predicates, list):
-        return False, "unsupported_successor_condition_shape"
-    if not predicates:
-        return True, "all"
-
-    for raw_predicate in predicates:
-        if not isinstance(raw_predicate, dict):
-            return False, "unsupported_successor_predicate_shape"
-        path = str(raw_predicate.get("path") or "")
-        op = str(raw_predicate.get("op") or "truthy")
-        expected = raw_predicate.get("value")
-        actual = _value_at_path(context, path)
-        if not _compare_condition_value(actual, op=op, expected=expected):
-            return False, str(raw_predicate.get("fail_reason") or f"condition_failed:{path}")
-    return True, "condition_met"
-
-
-def _resolve_successor_target_agent(
-    *,
-    registry_path: Path,
-    goal_id: str,
-    current_agent_id: str,
-    spec: dict[str, object],
-) -> str:
-    registered = registered_agent_ids_from_registry(registry_path, goal_id)
-    target = str(spec.get("target_agent_id") or "").strip()
-    if target == "$current_agent":
-        return current_agent_id
-    if target and target in registered:
-        return target
-    if target:
-        raise ValueError(f"successor target_agent_id {target!r} is not registered for goal {goal_id!r}")
-    target_role_id = str(spec.get("target_role_id") or "").strip()
-    if target_role_id:
-        raise ValueError(
-            f"successor target_role_id {target_role_id!r} requires an explicit registered target_agent_id"
-        )
-    for agent_id in registered:
-        if agent_id != current_agent_id:
-            return agent_id
-    return current_agent_id
-
-
-class _SafeFormatDict(dict[str, object]):
-    def __missing__(self, key: str) -> str:
-        return "{" + key + "}"
-
-
-def _render_successor_command_template(
-    *,
-    template: object,
-    goal_id: str,
-    source_todo_id: str,
-    target_agent_id: str,
-    task_class: str,
-    action_kind: str,
-    text: str,
-) -> str | None:
-    if not template:
-        return None
-    if not isinstance(template, str):
-        raise ValueError("successor todo_command_template must be a string")
-    values: dict[str, object] = {
-        "goal_id": goal_id,
-        "goal_id_shell": shlex.quote(goal_id),
-        "source_todo_id": source_todo_id,
-        "source_todo_id_shell": shlex.quote(source_todo_id),
-        "target_agent_id": target_agent_id,
-        "target_agent_id_shell": shlex.quote(target_agent_id),
-        "task_class": task_class,
-        "task_class_shell": shlex.quote(task_class),
-        "action_kind": action_kind,
-        "action_kind_shell": shlex.quote(action_kind),
-        "text": text,
-        "text_shell": shlex.quote(text),
-    }
-    return template.format_map(_SafeFormatDict(values))
-
-
 def _maybe_add_role_successor_todos(
     *,
     registry_path: Path,
@@ -491,111 +363,17 @@ def _maybe_add_role_successor_todos(
     decision_summary: dict[str, object],
     execute: bool,
 ) -> dict[str, object]:
-    specs = auto_research_successor_specs_for_action(role_id=role_id, action=action)
-    if not specs:
-        return {
-            "schema_version": "auto_research_role_successor_todos_v0",
-            "source": "role_profile_todo_command_template",
-            "needed": False,
-            "reason": "no_role_successor_spec",
-            "role_id": role_id,
-            "action": action,
-            "successors": [],
-        }
-
-    successors: list[dict[str, object]] = []
-    skipped: list[dict[str, object]] = []
-    for index, spec in enumerate(specs):
-        condition = spec.get("condition") or spec.get("when") or "always"
-        condition_met, reason = _successor_condition_met(
-            condition,
-            decision_summary=decision_summary,
-        )
-        action_kind = str(spec.get("action_kind") or "advance_todo")
-        task_class = str(spec.get("task_class") or "advancement_task")
-        text = str(spec.get("text") or f"Run {action_kind}.")
-        claimed_by = _resolve_successor_target_agent(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            current_agent_id=agent_id,
-            spec=spec,
-        )
-        todo_command = _render_successor_command_template(
-            template=spec.get("todo_command_template"),
-            goal_id=goal_id,
-            source_todo_id=source_todo_id,
-            target_agent_id=claimed_by,
-            task_class=task_class,
-            action_kind=action_kind,
-            text=text,
-        )
-        successor_preview = {
-            "index": index,
-            "needed": condition_met,
-            "executed": False,
-            "condition": condition,
-            "reason": reason,
-            "target_agent_id": claimed_by,
-            "target_role_id": spec.get("target_role_id"),
-            "action_kind": action_kind,
-            "task_class": task_class,
-            "unblocks_todo_id": source_todo_id,
-            "todo_command": todo_command,
-            "source": "role_profile_todo_command_template",
-        }
-        if not condition_met:
-            skipped.append(successor_preview)
-            continue
-        if not execute:
-            successors.append(successor_preview)
-            continue
-        result = add_goal_todo(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            role="agent",
-            text=text,
-            task_class=task_class,
-            action_kind=action_kind,
-            claimed_by=claimed_by,
-            unblocks_todo_id=source_todo_id,
-            dry_run=False,
-        )
-        successors.append(
-            successor_preview
-            | {
-                "executed": True,
-                "added": bool(result.get("added")),
-                "already_exists": bool(result.get("already_exists")),
-                "metadata_updated": bool(result.get("metadata_updated")),
-                "todo_id": result.get("todo_id"),
-                "claimed_by": result.get("claimed_by") or claimed_by,
-                "action_kind": result.get("action_kind") or action_kind,
-                "unblocks_todo_id": result.get("unblocks_todo_id") or source_todo_id,
-            }
-        )
-    return {
-        "schema_version": "auto_research_role_successor_todos_v0",
-        "source": "role_profile_todo_command_template",
-        "needed": bool(successors),
-        "executed": bool(execute and successors),
-        "role_id": role_id,
-        "action": action,
-        "successors": successors,
-        "skipped": skipped,
-        "reason": None if successors else (skipped[0]["reason"] if skipped else "no_role_successor_spec"),
-    }
-
-
-def _legacy_followup_from_successor_todos(successor_todos: dict[str, object]) -> dict[str, object]:
-    successors = successor_todos.get("successors") if isinstance(successor_todos, dict) else []
-    if isinstance(successors, list) and successors:
-        first = dict(successors[0])
-        first["needed"] = True
-        return first
-    return {
-        "needed": False,
-        "reason": successor_todos.get("reason") if isinstance(successor_todos, dict) else "no_successor",
-    }
+    return apply_role_successor_todos(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        source_todo_id=source_todo_id,
+        current_agent_id=agent_id,
+        role_id=role_id,
+        action=action,
+        successor_specs=auto_research_successor_specs_for_action(role_id=role_id, action=action),
+        decision_summary=decision_summary,
+        execute=execute,
+    )
 
 
 def _generic_handoff_is_satisfied(
@@ -984,7 +762,7 @@ def run_auto_research_worker_turn(
             decision_summary=artifact["decision_summary"],
             execute=True,
         )
-        followup = _legacy_followup_from_successor_todos(successor_todos)
+        followup = first_successor_followup(successor_todos)
         completion = (
             _complete_selected_todo(
                 registry_path=registry_path,
@@ -1110,7 +888,7 @@ def run_auto_research_worker_turn(
             decision_summary=summary_artifact["decision_summary"],
             execute=True,
         )
-        followup = _legacy_followup_from_successor_todos(successor_todos)
+        followup = first_successor_followup(successor_todos)
         live_evidence: dict[str, object] | None = None
         if visible_lanes_accepted:
             live_evidence = build_live_codex_e2e_evidence_from_packet(
@@ -1237,7 +1015,7 @@ def run_auto_research_worker_turn(
         decision_summary=summary_artifact["decision_summary"],
         execute=True,
     )
-    followup = _legacy_followup_from_successor_todos(successor_todos)
+    followup = first_successor_followup(successor_todos)
 
     live_evidence: dict[str, object] | None = None
     if visible_lanes_accepted:

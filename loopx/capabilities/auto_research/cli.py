@@ -33,6 +33,12 @@ from .user_contract import (
     build_auto_research_user_contract,
     infer_auto_research_output_language,
 )
+from ..multi_agent.visible_launch_policy import (
+    make_visible_launcher_callback,
+    make_visible_wake_callback,
+    resolve_codex_trust_workspace,
+    resolve_visible_launch_policy,
+)
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...quota import build_quota_should_run
@@ -40,7 +46,6 @@ from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from ...status import collect_status
 from ...visible_multi_agent_launcher import (
     execute_visible_multi_agent_launcher,
-    wake_visible_multi_agent_panes,
 )
 
 
@@ -109,42 +114,6 @@ def _default_auto_research_start_workspace(goal_id: str) -> str:
         / _demo_goal_suffix(goal_id, fallback="run")
         / "visible-workspace"
     )
-
-
-def _start_wake_visible_after_launch(args: argparse.Namespace) -> bool:
-    """Return whether `auto-research start` should wake visible lanes after launch."""
-
-    if not args.execute or args.headless:
-        return False
-    wake_setting = getattr(args, "wake_visible_after_launch", None)
-    if wake_setting is None and getattr(args, "attach", False):
-        return False
-    return bool(wake_setting is not False)
-
-
-def _start_attach_visible(args: argparse.Namespace, *, wake_visible_after_launch: bool) -> bool:
-    """Return whether `auto-research start` should attach to visible lanes."""
-
-    launch_visible = bool(args.execute and not args.headless)
-    return bool(
-        args.attach
-        or (
-            launch_visible
-            and not args.no_attach
-            and not wake_visible_after_launch
-        )
-    )
-
-
-def _start_codex_trust_workspace(args: argparse.Namespace) -> bool:
-    """Return whether visible start should avoid Codex's workspace trust prompt."""
-
-    if not args.execute or args.headless:
-        return False
-    trust_setting = getattr(args, "codex_trust_workspace", None)
-    if trust_setting is None:
-        return True
-    return bool(trust_setting)
 
 
 def _resolve_demo_goal_surface(
@@ -892,14 +861,17 @@ def handle_auto_research_command(
                 output_language=args.language,
             )
         elif args.auto_research_command == "start":
-            if args.no_attach and args.attach:
-                raise ValueError("--attach cannot be combined with --no-attach")
-            wake_visible_after_launch = _start_wake_visible_after_launch(args)
-            if args.wake_visible_after_launch is True and args.attach:
-                raise ValueError(
+            launch_visible = bool(args.execute and not args.headless)
+            visible_policy = resolve_visible_launch_policy(
+                args,
+                launch_visible=launch_visible,
+                default_wake_allowed=launch_visible,
+                default_attach_allowed=launch_visible,
+                attach_wake_conflict_message=(
                     "--attach cannot be combined with --wake-visible-after-launch; "
                     "choose operator takeover (--attach) or evidence-first wake (--no-attach)"
-                )
+                ),
+            )
             goal_id, goal_surface_mode = _resolve_demo_goal_surface(
                 goal_id=args.goal_id,
                 demo_run_id=args.demo_run_id,
@@ -920,48 +892,36 @@ def handle_auto_research_command(
 
             visible_launcher: Callable[[dict[str, object], Path, str | None, Path], dict[str, object]] | None = None
             visible_wake: Callable[[str, list[str]], dict[str, object]] | None = None
-            launch_visible = bool(args.execute and not args.headless)
-            attach_visible = _start_attach_visible(
+            codex_trust_visible_workspace = resolve_codex_trust_workspace(
                 args,
-                wake_visible_after_launch=wake_visible_after_launch,
+                launch_visible=visible_policy.launch_visible,
+                default=True,
             )
-            codex_trust_visible_workspace = _start_codex_trust_workspace(args)
-            if launch_visible:
-                def visible_launcher(
-                    supervisor: dict[str, object],
-                    visible_registry_path: Path,
-                    visible_runtime_root_arg: str | None,
-                    _default_workspace: Path,
-                ) -> dict[str, object]:
-                    default_start_workspace = args.workspace is None
-                    visible_workspace = (
-                        _default_auto_research_start_workspace(goal_id)
-                        if default_start_workspace
-                        else args.workspace
-                    )
-                    create_visible_workspace = True if default_start_workspace else args.create_workspace
-                    return _execute_auto_research_demo_supervisor(
-                        supervisor,
-                        registry_path=visible_registry_path,
-                        runtime_root_arg=visible_runtime_root_arg,
-                        launcher=args.launcher,
-                        tmux_bin=args.tmux_bin,
-                        cli_bin=args.cli_bin,
-                        codex_bin=args.codex_bin,
-                        attach=attach_visible,
-                        replace_existing=args.replace_existing,
-                        workspace=visible_workspace,
-                        create_workspace=create_visible_workspace,
-                        codex_trust_workspace=codex_trust_visible_workspace,
-                    )
 
-                def visible_wake(session: str, lanes: list[str]) -> dict[str, object]:
-                    return wake_visible_multi_agent_panes(
-                        session_name=session,
-                        tmux_bin=args.tmux_bin,
-                        lanes=lanes,
-                        execute=True,
-                    )
+            def start_workspace_policy(_default_workspace: Path) -> tuple[str | None, bool, bool]:
+                default_start_workspace = args.workspace is None
+                return (
+                    _default_auto_research_start_workspace(goal_id)
+                    if default_start_workspace
+                    else args.workspace,
+                    True if default_start_workspace else args.create_workspace,
+                    codex_trust_visible_workspace,
+                )
+
+            visible_launcher = make_visible_launcher_callback(
+                launch_visible=visible_policy.launch_visible,
+                launch_executor=_execute_auto_research_demo_supervisor,
+                launcher=args.launcher,
+                tmux_bin=args.tmux_bin,
+                cli_bin=args.cli_bin,
+                codex_bin=args.codex_bin,
+                attach=visible_policy.attach,
+                replace_existing=args.replace_existing,
+                workspace_policy=start_workspace_policy,
+            )
+
+            if visible_policy.launch_visible:
+                visible_wake = make_visible_wake_callback(tmux_bin=args.tmux_bin)
 
             payload = run_auto_research_demo_e2e(
                 agent_id=AUTO_RESEARCH_START_AGENT_ID,
@@ -974,7 +934,7 @@ def handle_auto_research_command(
                 execute=args.execute,
                 run_worker_loop=bool(args.execute and args.headless),
                 worker_loop_rounds=args.worker_loop_rounds,
-                launch_visible=launch_visible,
+                launch_visible=visible_policy.launch_visible,
                 keep_workspace=args.keep_workspace,
                 registry_path=registry_path,
                 runtime_root_arg=runtime_root_arg,
@@ -988,7 +948,7 @@ def handle_auto_research_command(
                 append_evidence=append_start_evidence,
                 visible_launcher=visible_launcher,
                 visible_wake=visible_wake,
-                wake_visible_after_launch=wake_visible_after_launch,
+                wake_visible_after_launch=visible_policy.wake_visible_after_launch,
             )
         elif args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):
@@ -1181,58 +1141,44 @@ def handle_auto_research_command(
             visible_wake: Callable[[str, list[str]], dict[str, object]] | None = None
             auto_visible_launch = bool(args.execute and not args.headless)
             launch_visible = bool(args.launch_visible or auto_visible_launch)
-            if args.no_attach and args.attach:
-                raise ValueError("--attach cannot be combined with --no-attach")
-            wake_visible_after_launch = _start_wake_visible_after_launch(args)
-            if args.wake_visible_after_launch is True and args.attach:
-                raise ValueError(
+            visible_policy = resolve_visible_launch_policy(
+                args,
+                launch_visible=launch_visible,
+                default_wake_allowed=auto_visible_launch,
+                default_attach_allowed=auto_visible_launch,
+                attach_wake_conflict_message=(
                     "--wake-visible-after-launch cannot be combined with --attach; "
                     "wake evidence must be recorded before operator takeover"
-                )
-            attach_visible = _start_attach_visible(
-                args,
-                wake_visible_after_launch=wake_visible_after_launch,
+                ),
             )
-            if launch_visible:
-                def visible_launcher(
-                    supervisor: dict[str, object],
-                    visible_registry_path: Path,
-                    visible_runtime_root_arg: str | None,
-                    _default_workspace: Path,
-                ) -> dict[str, object]:
-                    demo_owned_workspace = args.workspace is None
-                    visible_workspace = (
-                        str(_default_workspace / "visible-user-workspace")
-                        if demo_owned_workspace
-                        else args.workspace
-                    )
-                    create_visible_workspace = True if demo_owned_workspace else args.create_workspace
-                    codex_trust_workspace = (
-                        demo_owned_workspace
-                        if args.codex_trust_workspace is None
-                        else bool(args.codex_trust_workspace)
-                    )
-                    return _execute_auto_research_demo_supervisor(
-                        supervisor,
-                        registry_path=visible_registry_path,
-                        runtime_root_arg=visible_runtime_root_arg,
-                        launcher=args.launcher,
-                        tmux_bin=args.tmux_bin,
-                        cli_bin=args.cli_bin,
-                        codex_bin=args.codex_bin,
-                        attach=attach_visible,
-                        replace_existing=args.replace_existing,
-                        workspace=visible_workspace,
-                        create_workspace=create_visible_workspace,
-                        codex_trust_workspace=codex_trust_workspace,
-                    )
-                def visible_wake(session: str, lanes: list[str]) -> dict[str, object]:
-                    return wake_visible_multi_agent_panes(
-                        session_name=session,
-                        tmux_bin=args.tmux_bin,
-                        lanes=lanes,
-                        execute=True,
-                    )
+            def demo_workspace_policy(default_workspace: Path) -> tuple[str | None, bool, bool]:
+                demo_owned_workspace = args.workspace is None
+                return (
+                    str(default_workspace / "visible-user-workspace")
+                    if demo_owned_workspace
+                    else args.workspace,
+                    True if demo_owned_workspace else args.create_workspace,
+                    resolve_codex_trust_workspace(
+                        args,
+                        launch_visible=visible_policy.launch_visible,
+                        default=demo_owned_workspace,
+                    ),
+                )
+
+            visible_launcher = make_visible_launcher_callback(
+                launch_visible=visible_policy.launch_visible,
+                launch_executor=_execute_auto_research_demo_supervisor,
+                launcher=args.launcher,
+                tmux_bin=args.tmux_bin,
+                cli_bin=args.cli_bin,
+                codex_bin=args.codex_bin,
+                attach=visible_policy.attach,
+                replace_existing=args.replace_existing,
+                workspace_policy=demo_workspace_policy,
+            )
+
+            if visible_policy.launch_visible:
+                visible_wake = make_visible_wake_callback(tmux_bin=args.tmux_bin)
 
             run_hidden_worker_loop = bool(args.execute and (args.headless or args.run_worker_loop))
             payload = run_auto_research_demo_e2e(
@@ -1246,7 +1192,7 @@ def handle_auto_research_command(
                 execute=args.execute,
                 run_worker_loop=run_hidden_worker_loop,
                 worker_loop_rounds=args.worker_loop_rounds,
-                launch_visible=launch_visible,
+                launch_visible=visible_policy.launch_visible,
                 keep_workspace=args.keep_workspace,
                 registry_path=registry_path,
                 runtime_root_arg=runtime_root_arg,
@@ -1263,7 +1209,7 @@ def handle_auto_research_command(
                 append_evidence=append_demo_e2e_evidence,
                 visible_launcher=visible_launcher,
                 visible_wake=visible_wake,
-                wake_visible_after_launch=wake_visible_after_launch,
+                wake_visible_after_launch=visible_policy.wake_visible_after_launch,
                 visible_live_evidence_wait_seconds=args.visible_live_evidence_wait_seconds,
             )
         else:

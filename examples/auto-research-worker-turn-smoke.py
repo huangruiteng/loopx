@@ -278,6 +278,7 @@ def main() -> int:
         assert executed["live_evidence"]["written"] is True, executed
         assert executed["live_evidence"]["evidence_source"] == "live_codex_lane_output", executed
         assert executed["live_evidence"]["dev_metric"] == 4.0, executed
+        assert executed["successor_todos"]["schema_version"] == "multi_agent_role_successor_todos_v0", executed
         assert executed["successor_todos"]["source"] == "role_profile_todo_command_template", executed
         assert executed["successor_todos"]["role_id"] == "evidence_runner", executed
         assert executed["successor_todos"]["action"] == "run_dev_eval", executed

@@ -23,13 +23,14 @@ from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
 )
 from loopx.capabilities.auto_research.cli import (  # noqa: E402
     _default_auto_research_start_workspace,
-    _start_attach_visible,
-    _start_codex_trust_workspace,
-    _start_wake_visible_after_launch,
 )
 from loopx.capabilities.auto_research.bootstrap_contract import (  # noqa: E402
     auto_research_start_command_text,
     build_auto_research_contract_acceptance,
+)
+from loopx.capabilities.multi_agent.visible_launch_policy import (  # noqa: E402
+    resolve_codex_trust_workspace,
+    resolve_visible_launch_policy,
 )
 
 
@@ -184,13 +185,32 @@ def assert_start_wake_contract() -> None:
         encoding="utf-8"
     )
     assert "wake_visible_after_launch=bool(args.wake_visible_after_launch)" not in cli_source
-    assert cli_source.count("wake_visible_after_launch = _start_wake_visible_after_launch(args)") == 2
-    assert "codex_trust_visible_workspace = _start_codex_trust_workspace(args)" in cli_source
+    assert "def _start_wake_visible_after_launch" not in cli_source
+    assert "def _start_attach_visible" not in cli_source
+    assert "def _start_codex_trust_workspace" not in cli_source
+    assert "wake_visible_multi_agent_panes" not in cli_source
+    assert "resolve_visible_launch_policy" in cli_source
+    assert "make_visible_launcher_callback" in cli_source
     start_source = cli_source.split('elif args.auto_research_command == "start":', 1)[1].split(
         'elif args.auto_research_command == "demo-supervisor":',
         1,
     )[0]
     assert "if args.codex_trust_workspace is None" not in start_source
+
+    def start_policy(args: Namespace):
+        return resolve_visible_launch_policy(
+            args,
+            launch_visible=bool(args.execute and not args.headless),
+            default_wake_allowed=bool(args.execute and not args.headless),
+            default_attach_allowed=bool(args.execute and not args.headless),
+        )
+
+    def trust(args: Namespace) -> bool:
+        return resolve_codex_trust_workspace(
+            args,
+            launch_visible=bool(args.execute and not args.headless),
+            default=True,
+        )
 
     default_visible = Namespace(
         execute=True,
@@ -200,15 +220,10 @@ def assert_start_wake_contract() -> None:
         no_attach=False,
         codex_trust_workspace=None,
     )
-    assert _start_wake_visible_after_launch(default_visible) is True
-    assert _start_codex_trust_workspace(default_visible) is True
-    assert (
-        _start_attach_visible(
-            default_visible,
-            wake_visible_after_launch=_start_wake_visible_after_launch(default_visible),
-        )
-        is False
-    )
+    default_policy = start_policy(default_visible)
+    assert default_policy.wake_visible_after_launch is True
+    assert trust(default_visible) is True
+    assert default_policy.attach is False
 
     attach_takeover = Namespace(
         execute=True,
@@ -218,15 +233,10 @@ def assert_start_wake_contract() -> None:
         no_attach=False,
         codex_trust_workspace=None,
     )
-    assert _start_wake_visible_after_launch(attach_takeover) is False
-    assert _start_codex_trust_workspace(attach_takeover) is True
-    assert (
-        _start_attach_visible(
-            attach_takeover,
-            wake_visible_after_launch=_start_wake_visible_after_launch(attach_takeover),
-        )
-        is True
-    )
+    takeover_policy = start_policy(attach_takeover)
+    assert takeover_policy.wake_visible_after_launch is False
+    assert trust(attach_takeover) is True
+    assert takeover_policy.attach is True
 
     explicit_wake = Namespace(
         execute=True,
@@ -236,15 +246,10 @@ def assert_start_wake_contract() -> None:
         no_attach=False,
         codex_trust_workspace=None,
     )
-    assert _start_wake_visible_after_launch(explicit_wake) is True
-    assert _start_codex_trust_workspace(explicit_wake) is True
-    assert (
-        _start_attach_visible(
-            explicit_wake,
-            wake_visible_after_launch=_start_wake_visible_after_launch(explicit_wake),
-        )
-        is False
-    )
+    explicit_wake_policy = start_policy(explicit_wake)
+    assert explicit_wake_policy.wake_visible_after_launch is True
+    assert trust(explicit_wake) is True
+    assert explicit_wake_policy.attach is False
 
     manual_takeover = Namespace(
         execute=True,
@@ -254,15 +259,10 @@ def assert_start_wake_contract() -> None:
         no_attach=False,
         codex_trust_workspace=None,
     )
-    assert _start_wake_visible_after_launch(manual_takeover) is False
-    assert _start_codex_trust_workspace(manual_takeover) is True
-    assert (
-        _start_attach_visible(
-            manual_takeover,
-            wake_visible_after_launch=_start_wake_visible_after_launch(manual_takeover),
-        )
-        is True
-    )
+    manual_policy = start_policy(manual_takeover)
+    assert manual_policy.wake_visible_after_launch is False
+    assert trust(manual_takeover) is True
+    assert manual_policy.attach is True
 
     background_manual = Namespace(
         execute=True,
@@ -272,15 +272,10 @@ def assert_start_wake_contract() -> None:
         no_attach=True,
         codex_trust_workspace=None,
     )
-    assert _start_wake_visible_after_launch(background_manual) is False
-    assert _start_codex_trust_workspace(background_manual) is True
-    assert (
-        _start_attach_visible(
-            background_manual,
-            wake_visible_after_launch=_start_wake_visible_after_launch(background_manual),
-        )
-        is False
-    )
+    background_policy = start_policy(background_manual)
+    assert background_policy.wake_visible_after_launch is False
+    assert trust(background_manual) is True
+    assert background_policy.attach is False
 
     headless = Namespace(
         execute=True,
@@ -290,15 +285,10 @@ def assert_start_wake_contract() -> None:
         no_attach=False,
         codex_trust_workspace=None,
     )
-    assert _start_wake_visible_after_launch(headless) is False
-    assert _start_codex_trust_workspace(headless) is False
-    assert (
-        _start_attach_visible(
-            headless,
-            wake_visible_after_launch=_start_wake_visible_after_launch(headless),
-        )
-        is False
-    )
+    headless_policy = start_policy(headless)
+    assert headless_policy.wake_visible_after_launch is False
+    assert trust(headless) is False
+    assert headless_policy.attach is False
 
     explicit_no_trust = Namespace(
         execute=True,
@@ -308,7 +298,7 @@ def assert_start_wake_contract() -> None:
         no_attach=False,
         codex_trust_workspace=False,
     )
-    assert _start_codex_trust_workspace(explicit_no_trust) is False
+    assert trust(explicit_no_trust) is False
 
     explicit_trust = Namespace(
         execute=True,
@@ -318,7 +308,7 @@ def assert_start_wake_contract() -> None:
         no_attach=False,
         codex_trust_workspace=True,
     )
-    assert _start_codex_trust_workspace(explicit_trust) is True
+    assert trust(explicit_trust) is True
 
 
 def main() -> None:

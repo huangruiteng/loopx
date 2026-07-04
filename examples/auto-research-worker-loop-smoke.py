@@ -116,8 +116,8 @@ def main() -> int:
         assert payload["ok"] is True, payload
         assert payload["schema_version"] == "auto_research_worker_loop_v0", payload
         assert payload["mode"] == "execute", payload
-        assert payload["executed_turn_count"] == 5, payload
-        assert payload["completed_turn_count"] == 5, payload
+        assert payload["executed_turn_count"] == 6, payload
+        assert payload["completed_turn_count"] == 6, payload
         assert payload["stop_reason"] == "no_runnable_frontier", payload
         assert payload["selected_actions"] == [
             "write_research_contract",
@@ -125,6 +125,7 @@ def main() -> int:
             "run_dev_eval",
             "summarize_evidence",
             "run_holdout_eval",
+            "write_evaluation_summary",
         ], payload
         evidence_turn = next(
             turn for turn in payload["turns"] if turn.get("selected_action") == "run_dev_eval"
@@ -143,6 +144,11 @@ def main() -> int:
         )
         assert holdout_turn["holdout_metric"] == 4.5, holdout_turn
         assert holdout_turn["completion_status"] == "done", holdout_turn
+        summary_turn = next(
+            turn for turn in payload["turns"] if turn.get("selected_action") == "write_evaluation_summary"
+        )
+        assert summary_turn["completion_status"] == "done", summary_turn
+        assert summary_turn["selected_todo_id"], summary_turn
         final_round = [turn for turn in payload["turns"] if turn.get("round") == 3]
         assert final_round and all(turn["mode"] == "no_action" for turn in final_round), payload
         assert_public_safe(payload)
