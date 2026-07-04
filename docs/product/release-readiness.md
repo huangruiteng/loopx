@@ -93,6 +93,15 @@ path, and canary route rather than as a user-facing release baseline.
   commit `c036d60e`. This release improved quota/status/runtime routing,
   monitor and scheduler projection, release packaging coverage, and
   outcome-floor recovery for stuck or low-progress loops.
+- `v0.1.6` on 2026-07-03 17:07 +08:00: visible multi-agent startup hardening
+  at commit `1e3df9df`. This release made auto-research startup easier to see
+  and trigger, clarified decentralized pane routing, tightened monitor and
+  scheduler projection, and expanded the Codex CLI first-run release checks.
+- `v0.1.7` on 2026-07-04 12:52 +08:00: command-entry integration release at
+  the matching `v0.1.7` tag. This release made the supported entry layer
+  explicit: Codex installs LoopX command-facade skills such as `$loopx`, Claude
+  Code gets matching skill entries, legacy prompt shims are retired, and the
+  rich workflow skills remain available for implicit LoopX behavior.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
