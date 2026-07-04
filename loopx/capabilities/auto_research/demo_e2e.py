@@ -7,6 +7,12 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from .bootstrap_contract import (
+    auto_research_contract_command_text,
+    auto_research_start_command_text,
+    build_auto_research_contract_acceptance,
+    build_auto_research_live_worker_proof,
+)
 from .demo_supervisor import build_auto_research_demo_supervisor_plan
 from .defaults import AUTO_RESEARCH_DEFAULT_GOAL_ID
 from .live_evidence import load_live_codex_e2e_evidence
@@ -264,137 +270,6 @@ def _command_text(
     if wake_visible_after_launch:
         parts.append("--wake-visible-after-launch")
     return " ".join(parts)
-
-
-def _contract_command_text(*, cli_bin: str, objective: str) -> str:
-    return f"{shlex.quote(cli_bin)} auto-research {shlex.quote(str(objective).strip())}"
-
-
-def _start_command_text(
-    *,
-    cli_bin: str,
-    objective: str,
-    execute: bool = False,
-    headless: bool = False,
-    no_attach: bool = False,
-    wake_visible_after_launch: bool = False,
-    output_language: str = "en",
-) -> str:
-    parts = [
-        shlex.quote(cli_bin),
-        "auto-research",
-        "start",
-        shlex.quote(str(objective).strip()),
-    ]
-    if execute:
-        parts.append("--execute")
-    if output_language and output_language != "en":
-        parts.extend(["--language", shlex.quote(output_language)])
-    if headless:
-        parts.append("--headless")
-    if no_attach:
-        parts.append("--no-attach")
-    if wake_visible_after_launch:
-        parts.append("--wake-visible-after-launch")
-    return " ".join(parts)
-
-
-def _contract_acceptance(user_contract: dict[str, object]) -> dict[str, object]:
-    command = (
-        user_contract.get("command_contract")
-        if isinstance(user_contract.get("command_contract"), dict)
-        else {}
-    )
-    required_outputs = (
-        command.get("auto_research_required_outputs")
-        if isinstance(command.get("auto_research_required_outputs"), list)
-        else []
-    )
-    output_field_map = {
-        "research_brief": "research_brief",
-        "action_plan": "action_plan",
-        "evidence_refs": "evidence_refs",
-        "next_executable_step": "next_executable_step",
-        "gate": "gate",
-    }
-    present_outputs = [
-        output
-        for output in required_outputs
-        if user_contract.get(output_field_map.get(str(output), "")) is not None
-    ]
-    action_plan = user_contract.get("action_plan")
-    gate = user_contract.get("gate") if isinstance(user_contract.get("gate"), dict) else {}
-    next_step = (
-        user_contract.get("next_executable_step")
-        if isinstance(user_contract.get("next_executable_step"), dict)
-        else {}
-    )
-    one_click_start = (
-        user_contract.get("one_click_start")
-        if isinstance(user_contract.get("one_click_start"), dict)
-        else {}
-    )
-    checks = {
-        "one_question_input": user_contract.get("open_question") not in (None, ""),
-        "required_outputs_present": len(present_outputs) == len(required_outputs),
-        "action_plan_bounded": isinstance(action_plan, list) and 0 < len(action_plan) <= 5,
-        "next_step_automatic_by_default": next_step.get("can_run_automatically") is True,
-        "gate_present": bool(gate.get("user_judgment_needed")),
-        "canonical_invocation_short": (
-            command.get("canonical_invocation") == 'loopx auto-research "<open question>"'
-        ),
-        "one_click_start_present": (
-            one_click_start.get("command_template")
-            == 'loopx auto-research start "<open question>" --execute'
-        ),
-        "one_click_start_uses_generic_kernel": (
-            one_click_start.get("uses_generic_kernel") is True
-            and one_click_start.get("coordination_model") == "decentralized_state_a2a"
-        ),
-    }
-    accepted = all(checks.values())
-    return {
-        "schema_version": "auto_research_user_contract_acceptance_v0",
-        "accepted": accepted,
-        "canonical_invocation": command.get("canonical_invocation"),
-        "required_outputs": required_outputs,
-        "present_outputs": present_outputs,
-        "checks": checks,
-        "missing_outputs": [
-            output for output in required_outputs if output not in present_outputs
-        ],
-        "public_boundary": {
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "absolute_paths_recorded": False,
-            "credentials_recorded": False,
-        },
-    }
-
-
-def _visible_worker_proof(*, launch_visible: bool) -> dict[str, object]:
-    return {
-        "schema_version": "auto_research_visible_worker_proof_v0",
-        "lane_authored_evidence_loaded": False,
-        "pane_local_a2a_rounds_loaded": False,
-        "pane_local_a2a_round_count": 0,
-        "decentralized_a2a_rounds_verified": False,
-        "cadence_wake_loaded": False,
-        "cadence_wake_verified": False,
-        "visible_lanes_launched": bool(launch_visible),
-        "visible_lanes_accepted": False,
-        "evidence_source": "not_loaded",
-        "reason": (
-            "demo-e2e launches real visible Codex worker panes and can load compact "
-            "lane-authored evidence; presentation-specific reporting stays outside "
-            "the auto-research kernel."
-        ),
-        "next_step": [
-            "let each visible pane run its LoopX frontier tick",
-            "append public-safe lane evidence into LoopX state",
-            "optionally pass --live-evidence to summarize the compact evidence",
-        ],
-    }
 
 
 def _supervisor_summary(supervisor: dict[str, object]) -> dict[str, object]:
@@ -916,7 +791,7 @@ def run_auto_research_demo_e2e(
         objective,
         output_language=output_language,
     )
-    contract_acceptance = _contract_acceptance(user_contract)
+    contract_acceptance = build_auto_research_contract_acceptance(user_contract)
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,
         agent_specs=effective_agent_specs,
@@ -974,22 +849,22 @@ def run_auto_research_demo_e2e(
         "user_contract": user_contract,
         "contract_acceptance": contract_acceptance,
         "commands": {
-            "one_question_contract": _contract_command_text(
+            "one_question_contract": auto_research_contract_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
             ),
-            "one_question_start": _start_command_text(
+            "one_question_start": auto_research_start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
                 execute=True,
                 output_language=output_language,
             ),
-            "one_question_start_preview": _start_command_text(
+            "one_question_start_preview": auto_research_start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
                 output_language=output_language,
             ),
-            "one_question_start_with_visible_wake": _start_command_text(
+            "one_question_start_with_visible_wake": auto_research_start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
                 execute=True,
@@ -1071,7 +946,9 @@ def run_auto_research_demo_e2e(
             "launches_visible_lanes": bool(launch_visible),
             "visible_codex_sessions_recorded": False,
         },
-        "visible_worker_proof": _visible_worker_proof(launch_visible=launch_visible),
+        "visible_worker_proof": build_auto_research_live_worker_proof(
+            launch_visible=launch_visible,
+        ),
     }
     if not execute:
         payload["worker_loop_preview"] = {

@@ -27,6 +27,10 @@ from loopx.capabilities.auto_research.cli import (  # noqa: E402
     _start_codex_trust_workspace,
     _start_wake_visible_after_launch,
 )
+from loopx.capabilities.auto_research.bootstrap_contract import (  # noqa: E402
+    auto_research_start_command_text,
+    build_auto_research_contract_acceptance,
+)
 
 
 QUESTION = "How should LoopX make visible multi-agent auto research useful?"
@@ -303,6 +307,16 @@ def main() -> None:
     )
     assert zh_payload["output_language"]["resolved"] == "zh", zh_payload
     assert " --language zh --execute" in zh_payload["one_click_start"]["command"], zh_payload
+    assert (
+        auto_research_start_command_text(
+            cli_bin="loopx",
+            objective="如何评估 multi-agent auto research 是否有收益?",
+            execute=True,
+            output_language="zh",
+        )
+        == "loopx auto-research start '如何评估 multi-agent auto research 是否有收益?' --language zh --execute"
+    )
+    assert build_auto_research_contract_acceptance(zh_payload)["accepted"] is True
     assert_start_wake_contract()
     default_workspace = Path(
         _default_auto_research_start_workspace("loopx-auto-research-demo-smoke")

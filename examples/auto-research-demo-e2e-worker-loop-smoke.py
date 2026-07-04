@@ -525,6 +525,8 @@ def main() -> int:
         assert "--no-attach" in payload["commands"]["start_visible_lanes_without_attach"], payload
         visible_proof = payload["visible_worker_proof"]
         assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
+        assert visible_proof["owner_layer"] == "generic_multi_agent_kernel", visible_proof
+        assert visible_proof["user_facing_by_default"] is False, visible_proof
         assert visible_proof["lane_authored_evidence_loaded"] is False, visible_proof
         assert visible_proof["visible_lanes_launched"] is False, visible_proof
         removed_replay_source = "deterministic_" + "protected_eval_kernel"
@@ -592,6 +594,8 @@ def main() -> int:
                 ), visible_driver
                 visible_proof = visible_payload["visible_worker_proof"]
                 assert visible_proof["schema_version"] == "auto_research_visible_worker_proof_v0", visible_proof
+                assert visible_proof["owner_layer"] == "generic_multi_agent_kernel", visible_proof
+                assert visible_proof["user_facing_by_default"] is False, visible_proof
                 assert visible_proof["lane_authored_evidence_loaded"] is True, visible_proof
                 assert visible_proof["evidence_source"] == "visible_launcher_artifact", visible_proof
                 assert visible_proof["visible_lanes_launched"] is True, visible_proof
