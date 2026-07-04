@@ -795,6 +795,27 @@ no-op status repetition. Another failure mode is presenting monitor-only work
 as an immediate Codex action; the agent then keeps trying to deliver from a
 watch lane instead of staying quiet or writing a concrete blocker.
 
+**Public-safe bad case**
+
+The 2026-06-21 monitor-only replan stall is the canonical public-safe bad case
+for this pattern. Its reusable shape is not tied to any private project:
+
+```text
+effective_action=monitor_quiet_skip
+user_channel.action_required=false
+user_todo_summary.open_count=0
+agent todo lane contains only monitor-style work
+recent history repeats monitor-poll / replan-adjacent rows
+no runnable todo, blocker, successor, supersede, or watch-lane expiry changed
+```
+
+Catalog and dashboard copy should name that as a watch state. A watch lane may
+remain visible, and it may append one no-spend liveness poll, but it must not
+render as immediate Codex delivery or as a user/controller approval gate. If
+the same watch target repeats past the stale threshold, IP-024 owns the repair
+delta: write a blocker, successor, supersede, or explicit watch-lane
+continuation rather than spending another delivery turn on prose.
+
 **Validation**
 
 - `examples/control_plane/heartbeat-quota-flow-smoke.py`
