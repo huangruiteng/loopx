@@ -19,12 +19,16 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "loopx-auto-research-demo-layered-acceptance"
-AGENT_ID = "codex-side-bypass"
+AGENT_ID = "auto-research-operator"
 EXPECTED_ACTIONS = [
     "write_research_contract",
     "propose_hypothesis",
     "run_dev_eval",
     "summarize_evidence",
+    "run_holdout_eval",
+    "write_evaluation_summary",
+    "propose_hypothesis",
+    "run_dev_eval",
     "run_holdout_eval",
     "write_evaluation_summary",
 ]
@@ -192,11 +196,17 @@ def assert_three_layer_minimality() -> None:
 
     lanes = supervisor["lanes"]
     assert len(lanes) == 4, supervisor
+    assert [lane["agent_id"] for lane in lanes] == [
+        "research-curator",
+        "hypothesis-proposer",
+        "research-executor",
+        "evaluator-promoter",
+    ], supervisor
     assert [lane["role_id"] for lane in lanes] == [
         "research_curator",
-        "hypothesis_mapper",
-        "evidence_runner",
-        "evidence_verifier",
+        "hypothesis_proposer",
+        "research_executor",
+        "evaluator_promoter",
     ], supervisor
     for lane in lanes:
         assert lane["pane_local_a2a"]["auto_start"] is True, lane
@@ -256,16 +266,34 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert worker_loop["schema_version"] == "auto_research_worker_loop_v0", worker_loop
     assert worker_loop["mode"] == "execute", worker_loop
     assert worker_loop["selected_actions"] == EXPECTED_ACTIONS, worker_loop
-    assert worker_loop["executed_turn_count"] == 6, worker_loop
-    assert worker_loop["completed_turn_count"] == 6, worker_loop
-    assert worker_loop["stop_reason"] == "no_runnable_frontier", worker_loop
+    assert worker_loop["executed_turn_count"] == 10, worker_loop
+    assert worker_loop["completed_turn_count"] == 10, worker_loop
+    assert worker_loop["stop_reason"] == "max_rounds", worker_loop
 
     turns = worker_loop["turns"]
     executed = [turn for turn in turns if turn["executed"]]
-    assert {turn["round"] for turn in executed} == {1, 2}, executed
-    dev_turn = next(turn for turn in executed if turn["selected_action"] == "run_dev_eval")
+    assert {turn["round"] for turn in executed} == {1, 2, 3, 4}, executed
+    dev_turn = next(
+        turn
+        for turn in executed
+        if turn["selected_action"] == "run_dev_eval" and turn.get("demo_iteration") == 1
+    )
     summary_turn = next(turn for turn in executed if turn["selected_action"] == "summarize_evidence")
-    holdout_turn = next(turn for turn in executed if turn["selected_action"] == "run_holdout_eval")
+    refined_dev_turn = next(
+        turn
+        for turn in executed
+        if turn["selected_action"] == "run_dev_eval" and turn.get("demo_iteration") == 2
+    )
+    holdout_turn = next(
+        turn
+        for turn in executed
+        if turn["selected_action"] == "run_holdout_eval" and turn.get("demo_iteration") == 1
+    )
+    refined_holdout_turn = next(
+        turn
+        for turn in executed
+        if turn["selected_action"] == "run_holdout_eval" and turn.get("demo_iteration") == 2
+    )
     evaluation_turn = next(
         turn for turn in executed if turn["selected_action"] == "write_evaluation_summary"
     )
@@ -275,25 +303,36 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert dev_turn["live_evidence_written"] is True, dev_turn
     assert summary_turn["round"] == 1, summary_turn
     assert summary_turn["completion_status"] == "done", summary_turn
+    assert refined_dev_turn["round"] == 3, refined_dev_turn
+    assert refined_dev_turn["dev_metric"] == 4.8, refined_dev_turn
+    assert refined_dev_turn["live_evidence_written"] is True, refined_dev_turn
     assert holdout_turn["round"] == 2, holdout_turn
     assert holdout_turn["holdout_metric"] == 4.5, holdout_turn
     assert holdout_turn["best_holdout_metric"] == 4.5, holdout_turn
     assert holdout_turn["claim_allowed"] is True, holdout_turn
     assert holdout_turn["appended_count"] == 1, holdout_turn
+    assert refined_holdout_turn["round"] == 4, refined_holdout_turn
+    assert refined_holdout_turn["holdout_metric"] == 5.2, refined_holdout_turn
+    assert refined_holdout_turn["best_holdout_metric"] == 5.2, refined_holdout_turn
+    assert refined_holdout_turn["holdout_improvement_count"] == 2, refined_holdout_turn
     assert evaluation_turn["round"] == 2, evaluation_turn
     assert evaluation_turn["completion_status"] == "done", evaluation_turn
     assert sum(int(turn.get("appended_count") or 0) for turn in turns) >= 3, turns
     collective_rounds = payload["collective_research_rounds"]
     assert collective_rounds["round_unit"] == "collective_agent_pass", collective_rounds
-    assert collective_rounds["collective_round_count"] == 2, collective_rounds
+    assert collective_rounds["collective_round_count"] == 4, collective_rounds
     assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
+    assert collective_rounds["dev_metric_sequence"] == [4.0, 4.8], collective_rounds
+    assert collective_rounds["holdout_metric_sequence"] == [4.5, 5.2], collective_rounds
+    assert collective_rounds["holdout_improvement_count"] == 2, collective_rounds
     kernel_ledger = collective_rounds["kernel_ledger"]
     assert kernel_ledger["schema_version"] == "multi_agent_collective_round_ledger_v0"
     assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
     assert kernel_ledger["expected_lane_count"] == 4, kernel_ledger
-    assert kernel_ledger["collective_round_count"] == 2, kernel_ledger
-    assert kernel_ledger["integrated_evidence"]["dev_metric"] == 4.0, kernel_ledger
-    assert kernel_ledger["integrated_evidence"]["holdout_metric"] == 4.5, kernel_ledger
+    assert kernel_ledger["collective_round_count"] == 4, kernel_ledger
+    assert kernel_ledger["integrated_evidence"]["dev_metric"] == 4.8, kernel_ledger
+    assert kernel_ledger["integrated_evidence"]["holdout_metric"] == 5.2, kernel_ledger
+    assert kernel_ledger["integrated_evidence"]["holdout_improvement_count"] == 2, kernel_ledger
 
     tonight = payload["tonight_experience"]
     assert tonight["ready"] is True, tonight
@@ -301,8 +340,11 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert tonight["positive_result_basis"] == "public_safe_dev_and_holdout_evidence", tonight
     assert tonight["workflow_model"] == "state_projected_frontier_not_dynamic_workflow", tonight
     assert tonight["leader_agent_required"] is False, tonight
-    assert tonight["dev_metric"] == 4.0, tonight
-    assert tonight["holdout_metric"] == 4.5, tonight
+    assert tonight["dev_metric"] == 4.8, tonight
+    assert tonight["holdout_metric"] == 5.2, tonight
+    assert tonight["dev_metric_sequence"] == [4.0, 4.8], tonight
+    assert tonight["holdout_metric_sequence"] == [4.5, 5.2], tonight
+    assert tonight["holdout_improvement_count"] == 2, tonight
     assert tonight["dev_metric"] > 1.0, tonight
     assert tonight["holdout_metric"] > tonight["dev_metric"], tonight
     assert tonight["selected_actions"] == EXPECTED_ACTIONS, tonight

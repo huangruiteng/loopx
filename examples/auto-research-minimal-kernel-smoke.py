@@ -164,7 +164,7 @@ def main() -> None:
         lightweight_hypothesis(
             hypothesis_id="hyp_partial_selection",
             todo_id="todo_auto_research_minimal_002",
-            claimed_by="evidence-runner",
+            claimed_by="research-executor",
             text="Use exact partial selection before full sorting.",
             candidate_key="partial_selection",
         ),

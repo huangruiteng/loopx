@@ -25,10 +25,10 @@ from loopx.capabilities.auto_research.preset import (  # noqa: E402
 
 GOAL_ID = "loopx-auto-research-demo"
 LANES = [
-    "codex-product-capability:research-curator:research_curator",
-    "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
-    "codex-main-control:evidence-runner:evidence_runner",
-    "codex-value-explorer:evidence-verifier:evidence_verifier",
+    "research-curator:research-curator:research_curator",
+    "hypothesis-proposer:hypothesis-proposer:hypothesis_proposer",
+    "research-executor:research-executor:research_executor",
+    "evaluator-promoter:evaluator-promoter:evaluator_promoter",
 ]
 
 
@@ -155,21 +155,21 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     lanes = payload["lanes"]
     assert [lane["lane_id"] for lane in lanes] == [
         "research-curator",
-        "hypothesis-mapper",
-        "evidence-runner",
-        "evidence-verifier",
+        "hypothesis-proposer",
+        "research-executor",
+        "evaluator-promoter",
     ], payload
     assert [lane["role_id"] for lane in lanes] == [
         "research_curator",
-        "hypothesis_mapper",
-        "evidence_runner",
-        "evidence_verifier",
+        "hypothesis_proposer",
+        "research_executor",
+        "evaluator_promoter",
     ], payload
     expected_action_hints = {
         "research_curator": "write_research_contract",
-        "hypothesis_mapper": "propose_hypothesis",
-        "evidence_runner": "run_dev_eval",
-        "evidence_verifier": "summarize_evidence",
+        "hypothesis_proposer": "propose_hypothesis",
+        "research_executor": "run_dev_eval",
+        "evaluator_promoter": "summarize_evidence",
     }
     for lane in lanes:
         profile = lane["role_profile"]
@@ -191,16 +191,16 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile
         assert profile["stop_conditions"], profile
-        if lane["role_id"] == "evidence_runner":
+        if lane["role_id"] == "research_executor":
             successors = profile["successor_todos"]
             assert successors[0]["after_action"] == "run_dev_eval", profile
-            assert successors[0]["target_agent_id"] == "codex-main-control", profile
+            assert successors[0]["target_agent_id"] == "research-executor", profile
             assert successors[0]["action_kind"] == "run_holdout_eval", profile
             assert "run_holdout_eval" in profile["allowed_actions"], profile
-        if lane["role_id"] == "evidence_verifier":
+        if lane["role_id"] == "evaluator_promoter":
             successors = profile["successor_todos"]
-            assert successors[0]["after_action"] == "summarize_evidence", profile
-            assert successors[0]["target_role_id"] == "evidence_runner", profile
+            assert successors[0]["after_action"] == "write_evaluation_summary", profile
+            assert successors[0]["target_role_id"] == "hypothesis_proposer", profile
 
         assert "quota should-run" in lane["quota_guard"], lane
         assert f"--agent-id {lane['agent_id']}" in lane["quota_guard"], lane
@@ -209,7 +209,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", lane
         assert lane["pane_local_a2a"]["worker_turn_configured"] is True, lane
         assert lane["pane_local_a2a"]["auto_start"] is True, lane
-        assert lane["pane_local_a2a"]["tick_rounds"] == 3, lane
+        assert lane["pane_local_a2a"]["tick_rounds"] == 4, lane
         assert lane["pane_local_a2a"]["tick_sleep_seconds"] == 3, lane
         assert lane["lane_timeline"] == [
             "role_profile",
@@ -223,7 +223,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "LOOPX_PANE_BOOTSTRAP_PROMPT" in command, lane
         assert "LOOPX_ROLE_PROFILE_ARTIFACT" in command, lane
         assert "LOOPX_PANE_WORKER_TURN" in command, lane
-        assert "LOOPX_PANE_TICK_ROUNDS=3" in command, lane
+        assert "LOOPX_PANE_TICK_ROUNDS=4" in command, lane
         assert "LOOPX_PANE_TICK_SLEEP_SECONDS=3" in command, lane
         assert "pane-a2a-tick.output.txt" in command, lane
         assert "auto-research worker-turn" in command, lane
@@ -326,16 +326,16 @@ def run_cli_json() -> dict[str, Any]:
 def main() -> int:
     default_payload = build_auto_research_demo_supervisor_plan(goal_id=GOAL_ID)
     assert [lane["agent_id"] for lane in default_payload["lanes"]] == [
-        "codex-product-capability",
-        "codex-side-bypass",
-        "codex-main-control",
-        "codex-value-explorer",
+        "research-curator",
+        "hypothesis-proposer",
+        "research-executor",
+        "evaluator-promoter",
     ], default_payload
     assert [lane["lane_id"] for lane in default_payload["lanes"]] == [
         "research-curator",
-        "hypothesis-mapper",
-        "evidence-runner",
-        "evidence-verifier",
+        "hypothesis-proposer",
+        "research-executor",
+        "evaluator-promoter",
     ], default_payload
     assert default_payload["auto_research"]["surface_count"] == 4, default_payload
     assert default_payload["shared_goal_surface"]["shared_goal_id"] == GOAL_ID, default_payload
@@ -351,7 +351,7 @@ def main() -> int:
     try:
         build_auto_research_demo_supervisor_plan(
             goal_id=GOAL_ID,
-            agent_specs=["codex-main-control:evidence-runner:not_a_role"],
+            agent_specs=["research-executor:research-executor:not_a_role"],
         )
     except ValueError as exc:
         assert "unknown auto-research role_id" in str(exc), exc

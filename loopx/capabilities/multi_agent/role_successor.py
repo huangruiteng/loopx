@@ -142,6 +142,25 @@ def _render_successor_command_template(
     return template.format_map(_SafeFormatDict(values))
 
 
+def _render_successor_text(
+    *,
+    text: str,
+    goal_id: str,
+    source_todo_id: str,
+    target_agent_id: str,
+    task_class: str,
+    action_kind: str,
+) -> str:
+    values: dict[str, object] = {
+        "goal_id": goal_id,
+        "source_todo_id": source_todo_id,
+        "target_agent_id": target_agent_id,
+        "task_class": task_class,
+        "action_kind": action_kind,
+    }
+    return text.format_map(_SafeFormatDict(values))
+
+
 def apply_role_successor_todos(
     *,
     registry_path: Path,
@@ -184,6 +203,14 @@ def apply_role_successor_todos(
             goal_id=goal_id,
             current_agent_id=current_agent_id,
             spec=spec,
+        )
+        text = _render_successor_text(
+            text=text,
+            goal_id=goal_id,
+            source_todo_id=source_todo_id,
+            target_agent_id=claimed_by,
+            task_class=task_class,
+            action_kind=action_kind,
         )
         todo_command = _render_successor_command_template(
             template=spec.get("todo_command_template"),

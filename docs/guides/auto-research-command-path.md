@@ -298,8 +298,8 @@ loopx --registry "$LOOPX_REGISTRY" \
   --format json auto-research capture-live-evidence \
   --packet ./evidence.public.json \
   --append-result ./append-result.public.json \
-  --agent-id codex-side-bypass \
-  --lane-count 3 \
+  --agent-id research-executor \
+  --lane-count 4 \
   --visible-lanes-accepted \
   --output ./live-codex-e2e-evidence.public.json \
   --execute
@@ -311,7 +311,7 @@ Then pass that compact evidence packet back to the E2E readback command:
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-e2e \
-  --agent-id codex-side-bypass \
+  --agent-id auto-research-operator \
   --reasoning-effort high \
   --execute \
   --headless \
@@ -333,7 +333,7 @@ default evidence-first wake behavior.
 loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research demo-e2e \
-  --agent-id codex-side-bypass \
+  --agent-id auto-research-operator \
   --reasoning-effort high \
   --execute \
   --launch-visible \
@@ -393,16 +393,16 @@ The default visible digital employees are:
 
 | Pane | Role | What it owns |
 | --- | --- | --- |
-| `codex-product-capability:research-curator` | Research curator | Keeps the research contract, protected boundary, metric, stop policy, evidence review, and operator gates explicit. |
-| `codex-side-bypass:hypothesis-mapper` | Hypothesis mapper | Turns ideas into todo-backed hypotheses, successor links, and retirement rationale. |
-| `codex-main-control:evidence-runner` | Evidence runner | Executes one selected hypothesis under an isolated attempt boundary when mutation is required and preserves scored or unscored evidence. |
-| `codex-value-explorer:evidence-verifier` | Evidence verifier | Checks holdout/verification evidence, classifies claims, and keeps promotion boundaries explicit. |
+| `research-curator:research-curator` | Research curator | Keeps the research contract, protected boundary, metric, stop policy, evidence review, and operator gates explicit. |
+| `hypothesis-proposer:hypothesis-proposer` | Hypothesis proposer | Turns ideas into todo-backed hypotheses, successor links, and retirement rationale. |
+| `research-executor:research-executor` | Research executor | Executes selected hypotheses under an isolated attempt boundary when mutation is required and preserves scored or unscored evidence. |
+| `evaluator-promoter:evaluator-promoter` | Evaluator/promoter | Checks holdout/verification evidence, classifies claims, and keeps promotion boundaries explicit. |
 
 Each Codex TUI role must route through its own quota/frontier/worker-turn path
 inside the pane. The supervisor only makes those roles visible and interactive.
 The panes share the same LoopX goal surface: registry, runtime root, frontier,
 todo projection, and evidence graph. Do not move every pane into an unrelated
-empty workspace; isolate only mutating evidence-runner attempts with a claimed
+empty workspace; isolate only mutating research-executor attempts with a claimed
 git worktree or equivalent execution boundary.
 Visible Codex TUI panes should default to the caller's workspace or an explicit
 user-owned scratch workspace. They should not default into the demo-local
@@ -410,7 +410,7 @@ control-plane repository or generated lane worktrees, because that exposes
 workspace-trust prompts before the user sees the actual research roles.
 
 For compatibility or product experiments, `--agent` can still name explicit
-lanes, including a separate evidence-verifier lane.
+lanes, including a separate evaluator-promoter lane.
 
 ## 3. Run The Worker Loop
 
@@ -427,10 +427,11 @@ loopx --registry "$LOOPX_REGISTRY" \
   --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research worker-loop \
   --goal-id loopx-auto-research-demo \
-  --agent-id codex-product-capability \
-  --agent-id codex-side-bypass \
-  --agent-id codex-main-control \
-  --max-rounds 3
+  --agent-id research-curator \
+  --agent-id hypothesis-proposer \
+  --agent-id research-executor \
+  --agent-id evaluator-promoter \
+  --max-rounds 4
 ```
 
 When the dry-run shows the selected lane work is safe, add `--execute` and
@@ -474,7 +475,7 @@ Useful read-only checks:
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" status
 loopx --registry "$LOOPX_REGISTRY" --runtime-root "$LOOPX_RUNTIME_ROOT" \
   --format json auto-research frontier --goal-id loopx-auto-research-demo \
-  --agent-id codex-side-bypass
+  --agent-id auto-research-operator
 ```
 
 The demo is healthy when the user can identify the active hypothesis, see which

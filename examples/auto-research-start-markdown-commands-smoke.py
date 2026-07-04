@@ -51,7 +51,7 @@ def main() -> int:
     require("- user_plus_preset_lines: `5`", markdown)
     require("- shared_kernel_counted: `False`", markdown)
     require(
-        "- preset: `codex-side-bypass:hypothesis-mapper:hypothesis_mapper`",
+        "- preset: `hypothesis-proposer:hypothesis-proposer:hypothesis_proposer`",
         markdown,
     )
     require(

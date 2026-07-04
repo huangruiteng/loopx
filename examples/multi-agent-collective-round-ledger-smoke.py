@@ -39,7 +39,7 @@ def main() -> int:
         source="smoke",
         expected_lanes=[
             {"agent_id": "agent-a", "lane_id": "curator", "role_id": "research_curator"},
-            {"agent_id": "agent-b", "lane_id": "runner", "role_id": "evidence_runner"},
+            {"agent_id": "agent-b", "lane_id": "runner", "role_id": "research_executor"},
         ],
         lane_outcomes=[
             {
@@ -75,13 +75,16 @@ def main() -> int:
             "evidence_event_count": 3,
             "dev_metric": 4.0,
             "holdout_metric": 4.5,
+            "dev_metric_sequence": [4.0],
+            "holdout_metric_sequence": [4.5],
+            "holdout_improvement_count": 1,
             "protected_scope_clean": True,
         },
         role_declared_successor_todos=[
             {
                 "todo_id": "todo_holdout",
                 "target_agent_id": "agent-b",
-                "target_role_id": "evidence_runner",
+                "target_role_id": "research_executor",
                 "source_todo_id": "todo_dev",
                 "action_kind": "run_holdout_eval",
             }
@@ -100,6 +103,9 @@ def main() -> int:
     assert ledger["integrated_evidence"]["evidence_event_count"] == 3, ledger
     assert ledger["integrated_evidence"]["dev_metric"] == 4.0, ledger
     assert ledger["integrated_evidence"]["holdout_metric"] == 4.5, ledger
+    assert ledger["integrated_evidence"]["dev_metric_sequence"] == [4.0], ledger
+    assert ledger["integrated_evidence"]["holdout_metric_sequence"] == [4.5], ledger
+    assert ledger["integrated_evidence"]["holdout_improvement_count"] == 1, ledger
     assert ledger["successor_todo_count"] == 1, ledger
     assert ledger["role_declared_successor_todos"][0]["target_agent_id"] == "agent-b"
     assert ledger["public_boundary"] == {

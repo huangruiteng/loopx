@@ -81,10 +81,10 @@ def assert_contract(payload: dict[str, Any]) -> None:
         f"loopx auto-research start {QUESTION!r} --execute"
     ], minimal_recipe
     assert minimal_recipe["preset_recipe_lines"] == [
-        "codex-product-capability:research-curator:research_curator",
-        "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
-        "codex-main-control:evidence-runner:evidence_runner",
-        "codex-value-explorer:evidence-verifier:evidence_verifier",
+        "research-curator:research-curator:research_curator",
+        "hypothesis-proposer:hypothesis-proposer:hypothesis_proposer",
+        "research-executor:research-executor:research_executor",
+        "evaluator-promoter:evaluator-promoter:evaluator_promoter",
     ], minimal_recipe
     proof = minimal_recipe["a2a_proof_contract"]
     assert proof["broadcaster_selects_todo"] is False, proof

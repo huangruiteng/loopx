@@ -14,7 +14,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GOAL_ID = "loopx-auto-research-demo"
-AGENT_ID = "codex-side-bypass"
+AGENT_ID = "research-executor"
 
 
 def assert_public_safe(payload: Any) -> None:
@@ -249,7 +249,7 @@ def main() -> int:
         assert_public_safe(live_payload)
 
         handoff_packet = json.loads(evidence_path.read_text(encoding="utf-8"))
-        handoff_packet["hypothesis"]["claimed_by"] = "codex-main-control"
+        handoff_packet["hypothesis"]["claimed_by"] = "research-curator"
         handoff_path = workspace / "handoff-evidence.public.json"
         handoff_path.write_text(
             json.dumps(handoff_packet, indent=2, sort_keys=True) + "\n",
@@ -265,7 +265,7 @@ def main() -> int:
                 "--append-result",
                 str(append_path),
                 "--agent-id",
-                "codex-main-control",
+                "research-curator",
                 "--lane-count",
                 "3",
                 "--visible-lanes-accepted",

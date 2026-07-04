@@ -61,22 +61,28 @@ def main() -> int:
         for turn in worker_loop["turns"]
         if turn.get("selected_action") == "run_holdout_eval"
     ]
-    assert holdout_turns, worker_loop
+    assert len(holdout_turns) == 2, worker_loop
     assert holdout_turns[0]["holdout_metric"] == 4.5, holdout_turns
+    assert holdout_turns[1]["holdout_metric"] == 5.2, holdout_turns
     assert holdout_turns[0]["live_evidence_written"] is True, holdout_turns
+    assert holdout_turns[1]["live_evidence_written"] is True, holdout_turns
     collective_rounds = payload["collective_research_rounds"]
-    assert collective_rounds["collective_round_count"] == 2, collective_rounds
+    assert collective_rounds["collective_round_count"] == 4, collective_rounds
     assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
+    assert collective_rounds["dev_metric_sequence"] == [4.0, 4.8], collective_rounds
+    assert collective_rounds["holdout_metric_sequence"] == [4.5, 5.2], collective_rounds
+    assert collective_rounds["holdout_improvement_count"] == 2, collective_rounds
     kernel_ledger = collective_rounds["kernel_ledger"]
     assert kernel_ledger["schema_version"] == "multi_agent_collective_round_ledger_v0"
     assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
-    assert kernel_ledger["collective_round_count"] == 2, kernel_ledger
+    assert kernel_ledger["collective_round_count"] == 4, kernel_ledger
     assert kernel_ledger["multi_round_interaction_verified"] is True, kernel_ledger
     assert kernel_ledger["successor_todo_count"] >= 1, kernel_ledger
     tonight = payload["tonight_experience"]
     assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight
-    assert tonight["dev_metric"] == 4.0, tonight
-    assert tonight["holdout_metric"] == 4.5, tonight
+    assert tonight["dev_metric"] == 4.8, tonight
+    assert tonight["holdout_metric"] == 5.2, tonight
+    assert tonight["holdout_improvement_count"] == 2, tonight
     assert tonight["positive_result"] is True, tonight
     assert payload["public_boundary"]["raw_logs_recorded"] is False, payload
     return 0

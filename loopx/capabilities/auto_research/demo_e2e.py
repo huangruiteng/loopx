@@ -113,7 +113,7 @@ def _seed_visible_demo_control_plane(
         adapter_status="connected",
         next_probe=None,
         spawn_allowed=True,
-        max_children=3,
+        max_children=4,
         allowed_domains=["auto-research-demo"],
         write_scope=["examples/**", "experiments/**", ".local/**"],
         claim_ttl_minutes=60,
@@ -135,8 +135,8 @@ def _seed_visible_demo_control_plane(
         }
     )
     primary_agent = (
-        "codex-main-control"
-        if "codex-main-control" in agents
+        "research-curator"
+        if "research-curator" in agents
         else (agents[0] if agents else None)
     )
     configure_goal(
@@ -435,18 +435,34 @@ def _build_collective_round_summary(
     collective_round_count: int,
     dev_metric: float | None,
     holdout_metric: float | None,
+    dev_metric_sequence: list[float] | None = None,
+    holdout_metric_sequence: list[float] | None = None,
+    holdout_improvement_count: int | None = None,
     evidence_event_count: int | None = None,
     expected_lanes: list[dict[str, object]] | None = None,
     lane_outcomes: list[dict[str, object]] | None = None,
     role_declared_successor_todos: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     baseline = 1.0
+    dev_sequence = list(dev_metric_sequence or ([] if dev_metric is None else [dev_metric]))
+    holdout_sequence = list(
+        holdout_metric_sequence or ([] if holdout_metric is None else [holdout_metric])
+    )
+    if holdout_improvement_count is None:
+        previous = baseline
+        holdout_improvements = 0
+        for metric in holdout_sequence:
+            if metric > previous:
+                holdout_improvements += 1
+            previous = metric
+    else:
+        holdout_improvements = holdout_improvement_count
     multi_round_research_verified = (
-        collective_round_count >= 2
+        collective_round_count >= 4
         and dev_metric is not None
         and holdout_metric is not None
         and dev_metric > baseline
-        and holdout_metric > dev_metric
+        and holdout_improvements >= 2
     )
     kernel_ledger = build_multi_agent_collective_round_ledger(
         source=source,
@@ -455,6 +471,9 @@ def _build_collective_round_summary(
         integrated_evidence={
             "dev_metric": dev_metric,
             "holdout_metric": holdout_metric,
+            "dev_metric_sequence": dev_sequence,
+            "holdout_metric_sequence": holdout_sequence,
+            "holdout_improvement_count": holdout_improvements,
             "evidence_event_count": evidence_event_count,
         },
         role_declared_successor_todos=role_declared_successor_todos,
@@ -471,13 +490,19 @@ def _build_collective_round_summary(
             "reported separately and do not by themselves prove multi-round research"
         ),
         "agent_count": agent_count,
+        "required_collective_round_count": 4,
+        "required_holdout_improvement_count": 2,
         "collective_round_count": collective_round_count,
-        "evidence_stage_count": int(dev_metric is not None) + int(holdout_metric is not None),
+        "evidence_stage_count": len(dev_sequence) + len(holdout_sequence),
         "multi_round_research_verified": multi_round_research_verified,
         "improvement_over_rounds": multi_round_research_verified,
+        "holdout_improvement_verified": holdout_improvements >= 2,
         "baseline_metric": baseline,
         "dev_metric": dev_metric,
         "holdout_metric": holdout_metric,
+        "dev_metric_sequence": dev_sequence,
+        "holdout_metric_sequence": holdout_sequence,
+        "holdout_improvement_count": holdout_improvements,
         "holdout_delta_over_dev": (
             holdout_metric - dev_metric
             if holdout_metric is not None and dev_metric is not None
@@ -508,22 +533,26 @@ def _collective_summary_from_worker_loop(
         and isinstance(turn.get("round"), int)
         and not isinstance(turn.get("round"), bool)
     }
-    dev_metric = next(
-        (
-            _numeric_metric(turn.get("dev_metric"))
-            for turn in turns
-            if isinstance(turn, dict) and _numeric_metric(turn.get("dev_metric")) is not None
-        ),
-        None,
-    )
-    holdout_metric = next(
-        (
-            _numeric_metric(turn.get("holdout_metric"))
-            for turn in turns
-            if isinstance(turn, dict) and _numeric_metric(turn.get("holdout_metric")) is not None
-        ),
-        None,
-    )
+    dev_metrics = [
+        metric
+        for turn in turns
+        if isinstance(turn, dict)
+        for metric in [_numeric_metric(turn.get("dev_metric"))]
+        if metric is not None
+    ]
+    holdout_metrics = [
+        metric
+        for turn in turns
+        if isinstance(turn, dict)
+        for metric in [_numeric_metric(turn.get("holdout_metric"))]
+        if metric is not None
+    ]
+    previous_holdout = 1.0
+    holdout_improvement_count = 0
+    for metric in holdout_metrics:
+        if metric > previous_holdout:
+            holdout_improvement_count += 1
+        previous_holdout = metric
     successors = [
         successor
         for turn in turns
@@ -535,10 +564,13 @@ def _collective_summary_from_worker_loop(
         source="worker_loop_collective_agent_passes",
         agent_count=agent_count,
         collective_round_count=len(round_indexes),
-        dev_metric=dev_metric,
-        holdout_metric=holdout_metric,
+        dev_metric=dev_metrics[-1] if dev_metrics else None,
+        holdout_metric=holdout_metrics[-1] if holdout_metrics else None,
+        dev_metric_sequence=dev_metrics,
+        holdout_metric_sequence=holdout_metrics,
+        holdout_improvement_count=holdout_improvement_count,
         expected_lanes=[
-            {"agent_id": turn.get("agent_id")}
+            {"agent_id": turn.get("agent_id"), "role_id": turn.get("role_id")}
             for turn in turns
             if isinstance(turn, dict) and turn.get("round") == 1
         ],
@@ -733,6 +765,9 @@ def _load_collective_research_rounds_into_payload(
         visible_proof["collective_research_round_count"] = rounds.get(
             "collective_round_count"
         )
+        visible_proof["holdout_improvement_count"] = rounds.get(
+            "holdout_improvement_count"
+        )
         visible_proof["decentralized_a2a_rounds_verified"] = bool(
             rounds.get("multi_round_research_verified")
         )
@@ -799,6 +834,27 @@ def _numeric_metric(value: object) -> float | None:
     return None
 
 
+def _numeric_sequence(value: object) -> list[float]:
+    if not isinstance(value, list):
+        return []
+    metrics: list[float] = []
+    for item in value:
+        metric = _numeric_metric(item)
+        if metric is not None:
+            metrics.append(metric)
+    return metrics
+
+
+def _metric_improvement_count(metrics: list[float], *, baseline: float) -> int:
+    previous = baseline
+    count = 0
+    for metric in metrics:
+        if metric > previous:
+            count += 1
+        previous = metric
+    return count
+
+
 def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
     proof = (
         payload.get("visible_worker_proof")
@@ -833,17 +889,31 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         else {}
     )
     baseline = 1.0
-    dev_metric = _numeric_metric(evidence.get("dev_metric"))
-    holdout_metric = _numeric_metric(evidence.get("holdout_metric"))
+    dev_sequence = _numeric_sequence(evidence.get("dev_metric_sequence")) or _numeric_sequence(
+        collective_rounds.get("dev_metric_sequence")
+    )
+    holdout_sequence = _numeric_sequence(evidence.get("holdout_metric_sequence")) or _numeric_sequence(
+        collective_rounds.get("holdout_metric_sequence")
+    )
+    dev_metric = dev_sequence[-1] if dev_sequence else _numeric_metric(evidence.get("dev_metric"))
+    holdout_metric = (
+        holdout_sequence[-1] if holdout_sequence else _numeric_metric(evidence.get("holdout_metric"))
+    )
     if dev_metric is None:
         dev_metric = _numeric_metric(collective_rounds.get("dev_metric"))
     if holdout_metric is None:
         holdout_metric = _numeric_metric(collective_rounds.get("holdout_metric"))
+    holdout_improvement_count = (
+        collective_rounds.get("holdout_improvement_count")
+        if isinstance(collective_rounds.get("holdout_improvement_count"), int)
+        and not isinstance(collective_rounds.get("holdout_improvement_count"), bool)
+        else _metric_improvement_count(holdout_sequence, baseline=baseline)
+    )
     best_metric = holdout_metric if holdout_metric is not None else dev_metric
     best_source = (
-        "round_2_holdout"
+        "final_holdout"
         if holdout_metric is not None
-        else "round_1_dev"
+        else "final_dev"
         if dev_metric is not None
         else None
     )
@@ -912,11 +982,16 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
             )
             is True,
             "stages": collective_rounds.get("stages") or [],
+            "holdout_improvement_count": holdout_improvement_count,
         },
         "improvement_summary": {
             "baseline_metric": baseline,
-            "round_1_dev_metric": dev_metric,
-            "round_2_holdout_metric": holdout_metric,
+            "dev_metric_sequence": dev_sequence or ([] if dev_metric is None else [dev_metric]),
+            "holdout_metric_sequence": holdout_sequence
+            or ([] if holdout_metric is None else [holdout_metric]),
+            "holdout_improvement_count": holdout_improvement_count,
+            "final_dev_metric": dev_metric,
+            "final_holdout_metric": holdout_metric,
             "best_metric": best_metric,
             "best_metric_source": best_source,
             "improved_over_baseline": best_metric is not None and best_metric > baseline,
@@ -965,7 +1040,7 @@ def run_auto_research_demo_e2e(
     goal_surface_mode: str = "explicit_goal",
     agent_specs: Sequence[str] | None = None,
     run_worker_loop: bool = False,
-    worker_loop_rounds: int = 3,
+    worker_loop_rounds: int = 4,
     visible_live_evidence_wait_seconds: float = 30.0,
 ) -> dict[str, object]:
     if launch_visible and not execute:
@@ -1234,18 +1309,22 @@ def run_auto_research_demo_e2e(
                 rounds=collective_rounds,
             )
             turns = worker_loop.get("turns") if isinstance(worker_loop.get("turns"), list) else []
-            dev_metric = next(
-                (turn.get("dev_metric") for turn in turns if isinstance(turn, dict) and turn.get("dev_metric") is not None),
-                None,
-            )
-            holdout_metric = next(
-                (
-                    turn.get("holdout_metric")
-                    for turn in turns
-                    if isinstance(turn, dict) and turn.get("holdout_metric") is not None
-                ),
-                None,
-            )
+            dev_metrics = [
+                metric
+                for turn in turns
+                if isinstance(turn, dict)
+                for metric in [_numeric_metric(turn.get("dev_metric"))]
+                if metric is not None
+            ]
+            holdout_metrics = [
+                metric
+                for turn in turns
+                if isinstance(turn, dict)
+                for metric in [_numeric_metric(turn.get("holdout_metric"))]
+                if metric is not None
+            ]
+            dev_metric = dev_metrics[-1] if dev_metrics else None
+            holdout_metric = holdout_metrics[-1] if holdout_metrics else None
             payload["tonight_experience"] = {
                 "schema_version": "auto_research_tonight_experience_v0",
                 "ready": bool(worker_loop.get("executed_turn_count")),
@@ -1266,6 +1345,11 @@ def run_auto_research_demo_e2e(
                 "executed_turn_count": worker_loop.get("executed_turn_count"),
                 "completed_turn_count": worker_loop.get("completed_turn_count"),
                 "selected_actions": worker_loop.get("selected_actions"),
+                "dev_metric_sequence": dev_metrics,
+                "holdout_metric_sequence": holdout_metrics,
+                "holdout_improvement_count": collective_rounds.get(
+                    "holdout_improvement_count"
+                ),
                 "dev_metric": dev_metric,
                 "holdout_metric": holdout_metric,
                 "positive_result": holdout_metric is not None or dev_metric is not None,

@@ -32,6 +32,17 @@ def _number_or_none(value: object) -> float | None:
     return None
 
 
+def _number_list(values: object) -> list[float]:
+    if not isinstance(values, list):
+        return []
+    numbers: list[float] = []
+    for value in values:
+        number = _number_or_none(value)
+        if number is not None:
+            numbers.append(number)
+    return numbers
+
+
 def _dicts(values: Iterable[object] | None) -> list[dict[str, Any]]:
     return [dict(item) for item in values or [] if isinstance(item, Mapping)]
 
@@ -156,6 +167,11 @@ def build_multi_agent_collective_round_ledger(
             "evidence_event_count": evidence_event_count,
             "dev_metric": _number_or_none(evidence.get("dev_metric")),
             "holdout_metric": _number_or_none(evidence.get("holdout_metric")),
+            "dev_metric_sequence": _number_list(evidence.get("dev_metric_sequence")),
+            "holdout_metric_sequence": _number_list(evidence.get("holdout_metric_sequence")),
+            "holdout_improvement_count": _int_or_none(
+                evidence.get("holdout_improvement_count")
+            ),
             "result_status": _string(evidence.get("result_status")),
             "protected_scope_clean": _bool_or_none(evidence.get("protected_scope_clean")),
         },

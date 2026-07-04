@@ -80,6 +80,80 @@ AUTO_RESEARCH_DEMO_CANDIDATE_KEY = "state_a2a_round"
 AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT = (
     "Use a small state-mediated handoff loop so each role can improve the shared candidate."
 )
+AUTO_RESEARCH_DEMO_STAGE_METRICS = {
+    1: {"dev": 4.0, "holdout": 4.5},
+    2: {"dev": 4.8, "holdout": 5.2},
+}
+
+
+def _demo_stage(iteration: object) -> int:
+    try:
+        stage = int(iteration)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        stage = 1
+    return max(1, min(stage, max(AUTO_RESEARCH_DEMO_STAGE_METRICS)))
+
+
+def _demo_candidate_key(*, iteration: object) -> str:
+    return f"{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}_{_demo_stage(iteration)}"
+
+
+def _demo_hypothesis_text(*, iteration: object) -> str:
+    stage = _demo_stage(iteration)
+    if stage == 1:
+        return AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT
+    return (
+        "Refine the shared state-mediated handoff loop so validated evidence "
+        "from the first branch routes a stronger second candidate."
+    )
+
+
+def _scored_rollout_metric_events(
+    rollout_events: list[dict[str, object]],
+    *,
+    split: str | None = None,
+) -> list[dict[str, object]]:
+    events: list[dict[str, object]] = []
+    for event in rollout_events:
+        if str(event.get("event_kind") or "") != "research_evidence":
+            continue
+        details = event.get("details") if isinstance(event.get("details"), dict) else {}
+        if split is not None and str(details.get("split") or "") != split:
+            continue
+        if details.get("metric_value") is None:
+            continue
+        events.append(event)
+    return events
+
+
+def _next_demo_iteration(
+    rollout_events: list[dict[str, object]],
+    *,
+    split: str,
+) -> int:
+    return _demo_stage(len(_scored_rollout_metric_events(rollout_events, split=split)) + 1)
+
+
+def _holdout_metric_sequence(rollout_events: list[dict[str, object]]) -> list[float]:
+    sequence: list[float] = []
+    for event in _scored_rollout_metric_events(rollout_events, split="holdout"):
+        details = event.get("details") if isinstance(event.get("details"), dict) else {}
+        value = details.get("metric_value")
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            sequence.append(float(value))
+    return sequence
+
+
+def _holdout_improvement_count(holdout_metrics: list[float]) -> int:
+    count = 0
+    previous = AUTO_RESEARCH_DEMO_BASELINE
+    for metric in holdout_metrics:
+        if metric > previous:
+            count += 1
+        previous = metric
+    return count
 
 
 def _slug(value: object, *, default: str = "item") -> str:
@@ -128,10 +202,9 @@ def _demo_research_contract(*, goal_id: str, objective: str) -> dict[str, object
 
 def _demo_metric_evaluator(hypothesis: dict[str, Any], split: str) -> dict[str, object]:
     candidate_key = str(hypothesis.get("candidate_key") or AUTO_RESEARCH_DEMO_CANDIDATE_KEY)
-    metric_by_split = {
-        "dev": 4.0,
-        "holdout": 4.5,
-    }
+    raw_stage = candidate_key.rsplit("_", 1)[-1] if "_" in candidate_key else "1"
+    stage = _demo_stage(raw_stage)
+    metric_by_split = AUTO_RESEARCH_DEMO_STAGE_METRICS[stage]
     metric = metric_by_split.get(split, AUTO_RESEARCH_DEMO_BASELINE)
     return {
         "metric": metric,
@@ -143,13 +216,20 @@ def _demo_metric_evaluator(hypothesis: dict[str, Any], split: str) -> dict[str, 
     }
 
 
-def _demo_kernel_result(*, goal_id: str, todo_id: str, agent_id: str) -> dict[str, object]:
+def _demo_kernel_result(
+    *,
+    goal_id: str,
+    todo_id: str,
+    agent_id: str,
+    iteration: int,
+) -> dict[str, object]:
+    candidate_key = _demo_candidate_key(iteration=iteration)
     hypothesis = lightweight_hypothesis(
-        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}",
+        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{candidate_key}",
         todo_id=todo_id,
         claimed_by=agent_id,
-        text=AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT,
-        candidate_key=AUTO_RESEARCH_DEMO_CANDIDATE_KEY,
+        text=_demo_hypothesis_text(iteration=iteration),
+        candidate_key=candidate_key,
     )
     return run_lightweight_auto_research(
         goal_id=goal_id,
@@ -167,8 +247,14 @@ def _demo_eval_result(
     todo_id: str,
     agent_id: str,
     split: str,
+    iteration: int,
 ) -> dict[str, object]:
-    kernel_result = _demo_kernel_result(goal_id=goal_id, todo_id=todo_id, agent_id=agent_id)
+    kernel_result = _demo_kernel_result(
+        goal_id=goal_id,
+        todo_id=todo_id,
+        agent_id=agent_id,
+        iteration=iteration,
+    )
     if kernel_result.get("schema_version") != LIGHTWEIGHT_AUTO_RESEARCH_RESULT_SCHEMA_VERSION:
         raise ValueError("unexpected lightweight auto-research kernel result")
     matching = [
@@ -196,6 +282,7 @@ def _demo_eval_result(
         "no_upload": True,
         "kernel_schema_version": kernel_result.get("schema_version"),
         "result_source": event.get("result_source"),
+        "demo_iteration": _demo_stage(iteration),
     }
 
 
@@ -236,16 +323,18 @@ def _write_hypothesis_artifact(
     goal_id: str,
     todo_id: str,
     agent_id: str,
+    iteration: int = 1,
 ) -> dict[str, object]:
+    candidate_key = _demo_candidate_key(iteration=iteration)
     hypothesis = validate_research_hypothesis(
         {
             "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
-            "hypothesis_id": f"hyp_{_slug(todo_id, default='todo')}_{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}",
+            "hypothesis_id": f"hyp_{_slug(todo_id, default='todo')}_{candidate_key}",
             "parent_hypothesis_id": None,
             "todo_id": todo_id,
             "claimed_by": agent_id,
             "mechanism_family": AUTO_RESEARCH_DEMO_MECHANISM_FAMILY,
-            "hypothesis": AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT,
+            "hypothesis": _demo_hypothesis_text(iteration=iteration),
             "status": "active",
             "grounding_refs": ["kernel:state_a2a_metric_demo"],
             "blocked_by": [],
@@ -262,6 +351,7 @@ def _write_hypothesis_artifact(
             "status": "hypothesis_mapped",
             "hypothesis_id": hypothesis["hypothesis_id"],
             "mechanism_family": hypothesis["mechanism_family"],
+            "demo_iteration": _demo_stage(iteration),
         },
         "public_boundary": {
             "raw_logs_recorded": False,
@@ -290,6 +380,9 @@ def _write_evaluation_summary_artifact(
         rollout_events=rollout_events,
     )
     decisions = build_research_decision_candidates(graph)
+    holdout_metrics = _holdout_metric_sequence(rollout_events)
+    holdout_improvements = _holdout_improvement_count(holdout_metrics)
+    dev_pending_holdout_count = len(decisions.get("dev_promotion_candidates") or [])
     artifact = {
         "ok": True,
         "schema_version": "auto_research_worker_evaluation_summary_v0",
@@ -302,13 +395,18 @@ def _write_evaluation_summary_artifact(
             "best_dev_metric": graph.get("best_dev_metric"),
             "best_holdout_metric": graph.get("best_holdout_metric"),
             "holdout_improved": graph.get("holdout_improved"),
+            "holdout_metric_sequence": holdout_metrics,
+            "holdout_improvement_count": holdout_improvements,
             "negative_evidence_count": graph.get("negative_evidence_count"),
         },
         "decision_summary": {
             "dev_promotion_candidate_count": len(decisions.get("dev_promotion_candidates") or []),
+            "dev_candidate_pending_holdout_count": dev_pending_holdout_count,
             "validated_promotion_candidate_count": len(decisions.get("validated_promotion_candidates") or []),
             "promotion_candidate_count": len(decisions.get("promotion_candidates") or []),
             "retirement_candidate_count": len(decisions.get("retirement_candidates") or []),
+            "holdout_metric_sequence": holdout_metrics,
+            "holdout_improvement_count": holdout_improvements,
         },
         "summary": {
             "status": "evaluation_summary_written",
@@ -701,12 +799,37 @@ def run_auto_research_worker_turn(
         }
 
     if action == "propose_hypothesis":
+        registry = load_registry(registry_path)
+        runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+        rollout_events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
+        iteration = _next_demo_iteration(rollout_events, split="dev")
         artifact = _write_hypothesis_artifact(
             output_path=hypothesis_artifact_path,
             goal_id=goal_id,
             todo_id=todo_id,
             agent_id=agent_id,
+            iteration=iteration,
         )
+        summary_artifact = _write_evaluation_summary_artifact(
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            output_path=evaluation_summary_path,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            agent_id=agent_id,
+        )
+        role_id = auto_research_role_id_for_action(action)
+        successor_todos = _maybe_add_role_successor_todos(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            source_todo_id=todo_id,
+            agent_id=agent_id,
+            role_id=role_id,
+            action=action,
+            decision_summary=summary_artifact["decision_summary"],
+            execute=True,
+        )
+        followup = first_successor_followup(successor_todos)
         completion = (
             _complete_selected_todo(
                 registry_path=registry_path,
@@ -732,6 +855,10 @@ def run_auto_research_worker_turn(
             "artifact": _artifact_summary("research_hypothesis", filename="hypothesis.public.json"),
             "artifact_status": artifact["summary"]["status"],
             "hypothesis_id": artifact["summary"]["hypothesis_id"],
+            "demo_iteration": artifact["summary"]["demo_iteration"],
+            "role_id": role_id,
+            "successor_todos": successor_todos,
+            "followup": followup,
             "completion": completion,
             "frontier": frontier_packet,
             "public_boundary": {
@@ -790,6 +917,20 @@ def run_auto_research_worker_turn(
             "claim_allowed": artifact["summary"]["claim_allowed"],
             "promotion_decision_made": artifact["summary"]["promotion_decision_made"],
             "role_id": role_id,
+            "evaluation_summary": {
+                "claim_allowed": artifact["summary"]["claim_allowed"],
+                "best_dev_metric": artifact["evidence_graph_summary"]["best_dev_metric"],
+                "best_holdout_metric": artifact["evidence_graph_summary"]["best_holdout_metric"],
+                "holdout_metric_sequence": artifact["evidence_graph_summary"][
+                    "holdout_metric_sequence"
+                ],
+                "holdout_improvement_count": artifact["decision_summary"][
+                    "holdout_improvement_count"
+                ],
+                "validated_promotion_candidate_count": artifact["decision_summary"][
+                    "validated_promotion_candidate_count"
+                ],
+            },
             "successor_todos": successor_todos,
             "followup": followup,
             "completion": completion,
@@ -810,6 +951,7 @@ def run_auto_research_worker_turn(
             goal_id=goal_id,
             rollout_events=rollout_events,
         )
+        iteration = _next_demo_iteration(rollout_events, split="holdout")
         try:
             candidate = _select_holdout_candidate(graph)
         except ValueError as exc:
@@ -846,6 +988,7 @@ def run_auto_research_worker_turn(
             todo_id=todo_id,
             agent_id=agent_id,
             split="holdout",
+            iteration=iteration,
         )
         _write_json(holdout_result_path, holdout_result)
         packet = load_auto_research_evidence_packet_inputs(
@@ -931,6 +1074,7 @@ def run_auto_research_worker_turn(
             "holdout_metric": (holdout_result.get("metric") or {}).get("value")
             if isinstance(holdout_result.get("metric"), dict)
             else None,
+            "demo_iteration": holdout_result.get("demo_iteration"),
             "packet_status": packet["summary"]["status"],
             "append": {
                 "schema_version": append_result.get("schema_version"),
@@ -942,6 +1086,12 @@ def run_auto_research_worker_turn(
                 "claim_allowed": summary_artifact["summary"]["claim_allowed"],
                 "best_dev_metric": summary_artifact["evidence_graph_summary"]["best_dev_metric"],
                 "best_holdout_metric": summary_artifact["evidence_graph_summary"]["best_holdout_metric"],
+                "holdout_metric_sequence": summary_artifact["evidence_graph_summary"][
+                    "holdout_metric_sequence"
+                ],
+                "holdout_improvement_count": summary_artifact["decision_summary"][
+                    "holdout_improvement_count"
+                ],
                 "validated_promotion_candidate_count": summary_artifact["decision_summary"][
                     "validated_promotion_candidate_count"
                 ],
@@ -974,22 +1124,28 @@ def run_auto_research_worker_turn(
         agent_id=agent_id,
     )
     _write_json(contract_input_path, contract_artifact["research_contract"])
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+    rollout_events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
+    iteration = _next_demo_iteration(rollout_events, split="dev")
+    candidate_key = _demo_candidate_key(iteration=iteration)
     dev_result = _demo_eval_result(
         goal_id=goal_id,
         todo_id=todo_id,
         agent_id=agent_id,
         split="dev",
+        iteration=iteration,
     )
     _write_json(dev_result_path, dev_result)
     packet = load_auto_research_evidence_packet_inputs(
         contract_path=contract_input_path,
         eval_result_paths=[dev_result_path],
-        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}",
+        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{candidate_key}",
         todo_id=todo_id,
         agent_id=agent_id,
         claimed_by=agent_id,
         mechanism_family=AUTO_RESEARCH_DEMO_MECHANISM_FAMILY,
-        hypothesis=AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT,
+        hypothesis=_demo_hypothesis_text(iteration=iteration),
         grounding_refs=["kernel:state_a2a_metric_demo"],
         attempt_start=1,
     )
@@ -1059,6 +1215,7 @@ def run_auto_research_worker_turn(
         "dev_metric": (dev_result.get("metric") or {}).get("value")
         if isinstance(dev_result.get("metric"), dict)
         else None,
+        "demo_iteration": dev_result.get("demo_iteration"),
         "packet_status": packet["summary"]["status"],
         "append": {
             "schema_version": append_result.get("schema_version"),
@@ -1070,6 +1227,12 @@ def run_auto_research_worker_turn(
             "claim_allowed": summary_artifact["summary"]["claim_allowed"],
             "best_dev_metric": summary_artifact["evidence_graph_summary"]["best_dev_metric"],
             "best_holdout_metric": summary_artifact["evidence_graph_summary"]["best_holdout_metric"],
+            "holdout_metric_sequence": summary_artifact["evidence_graph_summary"][
+                "holdout_metric_sequence"
+            ],
+            "holdout_improvement_count": summary_artifact["decision_summary"][
+                "holdout_improvement_count"
+            ],
             "validated_promotion_candidate_count": summary_artifact["decision_summary"][
                 "validated_promotion_candidate_count"
             ],

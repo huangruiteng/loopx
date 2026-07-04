@@ -134,22 +134,22 @@ that will work it:
 
 ```bash
 loopx --format json auto-research demo-e2e \
-  --agent-id codex-side-bypass
+  --agent-id auto-research-operator
 ```
 
 When the preview is acceptable, launch the visible lanes:
 
 ```bash
 loopx --format json auto-research demo-e2e \
-  --agent-id codex-side-bypass \
+  --agent-id auto-research-operator \
   --execute
 ```
 
 This does not create a starter pack. The worker path now uses the built-in
 lightweight metric kernel so the demo can prove the state loop without shipping
 domain-specific problem code. The stable smoke metric still shows the product
-shape: baseline `1.0`, dev evidence `4.0`, holdout evidence `4.5`, and a clean
-public boundary.
+shape: baseline `1.0`, dev evidence `[4.0, 4.8]`, holdout evidence
+`[4.5, 5.2]`, two holdout improvements, and a clean public boundary.
 
 The public line-count claim is intentionally narrower than the kernel. The
 copyable recipe is one user command plus the four default auto-research role
@@ -159,10 +159,10 @@ public artifact routing.
 
 ```text
 loopx auto-research start "<open question>" --execute
-codex-product-capability:research-curator:research_curator
-codex-side-bypass:hypothesis-mapper:hypothesis_mapper
-codex-main-control:evidence-runner:evidence_runner
-codex-value-explorer:evidence-verifier:evidence_verifier
+research-curator:research-curator:research_curator
+hypothesis-proposer:hypothesis-proposer:hypothesis_proposer
+research-executor:research-executor:research_executor
+evaluator-promoter:evaluator-promoter:evaluator_promoter
 ```
 
 That is the marketing-safe claim: a five-line declarative recipe can start
@@ -174,7 +174,7 @@ The fixture-backed projection remains the read-only showcase state slice:
 ```bash
 loopx --format json auto-research frontier \
   --fixture examples/fixtures/decentralized-auto-research-knn.public.json \
-  --agent-id codex-side-bypass
+  --agent-id hypothesis-proposer
 ```
 
 This renders `decentralized_research_frontier_v0`,
@@ -193,8 +193,8 @@ loopx --format json auto-research evidence \
   --eval-result holdout-result.public.json \
   --hypothesis-id hyp_state_a2a_round \
   --todo-id todo_auto_research_demo_001 \
-  --agent-id codex-side-bypass \
-  --claimed-by codex-side-bypass \
+  --agent-id research-executor \
+  --claimed-by research-executor \
   --mechanism-family state_a2a_iteration \
   --hypothesis "Use a small state-mediated handoff loop to improve the shared candidate." \
   --branch-ref codex/auto-research-evidence-writer
@@ -227,7 +227,7 @@ control loop.
 ```bash
 loopx --format json auto-research frontier \
   --goal-id loopx-auto-research-demo \
-  --agent-id codex-side-bypass
+  --agent-id hypothesis-proposer
 ```
 
 For fixture rehearsals, use `--fixture` instead of `--goal-id`.
@@ -267,18 +267,17 @@ Operators can pass explicit lanes when rehearsing a real local demo:
 ```bash
 loopx --format json auto-research demo-supervisor \
   --goal-id loopx-auto-research-demo \
-  --agent codex-product-capability:research-curator:research_curator \
-  --agent codex-side-bypass:hypothesis-mapper:hypothesis_mapper \
-  --agent codex-main-control:evidence-runner:evidence_runner \
-  --agent codex-value-explorer:evidence-verifier:evidence_verifier
+  --agent research-curator:research-curator:research_curator \
+  --agent hypothesis-proposer:hypothesis-proposer:hypothesis_proposer \
+  --agent research-executor:research-executor:research_executor \
+  --agent evaluator-promoter:evaluator-promoter:evaluator_promoter
 ```
 
 The third segment is optional for compatibility; when omitted, LoopX infers the
 role from the lane name or from the default role order. The v0 default uses
-three registered lanes: research curator, hypothesis mapper, and evidence
-runner. Evidence review is folded into the curator lane until a separately
-registered verifier lane is needed. The explicit `--agent` form remains the
-escape hatch for rehearsing a four-role layout.
+four registered research-role agents: research curator, hypothesis proposer,
+research executor, and evaluator/promoter. The explicit `--agent` form remains
+the escape hatch for rehearsing a custom four-role layout.
 
 When the dry-run packet is acceptable, the same command can launch visible
 local Codex CLI TUIs. This is intentionally opt-in:
@@ -286,10 +285,10 @@ local Codex CLI TUIs. This is intentionally opt-in:
 ```bash
 loopx auto-research demo-supervisor \
   --goal-id loopx-auto-research-demo \
-  --agent codex-product-capability:research-curator:research_curator \
-  --agent codex-side-bypass:hypothesis-mapper:hypothesis_mapper \
-  --agent codex-main-control:evidence-runner:evidence_runner \
-  --agent codex-value-explorer:evidence-verifier:evidence_verifier \
+  --agent research-curator:research-curator:research_curator \
+  --agent hypothesis-proposer:hypothesis-proposer:hypothesis_proposer \
+  --agent research-executor:research-executor:research_executor \
+  --agent evaluator-promoter:evaluator-promoter:evaluator_promoter \
   --execute
 ```
 
@@ -306,7 +305,7 @@ itself does not write LoopX state or spend LoopX quota; any writeback must
 happen through the visible Codex lane's normal LoopX todo/evidence commands.
 All lanes share the same LoopX goal surface: registry, runtime root, frontier,
 todo projection, and evidence graph. Workspace isolation is not applied to
-every pane by default; only mutating evidence-runner attempts need a claimed
+every pane by default; only mutating research-executor attempts need a claimed
 git worktree or equivalent execution boundary.
 
 The live worker path stays separate from the supervisor. The supervisor makes
@@ -316,10 +315,11 @@ quota/frontier/todos and writes evidence through LoopX:
 ```bash
 loopx --format json auto-research worker-loop \
   --goal-id loopx-auto-research-demo \
-  --agent-id codex-product-capability \
-  --agent-id codex-side-bypass \
-  --agent-id codex-main-control \
-  --max-rounds 3
+  --agent-id research-curator \
+  --agent-id hypothesis-proposer \
+  --agent-id research-executor \
+  --agent-id evaluator-promoter \
+  --max-rounds 4
 ```
 
 When the dry-run selects safe runnable work, add `--execute` and
@@ -345,7 +345,7 @@ The user should see four concrete things in the packet:
   frontier`, and `codex-cli-bootstrap-message` commands;
 - a shared goal-surface contract showing that all panes use the same LoopX
   registry/runtime/frontier/evidence graph, while mutation isolation is reserved
-  for evidence-runner attempts;
+  for research-executor attempts;
 - a `start_script` array that can be copied into the user's shell only after
   the user sets `LOOPX_PROJECT`, `LOOPX_REGISTRY`, and
   `LOOPX_RUNTIME_ROOT`;

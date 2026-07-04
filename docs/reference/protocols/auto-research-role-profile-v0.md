@@ -37,18 +37,18 @@ frontier item, bootstrap prompt, or future kernel API.
 {
   "schema_version": "auto_research_role_profile_v0",
   "goal_id": "loopx-auto-research-demo",
-  "agent_id": "codex-auto-research-runner-1",
-  "role_id": "evidence_runner",
-  "display_name": "Evidence runner",
+  "agent_id": "research-executor",
+  "role_id": "research_executor",
+  "display_name": "Research executor",
   "phase": "attempt_running",
-  "capability_token": "evidence_runner",
+  "capability_token": "research_executor",
   "todo_id": "todo_auto_research_demo_001",
   "hypothesis_id": "hyp_state_a2a_round",
   "allowed_actions": ["claim_attempt", "edit_allowed_scope", "run_dev_eval", "write_evidence"],
   "write_scope": ["solution.py", "experiments/**"],
   "protected_scope": ["task.py", "eval.py", "data/**"],
   "required_skill": "loopx-auto-research",
-  "skill_section": "Evidence runner",
+  "skill_section": "Research executor",
   "agents_overlay": ["workspace/AGENTS.md"],
   "stop_conditions": [
     "quota should-run returns false",
@@ -66,8 +66,8 @@ frontier item, bootstrap prompt, or future kernel API.
     {
       "after_action": "run_dev_eval",
       "when": "dev_supported_without_holdout",
-      "target_agent_id": "codex-main-control",
-      "target_role_id": "evidence_runner",
+      "target_agent_id": "research-executor",
+      "target_role_id": "research_executor",
       "task_class": "advancement_task",
       "action_kind": "run_holdout_eval",
       "text": "Run held-out validation for the dev-supported hypothesis."
@@ -127,9 +127,9 @@ records still name the role that produced each transition.
 | Role id | Skill section | Primary phase | Writes | Must stop when |
 | --- | --- | --- | --- | --- |
 | `research_curator` | Research curator | `contract_ready`, `promotion_gate` | `research_contract_v0`, owner gate todos, protected-boundary notes. | The next step would select a winner, run an experiment, or publish unsupported evidence. |
-| `hypothesis_mapper` | Hypothesis mapper | `hypothesis_proposed`, `retired` | `research_hypothesis_v0`, successor todos, no-follow-up rationale. | Novelty requires the same source that inspired the idea, or negative evidence would be hidden. |
-| `evidence_runner` | Evidence runner | `frontier_selected`, `attempt_running` | Branch refs, dev/holdout eval evidence, retry packets, role-declared successor todos. | Protected scope changes, promotion decisions, or private/raw artifacts are needed. |
-| `evidence_verifier` | Evidence verifier | `evidence_recorded`, `evaluated`, `promotion_gate` | Held-out validation evidence, evaluation summary, promotion/retirement candidates, gate todos. | Evidence is dev-only but would be presented as promoted, or held-out data is missing when required. |
+| `hypothesis_proposer` | Hypothesis proposer | `hypothesis_proposed`, `retired` | `research_hypothesis_v0`, successor todos, no-follow-up rationale. | Novelty requires the same source that inspired the idea, or negative evidence would be hidden. |
+| `research_executor` | Research executor | `frontier_selected`, `attempt_running` | Branch refs, dev/holdout eval evidence, retry packets, role-declared successor todos. | Protected scope changes, promotion decisions, or private/raw artifacts are needed. |
+| `evaluator_promoter` | Evaluator/promoter | `evidence_recorded`, `evaluated`, `promotion_gate` | Held-out validation evidence, evaluation summary, promotion/retirement candidates, gate todos. | Evidence is dev-only but would be presented as promoted, or held-out data is missing when required. |
 
 Future roles such as gate steward, synthesis narrator, and frontier janitor are
 split candidates, not required v0 panes. They should be introduced only when
@@ -140,9 +140,9 @@ evidence from the demo shows that a transition duty needs a separate owner.
 Use one worker-local `loopx-auto-research` playbook that contains role sections:
 
 - `Research curator`
-- `Hypothesis mapper`
-- `Evidence runner`
-- `Evidence verifier`
+- `Hypothesis proposer`
+- `Research executor`
+- `Evaluator/promoter`
 - `Visible takeover and stop controls`
 
 This keeps each visible worker aligned without exposing auto-research as a
@@ -165,8 +165,8 @@ start one fresh interactive Codex CLI TUI per role:
 
 ```bash
 export LOOPX_GOAL_ID=loopx-auto-research-demo
-export LOOPX_AGENT_ID=codex-auto-research-runner-1
-export LOOPX_ROLE_ID=evidence_runner
+export LOOPX_AGENT_ID=research-executor
+export LOOPX_ROLE_ID=research_executor
 export LOOPX_ROLE_PROFILE_REF=auto_research_role_profile_v0
 exec codex -c model_reasoning_effort=high -C "$LOOPX_PROJECT" "$ROLE_PROMPT"
 ```

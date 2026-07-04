@@ -259,6 +259,7 @@ def _render_worker_loop(payload: dict[str, object]) -> str:
             continue
         lines.append(
             f"- round `{turn.get('round')}` agent `{turn.get('agent_id')}` "
+            f"role `{turn.get('role_id')}` iteration `{turn.get('demo_iteration')}` "
             f"mode `{turn.get('mode')}` action `{turn.get('selected_action')}` "
             f"executed `{turn.get('executed')}` completion `{turn.get('completion_status')}` "
             f"dev `{turn.get('dev_metric')}` holdout `{turn.get('holdout_metric')}`"
@@ -344,6 +345,8 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- pane_ticks_count_as_research_rounds: `{pane_rounds.get('counts_as_collective_research_round')}`",
         f"- collective_research_rounds: `{collective_rounds.get('collective_round_count')}`",
         f"- collective_research_rounds_verified: `{collective_rounds.get('multi_round_research_verified')}`",
+        f"- holdout_metric_sequence: `{collective_rounds.get('holdout_metric_sequence')}`",
+        f"- holdout_improvement_count: `{collective_rounds.get('holdout_improvement_count')}`",
         f"- decentralized_a2a_rounds_verified: `{live.get('decentralized_a2a_rounds_verified')}`",
         f"- visible_readiness_ready: `{readiness.get('ready')}`",
         f"- visible_readiness_level: `{readiness.get('readiness_level')}`",

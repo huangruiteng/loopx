@@ -244,7 +244,7 @@ def register_auto_research_commands(
     start_parser.add_argument(
         "--worker-loop-rounds",
         type=int,
-        default=3,
+        default=4,
         help=argparse.SUPPRESS,
     )
     start_parser.add_argument(
@@ -373,7 +373,7 @@ def register_auto_research_commands(
     live_evidence_parser.add_argument(
         "--lane-count",
         type=int,
-        default=3,
+        default=4,
         help="Accepted visible lane count to record in the compact live evidence.",
     )
     live_evidence_parser.add_argument(
@@ -499,7 +499,7 @@ def register_auto_research_commands(
     worker_loop_parser.add_argument(
         "--max-rounds",
         type=int,
-        default=3,
+        default=4,
         help="Maximum polling rounds across the agent list.",
     )
     worker_loop_parser.add_argument(
@@ -678,7 +678,7 @@ def register_auto_research_commands(
     demo_e2e_parser.add_argument(
         "--worker-loop-rounds",
         type=int,
-        default=3,
+        default=4,
         help="Maximum worker-loop rounds for --execute.",
     )
     demo_e2e_parser.add_argument(
@@ -837,7 +837,7 @@ def _execute_auto_research_demo_supervisor(
                 "shared_goal_surface": True,
                 "all_lane_workspace_isolation": False,
                 "mutation_isolation_policy": (
-                    "only mutating evidence-runner attempts require a claimed git worktree "
+                    "only mutating research-executor attempts require a claimed git worktree "
                     "or equivalent execution boundary"
                 ),
             }

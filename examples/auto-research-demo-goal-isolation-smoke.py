@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GOAL_ID = "loopx-auto-research-demo"
 FRESH_GOAL_ID = "loopx-auto-research-demo-smoke-001"
 EXPLICIT_GOAL_ID = "loopx-auto-research-demo-explicit"
-AGENT_ID = "codex-side-bypass"
+AGENT_ID = "auto-research-operator"
 
 
 def assert_public_safe(payload: Any) -> None:

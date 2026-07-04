@@ -29,16 +29,20 @@ def _compact_turn(turn: dict[str, object], *, round_index: int) -> dict[str, obj
     return {
         "round": round_index,
         "agent_id": turn.get("agent_id"),
+        "role_id": turn.get("role_id"),
         "mode": turn.get("mode"),
         "executed": bool(turn.get("executed")),
         "selected_todo_id": turn.get("selected_todo_id"),
         "selected_action": turn.get("selected_action"),
+        "demo_iteration": turn.get("demo_iteration"),
         "completion_status": completion.get("status"),
         "appended_count": append.get("appended_count"),
         "dev_metric": turn.get("dev_metric"),
         "holdout_metric": turn.get("holdout_metric"),
         "claim_allowed": evaluation_summary.get("claim_allowed"),
         "best_holdout_metric": evaluation_summary.get("best_holdout_metric"),
+        "holdout_metric_sequence": evaluation_summary.get("holdout_metric_sequence"),
+        "holdout_improvement_count": evaluation_summary.get("holdout_improvement_count"),
         "live_evidence_written": bool(live_evidence.get("written")),
         "successor_todo_count": len(successors),
         "successor_todos": [
@@ -72,7 +76,7 @@ def run_auto_research_worker_loop(
     visible_lanes_accepted: bool = False,
     live_evidence_output: str = "live-codex-e2e-evidence.public.json",
     complete_selected_todo: bool = False,
-    max_rounds: int = 3,
+    max_rounds: int = 4,
 ) -> dict[str, object]:
     """Run repeated LoopX-selected worker turns for a fixed visible lane set.
 

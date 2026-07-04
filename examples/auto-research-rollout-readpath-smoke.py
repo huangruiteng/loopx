@@ -133,7 +133,7 @@ def frontier_projection(registry: Path) -> dict[str, Any]:
             "--goal-id",
             GOAL_ID,
             "--agent-id",
-            "codex-side-bypass",
+            AGENT_ID,
         ]
     )
 
@@ -175,8 +175,8 @@ def main() -> None:
                             "state_file": "ACTIVE_GOAL_STATE.md",
                             "adapter": {"kind": "fixture", "status": "connected-read-only"},
                             "coordination": {
-                                "primary_agent": "codex-main-control",
-                                "registered_agents": ["codex-main-control", "codex-side-bypass"],
+                                "primary_agent": "research-curator",
+                                "registered_agents": ["research-curator", AGENT_ID],
                             },
                             "authority_sources": [],
                         }
@@ -236,7 +236,7 @@ def main() -> None:
                     "hypothesis_id": "hyp_bad_distance_cache",
                     "parent_hypothesis_id": None,
                     "todo_id": "todo_auto_research_bad_001",
-                    "claimed_by": "codex-side-bypass",
+                    "claimed_by": AGENT_ID,
                     "mechanism_family": "distance_cache",
                     "hypothesis": "Cache distances before normalization.",
                     "status": "contradicted",
@@ -249,7 +249,7 @@ def main() -> None:
                     "schema_version": "research_evidence_event_v0",
                     "hypothesis_id": "hyp_bad_distance_cache",
                     "todo_id": "todo_auto_research_bad_001",
-                    "agent_id": "codex-side-bypass",
+                    "agent_id": AGENT_ID,
                     "attempt": 1,
                     "split": "dev",
                     "metric": {
@@ -281,7 +281,7 @@ def main() -> None:
 
         live_payload = build_live_auto_research_projection(
             goal_id=GOAL_ID,
-            agent_id="codex-side-bypass",
+            agent_id=AGENT_ID,
             quota_payload={
                 "ok": True,
                 "agent_lane_next_action": {

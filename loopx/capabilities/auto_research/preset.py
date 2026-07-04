@@ -17,30 +17,33 @@ AUTO_RESEARCH_REQUIRED_SKILL = "loopx-auto-research"
 AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
     "loopx/capabilities/auto_research/worker_skill/SKILL.md"
 )
-AUTO_RESEARCH_DEMO_TICK_ROUNDS = 3
+AUTO_RESEARCH_DEMO_TICK_ROUNDS = 4
 AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS = 3
 AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = (
     "[P0-auto-research-live] Run held-out validation for the dev-supported "
-    "hypothesis, append public-safe evidence, and summarize promotion readiness."
+    "hypothesis from {source_todo_id}, append public-safe evidence, and "
+    "summarize promotion readiness."
 )
 AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT = (
-    "[P0-auto-research-live] Summarize held-out validation, promotion readiness, "
-    "and the public claim boundary for the supported hypothesis."
+    "[P0-auto-research-live] Summarize held-out validation from {source_todo_id}, "
+    "promotion readiness, and the public claim boundary for the supported hypothesis."
+)
+AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT = (
+    "[P0-auto-research-live] Grow the next evidence-backed hypothesis from the "
+    "validated branch {source_todo_id} and route a second dev attempt."
+)
+AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_TEXT = (
+    "[P0-auto-research-live] Run the refined hypothesis from {source_todo_id} on "
+    "the dev split, append public-safe evidence, and hand off the second holdout check."
 )
 AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION = {
     "all": [
         {
-            "path": "decision_summary.dev_promotion_candidate_count",
+            "path": "decision_summary.dev_candidate_pending_holdout_count",
             "op": "gt",
             "value": 0,
             "fail_reason": "no_dev_promotion_candidate",
-        },
-        {
-            "path": "decision_summary.validated_promotion_candidate_count",
-            "op": "eq",
-            "value": 0,
-            "fail_reason": "holdout_already_validated",
-        },
+        }
     ]
 }
 AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_CONDITION = {
@@ -53,6 +56,44 @@ AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_CONDITION = {
         },
     ]
 }
+AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION = {
+    "all": [
+        {
+            "path": "decision_summary.validated_promotion_candidate_count",
+            "op": "gt",
+            "value": 0,
+            "fail_reason": "no_validated_promotion_candidate",
+        },
+        {
+            "path": "decision_summary.holdout_improvement_count",
+            "op": "lt",
+            "value": 2,
+            "fail_reason": "target_holdout_improvements_reached",
+        },
+    ]
+}
+AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION = {
+    "all": [
+        {
+            "path": "decision_summary.holdout_improvement_count",
+            "op": "gt",
+            "value": 0,
+            "fail_reason": "initial_seed_dev_already_exists",
+        },
+        {
+            "path": "decision_summary.holdout_improvement_count",
+            "op": "lt",
+            "value": 2,
+            "fail_reason": "target_holdout_improvements_reached",
+        },
+        {
+            "path": "decision_summary.dev_candidate_pending_holdout_count",
+            "op": "eq",
+            "value": 0,
+            "fail_reason": "dev_candidate_already_pending_holdout",
+        },
+    ]
+}
 AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE = (
     "loopx todo add --goal-id {goal_id_shell} --role agent "
     "--text {text_shell} --task-class {task_class_shell} "
@@ -62,49 +103,61 @@ AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE = (
 
 AUTO_RESEARCH_DEFAULT_LANES = (
     (
-        "codex-product-capability",
+        "research-curator",
         "research-curator",
         "research_curator",
-        "Define the research contract, protected boundary, metric, and first todo.",
+        "Frame the question, metric, protected boundary, and first research todo.",
     ),
     (
-        "codex-side-bypass",
-        "hypothesis-mapper",
-        "hypothesis_mapper",
-        "Turn the current idea into a todo-backed hypothesis and successor handoff.",
+        "hypothesis-proposer",
+        "hypothesis-proposer",
+        "hypothesis_proposer",
+        "Grow the hypothesis frontier and route the next bounded research attempt.",
     ),
     (
-        "codex-main-control",
-        "evidence-runner",
-        "evidence_runner",
-        "Run one selected hypothesis and append public-safe evidence.",
+        "research-executor",
+        "research-executor",
+        "research_executor",
+        "Run dev/holdout evidence for selected hypotheses and append public-safe evidence.",
     ),
     (
-        "codex-value-explorer",
-        "evidence-verifier",
-        "evidence_verifier",
-        "Read appended evidence and decide whether another round is needed.",
+        "evaluator-promoter",
+        "evaluator-promoter",
+        "evaluator_promoter",
+        "Prune or promote claims, summarize validation, and trigger the next research round.",
     ),
 )
 
 AUTO_RESEARCH_ROLE_PROFILE_ORDER = (
     "research_curator",
-    "hypothesis_mapper",
-    "evidence_runner",
-    "evidence_verifier",
+    "hypothesis_proposer",
+    "research_executor",
+    "evaluator_promoter",
 )
 
 AUTO_RESEARCH_ROLE_PROFILE_ALIASES = {
     "research-curator": "research_curator",
     "curator": "research_curator",
-    "hypothesis-mapper": "hypothesis_mapper",
-    "mapper": "hypothesis_mapper",
-    "hypothesis-runner": "hypothesis_mapper",
-    "evidence-runner": "evidence_runner",
-    "runner": "evidence_runner",
-    "evidence-verifier": "evidence_verifier",
-    "verifier": "evidence_verifier",
-    "evidence-promoter": "evidence_verifier",
+    "codex-product-capability": "research_curator",
+    "hypothesis-proposer": "hypothesis_proposer",
+    "hypothesis_mapper": "hypothesis_proposer",
+    "hypothesis-mapper": "hypothesis_proposer",
+    "mapper": "hypothesis_proposer",
+    "hypothesis-runner": "hypothesis_proposer",
+    "codex-side-bypass": "hypothesis_proposer",
+    "research-executor": "research_executor",
+    "research_executor": "research_executor",
+    "evidence_runner": "research_executor",
+    "evidence-runner": "research_executor",
+    "runner": "research_executor",
+    "codex-main-control": "research_executor",
+    "evaluator-promoter": "evaluator_promoter",
+    "evaluator_promoter": "evaluator_promoter",
+    "evidence_verifier": "evaluator_promoter",
+    "evidence-verifier": "evaluator_promoter",
+    "verifier": "evaluator_promoter",
+    "evidence-promoter": "evaluator_promoter",
+    "codex-value-explorer": "evaluator_promoter",
 }
 
 AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
@@ -112,15 +165,27 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
         "phase": "contract",
         "allowed_actions": ["write_research_contract"],
         "write_scope": ["research_contract_v0", "todo_item_v0"],
-        "handoff": ["Create the first hypothesis-mapper todo."],
+        "handoff": ["Create the first hypothesis-proposer todo."],
     },
-    "hypothesis_mapper": {
+    "hypothesis_proposer": {
         "phase": "hypothesis",
         "allowed_actions": ["propose_hypothesis"],
         "write_scope": ["research_hypothesis_v0", "todo_item_v0"],
-        "handoff": ["Create or unblock an evidence-runner todo."],
+        "handoff": ["Create or unblock a research-executor todo."],
+        "successor_todos": [
+            {
+                "after_action": "propose_hypothesis",
+                "condition": AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_CONDITION,
+                "target_agent_id": "research-executor",
+                "target_role_id": "research_executor",
+                "task_class": "advancement_task",
+                "action_kind": "run_dev_eval",
+                "text": AUTO_RESEARCH_REFINED_DEV_SUCCESSOR_TEXT,
+                "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
+            }
+        ],
     },
-    "evidence_runner": {
+    "research_executor": {
         "phase": "evidence",
         "allowed_actions": ["run_dev_eval", "run_holdout_eval"],
         "write_scope": ["auto_research_evidence_packet_v0", "rollout_event_log"],
@@ -131,8 +196,8 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
             {
                 "after_action": "run_dev_eval",
                 "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
-                "target_agent_id": "codex-main-control",
-                "target_role_id": "evidence_runner",
+                "target_agent_id": "research-executor",
+                "target_role_id": "research_executor",
                 "task_class": "advancement_task",
                 "action_kind": "run_holdout_eval",
                 "text": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT,
@@ -141,8 +206,8 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
             {
                 "after_action": "run_holdout_eval",
                 "condition": AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_CONDITION,
-                "target_agent_id": "codex-value-explorer",
-                "target_role_id": "evidence_verifier",
+                "target_agent_id": "evaluator-promoter",
+                "target_role_id": "evaluator_promoter",
                 "task_class": "advancement_task",
                 "action_kind": "write_evaluation_summary",
                 "text": AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT,
@@ -150,35 +215,35 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
             }
         ],
     },
-    "evidence_verifier": {
+    "evaluator_promoter": {
         "phase": "verify",
-        "allowed_actions": ["summarize_evidence"],
+        "allowed_actions": ["summarize_evidence", "write_evaluation_summary", "classify_evidence"],
         "write_scope": ["research_evidence_graph_v0", "todo_item_v0"],
         "handoff": ["Add a role-declared successor todo when evidence needs another bounded split."],
         "successor_todos": [
             {
-                "after_action": "summarize_evidence",
-                "condition": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION,
-                "target_agent_id": "codex-main-control",
-                "target_role_id": "evidence_runner",
+                "after_action": "write_evaluation_summary",
+                "condition": AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION,
+                "target_agent_id": "hypothesis-proposer",
+                "target_role_id": "hypothesis_proposer",
                 "task_class": "advancement_task",
-                "action_kind": "run_holdout_eval",
-                "text": AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT,
+                "action_kind": "propose_hypothesis",
+                "text": AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT,
                 "todo_command_template": AUTO_RESEARCH_SUCCESSOR_TODO_COMMAND_TEMPLATE,
-            }
+            },
         ],
     },
 }
 
 AUTO_RESEARCH_ACTION_ROLE_IDS = {
     "write_research_contract": "research_curator",
-    "propose_hypothesis": "hypothesis_mapper",
-    "run_dev_eval": "evidence_runner",
-    "run_holdout_eval": "evidence_runner",
-    "write_evidence": "evidence_runner",
-    "classify_evidence": "evidence_verifier",
-    "summarize_evidence": "evidence_verifier",
-    "write_evaluation_summary": "evidence_verifier",
+    "propose_hypothesis": "hypothesis_proposer",
+    "run_dev_eval": "research_executor",
+    "run_holdout_eval": "research_executor",
+    "write_evidence": "research_executor",
+    "classify_evidence": "evaluator_promoter",
+    "summarize_evidence": "evaluator_promoter",
+    "write_evaluation_summary": "evaluator_promoter",
 }
 
 AUTO_RESEARCH_SEED_TITLES = {
@@ -346,8 +411,10 @@ def auto_research_seed_action_for_role(role_id: str) -> str:
     profile = AUTO_RESEARCH_ROLE_PROFILES.get(role_id) or {}
     actions = profile.get("allowed_actions") if isinstance(profile, dict) else []
     action = str((actions or ["advance_todo"])[0])
-    if role_id == "evidence_runner":
+    if role_id == "research_executor":
         return "run_dev_eval"
+    if role_id == "evaluator_promoter":
+        return "summarize_evidence"
     return action
 
 

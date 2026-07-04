@@ -25,16 +25,16 @@ from loopx.todos import add_goal_todo, update_goal_todo  # noqa: E402
 
 
 GOAL_ID = "loopx-auto-research-demo"
-CURATOR_AGENT_ID = "codex-product-capability"
-MAPPER_AGENT_ID = "codex-side-bypass"
-EVIDENCE_AGENT_ID = "codex-main-control"
-VERIFIER_AGENT_ID = "codex-value-explorer"
+CURATOR_AGENT_ID = "research-curator"
+MAPPER_AGENT_ID = "hypothesis-proposer"
+EVIDENCE_AGENT_ID = "research-executor"
+VERIFIER_AGENT_ID = "evaluator-promoter"
 ALT_EVIDENCE_AGENT_ID = "codex-alt-evidence"
 FOUR_LANES = [
-    "codex-product-capability:research-curator:research_curator",
-    "codex-side-bypass:hypothesis-mapper:hypothesis_mapper",
-    "codex-main-control:evidence-runner:evidence_runner",
-    "codex-value-explorer:evidence-verifier:evidence_verifier",
+    "research-curator:research-curator:research_curator",
+    "hypothesis-proposer:hypothesis-proposer:hypothesis_proposer",
+    "research-executor:research-executor:research_executor",
+    "evaluator-promoter:evaluator-promoter:evaluator_promoter",
 ]
 
 
@@ -220,7 +220,7 @@ def main() -> int:
             }
 
         payload = run_auto_research_demo_e2e(
-            agent_id="codex-side-bypass",
+            agent_id=MAPPER_AGENT_ID,
             goal_id=GOAL_ID,
             tracking_goal_id="loopx-meta",
             objective="Prove the visible worker can run a LoopX-selected auto-research evidence turn.",
@@ -280,15 +280,15 @@ def main() -> int:
         assert executed["live_evidence"]["dev_metric"] == 4.0, executed
         assert executed["successor_todos"]["schema_version"] == "multi_agent_role_successor_todos_v0", executed
         assert executed["successor_todos"]["source"] == "role_profile_todo_command_template", executed
-        assert executed["successor_todos"]["role_id"] == "evidence_runner", executed
+        assert executed["successor_todos"]["role_id"] == "research_executor", executed
         assert executed["successor_todos"]["action"] == "run_dev_eval", executed
         successor = executed["successor_todos"]["successors"][0]
-        assert successor["target_role_id"] == "evidence_runner", executed
+        assert successor["target_role_id"] == "research_executor", executed
         assert successor["condition"]["all"][0]["path"] == (
-            "decision_summary.dev_promotion_candidate_count"
+            "decision_summary.dev_candidate_pending_holdout_count"
         ), executed
         assert successor["todo_command"].startswith("loopx todo add "), executed
-        assert "--claimed-by codex-main-control" in successor["todo_command"], executed
+        assert "--claimed-by research-executor" in successor["todo_command"], executed
         assert executed["followup"]["needed"] is True, executed
         assert executed["followup"]["action_kind"] == "run_holdout_eval", executed
         assert executed["followup"]["claimed_by"] == EVIDENCE_AGENT_ID, executed
@@ -389,6 +389,7 @@ def main() -> int:
         assert verifier["followup"]["reason"] in {
             "holdout_already_validated",
             "no_dev_promotion_candidate",
+            "no_role_successor_spec",
         }, verifier
         assert verifier["completion"]["status"] == "done", verifier
         assert_public_safe(verifier)
@@ -433,9 +434,9 @@ def main() -> int:
             goal_id=GOAL_ID,
             agent_specs=[
                 "codex-alt-curator:research-curator:research_curator",
-                "codex-alt-mapper:hypothesis-mapper:hypothesis_mapper",
-                f"{ALT_EVIDENCE_AGENT_ID}:evidence-runner:evidence_runner",
-                "codex-alt-verifier:evidence-verifier:evidence_verifier",
+                "codex-alt-mapper:hypothesis-proposer:hypothesis_proposer",
+                f"{ALT_EVIDENCE_AGENT_ID}:research-executor:research_executor",
+                "codex-alt-verifier:evaluator-promoter:evaluator_promoter",
             ],
             reasoning_effort="high",
         )
@@ -447,26 +448,25 @@ def main() -> int:
             supervisor=alt_supervisor,
         )
         alt_workspace = alt_root / "visible-control-plane"
-        for agent in ["codex-alt-curator", "codex-alt-mapper"]:
-            turn = run_worker_turn(
-                registry=alt_registry,
-                runtime_root=alt_runtime_root,
-                workspace=alt_workspace,
-                agent_id=agent,
-                execute=True,
-                complete=True,
-            )
-            assert turn["mode"] == "execute", turn
+        turn = run_worker_turn(
+            registry=alt_registry,
+            runtime_root=alt_runtime_root,
+            workspace=alt_workspace,
+            agent_id="codex-alt-curator",
+            execute=True,
+            complete=True,
+        )
+        assert turn["mode"] == "execute", turn
         missing_target = run_worker_turn_process(
             registry=alt_registry,
             runtime_root=alt_runtime_root,
             workspace=alt_workspace,
-            agent_id=ALT_EVIDENCE_AGENT_ID,
+            agent_id="codex-alt-mapper",
             execute=True,
             complete=True,
         )
         assert missing_target.returncode != 0, missing_target.stdout
-        assert "successor target_agent_id 'codex-main-control' is not registered" in (
+        assert "successor target_agent_id 'research-executor' is not registered" in (
             missing_target.stdout + missing_target.stderr
         ), missing_target
 

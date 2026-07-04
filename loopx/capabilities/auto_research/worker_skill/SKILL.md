@@ -60,9 +60,9 @@ Map the role profile to one of these sections:
 | Role id or lane | Skill section | Authority source |
 | --- | --- | --- |
 | `research_curator` | Research curator | role profile, quota packet, contract todo |
-| `hypothesis_mapper`, `hypothesis-runner` when proposing | Hypothesis mapper | role profile, frontier packet, hypothesis todo |
-| `evidence_runner`, `hypothesis-runner` when executing | Evidence runner | role profile, selected frontier item, write scope |
-| `evidence_verifier`, `evidence-promoter` | Evidence verifier | role profile, evidence packet, promotion policy |
+| `hypothesis_proposer` | Hypothesis proposer | role profile, frontier packet, hypothesis todo |
+| `research_executor` | Research executor | role profile, selected frontier item, write scope |
+| `evaluator_promoter` | Evaluator/promoter | role profile, evidence packet, promotion policy |
 | `research-narrator`, `product_narrator` | Projection narrator | read-only projection packet and first-screen gate |
 | `control-plane-guard` | Control-plane guard | quota/status/check packet and repository rules |
 
@@ -118,7 +118,7 @@ Must not:
 - run experiments;
 - present unsupported metrics as product value.
 
-## Hypothesis Mapper
+## Hypothesis Proposer
 
 Use when the role turns ideas into todo-backed hypotheses, refinements,
 successors, or retirements.
@@ -143,7 +143,7 @@ Must not:
 - select a winner;
 - hide contradictory evidence by replacing a hypothesis with a cleaner story.
 
-## Evidence Runner
+## Research Executor
 
 Use when the role runs exactly one selected hypothesis in an isolated
 workspace/worktree and records attempt evidence.
@@ -175,7 +175,7 @@ Must not:
 - promote results;
 - omit failed, inconclusive, or guardrail-failed attempts.
 
-## Evidence Verifier
+## Evaluator/Promoter
 
 Use when the role reads evidence and classifies it as supported,
 contradicted, retry-needed, promotion-ready, or retirement-ready.
