@@ -125,7 +125,7 @@ def handle_quota_command(
         if not scan_roots:
             scan_roots = [Path(args.scan_root).expanduser()]
         status_limit = max(0, args.limit)
-        if args.quota_command in {"should-run", "scheduler-ack"}:
+        if args.quota_command in {"should-run", "monitor-poll", "scheduler-ack"}:
             status_limit = max(status_limit, AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK)
         status_payload = collect_status(
             registry_path=registry_path,

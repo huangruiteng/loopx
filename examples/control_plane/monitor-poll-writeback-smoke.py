@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -15,7 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.status import parse_active_state_todos  # noqa: E402
+import loopx.cli_commands.quota as quota_command  # noqa: E402
+from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, parse_active_state_todos  # noqa: E402
 
 
 GOAL_ID = "monitor-poll-writeback-fixture"
@@ -416,7 +418,75 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         assert monitor_poll_records(registry_path) == [], run_index_records(registry_path)
 
 
+def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
+    seen: dict[str, object] = {}
+
+    def fake_collect_status(**kwargs: object) -> dict:
+        seen["limit"] = kwargs.get("limit")
+        return {"ok": True, "summary": {}}
+
+    def fake_record_quota_monitor_poll(status_payload: dict, **kwargs: object) -> dict:
+        seen["status_payload"] = status_payload
+        seen["record_kwargs"] = kwargs
+        return {"ok": True, "mode": "monitor-poll", "dry_run": True, "appended": False}
+
+    def fake_print_payload(payload: dict, _fmt: str, _renderer: object) -> None:
+        seen["payload"] = payload
+
+    args = argparse.Namespace(
+        quota_command="monitor-poll",
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        available_capabilities=None,
+        include_scheduler_detail=False,
+        slots=1,
+        source="heartbeat",
+        void_generated_at=None,
+        reason_summary=None,
+        todo_id=TODO_ID,
+        target_key=None,
+        result_hash="old",
+        material_change=False,
+        cadence=None,
+        next_due_at=None,
+        next_agent_todo=None,
+        next_user_todo=None,
+        next_claimed_by=None,
+        surface="codex_app",
+        state_key="scheduler_hint.codex_app.stateful_backoff",
+        applied_rrule=None,
+        reset_token=None,
+        identity_signature=None,
+        dry_run=True,
+        execute=False,
+        scan_root=str(REPO_ROOT),
+        scan_path=[],
+        limit=5,
+        format="json",
+    )
+    original_collect_status = quota_command.collect_status
+    original_record_monitor_poll = quota_command.record_quota_monitor_poll
+    try:
+        quota_command.collect_status = fake_collect_status
+        quota_command.record_quota_monitor_poll = fake_record_quota_monitor_poll
+        rc = quota_command.handle_quota_command(
+            args,
+            registry_path=REPO_ROOT / ".loopx" / "registry.json",
+            runtime_root_arg=None,
+            print_payload=fake_print_payload,
+            append_cli_rollout_event=lambda **_: {},
+        )
+    finally:
+        quota_command.collect_status = original_collect_status
+        quota_command.record_quota_monitor_poll = original_record_monitor_poll
+
+    assert rc == 0, rc
+    assert seen["limit"] == AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, seen
+    assert seen["payload"] == {"ok": True, "mode": "monitor-poll", "dry_run": True, "appended": False}, seen
+
+
 def main() -> int:
+    assert_cli_monitor_poll_uses_should_run_lookback()
     assert_unchanged_writeback()
     assert_material_transition_followup()
     assert_due_monitor_poll_allowed_with_open_user_gate()
