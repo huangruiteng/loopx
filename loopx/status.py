@@ -92,6 +92,9 @@ from .projections.active_state_sections import (
     active_state_section_entries as _active_state_section_entries_read_model,
     active_state_sections as _active_state_sections_read_model,
 )
+from .projections.attention_item import (
+    attention_item as _attention_item_read_model,
+)
 from .projections.attention_fields import (
     operator_gate_attention_fields as _operator_gate_attention_fields_read_model,
     readiness_attention_fields as _readiness_attention_fields_read_model,
@@ -6681,52 +6684,27 @@ def attention_item(
     todo_state_file: str | None = None,
     dreaming_proposal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    project_asset = build_project_asset(
+    return _attention_item_read_model(
+        goal_id=goal_id,
         status=status,
         waiting_on=waiting_on,
+        severity=severity,
         recommended_action=recommended_action,
+        source=source,
+        build_project_asset=build_project_asset,
+        compact_dreaming_lane_badge=compact_dreaming_lane_badge,
         operator_question=operator_question,
         agent_command=agent_command,
+        controller_stage=controller_stage,
         missing_gates=missing_gates,
         next_handoff_condition=next_handoff_condition,
+        lifecycle_phase=lifecycle_phase,
+        lifecycle_flags=lifecycle_flags,
+        user_todos=user_todos,
+        agent_todos=agent_todos,
+        todo_state_file=todo_state_file,
+        dreaming_proposal=dreaming_proposal,
     )
-    item = {
-        "goal_id": goal_id,
-        "status": status,
-        "waiting_on": waiting_on,
-        "severity": severity,
-        "recommended_action": recommended_action,
-        "project_asset": project_asset,
-        "source": source,
-    }
-    if operator_question:
-        item["operator_question"] = operator_question
-    if agent_command:
-        item["agent_command"] = agent_command
-    if controller_stage:
-        item["controller_stage"] = controller_stage
-    if missing_gates:
-        item["missing_gates"] = missing_gates
-    if next_handoff_condition:
-        item["next_handoff_condition"] = next_handoff_condition
-    if lifecycle_phase:
-        item["lifecycle_phase"] = lifecycle_phase
-    if lifecycle_flags:
-        item["lifecycle_flags"] = lifecycle_flags
-    if user_todos:
-        item["user_todos"] = user_todos
-    if agent_todos:
-        item["agent_todos"] = agent_todos
-    if todo_state_file:
-        item["todo_state_file"] = todo_state_file
-    if dreaming_proposal:
-        dreaming_lane_badge = compact_dreaming_lane_badge(dreaming_proposal)
-        item["dreaming_proposal"] = dreaming_proposal
-        item["project_asset"]["dreaming_proposal"] = dreaming_proposal
-        if dreaming_lane_badge:
-            item["dreaming_lane_badge"] = dreaming_lane_badge
-            item["project_asset"]["dreaming_lane_badge"] = dreaming_lane_badge
-    return item
 
 
 def sync_connected_attention_action_from_todos(item: dict[str, Any]) -> None:

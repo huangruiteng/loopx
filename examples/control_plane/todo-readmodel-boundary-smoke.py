@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from loopx import status as status_module  # noqa: E402
+from loopx.projections import attention_item as attention_item_read_model  # noqa: E402
 from loopx.projections import autonomous_candidates as autonomous_read_model  # noqa: E402
 from loopx.projections import global_registry_shadow as global_registry_shadow_read_model  # noqa: E402
 from loopx.projections import todo_summary as todo_read_model  # noqa: E402
@@ -208,11 +209,43 @@ def assert_global_registry_shadow_parity() -> None:
     assert status_item == direct_item
 
 
+def assert_attention_item_parity() -> None:
+    kwargs = {
+        "goal_id": "loopx-meta",
+        "status": "active_state_agent_todo",
+        "waiting_on": "codex",
+        "severity": "action",
+        "recommended_action": "continue canary-gated read-model cleanup",
+        "source": "active_state",
+        "operator_question": "Should the controller approve the next gate?",
+        "agent_command": "loopx quota should-run --goal-id loopx-meta",
+        "controller_stage": "implementation",
+        "missing_gates": ["controller_review"],
+        "next_handoff_condition": "stop if validation fails",
+        "lifecycle_phase": "active",
+        "lifecycle_flags": ["connected", "active_state"],
+        "user_todos": {"open_count": 0, "items": []},
+        "agent_todos": fixture_todos(),
+        "todo_state_file": ".codex/goals/loopx-meta/ACTIVE_GOAL_STATE.md",
+        "dreaming_proposal": {
+            "kind": "dreaming_refactor_warning",
+            "recommended_action": "split the projection builder",
+        },
+    }
+
+    assert status_module.attention_item(**kwargs) == attention_item_read_model.attention_item(
+        **kwargs,
+        build_project_asset=status_module.build_project_asset,
+        compact_dreaming_lane_badge=status_module.compact_dreaming_lane_badge,
+    )
+
+
 def main() -> None:
     assert_wrapper_parity()
     assert_dependency_blocker_parity()
     assert_autonomous_candidate_parity()
     assert_global_registry_shadow_parity()
+    assert_attention_item_parity()
 
 
 if __name__ == "__main__":

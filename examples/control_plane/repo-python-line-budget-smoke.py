@@ -18,6 +18,11 @@ LEGACY_OVERSIZED_RETIREMENT_PLANS = {
         "Extract SkillsBench ledger/reduce-only fixture groups into narrower "
         "smokes, then lower this pin again after the next stable split."
     ),
+    "examples/terminal-bench-private-runner-env-guard-smoke.py": (
+        "Split TerminalBench private-runner environment guard fixtures into "
+        "focused setup, credential-boundary, and no-submit smoke helpers, then "
+        "lower this pin again."
+    ),
     "loopx/benchmark_adapters/skillsbench.py": (
         "Continue extracting SkillsBench discovery, counter, and reducer helpers "
         "into focused adapter modules, then lower this pin again."
@@ -36,7 +41,7 @@ LEGACY_OVERSIZED_LIMITS = {
     "examples/skillsbench-host-local-launch-plan-smoke.py": 2373,
     "examples/control_plane/status-markdown-smoke.py": 2607,
     "examples/terminal-bench-harbor-runner-ingest-smoke.py": 2759,
-    "examples/terminal-bench-private-runner-env-guard-smoke.py": 2585,
+    "examples/terminal-bench-private-runner-env-guard-smoke.py": 2586,
     "loopx/benchmark.py": 2875,
     "loopx/benchmark_adapters/agentissue.py": 2644,
     "loopx/benchmark_adapters/agents_last_exam.py": 3998,
