@@ -158,7 +158,10 @@ def handle_quota_command(
         )
         status_payload = None
         cache_metadata = None
-        if args.use_projection_cache:
+        use_projection_cache = bool(getattr(args, "use_projection_cache", False))
+        write_projection_cache_enabled = bool(getattr(args, "write_projection_cache", False))
+        projection_cache_ttl_seconds = int(getattr(args, "projection_cache_ttl_seconds", 120))
+        if use_projection_cache:
             status_payload, cache_metadata = load_status_projection_cache(
                 registry_path=registry_path,
                 runtime_root=runtime_root,
@@ -166,7 +169,7 @@ def handle_quota_command(
                 limit=status_limit,
                 include_task_graph=False,
                 goal_id=None,
-                max_age_seconds=args.projection_cache_ttl_seconds,
+                max_age_seconds=projection_cache_ttl_seconds,
             )
         if status_payload is None:
             status_payload = collect_status(
@@ -175,7 +178,7 @@ def handle_quota_command(
                 scan_roots=scan_roots,
                 limit=status_limit,
             )
-            if args.write_projection_cache:
+            if write_projection_cache_enabled:
                 cache_metadata = write_status_projection_cache(
                     registry_path=registry_path,
                     runtime_root=runtime_root,
@@ -184,7 +187,7 @@ def handle_quota_command(
                     include_task_graph=False,
                     goal_id=None,
                     payload=status_payload,
-                    max_age_seconds=args.projection_cache_ttl_seconds,
+                    max_age_seconds=projection_cache_ttl_seconds,
                 )
         elif isinstance(status_payload.get("projection_cache"), dict):
             cache_metadata = dict(status_payload["projection_cache"])
