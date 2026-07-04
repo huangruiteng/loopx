@@ -110,6 +110,30 @@ def run_cli(
     )
 
 
+def run_status(registry_path: Path, runtime: Path) -> dict:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "status",
+            "--goal-id",
+            GOAL_ID,
+        ],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return payload(result)
+
+
 def payload(result: subprocess.CompletedProcess[str]) -> dict:
     return json.loads(result.stdout)
 
@@ -179,6 +203,17 @@ def main() -> int:
             "Frontier exhausted while acceptance remains open."
         ), indexed_vision
         assert indexed_vision["todo_delta"] == ["create_successor"], indexed_vision
+        status = run_status(registry_path, runtime)
+        status_goal = next(
+            goal
+            for goal in status["run_history"]["goals"]
+            if goal["id"] == GOAL_ID
+        )
+        latest_status_vision = status_goal["latest_runs"][0]["agent_vision"]
+        assert latest_status_vision["vision_patch"]["acceptance_summary"] == (
+            "One successor todo plus evidence references."
+        ), latest_status_vision
+        assert latest_status_vision["todo_delta"] == ["create_successor"], latest_status_vision
 
         write_json(
             invalid_path,
