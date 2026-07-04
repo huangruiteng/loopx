@@ -3016,6 +3016,26 @@ def test_full_run_fails_closed_until_bridge_is_materialized() -> None:
     )
     assert result.returncode == 2, result
     payload = json.loads(result.stderr)
+    assert payload["error_type"] == "SkillsBenchAppServerGoalRouteDeprecated", payload
+    assert "codex-cli-goal-baseline" in payload["next_action"], payload
+
+    legacy_result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "skillsbench_automation_loop.py"),
+            "--task-id",
+            "llm-prefix-cache-replay",
+            "--route",
+            ROUTE,
+            "--allow-deprecated-app-server-goal-route",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert legacy_result.returncode == 2, legacy_result
+    payload = json.loads(legacy_result.stderr)
     assert payload["error_type"] == "SkillsBenchNativeGoalWorkerBridgePending", payload
     assert "command/file bridge" in payload["reason"], payload
 
@@ -3030,6 +3050,7 @@ def test_full_run_with_bridge_ready_requires_host_acp_launch() -> None:
             "--route",
             ROUTE,
             "--remote-command-file-bridge-ready",
+            "--allow-deprecated-app-server-goal-route",
         ],
         cwd=REPO_ROOT,
         check=False,

@@ -5,8 +5,9 @@ This is a thin launcher around the official SkillsBench/BenchFlow runner.  It
 keeps task execution and verification inside BenchFlow, then reduces only the
 official result/timing files into ``benchmark_run_v0``.
 
-The ``codex-app-server-goal-baseline`` route is the native Codex Goal baseline
-surface. The comparable LoopX test route is
+The ``codex-cli-goal-baseline`` route is the canonical Codex Goal baseline:
+it drives the Codex CLI TUI slash-command surface with a real ``/goal`` command.
+The comparable LoopX test route is
 ``loopx-prompt-polling-test``: it uses BenchFlow's ``BaseUser``
 progressive-disclosure hook as the outer LoopX polling controller
 without forwarding official reward, pass/fail, verifier errors, or verifier
@@ -36,10 +37,10 @@ slash-command/goal-state evidence. Full execution of this route is blocked by
 default until that evidence exists; use it only for explicit slash-prefix
 experiments.
 
-The native Goal baseline requires a host-side Codex app-server worker using
-``thread/start``, ``thread/goal/set``, ``thread/goal/get``, and ``turn/start``.
-Until the BenchFlow worker integration is wired, full execution fails closed;
-``--plan-only`` still emits the public-safe launch contract.
+The historical ``codex-app-server-goal-baseline`` route remains in the codebase
+for compatibility and reducer forensics, but it is deprecated for SkillsBench
+treatment/baseline collection. Normal executions fail closed unless an explicit
+legacy override flag is passed; prefer ``codex-cli-goal-baseline``.
 
 Run from the SkillsBench checkout so BenchFlow's dependency environment is
 available, for example:
@@ -128,6 +129,7 @@ from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
     CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
+    CODEX_CLI_GOAL_BASELINE_ROUTE,
     LOOPX_BLIND_LOOP_TREATMENT_ROUTE,
     LOOPX_GOAL_START_PRODUCT_MODE_ROUTE,
     LOOPX_PRODUCT_MODE_ROUTE,
@@ -926,7 +928,7 @@ def _host_local_acp_launch_command(
         index = command.index("--dry-run-response")
         del command[index : index + 2]
     relay_trace_dir = str(plan.get("host_local_acp_relay_trace_dir") or "")
-    if args.route == "codex-app-server-goal-baseline":
+    if args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE:
         worker_trace_dir = str(plan.get("app_server_goal_worker_trace_dir") or "")
         command.extend(
             [
@@ -952,6 +954,10 @@ def _host_local_acp_launch_command(
         )
         if worker_trace_dir:
             command.extend(["--worker-public-trace-dir", worker_trace_dir])
+    elif args.route == CODEX_CLI_GOAL_BASELINE_ROUTE:
+        command.extend(["--codex-cli-goal-worker"])
+        if relay_trace_dir:
+            command.extend(["--worker-public-trace-dir", relay_trace_dir])
     elif relay_trace_dir:
         command.extend(["--worker-public-trace-dir", relay_trace_dir])
     command.extend(
@@ -983,9 +989,9 @@ def _host_local_acp_launch_command(
         ]
     )
     cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
-    if cli_reasoning_effort and args.route != "codex-app-server-goal-baseline":
+    if cli_reasoning_effort and args.route != CODEX_APP_SERVER_GOAL_BASELINE_ROUTE:
         command.extend(["--reasoning-effort", cli_reasoning_effort])
-    if args.host_local_acp_launch and args.route != "codex-app-server-goal-baseline":
+    if args.host_local_acp_launch and args.route != CODEX_APP_SERVER_GOAL_BASELINE_ROUTE:
         heartbeat_interval = min(
             max(1.0, float(args.app_server_acp_heartbeat_interval_sec)),
             15.0,
@@ -994,7 +1000,8 @@ def _host_local_acp_launch_command(
     if args.model:
         command.extend(["--model", args.model])
     bridge_enabled_route = args.route in PRODUCT_MODE_CONTROLLER_ROUTES or (
-        args.route == "codex-app-server-goal-baseline"
+        args.route
+        in {CODEX_APP_SERVER_GOAL_BASELINE_ROUTE, CODEX_CLI_GOAL_BASELINE_ROUTE}
     )
     if (
         bridge_enabled_route
@@ -2650,6 +2657,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
         "host_local_acp_codex_exec_failure_category",
+        "codex_cli_goal_tui_stage",
+        "codex_cli_goal_tui_reasoning_effort",
         "codex_api_egress_preflight_status",
         "codex_api_egress_preflight_error_kind",
         "codex_api_egress_mode_requested",
@@ -2738,6 +2747,8 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_failure_trace_present",
         "host_local_acp_codex_exec_failure_raw_material_recorded",
         "remote_command_file_bridge_driver_lifecycle_raw_material_recorded",
+        "codex_cli_goal_tui_trace_present",
+        "codex_cli_goal_tui_raw_material_recorded",
         "preinstalled_benchflow_agent_runtime_required",
         "benchflow_agent_runtime_layer_ready",
         "codex_acp_runtime_dependency_setup_skipped",
@@ -2884,6 +2895,13 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_driver_lifecycle_loopx_cli_call_count",
         "remote_command_file_bridge_driver_lifecycle_loopx_state_read_count",
         "remote_command_file_bridge_driver_lifecycle_loopx_state_write_count",
+        "codex_cli_goal_tui_trace_count",
+        "codex_cli_goal_tui_ok_count",
+        "codex_cli_goal_tui_goal_active_observed_count",
+        "codex_cli_goal_tui_goal_terminal_observed_count",
+        "codex_cli_goal_tui_first_action_observed_count",
+        "codex_cli_goal_tui_bridge_request_count",
+        "codex_cli_goal_tui_task_facing_success_count",
         "host_local_acp_sandbox_bridge_compose_file_count",
         "host_local_acp_target_env_key_count",
         "host_local_acp_pwd_probe_rc",
@@ -2960,6 +2978,18 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         compact["remote_command_file_bridge_driver_lifecycle_execution_style"] = (
             style[:120]
         )
+    stages = value.get("codex_cli_goal_tui_stages")
+    if isinstance(stages, list):
+        compact["codex_cli_goal_tui_stages"] = [
+            stage[:80] for stage in stages if isinstance(stage, str) and stage
+        ][:16]
+    reasoning_efforts = value.get("codex_cli_goal_tui_reasoning_efforts")
+    if isinstance(reasoning_efforts, list):
+        compact["codex_cli_goal_tui_reasoning_efforts"] = [
+            effort[:40]
+            for effort in reasoning_efforts
+            if isinstance(effort, str) and effort
+        ][:8]
     return compact
 
 
@@ -8339,9 +8369,11 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         rollout_suffix = "loopx_product_mode"
     elif route == "raw-codex-autonomous-max5":
         rollout_suffix = "raw_codex_autonomous_max5"
-    elif route == "codex-acp-blind-loop-baseline":
+    elif route == CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE:
         rollout_suffix = "codex_acp_blind_loop"
-    elif route == "codex-app-server-goal-baseline":
+    elif route == CODEX_CLI_GOAL_BASELINE_ROUTE:
+        rollout_suffix = "codex_cli_goal"
+    elif route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE:
         rollout_suffix = "codex_app_server_goal"
     else:
         rollout_suffix = route_slug
@@ -8364,7 +8396,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     agent_runtime_layer = _benchflow_agent_runtime_layer_contract(args)
     loopx_source_mount = _loopx_source_mount_contract(args)
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
-    is_app_server_goal_route = route == "codex-app-server-goal-baseline"
+    is_app_server_goal_route = route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+    is_codex_cli_goal_route = route == CODEX_CLI_GOAL_BASELINE_ROUTE
     reasoning_effort = _effective_reasoning_effort(args)
     app_server_reasoning_effort = _effective_app_server_reasoning_effort(args)
     codex_cli_reasoning_effort = _effective_codex_cli_reasoning_effort(args)
@@ -8407,18 +8440,24 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     )
     remote_command_file_bridge_solver_wiring_configured = bool(
         args.host_local_acp_launch
-        and route in PRODUCT_MODE_CONTROLLER_ROUTES
+        and (
+            route in PRODUCT_MODE_CONTROLLER_ROUTES
+            or route == CODEX_CLI_GOAL_BASELINE_ROUTE
+        )
         and remote_command_file_bridge_materialized
         and remote_command_file_bridge_solver_command_configured
     )
     remote_command_file_bridge_sandbox_auto_wiring_pending = bool(
         args.host_local_acp_launch
-        and route in PRODUCT_MODE_CONTROLLER_ROUTES
+        and (
+            route in PRODUCT_MODE_CONTROLLER_ROUTES
+            or route == CODEX_CLI_GOAL_BASELINE_ROUTE
+        )
         and remote_command_file_bridge_materialized
         and not remote_command_file_bridge_solver_command_configured
     )
     remote_command_file_bridge_agent_operation_trace_required = bool(
-        _is_loopx_product_mode_route(route)
+        (_is_loopx_product_mode_route(route) or route == CODEX_CLI_GOAL_BASELINE_ROUTE)
         and (
             remote_command_file_bridge_solver_wiring_configured
             or remote_command_file_bridge_sandbox_auto_wiring_pending
@@ -8487,7 +8526,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     app_server_goal_round_semantics = (
         {
             "schema_version": "skillsbench_app_server_goal_round_semantics_v0",
-            "route": "codex-app-server-goal-baseline",
+            "route": CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
             "session_policy": (
                 "single_thread_with_blinded_followups"
                 if app_server_goal_followup_budget
@@ -8515,6 +8554,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "agent": (
             "codex-app-server-goal"
             if is_app_server_goal_route
+            else "codex-cli-goal"
+            if is_codex_cli_goal_route
             else "codex-acp"
         ),
         "model": args.model,
@@ -8539,7 +8580,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "skillsbench_independent_goal_retry_config_v0",
             "enabled": bool(independent_goal_attempt_budget > 1),
             "attempt_budget": independent_goal_attempt_budget,
-            "route_supported": route == "codex-app-server-goal-baseline",
+            "route_supported": route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
             "fresh_goal_thread_per_attempt": True,
             "stop_policy": (
                 "stop_after_first_official_reward_1_or_first_terminal_"
@@ -8845,10 +8886,14 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "host_local_acp_codex_exec_preflight_stage": "",
             "host_local_acp_codex_exec_preflight_first_blocker": "",
             "container_codex_acp_install_skipped": (
-                True if is_app_server_goal_route else requires_preinstalled_runtime
+                True
+                if is_app_server_goal_route or is_codex_cli_goal_route
+                else requires_preinstalled_runtime
             ),
             "benchflow_agent_install_skipped_by_runtime_layer": (
-                True if is_app_server_goal_route else requires_preinstalled_runtime
+                True
+                if is_app_server_goal_route or is_codex_cli_goal_route
+                else requires_preinstalled_runtime
             ),
             "remote_command_file_bridge_materialized": bool(
                 remote_command_file_bridge_materialized
@@ -10519,6 +10564,15 @@ def _merge_host_local_acp_relay_trace_summary(
     driver_lifecycle_command_counts: dict[str, int] = {}
     driver_lifecycle_returncode_counts: dict[str, int] = {}
     driver_lifecycle_execution_style = ""
+    codex_cli_goal_trace_count = 0
+    codex_cli_goal_ok_count = 0
+    codex_cli_goal_active_count = 0
+    codex_cli_goal_terminal_count = 0
+    codex_cli_goal_first_action_count = 0
+    codex_cli_goal_bridge_request_count = 0
+    codex_cli_goal_task_facing_success_count = 0
+    codex_cli_goal_stages: list[str] = []
+    codex_cli_goal_reasoning_efforts: list[str] = []
     raw_material_recorded = False
     for path in files:
         try:
@@ -10709,6 +10763,54 @@ def _merge_host_local_acp_relay_trace_summary(
                     target_counts[safe_key] = (
                         target_counts.get(safe_key, 0) + max(0, value)
                     )
+        elif trace_kind == "codex_cli_goal_tui":
+            goal_trace = (
+                payload.get("codex_cli_goal")
+                if isinstance(payload.get("codex_cli_goal"), dict)
+                else {}
+            )
+            codex_cli_goal_trace_count += 1
+            if payload.get("ok") is True:
+                codex_cli_goal_ok_count += 1
+            if goal_trace.get("goal_active_observed") is True:
+                codex_cli_goal_active_count += 1
+            if goal_trace.get("goal_terminal_observed") is True:
+                codex_cli_goal_terminal_count += 1
+            if goal_trace.get("first_action_observed") is True:
+                codex_cli_goal_first_action_count += 1
+            bridge_requests = goal_trace.get("bridge_request_count")
+            if isinstance(bridge_requests, int) and not isinstance(
+                bridge_requests, bool
+            ):
+                codex_cli_goal_bridge_request_count += max(0, bridge_requests)
+            task_facing_successes = goal_trace.get("task_facing_success_count")
+            if isinstance(task_facing_successes, int) and not isinstance(
+                task_facing_successes, bool
+            ):
+                codex_cli_goal_task_facing_success_count += max(
+                    0,
+                    task_facing_successes,
+                )
+            stage = goal_trace.get("stage")
+            if isinstance(stage, str) and stage:
+                safe_stage = stage[:80]
+                if safe_stage not in codex_cli_goal_stages:
+                    codex_cli_goal_stages.append(safe_stage)
+            effort = goal_trace.get("reasoning_effort")
+            if isinstance(effort, str) and effort:
+                safe_effort = effort[:40]
+                if safe_effort not in codex_cli_goal_reasoning_efforts:
+                    codex_cli_goal_reasoning_efforts.append(safe_effort)
+            raw_material_recorded = raw_material_recorded or any(
+                goal_trace.get(field) is True
+                for field in (
+                    "raw_tui_capture_recorded",
+                    "raw_task_text_recorded",
+                    "raw_stdout_recorded",
+                    "raw_stderr_recorded",
+                    "credential_values_recorded",
+                )
+            )
         else:
             continue
         raw_material_recorded = raw_material_recorded or any(
@@ -10945,6 +11047,37 @@ def _merge_host_local_acp_relay_trace_summary(
     trace["remote_command_file_bridge_driver_lifecycle_raw_material_recorded"] = (
         raw_material_recorded
     )
+    trace["codex_cli_goal_tui_trace_count"] = codex_cli_goal_trace_count
+    trace["codex_cli_goal_tui_trace_present"] = codex_cli_goal_trace_count > 0
+    trace["codex_cli_goal_tui_ok_count"] = codex_cli_goal_ok_count
+    trace["codex_cli_goal_tui_goal_active_observed_count"] = (
+        codex_cli_goal_active_count
+    )
+    trace["codex_cli_goal_tui_goal_terminal_observed_count"] = (
+        codex_cli_goal_terminal_count
+    )
+    trace["codex_cli_goal_tui_first_action_observed_count"] = (
+        codex_cli_goal_first_action_count
+    )
+    trace["codex_cli_goal_tui_bridge_request_count"] = (
+        codex_cli_goal_bridge_request_count
+    )
+    trace["codex_cli_goal_tui_task_facing_success_count"] = (
+        codex_cli_goal_task_facing_success_count
+    )
+    trace["codex_cli_goal_tui_stages"] = codex_cli_goal_stages
+    trace["codex_cli_goal_tui_stage"] = (
+        codex_cli_goal_stages[0] if codex_cli_goal_stages else ""
+    )
+    trace["codex_cli_goal_tui_reasoning_efforts"] = (
+        codex_cli_goal_reasoning_efforts
+    )
+    trace["codex_cli_goal_tui_reasoning_effort"] = (
+        codex_cli_goal_reasoning_efforts[0]
+        if codex_cli_goal_reasoning_efforts
+        else ""
+    )
+    trace["codex_cli_goal_tui_raw_material_recorded"] = raw_material_recorded
     prerequisites["remote_command_file_bridge_solver_trace_dir_present"] = (
         trace_dir.exists()
     )
@@ -11098,6 +11231,41 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites[
         "remote_command_file_bridge_driver_lifecycle_raw_material_recorded"
     ] = raw_material_recorded
+    prerequisites["codex_cli_goal_tui_trace_count"] = codex_cli_goal_trace_count
+    prerequisites["codex_cli_goal_tui_trace_present"] = (
+        codex_cli_goal_trace_count > 0
+    )
+    prerequisites["codex_cli_goal_tui_ok_count"] = codex_cli_goal_ok_count
+    prerequisites["codex_cli_goal_tui_goal_active_observed_count"] = (
+        codex_cli_goal_active_count
+    )
+    prerequisites["codex_cli_goal_tui_goal_terminal_observed_count"] = (
+        codex_cli_goal_terminal_count
+    )
+    prerequisites["codex_cli_goal_tui_first_action_observed_count"] = (
+        codex_cli_goal_first_action_count
+    )
+    prerequisites["codex_cli_goal_tui_bridge_request_count"] = (
+        codex_cli_goal_bridge_request_count
+    )
+    prerequisites["codex_cli_goal_tui_task_facing_success_count"] = (
+        codex_cli_goal_task_facing_success_count
+    )
+    prerequisites["codex_cli_goal_tui_stages"] = codex_cli_goal_stages
+    prerequisites["codex_cli_goal_tui_stage"] = (
+        codex_cli_goal_stages[0] if codex_cli_goal_stages else ""
+    )
+    prerequisites["codex_cli_goal_tui_reasoning_efforts"] = (
+        codex_cli_goal_reasoning_efforts
+    )
+    prerequisites["codex_cli_goal_tui_reasoning_effort"] = (
+        codex_cli_goal_reasoning_efforts[0]
+        if codex_cli_goal_reasoning_efforts
+        else ""
+    )
+    prerequisites["codex_cli_goal_tui_raw_material_recorded"] = (
+        raw_material_recorded
+    )
     if consumed_by_solver:
         prerequisites["remote_command_file_bridge_consumption_status"] = (
             "solver_prompt_probe_ready"
@@ -13862,7 +14030,10 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
         )
     elif args.route == "codex-goal-mode-baseline":
         controller_user = _build_codex_goal_mode_baseline_user()
-    elif args.route == "codex-app-server-goal-baseline":
+    elif args.route == CODEX_CLI_GOAL_BASELINE_ROUTE:
+        controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
+        controller_trace["last_decision"] = "host_codex_cli_tui_goal_worker_selected"
+    elif args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE:
         controller_trace = _new_controller_trace(args.route, max_rounds=args.max_rounds)
         _apply_app_server_goal_round_semantics_to_controller_trace(
             controller_trace,
@@ -15120,6 +15291,8 @@ def update_ledger(
         if args.route == LOOPX_BLIND_LOOP_TREATMENT_ROUTE
         else "Codex ACP blind-loop baseline"
         if args.route == "codex-acp-blind-loop-baseline"
+        else "Codex CLI /goal baseline"
+        if args.route == CODEX_CLI_GOAL_BASELINE_ROUTE
         else "LoopX goal-start product-mode treatment"
         if args.route == LOOPX_GOAL_START_PRODUCT_MODE_ROUTE
         else "LoopX product-mode treatment"
@@ -15234,6 +15407,7 @@ def append_history(args: argparse.Namespace, compact_path: Path) -> dict[str, An
         "loopx-blind-loop-treatment": "skillsbench_loopx_blind_loop_treatment_result_v0",
         "loopx-prompt-polling-test": "skillsbench_loopx_prompt_polling_test_result_v0",
         "codex-acp-blind-loop-baseline": "skillsbench_codex_acp_blind_loop_baseline_result_v0",
+        "codex-cli-goal-baseline": "skillsbench_codex_cli_goal_baseline_result_v0",
         "loopx-product-mode": "skillsbench_loopx_product_mode_result_v0",
         "loopx-goal-start-product-mode": "skillsbench_loopx_goal_start_product_mode_result_v0",
         "raw-codex-autonomous-max5": "skillsbench_raw_codex_autonomous_max5_result_v0",
@@ -15375,7 +15549,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=SUPPORTED_ROUTES,
         default=DEFAULT_ROUTE,
         help=(
-            "codex-app-server-goal-baseline is the native Codex Goal baseline; "
+            "codex-cli-goal-baseline is the canonical Codex Goal baseline "
+            "using the host Codex CLI TUI /goal slash command; "
             "loopx-prompt-polling-test is the current no-reward-feedback "
             "test route with scheduled continuation prompts; "
             "loopx-blind-loop-treatment is the historical SkillsBench "
@@ -15385,8 +15560,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "the main-table raw/new comparison routes; "
             "loopx-goal-start-product-mode adds /loopx goal-start planning "
             "with a compact ranked todo plan before selected-P0 lifecycle; "
-            "codex-app-server-goal-baseline is the native Codex Goal baseline "
-            "contract using app-server thread/goal/set/get and turn/start; "
+            "codex-app-server-goal-baseline is a deprecated legacy app-server "
+            "Goal route retained for explicit compatibility experiments only; "
             "codex-goal-mode-baseline sends one /goal-prefixed prompt request "
             "with no reward follow-up, but native goal-mode invocation remains "
             "unconfirmed without CLI slash-command/goal-state evidence and is "
@@ -15466,6 +15641,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Allow the codex-goal-mode-baseline route to run as an explicit "
             "slash-prefix experiment. This does not prove native Codex Goal "
             "mode and must not be used for A/B uplift claims."
+        ),
+    )
+    parser.add_argument(
+        "--allow-deprecated-app-server-goal-route",
+        action="store_true",
+        help=(
+            "Allow codex-app-server-goal-baseline to execute as an explicit "
+            "legacy compatibility experiment. Normal SkillsBench Goal baselines "
+            "must use codex-cli-goal-baseline."
         ),
     )
     parser.add_argument("--outer-timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
@@ -16776,7 +16960,80 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
-    if args.route == "codex-app-server-goal-baseline" and not args.plan_only:
+    if (
+        args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+        and not args.plan_only
+        and not args.reduce_only
+        and not args.allow_deprecated_app_server_goal_route
+    ):
+        payload = {
+            "ok": False,
+            "error_type": "SkillsBenchAppServerGoalRouteDeprecated",
+            "route": args.route,
+            "reason": (
+                "codex-app-server-goal-baseline is deprecated for normal "
+                "SkillsBench baseline/treatment collection. It exercises the "
+                "Codex app-server surface, while the current LoopX treatment "
+                "and baseline policy requires the Codex CLI TUI /goal product "
+                "path."
+            ),
+            "next_action": (
+                "rerun with --route codex-cli-goal-baseline --reasoning-effort "
+                "xhigh --host-local-acp-launch and a materialized command/file "
+                "bridge; use --allow-deprecated-app-server-goal-route only for "
+                "explicit legacy compatibility experiments"
+            ),
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+        return 2
+    if (
+        args.route == CODEX_CLI_GOAL_BASELINE_ROUTE
+        and not args.plan_only
+        and not args.reduce_only
+    ):
+        bridge_ready = bool(
+            args.remote_command_file_bridge_ready
+            or args.remote_command_file_bridge_probe
+        )
+        bridge_command_configured = bool(args.remote_command_file_bridge_solver_command)
+        if (
+            not args.host_local_acp_launch
+            or not bridge_ready
+            or not bridge_command_configured
+        ):
+            payload = {
+                "ok": False,
+                "error_type": "SkillsBenchCodexCliGoalDriverRequired",
+                "route": args.route,
+                "reason": (
+                    "codex-cli-goal-baseline must run the host Codex CLI TUI "
+                    "with a real /goal slash command and a materialized "
+                    "command/file bridge into the scored SkillsBench sandbox. "
+                    "A container-local codex-acp or slash-prefix prompt would "
+                    "not prove native CLI Goal mode."
+                ),
+                "next_action": (
+                    "rerun with --host-local-acp-launch plus "
+                    "--remote-command-file-bridge-ready or "
+                    "--remote-command-file-bridge-probe after provisioning the "
+                    "sandbox bridge, and pass "
+                    "--remote-command-file-bridge-solver-command so the host "
+                    "CLI goal worker can operate on the scored sandbox"
+                ),
+                "canonical_codex_cli_goal_driver_required": True,
+                "host_local_acp_launch": bool(args.host_local_acp_launch),
+                "remote_command_file_bridge_ready": bridge_ready,
+                "remote_command_file_bridge_solver_command_configured": (
+                    bridge_command_configured
+                ),
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
+            return 2
+    if (
+        args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+        and not args.plan_only
+        and not args.reduce_only
+    ):
         bridge_ready = bool(
             args.remote_command_file_bridge_ready
             or args.remote_command_file_bridge_probe

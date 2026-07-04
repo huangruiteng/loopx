@@ -515,6 +515,7 @@ class CodexExecConfig:
     timeout_sec: int = 7200
     dry_run_response: str | None = None
     app_server_goal_worker: bool = False
+    codex_cli_goal_worker: bool = False
     dataset: str = "skillsbench-v1.1"
     task_id: str = "llm-prefix-cache-replay"
     run_group_id: str = ""
@@ -685,6 +686,13 @@ class SkillsBenchLocalAcpRelay:
             return self._config.dry_run_response
         if self._config.app_server_goal_worker:
             return self._run_app_server_goal_worker(
+                prompt_text,
+                session=session,
+                session_id=session_id,
+                stdout=stdout,
+            )
+        if self._config.codex_cli_goal_worker:
+            return self._run_codex_cli_goal_worker(
                 prompt_text,
                 session=session,
                 session_id=session_id,
@@ -1036,6 +1044,476 @@ class SkillsBenchLocalAcpRelay:
                     bridge_summary_path=bridge_summary_path,
                 )
             return response or "local codex returned an empty final message"
+
+    def _run_codex_cli_goal_worker(
+        self,
+        prompt_text: str,
+        *,
+        session: dict[str, Any],
+        session_id: str,
+        stdout: TextIO,
+    ) -> str:
+        """Run one ACP prompt through the real Codex CLI TUI /goal surface."""
+
+        if shutil.which("tmux") is None:
+            self._publish_codex_cli_goal_trace(
+                ok=False,
+                stage="tmux_missing",
+                goal_active_observed=False,
+                goal_terminal_observed=False,
+                first_action_observed=False,
+                bridge_summary_path=None,
+            )
+            raise RuntimeError("codex cli goal worker requires tmux")
+        with tempfile.TemporaryDirectory(prefix="gh-skillsbench-cli-goal-") as tmp:
+            tmp_path = Path(tmp)
+            prompt_for_codex = prompt_text
+            cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
+            bridge_server_proc: subprocess.Popen[str] | None = None
+            bridge_summary_path: Path | None = None
+            if self._config.remote_command_file_bridge_command:
+                if _is_bridge_action_preflight_prompt(prompt_text):
+                    bridge_probe = self._reverse_channel_json_preflight_probe()
+                else:
+                    bridge_probe = self._consume_remote_bridge_for_solver()
+                self._publish_remote_bridge_consumption_trace(bridge_probe)
+                if bridge_probe.get("ready") is not True:
+                    self._publish_codex_cli_goal_trace(
+                        ok=False,
+                        stage="bridge_probe_failed",
+                        goal_active_observed=False,
+                        goal_terminal_observed=False,
+                        first_action_observed=False,
+                        bridge_summary_path=None,
+                    )
+                    raise RuntimeError("remote command/file bridge probe failed")
+                local_cwd = tmp_path / "local-codex-cli-goal-cwd"
+                local_cwd.mkdir(parents=True, exist_ok=True)
+                cwd = str(local_cwd)
+                bridge_summary_path = tmp_path / "remote-bridge-agent-ops.jsonl"
+                agent_bridge_command = (
+                    self._config.remote_command_file_bridge_agent_command
+                    or self._config.remote_command_file_bridge_command
+                    or ""
+                )
+                agent_bridge_command, bridge_server_proc = (
+                    self._start_json_file_bridge_server(
+                        tmp_path=tmp_path,
+                        local_cwd=local_cwd,
+                        bridge_command=agent_bridge_command,
+                    )
+                )
+                instrumented_bridge = self._write_instrumented_bridge_wrapper(
+                    tmp_path=tmp_path,
+                    summary_path=bridge_summary_path,
+                    bridge_command=agent_bridge_command,
+                )
+                prompt_for_codex = self._prompt_with_remote_bridge_packet(
+                    prompt_text,
+                    bridge_probe=bridge_probe,
+                    bridge_command_for_agent=str(instrumented_bridge),
+                )
+            prompt_path = tmp_path / "goal-prompt.txt"
+            prompt_path.write_text(prompt_for_codex, encoding="utf-8")
+            tmux_name = f"gh-sb-cli-goal-{uuid.uuid4().hex[:10]}"
+            cmd = self._codex_cli_tui_command(cwd=cwd, model=session.get("model"))
+            shell_command = " ".join(shlex.quote(part) for part in cmd)
+            goal_active_observed = False
+            goal_terminal_observed = False
+            goal_failed_observed = False
+            first_action_seen = False
+            bridge_activity_seen = False
+            last_bridge_summary_size = 0
+            last_bridge_activity_at = time.monotonic()
+            meaningful_progress_seen = False
+            try:
+                subprocess.run(
+                    [
+                        "tmux",
+                        "new-session",
+                        "-d",
+                        "-s",
+                        tmux_name,
+                        "-c",
+                        cwd,
+                        shell_command,
+                    ],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                time.sleep(1.0)
+                self._tmux_send_literal(tmux_name, "/goal ")
+                subprocess.run(
+                    ["tmux", "load-buffer", "-b", f"{tmux_name}-prompt", str(prompt_path)],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                subprocess.run(
+                    [
+                        "tmux",
+                        "paste-buffer",
+                        "-d",
+                        "-b",
+                        f"{tmux_name}-prompt",
+                        "-t",
+                        tmux_name,
+                    ],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                self._tmux_submit_enter(tmux_name)
+                deadline = time.monotonic() + self._config.timeout_sec
+                first_action_deadline = 0.0
+                if (
+                    bridge_summary_path is not None
+                    and self._config.first_action_timeout_sec > 0
+                    and _prompt_requires_bridge_first_action(prompt_for_codex)
+                ):
+                    first_action_deadline = (
+                        time.monotonic()
+                        + max(1.0, self._config.first_action_timeout_sec)
+                    )
+                meaningful_progress_required = (
+                    bridge_summary_path is not None
+                    and self._config.first_action_timeout_sec > 0
+                    and _prompt_requires_meaningful_bridge_progress(
+                        prompt_for_codex,
+                        route=self._config.route,
+                    )
+                )
+                meaningful_progress_deadline = (
+                    time.monotonic()
+                    + max(1.0, self._config.first_action_timeout_sec)
+                    if meaningful_progress_required
+                    else 0.0
+                )
+                first_action_seen = not bool(first_action_deadline)
+                bridge_idle_timeout_sec = max(
+                    0.0,
+                    float(self._config.bridge_idle_timeout_sec or 0.0),
+                )
+                next_heartbeat = (
+                    time.monotonic()
+                    + max(1.0, self._config.stream_heartbeat_interval_sec)
+                )
+                while time.monotonic() < deadline:
+                    now = time.monotonic()
+                    capture = self._tmux_capture(tmux_name)
+                    if "Goal active" in capture or "Pursuing goal" in capture:
+                        goal_active_observed = True
+                    if "Goal achieved" in capture:
+                        goal_terminal_observed = True
+                        break
+                    if "Goal failed" in capture or "Goal blocked" in capture:
+                        goal_terminal_observed = True
+                        goal_failed_observed = True
+                        break
+                    if bridge_summary_path is not None:
+                        try:
+                            current_bridge_summary_size = bridge_summary_path.stat().st_size
+                        except OSError:
+                            current_bridge_summary_size = 0
+                        if current_bridge_summary_size > last_bridge_summary_size:
+                            last_bridge_summary_size = current_bridge_summary_size
+                            last_bridge_activity_at = now
+                            bridge_activity_seen = True
+                            first_action_seen = True
+                        elif (
+                            not first_action_seen
+                            and current_bridge_summary_size > 0
+                        ):
+                            first_action_seen = True
+                        if not meaningful_progress_seen:
+                            meaningful_progress_seen = (
+                                _bridge_summary_has_meaningful_agent_progress(
+                                    bridge_summary_path,
+                                    allow_loopx_closeout=False,
+                                )
+                            )
+                    if (
+                        not first_action_seen
+                        and first_action_deadline
+                        and now >= first_action_deadline
+                    ):
+                        self._tmux_kill_session(tmux_name)
+                        if bridge_summary_path is not None:
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage="first_action_timeout",
+                            goal_active_observed=goal_active_observed,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=False,
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_first_action_timeout"
+                        )
+                    if (
+                        meaningful_progress_required
+                        and not meaningful_progress_seen
+                        and meaningful_progress_deadline
+                        and now >= meaningful_progress_deadline
+                    ):
+                        self._tmux_kill_session(tmux_name)
+                        if bridge_summary_path is not None:
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage="meaningful_bridge_progress_timeout",
+                            goal_active_observed=goal_active_observed,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=first_action_seen,
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_first_action_timeout"
+                        )
+                    if (
+                        bridge_activity_seen
+                        and bridge_summary_path is not None
+                        and bridge_idle_timeout_sec > 0
+                        and not _bridge_summary_has_inflight_operation(
+                            bridge_summary_path
+                        )
+                        and now - last_bridge_activity_at >= bridge_idle_timeout_sec
+                    ):
+                        self._tmux_kill_session(tmux_name)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage="bridge_idle_timeout",
+                            goal_active_observed=goal_active_observed,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=first_action_seen,
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_bridge_idle_timeout"
+                        )
+                    if now >= next_heartbeat:
+                        self._write_worker_heartbeat(
+                            stdout,
+                            session_id=session_id,
+                            text="local codex cli /goal still running",
+                        )
+                        next_heartbeat = (
+                            now
+                            + max(1.0, self._config.stream_heartbeat_interval_sec)
+                        )
+                    time.sleep(0.5)
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
+                self._publish_codex_cli_goal_trace(
+                    ok=bool(goal_terminal_observed and not goal_failed_observed),
+                    stage=(
+                        "goal_achieved"
+                        if goal_terminal_observed and not goal_failed_observed
+                        else "goal_failed"
+                        if goal_failed_observed
+                        else "timeout"
+                    ),
+                    goal_active_observed=goal_active_observed,
+                    goal_terminal_observed=goal_terminal_observed,
+                    first_action_observed=first_action_seen,
+                    bridge_summary_path=bridge_summary_path,
+                )
+                if goal_terminal_observed and not goal_failed_observed:
+                    return "codex cli /goal completed"
+                if goal_failed_observed:
+                    return _recoverable_codex_turn_failure_message(
+                        "codex_exec_failed"
+                    )
+                return _recoverable_codex_turn_failure_message("codex_exec_timeout")
+            except subprocess.SubprocessError as exc:
+                if bridge_summary_path is not None:
+                    self._publish_remote_bridge_agent_operations_trace(
+                        bridge_summary_path=bridge_summary_path,
+                    )
+                self._publish_codex_cli_goal_trace(
+                    ok=False,
+                    stage="tmux_or_input_failed",
+                    goal_active_observed=goal_active_observed,
+                    goal_terminal_observed=goal_terminal_observed,
+                    first_action_observed=first_action_seen,
+                    bridge_summary_path=bridge_summary_path,
+                )
+                raise RuntimeError("codex cli goal worker failed before run") from exc
+            finally:
+                self._tmux_kill_session(tmux_name)
+                self._terminate_bridge_server_process(bridge_server_proc)
+
+    def _codex_cli_tui_command(
+        self,
+        *,
+        cwd: str,
+        model: Any,
+    ) -> list[str]:
+        cmd = [
+            self._config.codex_bin,
+            "--no-alt-screen",
+            "-s",
+            self._config.sandbox,
+            "-a",
+            self._config.approval_policy or "never",
+            "-C",
+            cwd,
+        ]
+        if self._config.reasoning_effort:
+            cmd.extend(
+                [
+                    "-c",
+                    "model_reasoning_effort="
+                    + json.dumps(str(self._config.reasoning_effort)),
+                ]
+            )
+        for trust_path in (cwd, os.path.realpath(cwd)):
+            if trust_path:
+                cmd.extend(
+                    [
+                        "-c",
+                        f"projects.{json.dumps(trust_path)}.trust_level=\"trusted\"",
+                    ]
+                )
+        resolved_model = self._config.model or model
+        if resolved_model:
+            cmd.extend(["-m", str(resolved_model)])
+        return cmd
+
+    def _tmux_send_literal(self, tmux_name: str, text: str) -> None:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", tmux_name, "-l", text],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+
+    def _tmux_submit_enter(self, tmux_name: str) -> None:
+        # Codex TUI uses enhanced keyboard handling; the Kitty Enter sequence
+        # submits reliably where a plain carriage return may only insert a line.
+        try:
+            self._tmux_send_literal(tmux_name, "\x1b[13u")
+        except subprocess.SubprocessError:
+            subprocess.run(
+                ["tmux", "send-keys", "-t", tmux_name, "C-m"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+
+    def _tmux_capture(self, tmux_name: str) -> str:
+        proc = subprocess.run(
+            ["tmux", "capture-pane", "-p", "-J", "-S", "-2000", "-t", tmux_name],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return proc.stdout or ""
+
+    def _tmux_kill_session(self, tmux_name: str) -> None:
+        subprocess.run(
+            ["tmux", "kill-session", "-t", tmux_name],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+
+    def _publish_codex_cli_goal_trace(
+        self,
+        *,
+        ok: bool,
+        stage: str,
+        goal_active_observed: bool,
+        goal_terminal_observed: bool,
+        first_action_observed: bool,
+        bridge_summary_path: Path | None,
+    ) -> None:
+        if not self._config.worker_public_trace_dir:
+            return
+        safe_stage = "".join(
+            ch if ch.isalnum() or ch == "_" else "_"
+            for ch in str(stage or "").strip().lower()
+        ) or "unknown"
+        bridge_request_count = 0
+        task_facing_success_count = 0
+        if bridge_summary_path is not None and bridge_summary_path.exists():
+            try:
+                lines = bridge_summary_path.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines()
+            except OSError:
+                lines = []
+            for line in lines:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                if str(record.get("record_phase") or "").lower() == "start":
+                    bridge_request_count += 1
+                if (
+                    str(record.get("record_phase") or "").lower() == "complete"
+                    and record.get("task_facing_operation") is True
+                    and (record.get("success") is True or record.get("returncode") == 0)
+                ):
+                    task_facing_success_count += 1
+        trace = {
+            "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
+            "ok": bool(ok),
+            "route": self._config.route,
+            "trace_kind": "codex_cli_goal_tui",
+            "benchmark_id": self._config.dataset,
+            "task_id": self._config.task_id,
+            "codex_cli_goal": {
+                "schema_version": "skillsbench_codex_cli_goal_tui_v0",
+                "stage": safe_stage,
+                "goal_slash_command_submitted": True,
+                "goal_active_observed": bool(goal_active_observed),
+                "goal_terminal_observed": bool(goal_terminal_observed),
+                "first_action_observed": bool(first_action_observed),
+                "bridge_request_count": bridge_request_count,
+                "task_facing_success_count": task_facing_success_count,
+                "reasoning_effort": str(self._config.reasoning_effort or "")[:40],
+                "raw_tui_capture_recorded": False,
+                "raw_task_text_recorded": False,
+                "raw_stdout_recorded": False,
+                "raw_stderr_recorded": False,
+                "credential_values_recorded": False,
+            },
+            "boundary": {
+                "raw_command_recorded": False,
+                "raw_stdout_recorded": False,
+                "raw_stderr_recorded": False,
+                "raw_task_text_recorded": False,
+                "raw_logs_recorded": False,
+                "raw_trajectory_recorded": False,
+                "credential_values_recorded": False,
+                "host_paths_recorded": False,
+                "remote_paths_recorded": False,
+                "upload_performed": False,
+                "submit_performed": False,
+            },
+        }
+        self._write_worker_public_trace(trace)
 
     def _terminate_codex_process(
         self,

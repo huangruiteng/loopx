@@ -61,7 +61,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help=(
             "Delegate each ACP prompt to scripts/skillsbench_host_codex_goal_worker.py "
-            "instead of codex exec. This is the native Codex Goal baseline path."
+            "instead of codex exec. Deprecated for SkillsBench scored runs; "
+            "prefer --codex-cli-goal-worker."
+        ),
+    )
+    parser.add_argument(
+        "--codex-cli-goal-worker",
+        action="store_true",
+        help=(
+            "Delegate each ACP prompt to a host Codex CLI TUI and submit it "
+            "with a real /goal slash command. This is the canonical Codex "
+            "Goal baseline path."
         ),
     )
     parser.add_argument("--dataset", default="skillsbench-v1.1")
@@ -74,9 +84,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--reasoning-effort",
         default=None,
         help=(
-            "Reasoning effort passed to Codex. For codex exec this maps to "
-            "-c model_reasoning_effort=...; for --app-server-goal-worker this "
-            "maps to the native app-server turn/start effort."
+            "Reasoning effort passed to Codex. For codex exec and "
+            "--codex-cli-goal-worker this maps to -c "
+            "model_reasoning_effort=...; for --app-server-goal-worker this "
+            "maps to the deprecated app-server turn/start effort."
         ),
     )
     parser.add_argument(
@@ -209,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout_sec=args.timeout_sec,
             dry_run_response=args.dry_run_response,
             app_server_goal_worker=args.app_server_goal_worker,
+            codex_cli_goal_worker=args.codex_cli_goal_worker,
             dataset=args.dataset,
             task_id=args.task_id,
             run_group_id=args.run_group_id,
