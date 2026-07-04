@@ -202,6 +202,9 @@ def main() -> int:
         assert wrapper.resolve().name == "loopx", wrapper.resolve()
         release_root = wrapper.resolve().parents[1]
         assert (release_root / "loopx" / "cli.py").is_file(), release_root
+        runtime_package = release_root / "loopx" / "control_plane" / "runtime"
+        assert (runtime_package / "run_compaction.py").is_file(), release_root
+        assert (runtime_package / "session_runtime.py").is_file(), release_root
         dashboard_page = release_root / "apps" / "dashboard" / "src" / "views" / "dashboard-page.tsx"
         action_packet = release_root / "apps" / "dashboard" / "src" / "data" / "action-packet.ts"
         dashboard_node_modules = release_root / "apps" / "dashboard" / "node_modules"
