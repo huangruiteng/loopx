@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -240,12 +241,51 @@ def assert_attention_item_parity() -> None:
     )
 
 
+def assert_active_state_todo_fields_redacts_review_material_paths() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-todo-redaction-") as tmp:
+        project = Path(tmp)
+        material = project / "docs" / "notes.md"
+        material.parent.mkdir(parents=True, exist_ok=True)
+        material.write_text("# Notes\n", encoding="utf-8")
+        state_path = project / ".codex" / "goals" / "loopx-meta" / "ACTIVE_GOAL_STATE.md"
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_text = "\n".join(
+            [
+                "# Active State",
+                "## Agent Todos",
+                "- [ ] [P1] Review [notes](docs/notes.md)",
+                "",
+            ]
+        )
+        state_path.write_text(state_text, encoding="utf-8")
+        goal = {
+            "id": "loopx-meta",
+            "repo": str(project),
+            "state_file": ".codex/goals/loopx-meta/ACTIVE_GOAL_STATE.md",
+        }
+
+        raw_fields = status_module.parse_active_state_todos(
+            state_text,
+            goal=goal,
+            state_path=state_path,
+        )
+        raw_material = raw_fields["agent_todos"]["items"][0]["review_materials"][0]
+        assert raw_material["resolved_path"] == str(material.resolve()), raw_material
+
+        fields = status_module.active_state_todo_fields(goal)
+        material_projection = fields["agent_todos"]["items"][0]["review_materials"][0]
+        assert material_projection["path"] == "docs/notes.md", material_projection
+        assert material_projection["exists"] is True, material_projection
+        assert "resolved_path" not in material_projection, material_projection
+
+
 def main() -> None:
     assert_wrapper_parity()
     assert_dependency_blocker_parity()
     assert_autonomous_candidate_parity()
     assert_global_registry_shadow_parity()
     assert_attention_item_parity()
+    assert_active_state_todo_fields_redacts_review_material_paths()
 
 
 if __name__ == "__main__":

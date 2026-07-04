@@ -97,7 +97,10 @@ from .control_plane.goals.active_state_event_projection import (
     state_event_log_candidates as _state_event_log_candidates_read_model,
 )
 from .control_plane.todos.active_state_todos import (
+    MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION as _MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION,
     active_state_todo_fields as _active_state_todo_fields_read_model,
+    attach_monitor_writeback_contract as _attach_monitor_writeback_contract_read_model,
+    redacted_status_todo_fields as _redacted_status_todo_fields_read_model,
 )
 from .control_plane.todos.active_state_todo_parser import (
     parse_active_state_todos as _parse_active_state_todos_read_model,
@@ -427,7 +430,7 @@ STATUS_CONTRACT_SCHEMA_VERSION = 2
 MINIMUM_DASHBOARD_STATUS_CONTRACT_SCHEMA_VERSION = 2
 STATUS_CONTRACT_RELOAD_HINT = "scripts/macos-dashboard-launchagent.sh restart"
 STATUS_CONTRACT_SIGNAL_LIMIT = 3
-MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
+MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = _MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION
 EVENT_LEDGER_DECISION_CLASSIFICATIONS = USER_OR_CONTROLLER_CLASSIFICATIONS | {
     "operator_gate_approved",
 }
@@ -5883,47 +5886,11 @@ def attach_monitor_writeback_contract(
     supported: bool,
     source: str,
 ) -> None:
-    if supported:
-        return
-    contract = {
-        "schema_version": MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION,
-        "supported": False,
-        "source": source,
-    }
-    for key in ("user_todos", "agent_todos"):
-        summary = fields.get(key)
-        if isinstance(summary, dict):
-            summary["monitor_writeback"] = dict(contract)
+    _attach_monitor_writeback_contract_read_model(fields, supported=supported, source=source)
 
 
 def redacted_status_todo_fields(fields: dict[str, Any]) -> dict[str, Any]:
-    redacted = dict(fields)
-    for key in ("user_todos", "agent_todos"):
-        group = redacted.get(key)
-        if not isinstance(group, dict):
-            continue
-        group_copy = dict(group)
-        items: list[Any] = []
-        for item in group_copy.get("items") or []:
-            if not isinstance(item, dict):
-                items.append(item)
-                continue
-            item_copy = dict(item)
-            materials = item_copy.get("review_materials")
-            if isinstance(materials, list):
-                redacted_materials = []
-                for material in materials:
-                    if not isinstance(material, dict):
-                        redacted_materials.append(material)
-                        continue
-                    material_copy = dict(material)
-                    material_copy.pop("resolved_path", None)
-                    redacted_materials.append(material_copy)
-                item_copy["review_materials"] = redacted_materials
-            items.append(item_copy)
-        group_copy["items"] = items
-        redacted[key] = group_copy
-    return redacted
+    return _redacted_status_todo_fields_read_model(fields)
 
 
 def parse_active_state_todos(
@@ -6515,14 +6482,12 @@ def active_state_todo_fields(
         rollout_event_log_path=rollout_event_log_path,
         max_todo_index_rollout_events_per_goal=MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
         active_state_event_projection_fields=active_state_event_projection_fields,
-        attach_monitor_writeback_contract=attach_monitor_writeback_contract,
         parse_active_state_todos=parse_active_state_todos,
         parse_issue_meta_surface=parse_issue_meta_surface,
         backlog_hygiene_warning=backlog_hygiene_warning,
         completed_todo_archive_warning=completed_todo_archive_warning,
         autonomous_replan_obligation=autonomous_replan_obligation,
         state_projection_gap_warning=state_projection_gap_warning,
-        redacted_status_todo_fields=redacted_status_todo_fields,
     )
 
 

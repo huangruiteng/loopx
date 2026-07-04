@@ -100,14 +100,12 @@ def direct_active_state_todo_fields(goal: dict, *, runtime_root: Path | None = N
         rollout_event_log_path=status_module.rollout_event_log_path,
         max_todo_index_rollout_events_per_goal=status_module.MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
         active_state_event_projection_fields=status_module.active_state_event_projection_fields,
-        attach_monitor_writeback_contract=status_module.attach_monitor_writeback_contract,
         parse_active_state_todos=status_module.parse_active_state_todos,
         parse_issue_meta_surface=status_module.parse_issue_meta_surface,
         backlog_hygiene_warning=status_module.backlog_hygiene_warning,
         completed_todo_archive_warning=status_module.completed_todo_archive_warning,
         autonomous_replan_obligation=status_module.autonomous_replan_obligation,
         state_projection_gap_warning=status_module.state_projection_gap_warning,
-        redacted_status_todo_fields=status_module.redacted_status_todo_fields,
     )
 
 
