@@ -4,6 +4,10 @@ import shlex
 from collections.abc import Iterable
 
 from .defaults import AUTO_RESEARCH_DEFAULT_GOAL_ID
+from ..multi_agent.recipe import (
+    build_minimal_decentralized_a2a_recipe,
+    parse_multi_agent_role_spec_lines,
+)
 
 
 AUTO_RESEARCH_PRESET_SCHEMA_VERSION = "auto_research_thin_preset_v0"
@@ -234,46 +238,23 @@ def build_auto_research_minimal_a2a_recipe(
         "loopx auto-research start "
         f"{_quoted_open_question(open_question)}{language_flag} --execute"
     )
-    raw_role_specs = (
-        role_specs if role_specs is not None else default_auto_research_agent_specs()
-    )
-    preset_lines = [str(spec).strip() for spec in raw_role_specs if str(spec).strip()]
-    user_line_count = 1
-    preset_line_count = len(preset_lines)
-    return {
-        "schema_version": AUTO_RESEARCH_MINIMAL_A2A_RECIPE_SCHEMA_VERSION,
-        "claim": (
+    raw_role_specs = role_specs or default_auto_research_agent_specs()
+    return build_minimal_decentralized_a2a_recipe(
+        schema_version=AUTO_RESEARCH_MINIMAL_A2A_RECIPE_SCHEMA_VERSION,
+        product_id="auto-research",
+        claim=(
             "one user command plus the default four-line auto-research role spec "
             "starts decentralized A2A on the shared LoopX multi-agent kernel"
         ),
-        "line_unit": "declarative_recipe_line",
-        "user_line_count": user_line_count,
-        "preset_role_spec_line_count": preset_line_count,
-        "user_plus_preset_line_count": user_line_count + preset_line_count,
-        "shared_kernel_counted_as_recipe_lines": False,
-        "claim_boundary": (
+        claim_boundary=(
             "line count covers user intent and auto-research preset defaults only; "
             "the reusable kernel owns visible process launch, fixed wake prompt, "
             "pane-local quota/frontier tick, todo/evidence/status protocol, "
             "and public artifact routing"
         ),
-        "user_recipe_lines": [user_line],
-        "preset_recipe_lines": preset_lines,
-        "coordination_model": "decentralized_state_a2a",
-        "a2a_proof_contract": {
-            "broadcaster_selects_todo": False,
-            "broadcaster_runs_worker_turn": False,
-            "each_pane_reads_own_quota_frontier": True,
-            "successor_todos_declared_by_role_profile": True,
-            "leader_agent_required": False,
-        },
-        "kernel_reuse": [
-            "generic visible multi-agent runner",
-            "fixed prompt broadcast",
-            "pane-local A2A tick",
-            "LoopX todo/evidence/status protocol",
-        ],
-    }
+        user_recipe_lines=[user_line],
+        preset_recipe_lines=raw_role_specs,
+    )
 
 
 def auto_research_role_id(raw_role: str, *, index: int) -> str:
@@ -288,31 +269,18 @@ def auto_research_role_id(raw_role: str, *, index: int) -> str:
 
 
 def auto_research_lane_specs(agent_specs: Iterable[str] | None) -> list[dict[str, str]]:
-    parsed_specs = list(agent_specs or [])
-    if not parsed_specs:
-        parsed_specs = default_auto_research_agent_specs()
-
-    lanes: list[dict[str, str]] = []
     default_scope = {
         lane: scope for _agent, lane, _role, scope in AUTO_RESEARCH_DEFAULT_LANES
     }
-    for index, raw in enumerate(parsed_specs, start=1):
-        parts = [part.strip() for part in str(raw).split(":")]
-        if len(parts) not in {1, 2, 3, 4} or not parts[0]:
-            raise ValueError("agent specs must be agent_id[:lane_id[:role_id[:scope]]]")
-        agent_id = parts[0]
-        lane_id = parts[1] if len(parts) >= 2 and parts[1] else f"lane-{index}"
-        role_id = auto_research_role_id(parts[2] if len(parts) >= 3 else "", index=index)
-        scope = parts[3] if len(parts) >= 4 and parts[3] else default_scope.get(lane_id, role_id)
-        lanes.append(
-            {
-                "agent_id": agent_id,
-                "lane_id": lane_id,
-                "role_id": role_id,
-                "scope": scope,
-            }
-        )
-    return lanes
+    return parse_multi_agent_role_spec_lines(
+        agent_specs=agent_specs,
+        default_agent_specs=default_auto_research_agent_specs(),
+        resolve_role_id=lambda raw_role, index: auto_research_role_id(
+            raw_role,
+            index=index,
+        ),
+        default_scope_by_lane=default_scope,
+    )
 
 
 def auto_research_role_profile(*, role_id: str, goal_id: str, agent_id: str) -> dict[str, object]:

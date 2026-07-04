@@ -80,6 +80,20 @@ decentralized A2A research loop on the shared LoopX kernel. The slogan must not
 claim that tmux launch, Codex TUI bootstrap, quota/frontier, evidence routing,
 or status projection are reimplemented inside the auto-research preset.
 
+## Developer Implementation Budget
+
+The same split applies to source code, not only to command examples.
+`loopx/capabilities/auto_research/preset.py` should read like a small preset:
+role defaults, role profiles, successor declarations, seed todo wording, and
+thin wrappers around generic helpers. Reusable A2A proof fields such as
+`broadcaster_selects_todo=false`, `each_pane_reads_own_quota_frontier=true`,
+and `leader_agent_required=false` belong to
+`loopx/capabilities/multi_agent/recipe.py`.
+
+This keeps the developer-facing promise honest: future products should be able
+to copy the pattern by writing their own short preset, not by importing
+auto-research internals.
+
 ## Collective Round Ledger
 
 `multi_agent_collective_round_ledger_v0` is the kernel-owned proof surface for

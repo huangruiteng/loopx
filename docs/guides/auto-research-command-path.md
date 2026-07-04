@@ -16,7 +16,9 @@ multi-agent kernel. `loopx/capabilities/auto_research/preset.py` owns only the
 research roles, handoff hints, metric/evidence loop defaults, and seed todo
 phrasing. The generic kernel owns the real Codex TUI panes, pane-local A2A
 tick, workspace/trust-safe launch, todo/evidence/status protocol, and compact
-human status.
+human status. The developer-facing recipe proof also follows that boundary:
+`preset.py` calls the generic `multi_agent.recipe` helper instead of defining
+decentralized A2A proof mechanics itself.
 Use the [multi-agent product recipe](multi-agent-product-recipe.md) when a new
 product wants to copy the pattern without copying auto-research code.
 
