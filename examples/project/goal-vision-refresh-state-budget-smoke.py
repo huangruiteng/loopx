@@ -71,35 +71,38 @@ def run_cli(
     *,
     vision_path: Path,
     check: bool,
+    dry_run: bool = True,
 ) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry_path),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "refresh-state",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--classification",
+        "goal_vision_patch_recorded",
+        "--delivery-batch-scale",
+        "single_surface",
+        "--delivery-outcome",
+        "outcome_progress",
+        "--autonomous-replan-recorded",
+        "--agent-vision-json",
+        str(vision_path),
+        "--no-global-sync",
+    ]
+    if dry_run:
+        command.append("--dry-run")
     return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "loopx.cli",
-            "--registry",
-            str(registry_path),
-            "--runtime-root",
-            str(runtime),
-            "--format",
-            "json",
-            "refresh-state",
-            "--goal-id",
-            GOAL_ID,
-            "--agent-id",
-            AGENT_ID,
-            "--classification",
-            "goal_vision_patch_recorded",
-            "--delivery-batch-scale",
-            "single_surface",
-            "--delivery-outcome",
-            "outcome_progress",
-            "--autonomous-replan-recorded",
-            "--agent-vision-json",
-            str(vision_path),
-            "--dry-run",
-            "--no-global-sync",
-        ],
+        command,
         cwd=REPO_ROOT,
         check=check,
         text=True,
@@ -150,6 +153,32 @@ def main() -> int:
         assert valid["agent_vision"]["vision_budget"]["status"] == "ok", valid
         assert valid["agent_vision"]["validation"]["budget_checked"] is True, valid
         assert valid["agent_vision"]["schema_version"] == "goal_vision_replan_contract_v0", valid
+
+        written = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                vision_path=valid_path,
+                check=True,
+                dry_run=False,
+            )
+        )
+        assert written["ok"] is True, written
+        index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+        index_rows = [
+            json.loads(line)
+            for line in index_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert index_rows, written
+        indexed_vision = index_rows[-1]["agent_vision"]
+        assert indexed_vision["vision_patch"]["acceptance_summary"] == (
+            "One successor todo plus evidence references."
+        ), indexed_vision
+        assert indexed_vision["vision_patch"]["replan_trigger_summary"] == (
+            "Frontier exhausted while acceptance remains open."
+        ), indexed_vision
+        assert indexed_vision["todo_delta"] == ["create_successor"], indexed_vision
 
         write_json(
             invalid_path,

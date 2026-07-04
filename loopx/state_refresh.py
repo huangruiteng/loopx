@@ -884,6 +884,12 @@ def refresh_state_run(
             "schema_version": agent_vision.get("schema_version"),
             "agent_id": agent_vision.get("agent_id"),
             "state": agent_vision.get("state"),
+            "vision_patch": agent_vision.get("vision_patch")
+            if isinstance(agent_vision.get("vision_patch"), dict)
+            else {},
+            "todo_delta": agent_vision.get("todo_delta")
+            if isinstance(agent_vision.get("todo_delta"), list)
+            else [],
             "vision_budget": agent_vision.get("vision_budget"),
         }
     if normalized_progress_scope:

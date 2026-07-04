@@ -51,10 +51,12 @@ from .orchestration import compact_orchestration_policy, orchestration_policy_su
 from .policies.execution_obligation import build_execution_obligation
 from .policies.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
+    acceptance_gaps_from_agent_vision,
     autonomous_replan_decision_allowed,
     build_autonomous_replan_recommendation,
     build_goal_frontier_projection_from_summaries,
     derive_goal_frontier_replan_obligation_from_summaries,
+    latest_agent_vision_from_status_payload,
     select_autonomous_replan_obligation,
 )
 from .policies.goal_route_hint import build_goal_route_hint
@@ -5818,6 +5820,14 @@ def build_quota_should_run(
             goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
         )
+        latest_agent_vision = latest_agent_vision_from_status_payload(
+            status_payload,
+            goal_id=safe_goal_id,
+            agent_id=agent_frontier_id,
+        )
+        goal_frontier_acceptance_gaps = acceptance_gaps_from_agent_vision(
+            latest_agent_vision
+        )
         frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
@@ -5832,6 +5842,7 @@ def build_quota_should_run(
                 if isinstance(project_asset.get("autonomous_replan_ack"), dict)
                 else None
             ),
+            acceptance_gaps=goal_frontier_acceptance_gaps,
         )
         if frontier_replan_obligation:
             replan_obligation = frontier_replan_obligation
@@ -5842,6 +5853,7 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
             replan_obligation=replan_obligation,
+            acceptance_gaps=goal_frontier_acceptance_gaps,
         )
         capability_gate = _capability_gate(
             agent_todo_summary,

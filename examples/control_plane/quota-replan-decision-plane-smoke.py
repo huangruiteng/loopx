@@ -143,6 +143,29 @@ def status_payload(
     }
 
 
+def agent_vision_gap_run() -> dict:
+    return {
+        "classification": "state_refreshed",
+        "generated_at": "2026-07-04T00:00:00+00:00",
+        "agent_id": SIDE_AGENT,
+        "progress_scope": "agent_lane",
+        "agent_vision": {
+            "schema_version": "goal_vision_replan_contract_v0",
+            "agent_id": SIDE_AGENT,
+            "state": "vision_drift_detected",
+            "vision_patch": {
+                "acceptance_summary": "Show the next runnable auto-research frontier without owner prompting.",
+                "replan_trigger_summary": "Auto-research evidence is still synthetic and needs a next-round live validation todo.",
+            },
+            "todo_delta": [],
+            "vision_budget": {
+                "schema_version": "goal_vision_budget_v0",
+                "status": "ok",
+            },
+        },
+    }
+
+
 def assert_replan_beats_monitor_quiet_skip() -> None:
     guard = build_quota_should_run(
         status_payload([monitor_item()]),
@@ -173,6 +196,30 @@ def assert_replan_beats_monitor_quiet_skip() -> None:
     assert "goal_frontier_projection: replan_required=True" in markdown, markdown
     assert "deferred_ready=0 acceptance_gaps=0" in markdown, markdown
     assert "autonomous_replan_decision: decision=autonomous_replan_required" in markdown, markdown
+
+
+def assert_agent_vision_gap_derives_replan() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[agent_vision_gap_run()],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["triggers"][0]["kind"] == "vision_acceptance_gap", guard
+    gaps = guard["goal_frontier_projection"]["acceptance_gaps"]
+    assert len(gaps) == 1, guard
+    assert gaps[0]["kind"] == "vision_acceptance_gap", guard
+    assert "synthetic" in gaps[0]["replan_trigger_summary"], guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "deferred_ready=0 acceptance_gaps=1" in markdown, markdown
 
 
 def assert_replan_beats_agent_scope_wait() -> None:
@@ -291,6 +338,7 @@ def assert_blocking_handoff_gate_beats_derived_monitor_replan() -> None:
 
 def main() -> None:
     assert_replan_beats_monitor_quiet_skip()
+    assert_agent_vision_gap_derives_replan()
     assert_replan_beats_agent_scope_wait()
     assert_empty_monitor_frontier_derives_replan()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()

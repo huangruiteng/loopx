@@ -425,6 +425,11 @@ state. Those local states may remain visible, but they cannot clear a required
 replan. An acknowledgement without a vision, todo, acceptance, or no-follow-up
 delta is `replan_noop`.
 
+The same ordering applies when an agent records a bounded
+`replan_trigger_summary` in its vision packet. Status/quota exposes that trigger
+as a goal-frontier `acceptance_gaps[]` entry. If no advancement frontier remains,
+the gap becomes a replan trigger before the lane can quietly back off.
+
 See
 [`goal_vision_replan_contract_v0`](../../reference/protocols/goal-vision-replan-contract-v0.md)
 for the field budgets and projection contract.

@@ -53,6 +53,14 @@ The first CLI write boundary is `loopx refresh-state --agent-vision-json
 counts as the machine-visible `goal_vision_patch` repair delta. An invalid or
 over-budget packet fails the command instead of recording a partial ACK.
 
+When a valid packet includes `replan_trigger_summary`, status/quota projects it
+as `goal_frontier_projection.acceptance_gaps[]`. If no runnable advancement
+frontier remains, that gap is evaluated before monitor quiet skip and can
+produce `autonomous_replan_required`. This is the intended self-discovery path:
+an agent records the bounded reason the current vision is still incomplete, and
+LoopX turns that reason into the next replan obligation without relying on chat
+memory or owner reminders.
+
 ## State Machine
 
 ```mermaid

@@ -8,6 +8,7 @@ AUTONOMOUS_REPLAN_DECISION_SCHEMA_VERSION = "autonomous_replan_decision_v0"
 AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
+VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
 FRONTIER_REPLAN_ACK_DELTA_KINDS = {
@@ -73,6 +74,98 @@ def autonomous_replan_decision_allowed(
         and not workspace_blocked
         and not automation_prompt_upgrade_required
     )
+
+
+def _compact_projection_text(value: Any, *, limit: int = 360) -> str | None:
+    text = " ".join(str(value or "").strip().split())
+    if not text:
+        return None
+    return text[:limit]
+
+
+def _latest_runs_for_goal(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+) -> list[dict[str, Any]]:
+    run_history = (
+        status_payload.get("run_history")
+        if isinstance(status_payload.get("run_history"), dict)
+        else {}
+    )
+    goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
+    goal = next(
+        (
+            item
+            for item in goals
+            if isinstance(item, dict) and str(item.get("id") or "") == goal_id
+        ),
+        None,
+    )
+    latest_runs = goal.get("latest_runs") if isinstance(goal, dict) else None
+    return [item for item in latest_runs if isinstance(item, dict)] if isinstance(latest_runs, list) else []
+
+
+def latest_agent_vision_from_status_payload(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    """Return the newest compact agent vision packet visible in run history."""
+
+    for run in _latest_runs_for_goal(status_payload, goal_id=goal_id):
+        vision = run.get("agent_vision")
+        if not isinstance(vision, dict):
+            continue
+        vision_agent_id = str(vision.get("agent_id") or run.get("agent_id") or "").strip()
+        if agent_id and vision_agent_id and vision_agent_id != agent_id:
+            continue
+        patch = vision.get("vision_patch") if isinstance(vision.get("vision_patch"), dict) else {}
+        if not patch:
+            continue
+        return {
+            "schema_version": vision.get("schema_version"),
+            "goal_id": goal_id,
+            "agent_id": vision_agent_id or agent_id,
+            "state": vision.get("state"),
+            "vision_patch": patch,
+            "todo_delta": vision.get("todo_delta")
+            if isinstance(vision.get("todo_delta"), list)
+            else [],
+            "vision_budget": vision.get("vision_budget")
+            if isinstance(vision.get("vision_budget"), dict)
+            else None,
+            "generated_at": run.get("generated_at"),
+        }
+    return None
+
+
+def acceptance_gaps_from_agent_vision(
+    agent_vision: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Convert bounded vision replan triggers into goal-frontier gap records."""
+
+    if not isinstance(agent_vision, dict):
+        return []
+    patch = agent_vision.get("vision_patch") if isinstance(agent_vision.get("vision_patch"), dict) else {}
+    trigger = _compact_projection_text(patch.get("replan_trigger_summary"), limit=240)
+    if not trigger:
+        return []
+    gap: dict[str, Any] = {
+        "kind": VISION_ACCEPTANCE_GAP_TRIGGER,
+        "source": "latest_agent_vision",
+        "agent_id": agent_vision.get("agent_id"),
+        "state": agent_vision.get("state"),
+        "replan_trigger_summary": trigger,
+    }
+    acceptance = _compact_projection_text(patch.get("acceptance_summary"), limit=420)
+    if acceptance:
+        gap["acceptance_summary"] = acceptance
+    generated_at = _compact_projection_text(agent_vision.get("generated_at"), limit=80)
+    if generated_at:
+        gap["generated_at"] = generated_at
+    return [gap]
 
 
 def _open_todo_count(summary: dict[str, Any] | None) -> int:
@@ -292,6 +385,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     agent_id: str | None,
     existing_replan_obligation: dict[str, Any] | None,
     latest_replan_ack: dict[str, Any] | None = None,
+    acceptance_gaps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Return a compact replan obligation when the goal frontier has no advancement.
 
@@ -314,8 +408,60 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         agent_id=agent_id,
     )
     total_frontier_advancement = sum(frontier_counts.values())
+    compact_acceptance_gaps = [
+        item for item in (acceptance_gaps or []) if isinstance(item, dict)
+    ]
     if user_counts.get("open", 0) > 0:
         return None
+    if (
+        compact_acceptance_gaps
+        and agent_counts.get("advancement", 0) == 0
+        and total_frontier_advancement == 0
+    ):
+        return {
+            "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            "required": True,
+            "stall_threshold": 1,
+            "trigger_count": len(compact_acceptance_gaps),
+            "triggers": [
+                {
+                    "kind": VISION_ACCEPTANCE_GAP_TRIGGER,
+                    "section": "goal_frontier_projection.acceptance_gaps",
+                    "text": gap.get("replan_trigger_summary")
+                    or "bounded agent vision reports an open acceptance gap",
+                    "agent_id": agent_id,
+                    "acceptance_summary": gap.get("acceptance_summary"),
+                }
+                for gap in compact_acceptance_gaps[:3]
+            ],
+            "guidance_actions": [
+                "create_successor",
+                "update_agent_vision",
+                "record_evidence_gap",
+                "record_no_followup",
+            ],
+            "todo_actions": [
+                {
+                    "action": "add",
+                    "role": "agent",
+                    "priority": "P0",
+                    "text": (
+                        "run a bounded vision-gap replan: create the next runnable "
+                        "advancement todo or record an explicit no-follow-up rationale"
+                    ),
+                }
+            ],
+            "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
+            "stop_condition": (
+                "stop if the gap requires private material, credentials, destructive git, "
+                "production actions, or owner-only decisions"
+            ),
+            "recommended_action": (
+                "run a bounded vision-gap replan before another quiet poll: create "
+                "successor work, update the agent vision, record evidence gap, or "
+                "record no-follow-up"
+            ),
+        }
     if not _is_monitor_only_lane(work_lane_contract):
         return None
     if agent_counts.get("monitor", 0) <= 0:
@@ -380,6 +526,7 @@ def build_goal_frontier_projection_from_summaries(
     agent_todo_summary: dict[str, Any] | None,
     work_lane_contract: dict[str, Any] | None,
     replan_obligation: dict[str, Any] | None,
+    acceptance_gaps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     user_counts = _summary_task_counts(user_todo_summary)
     agent_counts = _summary_task_counts(agent_todo_summary)
@@ -402,6 +549,7 @@ def build_goal_frontier_projection_from_summaries(
         ],
         monitor_only_lane=monitor_only_lane,
         replan_obligation=replan_obligation,
+        acceptance_gaps=acceptance_gaps,
         deferred_successors=_deferred_successors(
             agent_todo_summary,
             agent_id=agent_id,
@@ -477,6 +625,7 @@ def build_goal_frontier_projection(
     other_agent_claimed_advancement_count: int,
     monitor_only_lane: bool,
     replan_obligation: dict[str, Any] | None,
+    acceptance_gaps: list[dict[str, Any]] | None = None,
     deferred_successors: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     replan_required = autonomous_replan_is_required(replan_obligation)
@@ -492,6 +641,9 @@ def build_goal_frontier_projection(
     if replan_required:
         blockers.append("autonomous_replan_obligation")
 
+    compact_acceptance_gaps = [
+        item for item in (acceptance_gaps or []) if isinstance(item, dict)
+    ]
     projection: dict[str, Any] = {
         "schema_version": GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION,
         "goal_id": goal_id,
@@ -521,7 +673,7 @@ def build_goal_frontier_projection(
             "current_agent_ready_count": 0,
             "ready_todo_ids": [],
         },
-        "acceptance_gaps": [],
+        "acceptance_gaps": compact_acceptance_gaps[:5],
         "autonomy_blockers": blockers,
         "replan_required": replan_required,
     }
