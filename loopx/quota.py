@@ -101,7 +101,7 @@ from .control_plane.todos.handoff_gate import (
     HandoffGateState,
     build_todo_handoff_gate_states,
 )
-from .todo_projection import (
+from .control_plane.todos.projection import (
     todo_claimed_visibility_items as projection_todo_claimed_visibility_items,
     todo_index_rank as projection_todo_index_rank,
     todo_item_expires_at as projection_todo_item_expires_at,

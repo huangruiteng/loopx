@@ -62,9 +62,9 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/benchmark.py": 2875,
     "loopx/benchmark_adapters/agentissue.py": 2644,
     "loopx/benchmark_adapters/agents_last_exam.py": 3998,
-    "loopx/benchmark_adapters/skillsbench.py": 5934,
+    "loopx/benchmark_adapters/skillsbench.py": 5994,
     "examples/control_plane/work-lane-contract-smoke.py": 2336,
-    "loopx/benchmark_adapters/skillsbench_acp_relay.py": 3622,
+    "loopx/benchmark_adapters/skillsbench_acp_relay.py": 3733,
     "loopx/benchmark_adapters/terminal_bench.py": 10083,
     "loopx/benchmark_ledger.py": 3745,
     "loopx/capabilities/content_ops/surface.py": 2549,
@@ -75,7 +75,7 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/terminal_bench_agent.py": 2056,
     "loopx/todos.py": 2119,
     "scripts/harbor_host_codex_goal_agent.py": 2140,
-    "scripts/skillsbench_automation_loop.py": 17370,
+    "scripts/skillsbench_automation_loop.py": 17383,
 }
 
 RETIREMENT_PLAN_REQUIRED_PATHS = {

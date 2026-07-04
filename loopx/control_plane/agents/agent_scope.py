@@ -21,7 +21,7 @@ from ...todo_contract import (
     normalize_todo_task_class,
 )
 from ..todos.handoff_gate import HandoffGateState
-from ...todo_projection import (
+from ..todos.projection import (
     todo_item_claimed_by_agent_or_unclaimed,
     todo_item_is_actionable_open,
     todo_item_is_deferred,

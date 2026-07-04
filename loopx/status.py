@@ -349,7 +349,7 @@ from .todo_contract import (
     todo_done_for_status,
     todo_status_from_marker,
 )
-from .todo_projection import (
+from .control_plane.todos.projection import (
     todo_item_expires_at as projection_todo_item_expires_at,
     todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
 )

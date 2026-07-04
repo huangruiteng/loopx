@@ -30,8 +30,8 @@ private evidence migration, production actions, or public first-screen copy.
 ## Status/Quota Boundary Checkpoint
 
 The current safe extraction frontier is the shared todo read model. The
-following pure helpers now belong in `loopx/todo_projection.py` or call through
-that module:
+following pure helpers now belong in `loopx/control_plane/todos/projection.py`
+or call through that module:
 
 - todo priority labels, ranks, index values, and sort keys;
 - task text/class, actionable-open checks, deferred checks, and claimed

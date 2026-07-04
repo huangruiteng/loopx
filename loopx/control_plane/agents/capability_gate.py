@@ -8,7 +8,7 @@ from ...todo_contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
 )
-from ...todo_projection import todo_index_rank, todo_priority_rank
+from ..todos.projection import todo_index_rank, todo_priority_rank
 from .agent_scope import _compact_todo_summary_item
 
 

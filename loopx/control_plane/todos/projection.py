@@ -4,7 +4,7 @@ from datetime import datetime
 import re
 from typing import Any
 
-from .control_plane.scheduler.monitor_todo import (
+from ..scheduler.monitor_todo import (
     monitor_todo_expires_at,
     monitor_todo_has_schedule,
     monitor_todo_is_actionable_open,
@@ -14,7 +14,7 @@ from .control_plane.scheduler.monitor_todo import (
     monitor_todo_next_due_at,
     monitor_todo_task_class,
 )
-from .todo_contract import (
+from ...todo_contract import (
     TODO_STATUS_DEFERRED,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,

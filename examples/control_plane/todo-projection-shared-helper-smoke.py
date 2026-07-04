@@ -34,7 +34,7 @@ from loopx.todo_contract import (  # noqa: E402
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
 )
-from loopx.todo_projection import (  # noqa: E402
+from loopx.control_plane.todos.projection import (  # noqa: E402
     todo_claimed_visibility_items as shared_claimed_visibility_items,
     todo_item_claimed_by_agent_or_unclaimed as shared_todo_item_claimed_by_agent_or_unclaimed,
     todo_item_is_deferred as shared_todo_item_is_deferred,
