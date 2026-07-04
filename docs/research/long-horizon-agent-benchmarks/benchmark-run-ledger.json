@@ -63,11 +63,11 @@
       "run_count": 1
     },
     "skillsbench@1.1": {
-      "active_case_count": 4,
-      "active_run_count": 4,
+      "active_case_count": 7,
+      "active_run_count": 13,
       "archived_run_count": 193,
       "benchmark_id": "skillsbench@1.1",
-      "case_count": 43,
+      "case_count": 45,
       "cases": {
         "3d-scan-calc": {
           "active_run_count": 1,
@@ -4871,7 +4871,7 @@
               "leaderboard_evidence": false,
               "loopx_inside_case": false,
               "mode": "skillsbench_codex_acp_blind_loop_baseline",
-              "next_action": "select a non-apt-risk SkillsBench task for the next full baseline/treatment pair or repair the Docker apt setup route before rerunning this task",
+              "next_action": "select a SkillsBench task without Docker package-bootstrap setup risk for the next full baseline/treatment pair, or repair the Docker setup route before rerunning this task",
               "notes": "official SkillsBench BenchFlow Codex ACP blind-loop baseline; compact result only; no raw task/log/trajectory read into public state",
               "recorded_at": "2026-06-16T23:09:58+08:00",
               "repair_class": "skillsbench_setup_preflight_selection",
@@ -4882,8 +4882,7 @@
                 "repair_class": "skillsbench_setup_preflight_selection",
                 "required_preflight": [
                   "skillsbench_task_setup_preflight",
-                  "task_staging.apt_setup_risk_detected",
-                  "task_staging.apt_risk_preflight_blocked"
+                  "task_staging.bootstrap_light_preflight_blocked"
                 ],
                 "rerun_allowed_after_profile_applied": true,
                 "schema_version": "benchmark_repair_profile_v0"
@@ -7144,6 +7143,388 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            }
+          ]
+        },
+        "jax-computing-basics": {
+          "active_run_count": 3,
+          "archived_run_count": 0,
+          "case_id": "jax-computing-basics",
+          "latest_decision": {
+            "baseline_run_id": "04e0119526f1",
+            "decision": "baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_runner_error",
+            "failure_scope": "score_missing"
+          },
+          "runs": [
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "jax-computing-basics",
+              "case_ids": [
+                "jax-computing-basics"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "compose_setup_diagnostic": {
+                "agent_rounds_started": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "case_attempt_budget_should_count": false,
+                "codex_acp_runtime_tools_patch_applied": false,
+                "compose_setup_failure": false,
+                "controller_action_decision_count": 0,
+                "docker_daemon_unavailable": false,
+                "environment_setup_failure": true,
+                "failure_class": "skillsbench_docker_apt_setup_risk_preflight_blocked",
+                "fingerprint_matched_patterns": [
+                  "apt_failure"
+                ],
+                "heartbeat_count": 0,
+                "loopx_cli_call_count": 0,
+                "next_diagnostic_action": "repair_runner_setup_before_case_accounting",
+                "official_result_json_materialized": false,
+                "official_score_missing": true,
+                "progress_completed_trials": 0,
+                "progress_errored_trials": 1,
+                "raw_error_recorded": false,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "resource_cap_applied": false,
+                "round_reward_count": 0,
+                "route": "codex-app-server-goal-baseline",
+                "runner_error_len_bucket": "1_199",
+                "runner_launch_preflight_passed": false,
+                "runner_prerequisite_status": "not_requested",
+                "schema_version": "skillsbench_compose_setup_diagnostic_v0",
+                "staged_task_prepared": false,
+                "status": "runner_setup_blocked_before_agent_rounds",
+                "task_setup_preflight_status": "dockerfile_package_bootstrap_risk_detected",
+                "task_skills_removed": false,
+                "trajectory_round_count": 0,
+                "trajectory_tool_call_count": 0,
+                "unclassified_compose_failure": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false,
+                "volume_mount_failure": false
+              },
+              "failure_class": "skillsbench_runner_setup_blocked_before_agent_rounds",
+              "failure_labels": [
+                "skillsbench_docker_apt_setup_risk_preflight_blocked",
+                "skillsbench_docker_setup_preflight_blocked",
+                "skillsbench_environment_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-jax-computing-basics-codex-app-server-goal-baseline-20260703T121505CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:15:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-20260703T121504CST",
+              "run_id": "339133c6ee42",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_install_risk_detected": true,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "jax-computing-basics",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_blocker_kind": "apt",
+                "bootstrap_light_blocking_field_count": 4,
+                "bootstrap_light_fail_fast_defaulted": true,
+                "bootstrap_light_preflight_blocked": true,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_index_host": "pypi.tuna.tsinghua.edu.cn",
+                "dockerfile_pip_install_risk_detected": true,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "jax-computing-basics",
+              "case_ids": [
+                "jax-computing-basics"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-jax-computing-basics-codex-app-server-goal-baseline-20260703T121620CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:16:28+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-repair-20260703T121619CST",
+              "run_id": "e35d1defbdab",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_install_risk_detected": true,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "jax-computing-basics",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_fail_fast_defaulted": false,
+                "bootstrap_light_preflight_blocked": false,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_index_host": "pypi.tuna.tsinghua.edu.cn",
+                "dockerfile_pip_install_risk_detected": true,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "jax-computing-basics",
+              "case_ids": [
+                "jax-computing-basics"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-jax-computing-basics-codex-app-server-goal-baseline-20260703T121757CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:18:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-loopback-20260703T121756CST",
+              "run_id": "04e0119526f1",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_install_risk_detected": true,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "jax-computing-basics",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_fail_fast_defaulted": false,
+                "bootstrap_light_preflight_blocked": false,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_index_host": "pypi.tuna.tsinghua.edu.cn",
+                "dockerfile_pip_install_risk_detected": true,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -11432,12 +11813,14 @@
           ]
         },
         "react-performance-debugging": {
-          "active_run_count": 0,
+          "active_run_count": 3,
           "archived_run_count": 5,
           "case_id": "react-performance-debugging",
           "latest_decision": {
-            "archived_run_count": 5,
-            "decision": "archived_only"
+            "baseline_run_id": "b21db8eefaa5",
+            "decision": "baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_runner_error",
+            "failure_scope": "score_missing"
           },
           "runs": [
             {
@@ -11664,6 +12047,375 @@
               "source_event_schema": "benchmark_run_v0",
               "status": "completed",
               "submit_eligible": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "react-performance-debugging",
+              "case_ids": [
+                "react-performance-debugging"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "compose_setup_diagnostic": {
+                "agent_rounds_started": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "case_attempt_budget_should_count": false,
+                "codex_acp_runtime_tools_patch_applied": false,
+                "compose_setup_failure": false,
+                "controller_action_decision_count": 0,
+                "docker_daemon_unavailable": false,
+                "environment_setup_failure": true,
+                "failure_class": "skillsbench_docker_apt_setup_risk_preflight_blocked",
+                "fingerprint_matched_patterns": [
+                  "apt_failure"
+                ],
+                "heartbeat_count": 0,
+                "loopx_cli_call_count": 0,
+                "next_diagnostic_action": "repair_runner_setup_before_case_accounting",
+                "official_result_json_materialized": false,
+                "official_score_missing": true,
+                "progress_completed_trials": 0,
+                "progress_errored_trials": 1,
+                "raw_error_recorded": false,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "resource_cap_applied": false,
+                "round_reward_count": 0,
+                "route": "codex-app-server-goal-baseline",
+                "runner_error_len_bucket": "1_199",
+                "runner_launch_preflight_passed": false,
+                "runner_prerequisite_status": "not_requested",
+                "schema_version": "skillsbench_compose_setup_diagnostic_v0",
+                "staged_task_prepared": false,
+                "status": "runner_setup_blocked_before_agent_rounds",
+                "task_setup_preflight_status": "dockerfile_package_bootstrap_risk_detected",
+                "task_skills_removed": false,
+                "trajectory_round_count": 0,
+                "trajectory_tool_call_count": 0,
+                "unclassified_compose_failure": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false,
+                "volume_mount_failure": false
+              },
+              "failure_class": "skillsbench_runner_setup_blocked_before_agent_rounds",
+              "failure_labels": [
+                "skillsbench_docker_apt_setup_risk_preflight_blocked",
+                "skillsbench_docker_setup_preflight_blocked",
+                "skillsbench_environment_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-react-performance-debugging-codex-app-server-goal-baseline-20260703T121505CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:15:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-20260703T121504CST",
+              "run_id": "96326f492d2d",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_install_risk_detected": true,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "react-performance-debugging",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_blocker_kind": "apt",
+                "bootstrap_light_blocking_field_count": 4,
+                "bootstrap_light_fail_fast_defaulted": true,
+                "bootstrap_light_preflight_blocked": true,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_index_host": "pypi.tuna.tsinghua.edu.cn",
+                "dockerfile_pip_install_risk_detected": true,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "react-performance-debugging",
+              "case_ids": [
+                "react-performance-debugging"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-react-performance-debugging-codex-app-server-goal-baseline-20260703T121620CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:16:28+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-repair-20260703T121619CST",
+              "run_id": "8e8e0ce43299",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_install_risk_detected": true,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "react-performance-debugging",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_fail_fast_defaulted": false,
+                "bootstrap_light_preflight_blocked": false,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_index_host": "pypi.tuna.tsinghua.edu.cn",
+                "dockerfile_pip_install_risk_detected": true,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "react-performance-debugging",
+              "case_ids": [
+                "react-performance-debugging"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-react-performance-debugging-codex-app-server-goal-baseline-20260703T121757CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:18:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-loopback-20260703T121756CST",
+              "run_id": "b21db8eefaa5",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_install_risk_detected": true,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "react-performance-debugging",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_fail_fast_defaulted": false,
+                "bootstrap_light_preflight_blocked": false,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": true,
+                "dockerfile_pip_index_host": "pypi.tuna.tsinghua.edu.cn",
+                "dockerfile_pip_install_risk_detected": true,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
             }
           ]
         },
@@ -12490,6 +13242,385 @@
             }
           ]
         },
+        "threejs-to-obj": {
+          "active_run_count": 3,
+          "archived_run_count": 0,
+          "case_id": "threejs-to-obj",
+          "latest_decision": {
+            "baseline_run_id": "b1fb2e16efd7",
+            "decision": "baseline_runner_or_setup_repair_required",
+            "failure_class": "skillsbench_runner_error",
+            "failure_scope": "score_missing"
+          },
+          "runs": [
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "threejs-to-obj",
+              "case_ids": [
+                "threejs-to-obj"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "compose_setup_diagnostic": {
+                "agent_rounds_started": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "case_attempt_budget_should_count": false,
+                "codex_acp_runtime_tools_patch_applied": false,
+                "compose_setup_failure": false,
+                "controller_action_decision_count": 0,
+                "docker_daemon_unavailable": false,
+                "environment_setup_failure": true,
+                "failure_class": "skillsbench_docker_apt_setup_risk_preflight_blocked",
+                "fingerprint_matched_patterns": [
+                  "apt_failure"
+                ],
+                "heartbeat_count": 0,
+                "loopx_cli_call_count": 0,
+                "next_diagnostic_action": "repair_runner_setup_before_case_accounting",
+                "official_result_json_materialized": false,
+                "official_score_missing": true,
+                "progress_completed_trials": 0,
+                "progress_errored_trials": 1,
+                "raw_error_recorded": false,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "resource_cap_applied": false,
+                "round_reward_count": 0,
+                "route": "codex-app-server-goal-baseline",
+                "runner_error_len_bucket": "1_199",
+                "runner_launch_preflight_passed": false,
+                "runner_prerequisite_status": "not_requested",
+                "schema_version": "skillsbench_compose_setup_diagnostic_v0",
+                "staged_task_prepared": false,
+                "status": "runner_setup_blocked_before_agent_rounds",
+                "task_setup_preflight_status": "dockerfile_package_bootstrap_risk_detected",
+                "task_skills_removed": false,
+                "trajectory_round_count": 0,
+                "trajectory_tool_call_count": 0,
+                "unclassified_compose_failure": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false,
+                "volume_mount_failure": false
+              },
+              "failure_class": "skillsbench_runner_setup_blocked_before_agent_rounds",
+              "failure_labels": [
+                "skillsbench_docker_apt_setup_risk_preflight_blocked",
+                "skillsbench_docker_setup_preflight_blocked",
+                "skillsbench_environment_setup_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-threejs-to-obj-codex-app-server-goal-baseline-20260703T121505CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:15:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-20260703T121504CST",
+              "run_id": "1bc0c4cff1fe",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": false,
+                "dockerfile_pip_install_risk_detected": false,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "threejs-to-obj",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_blocker_kind": "apt",
+                "bootstrap_light_blocking_field_count": 2,
+                "bootstrap_light_fail_fast_defaulted": true,
+                "bootstrap_light_preflight_blocked": true,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": false,
+                "dockerfile_pip_install_risk_detected": false,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "threejs-to-obj",
+              "case_ids": [
+                "threejs-to-obj"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-threejs-to-obj-codex-app-server-goal-baseline-20260703T121620CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:16:28+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-repair-20260703T121619CST",
+              "run_id": "04442a598b2e",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": false,
+                "dockerfile_pip_install_risk_detected": false,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "threejs-to-obj",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_fail_fast_defaulted": false,
+                "bootstrap_light_preflight_blocked": false,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": false,
+                "dockerfile_pip_install_risk_detected": false,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
+            },
+            {
+              "agent_declared_done": false,
+              "agent_model": "gpt-5.5",
+              "arm_id": "codex_app_server_goal_baseline",
+              "artifact_refs": {
+                "compact_artifact_ref": "benchmark_run.compact.json"
+              },
+              "attempt_failure_class": "none",
+              "attempt_failure_label": "not_run_adapter_skeleton",
+              "attempt_lifecycle_phase": "not_started",
+              "benchmark_id": "skillsbench@1.1",
+              "case_attempt_countable": false,
+              "case_id": "threejs-to-obj",
+              "case_ids": [
+                "threejs-to-obj"
+              ],
+              "codex_acp_runtime_preflight_passed": false,
+              "failure_class": "skillsbench_runner_error",
+              "failure_labels": [
+                "skillsbench_runner_error"
+              ],
+              "failure_scope": "score_missing",
+              "job_name": "skillsbench-threejs-to-obj-codex-app-server-goal-baseline-20260703T121757CST",
+              "launcher_attempt_countable": false,
+              "leaderboard_evidence": false,
+              "loopx_inside_case": false,
+              "mode": "skillsbench_codex_app_server_goal_baseline",
+              "notes": "official SkillsBench BenchFlow Codex ACP baseline; compact result only; no raw task/log/trajectory read into public state",
+              "official_score_attempt_countable": false,
+              "recorded_at": "2026-07-03T12:18:05+08:00",
+              "round_reward_count": 0,
+              "round_success_observed": false,
+              "route": "codex-app-server-goal-baseline",
+              "run_group_id": "skillsbench-revtunnel-appgoal-followup-canary-loopback-20260703T121756CST",
+              "run_id": "b1fb2e16efd7",
+              "runner_return_status": "failed_before_official_result",
+              "score_status": "missing",
+              "solution_quality_signals": {
+                "outcome_class": "missing_score",
+                "public_limits": [
+                  "task_text_not_recorded",
+                  "trajectory_not_recorded",
+                  "verifier_output_not_recorded"
+                ],
+                "rubric_miss_label_status": "score_missing",
+                "schema_version": "skillsbench_solution_quality_signals_v0",
+                "solution_action_labels": [
+                  "official_score_missing"
+                ],
+                "source": "compact_public_signals",
+                "worker_activity": {
+                  "bridge_task_facing_operation_count": 0,
+                  "bridge_task_facing_success_count": 0,
+                  "task_facing_activity_observed": false,
+                  "tool_call_count": 0,
+                  "worker_turn_or_bridge_observed": false
+                }
+              },
+              "solver_attempt_countable": false,
+              "source_event_schema": "benchmark_run_v0",
+              "status": "completed",
+              "submit_eligible": false,
+              "task_setup_preflight": {
+                "alternate_source_supported_by_runner": false,
+                "apt_retry_patch_required": true,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_candidate_eligible": false,
+                "canonical_task_present": true,
+                "dockerfile_pip_bootstrap_patch_required": false,
+                "dockerfile_pip_install_risk_detected": false,
+                "dockerfile_present": true,
+                "raw_logs_read": false,
+                "raw_task_text_read": false,
+                "raw_trajectory_read": false,
+                "sandbox": "docker",
+                "schema_version": "skillsbench_task_setup_preflight_v0",
+                "selection_recommendation": "route_to_setup_repair_or_use_fail_fast_guard",
+                "status": "dockerfile_package_bootstrap_risk_detected",
+                "task_id": "threejs-to-obj",
+                "task_source_content_recorded": false,
+                "task_source_path_recorded": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_external_download_risk_detected": false,
+                "verifier_package_install_risk_detected": false,
+                "verifier_present": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "task_staging": {
+                "apt_retry_patch_required": true,
+                "apt_risk_preflight_blocked": false,
+                "apt_setup_risk_detected": true,
+                "bootstrap_light_fail_fast_defaulted": false,
+                "bootstrap_light_preflight_blocked": false,
+                "dockerfile_package_bootstrap_risk_preflight_blocked": false,
+                "dockerfile_pip_bootstrap_patch_applied": false,
+                "dockerfile_pip_bootstrap_patch_required": false,
+                "dockerfile_pip_install_risk_detected": false,
+                "staged": false,
+                "verifier_bootstrap_risk_detected": false,
+                "verifier_bootstrap_risk_preflight_blocked": false,
+                "verifier_uv_bootstrap_mirror_patch_applied": false,
+                "verifier_uv_bootstrap_mirror_patch_required": false,
+                "verifier_uv_bootstrap_risk_detected": false
+              },
+              "verifier_attempt_countable": false
+            }
+          ]
+        },
         "tictoc-unnecessary-abort-detection": {
           "active_run_count": 0,
           "archived_run_count": 6,
@@ -12783,7 +13914,7 @@
               "archive_reason": "Archive obsolete SkillsBench experiments outside the current reverse-tunnel app-server Goal route so current summaries track only the newly rerun flow.",
               "archive_state": "archived",
               "archived_at": "2026-06-30T21:12:48+08:00",
-              "arm_id": "baseline",
+              "arm_id": "codex_app_server_goal_baseline",
               "artifact_refs": {
                 "compact_artifact_ref": "cloud-ecs/parallel-benchmark-20260620T210604Z/skillsbench-tictoc-native-goal-r4/.../benchmark_run.compact.json"
               },
@@ -13030,7 +14161,7 @@
           ]
         }
       },
-      "run_count": 197
+      "run_count": 206
     },
     "swe-marathon": {
       "active_case_count": 3,
@@ -16919,5 +18050,5 @@
     "source_of_truth": "benchmark_run_v0 compact run events",
     "update_rule": "upsert one run entry when a benchmark case is ingested or closed"
   },
-  "updated_at": "2026-06-30T21:15:57+08:00"
+  "updated_at": "2026-07-03T12:18:05+08:00"
 }

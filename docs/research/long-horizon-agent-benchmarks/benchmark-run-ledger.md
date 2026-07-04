@@ -7,9 +7,9 @@ Archived runs remain in JSON for traceability but are excluded from the
 default case decisions, repair backlog, and active runs table.
 
 - schema_version: `benchmark_run_ledger_v0`
-- updated_at: `2026-06-30T21:15:57+08:00`
-- active_case_count: `28`
-- active_run_count: `101`
+- updated_at: `2026-07-03T12:18:05+08:00`
+- active_case_count: `31`
+- active_run_count: `110`
 - archived_run_count: `193`
 
 ## Case Decisions
@@ -21,6 +21,9 @@ default case decisions, repair backlog, and active runs table.
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `baseline_failed_treatment_candidate` | - | - | `1 active / 5 archived` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `baseline_runner_or_setup_repair_required` | - | - | `1 active / 2 archived` |
 | `skillsbench@1.1` | `citation-check` | `baseline_passed_not_current_treatment_priority` | - | - | `1 active / 15 archived` |
+| `skillsbench@1.1` | `jax-computing-basics` | `baseline_runner_or_setup_repair_required` | - | - | `3` |
+| `skillsbench@1.1` | `react-performance-debugging` | `baseline_runner_or_setup_repair_required` | - | - | `3 active / 5 archived` |
+| `skillsbench@1.1` | `threejs-to-obj` | `baseline_runner_or_setup_repair_required` | - | - | `3` |
 | `swe-marathon` | `find-network-alignments` | `baseline_failed_treatment_candidate` | - | - | `1` |
 | `swe-marathon` | `rust-c-compiler` | `single_arm_recorded` | - | - | `2` |
 | `swe-marathon` | `zstd-decoder` | `paired_treatment_regressed` | - | `case_exception_research` | `4` |
@@ -74,6 +77,15 @@ default case decisions, repair backlog, and active runs table.
 | `skillsbench@1.1` | `ada-bathroom-plan-repair` | `codex_app_server_goal_baseline` | `case_attempt` | `0.0` | `` | `` | `official_verifier_solution_failure` | `skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/ada-bathroom-plan-repair/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `adaptive-cruise-control` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_native_goal_worker_failed_codex_app_server_turn_timeout` | `skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/adaptive-cruise-control/benchmark_run.compact.json` |
 | `skillsbench@1.1` | `citation-check` | `codex_app_server_goal_baseline` | `case_attempt` | `1.0` | `` | `` | `none` | `skillsbench-revtunnel-appgoal-batch3-20260630T1005Z/citation-check/benchmark_run.compact.json` |
+| `skillsbench@1.1` | `jax-computing-basics` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_setup_blocked_before_agent_rounds` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `jax-computing-basics` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `jax-computing-basics` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `react-performance-debugging` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_setup_blocked_before_agent_rounds` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `react-performance-debugging` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `react-performance-debugging` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `threejs-to-obj` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_setup_blocked_before_agent_rounds` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `threejs-to-obj` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `benchmark_run.compact.json` |
+| `skillsbench@1.1` | `threejs-to-obj` | `codex_app_server_goal_baseline` | `` | `missing` | `` | `` | `skillsbench_runner_error` | `benchmark_run.compact.json` |
 | `swe-marathon` | `find-network-alignments` | `swe_marathon_host_codex_app_server_goal_baseline` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/parallel-benchmark-20260620T131254Z/swe-marathon-find-network-alignments-host-app-server-goal-r6/harbor_job_result.compact.json` |
 | `swe-marathon` | `rust-c-compiler` | `swe_marathon_host_codex_app_server_goal_prewarmed_rerun` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/parallel-benchmark-20260620T235333Z/swe-marathon-rust-c-compiler-app-server-r2/harbor_job_result.compact.json` |
 | `swe-marathon` | `rust-c-compiler` | `swe_marathon_host_codex_loopx_packet_only_observation` | `` | `0.0` | `` | `` | `official_verifier_solution_failure` | `cloud-ecs/swe-marathon-rust-c-compiler-treatment-20260621T060729Z/jobs/swe-marathon-rust-c-compiler-gh-treatment-r1/harbor_job_result.compact.json` |
