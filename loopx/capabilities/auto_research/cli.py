@@ -927,7 +927,6 @@ def handle_auto_research_command(
                 agent_id=AUTO_RESEARCH_START_AGENT_ID,
                 goal_id=goal_id,
                 goal_surface_mode=goal_surface_mode,
-                agent_specs=[],
                 tracking_goal_id=args.tracking_goal_id,
                 objective=args.open_question,
                 output_dir="auto_research_lightweight_kernel",
