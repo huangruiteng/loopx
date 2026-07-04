@@ -6,12 +6,14 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+import loopx.canary.runner as runner_module  # noqa: E402
 from loopx.canary.runner import (  # noqa: E402
     build_catalog_canary_run,
     normalize_canary_command,
@@ -98,6 +100,36 @@ def assert_domain_checks_precede_family_checks() -> None:
     assert all(check["source"] == "domain_profile" for check in payload["selected_checks"]), payload
 
 
+def assert_git_required_smoke_skips_without_git_worktree() -> None:
+    original_root = runner_module.REPO_ROOT
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir).resolve()
+        (temp_root / "examples" / "control_plane").mkdir(parents=True)
+        runner_module.REPO_ROOT = temp_root
+        try:
+            payload = build_catalog_canary_run(
+                profiles=["repo-architecture-budget"],
+                max_checks_per_profile=1,
+                check_limit=1,
+                execute=True,
+                timeout_seconds=10,
+            )
+        finally:
+            runner_module.REPO_ROOT = original_root
+
+    assert payload["ok"] is True, payload
+    assert payload["failure_count"] == 0, payload
+    assert payload["git_required_skip_count"] == 1, payload
+    result = payload["selected_checks"][0]
+    assert result["status"] == "skipped_git_required", result
+    assert result["ok"] is True, result
+    assert result["git_required"] is True, result
+    assert result["normalized"]["script"] == (
+        "examples/control_plane/repo-python-line-budget-smoke.py"
+    ), result
+    assert payload["git_required_skips"] == [result], payload
+
+
 def assert_cli_run_executes_catalog_selected_check() -> None:
     completed = subprocess.run(
         [
@@ -140,6 +172,7 @@ def main() -> int:
     assert_profile_fixture_executes()
     assert_install_update_preview_stays_dashboard_free()
     assert_domain_checks_precede_family_checks()
+    assert_git_required_smoke_skips_without_git_worktree()
     assert_cli_run_executes_catalog_selected_check()
     print("catalog-canary-run-e2e-smoke ok")
     return 0

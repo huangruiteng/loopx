@@ -23,6 +23,9 @@ EXPLICIT_GROUPED_SMOKES = {
     "canary-promotion-readiness-smoke.py",
     "dashboard-demo-readiness-smoke.py",
 }
+GIT_REQUIRED_SCRIPTS = {
+    "repo-python-line-budget-smoke.py": "requires git ls-files over tracked Python files",
+}
 PYTHON_BINARIES = {"python", "python3"}
 NODE_BINARIES = {"node"}
 SHELL_TOKENS = {"&&", "||", ";", "|", ">", "<", ">>", "2>", "2>>"}
@@ -137,20 +140,9 @@ def _display_argv(argv: list[str]) -> list[str]:
 
 
 def _tracked_change_paths() -> tuple[bool, list[str], str]:
-    worktree_probe = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "rev-parse", "--is-inside-work-tree"],
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if worktree_probe.returncode != 0 or worktree_probe.stdout.strip() != "true":
-        detail = (
-            worktree_probe.stderr
-            or worktree_probe.stdout
-            or "repository root is not a git worktree"
-        ).strip()
-        return False, [], f"not_a_git_worktree: {detail[-400:]}"
+    git_ok, git_detail = _git_worktree_probe(REPO_ROOT)
+    if not git_ok:
+        return False, [], git_detail
 
     paths: set[str] = set()
     stderr_parts: list[str] = []
@@ -169,6 +161,42 @@ def _tracked_change_paths() -> tuple[bool, list[str], str]:
             continue
         paths.update(line.strip() for line in completed.stdout.splitlines() if line.strip())
     return ok, sorted(paths), "\n".join(part for part in stderr_parts if part)
+
+
+def _git_worktree_probe(root: Path) -> tuple[bool, str]:
+    worktree_probe = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if worktree_probe.returncode != 0 or worktree_probe.stdout.strip() != "true":
+        detail = (
+            worktree_probe.stderr
+            or worktree_probe.stdout
+            or "repository root is not a git worktree"
+        ).strip()
+        return False, f"not_a_git_worktree: {detail[-400:]}"
+    return True, ""
+
+
+def _git_required_skip(normalized: dict[str, Any]) -> dict[str, Any] | None:
+    script_name = Path(str(normalized.get("script") or "")).name
+    reason = GIT_REQUIRED_SCRIPTS.get(script_name)
+    if not reason:
+        return None
+    git_ok, git_detail = _git_worktree_probe(REPO_ROOT)
+    if git_ok:
+        return None
+    return {
+        "status": "skipped_git_required",
+        "ok": True,
+        "git_required": True,
+        "skip_reason": reason,
+        "git_status_ok": False,
+        "git_status_unavailable_reason": git_detail,
+    }
 
 
 def _restore_tracked_paths(paths: list[str]) -> dict[str, Any]:
@@ -202,6 +230,10 @@ def _run_check(
         result.update({"check_index": check_index, "check_count": check_count})
     if not normalized.get("ok"):
         result.update({"status": "skipped", "ok": False, "reason": normalized.get("reason")})
+        return result
+    git_required_skip = _git_required_skip(normalized)
+    if git_required_skip:
+        result.update(git_required_skip)
         return result
 
     started = time.monotonic()
@@ -570,6 +602,9 @@ def build_canary_smoke_suite_run(
 
     display_items = results if execute else normalized
     failures = [item for item in results if not item.get("ok")]
+    git_required_skips = [
+        item for item in results if item.get("status") == "skipped_git_required"
+    ]
     timed_out = [item for item in results if item.get("status") == "timed_out"]
     side_effect_failures = [
         item for item in results if item.get("status") == "failed_tracked_side_effect"
@@ -598,6 +633,7 @@ def build_canary_smoke_suite_run(
         "selected_check_count": len(selected),
         "executed_check_count": len(results),
         "failure_count": len(failures),
+        "git_required_skip_count": len(git_required_skips),
         "timeout_count": len(timed_out),
         "tracked_side_effect_failure_count": len(side_effect_failures),
         "unsafe_command_count": len(unsafe),
@@ -629,6 +665,7 @@ def build_canary_smoke_suite_run(
         } if isinstance(plan, dict) else None,
         "selected_checks": display_items,
         "failures": failures,
+        "git_required_skips": git_required_skips,
         "note": (
             "Smoke-suite run executes repository-local public smoke scripts with "
             "shell-free argv, per-check timeouts, and continue-on-failure reporting. "
@@ -678,6 +715,9 @@ def build_catalog_canary_run(
         ]
 
     failures = [item for item in results if not item.get("ok")]
+    git_required_skips = [
+        item for item in results if item.get("status") == "skipped_git_required"
+    ]
     unsafe = [
         item
         for item in normalized
@@ -699,11 +739,13 @@ def build_catalog_canary_run(
         "selected_check_count": len(selected),
         "executed_check_count": len(results),
         "failure_count": len(failures),
+        "git_required_skip_count": len(git_required_skips),
         "unsafe_command_count": len(unsafe),
         "selection_inputs": plan.get("selection_inputs"),
         "profiles": plan.get("profiles", []),
         "domain_profiles": plan.get("domain_profiles", []),
         "selected_checks": normalized if not execute else results,
+        "git_required_skips": git_required_skips,
         "note": (
             "Canary run consumes the catalog plan and executes only selected "
             "repository-local examples with shell-free argv. It never writes "
@@ -723,6 +765,7 @@ def render_catalog_canary_run_markdown(payload: dict[str, Any]) -> str:
         f"- planned_checks: `{payload.get('planned_check_count')}`",
         f"- selected_checks: `{payload.get('selected_check_count')}`",
         f"- executed_checks: `{payload.get('executed_check_count')}`",
+        f"- git_required_skips: `{payload.get('git_required_skip_count')}`",
         "- writes_evidence: `false`",
         "- creates_runtime_contract: `false`",
         "",
@@ -752,6 +795,8 @@ def render_catalog_canary_run_markdown(payload: dict[str, Any]) -> str:
             )
         if check.get("returncode") is not None:
             lines.append(f"- returncode: `{check.get('returncode')}`")
+        if check.get("skip_reason"):
+            lines.append(f"- skip_reason: {check.get('skip_reason')}")
         if check.get("stderr_tail"):
             lines.append(f"- stderr_tail: `{str(check.get('stderr_tail')).strip()[-300:]}`")
         lines.append("")
@@ -774,6 +819,7 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
         f"- selected_checks: `{payload.get('selected_check_count')}`",
         f"- executed_checks: `{payload.get('executed_check_count')}`",
         f"- failures: `{payload.get('failure_count')}`",
+        f"- git_required_skips: `{payload.get('git_required_skip_count')}`",
         f"- timeouts: `{payload.get('timeout_count')}`",
         f"- tracked_side_effect_failures: `{payload.get('tracked_side_effect_failure_count')}`",
         f"- warnings: `{payload.get('warning_count')}`",
@@ -816,6 +862,8 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- returncode: `{check.get('returncode')}`")
         if check.get("duration_seconds") is not None:
             lines.append(f"- duration_seconds: `{check.get('duration_seconds')}`")
+        if check.get("skip_reason"):
+            lines.append(f"- skip_reason: {check.get('skip_reason')}")
         if check.get("tracked_side_effects"):
             lines.append(
                 "- tracked_side_effects: `"
