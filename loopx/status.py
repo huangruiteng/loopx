@@ -152,6 +152,9 @@ from .control_plane.runtime.run_compaction import (
     compact_operator_gate as _compact_operator_gate_read_model,
     compact_operator_gate_resume_contract as _compact_operator_gate_resume_contract_read_model,
 )
+from .control_plane.runtime.run_history import (
+    build_run_history as _build_run_history_read_model,
+)
 from .control_plane.runtime.event_ledger import (
     EVENT_LEDGER_CLASSES,
     EVENT_LEDGER_PROXY_NOTE,
@@ -7612,60 +7615,15 @@ def compact_run(run: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_run_history(history: dict[str, Any], *, display_limit: int | None = None) -> dict[str, Any]:
-    display_limit = None if display_limit is None else max(0, display_limit)
-    goals: list[dict[str, Any]] = []
-    for goal in history.get("goals") or []:
-        if not isinstance(goal, dict):
-            continue
-        current_run = latest_run(goal)
-        lifecycle_fields = goal_lifecycle_fields(goal, current_run)
-        subagent_activity = subagent_activity_for_goal(goal)
-        latest_runs = [
-            compact_run(run)
-            for run in goal.get("latest_runs") or []
-            if isinstance(run, dict)
-        ]
-        if display_limit is not None:
-            latest_runs = latest_runs[:display_limit]
-        goals.append(
-            {
-                "id": goal.get("id"),
-                "domain": goal.get("domain"),
-                "status": goal.get("status"),
-                "lifecycle_phase": lifecycle_fields["lifecycle_phase"],
-                "lifecycle_flags": lifecycle_fields["lifecycle_flags"],
-                "registry_member": goal.get("registry_member"),
-                "legacy_runtime_goal": goal.get("legacy_runtime_goal"),
-                "adapter_kind": goal.get("adapter_kind"),
-                "adapter_status": goal.get("adapter_status"),
-                "coordination": goal.get("coordination") if isinstance(goal.get("coordination"), dict) else None,
-                "guards": goal.get("guards") if isinstance(goal.get("guards"), list) else [],
-                "next_probe": goal.get("next_probe"),
-                "authority_registry": goal.get("authority_registry"),
-                "quota": quota_status(goal) if goal.get("registry_member") else None,
-                "index_exists": goal.get("index_exists"),
-                "raw_index_records": goal.get("raw_index_records"),
-                "unique_runs": goal.get("unique_runs"),
-                "subagent_activity": subagent_activity,
-                "latest_status_run": compact_run(current_run) if current_run else None,
-                "latest_runs": latest_runs,
-            }
-        )
-
-    recent_runs = [
-        compact_run(run)
-        for run in history.get("runs") or []
-        if isinstance(run, dict)
-    ]
-    if display_limit is not None:
-        recent_runs = recent_runs[:display_limit]
-    return {
-        "available": True,
-        "goal_count": history.get("goal_count"),
-        "run_count": history.get("run_count"),
-        "goals": goals,
-        "recent_runs": recent_runs,
-    }
+    return _build_run_history_read_model(
+        history,
+        latest_run=latest_run,
+        goal_lifecycle_fields=goal_lifecycle_fields,
+        subagent_activity_for_goal=subagent_activity_for_goal,
+        compact_run=compact_run,
+        quota_status=quota_status,
+        display_limit=display_limit,
+    )
 
 
 def quota_spend_slots(run: dict[str, Any]) -> int:
