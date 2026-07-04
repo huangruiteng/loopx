@@ -61,6 +61,33 @@ def payload(*, recommended_action: str = "Wait for reassignment.") -> dict:
     }
 
 
+def monitor_payload(*, recommended_action: str = "Wait for material monitor evidence.") -> dict:
+    return {
+        "goal_id": "scheduler-state-ack-smoke",
+        "agent_identity": {"agent_id": "codex-side-agent"},
+        "should_run": False,
+        "effective_action": "monitor_quiet_skip",
+        "recommended_action": recommended_action,
+        "heartbeat_recommendation": {
+            "recommended_mode": "monitor_quiet_until_material_transition",
+            "notify": "DONT_NOTIFY",
+            "spend_policy": "no spend while the monitor target is unchanged",
+        },
+        "execution_obligation": {
+            "must_attempt_work": False,
+            "spend_policy": "do not spend",
+        },
+        "automation_liveness": {
+            "automation_action": "keep_active_quiet",
+            "spend_policy": "no quota spend for unchanged monitor-only polls",
+        },
+        "interaction_contract": {
+            "mode": "monitor_quiet_skip",
+            "user_channel": {"action_required": False},
+        },
+    }
+
+
 def active_payload() -> dict:
     return {
         "goal_id": "scheduler-state-ack-smoke",
@@ -164,6 +191,47 @@ def assert_policy_state_progression() -> None:
     )
     assert reset["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=10", reset
     assert reset["codex_app"]["stateful_backoff"]["state_status"] == "reset_required", reset
+
+
+def assert_monitor_wait_progression_reaches_120() -> None:
+    base = monitor_payload()
+    first = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+    )
+    assert first["action"] == "backoff_until_material_transition", first
+    assert first["codex_app"]["example_progression_minutes"] == [15, 30, 60, 120], first
+    assert first["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=15", first
+
+    second = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        codex_app_scheduler_state=state_from(first),
+    )
+    assert second["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=30", second
+
+    third = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        codex_app_scheduler_state=state_from(second),
+    )
+    assert third["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=60", third
+
+    fourth = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        codex_app_scheduler_state=state_from(third),
+    )
+    assert fourth["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=120", fourth
+
+    quiet = build_scheduler_hint(
+        deepcopy(base),
+        agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
+        codex_app_scheduler_state=state_from(fourth),
+    )
+    assert quiet["codex_app"]["stateful_backoff"]["apply_needed"] is False, quiet
+    assert quiet["codex_app"]["host_action"] == "none", quiet
+    assert "recommended_rrule" not in quiet["codex_app"], quiet
 
 
 def assert_active_work_keeps_initial_cadence() -> None:
@@ -409,6 +477,7 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
 
 def main() -> int:
     assert_policy_state_progression()
+    assert_monitor_wait_progression_reaches_120()
     assert_active_work_keeps_initial_cadence()
     assert_cli_scheduler_ack_progression()
     assert_cli_scheduler_ack_uses_should_run_lookback()

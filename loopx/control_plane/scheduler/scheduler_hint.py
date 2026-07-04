@@ -22,6 +22,7 @@ SCHEDULER_RESET_POLICY_SCHEMA_VERSION = "scheduler_reset_policy_v0"
 SCHEDULER_HINT_DETAIL_SCHEMA_VERSION = "scheduler_hint_detail_v0"
 CODEX_APP_STATEFUL_BACKOFF_SCHEMA_VERSION = "codex_app_stateful_backoff_v0"
 MONITOR_CADENCE_PATTERN = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
+MONITOR_WAIT_PROGRESSION_MINUTES = [15, 30, 60, 120]
 
 
 def normalize_scheduler_rrule(value: Any) -> str:
@@ -126,7 +127,7 @@ def _monitor_wait_cadence_progression(payload: dict[str, Any]) -> list[int] | No
     if not caps:
         return None
     cap = max(1, min(caps))
-    return [min(interval, cap) for interval in (15, 30, 60)]
+    return [min(interval, cap) for interval in MONITOR_WAIT_PROGRESSION_MINUTES]
 
 
 def build_codex_app_scheduler_ack_event(
@@ -619,10 +620,12 @@ def build_scheduler_hint(
                 "cadence until material evidence, a blocker, or replan obligation appears"
             ),
             codex_interval=15,
-            codex_max=60,
+            codex_max=120,
             cli_limit=3,
             claude_limit=3,
-            cadence_progression_override=monitor_progression,
+            cadence_progression_override=(
+                monitor_progression or MONITOR_WAIT_PROGRESSION_MINUTES
+            ),
         )
 
     if payload.get("should_run") is False:

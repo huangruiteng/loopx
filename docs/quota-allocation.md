@@ -729,6 +729,9 @@ After a successful host RRULE update, the agent records that fact with
 which lets LoopX advance the per goal/agent scheduler state without spending
 quota. Human gates can move to `[30, 60, 120]` after the concrete user todo has
 been surfaced.
+Monitor-only quiet waits move through `[15, 30, 60, 120]` while preserving the
+same no-spend monitor-poll contract, unless a monitor cadence or due time caps
+the progression earlier.
 Agent-scope waits use a more conservative adjustment curve such as
 `[10, 20, 30, 60]`, so a 600-second local tick stays close to the existing
 agent-to-agent interaction cadence before cooling further.
