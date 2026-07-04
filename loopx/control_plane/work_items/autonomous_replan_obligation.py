@@ -7,6 +7,41 @@ from typing import Any, Callable, Optional, Pattern
 PublicSafeText = Callable[..., Optional[str]]
 AckRecorded = Callable[[dict[str, Any]], bool]
 DeliveryOutcomeNormalizer = Callable[[Any], Any]
+SectionParser = Callable[[str, tuple[str, ...]], dict[str, list[str]]]
+SectionEntries = Callable[[list[str]], list[str]]
+
+
+MAX_AUTONOMOUS_REPLAN_TRIGGERS = 3
+AUTONOMOUS_REPLAN_TRIGGER_PATTERNS = (
+    (
+        "periodic_review",
+        re.compile(r"(?i)(?:periodic review|periodic replan|review cadence|规划复盘|周期复盘|每几十轮)"),
+    ),
+    (
+        "no_progress_streak",
+        re.compile(r"(?i)(?:no[- ]?progress|stalled?|stall streak|没有实质进展|停转|连续[^。；;]*无进展)"),
+    ),
+    (
+        "repeated_action_loop",
+        re.compile(r"(?i)(?:repeated[- ]?action|action loop|same action|looped|重复动作|循环观察|反复观察)"),
+    ),
+    (
+        "phase_transition",
+        re.compile(r"(?i)(?:phase transition|next phase|stage transition|readiness .*done|阶段切换|进入下一阶段)"),
+    ),
+    (
+        "backlog_mismatch",
+        re.compile(r"(?i)(?:backlog mismatch|todo mismatch|next action mismatch|todo.*淹没|待办.*不一致)"),
+    ),
+    (
+        "evidence_contradiction",
+        re.compile(r"(?i)(?:evidence contradiction|contradictory evidence|stale evidence|stale latest-run|证据矛盾|状态矛盾)"),
+    ),
+    (
+        "explicit_replan",
+        re.compile(r"(?i)(?:autonomous replan|replan obligation|planning[- ]?trigger|重新规划|重规划|规划触发)"),
+    ),
+)
 
 
 def normalized_run_history_stall_signature(value: str) -> str:
@@ -140,6 +175,41 @@ def autonomous_replan_periodic_review_from_runs(
             "oldest_counted_generated_at": str(durable_runs[-1].get("generated_at") or ""),
         }
     ]
+    return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
+
+
+def autonomous_replan_obligation_from_state(
+    state_text: str,
+    *,
+    agent_todos: dict[str, Any] | None,
+    section_headings: tuple[str, ...],
+    section_parser: SectionParser,
+    section_entries: SectionEntries,
+    public_safe_compact_text: PublicSafeText,
+    build_autonomous_replan_obligation: Callable[..., dict[str, Any] | None],
+    trigger_patterns: tuple[tuple[str, Pattern[str]], ...] = AUTONOMOUS_REPLAN_TRIGGER_PATTERNS,
+    max_triggers: int = MAX_AUTONOMOUS_REPLAN_TRIGGERS,
+) -> dict[str, Any] | None:
+    evidence: list[dict[str, Any]] = []
+    seen_kinds: set[str] = set()
+    sections = section_parser(state_text, section_headings)
+    for section, lines in sections.items():
+        for entry in section_entries(lines):
+            text = public_safe_compact_text(entry, limit=160)
+            if not text:
+                continue
+            for kind, pattern in trigger_patterns:
+                if kind in seen_kinds or not pattern.search(text):
+                    continue
+                evidence.append({"kind": kind, "section": section, "text": text})
+                seen_kinds.add(kind)
+                if len(evidence) >= max_triggers:
+                    break
+            if len(evidence) >= max_triggers:
+                break
+        if len(evidence) >= max_triggers:
+            break
+
     return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
 
 

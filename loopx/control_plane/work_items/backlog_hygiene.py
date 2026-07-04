@@ -7,6 +7,8 @@ from typing import Any, Callable, Optional
 CompactText = Callable[..., Optional[str]]
 SectionParser = Callable[[str, tuple[str, ...]], dict[str, list[str]]]
 
+MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = 3
+
 
 def backlog_hygiene_warning(
     state_text: str,
@@ -17,7 +19,7 @@ def backlog_hygiene_warning(
     bullet_pattern: re.Pattern[str],
     hint_pattern: re.Pattern[str],
     public_safe_compact_text: CompactText,
-    max_evidence_items: int,
+    max_evidence_items: int = MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS,
 ) -> dict[str, Any] | None:
     try:
         agent_open_count = int(agent_todos.get("open_count") or 0) if isinstance(agent_todos, dict) else 0
