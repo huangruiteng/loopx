@@ -23,6 +23,8 @@ from loopx.status import collect_status  # noqa: E402
 
 
 GOAL_ID = "neutral-window-connected-delivery"
+AGENT_LANE_GOAL_ID = "neutral-window-agent-lane-recommendation"
+AGENT_ID = "codex-main-control"
 REAL_CLASSIFICATION = "autonomous_replan_recorded_stable_monitor"
 REAL_ACTION = "Quiet monitor only until a material stable monitor transition appears."
 DISPLAY_ACTION = (
@@ -31,6 +33,11 @@ DISPLAY_ACTION = (
 AGENT_TODO = (
     "[P1] Monitor the stable signal; write back only a material transition, regression, or blocker."
 )
+STALE_GOAL_ACTION = "Stale docs-governance cap action."
+AGENT_LANE_ACTION = (
+    "Closed stale docs-governance cap; continue with next projected runnable todo."
+)
+AGENT_LANE_TODO = "[P2-repair] Align quota/status recommended-action projection."
 
 
 def write_registry(root: Path) -> Path:
@@ -89,21 +96,91 @@ def write_registry(root: Path) -> Path:
     return registry_path
 
 
-def append_run(root: Path, *, generated_at: str, classification: str, action: str) -> None:
-    run_dir = root / "runtime" / "goals" / GOAL_ID / "runs"
+def write_agent_lane_registry(root: Path) -> Path:
+    project = root / "project"
+    runtime = root / "runtime"
+    state_file = f".codex/goals/{AGENT_LANE_GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    registry_path = project / ".loopx" / "registry.json"
+
+    (project / Path(state_file).parent).mkdir(parents=True, exist_ok=True)
+    (project / state_file).write_text(
+        "---\n"
+        "status: active\n"
+        "updated_at: 2026-01-01T00:03:00+00:00\n"
+        "---\n\n"
+        "# Agent Lane Recommendation Fixture\n\n"
+        "## Next Action\n\n"
+        "Implement broad primary app-server guard.\n\n"
+        "## Agent Todo\n\n"
+        f"- [ ] {AGENT_LANE_TODO}\n"
+        "  <!-- loopx:todo todo_id=todo_agent_lane_repair status=open "
+        "task_class=advancement_task action_kind=repair_recommended_action_projection "
+        f"claimed_by={AGENT_ID} -->\n",
+        encoding="utf-8",
+    )
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": AGENT_LANE_GOAL_ID,
+                        "domain": "status-neutral-window-agent-lane-fixture",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": state_file,
+                        "adapter": {
+                            "kind": "fixture_connected_delivery_v0",
+                            "status": "connected-delivery",
+                        },
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                        },
+                        "coordination": {
+                            "primary_agent": AGENT_ID,
+                            "registered_agents": [AGENT_ID],
+                            "write_scope": ["loopx/**", "examples/**"],
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry_path
+
+
+def append_run(
+    root: Path,
+    *,
+    generated_at: str,
+    classification: str,
+    action: str,
+    goal_id: str = GOAL_ID,
+    **extra: object,
+) -> None:
+    run_dir = root / "runtime" / "goals" / goal_id / "runs"
     run_dir.mkdir(parents=True, exist_ok=True)
     compact_time = generated_at.replace("-", "").replace(":", "")
     json_path = run_dir / f"{compact_time}-{classification}.json"
     markdown_path = run_dir / f"{compact_time}-{classification}.md"
     record = {
         "generated_at": generated_at,
-        "goal_id": GOAL_ID,
+        "goal_id": goal_id,
         "classification": classification,
         "recommended_action": action,
         "health_check": "status-neutral-window fixture run",
         "delivery_batch_scale": "single_surface",
         "delivery_outcome": "outcome_progress",
     }
+    record.update(extra)
     json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     markdown_path.write_text(f"# {classification}\n", encoding="utf-8")
     with (run_dir / "index.jsonl").open("a", encoding="utf-8") as f:
@@ -145,6 +222,34 @@ def write_runs(root: Path) -> None:
         generated_at="2026-01-01T00:08:00+00:00",
         classification=QUOTA_SLOT_VOIDED_CLASSIFICATION,
         action="quota void accounting only; no status transition",
+    )
+
+
+def write_agent_lane_runs(root: Path) -> None:
+    append_run(
+        root,
+        goal_id=AGENT_LANE_GOAL_ID,
+        generated_at="2026-01-01T00:01:00+00:00",
+        classification="stale_goal_status",
+        action=STALE_GOAL_ACTION,
+    )
+    append_run(
+        root,
+        goal_id=AGENT_LANE_GOAL_ID,
+        generated_at="2026-01-01T00:04:00+00:00",
+        classification="stale_projected_todo_closed",
+        action=AGENT_LANE_ACTION,
+        progress_scope="agent_lane",
+        agent_id=AGENT_ID,
+        delivery_batch_scale="test_only",
+    )
+    append_run(
+        root,
+        goal_id=AGENT_LANE_GOAL_ID,
+        generated_at="2026-01-01T00:05:00+00:00",
+        classification=QUOTA_SLOT_SPENT_CLASSIFICATION,
+        action="quota accounting only; no status transition",
+        agent_id=AGENT_ID,
     )
 
 
@@ -229,6 +334,31 @@ def main() -> int:
         assert selected["quota_signals"]["effective_action"] == "normal_run", selected
         assert selected["work_lane_contract"]["obligation"] == "repair_monitor_schedule_metadata", selected
         assert selected["todo_evidence"]["user_open_count"] == 0, selected
+
+    with tempfile.TemporaryDirectory(prefix="loopx-status-neutral-agent-lane-") as tmp:
+        root = Path(tmp)
+        registry_path = write_agent_lane_registry(root)
+        write_agent_lane_runs(root)
+
+        status = collect_status(
+            registry_path=registry_path,
+            runtime_root_override=str(root / "runtime"),
+            scan_roots=[root / "project"],
+            limit=5,
+        )
+        item = status["attention_queue"]["items"][0]
+        assert item["goal_id"] == AGENT_LANE_GOAL_ID, item
+        assert item["status"] == "stale_goal_status", item
+        assert item["latest_run_recommended_action"] == AGENT_LANE_ACTION, item
+        assert item["latest_run_recommended_action_source"] == "agent_lane_recommendation", item
+        assert item["agent_lane_recommendation"]["agent_id"] == AGENT_ID, item
+        assert item["agent_lane_recommendation"]["recommended_action"] == AGENT_LANE_ACTION, item
+
+        quota = build_quota_should_run(status, goal_id=AGENT_LANE_GOAL_ID, agent_id=AGENT_ID)
+        assert quota["recommended_action"] == AGENT_LANE_TODO, quota
+        assert quota["latest_run_recommended_action"] == AGENT_LANE_ACTION, quota
+        assert quota["agent_lane_next_action"]["todo_id"] == "todo_agent_lane_repair", quota
+        assert quota["interaction_contract"]["agent_channel"]["must_attempt"] is True, quota
 
     print("status-neutral-run-window-smoke ok")
     return 0

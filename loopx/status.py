@@ -6944,12 +6944,14 @@ def latest_run_recommended_action_for_projection(
     current_status_run: dict[str, Any] | None,
     agent_lane_recommendation: dict[str, Any] | None,
     active_state_next_action: Any = None,
+    preferred_agent_id: str | None = None,
     limit: int = 320,
 ) -> tuple[str | None, str | None]:
     return _latest_run_recommended_action_for_projection_read_model(
         current_status_run=current_status_run,
         agent_lane_recommendation=agent_lane_recommendation,
         active_state_next_action=active_state_next_action,
+        preferred_agent_id=preferred_agent_id,
         limit=limit,
         public_safe_compact_text=public_safe_compact_text,
         actions_are_projection_aligned=actions_are_projection_aligned,
@@ -7380,6 +7382,11 @@ def build_attention_queue(
                 current_status_run=current_status_run,
                 agent_lane_recommendation=agent_lane_recommendation,
                 active_state_next_action=active_state_next_action,
+                preferred_agent_id=(
+                    goal.get("coordination", {}).get("primary_agent")
+                    if isinstance(goal.get("coordination"), dict)
+                    else None
+                ),
             )
             if latest_run_action:
                 item["latest_run_recommended_action"] = latest_run_action
