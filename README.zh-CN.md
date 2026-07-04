@@ -19,7 +19,7 @@ loop 状态：目标、用户决策、agent todo、认领关系、scope、证据
 同一份状态也会投影到本地管理面：用户可以先看项目、agent lane、user gate、
 todo、证据和 review 信号，再决定是否给 agent 更多自主权。
 
-[English](README.md) · [快速开始](#快速开始) · [看几个例子](#看几个例子) ·
+[English](README.md) · [快速开始](#快速开始) · [用户手册](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg) · [看几个例子](#看几个例子) ·
 [Showcases](docs/showcases/README.md) · [用户群与反馈](#用户群与反馈) ·
 [产品愿景](docs/product/vision.md) · [架构](docs/architecture.md)
 
@@ -123,8 +123,10 @@ loopx bootstrap \
 
 ## 看几个例子
 
-想先看证明，再读控制面细节，可以从三个短入口开始：
+想先看完整说明或证明，再读控制面细节，可以从这几个入口开始：
 
+- [飞书用户手册](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg)：
+  公开 onboarding 手册，包含 Quick Start、技术/产品要点、FAQ 和精选案例。
 - [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/)：
   公开 showcase 首页，用 canonical case cards 解释 LoopX 解决什么问题。
 - [Blocked P0 with safe P1/P2 rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md)：

@@ -8,6 +8,9 @@ incident report, or launch draft.
 
 - [Project README](../README.md): product positioning, showcases, and the
   shortest quick start.
+- [User manual (Feishu/Lark)](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg):
+  public onboarding guide with Quick Start, product/technical concepts, FAQ,
+  and selected cases.
 - [Getting started](guides/getting-started.md): agent-first start, manual
   installation, project connection, diagnosis, daily workflow, heartbeats,
   dashboard, development, and command reference.

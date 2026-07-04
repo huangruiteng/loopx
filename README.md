@@ -31,7 +31,7 @@ next actions, evidence, cost, and handoff state. The agent still needs a CLI,
 task mode, automation hook, or loop scheduler; LoopX supplies the control
 plane, not hidden autonomy.
 
-[Quick Start](#quick-start) · [How It Works](#how-it-works) · [See It In Action](#see-it-in-action) ·
+[Quick Start](#quick-start) · [User Manual](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg) · [How It Works](#how-it-works) · [See It In Action](#see-it-in-action) ·
 [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/) · [Architecture](docs/architecture.md) ·
 [简体中文](README.zh-CN.md)
 
@@ -39,6 +39,7 @@ plane, not hidden autonomy.
 <summary>More docs and project links</summary>
 
 [Capability Surface](#capability-surface) · [Getting Started](docs/guides/getting-started.md) ·
+[User Manual](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg) ·
 [Showcases](docs/showcases/README.md) · [Release Readiness](docs/product/release-readiness.md) ·
 [Update Notes](docs/update-notes/README.md) · [Community](#community--feedback) ·
 [Product Vision](docs/product/vision.md) · [Dashboard](apps/dashboard/README.md)
@@ -335,9 +336,12 @@ command-reference workflow, read
 
 ## See It In Action
 
-Want proof before reading the control-plane details? Use three short entry
-points:
+Want proof before reading the control-plane details? Start with the public
+manual, then use the short proof surfaces:
 
+- [User Manual (Feishu/Lark)](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg):
+  the public onboarding manual with Quick Start, product concepts, technical
+  concepts, FAQ, and selected real-world cases.
 - [Hosted Frontstage](https://huangruiteng.github.io/loopx/frontstage/):
   the public showcase homepage with the canonical case cards.
 - [Blocked P0 with safe P1/P2 rotation](docs/showcases/cases/0617-blocked-p0-safe-rotation.md):
@@ -633,6 +637,9 @@ contract.
 - [Getting started](docs/guides/getting-started.md): install, connect,
   diagnose, daily workflow, heartbeats, dashboard, development, and command
   reference.
+- [User manual](https://my.feishu.cn/wiki/CaL5wMk9ui17ngkWzeUcMlAYnZg):
+  public Feishu/Lark onboarding guide with Quick Start, concepts, FAQ, and
+  selected cases.
 - [Documentation index](docs/README.md): stable docs grouped by audience.
 - [Update notes](docs/update-notes/README.md): public-safe two-week progress
   notes, archive, and publication automation plan.
