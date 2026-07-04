@@ -21,6 +21,7 @@ BENCHMARK_RUN_LEDGER_SCHEMA_VERSION = "benchmark_run_ledger_v0"
 BENCHMARK_RUN_LEDGER_CURRENT_AGGREGATE_SCHEMA_VERSION = (
     "benchmark_run_ledger_current_aggregate_v0"
 )
+OPERATOR_SIMULATOR_RUN_SCHEMA_VERSION = "operator_simulator_run_v0"
 BENCHMARK_RUN_LEDGER_DEFAULT_PATH = Path(
     "docs/research/long-horizon-agent-benchmarks/benchmark-run-ledger.json"
 )
@@ -707,6 +708,60 @@ def _compact_skillsbench_solution_quality_signals(value: Any) -> dict[str, Any]:
             compact_worker_activity[field] = max(0, raw)
     if compact_worker_activity:
         compact["worker_activity"] = compact_worker_activity
+    return compact
+
+
+def _compact_operator_simulator_run(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    schema_version = _compact_text(value.get("schema_version"), limit=120)
+    if schema_version != OPERATOR_SIMULATOR_RUN_SCHEMA_VERSION:
+        return {}
+    compact: dict[str, Any] = {"schema_version": OPERATOR_SIMULATOR_RUN_SCHEMA_VERSION}
+    simulator_identity = (
+        value.get("simulator_identity")
+        if isinstance(value.get("simulator_identity"), dict)
+        else {}
+    )
+    for field in (
+        "arm_schema_version",
+        "benchmark_id",
+        "case_id",
+        "task_id",
+        "mode",
+        "simulator_setting",
+    ):
+        raw = (
+            simulator_identity.get("setting")
+            if field == "simulator_setting" and value.get(field) is None
+            else value.get(field)
+        )
+        text = _compact_text(raw, limit=140)
+        if text:
+            compact[field] = text
+    claim_boundary = (
+        value.get("claim_boundary")
+        if isinstance(value.get("claim_boundary"), dict)
+        else {}
+    )
+    for field in (
+        "rubric_generated_before_solver_start",
+        "official_score_claim_allowed",
+        "leaderboard_claim_allowed",
+        "assisted_collaboration_claim_allowed",
+        "assisted_score_kept_separate_from_official",
+    ):
+        if isinstance(value.get(field), bool):
+            compact[field] = value[field]
+        elif isinstance(claim_boundary.get(field), bool):
+            compact[field] = claim_boundary[field]
+    for field in ("intervention_count", "proactive_intervention_count"):
+        raw = value.get(field)
+        if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+            compact[field] = raw
+    assisted_score = value.get("assisted_score")
+    if isinstance(assisted_score, (int, float)) and not isinstance(assisted_score, bool):
+        compact["assisted_score"] = float(assisted_score)
     return compact
 
 
@@ -1951,6 +2006,11 @@ def build_benchmark_run_ledger_entry(
     )
     if solution_quality_signals:
         entry["solution_quality_signals"] = solution_quality_signals
+    operator_simulator_run = _compact_operator_simulator_run(
+        benchmark_run.get("operator_simulator_run")
+    )
+    if operator_simulator_run:
+        entry["operator_simulator_run"] = operator_simulator_run
     attempt_accounting = (
         benchmark_run.get("attempt_accounting")
         if isinstance(benchmark_run.get("attempt_accounting"), dict)
