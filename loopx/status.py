@@ -91,6 +91,13 @@ from .projections.active_state_sections import (
     active_state_section_entries as _active_state_section_entries_read_model,
     active_state_sections as _active_state_sections_read_model,
 )
+from .projections.active_state_metadata import (
+    AGENT_TODO_HEADER_MARKERS,
+    TODO_ARCHIVE_HEADER_MARKERS,
+    USER_TODO_HEADER_MARKERS,
+    parse_state_frontmatter as _parse_state_frontmatter_read_model,
+    todo_role_for_heading as _todo_role_for_heading_read_model,
+)
 from .projections.active_state_todos import (
     active_state_todo_fields as _active_state_todo_fields_read_model,
 )
@@ -510,16 +517,6 @@ LIFECYCLE_PRIORITY = (
     "run_recorded",
 )
 SECTION_HEADING_PATTERN = re.compile(r"^##+\s+(.+?)\s*$")
-USER_TODO_HEADER_MARKERS = (
-    "user todo",
-    "owner review reading queue",
-    "owner reading queue",
-)
-AGENT_TODO_HEADER_MARKERS = (
-    "agent todo",
-    "codex todo",
-    "project agent todo",
-)
 MAX_STATUS_TODOS_PER_ROLE = 12
 MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = MAX_STATUS_TODOS_PER_ROLE
 MAX_PROJECT_ASSET_TODO_ITEMS = 3
@@ -587,14 +584,6 @@ AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS = {
 }
 AUTONOMOUS_RUN_HISTORY_STALL_PATTERN = re.compile(
     r"(?i)(?:monitor|observe|observation|poll|watch|quiet|no[-_ ]?op|no[-_ ]?progress|stalled?|unchanged|dependency|停转|无进展|重复|反复|观察|轮询)"
-)
-TODO_ARCHIVE_HEADER_MARKERS = (
-    "todo archive",
-    "work archive",
-    "completed archive",
-    "completed work",
-    "完成归档",
-    "待办归档",
 )
 def public_safe_compact_text(value: Any, *, limit: int = 220) -> str | None:
     text = normalize_todo_text(str(value or ""), limit=limit)
@@ -5818,29 +5807,11 @@ def compact_active_user_assisted_pilot(run: dict[str, Any]) -> dict[str, Any] | 
 
 
 def parse_state_frontmatter(state_text: str) -> dict[str, str]:
-    if not state_text.startswith("---"):
-        return {}
-    parts = state_text.split("---", 2)
-    if len(parts) < 3:
-        return {}
-    result: dict[str, str] = {}
-    for line in parts[1].splitlines():
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        result[key.strip()] = value.strip().strip('"')
-    return result
+    return _parse_state_frontmatter_read_model(state_text)
 
 
 def todo_role_for_heading(heading: str) -> str | None:
-    normalized = heading.strip().lower()
-    if any(marker in normalized for marker in TODO_ARCHIVE_HEADER_MARKERS):
-        return None
-    if any(marker in normalized for marker in USER_TODO_HEADER_MARKERS):
-        return "user"
-    if any(marker in normalized for marker in AGENT_TODO_HEADER_MARKERS):
-        return "agent"
-    return None
+    return _todo_role_for_heading_read_model(heading)
 
 
 def todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
