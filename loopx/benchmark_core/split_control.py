@@ -39,6 +39,16 @@ DEFAULT_SPLIT_CONTROL_LAUNCH_COMMAND_LABELS = {
     "skillsbench@1.1": "skillsbench compact no-upload remote-executor dry-run or mini-pair",
     "agents-last-exam@local-docker": "agents-last-exam provider/task-data validation gate",
 }
+SPLIT_CONTROL_ROUTE_STATUS = "experimental_fallback_not_default"
+SPLIT_CONTROL_ROUTE_ALLOWED_USE = (
+    "codex_auth_cannot_live_on_execution_host",
+    "shared_or_policy_restricted_execution_host",
+    "local_controller_remote_docker_substrate_research",
+)
+SPLIT_CONTROL_ROUTE_NOT_FOR = (
+    "default_cloud_host_or_app_server_benchmark_route",
+    "new_bridge_layers_without_concrete_auth_policy_or_host_gate",
+)
 
 PUBLIC_RUNNER_RESULT_FIELDS = (
     "status",
@@ -228,6 +238,15 @@ def build_split_control_remote_executor_readiness(
         "schema_version": BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_SCHEMA_VERSION,
         "route": {
             "mode": "local_agent_remote_executor",
+            "status": SPLIT_CONTROL_ROUTE_STATUS,
+            "default_for_cloud_host_runs": False,
+            "allowed_use": list(SPLIT_CONTROL_ROUTE_ALLOWED_USE),
+            "not_for": list(SPLIT_CONTROL_ROUTE_NOT_FOR),
+            "retirement_policy": (
+                "keep durable public contracts and reducers; defer or retire "
+                "transport-only bridge work once a cloud-host or app-server "
+                "route has equivalent compact evidence"
+            ),
             "local_agent_owns": [
                 "codex_cli",
                 "codex_auth",
@@ -339,6 +358,10 @@ def build_split_control_remote_executor_launch_plan(
     return {
         "schema_version": BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION,
         "source_schema_version": readiness.get("schema_version"),
+        "route_status": route.get("status") or SPLIT_CONTROL_ROUTE_STATUS,
+        "default_for_cloud_host_runs": _truthy(
+            route.get("default_for_cloud_host_runs")
+        ),
         "ready_to_launch": bool(launch_cases),
         "launch_cases": launch_cases,
         "blocked_benchmark_ids": blocked_ids,
@@ -446,6 +469,11 @@ def build_split_control_remote_executor_runner_batch(
     return {
         "schema_version": BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION,
         "source_schema_version": launch_plan.get("schema_version"),
+        "route_status": launch_plan.get("route_status")
+        or SPLIT_CONTROL_ROUTE_STATUS,
+        "default_for_cloud_host_runs": _truthy(
+            launch_plan.get("default_for_cloud_host_runs")
+        ),
         "fresh_readiness_schema_version": fresh.get("schema_version"),
         "ready_to_execute": ready_to_execute,
         "blockers": blockers,
@@ -550,6 +578,10 @@ def build_split_control_remote_executor_execution_seam(
     return {
         "schema_version": BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION,
         "source_schema_version": batch.get("schema_version"),
+        "route_status": batch.get("route_status") or SPLIT_CONTROL_ROUTE_STATUS,
+        "default_for_cloud_host_runs": _truthy(
+            batch.get("default_for_cloud_host_runs")
+        ),
         "ready_to_execute": ready_to_execute,
         "ready_to_spend": ready_to_execute and _truthy(batch.get("ready_to_spend")),
         "blockers": seam_blockers,

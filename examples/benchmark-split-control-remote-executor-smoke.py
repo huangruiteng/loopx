@@ -163,6 +163,16 @@ def test_remote_codex_is_not_required_for_split_control() -> None:
         payload["schema_version"]
         == BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_SCHEMA_VERSION
     ), payload
+    assert payload["route"]["status"] == "experimental_fallback_not_default", payload
+    assert payload["route"]["default_for_cloud_host_runs"] is False, payload
+    assert (
+        "default_cloud_host_or_app_server_benchmark_route"
+        in payload["route"]["not_for"]
+    ), payload
+    assert (
+        "new_bridge_layers_without_concrete_auth_policy_or_host_gate"
+        in payload["route"]["not_for"]
+    ), payload
     assert payload["ready"] is False, payload
     assert payload["first_blocker"] == "split_control_adapter_missing", payload
     assert payload["local_agent"]["ready"] is True, payload
@@ -289,6 +299,8 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
         plan["schema_version"]
         == BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_LAUNCH_PLAN_SCHEMA_VERSION
     ), plan
+    assert plan["route_status"] == "experimental_fallback_not_default", plan
+    assert plan["default_for_cloud_host_runs"] is False, plan
     assert plan["ready_to_launch"] is True, plan
     assert [case["benchmark_id"] for case in plan["launch_cases"]] == [
         "terminal-bench@2.0",
@@ -333,6 +345,8 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
         batch["schema_version"]
         == BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_RUNNER_BATCH_SCHEMA_VERSION
     ), batch
+    assert batch["route_status"] == "experimental_fallback_not_default", batch
+    assert batch["default_for_cloud_host_runs"] is False, batch
     assert batch["ready_to_execute"] is True, batch
     assert batch["ready_to_spend"] is False, batch
     assert batch["blockers"] == [], batch
@@ -381,6 +395,10 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
         missing_seam["schema_version"]
         == BENCHMARK_SPLIT_CONTROL_REMOTE_EXECUTOR_EXECUTION_SEAM_SCHEMA_VERSION
     ), missing_seam
+    assert (
+        missing_seam["route_status"] == "experimental_fallback_not_default"
+    ), missing_seam
+    assert missing_seam["default_for_cloud_host_runs"] is False, missing_seam
     assert missing_seam["ready_to_execute"] is False, missing_seam
     assert missing_seam["blockers"] == [
         "command_adapter_missing",
@@ -444,6 +462,54 @@ def test_partial_ready_subset_can_launch_without_remote_codex() -> None:
         for case in ready_seam["execution_cases"]
     ), ready_seam
     assert_public_safe(ready_seam)
+
+
+def test_split_control_retirement_policy_matches_workflow_docs() -> None:
+    workflow = (REPO_ROOT / "docs/benchmark-developer-workflow.md").read_text(
+        encoding="utf-8"
+    )
+    assert "The split-control route is now a fallback and research route" in workflow
+    assert "retained experimental fallback" in workflow
+    assert "do not add new bridge layers" in workflow
+    assert "cloud-host route can answer the benchmark question directly" in workflow
+    assert "default_cloud_host_or_app_server_benchmark_route" not in workflow
+
+    payload = build_split_control_remote_executor_readiness(
+        benchmark_ids=("terminal-bench@2.0",),
+        local_agent={
+            "codex_cli_available": True,
+            "loopx_available": True,
+            "codex_auth_ready": True,
+            "codex_auth_local_only": True,
+            "model_invocation_local": True,
+        },
+        remote_executor={
+            "docker_available": True,
+            "python_available": True,
+            "git_available": True,
+            "rsync_available": True,
+        },
+        adapter_readiness={
+            "terminal-bench@2.0": {
+                "split_control_adapter_ready": True,
+                "runner_tooling_ready": True,
+                "task_data_ready": True,
+            },
+        },
+    )
+    route = payload["route"]
+    assert route["status"] == "experimental_fallback_not_default", payload
+    assert route["default_for_cloud_host_runs"] is False, payload
+    assert route["allowed_use"] == [
+        "codex_auth_cannot_live_on_execution_host",
+        "shared_or_policy_restricted_execution_host",
+        "local_controller_remote_docker_substrate_research",
+    ], payload
+    assert route["not_for"] == [
+        "default_cloud_host_or_app_server_benchmark_route",
+        "new_bridge_layers_without_concrete_auth_policy_or_host_gate",
+    ], payload
+    assert_public_safe(payload)
 
 
 def test_terminal_bench_command_adapter_facts_feed_execution_seam() -> None:
