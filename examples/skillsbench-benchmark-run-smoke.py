@@ -6999,6 +6999,25 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
         assert plan["schema_version"] == "skillsbench_runner_launch_plan_v0", plan
         assert plan["route"] == "codex-goal-mode-baseline", plan
         assert plan["include_task_skills"] is False, plan
+        observable = plan["observable_handle_registration"]
+        assert observable["schema_version"] == "benchmark_launch_observable_handle_v0", (
+            observable
+        )
+        assert observable["benchmark_id"] == "skillsbench-1.1", observable
+        assert observable["launch_mode"] == "skillsbench_runner_launch_plan", observable
+        handle = observable["observable_handle"]
+        assert handle["kind"] == "job_basename", observable
+        assert handle["state"] == "not_started", observable
+        assert "/" not in handle["job_basename"], observable
+        assert handle["raw_handle_payload_recorded"] is False, observable
+        assert handle["private_handle_values_recorded"] is False, observable
+        assert observable["allowed_poll_command"]["command_label"] == (
+            "skillsbench_runner_status_snapshot"
+        ), observable
+        assert observable["allowed_poll_command"]["argv_recorded"] is False, observable
+        assert observable["read_boundary"]["compact_only"] is True, observable
+        assert observable["boundary"]["raw_task_text_recorded"] is False, observable
+        assert observable["boundary"]["local_paths_recorded"] is False, observable
         assert plan["outer_timeout_sec"] == 7200, plan
         assert plan["sandbox_setup_timeout_sec"] == 7200, plan
         runner_prerequisites = plan["runner_prerequisites"]

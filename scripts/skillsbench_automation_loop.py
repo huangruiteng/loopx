@@ -123,6 +123,7 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
+from loopx.benchmark_core import build_benchmark_launch_observable_handle  # noqa: E402
 from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -8917,6 +8918,33 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         launch_plan["app_server_goal_worker_contract"] = (
             app_server_goal_worker_contract
         )
+    launch_plan["observable_handle_registration"] = (
+        build_benchmark_launch_observable_handle(
+            benchmark_id=args.dataset,
+            launch_mode="skillsbench_runner_launch_plan",
+            run_label=rollout_name or job_name,
+            job_basename=job_name,
+            process_state="not_started",
+            compact_artifact_refs=(
+                "result.json",
+                "compact-benchmark-run.json",
+                "controller-trace.json",
+                RUNNER_PREREQUISITES_PUBLIC_FILENAME,
+            ),
+            allowed_poll_command="skillsbench_runner_status_snapshot",
+            scheduler_kind="skillsbench_automation_loop",
+            will_execute=not bool(args.plan_only),
+            read_boundary={
+                "compact_only": True,
+                "task_text_read": False,
+                "raw_logs_read": False,
+                "raw_artifacts_read": False,
+                "trajectory_read": False,
+                "local_paths_recorded": False,
+                "private_handle_values_recorded": False,
+            },
+        )
+    )
     launch_plan["runner_config"] = _public_runner_config(launch_plan)
     return launch_plan
 

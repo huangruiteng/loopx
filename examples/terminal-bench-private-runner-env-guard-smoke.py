@@ -2493,6 +2493,39 @@ time.sleep(3)
     assert "loopx_mode=hardened_codex_baseline" in baseline_launch["argv"], baseline_launch["argv"]
     assert "--mounts" not in baseline_launch["argv"], baseline_launch["argv"]
     baseline_summary = summarize_terminal_bench_private_runner_launch(baseline_launch)
+    baseline_observable = baseline_launch["observable_handle_registration"]
+    assert baseline_observable["schema_version"] == (
+        "benchmark_launch_observable_handle_v0"
+    ), baseline_observable
+    assert baseline_observable["benchmark_id"] == "terminal-bench-2.0", (
+        baseline_observable
+    )
+    assert baseline_observable["launch_mode"] == (
+        "terminal_bench_private_runner_hardened-codex"
+    ), baseline_observable
+    baseline_handle = baseline_observable["observable_handle"]
+    assert baseline_handle["kind"] == "job_basename", baseline_observable
+    assert baseline_handle["state"] == "not_started", baseline_observable
+    assert "/" not in baseline_handle["job_basename"], baseline_observable
+    assert baseline_handle["raw_handle_payload_recorded"] is False, baseline_observable
+    assert baseline_handle["private_handle_values_recorded"] is False, (
+        baseline_observable
+    )
+    assert baseline_observable["allowed_poll_command"]["command_label"] == (
+        "terminal_bench_run_status_snapshot"
+    ), baseline_observable
+    assert baseline_observable["allowed_poll_command"]["argv_recorded"] is False, (
+        baseline_observable
+    )
+    assert baseline_observable["read_boundary"]["compact_only"] is True, (
+        baseline_observable
+    )
+    assert baseline_observable["boundary"]["raw_logs_recorded"] is False, (
+        baseline_observable
+    )
+    assert baseline_summary["observable_handle_registration"] == baseline_observable, (
+        baseline_summary
+    )
     assert baseline_summary["ready"] == baseline_launch["ready"], baseline_summary
     assert baseline_summary["first_blocker"] == baseline_launch["first_blocker"], baseline_summary
     assert baseline_summary["no_upload_boundary"] is True, baseline_summary

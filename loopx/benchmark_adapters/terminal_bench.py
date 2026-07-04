@@ -14,6 +14,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from ..benchmark_core import (
     BenchmarkFailureClass,
     build_benchmark_attempt_accounting,
+    build_benchmark_launch_observable_handle,
     build_run_permission_policy,
     canonical_lifecycle,
     compact_run_permission_policy_for_quota,
@@ -6590,6 +6591,37 @@ def build_terminal_bench_private_runner_launch(**command_kwargs: Any) -> dict[st
             if codex_app_server_goal_mode
             else ""
         ),
+        "observable_handle_registration": build_benchmark_launch_observable_handle(
+            benchmark_id=TERMINAL_BENCH_DEFAULT_DATASET,
+            launch_mode=f"terminal_bench_private_runner_{mode or 'codex-loopx'}",
+            run_label=str(
+                resolved_command_kwargs.get("job_name")
+                or "terminal_bench_private_runner_launch"
+            ),
+            job_basename=str(
+                resolved_command_kwargs.get("job_name")
+                or "terminal_bench_private_runner_launch"
+            ),
+            process_state="not_started",
+            compact_artifact_refs=(
+                "benchmark-run.compact.json",
+                "job-result.compact.json",
+                "trial-result.compact.json",
+            ),
+            allowed_poll_command="terminal_bench_run_status_snapshot",
+            scheduler_kind="terminal_bench_private_runner",
+            will_execute=bool(argv)
+            and first_blocker == "ready_for_private_managed_no_upload_pilot_review",
+            read_boundary={
+                "compact_only": True,
+                "task_text_read": False,
+                "raw_logs_read": False,
+                "raw_artifacts_read": False,
+                "trajectory_read": False,
+                "local_paths_recorded": False,
+                "private_handle_values_recorded": False,
+            },
+        ),
         "first_blocker": first_blocker,
         "ready": first_blocker == "ready_for_private_managed_no_upload_pilot_review",
     }
@@ -7344,6 +7376,11 @@ def summarize_terminal_bench_private_runner_launch(
         codex_goal_mode_baseline_claim_blocker = "missing_codex_app_server_goal_proof"
     else:
         codex_goal_mode_baseline_claim_blocker = ""
+    observable_handle_registration = (
+        launch.get("observable_handle_registration")
+        if isinstance(launch.get("observable_handle_registration"), dict)
+        else {}
+    )
     summary = {
         "schema_version": "terminal_bench_private_runner_launch_summary_v0",
         "launch_schema_version": str(launch.get("schema_version") or ""),
@@ -7449,6 +7486,7 @@ def summarize_terminal_bench_private_runner_launch(
             setup_timeout_repair_profile=setup_timeout_repair_profile,
         ),
         "closeout_command_templates": _terminal_bench_run_ledger_closeout_templates(),
+        "observable_handle_registration": observable_handle_registration,
         "auth_values_recorded": False,
         "raw_env_recorded": False,
         "raw_paths_recorded": False,
