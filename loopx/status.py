@@ -72,6 +72,7 @@ from .projections.project_asset import (
     project_asset_user_todo_open_count,
 )
 from .projections.project_handoff import (
+    project_asset_handoff_readiness as _project_asset_handoff_readiness_read_model,
     project_asset_handoff_state as _project_asset_handoff_state_read_model,
 )
 from .projections.autonomous_candidates import (
@@ -6528,33 +6529,13 @@ def project_asset_handoff_readiness(
     *,
     latest_runs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
-    project_asset = item.get("project_asset")
-    if not isinstance(project_asset, dict):
-        return None
-
-    check_projection = project_asset_handoff_check_projection(item)
-    if not check_projection:
-        return None
-    checks = check_projection["checks"]
-    goal_id = str(item.get("goal_id") or "").strip()
-    readiness: dict[str, Any] = {
-        "ready": all(checks.values()),
-        "codex_ready": bool(check_projection.get("codex_ready")),
-        "source": "project_asset",
-        "quota_state": check_projection.get("quota_state") or "unknown",
-        "handoff_interface_budget": handoff_budget_contract(),
-        "checks": checks,
-    }
-    readiness.update(
-        project_asset_handoff_state(
-            ready=bool(check_projection.get("state_trace_ready")),
-            project_asset=project_asset,
-            latest_runs=latest_runs,
-        )
+    return _project_asset_handoff_readiness_read_model(
+        item,
+        latest_runs=latest_runs,
+        project_asset_handoff_check_projection=project_asset_handoff_check_projection,
+        handoff_budget_contract=handoff_budget_contract,
+        project_asset_handoff_state=project_asset_handoff_state,
     )
-    if goal_id:
-        readiness["next_probe"] = f"loopx review-packet --goal-id {goal_id} --handoff-only"
-    return readiness
 
 
 def enrich_project_asset(

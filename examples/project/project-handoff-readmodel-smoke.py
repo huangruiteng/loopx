@@ -43,6 +43,20 @@ def _projection_state(
     )
 
 
+def _projection_readiness(
+    item: dict[str, object],
+    *,
+    latest_runs: list[dict[str, object]] | None,
+) -> dict[str, object] | None:
+    return project_handoff_read_model.project_asset_handoff_readiness(
+        item,
+        latest_runs=latest_runs,
+        project_asset_handoff_check_projection=status_module.project_asset_handoff_check_projection,
+        handoff_budget_contract=status_module.handoff_budget_contract,
+        project_asset_handoff_state=status_module.project_asset_handoff_state,
+    )
+
+
 def assert_project_handoff_wrapper_parity() -> None:
     latest_runs = [
         {
@@ -112,8 +126,61 @@ def assert_project_handoff_wrapper_parity() -> None:
     )
 
 
+def assert_project_handoff_readiness_wrapper_parity() -> None:
+    latest_runs = [
+        {
+            "generated_at": "2026-07-04T00:08:00+00:00",
+            "classification": "controller_adapter_validated",
+        }
+    ]
+    item = {
+        "goal_id": "loopx-demo",
+        "waiting_on": "codex",
+        "recommended_action": "continue the current control-plane slice",
+        "project_asset": {
+            "next_action": "continue the current control-plane slice",
+            "stop_condition": "stop before private material",
+            "quota": {"state": "eligible"},
+            "execution_profile": PROFILE,
+        },
+    }
+    assert status_module.project_asset_handoff_readiness(
+        item,
+        latest_runs=latest_runs,
+    ) == _projection_readiness(
+        item,
+        latest_runs=latest_runs,
+    )
+
+    missing_asset = {"goal_id": "loopx-demo"}
+    assert status_module.project_asset_handoff_readiness(
+        missing_asset,
+        latest_runs=latest_runs,
+    ) == _projection_readiness(
+        missing_asset,
+        latest_runs=latest_runs,
+    )
+
+    incomplete_item = {
+        "goal_id": "loopx-demo",
+        "waiting_on": "codex",
+        "project_asset": {
+            "quota": {"state": "eligible"},
+            "execution_profile": PROFILE,
+        },
+    }
+    assert status_module.project_asset_handoff_readiness(
+        incomplete_item,
+        latest_runs=[],
+    ) == _projection_readiness(
+        incomplete_item,
+        latest_runs=[],
+    )
+
+
 def main() -> None:
     assert_project_handoff_wrapper_parity()
+    assert_project_handoff_readiness_wrapper_parity()
 
 
 if __name__ == "__main__":

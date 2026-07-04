@@ -113,3 +113,43 @@ def project_asset_handoff_state(
                 profile,
             )
     return state
+
+
+def project_asset_handoff_readiness(
+    item: dict[str, Any],
+    *,
+    latest_runs: list[dict[str, Any]] | None,
+    project_asset_handoff_check_projection: Callable[[dict[str, Any]], dict[str, Any] | None],
+    handoff_budget_contract: Callable[[], dict[str, Any]],
+    project_asset_handoff_state: Callable[
+        ...,
+        dict[str, Any],
+    ],
+) -> dict[str, Any] | None:
+    project_asset = item.get("project_asset")
+    if not isinstance(project_asset, dict):
+        return None
+
+    check_projection = project_asset_handoff_check_projection(item)
+    if not check_projection:
+        return None
+    checks = check_projection["checks"]
+    goal_id = str(item.get("goal_id") or "").strip()
+    readiness: dict[str, Any] = {
+        "ready": all(checks.values()),
+        "codex_ready": bool(check_projection.get("codex_ready")),
+        "source": "project_asset",
+        "quota_state": check_projection.get("quota_state") or "unknown",
+        "handoff_interface_budget": handoff_budget_contract(),
+        "checks": checks,
+    }
+    readiness.update(
+        project_asset_handoff_state(
+            ready=bool(check_projection.get("state_trace_ready")),
+            project_asset=project_asset,
+            latest_runs=latest_runs,
+        )
+    )
+    if goal_id:
+        readiness["next_probe"] = f"loopx review-packet --goal-id {goal_id} --handoff-only"
+    return readiness
