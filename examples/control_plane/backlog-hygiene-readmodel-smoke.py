@@ -18,7 +18,6 @@ from loopx.status import (  # noqa: E402
     BACKLOG_HYGIENE_BULLET_PATTERN,
     BACKLOG_HYGIENE_HINT_PATTERN,
     BACKLOG_HYGIENE_SECTION_HEADINGS,
-    MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS,
     active_state_sections,
     backlog_hygiene_warning,
     public_safe_compact_text,
@@ -47,7 +46,6 @@ def direct_warning(agent_todos: dict[str, object] | None) -> dict[str, object] |
         bullet_pattern=BACKLOG_HYGIENE_BULLET_PATTERN,
         hint_pattern=BACKLOG_HYGIENE_HINT_PATTERN,
         public_safe_compact_text=public_safe_compact_text,
-        max_evidence_items=MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS,
     )
 
 

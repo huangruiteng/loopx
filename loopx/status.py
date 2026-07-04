@@ -119,6 +119,9 @@ from .control_plane.work_items.autonomous_replan_ack import (
     latest_autonomous_replan_ack_for_projection as _latest_autonomous_replan_ack_for_projection_read_model,
 )
 from .control_plane.work_items.autonomous_replan_obligation import (
+    AUTONOMOUS_REPLAN_TRIGGER_PATTERNS as _AUTONOMOUS_REPLAN_TRIGGER_PATTERNS_READ_MODEL,
+    MAX_AUTONOMOUS_REPLAN_TRIGGERS as _MAX_AUTONOMOUS_REPLAN_TRIGGERS_READ_MODEL,
+    autonomous_replan_obligation_from_state as _autonomous_replan_obligation_from_state_read_model,
     autonomous_replan_obligation_from_runs as _autonomous_replan_obligation_from_runs_read_model,
     autonomous_replan_periodic_review_from_runs as _autonomous_replan_periodic_review_from_runs_read_model,
     build_autonomous_replan_obligation as _build_autonomous_replan_obligation_read_model,
@@ -128,6 +131,7 @@ from .control_plane.work_items.autonomous_replan_obligation import (
     run_history_stall_signal as _run_history_stall_signal_read_model,
 )
 from .control_plane.work_items.backlog_hygiene import (
+    MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS as _MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS_READ_MODEL,
     backlog_hygiene_warning as _backlog_hygiene_warning_read_model,
 )
 from .control_plane.goals.dreaming import (
@@ -557,8 +561,8 @@ MAX_MONITOR_DUE_ITEMS = _TODO_SUMMARY_MAX_MONITOR_DUE_ITEMS
 MAX_DEPENDENCY_BLOCKERS = _TODO_SUMMARY_MAX_DEPENDENCY_BLOCKERS
 MAX_AUTONOMOUS_BACKLOG_CANDIDATES = _MAX_AUTONOMOUS_TODO_CANDIDATES
 MAX_SUBAGENT_SCOPE_ITEMS = 4
-MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = 3
-MAX_AUTONOMOUS_REPLAN_TRIGGERS = 3
+MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS = _MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS_READ_MODEL
+MAX_AUTONOMOUS_REPLAN_TRIGGERS = _MAX_AUTONOMOUS_REPLAN_TRIGGERS_READ_MODEL
 AUTONOMOUS_REPLAN_STALL_THRESHOLD = 2
 DEAD_MONITOR_REPEAT_THRESHOLD = 6
 AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD = 20
@@ -574,36 +578,7 @@ AUTONOMOUS_REPLAN_SECTION_HEADINGS = (
     "Next Action",
     "Operating Lessons",
 )
-AUTONOMOUS_REPLAN_TRIGGER_PATTERNS = (
-    (
-        "periodic_review",
-        re.compile(r"(?i)(?:periodic review|periodic replan|review cadence|规划复盘|周期复盘|每几十轮)"),
-    ),
-    (
-        "no_progress_streak",
-        re.compile(r"(?i)(?:no[- ]?progress|stalled?|stall streak|没有实质进展|停转|连续[^。；;]*无进展)"),
-    ),
-    (
-        "repeated_action_loop",
-        re.compile(r"(?i)(?:repeated[- ]?action|action loop|same action|looped|重复动作|循环观察|反复观察)"),
-    ),
-    (
-        "phase_transition",
-        re.compile(r"(?i)(?:phase transition|next phase|stage transition|readiness .*done|阶段切换|进入下一阶段)"),
-    ),
-    (
-        "backlog_mismatch",
-        re.compile(r"(?i)(?:backlog mismatch|todo mismatch|next action mismatch|todo.*淹没|待办.*不一致)"),
-    ),
-    (
-        "evidence_contradiction",
-        re.compile(r"(?i)(?:evidence contradiction|contradictory evidence|stale evidence|stale latest-run|证据矛盾|状态矛盾)"),
-    ),
-    (
-        "explicit_replan",
-        re.compile(r"(?i)(?:autonomous replan|replan obligation|planning[- ]?trigger|重新规划|重规划|规划触发)"),
-    ),
-)
+AUTONOMOUS_REPLAN_TRIGGER_PATTERNS = _AUTONOMOUS_REPLAN_TRIGGER_PATTERNS_READ_MODEL
 AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES = PROGRESS_DELIVERY_OUTCOMES
 AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS = {
     "quota_slot_spent",
@@ -5991,27 +5966,15 @@ def autonomous_replan_obligation(
     *,
     agent_todos: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    evidence: list[dict[str, Any]] = []
-    seen_kinds: set[str] = set()
-    sections = active_state_sections(state_text, AUTONOMOUS_REPLAN_SECTION_HEADINGS)
-    for section, lines in sections.items():
-        for entry in active_state_section_entries(lines):
-            text = public_safe_compact_text(entry, limit=160)
-            if not text:
-                continue
-            for kind, pattern in AUTONOMOUS_REPLAN_TRIGGER_PATTERNS:
-                if kind in seen_kinds or not pattern.search(text):
-                    continue
-                evidence.append({"kind": kind, "section": section, "text": text})
-                seen_kinds.add(kind)
-                if len(evidence) >= MAX_AUTONOMOUS_REPLAN_TRIGGERS:
-                    break
-            if len(evidence) >= MAX_AUTONOMOUS_REPLAN_TRIGGERS:
-                break
-        if len(evidence) >= MAX_AUTONOMOUS_REPLAN_TRIGGERS:
-            break
-
-    return build_autonomous_replan_obligation(evidence, agent_todos=agent_todos)
+    return _autonomous_replan_obligation_from_state_read_model(
+        state_text,
+        agent_todos=agent_todos,
+        section_headings=AUTONOMOUS_REPLAN_SECTION_HEADINGS,
+        section_parser=active_state_sections,
+        section_entries=active_state_section_entries,
+        public_safe_compact_text=public_safe_compact_text,
+        build_autonomous_replan_obligation=build_autonomous_replan_obligation,
+    )
 
 
 def build_autonomous_replan_obligation(
