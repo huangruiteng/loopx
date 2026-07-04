@@ -12,7 +12,8 @@ Current capability paths:
   into reviewable source, angle, draft, feedback, and publish-gate packets.
 - [value-connectors](value-connectors/README.md): install and run public-safe
   external-value connector starters, beginning with body-free GitHub public
-  channel metadata probes.
+  channel metadata probes, plus gated candidate profiles such as X/browser
+  social work and finance market snapshots.
 
 Do not add a capability path until there is at least one real CLI entrypoint and
 one smoke test. Future ideas belong in product planning docs until they have
