@@ -17,7 +17,7 @@ public-safe map over the current repository contracts, especially:
 - [`loopx/quota.py`](../../../loopx/quota.py) for `quota should-run`, runtime
   states, `effective_action`, `interaction_contract`, spend, and monitor poll
   contracts;
-- [`loopx/policies/scheduler_hint.py`](../../../loopx/policies/scheduler_hint.py)
+- [`loopx/control_plane/scheduler/scheduler_hint.py`](../../../loopx/control_plane/scheduler/scheduler_hint.py)
   for cadence/backoff/reset-token behavior;
 - [`goal_vision_replan_contract_v0`](../../reference/protocols/goal-vision-replan-contract-v0.md)
   for bounded per-agent vision, replan transitions, and goal-route projection;

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..control_plane.work_items.delivery_outcome import (
+from .delivery_outcome import (
     DeliveryOutcome,
     DeliveryTurnKind,
     FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES,

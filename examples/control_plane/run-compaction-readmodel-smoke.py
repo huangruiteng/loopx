@@ -12,8 +12,6 @@ if str(ROOT) not in sys.path:
 from loopx import status as status_module  # noqa: E402
 from loopx.control_plane.goals.goal_vision import compact_goal_vision_packet  # noqa: E402
 from loopx.control_plane.runtime import run_compaction as run_compaction_read_model  # noqa: E402
-from loopx.policies import goal_frontier as legacy_goal_frontier  # noqa: E402
-from loopx.policies import goal_vision as legacy_goal_vision  # noqa: E402
 from loopx.control_plane.goals import goal_frontier as goal_frontier_read_model  # noqa: E402
 from loopx.session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION  # noqa: E402
 
@@ -284,19 +282,16 @@ def assert_compact_run_summary_projection_parity() -> None:
     assert "private_note" not in session_projection
 
 
-def assert_goal_readmodel_compatibility_shims() -> None:
-    assert legacy_goal_vision.compact_goal_vision_packet is compact_goal_vision_packet
-    assert (
-        legacy_goal_frontier.build_goal_frontier_projection
-        is goal_frontier_read_model.build_goal_frontier_projection
-    )
+def assert_goal_readmodel_direct_imports() -> None:
+    assert callable(compact_goal_vision_packet)
+    assert callable(goal_frontier_read_model.build_goal_frontier_projection)
 
 
 def main() -> None:
     assert_run_compaction_wrapper_parity()
     assert_compact_run_base_parity()
     assert_compact_run_summary_projection_parity()
-    assert_goal_readmodel_compatibility_shims()
+    assert_goal_readmodel_direct_imports()
 
 
 if __name__ == "__main__":

@@ -48,7 +48,7 @@ from .execution_profile import (
 )
 from .long_task_cadence import long_task_cadence_hint_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
-from .policies.execution_obligation import build_execution_obligation
+from .control_plane.work_items.execution_obligation import build_execution_obligation
 from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
     acceptance_gaps_from_agent_vision,
@@ -60,8 +60,8 @@ from .control_plane.goals.goal_frontier import (
     latest_agent_vision_from_status_payload,
     select_autonomous_replan_obligation,
 )
-from .policies.goal_route_hint import build_goal_route_hint
-from .policies.outcome_followthrough import build_outcome_followthrough_hint
+from .control_plane.work_items.goal_route_hint import build_goal_route_hint
+from .control_plane.work_items.outcome_followthrough import build_outcome_followthrough_hint
 from .control_plane.scheduler.scheduler_hint import (
     build_codex_app_scheduler_ack_event,
     build_scheduler_hint,
@@ -75,7 +75,7 @@ from .control_plane.scheduler.state import (
     scheduler_state_path,
     write_scheduler_state,
 )
-from .policies.work_lane import (
+from .control_plane.work_items.work_lane import (
     build_work_lane_contract as build_work_lane_contract_policy,
 )
 from .state_projection import is_user_wait_text, next_action_projection_warning

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..state_projection import actions_are_projection_aligned
-from ..control_plane.todos.contract import (
+from ...state_projection import actions_are_projection_aligned
+from ..todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     normalize_todo_blocks_agent,
@@ -12,7 +12,7 @@ from ..control_plane.todos.contract import (
     normalize_todo_status,
     normalize_todo_task_class,
 )
-from ..control_plane.todos.handoff_gate import HandoffGateState
+from ..todos.handoff_gate import HandoffGateState
 
 
 GOAL_ROUTE_HINT_SCHEMA_VERSION = "goal_route_hint_v0"

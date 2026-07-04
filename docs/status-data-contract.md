@@ -1251,8 +1251,8 @@ This is intended to keep monitor-only work from consuming the primary
 executable backlog, not to bypass real gates.
 `quota should-run` and `status --agent-id` may also expose
 `goal_frontier_projection.schema_version=goal_frontier_projection_v0`. This
-projection is owned by `loopx.policies.goal_frontier`: it is a compact per-goal
-progress/frontier view, not another quota sub-state. When it contains
+projection is owned by `loopx.control_plane.goals.goal_frontier`: it is a
+compact per-goal progress/frontier view, not another quota sub-state. When it contains
 `autonomous_replan_decision`, that decision is made before lane-local
 `monitor_quiet_skip`, `agent_scope_wait`, or `agent_scope_exhausted` projection,
 so those local no-candidate states cannot mask a required bounded replan.

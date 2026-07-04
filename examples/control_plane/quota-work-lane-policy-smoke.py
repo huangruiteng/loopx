@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.policies.work_lane import build_work_lane_contract  # noqa: E402
+from loopx.control_plane.work_items.work_lane import build_work_lane_contract  # noqa: E402
 
 
 def assert_contract(name: str, contract: dict | None, **expected: object) -> None:

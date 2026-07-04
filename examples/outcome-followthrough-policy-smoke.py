@@ -7,7 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.policies.outcome_followthrough import build_outcome_followthrough_hint
+from loopx.control_plane.work_items.outcome_followthrough import build_outcome_followthrough_hint
 
 
 def assert_none(latest_run: dict[str, object] | None) -> None:

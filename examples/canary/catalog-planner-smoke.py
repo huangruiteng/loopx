@@ -211,6 +211,26 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         state_machine_profile
     )
 
+    bounded_context_payload = build_catalog_canary_plan(
+        changed_files=["loopx/control_plane/work_items/work_lane.py"],
+        surfaces=[
+            "bounded-context work_lane_contract state-machine interaction_contract"
+        ],
+        max_checks_per_profile=3,
+    )
+    bounded_context_profiles = {
+        profile["id"]: profile for profile in bounded_context_payload["domain_profiles"]
+    }
+    assert "control-plane-refactor" in bounded_context_profiles, bounded_context_payload
+    assert "control-plane-state-machine" in bounded_context_profiles, bounded_context_payload
+    bounded_context_state_machine_commands = [
+        check["command"]
+        for check in bounded_context_profiles["control-plane-state-machine"]["checks"]
+    ]
+    assert "python3 examples/control_plane/control-plane-integrated-canary-smoke.py" in (
+        bounded_context_state_machine_commands
+    ), bounded_context_profiles["control-plane-state-machine"]
+
     work_lane_policy_payload = build_catalog_canary_plan(
         changed_files=["loopx/control_plane/scheduler/monitor_todo.py"],
         surfaces=["resume_when resume_ready work-lane policy seam"],

@@ -10,7 +10,7 @@ status, quota, review packets, dashboards, or slash-command reads.
 ## Contract
 
 The bridge packet is built by
-`loopx.policies.event_store_migration_bridge.build_event_store_migration_bridge`
+`loopx.control_plane.runtime.event_store_migration_bridge.build_event_store_migration_bridge`
 and carries:
 
 - `source_of_truth`: currently `markdown_active_state`;

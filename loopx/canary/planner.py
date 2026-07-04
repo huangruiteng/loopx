@@ -319,6 +319,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx/control_plane/scheduler/monitor_todo.py",
             "loopx/control_plane/scheduler/scheduler_hint.py",
             "loopx/control_plane/todos/handoff_gate.py",
+            "loopx/control_plane/work_items/execution_obligation.py",
+            "loopx/control_plane/work_items/goal_route_hint.py",
+            "loopx/control_plane/work_items/outcome_followthrough.py",
+            "loopx/control_plane/work_items/work_lane.py",
+            "loopx/control_plane/runtime/event_store_migration_bridge.py",
         ),
         "checks": [
             {
@@ -406,6 +411,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "automation_liveness",
             "spend-slot",
             "scheduler-ack",
+            "loopx/control_plane/work_items/execution_obligation.py",
+            "loopx/control_plane/work_items/goal_route_hint.py",
+            "loopx/control_plane/work_items/outcome_followthrough.py",
+            "loopx/control_plane/work_items/work_lane.py",
+            "loopx/control_plane/runtime/event_store_migration_bridge.py",
             "control-plane-integrated-canary-smoke.py",
             "docs/product/core-control-plane/state-machine.md",
         ),
