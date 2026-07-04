@@ -96,8 +96,8 @@ agent.
   "hypothesis_id": "hyp_0004",
   "parent_hypothesis_id": "hyp_0002",
   "todo_id": "todo_123",
-  "lane_id": "agent:codex-side-bypass",
-  "claimed_by": "codex-side-bypass",
+  "lane_id": "agent:research-executor",
+  "claimed_by": "research-executor",
   "mechanism_family": "vectorized_distance_kernel",
   "hypothesis": "Batch query points through a shared index to reduce per-query overhead.",
   "status": "active",
@@ -129,7 +129,7 @@ Status vocabulary:
   "goal_id": "loopx-meta",
   "hypothesis_id": "hyp_0004",
   "todo_id": "todo_123",
-  "agent_id": "codex-side-bypass",
+  "agent_id": "research-executor",
   "attempt": 1,
   "split": "dev",
   "metric": {"name": "speedup", "value": 11.4, "direction": "maximize"},
@@ -175,7 +175,7 @@ carry source refs and remain recomputable from source state.
 {
   "schema_version": "decentralized_research_frontier_v0",
   "goal_id": "loopx-meta",
-  "agent_id": "codex-side-bypass",
+  "agent_id": "research-executor",
   "selected": {
     "hypothesis_id": "hyp_0004",
     "todo_id": "todo_123",
@@ -185,7 +185,7 @@ carry source refs and remain recomputable from source state.
   "blocked": [
     {
       "hypothesis_id": "hyp_0002",
-      "blocked_by": "claimed_by:codex-product-capability",
+      "blocked_by": "claimed_by:research-curator",
       "visible_as_context": true
     }
   ],

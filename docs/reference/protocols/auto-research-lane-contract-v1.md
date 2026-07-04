@@ -43,7 +43,7 @@ kernel API, but it must remain public-safe.
   "schema_version": "auto_research_lane_claim_v1",
   "goal_id": "loopx-auto-research-demo",
   "lane_role": "research_executor",
-  "agent_id": "codex-side-bypass",
+  "agent_id": "research-executor",
   "todo_id": "todo_auto_research_demo_001",
   "hypothesis_id": "hyp_state_a2a_round",
   "capability_token": "research_executor",
@@ -83,7 +83,7 @@ projection builders derive frontiers and product views afterward.
 Successor work should stay equally small. A role profile may declare a
 `successor_todos` rule such as "after `run_dev_eval`, if dev evidence is
 supported and no holdout exists, add `run_holdout_eval` for
-`codex-main-control`." The pane-local tick applies that declaration by writing a
+`research-executor`." The pane-local tick applies that declaration by writing a
 normal LoopX todo with `claimed_by`, `action_kind`, and `unblocks_todo_id`.
 The next agent still re-enters through its own `quota should-run` and frontier;
 there is no separate continuation projector or central research manager.

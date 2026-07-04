@@ -151,26 +151,22 @@ AUTO_RESEARCH_ROLE_PROFILE_ORDER = (
 AUTO_RESEARCH_ROLE_PROFILE_ALIASES = {
     "research-curator": "research_curator",
     "curator": "research_curator",
-    "codex-product-capability": "research_curator",
     "hypothesis-proposer": "hypothesis_proposer",
     "hypothesis_mapper": "hypothesis_proposer",
     "hypothesis-mapper": "hypothesis_proposer",
     "mapper": "hypothesis_proposer",
     "hypothesis-runner": "hypothesis_proposer",
-    "codex-side-bypass": "hypothesis_proposer",
     "research-executor": "research_executor",
     "research_executor": "research_executor",
     "evidence_runner": "research_executor",
     "evidence-runner": "research_executor",
     "runner": "research_executor",
-    "codex-main-control": "research_executor",
     "evaluator-promoter": "evaluator_promoter",
     "evaluator_promoter": "evaluator_promoter",
     "evidence_verifier": "evaluator_promoter",
     "evidence-verifier": "evaluator_promoter",
     "verifier": "evaluator_promoter",
     "evidence-promoter": "evaluator_promoter",
-    "codex-value-explorer": "evaluator_promoter",
 }
 
 AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {

@@ -40,6 +40,10 @@ def main() -> int:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e
     from loopx.capabilities.auto_research.human_view import render_auto_research_markdown
+    from loopx.capabilities.auto_research.preset import (
+        auto_research_role_id,
+        default_auto_research_agent_specs,
+    )
 
     launcher_source = (REPO_ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
         encoding="utf-8"
@@ -70,6 +74,28 @@ def main() -> int:
     assert "title_by_action" not in demo_e2e_source
     assert "AUTO_RESEARCH_DEFAULT_LANES" in preset_source
     assert "AUTO_RESEARCH_SEED_TITLES" in preset_source
+    assert "codex-product-capability" not in preset_source
+    assert "codex-side-bypass" not in preset_source
+    assert "codex-main-control" not in preset_source
+    assert "codex-value-explorer" not in preset_source
+    assert default_auto_research_agent_specs() == [
+        "research-curator:research-curator:research_curator",
+        "hypothesis-proposer:hypothesis-proposer:hypothesis_proposer",
+        "research-executor:research-executor:research_executor",
+        "evaluator-promoter:evaluator-promoter:evaluator_promoter",
+    ]
+    for legacy_agent_id in (
+        "codex-product-capability",
+        "codex-side-bypass",
+        "codex-main-control",
+        "codex-value-explorer",
+    ):
+        try:
+            auto_research_role_id(legacy_agent_id, index=1)
+        except ValueError as exc:
+            assert "unknown auto-research role_id" in str(exc), exc
+        else:
+            raise AssertionError(f"legacy agent id accepted as auto-research role: {legacy_agent_id}")
 
     worker_markdown = render_auto_research_markdown(
         {
