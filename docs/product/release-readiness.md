@@ -102,6 +102,12 @@ path, and canary route rather than as a user-facing release baseline.
   explicit: Codex installs LoopX command-facade skills such as `$loopx`, Claude
   Code gets matching skill entries, legacy prompt shims are retired, and the
   rich workflow skills remain available for implicit LoopX behavior.
+- `v0.1.8` on 2026-07-04 16:53 +08:00: deterministic host-loop activation
+  release at the matching `v0.1.8` tag. This release gives new agent hosts an explicit
+  `agent-onboard` contract for choosing `codex-app`, `codex-cli`,
+  `claude-code`, `manual`, or `other-agent`, rejects ambiguous inputs such as
+  `codex`, and makes `/loopx <task>` activate or gate the correct host loop
+  after todo writeback.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
