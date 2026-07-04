@@ -325,6 +325,12 @@ goal's `primary_agent`. A goal may set
 shared default route, and may override that default for a specific side agent
 with `coordination.agent_profiles.<agent_id>.review_policy.handoff_agent`.
 `--next-claimed-by` is allowed only when it matches the resolved handoff owner.
+An explicitly declared primary review successor is the narrow exception: when a
+side agent completes a todo with `--next-action-kind primary_review*` and
+`--next-claimed-by <primary_agent>`, that successor remains a primary-agent
+review handoff even if the goal has a broader `side_agent_handoff_agent`
+default. Use this only for real review/merge/publication decisions; ordinary
+side-agent continuation should follow the resolved handoff route.
 Existing registry fields named for review are not aliases for this route. This
 keeps broad side-agent handoff visible to the shared control plane without
 hard-coding a single follow-up surface for every side-agent lane.

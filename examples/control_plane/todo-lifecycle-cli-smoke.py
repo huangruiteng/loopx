@@ -190,6 +190,63 @@ def assert_configured_side_agent_handoff() -> None:
         assert not side_handoff_successor.get("action_kind"), side_handoff_successor
         assert side_handoff_successor["claimed_by"] == "codex-side-reviewer", side_handoff_successor
 
+    with tempfile.TemporaryDirectory(prefix="loopx-explicit-primary-review-handoff-smoke-") as tmp:
+        root = Path(tmp)
+        registry_path, state_file = write_fixture(root)
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        coordination = registry["goals"][0]["coordination"]
+        coordination["registered_agents"].append("codex-side-reviewer")
+        coordination["side_agent_handoff_agent"] = "codex-side-reviewer"
+        registry_path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        review_source_added = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            SIDE_HANDOFF_SOURCE_TODO,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "contract_refine",
+        )
+        explicit_primary_review = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            review_source_added["todo_id"],
+            "--claimed-by",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+            "--next-agent-todo",
+            REVIEW_TODO,
+            "--next-claimed-by",
+            "codex-main-control",
+            "--next-action-kind",
+            "primary_review_merge",
+        )
+        assert explicit_primary_review["changed"] is True, explicit_primary_review
+        review_successor = explicit_primary_review["next_todos"][0]
+        assert review_successor["claimed_by"] == "codex-main-control", explicit_primary_review
+        assert review_successor["action_kind"] == "primary_review_merge", explicit_primary_review
+        assert review_successor["blocks_agent"] == "codex-side-bypass", explicit_primary_review
+        assert review_successor["unblocks_todo_id"] == review_source_added["todo_id"], explicit_primary_review
+        review_successor_item = next(
+            item for item in parsed_items(state_file) if item["todo_id"] == review_successor["todo_id"]
+        )
+        assert review_successor_item["claimed_by"] == "codex-main-control", review_successor_item
+        assert review_successor_item["action_kind"] == "primary_review_merge", review_successor_item
+
     with tempfile.TemporaryDirectory(prefix="loopx-side-agent-handoff-self-smoke-") as tmp:
         root = Path(tmp)
         registry_path, _state_file = write_fixture(root)
