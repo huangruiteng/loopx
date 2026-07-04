@@ -15,6 +15,13 @@ from loopx import status as status_module  # noqa: E402
 from loopx.control_plane.runtime import run_history as run_history_read_model  # noqa: E402
 
 
+def direct_latest_run(goal: dict) -> dict | None:
+    return run_history_read_model.latest_run(
+        goal,
+        is_status_neutral_run=status_module.is_status_neutral_run,
+    )
+
+
 def direct_history(history: dict, *, display_limit: int | None = None) -> dict:
     return run_history_read_model.build_run_history(
         history,
@@ -35,6 +42,25 @@ def assert_parity(history: dict, *, display_limit: int | None = None) -> dict:
 
 
 def main() -> None:
+    active_run = {"run_id": "active", "classification": "implementation_batch"}
+    neutral_status_run = {"run_id": "status-only", "classification": "quota_slot_spent"}
+    neutral_latest_run = {"run_id": "neutral", "classification": "quota_slot_spent"}
+    latest_run_goal = {
+        "latest_status_run": neutral_status_run,
+        "latest_runs": [
+            "invalid",
+            neutral_latest_run,
+            active_run,
+        ],
+    }
+    assert status_module.latest_run(latest_run_goal) == direct_latest_run(latest_run_goal) == active_run
+    assert status_module.latest_run({"latest_status_run": active_run}) == direct_latest_run(
+        {"latest_status_run": active_run}
+    ) == active_run
+    assert status_module.latest_run({"latest_runs": [neutral_latest_run]}) == direct_latest_run(
+        {"latest_runs": [neutral_latest_run]}
+    ) is None
+
     history = {
         "goal_count": 2,
         "run_count": 4,

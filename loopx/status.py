@@ -154,6 +154,7 @@ from .control_plane.runtime.run_compaction import (
 )
 from .control_plane.runtime.run_history import (
     build_run_history as _build_run_history_read_model,
+    latest_run as _latest_run_read_model,
 )
 from .control_plane.runtime.event_ledger import (
     EVENT_LEDGER_CLASSES,
@@ -6869,20 +6870,10 @@ def latest_run_recommended_action_for_projection(
 
 
 def latest_run(goal: dict[str, Any]) -> dict[str, Any] | None:
-    status_run = goal.get("latest_status_run")
-    if isinstance(status_run, dict) and not is_status_neutral_run(status_run):
-        return status_run
-
-    runs = goal.get("latest_runs")
-    if not isinstance(runs, list) or not runs:
-        return None
-    for run in runs:
-        if not isinstance(run, dict):
-            continue
-        if is_status_neutral_run(run):
-            continue
-        return run
-    return None
+    return _latest_run_read_model(
+        goal,
+        is_status_neutral_run=is_status_neutral_run,
+    )
 
 
 def ordered_lifecycle_flags(flags: list[str]) -> list[str]:

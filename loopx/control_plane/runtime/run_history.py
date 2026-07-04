@@ -8,6 +8,28 @@ GoalLifecycleFields = Callable[[dict[str, Any], Optional[dict[str, Any]]], dict[
 GoalProjection = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 RunCompactor = Callable[[dict[str, Any]], dict[str, Any]]
 QuotaStatus = Callable[[dict[str, Any]], dict[str, Any]]
+StatusNeutralRun = Callable[[dict[str, Any]], bool]
+
+
+def latest_run(
+    goal: dict[str, Any],
+    *,
+    is_status_neutral_run: StatusNeutralRun,
+) -> dict[str, Any] | None:
+    status_run = goal.get("latest_status_run")
+    if isinstance(status_run, dict) and not is_status_neutral_run(status_run):
+        return status_run
+
+    runs = goal.get("latest_runs")
+    if not isinstance(runs, list) or not runs:
+        return None
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        if is_status_neutral_run(run):
+            continue
+        return run
+    return None
 
 
 def build_run_history(
