@@ -151,6 +151,7 @@ from .control_plane.runtime.run_compaction import (
     compact_human_reward as _compact_human_reward_read_model,
     compact_operator_gate as _compact_operator_gate_read_model,
     compact_operator_gate_resume_contract as _compact_operator_gate_resume_contract_read_model,
+    compact_run_base as _compact_run_base_read_model,
 )
 from .control_plane.runtime.run_history import (
     build_run_history as _build_run_history_read_model,
@@ -7531,44 +7532,20 @@ def compact_controller_readiness(readiness: Any) -> dict[str, Any] | None:
 
 
 def compact_run(run: dict[str, Any]) -> dict[str, Any]:
-    compact = {field: run[field] for field in RUN_COMPACT_FIELDS if field in run}
-    flags = run_lifecycle_flags(run)
-    compact.setdefault("lifecycle_phase", primary_lifecycle_phase(flags, fallback="run_recorded"))
-    compact.setdefault("lifecycle_flags", flags)
-    reward = compact_human_reward(run.get("human_reward"))
-    if reward:
-        compact["human_reward"] = reward
-    operator_gate = compact_operator_gate(run.get("operator_gate"))
-    if operator_gate:
-        compact["operator_gate"] = operator_gate
-    replan_ack = compact_autonomous_replan_ack(run)
-    if replan_ack:
-        compact["autonomous_replan_ack"] = replan_ack
-    resume_contract = compact_operator_gate_resume_contract(run.get("operator_gate_resume_contract"))
-    if resume_contract:
-        compact["operator_gate_resume_contract"] = resume_contract
-    readiness = compact_controller_readiness(run.get("controller_readiness"))
-    if readiness:
-        compact["controller_readiness"] = readiness
-    merge_decision = public_safe_compact_text(run.get("merge_decision"), limit=240)
-    if merge_decision:
-        compact["merge_decision"] = merge_decision
-    subagents = [
-        child
-        for child in (
-            compact_subagent_run(
-                child_run,
-                parent_goal_id=str(run.get("goal_id") or ""),
-                parent_run_id=str(run.get("run_id") or run.get("generated_at") or ""),
-            )
-            for child_run in (run.get("subagents") or [])
-            if isinstance(child_run, dict)
-        )
-        if child
-    ]
-    if subagents:
-        compact["subagents"] = subagents[:MAX_SUBAGENT_ACTIVITY_ITEMS]
-        compact["subagent_count"] = len(subagents)
+    compact = _compact_run_base_read_model(
+        run,
+        run_compact_fields=RUN_COMPACT_FIELDS,
+        run_lifecycle_flags=run_lifecycle_flags,
+        primary_lifecycle_phase=primary_lifecycle_phase,
+        compact_human_reward=compact_human_reward,
+        compact_operator_gate=compact_operator_gate,
+        compact_autonomous_replan_ack=compact_autonomous_replan_ack,
+        compact_operator_gate_resume_contract=compact_operator_gate_resume_contract,
+        compact_controller_readiness=compact_controller_readiness,
+        public_safe_compact_text=public_safe_compact_text,
+        compact_subagent_run=compact_subagent_run,
+        max_subagent_activity_items=MAX_SUBAGENT_ACTIVITY_ITEMS,
+    )
     benchmark_run = compact_benchmark_run(run)
     if benchmark_run:
         compact["benchmark_run_summary"] = benchmark_run
