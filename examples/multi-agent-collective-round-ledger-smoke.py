@@ -89,6 +89,9 @@ def main() -> int:
                 "action_kind": "run_holdout_eval",
             }
         ],
+        baseline_metric=1.0,
+        required_full_participation_round_count=1,
+        required_holdout_improvement_count=1,
     )
     assert ledger["schema_version"] == MULTI_AGENT_COLLECTIVE_ROUND_LEDGER_SCHEMA_VERSION
     assert ledger["owner_layer"] == "generic_multi_agent_kernel", ledger
@@ -109,6 +112,12 @@ def main() -> int:
     assert ledger["integrated_evidence"]["dev_metric_sequence"] == [4.0], ledger
     assert ledger["integrated_evidence"]["holdout_metric_sequence"] == [4.5], ledger
     assert ledger["integrated_evidence"]["holdout_improvement_count"] == 1, ledger
+    verification = ledger["collective_research_verification"]
+    assert verification["schema_version"] == "multi_agent_collective_research_verification_v0"
+    assert verification["baseline_metric"] == 1.0, ledger
+    assert verification["full_participation_requirement_met"] is True, ledger
+    assert verification["holdout_improvement_requirement_met"] is True, ledger
+    assert verification["verified"] is True, ledger
     assert ledger["successor_todo_count"] == 1, ledger
     assert ledger["role_declared_successor_todos"][0]["target_agent_id"] == "agent-b"
     assert ledger["public_boundary"] == {

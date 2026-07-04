@@ -345,6 +345,12 @@ def assert_two_round_outcome(payload: dict[str, Any]) -> None:
     assert kernel_ledger["integrated_evidence"]["dev_metric"] == 4.8, kernel_ledger
     assert kernel_ledger["integrated_evidence"]["holdout_metric"] == 5.2, kernel_ledger
     assert kernel_ledger["integrated_evidence"]["holdout_improvement_count"] == 2, kernel_ledger
+    kernel_verification = kernel_ledger["collective_research_verification"]
+    assert kernel_verification["required_full_participation_round_count"] == 4, kernel_verification
+    assert kernel_verification["required_holdout_improvement_count"] == 2, kernel_verification
+    assert kernel_verification["full_participation_requirement_met"] is True, kernel_verification
+    assert kernel_verification["holdout_improvement_requirement_met"] is True, kernel_verification
+    assert kernel_verification["verified"] is True, kernel_verification
 
     tonight = payload["tonight_experience"]
     assert tonight["ready"] is True, tonight

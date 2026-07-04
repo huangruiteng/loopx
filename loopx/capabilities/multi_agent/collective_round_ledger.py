@@ -43,6 +43,16 @@ def _number_list(values: object) -> list[float]:
     return numbers
 
 
+def _improvement_count(metrics: list[float], *, baseline: float) -> int:
+    previous = baseline
+    count = 0
+    for metric in metrics:
+        if metric > previous:
+            count += 1
+        previous = metric
+    return count
+
+
 def _dicts(values: Iterable[object] | None) -> list[dict[str, Any]]:
     return [dict(item) for item in values or [] if isinstance(item, Mapping)]
 
@@ -66,8 +76,11 @@ def _normalize_lane(lane: Mapping[str, object]) -> dict[str, object]:
 def _normalize_outcome(outcome: Mapping[str, object]) -> dict[str, object]:
     completion_status = _string(outcome.get("completion_status"))
     executed = _bool_or_none(outcome.get("executed"))
+    round_index = _int_or_none(outcome.get("round"))
+    if round_index is None:
+        round_index = _int_or_none(outcome.get("round_index"))
     return {
-        "round": _int_or_none(outcome.get("round")),
+        "round": round_index,
         "agent_id": _string(outcome.get("agent_id")),
         "lane_id": _string(outcome.get("lane_id")),
         "role_id": _string(outcome.get("role_id")),
@@ -113,6 +126,9 @@ def build_multi_agent_collective_round_ledger(
     lane_outcomes: Iterable[object] | None = None,
     integrated_evidence: Mapping[str, object] | None = None,
     role_declared_successor_todos: Iterable[object] | None = None,
+    baseline_metric: float | None = None,
+    required_full_participation_round_count: int | None = None,
+    required_holdout_improvement_count: int | None = None,
 ) -> dict[str, object]:
     """Build a domain-neutral ledger for decentralized multi-agent rounds.
 
@@ -161,6 +177,46 @@ def build_multi_agent_collective_round_ledger(
     if evidence_event_count is None:
         evidence_events = evidence.get("events")
         evidence_event_count = len(evidence_events) if isinstance(evidence_events, list) else 0
+    dev_metric = _number_or_none(evidence.get("dev_metric"))
+    holdout_metric = _number_or_none(evidence.get("holdout_metric"))
+    dev_metric_sequence = _number_list(evidence.get("dev_metric_sequence"))
+    holdout_metric_sequence = _number_list(evidence.get("holdout_metric_sequence"))
+    if dev_metric is None and dev_metric_sequence:
+        dev_metric = dev_metric_sequence[-1]
+    if holdout_metric is None and holdout_metric_sequence:
+        holdout_metric = holdout_metric_sequence[-1]
+    if not dev_metric_sequence and dev_metric is not None:
+        dev_metric_sequence = [dev_metric]
+    if not holdout_metric_sequence and holdout_metric is not None:
+        holdout_metric_sequence = [holdout_metric]
+    holdout_improvement_count = _int_or_none(evidence.get("holdout_improvement_count"))
+    baseline = _number_or_none(baseline_metric)
+    if holdout_improvement_count is None and baseline is not None:
+        holdout_improvement_count = _improvement_count(
+            holdout_metric_sequence,
+            baseline=baseline,
+        )
+    full_rounds_required = _int_or_none(required_full_participation_round_count)
+    holdout_improvements_required = _int_or_none(required_holdout_improvement_count)
+    full_round_requirement_met = (
+        None
+        if full_rounds_required is None
+        else len(full_participation_round_indexes) >= full_rounds_required
+    )
+    holdout_improvement_requirement_met = (
+        None
+        if holdout_improvements_required is None
+        else (holdout_improvement_count or 0) >= holdout_improvements_required
+    )
+    verification_checks = [
+        check
+        for check in (
+            full_round_requirement_met,
+            holdout_improvement_requirement_met,
+        )
+        if check is not None
+    ]
+    collective_research_verified = bool(verification_checks) and all(verification_checks)
     return {
         "schema_version": MULTI_AGENT_COLLECTIVE_ROUND_LEDGER_SCHEMA_VERSION,
         "source": _string(source, default="unknown"),
@@ -188,15 +244,34 @@ def build_multi_agent_collective_round_ledger(
         "integrated_evidence": {
             "loaded": bool(evidence),
             "evidence_event_count": evidence_event_count,
-            "dev_metric": _number_or_none(evidence.get("dev_metric")),
-            "holdout_metric": _number_or_none(evidence.get("holdout_metric")),
-            "dev_metric_sequence": _number_list(evidence.get("dev_metric_sequence")),
-            "holdout_metric_sequence": _number_list(evidence.get("holdout_metric_sequence")),
-            "holdout_improvement_count": _int_or_none(
-                evidence.get("holdout_improvement_count")
-            ),
+            "dev_metric": dev_metric,
+            "holdout_metric": holdout_metric,
+            "dev_metric_sequence": dev_metric_sequence,
+            "holdout_metric_sequence": holdout_metric_sequence,
+            "holdout_improvement_count": holdout_improvement_count,
             "result_status": _string(evidence.get("result_status")),
             "protected_scope_clean": _bool_or_none(evidence.get("protected_scope_clean")),
+        },
+        "collective_research_verification": {
+            "schema_version": "multi_agent_collective_research_verification_v0",
+            "baseline_metric": baseline,
+            "required_full_participation_round_count": full_rounds_required,
+            "required_holdout_improvement_count": holdout_improvements_required,
+            "full_participation_round_count": len(full_participation_round_indexes),
+            "full_participation_requirement_met": full_round_requirement_met,
+            "dev_metric_over_baseline": (
+                None
+                if baseline is None or dev_metric is None
+                else dev_metric > baseline
+            ),
+            "holdout_metric_over_baseline": (
+                None
+                if baseline is None or holdout_metric is None
+                else holdout_metric > baseline
+            ),
+            "holdout_improvement_count": holdout_improvement_count,
+            "holdout_improvement_requirement_met": holdout_improvement_requirement_met,
+            "verified": collective_research_verified,
         },
         "role_declared_successor_todos": successors,
         "successor_todo_count": len(successors),

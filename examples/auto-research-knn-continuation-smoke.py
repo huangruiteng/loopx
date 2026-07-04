@@ -77,6 +77,7 @@ def main() -> int:
     assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
     assert kernel_ledger["collective_round_count"] == 4, kernel_ledger
     assert kernel_ledger["multi_round_interaction_verified"] is True, kernel_ledger
+    assert kernel_ledger["collective_research_verification"]["verified"] is True, kernel_ledger
     assert kernel_ledger["successor_todo_count"] >= 1, kernel_ledger
     tonight = payload["tonight_experience"]
     assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight

@@ -448,28 +448,44 @@ def _build_collective_round_summary(
     holdout_sequence = list(
         holdout_metric_sequence or ([] if holdout_metric is None else [holdout_metric])
     )
-    if holdout_improvement_count is None:
-        previous = baseline
-        holdout_improvements = 0
-        for metric in holdout_sequence:
-            if metric > previous:
-                holdout_improvements += 1
-            previous = metric
-    else:
-        holdout_improvements = holdout_improvement_count
+    integrated_evidence: dict[str, object] = {
+        "dev_metric": dev_metric,
+        "holdout_metric": holdout_metric,
+        "dev_metric_sequence": dev_sequence,
+        "holdout_metric_sequence": holdout_sequence,
+        "evidence_event_count": evidence_event_count,
+    }
+    if holdout_improvement_count is not None:
+        integrated_evidence["holdout_improvement_count"] = holdout_improvement_count
     kernel_ledger = build_multi_agent_collective_round_ledger(
         source=source,
         expected_lanes=expected_lanes,
         lane_outcomes=lane_outcomes,
-        integrated_evidence={
-            "dev_metric": dev_metric,
-            "holdout_metric": holdout_metric,
-            "dev_metric_sequence": dev_sequence,
-            "holdout_metric_sequence": holdout_sequence,
-            "holdout_improvement_count": holdout_improvements,
-            "evidence_event_count": evidence_event_count,
-        },
+        integrated_evidence=integrated_evidence,
         role_declared_successor_todos=role_declared_successor_todos,
+        baseline_metric=baseline,
+        required_full_participation_round_count=4,
+        required_holdout_improvement_count=2,
+    )
+    kernel_evidence = (
+        kernel_ledger.get("integrated_evidence")
+        if isinstance(kernel_ledger.get("integrated_evidence"), dict)
+        else {}
+    )
+    verification = (
+        kernel_ledger.get("collective_research_verification")
+        if isinstance(kernel_ledger.get("collective_research_verification"), dict)
+        else {}
+    )
+    dev_metric = _numeric_metric(kernel_evidence.get("dev_metric"))
+    holdout_metric = _numeric_metric(kernel_evidence.get("holdout_metric"))
+    dev_sequence = _numeric_sequence(kernel_evidence.get("dev_metric_sequence"))
+    holdout_sequence = _numeric_sequence(kernel_evidence.get("holdout_metric_sequence"))
+    holdout_improvements = (
+        int(kernel_evidence.get("holdout_improvement_count"))
+        if isinstance(kernel_evidence.get("holdout_improvement_count"), int)
+        and not isinstance(kernel_evidence.get("holdout_improvement_count"), bool)
+        else 0
     )
     full_participation_round_count = kernel_ledger.get("full_participation_round_count")
     if not isinstance(full_participation_round_count, int) or isinstance(
@@ -478,12 +494,9 @@ def _build_collective_round_summary(
         full_participation_round_count = 0
     full_participation_verified = kernel_ledger.get("full_participation_verified") is True
     multi_round_research_verified = (
-        full_participation_round_count >= 4
-        and full_participation_verified
-        and dev_metric is not None
+        verification.get("verified") is True
+        and verification.get("dev_metric_over_baseline") is True
         and holdout_metric is not None
-        and dev_metric > baseline
-        and holdout_improvements >= 2
     )
     return {
         "schema_version": "auto_research_collective_round_summary_v0",
