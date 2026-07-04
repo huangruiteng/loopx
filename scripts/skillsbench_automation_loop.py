@@ -1281,6 +1281,23 @@ def _normalized_proxy_url(proxy_url: str) -> str:
     return f"http://{raw}"
 
 
+def _proxy_url_validation_error(proxy_url: str) -> str:
+    raw = str(proxy_url or "").strip()
+    if not raw:
+        return ""
+    if re.search(r"\$\{[^}]+\}|\$[A-Za-z_][A-Za-z0-9_]*", raw):
+        return "unexpanded_placeholder"
+    if "<" in raw or ">" in raw:
+        return "placeholder_marker"
+    try:
+        scheme, host, port = _parse_proxy_endpoint(raw)
+    except Exception as exc:
+        return type(exc).__name__
+    if not scheme or not host or not port:
+        return "missing_endpoint"
+    return ""
+
+
 def _merged_no_proxy(*values: str) -> str:
     entries: list[str] = []
     seen: set[str] = set()
@@ -1562,11 +1579,12 @@ def _public_benchmark_egress_proxy_contract(
     proxy_source = ""
     if proxy_mode != "off":
         proxy_url, proxy_source = _benchmark_egress_proxy(args)
+    validation_error = _proxy_url_validation_error(proxy_url)
     scheme = ""
     host = ""
     port = 0
     parse_error = ""
-    if proxy_url:
+    if proxy_url and not validation_error:
         try:
             scheme, host, port = _parse_proxy_endpoint(proxy_url)
         except Exception as exc:
@@ -1577,11 +1595,14 @@ def _public_benchmark_egress_proxy_contract(
         if no_proxy
         else 0
     )
-    configured = bool(proxy_url)
+    configured = bool(proxy_url and not validation_error)
     if status == "pending":
         if proxy_mode == "off":
             status = "disabled"
             ready = True
+        elif validation_error:
+            status = "invalid_proxy_value"
+            ready = proxy_mode == "auto"
         elif not configured and proxy_mode == "auto":
             status = "not_configured"
             ready = True
@@ -1593,13 +1614,20 @@ def _public_benchmark_egress_proxy_contract(
         "requested_mode": proxy_mode,
         "effective_mode": (
             "direct"
-            if status == "direct_tcp_ready_after_proxy_failure"
+            if status
+            in {
+                "direct_tcp_ready_after_proxy_failure",
+                "direct_tcp_ready_after_invalid_proxy",
+            }
+            or (status == "invalid_proxy_value" and proxy_mode == "auto")
             else ("proxy" if ready and configured and proxy_mode != "off" else proxy_mode)
         ),
         "ready": bool(ready),
         "status": status,
-        "error_kind": error_kind or parse_error,
+        "error_kind": error_kind or validation_error or parse_error,
         "proxy_configured": configured,
+        "proxy_value_valid": not bool(validation_error),
+        "proxy_invalid_reason": validation_error[:80],
         "proxy_required": proxy_mode == "require",
         "proxy_source": (
             proxy_source.split(":", 1)[0] if proxy_source else ""
@@ -1619,7 +1647,11 @@ def _public_benchmark_egress_proxy_contract(
         "raw_proxy_url_recorded": False,
         "raw_probe_output_recorded": False,
         "direct_fallback_allowed": proxy_mode == "auto",
-        "direct_fallback_active": status == "direct_tcp_ready_after_proxy_failure",
+        "direct_fallback_active": status
+        in {
+            "direct_tcp_ready_after_proxy_failure",
+            "direct_tcp_ready_after_invalid_proxy",
+        },
         "test_host": BENCHMARK_EGRESS_TEST_HOST,
         "test_host_public_only": True,
     }
@@ -1658,31 +1690,51 @@ def _run_benchmark_egress_proxy_preflight(
             )
             ready = proxy_mode == "auto"
         else:
-            scheme, host, port = _parse_proxy_endpoint(proxy_url)
-            if not host or not port:
-                raise ValueError("proxy endpoint missing host or port")
-            if scheme != "http":
-                status = "unsupported_proxy_scheme"
-                ready = False
-            else:
-                status = _probe_http_connect_proxy(
-                    host=host,
-                    port=port,
-                    timeout_sec=timeout_sec,
-                    target_host=BENCHMARK_EGRESS_TEST_HOST,
-                    target_port=BENCHMARK_EGRESS_TEST_PORT,
-                )
-                ready = status == "http_connect_ready"
-                if not ready and proxy_mode == "auto":
+            validation_error = _proxy_url_validation_error(proxy_url)
+            if validation_error:
+                error_kind = validation_error
+                if proxy_mode == "auto":
                     fallback_status = _probe_direct_tcp_egress(
                         host=BENCHMARK_EGRESS_TEST_HOST,
                         port=BENCHMARK_EGRESS_TEST_PORT,
                         timeout_sec=timeout_sec,
                     )
                     if fallback_status == "direct_tcp_ready":
-                        status = "direct_tcp_ready_after_proxy_failure"
+                        status = "direct_tcp_ready_after_invalid_proxy"
                         ready = True
                         direct_fallback_active = True
+                    else:
+                        status = "invalid_proxy_value"
+                        ready = False
+                else:
+                    status = "invalid_proxy_value"
+                    ready = False
+            else:
+                scheme, host, port = _parse_proxy_endpoint(proxy_url)
+                if not host or not port:
+                    raise ValueError("proxy endpoint missing host or port")
+                if scheme != "http":
+                    status = "unsupported_proxy_scheme"
+                    ready = False
+                else:
+                    status = _probe_http_connect_proxy(
+                        host=host,
+                        port=port,
+                        timeout_sec=timeout_sec,
+                        target_host=BENCHMARK_EGRESS_TEST_HOST,
+                        target_port=BENCHMARK_EGRESS_TEST_PORT,
+                    )
+                    ready = status == "http_connect_ready"
+                    if not ready and proxy_mode == "auto":
+                        fallback_status = _probe_direct_tcp_egress(
+                            host=BENCHMARK_EGRESS_TEST_HOST,
+                            port=BENCHMARK_EGRESS_TEST_PORT,
+                            timeout_sec=timeout_sec,
+                        )
+                        if fallback_status == "direct_tcp_ready":
+                            status = "direct_tcp_ready_after_proxy_failure"
+                            ready = True
+                            direct_fallback_active = True
     except Exception as exc:
         status = "failed"
         ready = False
@@ -1731,6 +1783,12 @@ def _sync_benchmark_egress_proxy_contract(
     target["benchmark_egress_proxy_ready"] = bool(contract.get("ready"))
     target["benchmark_egress_proxy_configured"] = bool(
         contract.get("proxy_configured")
+    )
+    target["benchmark_egress_proxy_value_valid"] = bool(
+        contract.get("proxy_value_valid")
+    )
+    target["benchmark_egress_proxy_invalid_reason"] = str(
+        contract.get("proxy_invalid_reason") or ""
     )
     target["benchmark_egress_proxy_required"] = bool(contract.get("proxy_required"))
     target["benchmark_egress_proxy_url_recorded"] = False
@@ -1788,6 +1846,8 @@ def _benchmark_egress_proxy_env(args: argparse.Namespace | None) -> dict[str, st
         return {}
     proxy_url, _source = _benchmark_egress_proxy(args)
     if not proxy_url:
+        return {}
+    if _proxy_url_validation_error(proxy_url):
         return {}
     env = {key: proxy_url for key in BENCHMARK_EGRESS_PROXY_FORWARD_ENV_KEYS}
     env["LOOPX_SKILLSBENCH_EGRESS_PROXY"] = proxy_url
