@@ -12309,6 +12309,28 @@ def test_skillsbench_runner_failure_marks_pre_agent_install_stage() -> None:
 
 def test_skillsbench_runner_failure_marks_build_stall_timeout() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-build-stall-") as tmp:
+        default_args = parse_args(
+            [
+                "--task-id",
+                "organize-messy-files",
+                "--route",
+                "loopx-product-mode",
+                "--jobs-dir",
+                str(Path(tmp) / "default-jobs"),
+                "--job-name",
+                "skillsbench-organize-messy-files-default-build-stall-fixture",
+            ]
+        )
+        default_plan = build_plan(default_args)
+        assert default_plan["build_stall_timeout_requested_sec"] == 900
+        assert default_plan["build_stall_timeout_sec"] == 900
+        assert default_plan["runner_prerequisites"][
+            "benchflow_setup_stall_timeout_enabled"
+        ] is True
+        assert default_plan["runner_prerequisites"][
+            "benchflow_setup_stall_timeout_capped"
+        ] is False
+
         args = parse_args(
             [
                 "--task-id",
@@ -12347,7 +12369,9 @@ def test_skillsbench_runner_failure_marks_build_stall_timeout() -> None:
             {
                 "benchflow_run_stage": "build_or_setup_stall_before_agent",
                 "benchflow_setup_stall_timeout_enabled": True,
+                "benchflow_setup_stall_timeout_requested_sec": 60,
                 "benchflow_setup_stall_timeout_sec": 60,
+                "benchflow_setup_stall_timeout_capped": False,
                 "benchflow_setup_stall_timeout_triggered": True,
                 "benchflow_setup_stall_before_agent_lifecycle": True,
                 "benchflow_setup_stall_raw_logs_read": False,
@@ -12359,6 +12383,70 @@ def test_skillsbench_runner_failure_marks_build_stall_timeout() -> None:
         assert compact["compose_setup_diagnostic"][
             "case_attempt_budget_should_count"
         ] is False, compact
+        assert compact["compose_setup_diagnostic"][
+            "setup_stall_timeout_requested_sec"
+        ] == 60, compact
+        assert compact["compose_setup_diagnostic"]["setup_stall_timeout_sec"] == 60
+        assert compact["compose_setup_diagnostic"][
+            "setup_stall_timeout_capped"
+        ] is False, compact
+        compact_text = json.dumps(compact, sort_keys=True)
+        assert "skillsbench docker compose build/setup stall timeout" not in compact_text
+        assert "/private/" not in compact_text
+
+
+def test_skillsbench_runner_failure_caps_long_build_stall_timeout() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-build-stall-cap-") as tmp:
+        args = parse_args(
+            [
+                "--task-id",
+                "flink-query",
+                "--route",
+                "loopx-product-mode",
+                "--jobs-dir",
+                str(Path(tmp) / "jobs"),
+                "--job-name",
+                "skillsbench-flink-query-build-stall-cap-fixture",
+                "--build-stall-timeout-sec",
+                "7200",
+            ]
+        )
+        plan = build_plan(args)
+        assert plan["build_stall_timeout_requested_sec"] == 7200
+        assert plan["build_stall_timeout_sec"] == 900
+        assert plan["runner_prerequisites"][
+            "benchflow_setup_stall_timeout_capped"
+        ] is True
+
+        compact = build_runner_failure_compact(
+            args,
+            plan,
+            asyncio.TimeoutError(
+                "skillsbench docker compose build/setup stall timeout before agent lifecycle"
+            ),
+        )
+
+        assert compact["first_blocker"] == (
+            "skillsbench_docker_compose_build_stall_timeout"
+        ), compact
+        assert_prerequisites_include(
+            compact["runner_prerequisites"],
+            {
+                "benchflow_setup_stall_timeout_enabled": True,
+                "benchflow_setup_stall_timeout_requested_sec": 7200,
+                "benchflow_setup_stall_timeout_sec": 900,
+                "benchflow_setup_stall_timeout_capped": True,
+                "benchflow_setup_stall_timeout_triggered": True,
+                "benchflow_setup_stall_before_agent_lifecycle": True,
+            },
+        )
+        assert compact["compose_setup_diagnostic"][
+            "setup_stall_timeout_requested_sec"
+        ] == 7200, compact
+        assert compact["compose_setup_diagnostic"]["setup_stall_timeout_sec"] == 900
+        assert compact["compose_setup_diagnostic"][
+            "setup_stall_timeout_capped"
+        ] is True, compact
         compact_text = json.dumps(compact, sort_keys=True)
         assert "skillsbench docker compose build/setup stall timeout" not in compact_text
         assert "/private/" not in compact_text
@@ -12493,7 +12581,9 @@ def test_skillsbench_runner_failure_backfills_generic_timeout_stall_cleanup() ->
             {
                 "benchflow_run_stage": "build_or_setup_stall_before_agent",
                 "benchflow_setup_stall_timeout_enabled": True,
+                "benchflow_setup_stall_timeout_requested_sec": 180,
                 "benchflow_setup_stall_timeout_sec": 180,
+                "benchflow_setup_stall_timeout_capped": False,
                 "benchflow_setup_stall_timeout_triggered": True,
                 "benchflow_setup_stall_before_agent_lifecycle": True,
                 "benchflow_setup_stall_raw_logs_read": False,

@@ -2731,6 +2731,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_final_verifier_timeout_raw_output_recorded",
         "benchflow_setup_stall_timeout_enabled",
         "benchflow_setup_stall_timeout_triggered",
+        "benchflow_setup_stall_timeout_capped",
         "benchflow_setup_stall_raw_logs_read",
         "benchflow_setup_stall_before_agent_lifecycle",
         "benchflow_agent_install_started",
@@ -2791,6 +2792,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_verifier_prep_timeout_override_count",
         "benchflow_verify_prep_timeout_override_count",
         "benchflow_soft_verify_prep_timeout_override_count",
+        "benchflow_setup_stall_timeout_requested_sec",
         "benchflow_setup_stall_timeout_sec",
         "benchflow_setup_stall_cleanup_match_count",
         "benchflow_setup_stall_cleanup_term_sent_count",
@@ -4425,7 +4427,8 @@ def _ensure_setup_stall_timeout_prerequisites(
 ) -> None:
     """Backfill public setup-stall evidence when BenchFlow times out pre-agent."""
 
-    build_stall_timeout_sec = int(args.build_stall_timeout_sec or 0)
+    requested_build_stall_timeout_sec = _requested_build_stall_timeout_sec(args)
+    build_stall_timeout_sec = _effective_build_stall_timeout_sec(args)
     if build_stall_timeout_sec <= 0:
         return
     if not _runner_exception_indicates_timeout(exc):
@@ -4439,7 +4442,15 @@ def _ensure_setup_stall_timeout_prerequisites(
     )
     raw_prerequisites.setdefault("benchflow_setup_stall_timeout_enabled", True)
     raw_prerequisites.setdefault(
+        "benchflow_setup_stall_timeout_requested_sec",
+        requested_build_stall_timeout_sec,
+    )
+    raw_prerequisites.setdefault(
         "benchflow_setup_stall_timeout_sec", build_stall_timeout_sec
+    )
+    raw_prerequisites.setdefault(
+        "benchflow_setup_stall_timeout_capped",
+        requested_build_stall_timeout_sec > build_stall_timeout_sec,
     )
     raw_prerequisites.setdefault("benchflow_setup_stall_timeout_triggered", True)
     raw_prerequisites.setdefault(
@@ -6089,6 +6100,17 @@ def _public_int(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
+def _requested_build_stall_timeout_sec(args: argparse.Namespace) -> int:
+    return max(0, int(getattr(args, "build_stall_timeout_sec", 0) or 0))
+
+
+def _effective_build_stall_timeout_sec(args: argparse.Namespace) -> int:
+    requested = _requested_build_stall_timeout_sec(args)
+    if requested <= 0:
+        return 0
+    return min(requested, MAX_BUILD_STALL_TIMEOUT_SEC)
+
+
 def build_compose_setup_diagnostic(
     compact: dict[str, Any],
     plan: dict[str, Any],
@@ -6225,6 +6247,16 @@ def build_compose_setup_diagnostic(
         "case_attempt_budget_should_count": not (
             environment_setup_failure and not agent_rounds_started
         ),
+        "setup_stall_timeout_requested_sec": _public_int(
+            runner_prerequisites.get("benchflow_setup_stall_timeout_requested_sec")
+        ),
+        "setup_stall_timeout_sec": _public_int(
+            runner_prerequisites.get("benchflow_setup_stall_timeout_sec")
+        ),
+        "setup_stall_timeout_capped": runner_prerequisites.get(
+            "benchflow_setup_stall_timeout_capped"
+        )
+        is True,
         "runner_prerequisite_status": str(
             runner_prerequisites.get(
                 "codex_acp_runtime_launch_preflight_status", ""
@@ -8502,7 +8534,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "result_json": str(result_path),
         "compact_benchmark_run_json": str(compact_path),
         "controller_trace_json": str(controller_trace_path),
-        "build_stall_timeout_sec": int(args.build_stall_timeout_sec or 0),
+        "build_stall_timeout_requested_sec": _requested_build_stall_timeout_sec(args),
+        "build_stall_timeout_sec": _effective_build_stall_timeout_sec(args),
         "app_server_goal_worker_trace_dir": (
             str(app_server_goal_worker_trace_dir)
             if is_app_server_goal_route
@@ -8579,10 +8612,17 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "runner_prerequisites": {
             "schema_version": "skillsbench_runner_prerequisites_v0",
             "benchflow_setup_stall_timeout_enabled": (
-                int(args.build_stall_timeout_sec or 0) > 0
+                _effective_build_stall_timeout_sec(args) > 0
+            ),
+            "benchflow_setup_stall_timeout_requested_sec": (
+                _requested_build_stall_timeout_sec(args)
             ),
             "benchflow_setup_stall_timeout_sec": int(
-                args.build_stall_timeout_sec or 0
+                _effective_build_stall_timeout_sec(args)
+            ),
+            "benchflow_setup_stall_timeout_capped": (
+                _requested_build_stall_timeout_sec(args)
+                > _effective_build_stall_timeout_sec(args)
             ),
             "benchflow_setup_stall_raw_logs_read": False,
             "codex_acp_runtime_container_bootstrap": (
@@ -8985,6 +9025,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "outer_timeout_sec",
         "sandbox_setup_timeout_sec",
         "agent_idle_timeout_sec",
+        "build_stall_timeout_requested_sec",
         "build_stall_timeout_sec",
         "local_codex_task_output_quiet_timeout_sec",
     )
@@ -13780,11 +13821,18 @@ async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> 
     )
     result_path: Path | None = None
     prerequisites = plan.setdefault("runner_prerequisites", {})
-    build_stall_timeout_sec = max(0, int(args.build_stall_timeout_sec or 0))
+    requested_build_stall_timeout_sec = _requested_build_stall_timeout_sec(args)
+    build_stall_timeout_sec = _effective_build_stall_timeout_sec(args)
     prerequisites["benchflow_setup_stall_timeout_enabled"] = (
         build_stall_timeout_sec > 0
     )
+    prerequisites["benchflow_setup_stall_timeout_requested_sec"] = (
+        requested_build_stall_timeout_sec
+    )
     prerequisites["benchflow_setup_stall_timeout_sec"] = build_stall_timeout_sec
+    prerequisites["benchflow_setup_stall_timeout_capped"] = (
+        requested_build_stall_timeout_sec > build_stall_timeout_sec
+    )
     prerequisites["benchflow_setup_stall_raw_logs_read"] = False
     prerequisites["benchflow_run_stage"] = "before_benchflow_run"
 
@@ -15311,11 +15359,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--build-stall-timeout-sec",
         type=int,
-        default=0,
+        default=DEFAULT_BUILD_STALL_TIMEOUT_SEC,
         help=(
             "Optional public-safe watchdog for Docker build/setup before any "
-            "agent lifecycle starts. 0 keeps the historical behavior and relies "
-            "only on --outer-timeout-sec."
+            "agent lifecycle starts. Defaults to "
+            f"{DEFAULT_BUILD_STALL_TIMEOUT_SEC}s and caps nonzero values at "
+            f"{MAX_BUILD_STALL_TIMEOUT_SEC}s so pre-worker BuildKit stalls "
+            "close out compactly instead of consuming the full outer timeout; "
+            "0 disables the watchdog."
         ),
     )
     parser.add_argument("--agent-idle-timeout", type=int, default=900)
