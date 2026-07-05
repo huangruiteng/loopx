@@ -48,6 +48,15 @@ def monitor_item(todo_id: str = "todo_monitor") -> dict[str, Any]:
     }
 
 
+def due_monitor_item(todo_id: str = "todo_due_monitor") -> dict[str, Any]:
+    return {
+        **monitor_item(todo_id),
+        "priority": "P0",
+        "cadence": "15m",
+        "next_due_at": "2026-07-05T15:00:00Z",
+    }
+
+
 def advancement_lane() -> dict[str, Any]:
     item = advancement_item()
     return build_work_lane_contract(
@@ -61,6 +70,41 @@ def advancement_lane() -> dict[str, Any]:
         outcome_followthrough=None,
         next_action_requires_advancement=False,
         monitor_due_item_limit=3,
+    )
+
+
+def due_monitor_lane() -> dict[str, Any]:
+    monitor = due_monitor_item()
+    item = advancement_item("todo_active_after_due_monitor")
+    return build_work_lane_contract(
+        progress_scope="agent_lane",
+        external_poll_signal=False,
+        todo_counts={"open": 2, "advancement": 1, "monitor": 1},
+        monitor_due_count=1,
+        due_monitor_items=[monitor],
+        first_advancement=item,
+        due_monitor_preempts_advancement=True,
+        outcome_followthrough=None,
+        next_action_requires_advancement=False,
+        monitor_due_item_limit=3,
+    )
+
+
+def monitor_schedule_gap_lane() -> dict[str, Any]:
+    monitor = monitor_item("todo_monitor_gap")
+    return build_work_lane_contract(
+        progress_scope="agent_lane",
+        external_poll_signal=False,
+        todo_counts={"open": 1, "advancement": 0, "monitor": 1},
+        monitor_due_count=0,
+        due_monitor_items=[],
+        first_advancement=None,
+        due_monitor_preempts_advancement=False,
+        outcome_followthrough=None,
+        next_action_requires_advancement=False,
+        monitor_due_item_limit=3,
+        monitor_schedule_gap_count=1,
+        monitor_schedule_gap_items=[monitor],
     )
 
 
@@ -136,6 +180,197 @@ def finalize(payload: dict[str, Any]) -> dict[str, Any]:
     )
     payload["protocol_action_packet"] = build_protocol_action_packet(payload)
     return payload
+
+
+def _successor_replan_payload() -> dict[str, Any]:
+    payload = base_payload(
+        should_run=True,
+        effective_action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+        work_lane=None,
+        heartbeat_mode=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+    )
+    payload["normal_delivery_allowed"] = False
+    payload["agent_scope_frontier"] = {
+        "deferred_resume_candidates": [{"todo_id": "todo_deferred_successor"}],
+    }
+    payload["execution_obligation"] = build_execution_obligation(
+        should_run=True,
+        effective_action=payload["effective_action"],
+        heartbeat_recommendation=payload["heartbeat_recommendation"],
+        work_lane_contract=None,
+    )
+    return finalize(payload)
+
+
+def _due_monitor_payload() -> dict[str, Any]:
+    lane = due_monitor_lane()
+    payload = base_payload(
+        should_run=True,
+        effective_action="normal_run",
+        work_lane=lane,
+        heartbeat_mode="steering_audit_then_one_step",
+    )
+    payload.pop("agent_lane_next_action", None)
+    payload["agent_todo_summary"] = {
+        "first_executable_items": [advancement_item("todo_active_after_due_monitor")],
+        "current_agent_claimed_monitor_items": lane["monitor_due_items"],
+        "monitor_due_items": lane["monitor_due_items"],
+    }
+    payload["execution_obligation"] = build_execution_obligation(
+        should_run=True,
+        effective_action=payload["effective_action"],
+        heartbeat_recommendation=payload["heartbeat_recommendation"],
+        work_lane_contract=lane,
+    )
+    return finalize(payload)
+
+
+def _monitor_schedule_gap_payload() -> dict[str, Any]:
+    lane = monitor_schedule_gap_lane()
+    payload = base_payload(
+        should_run=True,
+        effective_action="normal_run",
+        work_lane=lane,
+        heartbeat_mode="steering_audit_then_one_step",
+    )
+    payload.pop("agent_lane_next_action", None)
+    payload["agent_todo_summary"] = {
+        "current_agent_claimed_monitor_items": lane["monitor_schedule_gap_items"],
+        "monitor_schedule_gap_items": lane["monitor_schedule_gap_items"],
+    }
+    payload["execution_obligation"] = build_execution_obligation(
+        should_run=True,
+        effective_action=payload["effective_action"],
+        heartbeat_recommendation=payload["heartbeat_recommendation"],
+        work_lane_contract=lane,
+    )
+    return finalize(payload)
+
+
+def _assert_cross_layer_case(
+    name: str,
+    payload: dict[str, Any],
+    *,
+    lane: str = "none",
+    obligation: str | None = None,
+    interaction: str,
+    scheduler: str = "run_now",
+    interval: int = 3,
+    must_attempt: bool = True,
+    quiet: bool = False,
+    spend: bool = True,
+    summary_fragments: tuple[str, ...] = (),
+    cli_fragments: tuple[str, ...] = (),
+) -> None:
+    contract = payload["interaction_contract"]
+    scheduler_hint = payload["scheduler_hint"]
+    work_lane = payload.get("work_lane_contract")
+    actual_lane = work_lane.get("lane") if isinstance(work_lane, dict) else "none"
+    actual_obligation = (
+        work_lane.get("obligation") if isinstance(work_lane, dict) else None
+    )
+    assert actual_lane == lane, (name, payload)
+    assert actual_obligation == obligation, (name, payload)
+    assert contract["mode"] == interaction, (name, contract)
+    assert contract["agent_channel"]["must_attempt"] is must_attempt, (name, contract)
+    assert contract["agent_channel"]["quiet_noop_allowed"] is quiet, (name, contract)
+    assert contract["cli_channel"]["spend_after_validation"] is spend, (name, contract)
+    assert scheduler_hint["action"] == scheduler, (name, scheduler_hint)
+    assert scheduler_hint["codex_app"]["recommended_interval_minutes"] == interval, (
+        name,
+        scheduler_hint,
+    )
+    summary = payload["protocol_action_packet"]["summary"]
+    for fragment in summary_fragments:
+        assert fragment in summary, (name, summary)
+    cli_actions = " ".join(contract["cli_channel"]["next_cli_actions"])
+    for fragment in cli_fragments:
+        assert fragment in cli_actions, (name, cli_actions)
+
+
+def assert_cross_layer_state_machine_matrix() -> None:
+    _assert_cross_layer_case(
+        "advancement",
+        finalize(
+            base_payload(
+                should_run=True,
+                effective_action="normal_run",
+                work_lane=advancement_lane(),
+                heartbeat_mode="steering_audit_then_one_step",
+            )
+        ),
+        lane="advancement_task",
+        obligation="advance_one_bounded_segment",
+        interaction="bounded_delivery",
+        summary_fragments=("lane=advancement_task", "scheduler=run_now"),
+    )
+    _assert_cross_layer_case(
+        "due monitor preemption",
+        _due_monitor_payload(),
+        lane="continuous_monitor",
+        obligation="attempt_due_monitor",
+        interaction="bounded_delivery",
+        summary_fragments=("lane=continuous_monitor", "todo_due_monitor"),
+    )
+    _assert_cross_layer_case(
+        "monitor schedule gap repair",
+        _monitor_schedule_gap_payload(),
+        lane="advancement_task",
+        obligation="repair_monitor_schedule_metadata",
+        interaction="bounded_delivery",
+        summary_fragments=(
+            "lane=advancement_task",
+            "repair the selected continuous_monitor todo",
+        ),
+    )
+    _assert_cross_layer_case(
+        "monitor quiet wait",
+        finalize(
+            base_payload(
+                should_run=False,
+                effective_action="monitor_quiet_skip",
+                work_lane=monitor_quiet_lane(),
+                heartbeat_mode="monitor_quiet_until_material_transition",
+            )
+        ),
+        lane="continuous_monitor",
+        obligation="quiet_until_material_monitor_transition",
+        interaction="monitor_quiet_skip",
+        scheduler="backoff_until_material_transition",
+        interval=15,
+        must_attempt=False,
+        quiet=True,
+        spend=False,
+        summary_fragments=(
+            "lane=continuous_monitor",
+            "scheduler=backoff_until_material_transition",
+        ),
+    )
+    _assert_cross_layer_case(
+        "agent scope wait",
+        finalize(
+            base_payload(
+                should_run=False,
+                effective_action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
+                work_lane=None,
+                heartbeat_mode=AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
+            )
+        ),
+        interaction=AgentScopeFrontierAction.AGENT_SCOPE_WAIT.value,
+        scheduler="backoff_until_reassigned",
+        interval=10,
+        must_attempt=False,
+        quiet=True,
+        spend=False,
+        summary_fragments=("scheduler=backoff_until_reassigned",),
+    )
+    _assert_cross_layer_case(
+        "successor replan",
+        _successor_replan_payload(),
+        interaction=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+        summary_fragments=("scheduler=run_now",),
+        cli_fragments=("todo_deferred_successor",),
+    )
 
 
 def assert_bounded_delivery_bundle() -> None:
@@ -237,23 +472,7 @@ def assert_agent_scope_wait_is_quiet_noop() -> None:
 
 
 def assert_successor_replan_is_validated_spend_path() -> None:
-    payload = base_payload(
-        should_run=True,
-        effective_action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-        work_lane=None,
-        heartbeat_mode=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
-    )
-    payload["normal_delivery_allowed"] = False
-    payload["agent_scope_frontier"] = {
-        "deferred_resume_candidates": [{"todo_id": "todo_deferred_successor"}],
-    }
-    payload["execution_obligation"] = build_execution_obligation(
-        should_run=True,
-        effective_action=payload["effective_action"],
-        heartbeat_recommendation=payload["heartbeat_recommendation"],
-        work_lane_contract=None,
-    )
-    payload = finalize(payload)
+    payload = _successor_replan_payload()
     contract = payload["interaction_contract"]
     assert contract["mode"] == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value, payload
     assert contract["agent_channel"]["must_attempt"] is True, contract
@@ -265,6 +484,7 @@ def assert_successor_replan_is_validated_spend_path() -> None:
 
 
 def main() -> int:
+    assert_cross_layer_state_machine_matrix()
     assert_bounded_delivery_bundle()
     assert_user_notice_can_coexist_with_bounded_delivery()
     assert_monitor_quiet_skip_is_no_spend()

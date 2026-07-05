@@ -237,6 +237,25 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         interaction_contract_commands
     ), interaction_contract_profiles["control-plane-state-machine"]
 
+    interaction_smoke_payload = build_catalog_canary_plan(
+        changed_files=["examples/control_plane/interaction-contract-state-machine-smoke.py"],
+        surfaces=[],
+        max_checks_per_profile=4,
+    )
+    interaction_smoke_profiles = {
+        profile["id"]: profile for profile in interaction_smoke_payload["domain_profiles"]
+    }
+    assert "control-plane-state-machine" in interaction_smoke_profiles, (
+        interaction_smoke_payload
+    )
+    interaction_smoke_commands = [
+        check["command"]
+        for check in interaction_smoke_profiles["control-plane-state-machine"]["checks"]
+    ]
+    assert "python3 examples/control_plane/interaction-contract-state-machine-smoke.py" in (
+        interaction_smoke_commands
+    ), interaction_smoke_profiles["control-plane-state-machine"]
+
     bounded_context_payload = build_catalog_canary_plan(
         changed_files=["loopx/control_plane/work_items/work_lane.py"],
         surfaces=[

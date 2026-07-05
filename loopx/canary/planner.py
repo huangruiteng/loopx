@@ -428,6 +428,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx/control_plane/work_items/work_lane.py",
             "loopx/control_plane/runtime/event_store_migration_bridge.py",
             "control-plane-integrated-canary-smoke.py",
+            "interaction-contract-state-machine-smoke.py",
             "docs/product/core-control-plane/state-machine.md",
         ),
         "checks": [
