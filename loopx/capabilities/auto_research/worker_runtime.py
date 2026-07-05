@@ -70,6 +70,14 @@ MANUAL_RESEARCH_REQUIRED_ACTIONS = {
     "run_holdout_eval",
     "write_evidence",
 }
+SUMMARY_ACTIONS = {
+    "classify_evidence",
+    "summarize_evidence",
+    "write_evaluation_summary",
+    "review_research_contract",
+    "review_hypothesis_frontier",
+    "review_promotion_readiness",
+}
 
 
 def _scored_rollout_metric_events(
@@ -118,6 +126,20 @@ def _holdout_improvement_count(
             count += 1
         previous = metric
     return count
+
+
+def _has_rollout_research_evidence(
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    goal_id: str,
+) -> bool:
+    registry = load_registry(registry_path)
+    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
+    return any(
+        str(event.get("event_kind") or "") == "research_evidence"
+        for event in load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
+    )
 
 
 def _slug(value: object, *, default: str = "item") -> str:
@@ -554,14 +576,20 @@ def run_auto_research_worker_turn(
     run_dir = workspace / evidence_dir / _slug(agent_id, default="agent") / _slug(todo_id, default="todo")
     evaluation_summary_path = run_dir / "evaluation-summary.public.json"
 
-    if action in {
-        "classify_evidence",
-        "summarize_evidence",
-        "write_evaluation_summary",
-        "review_research_contract",
-        "review_hypothesis_frontier",
-        "review_promotion_readiness",
-    }:
+    if action in SUMMARY_ACTIONS:
+        if not _has_rollout_research_evidence(
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            goal_id=goal_id,
+        ):
+            return _manual_research_required_result(
+                goal_id=goal_id,
+                agent_id=agent_id,
+                todo_id=todo_id,
+                action=action,
+                complete_selected_todo=complete_selected_todo,
+                frontier_packet=frontier_packet,
+            )
         artifact = _write_evaluation_summary_artifact(
             registry_path=registry_path,
             runtime_root_arg=runtime_root_arg,

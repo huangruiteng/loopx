@@ -21,9 +21,13 @@ from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
 from loopx.capabilities.auto_research.preset import (  # noqa: E402
     AUTO_RESEARCH_PRESET_SCHEMA_VERSION,
 )
+from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
+    build_auto_research_preset_context,
+)
 
 
 GOAL_ID = "loopx-auto-research-demo"
+QUESTION = "如何提升 KNN holdout metric？"
 LANES = [
     "research-curator:research-curator:research_curator",
     "hypothesis-proposer:hypothesis-proposer:hypothesis_proposer",
@@ -191,6 +195,13 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert profile["fixed_a2a_wake_prompt_owner"] == "generic_multi_agent_kernel", profile
         assert profile["output_language"] in {"en", "zh"}, profile
         assert lane["output_language"] == profile["output_language"], lane
+        if profile.get("open_question"):
+            assert profile["open_question"] == QUESTION, profile
+            preset_context = profile["preset_context"]
+            assert preset_context["preset_id"] == "knn-demo", preset_context
+            assert preset_context["metric_name"] == "holdout_metric", preset_context
+            assert preset_context["baseline_metric"] == 1.0, preset_context
+            assert preset_context["question_text_supplies_baseline"] is False, preset_context
         assert profile["worker_skill_source"].endswith("auto_research/worker_skill/SKILL.md"), profile
         assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile
@@ -218,7 +229,6 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert lane["pane_local_a2a"]["auto_start"] is True, lane
         assert lane["pane_local_a2a"]["auto_start_owner"] == "codex_tui_first_turn_prompt", lane
         assert lane["pane_local_a2a"]["tick_rounds"] == 1, lane
-        assert lane["pane_local_a2a"]["tick_sleep_seconds"] == 1, lane
         assert lane["lane_timeline"] == [
             "role_profile",
             "codex_tui",
@@ -231,8 +241,8 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "LOOPX_PANE_BOOTSTRAP_PROMPT" in command, lane
         assert "LOOPX_ROLE_PROFILE_ARTIFACT" in command, lane
         assert "export LOOPX_PANE_WORKER_TURN=" not in command, lane
-        assert "LOOPX_PANE_TICK_ROUNDS=8" not in command, lane
-        assert "LOOPX_PANE_TICK_SLEEP_SECONDS=1" in command, lane
+        assert "LOOPX_PANE_TICK_ROUNDS=" not in command, lane
+        assert "LOOPX_PANE_TICK_SLEEP_SECONDS=" not in command, lane
         assert "pane-a2a-tick.output.txt" in command, lane
         assert "auto-research worker-turn" not in command, lane
         assert "export LOOPX_AUTO_RESEARCH_OUTPUT_LANGUAGE=" not in command, lane
@@ -275,7 +285,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert "each pane starts a real interactive Codex CLI TUI" in " ".join(
         one_click["expected_visible_result"]
     ), one_click
-    assert "Codex TUI first turn runs $LOOPX_PANE_A2A_TICK" in " ".join(
+    assert "each role reads its projected frontier and authors a visible research artifact" in " ".join(
+        one_click["expected_visible_result"]
+    ), one_click
+    assert "$LOOPX_PANE_A2A_TICK is a guard/status check" in " ".join(
         one_click["expected_visible_result"]
     ), one_click
 
@@ -351,6 +364,8 @@ def main() -> int:
 
     payload = build_auto_research_demo_supervisor_plan(
         goal_id=GOAL_ID,
+        open_question=QUESTION,
+        preset_context=build_auto_research_preset_context("knn-demo"),
         agent_specs=LANES,
         output_language="zh",
     )

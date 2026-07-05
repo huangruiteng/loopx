@@ -148,9 +148,9 @@ def build_auto_research_live_worker_proof(*, launch_visible: bool) -> dict[str, 
             "auto-research preset."
         ),
         "next_step": [
-            "let each visible pane run its LoopX frontier tick",
-            "append public-safe lane evidence into LoopX state",
-            "load compact evidence from the pane artifact directory",
+            "let each visible pane read its LoopX frontier with a guard tick",
+            "have each role author public-safe research evidence or successor todos",
+            "load compact evidence from lane-authored pane artifacts",
         ],
         "owner_layer": "generic_multi_agent_kernel",
         "user_facing_by_default": False,

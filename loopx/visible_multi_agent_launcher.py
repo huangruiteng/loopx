@@ -540,10 +540,10 @@ def build_visible_lane_command(
         pane_a2a_env += f"export LOOPX_PANE_WORKER_LOOP={_q(worker_loop_command)}; "
     if tick_rounds and tick_rounds > 1:
         pane_a2a_env += f"export LOOPX_PANE_TICK_ROUNDS={_q(tick_rounds)}; "
-    if tick_sleep_seconds and tick_sleep_seconds > 0:
-        pane_a2a_env += f"export LOOPX_PANE_TICK_SLEEP_SECONDS={_q(tick_sleep_seconds)}; "
-        if visible_lane_count and visible_lane_count > 0:
-            pane_a2a_env += f"export LOOPX_VISIBLE_LANE_COUNT={_q(visible_lane_count)}; "
+        if tick_sleep_seconds and tick_sleep_seconds > 0:
+            pane_a2a_env += f"export LOOPX_PANE_TICK_SLEEP_SECONDS={_q(tick_sleep_seconds)}; "
+    if visible_lane_count and visible_lane_count > 0:
+        pane_a2a_env += f"export LOOPX_VISIBLE_LANE_COUNT={_q(visible_lane_count)}; "
     return (
         "set -uo pipefail; "
         "export LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1; "

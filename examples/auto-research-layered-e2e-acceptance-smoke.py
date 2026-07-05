@@ -85,7 +85,8 @@ def assert_three_layer_minimality() -> None:
         assert "LOOPX_PANE_A2A_TICK" in command, lane
         assert "auto-research worker-turn" not in command, lane
         assert "--complete-selected-todo" not in command, lane
-        assert "LOOPX_PANE_TICK_ROUNDS=8" not in command, lane
+        assert "LOOPX_PANE_TICK_ROUNDS=" not in command, lane
+        assert "LOOPX_PANE_TICK_SLEEP_SECONDS=" not in command, lane
     assert_public_safe(supervisor)
 
 
@@ -127,8 +128,8 @@ def assert_headless_worker_loop_is_not_research_uplift() -> None:
 
     worker_loop = payload["worker_loop"]
     assert worker_loop["turn_count"] == 4, worker_loop
-    assert worker_loop["executed_turn_count"] == 1, worker_loop
-    assert worker_loop["completed_turn_count"] == 1, worker_loop
+    assert worker_loop["executed_turn_count"] == 0, worker_loop
+    assert worker_loop["completed_turn_count"] == 0, worker_loop
     assert all(turn.get("dev_metric") is None for turn in worker_loop["turns"]), worker_loop
     assert all(turn.get("holdout_metric") is None for turn in worker_loop["turns"]), worker_loop
 
@@ -141,6 +142,8 @@ def assert_headless_worker_loop_is_not_research_uplift() -> None:
     assert collective["holdout_metric_sequence"] == [], collective
     tonight = payload["tonight_experience"]
     assert tonight["positive_result"] is False, tonight
+    assert tonight["ready"] is False, tonight
+    assert tonight["positive_result_basis"] == "requires_visible_lane_authored_evidence", tonight
     assert tonight["dev_metric"] is None, tonight
     assert tonight["holdout_metric"] is None, tonight
 

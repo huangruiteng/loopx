@@ -6,14 +6,14 @@ from typing import Any
 
 
 GOAL_ID = "loopx-auto-research-demo"
-METRIC_NAME = "demo_quality_score"
+METRIC_NAME = "fixture_quality_score"
 BASELINE = 1.0
 HYPOTHESIS_ID = "hyp_state_a2a_round"
 TODO_ID = "todo_auto_research_demo_001"
 AGENT_ID = "research-executor"
 MECHANISM_FAMILY = "state_a2a_iteration"
 HYPOTHESIS_TEXT = "Use a small state-mediated handoff loop to improve the shared candidate."
-GROUNDING_REF = "kernel:state_a2a_metric_demo"
+GROUNDING_REF = "fixture:lane_authored_metric"
 
 
 def research_contract(*, goal_id: str = GOAL_ID) -> dict[str, Any]:
@@ -28,8 +28,8 @@ def research_contract(*, goal_id: str = GOAL_ID) -> dict[str, Any]:
             "direction": "maximize",
             "baseline": BASELINE,
         },
-        "dev_eval": "builtin lightweight metric evaluator on dev split",
-        "holdout_eval": "builtin lightweight metric evaluator on holdout split",
+        "dev_eval": "public fixture evaluator on dev split",
+        "holdout_eval": "public fixture evaluator on holdout split",
         "promotion_policy": "dev_and_holdout_improved",
     }
 

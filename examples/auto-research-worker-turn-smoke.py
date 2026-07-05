@@ -174,13 +174,7 @@ def main() -> int:
             execute=True,
             complete=False,
         )
-        assert evaluator_execute["mode"] == "execute", evaluator_execute
-        assert evaluator_execute["selected_action"] == "summarize_evidence", evaluator_execute
-        assert evaluator_execute["summary_mode"] == "rollout_evidence_summary", evaluator_execute
-        assert evaluator_execute["claim_allowed"] is False, evaluator_execute
-        assert evaluator_execute["evaluation_summary"]["holdout_improvement_count"] == 0, evaluator_execute
-        assert evaluator_execute["evaluation_summary"]["best_dev_metric"] is None, evaluator_execute
-        assert evaluator_execute["evaluation_summary"]["best_holdout_metric"] is None, evaluator_execute
+        assert_manual_research_required(evaluator_execute, action="summarize_evidence")
         assert "dev_metric" not in evaluator_execute, evaluator_execute
         assert "holdout_metric" not in evaluator_execute, evaluator_execute
         assert_public_safe(evaluator_execute)

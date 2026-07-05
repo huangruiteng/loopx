@@ -89,6 +89,8 @@ def main() -> int:
 
     tonight = payload["tonight_experience"]
     assert tonight["positive_result"] is False, tonight
+    assert tonight["ready"] is False, tonight
+    assert tonight["positive_result_basis"] == "requires_visible_lane_authored_evidence", tonight
     assert tonight["dev_metric"] is None, tonight
     assert tonight["holdout_metric"] is None, tonight
     assert payload["public_boundary"]["raw_logs_recorded"] is False, payload

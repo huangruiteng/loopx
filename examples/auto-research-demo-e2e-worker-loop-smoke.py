@@ -117,6 +117,8 @@ def main() -> int:
     assert payload["execution_kind"] == "loopx_worker_loop", payload
     worker_loop = payload["worker_loop"]
     assert worker_loop["turn_count"] == 4, worker_loop
+    assert worker_loop["executed_turn_count"] == 0, worker_loop
+    assert worker_loop["completed_turn_count"] == 0, worker_loop
     assert worker_loop["selected_actions"] == [
         "write_research_contract",
         "propose_hypothesis",
@@ -140,6 +142,8 @@ def main() -> int:
     assert proof["decentralized_a2a_rounds_verified"] is False, proof
     tonight = payload["tonight_experience"]
     assert tonight["positive_result"] is False, tonight
+    assert tonight["ready"] is False, tonight
+    assert tonight["positive_result_basis"] == "requires_visible_lane_authored_evidence", tonight
     assert tonight["dev_metric"] is None, tonight
     assert tonight["holdout_metric"] is None, tonight
     assert_public_safe(payload)

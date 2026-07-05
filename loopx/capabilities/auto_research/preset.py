@@ -17,8 +17,6 @@ AUTO_RESEARCH_REQUIRED_SKILL = "loopx-auto-research"
 AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
     "loopx/capabilities/auto_research/worker_skill/SKILL.md"
 )
-AUTO_RESEARCH_VISIBLE_TICK_ROUNDS = 1
-AUTO_RESEARCH_VISIBLE_TICK_SLEEP_SECONDS = 1
 AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = "[P0-auto-research-live] Run held-out validation for the dev-supported hypothesis from {source_todo_id}, append public-safe evidence, and summarize promotion readiness."
 AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT = "[P0-auto-research-live] Summarize held-out validation from {source_todo_id}, promotion readiness, and the public claim boundary for the supported hypothesis."
 AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT = "[P0-auto-research-live] Grow the next evidence-backed hypothesis from the validated branch {source_todo_id} and route a second dev attempt."
@@ -329,6 +327,8 @@ def build_auto_research_preset_role(
     goal_id: str = AUTO_RESEARCH_DEFAULT_GOAL_ID,
     reasoning_effort: str = "high",
     output_language: str = "en",
+    open_question: object | None = None,
+    preset_context: dict[str, object] | None = None,
 ) -> dict[str, object]:
     role_id = lane["role_id"]
     agent_id = lane["agent_id"]
@@ -338,6 +338,10 @@ def build_auto_research_preset_role(
         agent_id=agent_id,
     )
     role_profile["output_language"] = output_language
+    if str(open_question or "").strip():
+        role_profile["open_question"] = str(open_question).strip()
+    if preset_context:
+        role_profile["preset_context"] = dict(preset_context)
     return {
         "agent_id": agent_id,
         "lane_id": lane["lane_id"],
@@ -352,8 +356,6 @@ def build_auto_research_preset_role(
             "source": AUTO_RESEARCH_WORKER_SKILL_SOURCE,
         },
         "handoff_hints": role_profile.get("handoff") or [],
-        "tick_rounds": AUTO_RESEARCH_VISIBLE_TICK_ROUNDS,
-        "tick_sleep_seconds": AUTO_RESEARCH_VISIBLE_TICK_SLEEP_SECONDS,
         "reasoning_effort": reasoning_effort,
     }
 

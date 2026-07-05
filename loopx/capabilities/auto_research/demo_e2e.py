@@ -1124,6 +1124,8 @@ def run_auto_research_demo_e2e(
     contract_acceptance = build_auto_research_contract_acceptance(user_contract)
     supervisor = build_auto_research_demo_supervisor_plan(
         goal_id=goal_id,
+        open_question=objective,
+        preset_context=preset_context,
         agent_specs=effective_agent_specs,
         session_name=session_name,
         cli_bin=cli_bin,
@@ -1385,9 +1387,10 @@ def run_auto_research_demo_e2e(
             ]
             dev_metric = dev_metrics[-1] if dev_metrics else None
             holdout_metric = holdout_metrics[-1] if holdout_metrics else None
+            positive_result = holdout_metric is not None or dev_metric is not None
             payload["tonight_experience"] = {
                 "schema_version": "auto_research_tonight_experience_v0",
-                "ready": bool(worker_loop.get("executed_turn_count")),
+                "ready": positive_result,
                 "one_command": payload["commands"]["one_command_worker_loop"],
                 "goal_id": goal_id,
                 "goal_surface_mode": goal_surface_mode,
@@ -1412,11 +1415,13 @@ def run_auto_research_demo_e2e(
                 ),
                 "dev_metric": dev_metric,
                 "holdout_metric": holdout_metric,
-                "positive_result": holdout_metric is not None or dev_metric is not None,
+                "positive_result": positive_result,
                 "positive_result_basis": (
                     "public_safe_dev_and_holdout_evidence"
                     if holdout_metric is not None
                     else "public_safe_dev_evidence"
+                    if dev_metric is not None
+                    else "requires_visible_lane_authored_evidence"
                 ),
                 "state_surfaces": [
                     "demo-local LoopX registry",

@@ -384,11 +384,16 @@ def main() -> None:
         assert start_headless_payload["contract_acceptance"]["accepted"] is True, start_headless_payload
         worker_loop = start_headless_payload["worker_loop"]
         assert worker_loop["turn_count"] >= 4, start_headless_payload
-        assert worker_loop["executed_turn_count"] <= 1, start_headless_payload
+        assert worker_loop["executed_turn_count"] == 0, start_headless_payload
+        assert worker_loop["completed_turn_count"] == 0, start_headless_payload
         assert any(
             turn.get("mode") == "manual_research_required" for turn in worker_loop["turns"]
         ), start_headless_payload
         assert start_headless_payload["tonight_experience"]["positive_result"] is False
+        assert start_headless_payload["tonight_experience"]["ready"] is False
+        assert start_headless_payload["tonight_experience"]["positive_result_basis"] == (
+            "requires_visible_lane_authored_evidence"
+        )
         assert start_headless_payload["tonight_experience"]["dev_metric"] is None
         assert start_headless_payload["tonight_experience"]["holdout_metric"] is None
         assert "auto-research start" in start_headless_payload["commands"]["one_question_start"], start_headless_payload

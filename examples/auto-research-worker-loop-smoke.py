@@ -132,19 +132,15 @@ def main() -> int:
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
+            "summarize_evidence",
         ], payload
         assert all(turn["executed"] is False for turn in manual_turns), payload
         assert all(turn.get("completion_status") is None for turn in manual_turns), payload
         assert all(turn.get("dev_metric") is None for turn in payload["turns"]), payload
         assert all(turn.get("holdout_metric") is None for turn in payload["turns"]), payload
         assert all("demo_iteration" not in turn for turn in payload["turns"]), payload
-
-        summary_turn = next(
-            turn for turn in payload["turns"] if turn.get("selected_action") == "summarize_evidence"
-        )
-        assert summary_turn["executed"] is True, summary_turn
-        assert summary_turn["claim_allowed"] is False, summary_turn
-        assert summary_turn["holdout_improvement_count"] == 0, summary_turn
+        assert payload["executed_turn_count"] == 0, payload
+        assert payload["completed_turn_count"] == 0, payload
         assert_public_safe(payload)
     return 0
 

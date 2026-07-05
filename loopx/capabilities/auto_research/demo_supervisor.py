@@ -21,6 +21,8 @@ AUTO_RESEARCH_DEMO_SUPERVISOR_SCHEMA_VERSION = "auto_research_demo_supervisor_pl
 def build_auto_research_demo_supervisor_plan(
     *,
     goal_id: str = AUTO_RESEARCH_DEFAULT_GOAL_ID,
+    open_question: object | None = None,
+    preset_context: dict[str, object] | None = None,
     agent_specs: Iterable[str] | None = None,
     session_name: str = "loopx-auto-research",
     cli_bin: str = "loopx",
@@ -44,6 +46,8 @@ def build_auto_research_demo_supervisor_plan(
             goal_id=goal,
             reasoning_effort=reasoning_effort,
             output_language=output_language,
+            open_question=open_question,
+            preset_context=preset_context,
         )
         for lane in lanes
     ]
@@ -116,8 +120,9 @@ def build_auto_research_demo_supervisor_plan(
                 "expected_visible_result": [
                     "one tmux window with tiled role panes",
                     "each pane starts a real interactive Codex CLI TUI",
-                    "the Codex TUI first turn runs $LOOPX_PANE_A2A_TICK against its own frontier",
-                    "each pane performs bounded role-local polling so successor todos can flow across lanes",
+                    "each role reads its projected frontier and authors a visible research artifact",
+                    "$LOOPX_PANE_A2A_TICK is a guard/status check, not a fake research writer",
+                    "successor todos flow through LoopX state only after role-authored evidence exists",
                 ],
             },
         }
