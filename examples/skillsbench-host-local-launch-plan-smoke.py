@@ -2326,29 +2326,25 @@ output.write_text({SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER!r}, encod
         assert "skillsbench_agent_behavior_gap" not in (
             compact_failure["failure_attribution_labels"]
         )
+        interrupted_jobs_dir = Path(tmp) / "interrupted-jobs"
+        interrupted_job_name = "skillsbench-interrupted-before-score-fixture"
+        interrupted_rollout_name = "demo-task__loopx_product_mode"
         interruption_compact = build_runner_failure_compact(
-            SimpleNamespace(
-                build_stall_timeout_sec=0,
-                dataset="skillsbench-v1.1",
-                model=None,
-                run_group_id=None,
-                route="loopx-product-mode",
-                task_id="demo-task",
-            ),
+            SimpleNamespace(build_stall_timeout_sec=0, dataset="skillsbench-v1.1", model=None, run_group_id=None, route="loopx-product-mode", task_id="demo-task"),
             {
-                "compact_benchmark_run_json": str(
-                    Path(tmp) / "interrupted-compact.json"
-                ),
-                "runner_prerequisites": {
-                    "schema_version": "skillsbench_runner_prerequisites_v0",
-                    "agent_execution_mode": "host_local_acp",
-                },
+                "jobs_dir": str(interrupted_jobs_dir),
+                "job_name": interrupted_job_name,
+                "rollout_name": interrupted_rollout_name,
+                "task_id": "demo-task",
+                "result_json": str(interrupted_jobs_dir / interrupted_job_name / interrupted_rollout_name / "result.json"),
+                "compact_benchmark_run_json": str(Path(tmp) / "interrupted-compact.json"),
+                "runner_prerequisites": {"schema_version": "skillsbench_runner_prerequisites_v0", "agent_execution_mode": "host_local_acp"},
             },
             KeyboardInterrupt(),
         )
-        assert interruption_compact["score_failure_attribution"] == (
-            "skillsbench_runner_interrupted_before_official_result"
-        ), interruption_compact
+        assert interruption_compact["score_failure_attribution"] == "skillsbench_runner_interrupted_before_official_result", interruption_compact
+        assert interruption_compact["runner_return_status"] == "failed_before_official_result", interruption_compact
+        assert ".local/private-benchmark-jobs" not in json.dumps(interruption_compact), interruption_compact
         assert "skillsbench_compact_closeout_recorded" in (
             interruption_compact["failure_attribution_labels"]
         )
