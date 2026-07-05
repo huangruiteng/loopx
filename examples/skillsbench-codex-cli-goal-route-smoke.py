@@ -546,15 +546,15 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             "request timed out while waiting for model\n› ",
             stage="post_bridge_tui_model_timeout",
         )
-        == ""
+        == "typed_continue"
     )
     assert (
         _codex_cli_tui_post_bridge_recovery_skip_reason(
             "request timed out while waiting for model\n› ",
             stage="post_bridge_tui_model_timeout",
-            recovery_action="",
+            recovery_action="typed_continue",
         )
-        == "no_retry_affordance"
+        == ""
     )
     assert (
         _codex_cli_tui_post_bridge_recovery_action(
@@ -693,7 +693,9 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             goal_terminal_observed=False,
             first_action_observed=True,
             bridge_summary_path=bridge_summary,
-            post_bridge_recovery_skip_reason="no_retry_affordance",
+            post_bridge_recovery_attempt_count=1,
+            post_bridge_recovery_action="typed_continue",
+            post_bridge_recovery_skip_reason="retry_limit_reached",
         )
         plan = {
             "route": "codex-cli-goal-baseline",
@@ -705,25 +707,29 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
 
     prerequisites = plan["runner_prerequisites"]
     assert trace["codex_cli_goal_tui_stage"] == "post_bridge_tui_model_timeout"
-    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 0
-    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == ""
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 1
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == "typed_continue"
     assert (
         trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"]
-        == "no_retry_affordance"
+        == "retry_limit_reached"
     )
     assert trace["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] == [
-        "no_retry_affordance"
+        "retry_limit_reached"
     ]
     public_prerequisites = _public_runner_prerequisites(prerequisites)
+    assert (
+        public_prerequisites["codex_cli_goal_tui_post_bridge_recovery_action"]
+        == "typed_continue"
+    )
     assert (
         public_prerequisites[
             "codex_cli_goal_tui_post_bridge_recovery_skip_reason"
         ]
-        == "no_retry_affordance"
+        == "retry_limit_reached"
     )
     assert public_prerequisites[
         "codex_cli_goal_tui_post_bridge_recovery_skip_reasons"
-    ] == ["no_retry_affordance"]
+    ] == ["retry_limit_reached"]
 
 
 def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:

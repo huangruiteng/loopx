@@ -96,6 +96,12 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
+CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT = (
+    "Continue the active SkillsBench goal after the transient model timeout. "
+    "If ./skillsbench-task-prompt.md exists, read it before acting. Use the "
+    "private bridge command from the task instructions for one task-facing "
+    "action, then finish with compact status."
+)
 
 
 @contextlib.contextmanager
@@ -561,6 +567,11 @@ def _codex_cli_tui_post_bridge_recovery_action(capture: str, *, stage: str) -> s
     lowered = str(capture or "").lower()
     if any(marker in lowered for marker in ("press enter", "press return")):
         return "press_enter"
+    if (
+        stage == "post_bridge_tui_model_timeout"
+        and codex_cli_tui_input_prompt_visible(capture)
+    ):
+        return "typed_continue"
     return ""
 
 
@@ -1554,6 +1565,22 @@ class SkillsBenchLocalAcpRelay:
                             )
                             time.sleep(1.0)
                             continue
+                        if (
+                            recovery_action == "typed_continue"
+                            and post_bridge_recovery_attempt_count < 1
+                        ):
+                            post_bridge_recovery_attempt_count += 1
+                            post_bridge_recovery_action = recovery_action
+                            tmux_type_text_and_submit(
+                                tmux_name=tmux_name,
+                                text=CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
+                            )
+                            last_bridge_activity_at = now
+                            next_heartbeat = (
+                                now
+                                + max(1.0, self._config.stream_heartbeat_interval_sec)
+                            )
+                            continue
                         post_bridge_recovery_skip_reason = (
                             _codex_cli_tui_post_bridge_recovery_skip_reason(
                                 capture,
@@ -1563,7 +1590,7 @@ class SkillsBenchLocalAcpRelay:
                         )
                         if (
                             not post_bridge_recovery_skip_reason
-                            and recovery_action == "press_enter"
+                            and recovery_action in {"press_enter", "typed_continue"}
                         ):
                             post_bridge_recovery_skip_reason = "retry_limit_reached"
                         tmux_kill_session(tmux_name)
