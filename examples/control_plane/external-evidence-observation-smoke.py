@@ -19,6 +19,11 @@ from loopx.control_plane.scheduler.external_evidence_observation import (  # noq
 from loopx.control_plane.scheduler.monitor_poll_policy import (  # noqa: E402
     allows_no_spend_external_monitor_poll,
 )
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
+    quota_status_payload,
+    quota_todo_item,
+    quota_todo_summary,
+)
 from loopx.control_plane.todos.contract import (  # noqa: E402
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
@@ -27,7 +32,6 @@ from loopx.control_plane.todos.projection import (  # noqa: E402
     todo_summary_open_task_counts,
 )
 from loopx.quota import build_quota_should_run  # noqa: E402
-from loopx.status import compact_todo_group  # noqa: E402
 
 
 GOAL_ID = "external-evidence-observation-fixture"
@@ -44,34 +48,23 @@ def todo(
     todo_id: str,
     **metadata: Any,
 ) -> dict[str, Any]:
-    item = {
-        "schema_version": "todo_item_v0",
-        "todo_id": todo_id,
-        "role": "agent",
-        "source_section": "Agent Todo",
-        "status": "open",
-        "done": False,
-        "index": index,
-        "text": text,
-        "task_class": task_class,
-    }
-    item.update(metadata)
-    return item
+    return quota_todo_item(
+        todo_id=todo_id,
+        role="agent",
+        status="open",
+        index=index,
+        text=text,
+        task_class=task_class,
+        **metadata,
+    )
 
 
 def agent_todos(items: list[dict[str, Any]]) -> dict[str, Any]:
-    summary = compact_todo_group(items, source_section="Agent Todo", role="agent")
-    if summary is None:
-        summary = {
-            "schema_version": "todo_summary_v0",
-            "source_section": "Agent Todo",
-            "total_count": 0,
-            "open_count": 0,
-            "done_count": 0,
-            "first_open_items": [],
-        }
-    summary["claim_scope"] = {"agent_id": AGENT_ID}
-    return summary
+    return quota_todo_summary(
+        items,
+        role="agent",
+        claim_scope_agent_id=AGENT_ID,
+    )
 
 
 def monitor_todo(
@@ -108,51 +101,21 @@ def status_payload(
     waiting_on: str = "codex",
     next_action: str = "Observe compact result marker for remote job handle.",
 ) -> dict[str, Any]:
-    quota = {
-        "compute": 1.0,
-        "window_hours": 24,
-        "slot_minutes": 1,
-        "allowed_slots": 1440,
-        "spent_slots": 0,
-        "state": "eligible",
-        "reason": "fixture eligible quota",
-    }
-    return {
-        "ok": True,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": status,
-                    "waiting_on": waiting_on,
-                    "severity": "info",
-                    "source": "project_asset",
-                    "recommended_action": next_action,
-                    "quota": quota,
-                    "agent_todos": summary,
-                    "project_asset": {
-                        "agent_todos": summary,
-                        "next_action": next_action,
-                    },
-                    "lifecycle_flags": ["launched polling result marker"],
-                }
-            ]
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status=status,
+        waiting_on=waiting_on,
+        recommended_action=next_action,
+        next_action=next_action,
+        agent_todos=summary,
+        quota_extra={"allowed_slots": 1440},
+        coordination={
+            "primary_agent": "codex-main-control",
+            "registered_agents": ["codex-main-control", AGENT_ID],
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "quota": quota,
-                    "latest_runs": [],
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": ["codex-main-control", AGENT_ID],
-                    },
-                }
-            ]
-        },
-    }
+        latest_runs=[],
+        item_extra={"lifecycle_flags": ["launched polling result marker"]},
+    )
 
 
 def selected_item(payload: dict[str, Any]) -> dict[str, Any]:

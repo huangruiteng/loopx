@@ -19,76 +19,16 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
-from loopx.status import compact_todo_group  # noqa: E402
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
+    quota_status_payload,
+    quota_todo_item as todo_item,
+    quota_todo_summary,
+)
 
 
 GOAL_ID = "control-plane-risk-characterization"
 AGENT_ID = "codex-product-capability"
 PRIMARY_AGENT_ID = "codex-main-control"
-
-
-def todo_item(
-    *,
-    todo_id: str,
-    title: str,
-    priority: str = "P0",
-    task_class: str = "advancement_task",
-    role: str = "agent",
-    status: str = "open",
-    claimed_by: str | None = None,
-    blocks_agent: str | None = None,
-    index: int = 1,
-    next_due_at: str | None = None,
-    cadence: str | None = None,
-    resume_when: str | None = None,
-) -> dict[str, Any]:
-    item: dict[str, Any] = {
-        "todo_id": todo_id,
-        "index": index,
-        "text": f"[{priority}] {title}",
-        "title": title,
-        "priority": priority,
-        "role": role,
-        "status": status,
-        "done": status == "done",
-        "task_class": task_class,
-    }
-    if claimed_by:
-        item["claimed_by"] = claimed_by
-    if blocks_agent:
-        item["blocks_agent"] = blocks_agent
-    if next_due_at:
-        item["next_due_at"] = next_due_at
-    if cadence:
-        item["cadence"] = cadence
-    if resume_when:
-        item["resume_when"] = resume_when
-    return item
-
-
-def todo_summary(items: list[dict[str, Any]], *, role: str) -> dict[str, Any]:
-    open_items = [item for item in items if item.get("status") == "open"]
-    executable_items = [
-        item for item in open_items if item.get("task_class") == "advancement_task"
-    ]
-    monitor_items = [
-        item for item in open_items if item.get("task_class") == "continuous_monitor"
-    ]
-    due_monitor_items = [item for item in monitor_items if item.get("next_due_at")]
-    return {
-        "schema_version": "todo_summary_v0",
-        "source_section": "Agent Todo" if role == "agent" else "User Todo",
-        "total_count": len(items),
-        "open_count": len(open_items),
-        "done_count": len(items) - len(open_items),
-        "items": items,
-        "first_open_items": open_items[:3],
-        "first_executable_items": executable_items[:3],
-        "executable_backlog_items": executable_items,
-        "monitor_open_items": monitor_items,
-        "monitor_due_items": due_monitor_items,
-        "monitor_due_count": len(due_monitor_items),
-    }
 
 
 def status_payload(
@@ -99,64 +39,31 @@ def status_payload(
     quota_state: str = "eligible",
     safe_bypass: bool = False,
 ) -> dict[str, Any]:
-    agent_todos = agent_todos or todo_summary(agent_items, role="agent")
-    user_todos = todo_summary(user_items or [], role="user")
-    quota = {
-        "state": quota_state,
-        "reason": "fixture quota",
-        "compute": 1.0,
-        "window_hours": 24,
-        "slot_minutes": 1,
-        "allowed_slots": 10,
-        "spent_slots": 0,
-    }
-    if safe_bypass:
-        quota.update(
-            {
-                "safe_bypass_allowed": True,
-                "safe_bypass_kind": "scoped_user_gate_fallback",
-                "safe_bypass_policy": "fixture safe bypass",
-            }
-        )
-    item = {
-        "goal_id": GOAL_ID,
-        "status": "operator_gate"
-        if quota_state == "operator_gate"
-        else "active_state_agent_todo",
-        "waiting_on": "controller" if quota_state == "operator_gate" else "codex",
-        "severity": "active",
-        "source": "active_state",
-        "recommended_action": "Goal-level route should remain human-facing.",
-        "active_state_next_action": "Goal-level route should remain human-facing.",
-        "quota": quota,
-        "agent_todos": agent_todos,
-        "user_todos": user_todos,
-        "project_asset": {
-            "agent_todos": agent_todos,
-            "user_todos": user_todos,
-            "next_action": "Goal-level route should remain human-facing.",
+    next_action = "Goal-level route should remain human-facing."
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status=(
+            "operator_gate"
+            if quota_state == "operator_gate"
+            else "active_state_agent_todo"
+        ),
+        source="active_state",
+        project_asset_source="project_asset",
+        recommended_action=next_action,
+        next_action=next_action,
+        active_state_next_action=next_action,
+        agent_todo_items=agent_items,
+        agent_todos=agent_todos,
+        user_todo_items=user_items or [],
+        quota_state=quota_state,
+        safe_bypass=safe_bypass,
+        coordination={
+            "primary_agent": PRIMARY_AGENT_ID,
+            "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
         },
-        "project_asset_source": "project_asset",
-    }
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "attention_queue": {"items": [item]},
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "status": "active",
-                    "registry_member": True,
-                    "coordination": {
-                        "primary_agent": PRIMARY_AGENT_ID,
-                        "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+        latest_runs=[],
+        registry_status="active",
+    )
 
 
 def assert_agent_lane_delivery() -> None:
@@ -408,7 +315,7 @@ def assert_monitor_only_frontier_quiets_until_material_transition() -> None:
 
 
 def assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement() -> None:
-    agent_todos = compact_todo_group(
+    agent_todos = quota_todo_summary(
         [
             todo_item(
                 todo_id="todo_standing_gate",
@@ -428,7 +335,6 @@ def assert_standing_monitor_gate_does_not_quiet_skip_gated_advancement() -> None
                 resume_when="todo_done:todo_standing_gate",
             ),
         ],
-        source_section="Agent Todo",
         role="agent",
         item_limit=None,
     )
