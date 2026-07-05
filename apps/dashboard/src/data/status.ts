@@ -108,6 +108,54 @@ export const todoIndexSchema = z.object({
   items: z.array(todoIndexItemSchema).optional().default([]),
 });
 
+export const agentManagementTodoRowSchema = z.object({
+  schema_version: z.string().optional().nullable(),
+  todo_id: z.string().optional().nullable(),
+  goal_id: z.string().optional().nullable(),
+  role: z.string().optional().nullable(),
+  status: z.string().optional().nullable(),
+  priority: z.string().optional().nullable(),
+  title: z.string().optional().nullable(),
+  task_class: z.string().optional().nullable(),
+  action_kind: z.string().optional().nullable(),
+  claimed_by: z.string().optional().nullable(),
+}).passthrough();
+
+export const agentManagementRowSchema = z.object({
+  agent_id: z.string(),
+  role: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  current_todo: agentManagementTodoRowSchema.optional().nullable(),
+  next_action: z.string().optional().nullable(),
+  last_activity_at: z.string().optional().nullable(),
+  evidence_refs: z.array(z.string()).optional().default([]),
+  handoff_refs: z.array(z.string()).optional().default([]),
+  goal_ids: z.array(z.string()).optional().default([]),
+}).passthrough();
+
+export const agentManagementProjectionSchema = z.object({
+  schema_version: z.string().optional().nullable(),
+  mode: z.string().optional().nullable(),
+  goal_id: z.string().optional().nullable(),
+  generated_at: z.string().optional().nullable(),
+  style_hint: z.object({
+    preferred: z.string().optional().nullable(),
+    license_boundary: z.string().optional().nullable(),
+  }).optional().nullable(),
+  truth_contract: z.object({
+    todo_is_runtime_work_item: z.boolean().optional().default(true),
+    projection_is_writable: z.boolean().optional().default(false),
+    introduces_task_runtime: z.boolean().optional().default(false),
+    write_api: z.boolean().optional().default(false),
+  }).optional().nullable(),
+  source_summary: z.object({
+    registered_agent_count: z.number().optional().default(0),
+    projected_agent_count: z.number().optional().default(0),
+    todo_source: z.string().optional().nullable(),
+  }).optional().nullable(),
+  agents: z.array(agentManagementRowSchema).optional().default([]),
+}).passthrough();
+
 export const projectAssetTodoSummarySchema = z.object({
   source_section: z.string().optional().nullable(),
   open: z.number().optional().default(0),
@@ -675,6 +723,7 @@ export const statusPayloadSchema = z.object({
   decision_freshness_summary: decisionFreshnessSummarySchema.default(null),
   usage_summary: usageSummarySchema.default(null),
   todo_index: todoIndexSchema.optional().nullable().default(null),
+  agent_management_projection: agentManagementProjectionSchema.optional().nullable().default(null),
 });
 
 export const rewardDryRunResponseSchema = z.object({
@@ -721,6 +770,7 @@ export type TodoGroup = z.infer<typeof todoGroupSchema>;
 export type TodoItem = z.infer<typeof todoItemSchema>;
 export type TodoIndexItem = z.infer<typeof todoIndexItemSchema>;
 export type TodoIndexSummary = z.infer<typeof todoIndexSchema>;
+export type AgentManagementProjection = z.infer<typeof agentManagementProjectionSchema>;
 export type ReviewMaterial = z.infer<typeof reviewMaterialSchema>;
 export type ProjectMap = z.infer<typeof projectMapSchema>;
 export type GlobalRegistryHealth = z.infer<typeof globalRegistryHealthSchema>;

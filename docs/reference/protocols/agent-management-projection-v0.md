@@ -38,6 +38,10 @@ The projection is stale after any lifecycle event until recomputed. Consumers
 must tolerate missing fields and fall back to existing status/review-packet
 payloads.
 
+When available, `loopx status --format json` exposes this view at the top-level
+`agent_management_projection` key. Consumers should still treat the key as
+optional so older status producers and cached snapshots remain readable.
+
 ## Non-Goals
 
 This contract intentionally does not add:

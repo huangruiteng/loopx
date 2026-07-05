@@ -244,6 +244,9 @@ from .control_plane.agents.subagent_activity import (
     compact_subagent_run,
     subagent_activity_for_goal,
 )
+from .control_plane.agents.management_projection import (
+    build_agent_management_projection as _build_agent_management_projection_read_model,
+)
 from .control_plane.runtime.stale_latest_run import (
     stale_latest_run_projection_warning as _stale_latest_run_projection_warning_read_model,
 )
@@ -7263,7 +7266,7 @@ def collect_status(
         runtime_root=runtime_root,
         limit=max(MAX_TODO_INDEX_ITEMS, display_limit),
     )
-    return {
+    payload = {
         "ok": bool(contract.get("ok")) and bool(global_registry.get("ok", True)),
         "registry": str(registry_path),
         "runtime_root": str(runtime_root),
@@ -7289,6 +7292,10 @@ def collect_status(
         "usage_summary": usage_summary,
         "todo_index": todo_index,
     }
+    agent_management_projection = _build_agent_management_projection_read_model(payload)
+    if agent_management_projection.get("agents"):
+        payload["agent_management_projection"] = agent_management_projection
+    return payload
 
 
 def render_status_markdown(payload: dict[str, Any]) -> str:

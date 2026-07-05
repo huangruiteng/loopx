@@ -55,6 +55,7 @@ def main() -> int:
         "reuse_public_compatible_code_only",
         "copied code keeps required attribution or notice text",
         "dashboard consumers remain functional when the projection is absent",
+        "top-level\n`agent_management_projection` key",
     ]:
         assert_contains(contract, needle, "contract")
 
