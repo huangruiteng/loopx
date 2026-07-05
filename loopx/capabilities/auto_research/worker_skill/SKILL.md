@@ -186,6 +186,11 @@ after reviewing packet boundary, then capture compact live evidence from the
 lane-authored packet when visible lanes are accepted. Do not use worker-turn to
 manufacture dev or holdout metrics.
 
+After a real append/capture succeeds for the selected frontier todo, close out
+that selected todo with compact public-safe evidence. Dependent evaluator or
+successor lanes usually resume from `todo_done:<selected_todo_id>`; leaving the
+executor todo open after supported evidence strands the next round.
+
 Must not:
 
 - edit protected evaluator/data scope;
