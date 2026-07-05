@@ -5,7 +5,10 @@ import re
 from typing import Any
 
 from ..todos.decision_scope import todo_gate_relation, todo_gate_relation_blocks_agent
-from ..work_items.work_lane import work_lane_contract_requires_current_agent_attempt
+from ..work_items.work_lane import (
+    work_lane_contract_is_due_monitor_attempt,
+    work_lane_contract_requires_current_agent_attempt,
+)
 from ..todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -498,14 +501,6 @@ def _first_compact_todo_id(items: Any) -> str | None:
     return None
 
 
-def _work_lane_due_monitor_attempt(work_lane_contract: dict[str, Any] | None) -> bool:
-    return bool(
-        isinstance(work_lane_contract, dict)
-        and work_lane_contract.get("monitor_kind") == "todo_monitor_due"
-        and work_lane_contract.get("must_attempt_work") is True
-    )
-
-
 def _agent_lane_frontier_hint(
     *,
     goal_id: str,
@@ -567,7 +562,7 @@ def _agent_lane_frontier_hint(
                 next_cli_action=action,
             )
 
-    if _work_lane_due_monitor_attempt(work_lane_contract):
+    if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
         return None
     if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
         return None
@@ -950,7 +945,7 @@ def _agent_scope_no_candidate_frontier(
         return None
     if isinstance(agent_lane_next_action, dict):
         return None
-    if _work_lane_due_monitor_attempt(work_lane_contract):
+    if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
         return None
     if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
         return None

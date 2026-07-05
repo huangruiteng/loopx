@@ -9,8 +9,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.testing.quota_fixtures import quota_status_payload  # noqa: E402
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from loopx.status import compact_todo_group  # noqa: E402
 
 
 GOAL_ID = "monitor-scheduler-fixture"
@@ -44,65 +44,21 @@ def status_payload(
     coordination: dict | None = None,
     latest_runs: list[dict] | None = None,
 ) -> dict:
-    agent_todos = compact_todo_group(
-        agent_todo_items,
-        source_section="Agent Todo",
-        role="agent",
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status=status,
+        agent_todo_items=agent_todo_items,
+        recommended_action="Route scheduled monitor todos from structured metadata.",
+        next_action="Route scheduled monitor todos from structured metadata.",
+        coordination=coordination
+        or {
+            "registered_agents": [AGENT_ID],
+            "primary_agent": AGENT_ID,
+        },
+        latest_runs=latest_runs
+        if latest_runs is not None
+        else FRONTIER_REPLAN_ACK_RUNS,
     )
-    return {
-        "ok": True,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": status,
-                    "waiting_on": "codex",
-                    "severity": "info",
-                    "source": "project_asset",
-                    "recommended_action": "Route scheduled monitor todos from structured metadata.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 10,
-                        "spent_slots": 0,
-                        "state": "eligible",
-                        "reason": "eligible fixture",
-                    },
-                    "project_asset": {
-                        "next_action": "Route scheduled monitor todos from structured metadata.",
-                        "stop_condition": "stop on private material",
-                        "agent_todos": agent_todos,
-                    },
-                }
-            ]
-        },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": status,
-                    "adapter_kind": "harness_self_improvement",
-                    "adapter_status": "connected-read-only",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 10,
-                    },
-                    "coordination": coordination
-                    or {
-                        "registered_agents": [AGENT_ID],
-                        "primary_agent": AGENT_ID,
-                    },
-                    "latest_runs": latest_runs
-                    if latest_runs is not None
-                    else FRONTIER_REPLAN_ACK_RUNS,
-                }
-            ]
-        },
-    }
 
 
 def monitor_item(

@@ -11,6 +11,7 @@ WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS = {
     "repair_monitor_schedule_metadata",
     "repair_resume_gate_or_close_standing_monitor",
 }
+WORK_LANE_TODO_MONITOR_DUE_KIND = "todo_monitor_due"
 PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES = {
     "private_boundary_no_authorized_read",
 }
@@ -70,6 +71,16 @@ def work_lane_contract_requires_current_agent_attempt(
     return obligation in WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS
 
 
+def work_lane_contract_is_due_monitor_attempt(
+    contract: dict[str, Any] | None,
+) -> bool:
+    return bool(
+        isinstance(contract, dict)
+        and contract.get("monitor_kind") == WORK_LANE_TODO_MONITOR_DUE_KIND
+        and contract.get("must_attempt_work") is True
+    )
+
+
 def build_work_lane_contract(
     *,
     progress_scope: str,
@@ -112,7 +123,7 @@ def build_work_lane_contract(
         return {
             "schema_version": WORK_LANE_CONTRACT_SCHEMA_VERSION,
             "lane": "continuous_monitor",
-            "monitor_kind": "todo_monitor_due",
+            "monitor_kind": WORK_LANE_TODO_MONITOR_DUE_KIND,
             "next_lane": "advancement_task" if has_advancement_todos else "continuous_monitor",
             "obligation": "attempt_due_monitor",
             "must_attempt_work": True,

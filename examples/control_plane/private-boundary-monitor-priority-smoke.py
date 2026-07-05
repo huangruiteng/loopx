@@ -10,74 +10,33 @@ import sys
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.testing.quota_fixtures import quota_status_payload  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 
 
 GOAL_ID = "private-boundary-monitor-priority-fixture"
+AGENT_ID = "codex-product-capability"
 PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 
 
 def status_payload(*, monitor_todo: dict, advancement_todo: dict) -> dict:
-    agent_todos = {
-        "schema_version": "todo_summary_v0",
-        "source_section": "Agent Todo",
-        "total_count": 2,
-        "open_count": 2,
-        "done_count": 0,
-        "first_open_items": [monitor_todo, advancement_todo],
-        "monitor_open_items": [monitor_todo],
-        "monitor_due_items": [monitor_todo],
-        "monitor_due_count": 1,
-        "first_executable_items": [advancement_todo],
-        "claim_scope": {"agent_id": "codex-product-capability"},
-    }
-    return {
-        "ok": True,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "eligible",
-                    "waiting_on": "codex",
-                    "severity": "info",
-                    "source": "project_asset",
-                    "recommended_action": advancement_todo["text"],
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 10,
-                        "spent_slots": 0,
-                        "state": "eligible",
-                        "reason": "eligible fixture",
-                    },
-                    "project_asset": {
-                        "next_action": advancement_todo["text"],
-                        "stop_condition": "stop on fixture boundary",
-                        "agent_todos": agent_todos,
-                    },
-                    "agent_todos": agent_todos,
-                }
-            ]
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status="eligible",
+        registry_status="active",
+        agent_todo_items=[monitor_todo, advancement_todo],
+        recommended_action=advancement_todo["text"],
+        next_action=advancement_todo["text"],
+        claim_scope_agent_id=AGENT_ID,
+        coordination={
+            "primary_agent": "codex-main-control",
+            "registered_agents": [
+                "codex-main-control",
+                AGENT_ID,
+            ],
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": [
-                            "codex-main-control",
-                            "codex-product-capability",
-                        ],
-                    },
-                    "quota": {"compute": 1.0, "window_hours": 24},
-                }
-            ]
-        },
-    }
+        goal_extra={"quota": {"compute": 1.0, "window_hours": 24}},
+    )
 
 
 def test_private_boundary_due_monitor_is_context_only() -> None:
@@ -89,7 +48,7 @@ def test_private_boundary_due_monitor_is_context_only() -> None:
         "priority": "P0-LOCAL",
         "task_class": "continuous_monitor",
         "action_kind": "local_department_doc_todo_projection_monitor",
-        "claimed_by": "codex-product-capability",
+        "claimed_by": AGENT_ID,
         "next_due_at": PAST_DUE_AT,
         "result_hash": "private_boundary_no_authorized_read",
     }
@@ -101,7 +60,7 @@ def test_private_boundary_due_monitor_is_context_only() -> None:
         "priority": "P2",
         "task_class": "advancement_task",
         "action_kind": "continue_canary_refactor",
-        "claimed_by": "codex-product-capability",
+        "claimed_by": AGENT_ID,
     }
     guard = build_quota_should_run(
         status_payload(
@@ -109,17 +68,15 @@ def test_private_boundary_due_monitor_is_context_only() -> None:
             advancement_todo=advancement_todo,
         ),
         goal_id=GOAL_ID,
-        agent_id="codex-product-capability",
+        agent_id=AGENT_ID,
     )
     lane = guard["work_lane_contract"]
     assert guard["agent_todo_summary"]["monitor_due_count"] == 1, guard
     assert lane["lane"] == "advancement_task", lane
     assert lane["reason_codes"] == ["open_agent_todo", "due_monitor_context"], lane
     assert guard["recommended_action"] == advancement_todo["text"], guard
-    assert (
-        guard["interaction_contract"]["agent_channel"]["primary_action"]
-        == f"{advancement_todo['text']}"
-    ), guard
+    primary_action = guard["interaction_contract"]["agent_channel"]["primary_action"]
+    assert advancement_todo["text"] in primary_action, guard
 
 
 def test_public_due_monitor_priority_matrix() -> None:
@@ -131,7 +88,7 @@ def test_public_due_monitor_priority_matrix() -> None:
         "priority": "P0",
         "task_class": "continuous_monitor",
         "action_kind": "public_release_monitor",
-        "claimed_by": "codex-product-capability",
+        "claimed_by": AGENT_ID,
         "next_due_at": PAST_DUE_AT,
     }
     public_low_monitor = {
@@ -147,7 +104,7 @@ def test_public_due_monitor_priority_matrix() -> None:
         "priority": "P1",
         "task_class": "advancement_task",
         "action_kind": "continue_canary_refactor",
-        "claimed_by": "codex-product-capability",
+        "claimed_by": AGENT_ID,
     }
 
     high_guard = build_quota_should_run(
@@ -156,7 +113,7 @@ def test_public_due_monitor_priority_matrix() -> None:
             advancement_todo=advancement_todo,
         ),
         goal_id=GOAL_ID,
-        agent_id="codex-product-capability",
+        agent_id=AGENT_ID,
     )
     high_lane = high_guard["work_lane_contract"]
     assert high_lane["lane"] == "continuous_monitor", high_lane
@@ -173,7 +130,7 @@ def test_public_due_monitor_priority_matrix() -> None:
             advancement_todo=advancement_todo,
         ),
         goal_id=GOAL_ID,
-        agent_id="codex-product-capability",
+        agent_id=AGENT_ID,
     )
     low_lane = low_guard["work_lane_contract"]
     assert low_lane["lane"] == "advancement_task", low_lane

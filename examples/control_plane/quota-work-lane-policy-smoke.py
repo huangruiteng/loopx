@@ -21,6 +21,7 @@ from loopx.control_plane.work_items.work_lane_context import (  # noqa: E402
     item_progress_scope,
     latest_run_progress_scope,
 )
+from loopx.control_plane.testing.quota_fixtures import quota_status_payload  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 
 
@@ -51,63 +52,14 @@ def status_payload(
                 "priority": "P1",
             }
         ]
-    agent_todos = {
-        "schema_version": "todo_summary_v0",
-        "source_section": "Agent Todo",
-        "total_count": len(agent_todo_items),
-        "open_count": len(agent_todo_items),
-        "done_count": 0,
-        "first_open_items": agent_todo_items,
-    }
-    item = {
-        "goal_id": GOAL_ID,
-        "status": status,
-        "waiting_on": "codex",
-        "severity": "info",
-        "source": "project_asset",
-        "recommended_action": next_action,
-        "quota": {
-            "compute": 1.0,
-            "window_hours": 24,
-            "slot_minutes": 1,
-            "allowed_slots": 10,
-            "spent_slots": 0,
-            "state": "eligible",
-            "reason": "eligible fixture",
-        },
-        "project_asset": {
-            "next_action": next_action,
-            "stop_condition": "stop on private material",
-            "agent_todos": agent_todos,
-        },
-    }
-    if post_handoff_latest_run:
-        item["handoff_readiness"] = {
-            "post_handoff_run_seen": True,
-            "handoff_status": "post_handoff_run_seen",
-            "post_handoff_latest_run": post_handoff_latest_run,
-        }
-    return {
-        "ok": True,
-        "attention_queue": {"items": [item]},
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": status,
-                    "adapter_kind": "harness_self_improvement",
-                    "adapter_status": "connected-read-only",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 10,
-                    },
-                }
-            ]
-        },
-    }
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status=status,
+        agent_todo_items=agent_todo_items,
+        recommended_action=next_action,
+        next_action=next_action,
+        post_handoff_latest_run=post_handoff_latest_run,
+    )
 
 
 def assert_work_lane_context_matches_quota_state_machine_cases() -> None:

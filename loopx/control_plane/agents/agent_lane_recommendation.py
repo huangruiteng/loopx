@@ -11,6 +11,7 @@ from ..todos.contract import (
 )
 from ..todos.summary_item import compact_todo_summary_item
 from ..work_items.interaction_contract import protocol_action_text
+from ..work_items.work_lane import work_lane_contract_is_due_monitor_attempt
 from .agent_scope import (
     _todo_item_is_actionable_open,
     _todo_task_class,
@@ -171,11 +172,7 @@ def selected_recommended_action_from_work_lane(
     work_lane_contract: dict[str, Any] | None,
 ) -> Any:
     raw_action = item.get("recommended_action")
-    if (
-        isinstance(work_lane_contract, dict)
-        and work_lane_contract.get("monitor_kind") == "todo_monitor_due"
-        and work_lane_contract.get("must_attempt_work") is True
-    ):
+    if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
         due_items = (
             work_lane_contract.get("monitor_due_items")
             if isinstance(work_lane_contract.get("monitor_due_items"), list)

@@ -88,6 +88,9 @@ from .control_plane.work_items.goal_route_hint import build_goal_route_hint
 from .control_plane.work_items.work_lane_context import (
     build_work_lane_context_contract,
 )
+from .control_plane.work_items.work_lane import (
+    work_lane_contract_is_due_monitor_attempt,
+)
 from .control_plane.scheduler.scheduler_hint import (
     build_codex_app_scheduler_ack_event,
     build_scheduler_hint,
@@ -673,14 +676,6 @@ def _blocked_priority_fallback(
             "continue the fallback only if it still matches the latest user priority."
         ),
     }
-
-
-def _work_lane_due_monitor_attempt(work_lane_contract: dict[str, Any] | None) -> bool:
-    return bool(
-        isinstance(work_lane_contract, dict)
-        and work_lane_contract.get("monitor_kind") == "todo_monitor_due"
-        and work_lane_contract.get("must_attempt_work") is True
-    )
 
 
 def _selected_action_with_capability_gate(
@@ -2193,7 +2188,7 @@ def build_quota_should_run(
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
         )
-        due_monitor_attempt = _work_lane_due_monitor_attempt(work_lane_contract)
+        due_monitor_attempt = work_lane_contract_is_due_monitor_attempt(work_lane_contract)
         if capability_gate and not due_monitor_attempt:
             if capability_gate.get("action") in {"repair_bridge", "ask_owner", "skip"}:
                 selected_recommended_action = (
