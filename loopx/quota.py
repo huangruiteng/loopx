@@ -80,6 +80,11 @@ from .control_plane.scheduler.monitor_poll_policy import (
     allows_due_monitor_poll,
     allows_no_spend_external_monitor_poll,
 )
+from .control_plane.scheduler.external_evidence_observation import (
+    build_external_evidence_observation_obligation,
+    build_external_evidence_poll_signal,
+    todo_summary_open_task_counts,
+)
 from .control_plane.scheduler.monitor_poll_writeback import write_monitor_poll_todo_state
 from .control_plane.scheduler.monitor_target import build_quota_monitor_target
 from .control_plane.scheduler.state import (
@@ -137,10 +142,8 @@ from .control_plane.todos.projection import (
     todo_priority_label as projection_todo_priority_label,
     todo_priority_rank as projection_todo_priority_rank,
     todo_projection_sort_key as projection_todo_projection_sort_key,
-    todo_summary_has_only_future_scoped_monitor_work as projection_todo_summary_has_only_future_scoped_monitor_work,
     todo_summary_claim_scope_agent_id as projection_todo_summary_claim_scope_agent_id,
     todo_summary_first_executable_item as projection_todo_summary_first_executable_item,
-    todo_summary_monitor_items as projection_todo_summary_monitor_items,
     todo_summary_monitor_due_count as projection_todo_summary_monitor_due_count,
     todo_summary_monitor_due_items as projection_todo_summary_monitor_due_items,
     todo_summary_monitor_schedule_gap_count as projection_todo_summary_monitor_schedule_gap_count,
@@ -245,8 +248,6 @@ DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
     "dependency_observation",
     "dependency_monitor",
 )
-EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION = "external_evidence_observation_obligation_v0"
-PROJECTED_MONITOR_HANDLE_SCHEMA_VERSION = "projected_monitor_handle_v0"
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
 DEFAULT_AVAILABLE_CAPABILITIES = (
@@ -258,32 +259,6 @@ TODO_BACKLOG_ITEM_LIMIT = 8
 TODO_DEFERRED_VISIBILITY_LIMIT = 8
 TODO_VISIBILITY_LANE_LIMIT = 16
 MONITOR_DUE_ITEM_LIMIT = 1
-EXTERNAL_EVIDENCE_OBSERVE_PATTERNS = (
-    re.compile(
-        r"(?i)\b(?:poll(?:ing)?|observ(?:e|ing)|watch(?:ing)?|await(?:ing)?|wait\s+for|monitor(?:ing)?)\b.*\b"
-        r"(?:compact|result|artifact|marker|job|thread|run[-_\s]?id|worker|controller|writeback|trial[_\s-]?result)\b"
-    ),
-    re.compile(
-        r"(?i)\bwhen\b.*\b(?:result|artifact|marker|trial[_\s-]?result)\b.*\b"
-        r"(?:ingest|write\s*back|writeback|validate|review)\b"
-    ),
-)
-EXTERNAL_EVIDENCE_LAUNCHED_PATTERNS = (
-    re.compile(r"(?i)\b(?:launched|started|spawned|running|alive|materialized)\b.*\b(?:polling|result|marker)\b"),
-    re.compile(r"(?i)(?:launched|started|spawned|running|alive|materialized)[_\s-]+(?:polling|result|marker)"),
-    re.compile(r"(?i)\bready_for_compact_polling\b"),
-    re.compile(r"(?i)\bcompact\b.*\bresult\b.*\b(?:not\s+ready|ingest\s+not\s+ready)\b"),
-)
-EXTERNAL_EVIDENCE_HANDLE_ABSENT_PATTERNS = (
-    re.compile(
-        r"(?i)\b(?:no|without|absent|missing)\b.*\b"
-        r"(?:observable\s+)?(?:handle|channel|writeback|launch\s+summary|run[-_\s]?id|job)\b"
-    ),
-    re.compile(
-        r"(?i)\b(?:handle|channel|writeback|launch\s+summary|run[-_\s]?id|job)\b.*\b"
-        r"(?:absent|missing|not\s+available|does\s+not\s+exist|exists\s+yet)\b"
-    ),
-)
 
 def _now_local() -> str:
     return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
@@ -422,172 +397,6 @@ def _item_progress_scope(item: dict[str, Any]) -> str:
     )
 
 
-def _external_evidence_poll_signal(
-    item: dict[str, Any],
-    *,
-    agent_todo_summary: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Detect launched external work whose next safe step is observation."""
-
-    if (
-        isinstance(agent_todo_summary, dict)
-        and _todo_summary_claim_scope_agent_id(agent_todo_summary)
-        and _open_todo_count(agent_todo_summary) <= 0
-    ):
-        return None
-
-    scoped_monitor_handle = _projected_monitor_handle(agent_todo_summary)
-    scoped_monitor_watch = _scoped_monitor_watch_without_advancement(agent_todo_summary)
-    if _todo_summary_has_only_future_scoped_monitor_work(agent_todo_summary):
-        return None
-    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    action_texts = [
-        str(value or "").strip()
-        for value in (
-            project_asset.get("next_action"),
-            project_asset.get("recommended_action"),
-            item.get("next_action"),
-            item.get("recommended_action"),
-        )
-        if str(value or "").strip()
-    ]
-    todo_texts: list[str] = []
-    launched_texts: list[str] = [
-        str(value or "").strip()
-        for value in (
-            item.get("status"),
-            item.get("latest_run_classification"),
-            item.get("lifecycle_phase"),
-        )
-        if str(value or "").strip()
-    ]
-    lifecycle_flags = item.get("lifecycle_flags")
-    if isinstance(lifecycle_flags, list):
-        launched_texts.extend(
-            str(value or "").strip()
-            for value in lifecycle_flags
-            if str(value or "").strip()
-        )
-    if isinstance(agent_todo_summary, dict):
-        items = agent_todo_summary.get("first_open_items")
-        if isinstance(items, list):
-            for item_value in items:
-                if not isinstance(item_value, dict):
-                    continue
-                for key in ("title", "text"):
-                    value = str(item_value.get(key) or "").strip()
-                    if value:
-                        todo_texts.append(value)
-                for key in ("note", "evidence", "reason"):
-                    value = str(item_value.get(key) or "").strip()
-                    if value:
-                        launched_texts.append(value)
-
-    all_texts = [*action_texts, *todo_texts, *launched_texts]
-    if not all_texts:
-        return None
-
-    direct_observe_action = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_OBSERVE_PATTERNS
-        for text in action_texts
-    )
-    direct_observe_todo = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_OBSERVE_PATTERNS
-        for text in todo_texts
-    )
-    direct_observe_state = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_OBSERVE_PATTERNS
-        for text in launched_texts
-    )
-    launched_wait = bool(action_texts) and any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_LAUNCHED_PATTERNS
-        for text in launched_texts
-    )
-    handle_absent = any(
-        pattern.search(text)
-        for pattern in EXTERNAL_EVIDENCE_HANDLE_ABSENT_PATTERNS
-        for text in action_texts
-    )
-    if handle_absent and not launched_wait and not direct_observe_action and not direct_observe_state:
-        return None
-    direct_observe = direct_observe_action or direct_observe_todo or direct_observe_state
-    if not direct_observe and not launched_wait:
-        return None
-    if scoped_monitor_watch and not scoped_monitor_handle:
-        return None
-    if scoped_monitor_watch and _todo_summary_monitor_due_count(agent_todo_summary) <= 0:
-        return None
-
-    scoped_monitor_target = (
-        str(scoped_monitor_handle.get("target_text") or "").strip()
-        if isinstance(scoped_monitor_handle, dict)
-        else ""
-    )
-    observation_target = scoped_monitor_target or next(
-        (text for text in action_texts if text),
-        None,
-    ) or next((text for text in todo_texts if text), "")
-    signal = {
-        "source": "active_state_or_latest_run",
-        "trigger": "implicit_launched_external_poll",
-        "observation_target": observation_target,
-        "matched_signal": "launched_wait" if launched_wait else "direct_observe",
-        "matched_channel": (
-            "action"
-            if launched_wait or direct_observe_action
-            else "todo"
-            if direct_observe_todo
-            else "state"
-        ),
-    }
-    if scoped_monitor_handle:
-        signal["monitor_handle"] = scoped_monitor_handle
-    return signal
-
-
-def _todo_summary_monitor_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    return projection_todo_summary_monitor_items(summary)
-
-
-def _projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:
-    for item in _todo_summary_monitor_items(summary):
-        target_key = str(item.get("target_key") or "").strip()
-        if not target_key:
-            continue
-        handle: dict[str, Any] = {
-            "schema_version": PROJECTED_MONITOR_HANDLE_SCHEMA_VERSION,
-            "target_key": target_key,
-        }
-        todo_id = normalize_todo_id(item.get("todo_id"))
-        if todo_id:
-            handle["todo_id"] = todo_id
-        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
-        if claimed_by:
-            handle["claimed_by"] = claimed_by
-        next_due_at = str(item.get("next_due_at") or "").strip()
-        if next_due_at:
-            handle["next_due_at"] = next_due_at
-        target_text = str(item.get("title") or item.get("text") or "").strip()
-        if target_text:
-            handle["target_text"] = target_text[:320]
-        return handle
-    return None
-
-
-def _scoped_monitor_watch_without_advancement(summary: dict[str, Any] | None) -> bool:
-    if not isinstance(summary, dict):
-        return False
-    if not _todo_summary_claim_scope_agent_id(summary):
-        return False
-    if not _todo_summary_monitor_items(summary):
-        return False
-    return _open_todo_task_counts(summary).get("advancement", 0) <= 0
-
-
 def _post_handoff_latest_run(item: dict[str, Any]) -> dict[str, Any]:
     handoff_readiness = (
         item.get("handoff_readiness")
@@ -612,8 +421,11 @@ def _work_lane_contract(
     agent_todo_summary: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     progress_scope = _item_progress_scope(item)
-    external_poll_signal = _external_evidence_poll_signal(item, agent_todo_summary=agent_todo_summary)
-    todo_counts = _open_todo_task_counts(agent_todo_summary)
+    external_poll_signal = build_external_evidence_poll_signal(
+        item,
+        agent_todo_summary=agent_todo_summary,
+    )
+    todo_counts = todo_summary_open_task_counts(agent_todo_summary)
     due_monitor_items = _todo_summary_monitor_due_items(agent_todo_summary)
     due_monitor_count = _todo_summary_monitor_due_count(
         agent_todo_summary,
@@ -651,97 +463,6 @@ def _work_lane_contract(
         resume_blocked_by_monitor_count=len(monitor_blocked_resume_candidates),
         resume_blocked_by_monitor_items=monitor_blocked_resume_candidates,
     )
-
-
-def _external_evidence_observation_obligation(
-    item: dict[str, Any],
-    *,
-    state: str,
-    agent_todo_summary: dict[str, Any] | None,
-    work_lane_contract: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Return the machine contract for a waiting external-evidence monitor."""
-
-    explicit_wait = state == "waiting" and str(item.get("waiting_on") or "") == "external_evidence"
-    poll_signal = _external_evidence_poll_signal(item, agent_todo_summary=agent_todo_summary)
-    if not explicit_wait and not poll_signal:
-        return None
-    if (
-        not explicit_wait
-        and poll_signal
-        and isinstance(agent_todo_summary, dict)
-        and _todo_summary_claim_scope_agent_id(agent_todo_summary)
-        and _open_todo_count(agent_todo_summary) <= 0
-    ):
-        return None
-    if (
-        not explicit_wait
-        and isinstance(work_lane_contract, dict)
-        and work_lane_contract.get("lane") == "advancement_task"
-    ):
-        return None
-    next_todo = ""
-    if isinstance(agent_todo_summary, dict):
-        next_todo = str(agent_todo_summary.get("next") or "").strip()
-        if not next_todo:
-            items = agent_todo_summary.get("first_open_items")
-            if isinstance(items, list):
-                for item_value in items:
-                    if isinstance(item_value, dict) and str(item_value.get("text") or "").strip():
-                        next_todo = str(item_value.get("text") or "").strip()
-                        break
-    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    observation_target = next_todo or str(
-        project_asset.get("next_action") or item.get("recommended_action") or ""
-    ).strip()
-    if poll_signal and poll_signal.get("observation_target"):
-        observation_target = str(poll_signal.get("observation_target") or observation_target)
-
-    obligation = {
-        "schema_version": EXTERNAL_EVIDENCE_OBSERVATION_SCHEMA_VERSION,
-        "required": True,
-        "kind": "external_evidence_monitor" if explicit_wait else "launched_external_work_monitor",
-        "trigger": "registry_waiting_on_external_evidence"
-        if explicit_wait
-        else poll_signal.get("trigger"),
-        "signal_source": poll_signal.get("source") if poll_signal else "registry",
-        "scope": "read_only_observation",
-        "must_attempt_observation": True,
-        "delivery_allowed": False,
-        "requires_observable_handle": True,
-        "observable_handle_examples": [
-            "thread_id",
-            "automation_id",
-            "job_id",
-            "lock_or_result_marker",
-            "compact_writeback_path",
-        ],
-        "observation_sources": [
-            "active_state",
-            "recommended_action",
-            "goal_boundary.next_probe",
-            "project_asset.agent_todos.next",
-            "connected controller or thread status",
-        ],
-        "observation_target": _protocol_action_text(observation_target, limit=320),
-        "if_handle_missing": (
-            "write a compact blocker or launch-readiness fault; do not treat the "
-            "missing worker/controller handle as unchanged external evidence"
-        ),
-        "if_handle_live_and_unchanged": "quiet_noop_no_spend",
-        "if_material_transition": (
-            "write back the compact result/blocker/state transition, validate, then "
-            "spend exactly once when the writeback is substantive"
-        ),
-        "spend_policy": (
-            "no spend for read-only unchanged observation; spend only after validated "
-            "compact transition or blocker writeback"
-        ),
-    }
-    monitor_handle = poll_signal.get("monitor_handle") if isinstance(poll_signal, dict) else None
-    if isinstance(monitor_handle, dict) and monitor_handle:
-        obligation["monitor_handle"] = monitor_handle
-    return obligation
 
 
 def _focus_wait_quota(payload: dict[str, Any]) -> dict[str, Any]:
@@ -2483,91 +2204,8 @@ def _todo_summary_monitor_schedule_gap_count(
     )
 
 
-def _todo_summary_has_only_future_scoped_monitor_work(summary: dict[str, Any] | None) -> bool:
-    return projection_todo_summary_has_only_future_scoped_monitor_work(summary)
-
-
 def _first_executable_todo_item(agent_todo_summary: dict[str, Any] | None) -> dict[str, Any] | None:
     return projection_todo_summary_first_executable_item(agent_todo_summary)
-
-
-def _open_todo_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
-    open_count = _open_todo_count(summary)
-    classified_items: list[dict[str, Any]] = []
-    seen: set[tuple[Any, str]] = set()
-    executable_backlog_items: list[dict[str, Any]] | None = None
-    monitor_open_items: list[dict[str, Any]] | None = None
-    if isinstance(summary, dict):
-        raw_executable_backlog = summary.get("executable_backlog_items")
-        if isinstance(raw_executable_backlog, list):
-            executable_backlog_items = [
-                item
-                for item in raw_executable_backlog
-                if isinstance(item, dict)
-                if _todo_item_is_actionable_open(item)
-                if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-            ]
-        raw_monitor_open = summary.get("monitor_open_items")
-        if isinstance(raw_monitor_open, list):
-            monitor_open_items = [
-                item
-                for item in raw_monitor_open
-                if isinstance(item, dict)
-                if _todo_item_is_actionable_open(item)
-                if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-            ]
-        for key in (
-            "first_executable_items",
-            "first_open_items",
-            "monitor_open_items",
-        ):
-            source_items = summary.get(key)
-            if not isinstance(source_items, list):
-                continue
-            for item in source_items:
-                if not isinstance(item, dict):
-                    continue
-                text = str(item.get("text") or "").strip()
-                if not text:
-                    continue
-                identity = (item.get("index"), text)
-                if identity in seen:
-                    continue
-                seen.add(identity)
-                classified_items.append(item)
-    if executable_backlog_items is not None:
-        advancement_count = len(executable_backlog_items)
-    else:
-        visible_open = min(open_count, len(classified_items))
-        advancement_visible_count = sum(
-            1
-            for item in classified_items[:visible_open]
-            if _todo_item_is_actionable_open(item)
-            and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-        )
-        hidden_count = max(0, open_count - visible_open)
-        advancement_count = advancement_visible_count + hidden_count
-    if monitor_open_items is not None:
-        monitor_visible_count = len(monitor_open_items)
-    else:
-        visible_open = min(open_count, len(classified_items))
-        monitor_visible_count = sum(
-            1
-            for item in classified_items[:visible_open]
-            if _todo_item_is_actionable_open(item)
-            and _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-        )
-    monitor_due_count = _todo_summary_monitor_due_count(summary)
-    monitor_schedule_gap_count = _todo_summary_monitor_schedule_gap_count(summary)
-    hidden_count = max(0, open_count - len(classified_items))
-    return {
-        "open": open_count,
-        "advancement": advancement_count,
-        "monitor": monitor_visible_count,
-        "monitor_due": monitor_due_count,
-        "monitor_schedule_gap": monitor_schedule_gap_count,
-        "hidden": hidden_count,
-    }
 
 
 def _outcome_floor_blocker_already_projected(
@@ -4132,7 +3770,7 @@ def build_quota_should_run(
                     "reason": blocked_priority_fallback.get("reason")
                     or heartbeat_recommendation.get("reason"),
                 }
-        external_evidence_observation = _external_evidence_observation_obligation(
+        external_evidence_observation = build_external_evidence_observation_obligation(
             item,
             state=state,
             agent_todo_summary=agent_todo_summary,

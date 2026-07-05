@@ -14,7 +14,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.quota import (  # noqa: E402
     _first_executable_todo_item as quota_first_executable_todo_item,
-    _todo_summary_monitor_items as quota_todo_summary_monitor_items,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
     _todo_task_class as quota_todo_task_class,
     build_quota_should_run,
@@ -39,6 +38,9 @@ from loopx.control_plane.todos.projection import (  # noqa: E402
     todo_projection_sort_key as shared_todo_projection_sort_key,
     todo_summary_first_executable_item as shared_first_executable_todo_item,
     todo_summary_monitor_items as shared_todo_summary_monitor_items,
+)
+from loopx.control_plane.scheduler.external_evidence_observation import (  # noqa: E402
+    projected_monitor_handle,
 )
 
 
@@ -83,6 +85,7 @@ def build_agent_todo_summary() -> dict[str, Any]:
                 "[P2] Monitor unscheduled public smoke signal after schedule metadata is added.",
                 task_class=TODO_TASK_CLASS_MONITOR,
                 todo_id="todo_monitor_unscheduled",
+                target_key="public-smoke:unscheduled",
             ),
             todo(
                 2,
@@ -90,6 +93,7 @@ def build_agent_todo_summary() -> dict[str, Any]:
                 task_class=TODO_TASK_CLASS_MONITOR,
                 todo_id="todo_monitor_p0",
                 next_due_at="2026-01-01T00:00:00+00:00",
+                target_key="public-smoke:due",
             ),
             todo(
                 3,
@@ -292,12 +296,13 @@ def assert_monitor_item_collection_parity(summary: dict[str, Any]) -> None:
         "todo_monitor_unscheduled",
         "todo_monitor_p0",
     ]
-    for selector in (
-        shared_todo_summary_monitor_items,
-        quota_todo_summary_monitor_items,
-    ):
-        selected_ids = [item["todo_id"] for item in selector(summary)]
-        assert selected_ids == expected_ids, selected_ids
+    selected_ids = [item["todo_id"] for item in shared_todo_summary_monitor_items(summary)]
+    assert selected_ids == expected_ids, selected_ids
+
+    handle = projected_monitor_handle(summary)
+    assert isinstance(handle, dict), summary
+    assert handle["schema_version"] == "projected_monitor_handle_v0", handle
+    assert handle["todo_id"] == "todo_monitor_p0", handle
 
 
 def assert_first_executable_item_parity(summary: dict[str, Any]) -> None:
