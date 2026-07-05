@@ -62,6 +62,48 @@ Do not spawn sub-agents for work that is tightly coupled to the next immediate
 decision. If the main controller is blocked on the answer, it should usually do
 that part itself.
 
+## Context Policy: Fresh, Fork, Resume
+
+The controller should choose the child context shape from the work type. LoopX
+can record the decision and provide hints, but the active agent loop still owns
+whether to launch a child, continue itself, or wait.
+
+| Work type | Preferred context | Why | Required parent brief |
+| --- | --- | --- | --- |
+| Exploration, broad mapping, prior-art scan, risk discovery | Fresh child | Clean context reduces inherited assumptions and is cheaper than copying a long parent thread. | Objective, authority artifact, allowed sources, public/private boundary, expected output, and non-goals. |
+| Independent review, adversarial check, public/private scan, validation map | Fresh child | The child should not inherit the parent's conclusion or local tunnel vision. | Candidate claim to review, exact evidence to inspect, validation command or acceptance rule, and merge rule. |
+| Same-branch bug follow-up, failed smoke repair, review-comment fix | Resume or fork child | The child needs recent debugging context, branch state, and failed-command history. | Branch/worktree, failing evidence, latest patch summary, and the next bounded fix target. |
+| Disjoint implementation slice after controller planning | Fresh child with a narrow handoff | The implementation should start from the shared control plane, not from the controller's whole chat history. | Claimed todo, allowed paths, write scope, validation, and parent review requirement. |
+| Long-running owned side lane | Resume existing side agent | Stable ownership is more valuable than a new agent for each tick. | Agent id, lane scope, due monitor or todo, and latest accepted evidence. |
+| Emergency rollback or production action | No automatic child by default | Boundary risk is high and usually needs explicit operator control. | Operator approval, stop condition, and reversible command plan. |
+
+This policy is deliberately asymmetric: exploration and review default to fresh
+children, while continuous repair and same-branch follow-up default to resume or
+fork. Fresh children are useful only when the parent can write a complete brief.
+If the parent cannot state the authority, boundary, expected output, and merge
+rule, spawning a fresh child only hides ambiguity.
+
+The control plane should eventually expose a compact advisory hint rather than
+a hard scheduler decision:
+
+```json
+{
+  "subagent_context_hint": {
+    "recommended_context": "fresh",
+    "reason": "independent_review",
+    "parent_brief_required": true,
+    "may_spawn_idle_agent": true,
+    "writeback_owner": "parent"
+  }
+}
+```
+
+`recommended_context` can be `fresh`, `resume`, `fork`, or
+`do_not_spawn`. The hint should be derived from todo class, claim state,
+evidence freshness, validation needs, and risk boundary. It must not override
+quota, user gates, parent approval, write-scope checks, or the controller's
+local judgment.
+
 ## Handoff Contract
 
 Every sub-agent brief should start from the shared control plane before it
@@ -264,9 +306,48 @@ Useful child-run fields:
 Concurrent child runs should use stable `run_id` values so history readers do
 not confuse overlapping work with duplicate index records.
 
+## Long-Term Implementation Plan
+
+LoopX should grow this policy as a set of small control-plane surfaces, not as a
+large automatic orchestrator.
+
+1. **Documented advisory contract.** Keep the decision matrix above as the
+   public contract. Teach agent skills and runtime prompts to prefer fresh
+   children for exploration and review, and resume or fork for same-branch
+   follow-up.
+2. **Todo and status hints.** Add optional projected fields such as
+   `subagent_context_hint`, `spawn_reason`, `recommended_child_role`, and
+   `parent_brief_missing_fields` to status/review packets. These fields help the
+   agent loop decide; they do not launch work by themselves.
+3. **Brief completeness check.** Provide a lightweight checker that tells the
+   parent whether a fresh-child brief contains objective, authority, scope,
+   boundary, expected output, validation, and merge rule. Missing fields should
+   block fresh-child launch and ask the parent to refine the brief.
+4. **Idle-child handoff path.** When a suitable idle agent exists, let the
+   controller emit a `subagent_control_plane_handoff_v0` packet with
+   `recommended_context=fresh`. The child starts from that packet and the shared
+   control plane, not from an inherited hidden chat.
+5. **Resume/fork evidence path.** For same-branch repairs, attach the failed
+   command, branch/worktree, touched paths, and latest accepted patch summary to
+   the handoff so a resumed or forked child can continue without re-mining the
+   whole parent thread.
+6. **Run-history attribution.** Record whether each child used fresh, fork, or
+   resume context; why that was chosen; what evidence it produced; and whether
+   the parent accepted, retried, or ignored it.
+7. **Outcome review.** Compare fresh-review children against forked/resumed
+   follow-up children on token cost, latency, false assumptions, duplicated
+   work, and parent integration quality before making stronger defaults.
+
+The first useful product behavior is not automatic spawning. It is helping the
+parent agent notice that a task is an exploration or review task and can be
+delegated to an idle fresh child with a complete, auditable brief.
+
 ## Safety Rules
 
 - Prefer read-only explorers before worker sub-agents in complex repos.
+- Prefer fresh children for exploration and review; prefer resume or fork for
+  same-branch repair and continuous side lanes.
+- Do not launch a fresh child without a complete parent brief.
 - Give workers disjoint write sets.
 - Tell every worker that other agents may be editing nearby files and that it
   must not revert unrelated changes.
