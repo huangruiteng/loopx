@@ -1553,7 +1553,7 @@ class SkillsBenchLocalAcpRelay:
                         )
                         if (
                             recovery_action == "press_enter"
-                            and post_bridge_recovery_attempt_count < 1
+                            and post_bridge_recovery_attempt_count < 2
                         ):
                             post_bridge_recovery_attempt_count += 1
                             post_bridge_recovery_action = recovery_action
@@ -1567,7 +1567,7 @@ class SkillsBenchLocalAcpRelay:
                             continue
                         if (
                             recovery_action == "typed_continue"
-                            and post_bridge_recovery_attempt_count < 1
+                            and post_bridge_recovery_attempt_count < 2
                         ):
                             post_bridge_recovery_attempt_count += 1
                             post_bridge_recovery_action = recovery_action

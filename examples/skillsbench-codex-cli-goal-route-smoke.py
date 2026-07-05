@@ -693,7 +693,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             goal_terminal_observed=False,
             first_action_observed=True,
             bridge_summary_path=bridge_summary,
-            post_bridge_recovery_attempt_count=1,
+            post_bridge_recovery_attempt_count=2,
             post_bridge_recovery_action="typed_continue",
             post_bridge_recovery_skip_reason="retry_limit_reached",
         )
@@ -707,7 +707,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
 
     prerequisites = plan["runner_prerequisites"]
     assert trace["codex_cli_goal_tui_stage"] == "post_bridge_tui_model_timeout"
-    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 1
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 2
     assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == "typed_continue"
     assert (
         trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"]
@@ -862,6 +862,7 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "timeout_sec=max(" in source
     assert "self._config.first_action_timeout_sec" in source
     assert "post_bridge_recovery_attempt_count" in source
+    assert "post_bridge_recovery_attempt_count < 2" in source
     assert "last_bridge_activity_at >= 30.0" in source
     tui_source = (REPO_ROOT / "loopx/codex_cli_goal_tui.py").read_text(
         encoding="utf-8"
