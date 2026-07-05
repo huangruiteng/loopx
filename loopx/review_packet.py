@@ -4,6 +4,9 @@ import re
 import shlex
 from typing import Any
 
+from .control_plane.runtime.decision_freshness import (
+    decision_freshness_warning as runtime_decision_freshness_warning,
+)
 from .execution_profile import (
     compact_execution_profile,
     execution_profile_outcome_floor,
@@ -214,41 +217,6 @@ def find_queue_item(status_payload: dict[str, Any], goal_id: str) -> dict[str, A
         if isinstance(item, dict) and item.get("goal_id") == goal_id:
             return item
     return None
-
-
-def decision_freshness_warning(status_payload: dict[str, Any], goal_id: str) -> dict[str, Any] | None:
-    freshness = (
-        status_payload.get("decision_freshness_summary")
-        if isinstance(status_payload.get("decision_freshness_summary"), dict)
-        else {}
-    )
-    raw_items = freshness.get("items") if isinstance(freshness.get("items"), list) else []
-    items: list[dict[str, Any]] = []
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("goal_id") or "") != goal_id:
-            continue
-        if item.get("requires_decision_point_rebase") is not True:
-            continue
-        items.append(
-            {
-                "decision_kind": item.get("decision_kind"),
-                "freshness_state": item.get("freshness_state"),
-                "decision_at": item.get("decision_at"),
-                "classification": item.get("classification"),
-                "age_days": item.get("age_days"),
-                "newer_event_count_7d": item.get("newer_event_count_7d"),
-            }
-        )
-    if not items:
-        return None
-    return {
-        "source": freshness.get("source") or "run_history",
-        "window_days": freshness.get("window_days"),
-        "message": "旧 reward/gate 决策复用前需在当前 registry/state/quota/policy/run status 上重新对齐。",
-        "items": items[:3],
-    }
 
 
 def decision_freshness_packet_lines(warning: dict[str, Any] | None) -> list[str]:
@@ -1185,7 +1153,11 @@ def build_review_packet(
     chain_handoff = benchmark_report_chain_handoff(item)
     delivery_contract = handoff_delivery_contract(item)
     delivery_contract_text = handoff_delivery_contract_summary(delivery_contract)
-    freshness_warning = decision_freshness_warning(status_payload, goal_id)
+    freshness_warning = runtime_decision_freshness_warning(
+        status_payload,
+        goal_id=goal_id,
+        message="旧 reward/gate 决策复用前需在当前 registry/state/quota/policy/run status 上重新对齐。",
+    )
     freshness_warning_lines = decision_freshness_packet_lines(freshness_warning)
     stale_latest_run_warning = (
         item.get("stale_latest_run_warning")

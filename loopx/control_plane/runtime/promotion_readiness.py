@@ -7,6 +7,9 @@ from typing import Any, Callable
 PROMOTION_READINESS_PROXY_NOTE = (
     "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
 )
+PROMOTION_READINESS_WARNING_MESSAGE = (
+    "promotion readiness evidence is missing, stale, or unknown; run canary readiness smoke"
+)
 
 ParseTimestamp = Callable[[Any], Any]
 FreshnessBuilder = Callable[[dict[str, Any]], dict[str, Any]]
@@ -83,3 +86,35 @@ def build_promotion_readiness_summary(
         }
     )
     return readiness
+
+
+def promotion_readiness_warning(status_payload: dict[str, Any]) -> dict[str, Any] | None:
+    readiness = (
+        status_payload.get("promotion_readiness_summary")
+        if isinstance(status_payload.get("promotion_readiness_summary"), dict)
+        else {}
+    )
+    if not readiness:
+        return None
+    freshness_status = str(readiness.get("freshness_status") or "unknown")
+    requires_readiness_run = readiness.get("requires_readiness_run") is True
+    available = readiness.get("available")
+    if available is not False and not requires_readiness_run and freshness_status == "fresh":
+        return None
+
+    return {
+        "source": readiness.get("source") or "run_history",
+        "available": available,
+        "freshness_status": freshness_status,
+        "requires_readiness_run": requires_readiness_run,
+        "freshness_window_hours": readiness.get("freshness_window_hours"),
+        "age_hours": readiness.get("age_hours"),
+        "sample_run_count": readiness.get("sample_run_count"),
+        "goal_id": readiness.get("goal_id"),
+        "generated_at": readiness.get("generated_at"),
+        "classification": readiness.get("classification"),
+        "json_exists": readiness.get("json_exists"),
+        "markdown_exists": readiness.get("markdown_exists"),
+        "reason": readiness.get("reason"),
+        "message": PROMOTION_READINESS_WARNING_MESSAGE,
+    }

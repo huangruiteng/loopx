@@ -73,6 +73,13 @@ from .control_plane.quota.projection_repair import (
     build_state_projection_gap,
     build_state_projection_gap_repair_hint,
 )
+from .control_plane.runtime.decision_freshness import (
+    DECISION_FRESHNESS_WARNING_ITEM_LIMIT,
+    decision_freshness_warning as _decision_freshness_warning,
+)
+from .control_plane.runtime.promotion_readiness import (
+    promotion_readiness_warning as _promotion_readiness_warning,
+)
 from .control_plane.work_items.goal_route_hint import build_goal_route_hint
 from .control_plane.work_items.work_lane_context import (
     build_work_lane_context_contract,
@@ -187,7 +194,6 @@ STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "source",
     "recommended_action",
 )
-DECISION_FRESHNESS_WARNING_ITEM_LIMIT = 3
 MONITOR_DUE_ITEM_LIMIT = 1
 
 def _now_local() -> str:
@@ -1659,85 +1665,6 @@ def _quota_plan_items(plan: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         items.extend(item for item in state_items if isinstance(item, dict))
     return items
-
-
-def _decision_freshness_warning(status_payload: dict[str, Any], *, goal_id: str) -> dict[str, Any] | None:
-    freshness = (
-        status_payload.get("decision_freshness_summary")
-        if isinstance(status_payload.get("decision_freshness_summary"), dict)
-        else {}
-    )
-    raw_items = freshness.get("items") if isinstance(freshness.get("items"), list) else []
-    items: list[dict[str, Any]] = []
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("goal_id") or "") != goal_id:
-            continue
-        if item.get("requires_decision_point_rebase") is not True:
-            continue
-        items.append(
-            {
-                "goal_id": item.get("goal_id"),
-                "decision_kind": item.get("decision_kind"),
-                "freshness_state": item.get("freshness_state"),
-                "decision_at": item.get("decision_at"),
-                "classification": item.get("classification"),
-                "age_days": item.get("age_days"),
-                "newer_event_count_7d": item.get("newer_event_count_7d"),
-                "reason": item.get("reason"),
-            }
-        )
-
-    if not items:
-        return None
-    summary = freshness.get("summary") if isinstance(freshness.get("summary"), dict) else {}
-    return {
-        "source": freshness.get("source") or "run_history",
-        "window_days": freshness.get("window_days"),
-        "message": (
-            "decision-point rebase required before reusing sampled reward/gate state; "
-            "refresh registry, ACTIVE_GOAL_STATE, quota, policy, and run status first"
-        ),
-        "rebase_required_count": len(items),
-        "global_rebase_required_count": summary.get("rebase_required_count"),
-        "global_stale_count": summary.get("stale_count"),
-        "items": items[:DECISION_FRESHNESS_WARNING_ITEM_LIMIT],
-    }
-
-
-def _promotion_readiness_warning(status_payload: dict[str, Any]) -> dict[str, Any] | None:
-    readiness = (
-        status_payload.get("promotion_readiness_summary")
-        if isinstance(status_payload.get("promotion_readiness_summary"), dict)
-        else {}
-    )
-    if not readiness:
-        return None
-    freshness_status = str(readiness.get("freshness_status") or "unknown")
-    requires_readiness_run = readiness.get("requires_readiness_run") is True
-    available = readiness.get("available")
-    if available is not False and not requires_readiness_run and freshness_status == "fresh":
-        return None
-
-    return {
-        "source": readiness.get("source") or "run_history",
-        "available": available,
-        "freshness_status": freshness_status,
-        "requires_readiness_run": requires_readiness_run,
-        "freshness_window_hours": readiness.get("freshness_window_hours"),
-        "age_hours": readiness.get("age_hours"),
-        "sample_run_count": readiness.get("sample_run_count"),
-        "goal_id": readiness.get("goal_id"),
-        "generated_at": readiness.get("generated_at"),
-        "classification": readiness.get("classification"),
-        "json_exists": readiness.get("json_exists"),
-        "markdown_exists": readiness.get("markdown_exists"),
-        "reason": readiness.get("reason"),
-        "message": (
-            "promotion readiness evidence is missing, stale, or unknown; run canary readiness smoke"
-        ),
-    }
 
 
 def _recent_reward_lessons(status_payload: dict[str, Any], *, goal_id: str) -> list[dict[str, Any]]:
