@@ -65,19 +65,45 @@ def build_codex_app_scheduler_ack_hint(
     state_key: str = CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
 ) -> dict[str, Any]:
     safe_rrule = normalize_scheduler_rrule(applied_rrule)
+    safe_goal_id = str(goal_id or "").strip()
+    safe_agent_id = str(agent_id or "").strip()
+    safe_surface = str(surface or "").strip()
+    safe_state_key = str(state_key or "").strip()
+    safe_reset_token = str(reset_token or "").strip()
+    safe_identity_signature = str(identity_signature or "").strip()
+    cli_args = [
+        "quota",
+        "scheduler-ack",
+        "--goal-id",
+        safe_goal_id,
+        "--agent-id",
+        safe_agent_id,
+        "--surface",
+        safe_surface,
+        "--state-key",
+        safe_state_key,
+        "--applied-rrule",
+        safe_rrule,
+        "--reset-token",
+        safe_reset_token,
+        "--identity-signature",
+        safe_identity_signature,
+        "--execute",
+    ]
     return {
         "schema_version": CODEX_APP_SCHEDULER_ACK_HINT_SCHEMA_VERSION,
         "after": "automation_update_rrule_success",
         "command": "quota scheduler-ack",
         "execute": True,
+        "cli_args": cli_args,
         "args": {
-            "goal_id": str(goal_id or "").strip(),
-            "agent_id": str(agent_id or "").strip(),
-            "surface": surface,
-            "state_key": state_key,
+            "goal_id": safe_goal_id,
+            "agent_id": safe_agent_id,
+            "surface": safe_surface,
+            "state_key": safe_state_key,
             "applied_rrule": safe_rrule,
-            "reset_token": str(reset_token or "").strip(),
-            "identity_signature": str(identity_signature or "").strip(),
+            "reset_token": safe_reset_token,
+            "identity_signature": safe_identity_signature,
         },
         "no_spend": True,
     }

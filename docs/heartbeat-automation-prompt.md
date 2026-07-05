@@ -453,8 +453,8 @@ after a final quota/replan check confirms repeated unchanged polls. Codex App
 heartbeats should search/use `automation_update` when available, but only when
 `scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
 `scheduler_hint.codex_app.recommended_rrule` is present. After a successful
-RRULE update, call `loopx quota scheduler-ack --execute` using
-`scheduler_hint.codex_app.ack_hint.args`; LoopX owns the progression and reset
+RRULE update, run `loopx` with
+`scheduler_hint.codex_app.ack_hint.cli_args`; LoopX owns the progression and reset
 state. When the desired RRULE is already applied, skip
 `automation_update`:
 

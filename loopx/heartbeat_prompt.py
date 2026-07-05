@@ -26,7 +26,7 @@ SCHEDULER_HINT_APPLICATION_RULE = (
     "Apply `scheduler_hint` for wait backoff and CLI/Claude final-check/self-stop; no spend. "
     "Codex App: if `codex_app.stateful_backoff.apply_needed=true` and "
     "`recommended_rrule` exists, `automation_update` RRULE then "
-    "`quota scheduler-ack --execute` from `codex_app.ack_hint.args`; LoopX owns progression."
+    "run `codex_app.ack_hint.cli_args`; LoopX owns progression."
 )
 SCHEDULER_HINT_COMPACT_RULE = (
     "Scheduler: no spend. App if apply_needed: update RRULE, ack via `ack_hint`; else skip."
@@ -693,8 +693,8 @@ If the result says `should_run=true`:
    for Codex App heartbeats, read
    `scheduler_hint.codex_app.stateful_backoff`: if `apply_needed=true` and
    `codex_app.recommended_rrule` exists, use `automation_update` for the RRULE,
-   then call `loopx quota scheduler-ack --execute` from
-   `codex_app.ack_hint.args`; if false, skip host update.
+   then run `loopx` with `codex_app.ack_hint.cli_args`
+   (fall back to `ack_hint.args` only for older payloads); if false, skip host update.
    LoopX owns reset/progression state. It is scheduling only, not delivery
    permission. Then use
    `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means

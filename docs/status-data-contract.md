@@ -1301,7 +1301,7 @@ unchanged backoff resumes, and does not spend quota.
 Codex App heartbeats should use `automation_update` only when
 `codex_app.stateful_backoff.apply_needed=true` and
 `codex_app.recommended_rrule` is present. If that update succeeds, the agent
-must call `quota scheduler-ack --execute` using `codex_app.ack_hint.args`;
+must run `codex_app.ack_hint.cli_args`;
 LoopX then persists `reset_token`, `identity_signature`, `progression_index`,
 and `last_applied_rrule` under the runtime root. When the same identity repeats,
 LoopX advances the progression until the max interval; when the reset token

@@ -667,7 +667,7 @@ def main() -> int:
     assert "automation_update" in doc, doc
     assert "scheduler_hint.codex_app.stateful_backoff" in doc, doc
     assert "apply_needed=true" in doc, doc
-    assert "codex_app.ack_hint.args" in doc, doc
+    assert "codex_app.ack_hint.cli_args" in doc, doc
     assert "quota scheduler-ack" in doc, doc
     assert "recommended_rrule" in doc, doc
     assert "must_attempt_work=true" in doc, doc
@@ -725,7 +725,7 @@ def main() -> int:
     assert "automation_update" in project_skill, project_skill
     assert "scheduler_hint.codex_app.stateful_backoff" in project_skill, project_skill
     assert "apply_needed=true" in project_skill, project_skill
-    assert "codex_app.ack_hint.args" in project_skill, project_skill
+    assert "codex_app.ack_hint.cli_args" in project_skill, project_skill
     assert "quota scheduler-ack" in project_skill, project_skill
     assert "recommended_rrule" in project_skill, project_skill
     assert "must_attempt_work=true" in project_skill, project_skill
