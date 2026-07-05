@@ -1025,6 +1025,7 @@ def run_auto_research_demo_e2e(
     goal_id: str,
     tracking_goal_id: str | None,
     objective: str,
+    preset_id: str | None = None,
     output_dir: str,
     execute: bool,
     launch_visible: bool,
@@ -1073,6 +1074,12 @@ def run_auto_research_demo_e2e(
     user_contract = build_auto_research_user_contract(
         objective,
         output_language=output_language,
+        preset_id=preset_id,
+    )
+    preset_context = (
+        user_contract.get("preset_context")
+        if isinstance(user_contract.get("preset_context"), dict)
+        else None
     )
     contract_acceptance = build_auto_research_contract_acceptance(user_contract)
     supervisor = build_auto_research_demo_supervisor_plan(
@@ -1112,6 +1119,10 @@ def run_auto_research_demo_e2e(
             "goal_surface_mode": goal_surface_mode,
             "frontier_goal_id": goal_id,
             "tracking_goal_id": tracking_goal or None,
+            "preset_id": preset_context.get("preset_id") if preset_context else None,
+            "preset_baseline_source": (
+                preset_context.get("baseline_source") if preset_context else None
+            ),
             "tracking_goal_drives_frontier": False,
             "visible_lanes_read_goal_id": goal_id,
             "fresh_goal_default": goal_surface_mode == "fresh_demo_goal",
@@ -1130,6 +1141,7 @@ def run_auto_research_demo_e2e(
         "reasoning_effort": reasoning_effort,
         "output_language": output_language,
         "user_contract": user_contract,
+        "preset_context": preset_context,
         "contract_acceptance": contract_acceptance,
         "commands": {
             "one_question_contract": auto_research_contract_command_text(
@@ -1139,17 +1151,20 @@ def run_auto_research_demo_e2e(
             "one_question_start": auto_research_start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
+                preset_id=preset_id,
                 execute=True,
                 output_language=output_language,
             ),
             "one_question_start_preview": auto_research_start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
+                preset_id=preset_id,
                 output_language=output_language,
             ),
             "one_question_start_with_visible_wake": auto_research_start_command_text(
                 cli_bin=cli_bin,
                 objective=objective,
+                preset_id=preset_id,
                 execute=True,
                 output_language=output_language,
             ),

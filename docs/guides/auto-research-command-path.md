@@ -239,7 +239,8 @@ Concrete KNN proof command:
 
 ```bash
 loopx --format json auto-research start \
-  "KNN demo: prove partial selection improves over full sort" \
+  "How can the KNN baseline improve holdout metric?" \
+  --preset knn-demo \
   --execute \
   --headless \
   --worker-loop-rounds 4 \
@@ -251,9 +252,15 @@ operator experience. The matching visible path is still the one-command start:
 
 ```bash
 loopx auto-research start \
-  "KNN demo: prove partial selection improves over full sort" \
+  "How can the KNN baseline improve holdout metric?" \
+  --preset knn-demo \
   --execute
 ```
+
+`--preset knn-demo` is the public signal that the baseline metric, holdout
+split, and protected metric scope come from the built-in KNN demo fixture. The
+open question names the research topic; it does not smuggle the baseline into
+the system through natural-language inference.
 
 The validated KNN run demonstrates that the second round is carried by LoopX
 state and role-declared successor todos: the evidence runner owns

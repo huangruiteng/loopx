@@ -8,6 +8,23 @@ AUTO_RESEARCH_DEFAULT_OBJECTIVE = (
     "Improve a bounded research candidate through public-safe multi-agent evidence."
 )
 AUTO_RESEARCH_PRESET_ID = "auto_research_thin_preset"
+AUTO_RESEARCH_KNN_DEMO_PRESET_ID = "knn-demo"
+AUTO_RESEARCH_SUPPORTED_PRESET_IDS = (AUTO_RESEARCH_KNN_DEMO_PRESET_ID,)
+
+AUTO_RESEARCH_KNN_DEMO_CONTEXT = {
+    "schema_version": "auto_research_preset_context_v0",
+    "preset_id": AUTO_RESEARCH_KNN_DEMO_PRESET_ID,
+    "source": "built_in_demo_preset",
+    "baseline_source": "preset_fixture_not_question_text",
+    "question_text_supplies_baseline": False,
+    "metric_name": "holdout_metric",
+    "baseline_metric": 1.0,
+    "protected_scope": ["metric_definition", "baseline_metric", "holdout_split"],
+    "claim_boundary": (
+        "The KNN baseline and holdout split come from the explicit demo preset; "
+        "improvement claims still require public-safe evidence."
+    ),
+}
 
 
 def build_auto_research_layer_contract() -> dict[str, object]:

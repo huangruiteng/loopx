@@ -208,6 +208,7 @@ def _render_user_contract(payload: dict[str, object]) -> str:
     one_click_start = _dict_value(payload, "one_click_start")
     next_step = _dict_value(payload, "next_executable_step")
     gate = _dict_value(payload, "gate")
+    preset_context = _dict_value(payload, "preset_context")
     gates = gate.get("user_judgment_needed") if isinstance(gate.get("user_judgment_needed"), list) else []
     lines = [
         "# LoopX Auto Research",
@@ -221,9 +222,23 @@ def _render_user_contract(payload: dict[str, object]) -> str:
         f"- not_read: `{_join_or_none(brief.get('not_read'))}`",
         f"- claim_boundary: {brief.get('claim_boundary')}",
         "",
-        "## Action Plan",
-        "",
     ]
+    if preset_context:
+        lines.extend(
+            [
+                "## Preset Context",
+                "",
+                f"- preset_id: `{preset_context.get('preset_id')}`",
+                f"- baseline_source: `{preset_context.get('baseline_source')}`",
+                f"- question_text_supplies_baseline: `{preset_context.get('question_text_supplies_baseline')}`",
+                f"- metric_name: `{preset_context.get('metric_name')}`",
+                f"- baseline_metric: `{preset_context.get('baseline_metric')}`",
+                f"- protected_scope: `{_join_or_none(preset_context.get('protected_scope'))}`",
+                f"- claim_boundary: {preset_context.get('claim_boundary')}",
+                "",
+            ]
+        )
+    lines.extend(["## Action Plan", ""])
     if not plan:
         lines.append("- none")
     for item in plan:
@@ -387,6 +402,7 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
             output_language=str(language_payload.get("resolved") or payload.get("output_language") or "en"),
         )
     route = _dict_value(payload, "route_contract")
+    preset_context = _dict_value(payload, "preset_context")
     live = _dict_value(payload, "visible_worker_proof")
     pane_rounds = _dict_value(payload, "visible_pane_a2a_rounds")
     collective_rounds = _dict_value(payload, "collective_research_rounds")
@@ -406,6 +422,9 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- tracking_goal_id: `{payload.get('tracking_goal_id')}`",
         f"- frontier_goal_id: `{route.get('frontier_goal_id')}`",
+        f"- preset_id: `{preset_context.get('preset_id')}`",
+        f"- preset_baseline_source: `{preset_context.get('baseline_source')}`",
+        f"- baseline_metric: `{preset_context.get('baseline_metric')}`",
         f"- agent_id: `{payload.get('agent_id')}`",
         f"- user_contract_accepted: `{contract_acceptance.get('accepted')}`",
         f"- one_question_contract: `{commands.get('one_question_contract')}`",
@@ -438,6 +457,21 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- visible_holdout_delta_over_dev: `{improvement.get('holdout_delta_over_dev')}`",
         f"- supervisor_lanes: `{supervisor.get('lane_count')}`",
     ]
+    if preset_context:
+        lines.extend(
+            [
+                "",
+                "## Preset Context",
+                "",
+                f"- preset_id: `{preset_context.get('preset_id')}`",
+                f"- baseline_source: `{preset_context.get('baseline_source')}`",
+                f"- question_text_supplies_baseline: `{preset_context.get('question_text_supplies_baseline')}`",
+                f"- metric_name: `{preset_context.get('metric_name')}`",
+                f"- baseline_metric: `{preset_context.get('baseline_metric')}`",
+                f"- protected_scope: `{_join_or_none(preset_context.get('protected_scope'))}`",
+                f"- claim_boundary: {preset_context.get('claim_boundary')}",
+            ]
+        )
     lines.extend(
         _render_research_roles(
             minimal_recipe=minimal_recipe,

@@ -18,6 +18,7 @@ from .evidence_packet import load_auto_research_evidence_packet_inputs
 from .defaults import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+    AUTO_RESEARCH_SUPPORTED_PRESET_IDS,
 )
 from .demo_e2e import run_auto_research_demo_e2e
 from .live_evidence import (
@@ -32,6 +33,7 @@ from .rollout_append import (
 from .user_contract import (
     build_auto_research_user_contract,
     infer_auto_research_output_language,
+    normalize_auto_research_preset_id,
 )
 from ..multi_agent.visible_launch_policy import (
     make_visible_launcher_callback,
@@ -172,6 +174,11 @@ def register_auto_research_commands(
         default="auto",
         help="Human-readable output language for the research process.",
     )
+    contract_parser.add_argument(
+        "--preset",
+        choices=AUTO_RESEARCH_SUPPORTED_PRESET_IDS,
+        help="Explicit domain demo context, e.g. knn-demo supplies the KNN baseline fixture.",
+    )
 
     start_parser = auto_research_sub.add_parser(
         "start",
@@ -184,6 +191,14 @@ def register_auto_research_commands(
         choices=["auto", "zh", "en"],
         default="auto",
         help="Human-readable output language for visible role panes.",
+    )
+    start_parser.add_argument(
+        "--preset",
+        choices=AUTO_RESEARCH_SUPPORTED_PRESET_IDS,
+        help=(
+            "Explicit domain demo context. Use knn-demo when the baseline/metric "
+            "come from the built-in KNN demo fixture rather than the question text."
+        ),
     )
     start_parser.add_argument(
         "--execute",
@@ -858,8 +873,10 @@ def handle_auto_research_command(
                 args.open_question,
                 max_todos=args.max_todos,
                 output_language=args.language,
+                preset_id=args.preset,
             )
         elif args.auto_research_command == "start":
+            preset_id = normalize_auto_research_preset_id(args.preset)
             launch_visible = bool(args.execute and not args.headless)
             visible_policy = resolve_visible_launch_policy(
                 args,
@@ -927,6 +944,7 @@ def handle_auto_research_command(
                 goal_id=goal_id,
                 goal_surface_mode=goal_surface_mode,
                 tracking_goal_id=args.tracking_goal_id,
+                preset_id=preset_id,
                 objective=args.open_question,
                 output_dir="auto_research_lightweight_kernel",
                 execute=args.execute,

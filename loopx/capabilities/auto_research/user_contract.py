@@ -2,7 +2,30 @@ from __future__ import annotations
 
 import shlex
 
+from .defaults import (
+    AUTO_RESEARCH_KNN_DEMO_CONTEXT,
+    AUTO_RESEARCH_KNN_DEMO_PRESET_ID,
+    AUTO_RESEARCH_SUPPORTED_PRESET_IDS,
+)
+
 AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION = "auto_research_user_contract_v0"
+
+
+def normalize_auto_research_preset_id(preset_id: str | None) -> str | None:
+    text = str(preset_id or "").strip()
+    if not text:
+        return None
+    if text not in AUTO_RESEARCH_SUPPORTED_PRESET_IDS:
+        supported = ", ".join(AUTO_RESEARCH_SUPPORTED_PRESET_IDS)
+        raise ValueError(f"unsupported auto-research preset {text!r}; supported: {supported}")
+    return text
+
+
+def build_auto_research_preset_context(preset_id: str | None) -> dict[str, object] | None:
+    normalized = normalize_auto_research_preset_id(preset_id)
+    if normalized == AUTO_RESEARCH_KNN_DEMO_PRESET_ID:
+        return dict(AUTO_RESEARCH_KNN_DEMO_CONTEXT)
+    return None
 
 
 def infer_auto_research_output_language(
@@ -22,10 +45,15 @@ def build_auto_research_user_contract(
     *,
     max_todos: int = 5,
     output_language: str = "auto",
+    preset_id: str | None = None,
 ) -> dict[str, object]:
     question = " ".join(str(open_question or "").strip().split())
     if not question:
         raise ValueError('auto-research requires an open question, e.g. loopx auto-research "..."')
+    preset_context = build_auto_research_preset_context(preset_id)
+    normalized_preset_id = (
+        str(preset_context.get("preset_id")) if preset_context else None
+    )
     todo_limit = min(max(1, int(max_todos)), 5)
     resolved_language = infer_auto_research_output_language(
         question,
@@ -41,11 +69,20 @@ def build_auto_research_user_contract(
             ("P2", "Summarize gates and unresolved evidence gaps without expanding the user contract.", "auto_research_preset"),
         ][:todo_limit]
     ]
+    preset_flag = (
+        f" --preset {shlex.quote(normalized_preset_id)}"
+        if normalized_preset_id
+        else ""
+    )
     language_flag = f" --language {shlex.quote(resolved_language)}" if resolved_language != "en" else ""
     start_command = (
-        f"loopx auto-research start {shlex.quote(question)}{language_flag} --execute"
+        f"loopx auto-research start {shlex.quote(question)}{preset_flag}{language_flag} --execute"
     )
     takeover_command = f"{start_command} --attach"
+    command_template = (
+        f'loopx auto-research start "<open question>"{preset_flag} --execute'
+    )
+    preview_template = f'loopx auto-research start "<open question>"{preset_flag}'
     return {
         "ok": True,
         "schema_version": AUTO_RESEARCH_USER_CONTRACT_SCHEMA_VERSION,
@@ -66,9 +103,9 @@ def build_auto_research_user_contract(
         "command_contract": {
             "canonical_invocation": 'loopx auto-research "<open question>"',
             "explicit_invocation": 'loopx auto-research contract "<open question>"',
-            "one_click_start_invocation": 'loopx auto-research start "<open question>" --execute',
+            "one_click_start_invocation": command_template,
             "user_required_inputs": ["open_question"],
-            "user_optional_inputs": ["output_language"],
+            "user_optional_inputs": ["output_language", "preset"],
             "auto_research_required_outputs": [
                 "research_brief",
                 "action_plan",
@@ -80,15 +117,15 @@ def build_auto_research_user_contract(
         },
         "one_click_start": {
             "schema_version": "auto_research_one_click_start_v0",
-            "command_template": 'loopx auto-research start "<open question>" --execute',
+            "command_template": command_template,
             "command": start_command,
             "operator_takeover_command_template": (
-                'loopx auto-research start "<open question>" --execute --attach'
+                f"{command_template} --attach"
             ),
             "operator_takeover_command": takeover_command,
-            "preview_command_template": 'loopx auto-research start "<open question>"',
+            "preview_command_template": preview_template,
             "preview_command": (
-                f"loopx auto-research start {shlex.quote(question)}{language_flag}"
+                f"loopx auto-research start {shlex.quote(question)}{preset_flag}{language_flag}"
             ),
             "starts": "visible_codex_tui_lanes",
             "attach_semantics": (
@@ -104,6 +141,7 @@ def build_auto_research_user_contract(
                 "frontier_protocol",
             ],
         },
+        **({"preset_context": preset_context} if preset_context else {}),
         "research_brief": {
             "read": [],
             "not_read": [

@@ -14,6 +14,7 @@ def auto_research_start_command_text(
     *,
     cli_bin: str,
     objective: str,
+    preset_id: str | None = None,
     execute: bool = False,
     headless: bool = False,
     no_attach: bool = False,
@@ -26,6 +27,8 @@ def auto_research_start_command_text(
         "start",
         shlex.quote(str(objective).strip()),
     ]
+    if preset_id:
+        parts.extend(["--preset", shlex.quote(str(preset_id).strip())])
     if output_language and output_language != "en":
         parts.extend(["--language", shlex.quote(output_language)])
     if execute:
@@ -76,6 +79,17 @@ def build_auto_research_contract_acceptance(
         if isinstance(user_contract.get("one_click_start"), dict)
         else {}
     )
+    preset_context = (
+        user_contract.get("preset_context")
+        if isinstance(user_contract.get("preset_context"), dict)
+        else {}
+    )
+    preset_id = str(preset_context.get("preset_id") or "").strip()
+    expected_start_template = (
+        f'loopx auto-research start "<open question>" --preset {preset_id} --execute'
+        if preset_id
+        else 'loopx auto-research start "<open question>" --execute'
+    )
     checks = {
         "one_question_input": user_contract.get("open_question") not in (None, ""),
         "required_outputs_present": len(present_outputs) == len(required_outputs),
@@ -86,8 +100,7 @@ def build_auto_research_contract_acceptance(
             command.get("canonical_invocation") == 'loopx auto-research "<open question>"'
         ),
         "one_click_start_present": (
-            one_click_start.get("command_template")
-            == 'loopx auto-research start "<open question>" --execute'
+            one_click_start.get("command_template") == expected_start_template
         ),
         "one_click_start_uses_generic_kernel": (
             one_click_start.get("uses_generic_kernel") is True
