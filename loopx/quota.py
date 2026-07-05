@@ -106,7 +106,11 @@ from .control_plane.scheduler.state import (
     scheduler_state_path,
     write_scheduler_state,
 )
-from .state_projection import next_action_projection_warning
+from .state_projection import (
+    actions_are_projection_aligned,
+    next_action_projection_warning,
+    state_action_projection_warning as build_state_action_projection_warning,
+)
 from .control_plane.todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -689,7 +693,7 @@ def _selected_action_with_capability_gate(
     )
     if not any(
         isinstance(item, dict)
-        and _actions_are_projection_aligned(selected_action, item.get("text"))
+        and actions_are_projection_aligned(selected_action, item.get("text"))
         for item in blocked
     ):
         return selected_action
@@ -705,116 +709,6 @@ def _selected_action_with_capability_gate(
         if text:
             return text
     return selected_action
-
-
-def _normalize_action_for_compare(value: Any) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
-    text = re.sub(r"^(?:agent|user|owner|codex)\s*:\s*", "", text)
-    text = re.sub(r"^\[(?:p[0-9]+|[^\]]+)\]\s*", "", text)
-    return text
-
-
-def _action_label_for_compare(value: Any) -> str:
-    text = _normalize_action_for_compare(value)
-    match = re.match(r"([^:]{8,120}):", text)
-    if match:
-        return match.group(1).strip()
-    return text[:120].strip()
-
-
-def _action_prefix_for_compare(value: Any) -> str:
-    text = _normalize_action_for_compare(value)
-    text = re.split(r"[,.;:，。；：]", text, maxsplit=1)[0].strip()
-    words = text.split()
-    if len(words) >= 4:
-        return " ".join(words[:6])
-    return text
-
-
-def _actions_are_projection_aligned(left: Any, right: Any) -> bool:
-    left_text = _normalize_action_for_compare(left)
-    right_text = _normalize_action_for_compare(right)
-    if not left_text or not right_text:
-        return False
-    if left_text == right_text:
-        return True
-    left_label = _action_label_for_compare(left_text)
-    right_label = _action_label_for_compare(right_text)
-    for label, text in ((left_label, right_text), (right_label, left_text)):
-        if label and len(label) >= 8 and label in text:
-            return True
-    left_prefix = _action_prefix_for_compare(left_text)
-    right_prefix = _action_prefix_for_compare(right_text)
-    for prefix, text in ((left_prefix, right_text), (right_prefix, left_text)):
-        if prefix and len(prefix) >= 24 and prefix in text:
-            return True
-    shorter, longer = sorted((left_text, right_text), key=len)
-    return len(shorter) >= 32 and shorter in longer
-
-
-def _state_action_projection_warning(
-    item: dict[str, Any],
-    *,
-    agent_todo_summary: dict[str, Any] | None,
-    selected_action: Any,
-    work_lane_contract: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    if not (
-        isinstance(work_lane_contract, dict)
-        and work_lane_contract.get("lane") == "advancement_task"
-        and "open_agent_todo"
-        in (
-            work_lane_contract.get("reason_codes")
-            if isinstance(work_lane_contract.get("reason_codes"), list)
-            else []
-        )
-    ):
-        return None
-    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    active_next_action = str(
-        item.get("active_state_next_action")
-        or project_asset.get("next_action")
-        or ""
-    ).strip()
-    selected_text = str(selected_action or "").strip()
-    if not active_next_action or not selected_text:
-        return None
-    if isinstance(agent_todo_summary, dict):
-        claim_scope = agent_todo_summary.get("claim_scope")
-        first_executable = (
-            agent_todo_summary.get("first_executable_items")
-            if isinstance(agent_todo_summary.get("first_executable_items"), list)
-            else []
-        )
-        selected_item = next((item for item in first_executable if isinstance(item, dict)), None)
-        selected_claimed_by = normalize_todo_claimed_by(
-            selected_item.get("claimed_by") if selected_item else None
-        )
-        claim_agent_id = normalize_todo_claimed_by(
-            claim_scope.get("agent_id") if isinstance(claim_scope, dict) else None
-        )
-        if (
-            selected_item
-            and selected_claimed_by
-            and claim_agent_id
-            and selected_claimed_by == claim_agent_id
-        ):
-            return None
-    if _actions_are_projection_aligned(active_next_action, selected_text):
-        return None
-    return {
-        "schema_version": "state_action_projection_warning_v0",
-        "kind": "state_action_projection_mismatch",
-        "severity": "warning",
-        "requires_state_writeback": True,
-        "active_state_next_action": _protocol_action_text(active_next_action, limit=320),
-        "selected_recommended_action": _protocol_action_text(selected_text, limit=320),
-        "reason": "quota selected executable backlog while active Next Action differs",
-        "recommended_action": (
-            "sync active-state Next Action, or treat protocol_action_packet / "
-            "interaction_contract as authoritative"
-        ),
-    }
 
 
 def _todo_write_hint(goal_id: str) -> dict[str, str]:
@@ -2384,7 +2278,7 @@ def build_quota_should_run(
                 "spend_policy": agent_scope_frontier.get("spend_policy")
                 or "do not append quota spend while the current agent has no in-scope runnable candidate",
             }
-        state_action_projection_warning = _state_action_projection_warning(
+        state_action_projection_warning = build_state_action_projection_warning(
             item,
             agent_todo_summary=agent_todo_summary,
             selected_action=selected_recommended_action,
