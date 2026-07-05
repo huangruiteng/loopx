@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import loopx.state_refresh as state_refresh
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
+from loopx.state_projection import actions_are_projection_aligned, state_action_projection_warning
 from loopx.status import collect_status, render_status_markdown
 
 
@@ -131,7 +132,49 @@ def run_cli_json(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def assert_state_action_projection_warning_read_model() -> None:
+    contract = {"lane": "advancement_task", "reason_codes": ["open_agent_todo"]}
+    warning = state_action_projection_warning(
+        {"active_state_next_action": ACTIVE_NEXT_ACTION},
+        agent_todo_summary=None,
+        selected_action=SIDE_AGENT_ACTION,
+        work_lane_contract=contract,
+    )
+    assert warning is not None, warning
+    assert warning["schema_version"] == "state_action_projection_warning_v0", warning
+    assert warning["requires_state_writeback"] is True, warning
+    assert warning["active_state_next_action"] == ACTIVE_NEXT_ACTION, warning
+    assert warning["selected_recommended_action"] == SIDE_AGENT_ACTION, warning
+
+    assert actions_are_projection_aligned(
+        "[P1] Agent: Validate the primary public PoC control-plane lane.",
+        "Validate the primary public PoC control-plane lane.",
+    )
+    assert (
+        state_action_projection_warning(
+            {"active_state_next_action": ACTIVE_NEXT_ACTION},
+            agent_todo_summary={
+                "claim_scope": {"agent_id": "codex-side-bypass"},
+                "first_executable_items": [{"claimed_by": "codex-side-bypass"}],
+            },
+            selected_action=SIDE_AGENT_ACTION,
+            work_lane_contract=contract,
+        )
+        is None
+    )
+    assert (
+        state_action_projection_warning(
+            {"active_state_next_action": ACTIVE_NEXT_ACTION},
+            agent_todo_summary=None,
+            selected_action=SIDE_AGENT_ACTION,
+            work_lane_contract={"lane": "continuous_monitor", "reason_codes": ["open_agent_todo"]},
+        )
+        is None
+    )
+
+
 def main() -> None:
+    assert_state_action_projection_warning_read_model()
     original_now_local = state_refresh.now_local
     try:
         with tempfile.TemporaryDirectory(prefix="loopx-next-action-projection-") as raw_tmp:
