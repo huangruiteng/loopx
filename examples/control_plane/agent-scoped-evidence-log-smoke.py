@@ -92,9 +92,28 @@ def write_fixture(root: Path) -> Path:
             {
                 "schema_version": "loopx_rollout_event_v0",
                 "goal_id": GOAL_ID,
-                "event_id": "evt-other-agent",
+                "event_id": "evt-access-secret",
                 "event_kind": "todo_update",
                 "recorded_at": "2026-07-05T00:00:03Z",
+                "agent_id": AGENT_ID,
+                "todo_id": TODO_ID,
+                "status": "open",
+                "summary": "access_key=should-not-surface",
+                "boundary": {
+                    "raw_task_text_recorded": False,
+                    "raw_logs_recorded": False,
+                    "raw_trajectory_recorded": False,
+                    "raw_session_transcript_recorded": False,
+                    "credential_values_recorded": False,
+                    "absolute_paths_recorded": False,
+                },
+            },
+            {
+                "schema_version": "loopx_rollout_event_v0",
+                "goal_id": GOAL_ID,
+                "event_id": "evt-other-agent",
+                "event_kind": "todo_update",
+                "recorded_at": "2026-07-05T00:00:04Z",
                 "agent_id": "agent-b",
                 "todo_id": TODO_ID,
                 "status": "open",
@@ -124,6 +143,38 @@ def write_fixture(root: Path) -> Path:
             {
                 "goal_id": GOAL_ID,
                 "generated_at": "2026-07-05T00:00:05+00:00",
+                "agent_id": "agent-b",
+                "classification": "agent_b_old_frontier_should_not_surface",
+                "recommended_action": "old other-agent run should not surface",
+                "health_check": "compact only",
+            },
+            {
+                "goal_id": GOAL_ID,
+                "generated_at": "2026-07-05T00:00:06+00:00",
+                "agent_id": "agent-e",
+                "classification": "agent_e_frontier",
+                "recommended_action": "fourth other-agent run exceeds frontier cap",
+                "health_check": "compact only",
+            },
+            {
+                "goal_id": GOAL_ID,
+                "generated_at": "2026-07-05T00:00:07+00:00",
+                "agent_id": "agent-d",
+                "classification": "agent_d_frontier",
+                "recommended_action": "other agent d top todo only",
+                "health_check": "compact only",
+            },
+            {
+                "goal_id": GOAL_ID,
+                "generated_at": "2026-07-05T00:00:08+00:00",
+                "agent_id": "agent-c",
+                "classification": "agent_c_frontier",
+                "recommended_action": "other agent c top todo only",
+                "health_check": "compact only",
+            },
+            {
+                "goal_id": GOAL_ID,
+                "generated_at": "2026-07-05T00:00:09+00:00",
                 "agent_id": "agent-b",
                 "classification": "agent_b_frontier",
                 "recommended_action": "other agent top todo only",
@@ -171,15 +222,23 @@ def main() -> None:
     assert payload["goal_id"] == GOAL_ID
     assert payload["agent_id"] == AGENT_ID
     assert payload["todo_id"] == TODO_ID
-    assert payload["rollout_event_count"] == 2
+    assert payload["rollout_event_count"] == 3
     assert payload["run_history_ref_count"] == 1
     rendered = json.dumps(payload, ensure_ascii=False)
     assert "authorization token label is safe as prose" in rendered
     assert "sk=should-not-surface" not in rendered
+    assert "access_key=should-not-surface" not in rendered
     assert "other agent private stream should not expand" not in rendered
-    assert payload["other_agent_frontier"]["item_count"] == 1
-    assert payload["other_agent_frontier"]["items"][0]["agent_id"] == "agent-b"
+    assert "agent_b_old_frontier_should_not_surface" not in rendered
+    assert "agent_e_frontier" not in rendered
+    assert payload["other_agent_frontier"]["item_count"] == 3
+    assert [item["agent_id"] for item in payload["other_agent_frontier"]["items"]] == [
+        "agent-b",
+        "agent-c",
+        "agent-d",
+    ]
     assert payload["boundary"]["other_agent_event_stream_expanded"] is False
+    assert payload["boundary"]["credential_values_recorded"] is False
 
 
 if __name__ == "__main__":

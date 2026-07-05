@@ -195,11 +195,8 @@ def agent_vision_gap_run() -> dict:
 
 
 def assert_replan_beats_monitor_quiet_skip() -> None:
-    guard = build_quota_should_run(
-        status_payload([monitor_item()], replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION),
-        goal_id=GOAL_ID,
-        agent_id=SIDE_AGENT,
-    )
+    payload = status_payload([monitor_item()], replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION)
+    guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=SIDE_AGENT)
     assert guard["decision"] == "autonomous_replan_required", guard
     assert guard["effective_action"] == "autonomous_replan_required", guard
     assert guard["should_run"] is True, guard
@@ -240,6 +237,14 @@ def assert_replan_beats_monitor_quiet_skip() -> None:
     assert "autonomous_replan_decision: decision=autonomous_replan_required" in markdown, markdown
     assert "required_read: kind=agent_scoped_evidence_log" in markdown, markdown
     assert "evidence-log --goal-id replan-decision-plane-fixture" in markdown, markdown
+    repeat_guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=SIDE_AGENT)
+    assert repeat_guard["required_reads"] == required_reads, repeat_guard
+    assert (
+        repeat_guard["interaction_contract"]["agent_channel"]["required_reads"] == required_reads
+    ), repeat_guard
+    assert (
+        repeat_guard["interaction_contract"]["cli_channel"]["required_reads"] == required_reads
+    ), repeat_guard
 
 
 def assert_future_scheduled_monitor_quiets_without_generated_replan() -> None:
@@ -259,6 +264,9 @@ def assert_future_scheduled_monitor_quiets_without_generated_replan() -> None:
     assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, guard
     assert guard["goal_frontier_projection"]["replan_required"] is False, guard
     assert guard.get("autonomous_replan_obligation") is None, guard
+    assert "required_reads" not in guard, guard
+    assert "required_reads" not in guard["interaction_contract"]["agent_channel"], guard
+    assert "required_reads" not in guard["interaction_contract"]["cli_channel"], guard
 
 
 def assert_replan_preserves_current_agent_runnable_frontier() -> None:
