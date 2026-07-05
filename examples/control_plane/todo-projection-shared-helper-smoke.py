@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
-from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -13,17 +12,20 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import (  # noqa: E402
-    _first_executable_todo_item as quota_first_executable_todo_item,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
     _todo_task_class as quota_todo_task_class,
     build_quota_should_run,
+)
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
+    quota_status_payload,
+    quota_todo_item,
+    quota_todo_summary,
 )
 from loopx.control_plane.agents.agent_scope import (  # noqa: E402
     _todo_item_claimed_by_agent_or_unclaimed as agent_scope_todo_item_claimed_by_agent_or_unclaimed,
 )
 from loopx.status import (  # noqa: E402
     claimed_visibility_items as status_claimed_visibility_items,
-    compact_todo_group,
     todo_item_is_deferred as status_todo_item_is_deferred,
     todo_projection_sort_key,
 )
@@ -49,121 +51,67 @@ GOAL_ID = "todo-projection-shared-helper-goal"
 AGENT_ID = "codex-product-capability"
 
 
-def todo(
-    index: int,
-    text: str,
-    *,
-    task_class: str,
-    todo_id: str,
-    **metadata: Any,
-) -> dict[str, Any]:
-    item = {
-        "schema_version": "todo_item_v0",
-        "todo_id": todo_id,
-        "role": "agent",
-        "source_section": "Agent Todo",
-        "status": "open",
-        "done": False,
-        "index": index,
-        "text": text,
-        "task_class": task_class,
-    }
-    item.update(metadata)
-    return item
-
-
-def build_agent_todo_summary() -> dict[str, Any]:
-    summary = compact_todo_group(
+def build_agent_todo_summary() -> dict:
+    return quota_todo_summary(
         [
-            todo(
-                4,
-                "[P2] Continue low-risk canary cleanup after the core projection parity lands.",
-                task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            quota_todo_item(
                 todo_id="todo_advancement_p2",
+                index=4,
+                priority="P2",
+                text="[P2] Continue low-risk canary cleanup after the core projection parity lands.",
+                task_class=TODO_TASK_CLASS_ADVANCEMENT,
             ),
-            todo(
-                5,
-                "[P2] Monitor unscheduled public smoke signal after schedule metadata is added.",
-                task_class=TODO_TASK_CLASS_MONITOR,
+            quota_todo_item(
                 todo_id="todo_monitor_unscheduled",
+                index=5,
+                priority="P2",
+                text="[P2] Monitor unscheduled public smoke signal after schedule metadata is added.",
+                task_class=TODO_TASK_CLASS_MONITOR,
                 target_key="public-smoke:unscheduled",
             ),
-            todo(
-                2,
-                "[P0] Monitor public smoke signal and only write back if it changed.",
-                task_class=TODO_TASK_CLASS_MONITOR,
+            quota_todo_item(
                 todo_id="todo_monitor_p0",
+                index=2,
+                text="[P0] Monitor public smoke signal and only write back if it changed.",
+                task_class=TODO_TASK_CLASS_MONITOR,
                 next_due_at="2026-01-01T00:00:00+00:00",
                 target_key="public-smoke:due",
             ),
-            todo(
-                3,
-                "[P0] Extract todo projection helper for status and quota parity.",
-                task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            quota_todo_item(
                 todo_id="todo_advancement_p0",
+                index=3,
+                text="[P0] Extract todo projection helper for status and quota parity.",
+                task_class=TODO_TASK_CLASS_ADVANCEMENT,
                 claimed_by=AGENT_ID,
             ),
-            todo(
-                1,
-                "[P1] Add characterization before moving more control-plane code.",
-                task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            quota_todo_item(
                 todo_id="todo_advancement_p1",
+                index=1,
+                priority="P1",
+                text="[P1] Add characterization before moving more control-plane code.",
+                task_class=TODO_TASK_CLASS_ADVANCEMENT,
             ),
         ],
-        source_section="Agent Todo",
         role="agent",
     )
-    assert summary is not None, summary
-    return summary
 
 
-def status_payload(agent_todos: dict[str, Any]) -> dict[str, Any]:
-    quota = {
-        "compute": 1.0,
-        "window_hours": 24,
-        "slot_minutes": 1,
-        "allowed_slots": 1440,
-        "spent_slots": 0,
-        "state": "eligible",
-        "reason": "fixture eligible quota",
-    }
-    return {
-        "ok": True,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active",
-                    "waiting_on": "codex",
-                    "severity": "info",
-                    "source": "project_asset",
-                    "quota": quota,
-                    "agent_todos": agent_todos,
-                    "project_asset": {
-                        "agent_todos": agent_todos,
-                        "next_action": "Use the first executable advancement todo.",
-                    },
-                }
-            ]
+def status_payload(agent_todos: dict) -> dict:
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        recommended_action="Use the first executable advancement todo.",
+        next_action="Use the first executable advancement todo.",
+        agent_todos=agent_todos,
+        coordination={
+            "primary_agent": "codex-main-control",
+            "registered_agents": ["codex-main-control", AGENT_ID],
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "quota": quota,
-                    "latest_runs": [],
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": ["codex-main-control", AGENT_ID],
-                    },
-                }
-            ]
-        },
-    }
+        latest_runs=[],
+    )
 
 
-def assert_status_summary_lanes(summary: dict[str, Any]) -> None:
+def assert_status_summary_lanes(summary: dict) -> None:
     assert [item["todo_id"] for item in summary["first_open_items"]] == [
         "todo_monitor_p0",
         "todo_advancement_p0",
@@ -184,7 +132,7 @@ def assert_status_summary_lanes(summary: dict[str, Any]) -> None:
     assert summary["monitor_schedule_gap_count"] == 1, summary
 
 
-def assert_shared_ordering_parity(summary: dict[str, Any]) -> None:
+def assert_shared_ordering_parity(summary: dict) -> None:
     first_open = [item for item in summary["first_open_items"] if isinstance(item, dict)]
     assert [item["todo_id"] for item in sorted(first_open, key=todo_projection_sort_key)] == [
         "todo_monitor_p0",
@@ -211,32 +159,36 @@ def assert_shared_ordering_parity(summary: dict[str, Any]) -> None:
 
 def assert_claimed_visibility_parity() -> None:
     items = [
-        todo(
-            1,
-            "[P1] Claimed by A one.",
-            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        quota_todo_item(
             todo_id="todo_a1",
+            index=1,
+            priority="P1",
+            text="[P1] Claimed by A one.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
             claimed_by="agent-a",
         ),
-        todo(
-            2,
-            "[P1] Claimed by A two.",
-            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        quota_todo_item(
             todo_id="todo_a2",
+            index=2,
+            priority="P1",
+            text="[P1] Claimed by A two.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
             claimed_by="agent-a",
         ),
-        todo(
-            3,
-            "[P1] Claimed by B one.",
-            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        quota_todo_item(
             todo_id="todo_b1",
+            index=3,
+            priority="P1",
+            text="[P1] Claimed by B one.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
             claimed_by="agent-b",
         ),
-        todo(
-            4,
-            "[P1] Unclaimed filler.",
-            task_class=TODO_TASK_CLASS_ADVANCEMENT,
+        quota_todo_item(
             todo_id="todo_unclaimed",
+            index=4,
+            priority="P1",
+            text="[P1] Unclaimed filler.",
+            task_class=TODO_TASK_CLASS_ADVANCEMENT,
         ),
     ]
     for selector in (
@@ -264,18 +216,20 @@ def assert_claimed_visibility_parity() -> None:
 
 
 def assert_deferred_helper_parity() -> None:
-    deferred = todo(
-        6,
-        "[P2] Resume after dependency lands.",
-        task_class=TODO_TASK_CLASS_ADVANCEMENT,
+    deferred = quota_todo_item(
         todo_id="todo_deferred",
+        index=6,
+        priority="P2",
+        text="[P2] Resume after dependency lands.",
+        task_class=TODO_TASK_CLASS_ADVANCEMENT,
         status="deferred",
     )
-    open_item = todo(
-        7,
-        "[P2] Still executable.",
-        task_class=TODO_TASK_CLASS_ADVANCEMENT,
+    open_item = quota_todo_item(
         todo_id="todo_open",
+        index=7,
+        priority="P2",
+        text="[P2] Still executable.",
+        task_class=TODO_TASK_CLASS_ADVANCEMENT,
     )
     for predicate in (
         shared_todo_item_is_deferred,
@@ -285,7 +239,7 @@ def assert_deferred_helper_parity() -> None:
         assert predicate(open_item) is False, open_item
 
 
-def assert_monitor_item_collection_parity(summary: dict[str, Any]) -> None:
+def assert_monitor_item_collection_parity(summary: dict) -> None:
     # Preserve current lane-projection semantics: repeated references to the
     # same dict object are de-duplicated, while separate projected copies of the
     # same todo_id can appear across monitor summary lanes. This is not a
@@ -306,7 +260,7 @@ def assert_monitor_item_collection_parity(summary: dict[str, Any]) -> None:
     assert handle["todo_id"] == "todo_monitor_p0", handle
 
 
-def assert_open_task_count_state_machine(summary: dict[str, Any]) -> None:
+def assert_open_task_count_state_machine(summary: dict) -> None:
     counts = shared_todo_summary_open_task_counts(summary)
     assert counts == {
         "open": 5,
@@ -320,11 +274,12 @@ def assert_open_task_count_state_machine(summary: dict[str, Any]) -> None:
     hidden_summary = {
         "open_count": 3,
         "first_open_items": [
-            todo(
-                1,
-                "[P1] Visible advancement work.",
-                task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            quota_todo_item(
                 todo_id="todo_visible_advancement",
+                index=1,
+                priority="P1",
+                text="[P1] Visible advancement work.",
+                task_class=TODO_TASK_CLASS_ADVANCEMENT,
             )
         ],
     }
@@ -337,19 +292,21 @@ def assert_open_task_count_state_machine(summary: dict[str, Any]) -> None:
     explicit_backlog_summary = {
         "open_count": 4,
         "executable_backlog_items": [
-            todo(
-                4,
-                "[P2] Explicit executable backlog item.",
-                task_class=TODO_TASK_CLASS_ADVANCEMENT,
+            quota_todo_item(
                 todo_id="todo_explicit_backlog",
+                index=4,
+                priority="P2",
+                text="[P2] Explicit executable backlog item.",
+                task_class=TODO_TASK_CLASS_ADVANCEMENT,
             )
         ],
         "monitor_open_items": [
-            todo(
-                5,
-                "[P2] Explicit monitor backlog item.",
-                task_class=TODO_TASK_CLASS_MONITOR,
+            quota_todo_item(
                 todo_id="todo_explicit_monitor",
+                index=5,
+                priority="P2",
+                text="[P2] Explicit monitor backlog item.",
+                task_class=TODO_TASK_CLASS_MONITOR,
                 target_key="public-smoke:explicit",
             )
         ],
@@ -360,17 +317,13 @@ def assert_open_task_count_state_machine(summary: dict[str, Any]) -> None:
     assert explicit_counts["monitor"] == 1, explicit_counts
 
 
-def assert_first_executable_item_parity(summary: dict[str, Any]) -> None:
-    for selector in (
-        shared_first_executable_todo_item,
-        quota_first_executable_todo_item,
-    ):
-        selected = selector(summary)
-        assert isinstance(selected, dict), summary
-        assert selected["todo_id"] == "todo_advancement_p0", selected
+def assert_first_executable_item_parity(summary: dict) -> None:
+    selected = shared_first_executable_todo_item(summary)
+    assert isinstance(selected, dict), summary
+    assert selected["todo_id"] == "todo_advancement_p0", selected
 
 
-def assert_quota_uses_executable_advancement(summary: dict[str, Any]) -> None:
+def assert_quota_uses_executable_advancement(summary: dict) -> None:
     payload = build_quota_should_run(
         status_payload(summary),
         goal_id=GOAL_ID,
