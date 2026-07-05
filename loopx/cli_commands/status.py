@@ -135,7 +135,10 @@ def register_status_commands(
 
     review_packet_parser = subparsers.add_parser(
         "review-packet",
-        help="Generate a CLI-visible Review Packet from the current status contract.",
+        help=(
+            "Generate a CLI-visible Review Packet from the current status contract, "
+            "including agent-scoped evidence-log read hints when available."
+        ),
     )
     review_packet_parser.add_argument("--goal-id", required=True, help="Goal id to package for review or handoff.")
     review_packet_parser.add_argument(
@@ -205,6 +208,7 @@ def review_packet_handoff_only_payload(payload: dict[str, object]) -> dict[str, 
             "project_agent_handoff": handoff_text,
             "handoff_text": handoff_text,
             "benchmark_report_chain_handoff": payload.get("benchmark_report_chain_handoff"),
+            "project_agent_required_reads": payload.get("project_agent_required_reads") or [],
             "operator_gate_approved_handoff": payload.get("operator_gate_approved_handoff"),
             "connected_delivery_handoff": payload.get("connected_delivery_handoff"),
             "handoff_delivery_contract": agent_contract,

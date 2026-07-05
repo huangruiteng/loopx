@@ -182,6 +182,13 @@ also carries compact `handoff_readiness` with `handoff_status` and
 `post_handoff_run_seen`. Heartbeat jobs can therefore tell whether the selected
 goal is still waiting for a target run or has already seen post-handoff work
 without parsing the full status payload.
+For replan and handoff, the guard and review packet may also carry
+`required_reads` / `project_agent_required_reads` entries that point to
+`loopx evidence-log --goal-id <goal-id> --agent-id <agent-id> --thin`. Treat
+that command as the cold-path chronology for the selected agent lane: it expands
+the current agent's public-safe events, keeps other agents compressed to
+frontier context, and does not replace status, quota, review packets, or the
+append-only event sources.
 The same guard may include `work_lane_contract`. Schema
 `work_lane_contract_v1` is the single machine contract for monitor versus
 advancement routing. It distinguishes `lane=continuous_monitor` from

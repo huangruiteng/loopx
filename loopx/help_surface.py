@@ -48,11 +48,11 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             },
             {
                 "command": "loopx review-packet --goal-id <goal-id>",
-                "purpose": "Render a handoff or review packet for operator judgment.",
+                "purpose": "Render a handoff or review packet with any required evidence-log reads.",
             },
             {
                 "command": "loopx evidence-log --goal-id <goal-id> --agent-id <agent-id> --thin",
-                "purpose": "Read the current agent's public-safe evidence ledger before replan.",
+                "purpose": "Read the current agent's thin public-safe ledger before replan or handoff.",
             },
             {"command": "loopx todo --help", "purpose": "Show todo lifecycle commands."},
             {
@@ -180,7 +180,7 @@ def render_concise_help(program: str = "loopx") -> str:
             "  loopx status                   Show current goals, gates, and next action.",
             "  loopx diagnose --goal-id ID    Build a compact evidence packet.",
             "  loopx evidence-log --goal-id ID --agent-id AGENT --thin",
-            "                                  Read this agent's thin evidence ledger.",
+            "                                  Read this agent's thin ledger before replan.",
             "  loopx todo --help              Add, claim, complete, update, or archive todos.",
             "  loopx task-lease --help        Manage a hard per-todo lease.",
             "  loopx quota should-run         Decide whether the next agent turn should run.",
@@ -191,15 +191,11 @@ def render_concise_help(program: str = "loopx") -> str:
             "  Claude Code    use installed /loopx skills; adapter only for gated native /loop.",
             "  Other agents   need a CLI/task/automation/loop hook, or run LoopX manually.",
             "",
-            "Global options:",
-            "  --registry PATH   --runtime-root PATH   --format markdown|json",
-            "",
+            "Global options: --registry PATH   --runtime-root PATH   --format markdown|json",
             "More:",
             "  loopx commands                 Show grouped command reference.",
-            "  loopx slash-commands           Show/install slash command prompt and skill files.",
             "  loopx <command> --help         Show flags for one command.",
             "  man loopx                      Open the installed manual page.",
-            "  docs/guides/newcomer-command-path.md",
             "",
         ]
     )

@@ -641,6 +641,7 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
     handoff_only = review_packet_handoff_only_payload(payload)
     assert_handoff_interface_budget(handoff_only, "connected-delivery handoff-only payload")
     assert_handoff_only_top_level_budget(handoff_only, "connected-delivery handoff-only payload")
+    assert handoff_only["project_agent_required_reads"] == required_reads, handoff_only
     agent_contract = handoff_only["handoff_delivery_contract"]
     assert set(agent_contract) == {"mode", "instruction", "minimum_scale", "must_include", "if_blocked"}, handoff_only
     assert agent_contract["mode"] == "expand_after_surface_progress_loop", handoff_only

@@ -43,7 +43,12 @@ Show current goals, gates, attention queue, and next action.
 Build a compact evidence packet when behavior is surprising.
 .TP
 .B loopx review-packet --goal-id <goal-id>
-Render a handoff or review packet for operator judgment.
+Render a handoff or review packet for operator judgment, including required
+agent-scoped evidence reads when available.
+.TP
+.B loopx evidence-log --goal-id <goal-id> --agent-id <agent-id> --thin
+Read the current agent's bounded public-safe evidence ledger before replan or
+handoff. Other agents remain compressed to frontier context.
 .TP
 .B loopx todo --help
 Show todo add, claim, complete, update, supersede, and archive forms.

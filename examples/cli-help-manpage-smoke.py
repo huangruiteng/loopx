@@ -30,6 +30,7 @@ def assert_concise_default_help(output: str) -> None:
     assert "Codex App" in output, output
     assert "Claude Code" in output, output
     assert "loopx commands" in output, output
+    assert "evidence-log --goal-id ID --agent-id AGENT --thin" in output, output
     assert "man loopx" in output, output
     assert LONG_TAIL_COMMAND not in output, output
     assert len(output.splitlines()) <= 36, output
@@ -52,6 +53,8 @@ def assert_command_reference_surface() -> None:
     assert result.returncode == 0, (result.returncode, result.stdout, result.stderr)
     assert "LoopX command reference" in result.stdout, result.stdout
     assert "Daily operator commands" in result.stdout, result.stdout
+    assert "required evidence-log reads" in result.stdout, result.stdout
+    assert "before replan or handoff" in result.stdout, result.stdout
     assert "Loop driver hints" in result.stdout, result.stdout
     assert "Claude Code /loop" in result.stdout, result.stdout
     assert "Maintainer and adapter commands" in result.stdout, result.stdout
@@ -114,10 +117,13 @@ def assert_installer_manpage_surface() -> None:
         assert manpage.is_file(), manpage
         with gzip.open(manpage, "rt", encoding="utf-8") as handle:
             man_text = handle.read()
+        compact_man_text = " ".join(man_text.split())
         assert ".TH LOOPX 1" in man_text, man_text
         assert ".SH LOOP DRIVERS" in man_text, man_text
         assert "Codex App automation" in man_text, man_text
         assert "loopx commands" in man_text, man_text
+        assert "loopx evidence-log --goal-id" in man_text, man_text
+        assert "before replan or handoff" in compact_man_text, man_text
         assert "loopx COMMAND --help" in man_text, man_text
 
         profile_text = profile.read_text(encoding="utf-8")
