@@ -32,6 +32,8 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
 from loopx.codex_cli_goal_tui import (
+    CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
+    build_codex_cli_goal_file_objective,
     build_codex_cli_goal_tui_input,
     build_codex_cli_tui_command,
     codex_cli_tui_environment,
@@ -42,6 +44,7 @@ from loopx.codex_cli_goal_tui import (
     tmux_kill_session,
     tmux_paste_file_and_submit,
     tmux_submit_enter,
+    tmux_type_text_and_submit,
     wait_for_codex_cli_tui_ready,
 )
 
@@ -1176,6 +1179,8 @@ class SkillsBenchLocalAcpRelay:
             cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
             bridge_server_proc: subprocess.Popen[str] | None = None
             bridge_summary_path: Path | None = None
+            goal_prompt_file_used = False
+            goal_command_submission_method = "paste-buffer"
             if self._config.remote_command_file_bridge_command:
                 if _is_bridge_action_preflight_prompt(prompt_text):
                     bridge_probe = self._reverse_channel_json_preflight_probe()
@@ -1218,9 +1223,24 @@ class SkillsBenchLocalAcpRelay:
                     bridge_probe=bridge_probe,
                     bridge_command_for_agent=str(instrumented_bridge),
                 )
+                prompt_instruction_path = (
+                    Path(cwd) / CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
+                )
+                prompt_instruction_path.write_text(
+                    prompt_for_codex,
+                    encoding="utf-8",
+                )
+                prompt_for_goal = build_codex_cli_goal_file_objective(
+                    CODEX_CLI_GOAL_TASK_PROMPT_FILENAME
+                )
+                goal_prompt_file_used = True
+                goal_command_submission_method = "typed"
+            else:
+                prompt_for_goal = prompt_for_codex
+            goal_command_text = build_codex_cli_goal_tui_input(prompt_for_goal)
             prompt_path = tmp_path / "goal-prompt.txt"
             prompt_path.write_text(
-                build_codex_cli_goal_tui_input(prompt_for_codex),
+                goal_command_text,
                 encoding="utf-8",
             )
             tmux_name = f"gh-sb-cli-goal-{uuid.uuid4().hex[:10]}"
@@ -1273,6 +1293,8 @@ class SkillsBenchLocalAcpRelay:
                         goal_terminal_observed=False,
                         first_action_observed=False,
                         bridge_summary_path=bridge_summary_path,
+                        goal_prompt_file_used=goal_prompt_file_used,
+                        goal_command_submission_method=goal_command_submission_method,
                     )
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
@@ -1295,15 +1317,23 @@ class SkillsBenchLocalAcpRelay:
                         first_action_observed=False,
                         bridge_summary_path=bridge_summary_path,
                         thread_prewarm_observed=False,
+                        goal_prompt_file_used=goal_prompt_file_used,
+                        goal_command_submission_method=goal_command_submission_method,
                     )
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
                     )
-                tmux_paste_file_and_submit(
-                    tmux_name=tmux_name,
-                    prompt_path=prompt_path,
-                    buffer_suffix="prompt",
-                )
+                if goal_prompt_file_used:
+                    tmux_type_text_and_submit(
+                        tmux_name=tmux_name,
+                        text=goal_command_text,
+                    )
+                else:
+                    tmux_paste_file_and_submit(
+                        tmux_name=tmux_name,
+                        prompt_path=prompt_path,
+                        buffer_suffix="prompt",
+                    )
                 deadline = time.monotonic() + self._config.timeout_sec
                 goal_active_deadline = 0.0
                 if (
@@ -1379,6 +1409,10 @@ class SkillsBenchLocalAcpRelay:
                             first_action_observed=first_action_seen,
                             bridge_summary_path=bridge_summary_path,
                             thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + retryable_startup_blocker_stage
@@ -1402,6 +1436,10 @@ class SkillsBenchLocalAcpRelay:
                             first_action_observed=False,
                             bridge_summary_path=bridge_summary_path,
                             thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_goal_active_timeout"
@@ -1446,6 +1484,10 @@ class SkillsBenchLocalAcpRelay:
                             first_action_observed=False,
                             bridge_summary_path=bridge_summary_path,
                             thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
@@ -1469,6 +1511,10 @@ class SkillsBenchLocalAcpRelay:
                             first_action_observed=first_action_seen,
                             bridge_summary_path=bridge_summary_path,
                             thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
@@ -1532,6 +1578,10 @@ class SkillsBenchLocalAcpRelay:
                             first_action_observed=first_action_seen,
                             bridge_summary_path=bridge_summary_path,
                             thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
                             post_bridge_recovery_attempt_count=(
                                 post_bridge_recovery_attempt_count
                             ),
@@ -1564,6 +1614,10 @@ class SkillsBenchLocalAcpRelay:
                             first_action_observed=first_action_seen,
                             bridge_summary_path=bridge_summary_path,
                             thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
                             post_bridge_recovery_attempt_count=(
                                 post_bridge_recovery_attempt_count
                             ),
@@ -1604,6 +1658,8 @@ class SkillsBenchLocalAcpRelay:
                     first_action_observed=first_action_seen,
                     bridge_summary_path=bridge_summary_path,
                     thread_prewarm_observed=thread_prewarm_observed,
+                    goal_prompt_file_used=goal_prompt_file_used,
+                    goal_command_submission_method=goal_command_submission_method,
                     post_bridge_recovery_attempt_count=post_bridge_recovery_attempt_count,
                     post_bridge_recovery_action=post_bridge_recovery_action,
                     post_bridge_recovery_skip_reason=post_bridge_recovery_skip_reason,
@@ -1628,6 +1684,8 @@ class SkillsBenchLocalAcpRelay:
                     first_action_observed=first_action_seen,
                     bridge_summary_path=bridge_summary_path,
                     thread_prewarm_observed=False,
+                    goal_prompt_file_used=goal_prompt_file_used,
+                    goal_command_submission_method=goal_command_submission_method,
                 )
                 raise RuntimeError("codex cli goal worker failed before run") from exc
             finally:
@@ -1644,6 +1702,8 @@ class SkillsBenchLocalAcpRelay:
         first_action_observed: bool,
         bridge_summary_path: Path | None,
         thread_prewarm_observed: bool = False,
+        goal_prompt_file_used: bool = False,
+        goal_command_submission_method: str = "",
         post_bridge_recovery_attempt_count: int = 0,
         post_bridge_recovery_action: str = "",
         post_bridge_recovery_skip_reason: str = "",
@@ -1690,6 +1750,11 @@ class SkillsBenchLocalAcpRelay:
                 "stage": safe_stage,
                 "goal_slash_command_submitted": True,
                 "goal_thread_prewarm_observed": bool(thread_prewarm_observed),
+                "goal_prompt_file_used": bool(goal_prompt_file_used),
+                "goal_prompt_file_raw_path_recorded": False,
+                "goal_command_submission_method": str(
+                    goal_command_submission_method or ""
+                )[:40],
                 "goal_active_observed": bool(goal_active_observed),
                 "goal_terminal_observed": bool(goal_terminal_observed),
                 "first_action_observed": bool(first_action_observed),
