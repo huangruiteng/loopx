@@ -129,7 +129,7 @@ def build_auto_research_user_contract(
             ),
             "starts": "visible_codex_tui_lanes",
             "attach_semantics": (
-                "--attach means operator takeover first; it skips the default evidence-first wake."
+                "--attach means operator takeover first; it skips the default visible role wake."
             ),
             "uses_generic_kernel": True,
             "coordination_model": "decentralized_state_a2a",

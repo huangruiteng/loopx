@@ -17,8 +17,8 @@ AUTO_RESEARCH_REQUIRED_SKILL = "loopx-auto-research"
 AUTO_RESEARCH_WORKER_SKILL_SOURCE = (
     "loopx/capabilities/auto_research/worker_skill/SKILL.md"
 )
-AUTO_RESEARCH_DEMO_TICK_ROUNDS = 8
-AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS = 1
+AUTO_RESEARCH_VISIBLE_TICK_ROUNDS = 1
+AUTO_RESEARCH_VISIBLE_TICK_SLEEP_SECONDS = 1
 AUTO_RESEARCH_HOLDOUT_SUCCESSOR_TEXT = "[P0-auto-research-live] Run held-out validation for the dev-supported hypothesis from {source_todo_id}, append public-safe evidence, and summarize promotion readiness."
 AUTO_RESEARCH_VALIDATED_SUMMARY_SUCCESSOR_TEXT = "[P0-auto-research-live] Summarize held-out validation from {source_todo_id}, promotion readiness, and the public claim boundary for the supported hypothesis."
 AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT = "[P0-auto-research-live] Grow the next evidence-backed hypothesis from the validated branch {source_todo_id} and route a second dev attempt."
@@ -305,26 +305,6 @@ def auto_research_successor_specs_for_action(*, role_id: str, action: str) -> li
     ]
 
 
-def auto_research_worker_turn_command(
-    *,
-    goal_id: str,
-    agent_id: str,
-    objective: str,
-    output_language: str = "en",
-) -> str:
-    return (
-        f"LOOPX_AUTO_RESEARCH_OUTPUT_LANGUAGE={shlex.quote(output_language)} "
-        '"${LOOPX_PANE_LOOPX_JSON:-$LOOPX_PANE_LOOPX}" auto-research worker-turn '
-        f"--goal-id {shlex.quote(goal_id)} "
-        f"--agent-id {shlex.quote(agent_id)} "
-        f"--objective {shlex.quote(objective)} "
-        '--lane-count "${LOOPX_VISIBLE_LANE_COUNT:-1}" '
-        "--visible-lanes-accepted "
-        '--live-evidence-output "$LOOPX_PANE_ARTIFACT_DIR/live-codex-e2e-evidence.public.json" '
-        "--execute --complete-selected-todo"
-    )
-
-
 def auto_research_seed_action_for_role(role_id: str) -> str:
     profile = AUTO_RESEARCH_ROLE_PROFILES.get(role_id) or {}
     actions = profile.get("allowed_actions") if isinstance(profile, dict) else []
@@ -372,14 +352,8 @@ def build_auto_research_preset_role(
             "source": AUTO_RESEARCH_WORKER_SKILL_SOURCE,
         },
         "handoff_hints": role_profile.get("handoff") or [],
-        "worker_turn_command": auto_research_worker_turn_command(
-            goal_id=goal_id,
-            agent_id=agent_id,
-            objective="Run the next bounded auto-research frontier item.",
-            output_language=output_language,
-        ),
-        "tick_rounds": AUTO_RESEARCH_DEMO_TICK_ROUNDS,
-        "tick_sleep_seconds": AUTO_RESEARCH_DEMO_TICK_SLEEP_SECONDS,
+        "tick_rounds": AUTO_RESEARCH_VISIBLE_TICK_ROUNDS,
+        "tick_sleep_seconds": AUTO_RESEARCH_VISIBLE_TICK_SLEEP_SECONDS,
         "reasoning_effort": reasoning_effort,
     }
 
@@ -401,7 +375,7 @@ def build_auto_research_preset_summary(
         "owns": [
             "research_roles",
             "handoff_hints",
-            "metric_evidence_loop",
+            "metric_contract_hints",
             "domain_defaults",
         ],
         "forbidden": [

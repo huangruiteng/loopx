@@ -145,11 +145,11 @@ loopx --format json auto-research demo-e2e \
   --execute
 ```
 
-This does not create a starter pack. The worker path now uses the built-in
-lightweight metric kernel so the demo can prove the state loop without shipping
-domain-specific problem code. The stable smoke metric still shows the product
-shape: baseline `1.0`, dev evidence `[4.0, 4.8]`, holdout evidence
-`[4.5, 5.2]`, two holdout improvements, and a clean public boundary.
+This starts the product path: visible Codex TUI roles read their own
+quota/frontier through LoopX state, then author public-safe research evidence or
+successor todos from inside the pane. The pane-local tick is a guard/frontier
+read; it does not manufacture research contracts, hypotheses, dev scores, or
+holdout scores.
 
 The public line-count claim is intentionally narrower than the kernel. The
 copyable recipe is one user command plus the four default auto-research role
@@ -179,8 +179,8 @@ loopx --format json auto-research frontier \
 
 This renders `decentralized_research_frontier_v0`,
 `research_evidence_graph_v0`, and compact decision candidates from a public
-fixture. It does not launch experiments; it proves that the state shape can
-present a per-agent frontier without one leader agent.
+fixture. It does not launch experiments or claim uplift; it proves that the
+state shape can present a per-agent frontier without one leader agent.
 
 Public-safe evaluator outputs can also be converted into evidence records. A
 minimal contract/eval pair is enough; the kernel does not require a shipped

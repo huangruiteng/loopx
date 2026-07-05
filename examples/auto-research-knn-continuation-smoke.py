@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Smoke-test KNN-style auto-research continuation through role-declared todos."""
+"""Smoke-test the KNN preset does not imply fake continuation metrics."""
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e  # noqa: E402
+ROOT = Path(__file__).resolve().parents[1]
+QUESTION = "如何提升 KNN holdout metric?"
 
 
 def main() -> int:
@@ -19,72 +20,77 @@ def main() -> int:
         temp = Path(temp_dir)
         registry = temp / "registry.global.json"
         runtime_root = temp / "runtime"
+        workspace = temp / "workspace"
+        workspace.mkdir()
         registry.write_text(
             json.dumps({"common_runtime_root": str(runtime_root), "goals": []}),
             encoding="utf-8",
         )
-
-        payload = run_auto_research_demo_e2e(
-            agent_id="auto-research-operator",
-            goal_id="loopx-auto-research-demo-knn-continuation-smoke",
-            tracking_goal_id=None,
-            objective=(
-                "Can a simple KNN baseline improve through multi-agent auto research "
-                "without leaking holdout claims?"
-            ),
-            output_dir="auto_research_lightweight_kernel",
-            execute=True,
-            run_worker_loop=True,
-            worker_loop_rounds=4,
-            launch_visible=False,
-            keep_workspace=False,
-            registry_path=registry,
-            runtime_root_arg=str(runtime_root),
-            session_name="loopx-ar-knn-continuation-smoke",
-            cli_bin="loopx",
-            codex_bin="codex",
-            tmux_bin="tmux",
-            reasoning_effort="high",
-            output_language="en",
-            live_evidence_path=None,
-            append_evidence=lambda _packet: {},
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT)
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "auto-research",
+                "start",
+                QUESTION,
+                "--preset",
+                "knn-demo",
+                "--language",
+                "zh",
+                "--execute",
+                "--headless",
+                "--worker-loop-rounds",
+                "1",
+            ],
+            cwd=workspace,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
         )
+        if result.returncode != 0:
+            raise AssertionError(
+                f"knn preset start failed rc={result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
+            )
+        payload = json.loads(result.stdout)
+
+    preset = payload["preset_context"]
+    assert preset["preset_id"] == "knn-demo", preset
+    assert preset["baseline_source"] == "preset_fixture_not_question_text", preset
+    assert preset["question_text_supplies_baseline"] is False, preset
+    assert preset["metric_name"] == "holdout_metric", preset
+    assert preset["baseline_metric"] == 1.0, preset
 
     worker_loop = payload["worker_loop"]
-    actions = worker_loop["selected_actions"]
-    assert "run_dev_eval" in actions, actions
-    assert "run_holdout_eval" in actions, actions
-    assert "write_evaluation_summary" in actions, actions
-    assert worker_loop["executed_turn_count"] >= 6, worker_loop
-    holdout_turns = [
-        turn
-        for turn in worker_loop["turns"]
-        if turn.get("selected_action") == "run_holdout_eval"
-    ]
-    assert len(holdout_turns) == 2, worker_loop
-    assert holdout_turns[0]["holdout_metric"] == 4.5, holdout_turns
-    assert holdout_turns[1]["holdout_metric"] == 5.2, holdout_turns
-    assert holdout_turns[0]["live_evidence_written"] is True, holdout_turns
-    assert holdout_turns[1]["live_evidence_written"] is True, holdout_turns
-    collective_rounds = payload["collective_research_rounds"]
-    assert collective_rounds["collective_round_count"] == 4, collective_rounds
-    assert collective_rounds["multi_round_research_verified"] is True, collective_rounds
-    assert collective_rounds["dev_metric_sequence"] == [4.0, 4.8], collective_rounds
-    assert collective_rounds["holdout_metric_sequence"] == [4.5, 5.2], collective_rounds
-    assert collective_rounds["holdout_improvement_count"] == 2, collective_rounds
-    kernel_ledger = collective_rounds["kernel_ledger"]
-    assert kernel_ledger["schema_version"] == "multi_agent_collective_round_ledger_v0"
-    assert kernel_ledger["owner_layer"] == "generic_multi_agent_kernel", kernel_ledger
-    assert kernel_ledger["collective_round_count"] == 4, kernel_ledger
-    assert kernel_ledger["multi_round_interaction_verified"] is True, kernel_ledger
-    assert kernel_ledger["collective_research_verification"]["verified"] is True, kernel_ledger
-    assert kernel_ledger["successor_todo_count"] >= 1, kernel_ledger
+    assert worker_loop["selected_actions"] == [
+        "write_research_contract",
+        "propose_hypothesis",
+        "run_dev_eval",
+        "summarize_evidence",
+    ], worker_loop
+    assert all(turn.get("dev_metric") is None for turn in worker_loop["turns"]), worker_loop
+    assert all(turn.get("holdout_metric") is None for turn in worker_loop["turns"]), worker_loop
+
+    collective = payload["collective_research_rounds"]
+    assert collective["multi_round_research_verified"] is False, collective
+    assert collective["holdout_improvement_count"] == 0, collective
+    assert collective["dev_metric_sequence"] == [], collective
+    assert collective["holdout_metric_sequence"] == [], collective
+
     tonight = payload["tonight_experience"]
-    assert tonight["coordination_pattern"] == "decentralized_state_a2a", tonight
-    assert tonight["dev_metric"] == 4.8, tonight
-    assert tonight["holdout_metric"] == 5.2, tonight
-    assert tonight["holdout_improvement_count"] == 2, tonight
-    assert tonight["positive_result"] is True, tonight
+    assert tonight["positive_result"] is False, tonight
+    assert tonight["dev_metric"] is None, tonight
+    assert tonight["holdout_metric"] is None, tonight
     assert payload["public_boundary"]["raw_logs_recorded"] is False, payload
     return 0
 

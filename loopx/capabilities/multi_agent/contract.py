@@ -23,10 +23,11 @@ PANE_LOCAL_A2A_WAKEUP_PROMPT = (
     "LoopX pane-local A2A wakeup: read $LOOPX_CODEX_TUI_PROMPT_ARTIFACT for role/scope if needed. "
     "Treat this fixed wake as a fresh decentralized round. "
     "Inspect $LOOPX_PANE_TICK_SUMMARY only as your own prior pane-local tick evidence, then read your own LoopX quota/frontier. "
-    "Run the bounded $LOOPX_PANE_A2A_TICK once when your own state shows runnable work or the user asked for another round. "
+    "Run the bounded $LOOPX_PANE_A2A_TICK once to refresh guard/frontier state when your own state shows runnable work or the user asked for another round. "
+    "The tick is not research completion unless a configured worker explicitly writes real public-safe evidence. "
     "Use only your own LOOPX_GOAL_ID/LOOPX_AGENT_ID quota/frontier; "
     "if no runnable frontier remains, stay quiet with a brief no-action note; "
-    "if advanced, summarize public evidence and next handoff. "
+    "if frontier remains, do the role's visible research work yourself and summarize public evidence and next handoff. "
     "Honor the role prompt's human output language for summaries while keeping machine artifact schema keys unchanged. "
     "Do not ask the broadcaster for direction; LoopX state is the source of truth."
 )
@@ -153,12 +154,13 @@ def generic_role_prompt(
             "",
             "How to work:",
             "- Treat LoopX state as the shared A2A surface.",
-            "- This Codex TUI owns the first visible tick; run `$LOOPX_PANE_A2A_TICK` once before summarizing when runnable work remains.",
+            "- This Codex TUI owns the first visible research turn; run `$LOOPX_PANE_A2A_TICK` once to refresh guard/frontier state before deciding what to do.",
             "- Treat `$LOOPX_PANE_TICK_SUMMARY` as previous pane-local evidence; it is not a gate that cancels later fixed wakes.",
             "- On each fixed wake, read your own LoopX quota/frontier and run the bounded `$LOOPX_PANE_A2A_TICK` once when runnable work remains or the user asks for another round.",
             "- If no runnable frontier remains, stay quiet with a brief no-action note.",
-            "- The tick reads your quota/frontier and then runs this role's worker-turn when configured.",
-            "- When the tick completes, summarize what changed, what remains blocked, and stay interactive for user takeover.",
+            "- The tick reads your quota/frontier; it runs a role worker only when the preset explicitly configures one.",
+            "- If the tick says no worker is configured or manual research is required, do the role's research work visibly and write public-safe evidence/todos yourself.",
+            "- When a real research action completes, summarize what changed, what remains blocked, and stay interactive for user takeover.",
             "- For machine reads, run `$LOOPX_PANE_LOOPX_JSON` as the command and redirect output into `$LOOPX_PANE_ARTIFACT_DIR/<name>.public.json`; it defaults to `--format json`.",
             "- Never write output to `$LOOPX_PANE_LOOPX_JSON`; it is the executable wrapper, not an artifact path.",
             "- Write compact public-safe evidence before completing or handing off a todo.",
@@ -224,7 +226,7 @@ def build_decentralized_a2a_driver_contract(
         },
         "layer_budget": {
             "user_layer": ["goal_id", "roles", "optional_overrides"],
-            "preset_layer": ["domain_roles", "handoff_hints", "worker_turn_command"],
+            "preset_layer": ["domain_roles", "handoff_hints", "optional_worker_hook"],
             "kernel_layer": [
                 "tmux_codex_tui_lifecycle",
                 "fixed_prompt_wakeup",

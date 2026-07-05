@@ -43,10 +43,12 @@ they disagree. Do not guess the intended role.
 If the role profile includes `successor_todos`, treat those declarations as the
 only role-local way to create the next agent todo. A successor declaration must
 name the target agent and include a `todo_command_template` such as
-`loopx todo add ... --claimed-by {target_agent_id_shell}`. The worker-turn/tick
-may render and run that declared command after a successful action and generic
-condition check. Do not invent an extra continuation plan in prose, and do not
-ask a leader pane to pick the next role.
+`loopx todo add ... --claimed-by {target_agent_id_shell}`. In visible
+auto-research, the pane-local tick is a guard/frontier read, not a research
+writer. Render and run a successor todo only after the visible role has authored
+real public-safe evidence or notes that satisfy the declared condition. Do not
+invent an extra continuation plan in prose, and do not ask a leader pane to pick
+the next role.
 
 For a visible demo rehearsal, `auto-research demo-supervisor` is read-only by
 default; use `--execute` only when the user opted into starting visible local
@@ -99,10 +101,9 @@ Allowed actions:
 Useful command:
 
 ```bash
-loopx --format json auto-research worker-turn \
+loopx --format json auto-research frontier \
   --goal-id "$LOOPX_GOAL_ID" \
-  --agent-id "$LOOPX_AGENT_ID" \
-  --execute
+  --agent-id "$LOOPX_AGENT_ID"
 ```
 
 Artifact contract:
@@ -164,10 +165,11 @@ normal `loopx todo add ... --claimed-by {target_agent_id_shell}` command. The
 kernel only validates the target agent and executes the normal LoopX todo
 writer.
 
-Evidence writeback should use the auto-research worker-turn/evidence commands
-exposed by the current LoopX state. Append only after reviewing packet boundary,
-then capture compact live evidence from the lane-authored packet when visible
-lanes are accepted.
+Evidence writeback should use an explicit lane-authored evidence packet or
+normal LoopX todo/evidence commands exposed by the current state. Append only
+after reviewing packet boundary, then capture compact live evidence from the
+lane-authored packet when visible lanes are accepted. Do not use worker-turn to
+manufacture dev or holdout metrics.
 
 Must not:
 
