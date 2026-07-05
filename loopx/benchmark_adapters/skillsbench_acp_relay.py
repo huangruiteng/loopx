@@ -561,6 +561,29 @@ def _codex_cli_tui_post_bridge_recovery_action(capture: str, *, stage: str) -> s
     return ""
 
 
+def _codex_cli_tui_post_bridge_recovery_skip_reason(
+    capture: str,
+    *,
+    stage: str,
+    recovery_action: str,
+) -> str:
+    """Return why no post-bridge recovery action was taken."""
+
+    if recovery_action:
+        return ""
+    if stage == "post_bridge_tui_rate_limit":
+        return "rate_limit_no_retry"
+    if stage not in {
+        "post_bridge_tui_model_timeout",
+        "post_bridge_tui_error_prompt",
+    }:
+        return ""
+    lowered = str(capture or "").lower()
+    if not any(marker in lowered for marker in ("press enter", "press return")):
+        return "no_retry_affordance"
+    return "unsupported_recovery_action"
+
+
 def _write_process_stdin_async(
     proc: subprocess.Popen[str],
     stdin_text: str | None,
@@ -1223,6 +1246,7 @@ class SkillsBenchLocalAcpRelay:
             meaningful_progress_seen = False
             post_bridge_recovery_attempt_count = 0
             post_bridge_recovery_action = ""
+            post_bridge_recovery_skip_reason = ""
             try:
                 subprocess.run(
                     [
@@ -1480,6 +1504,18 @@ class SkillsBenchLocalAcpRelay:
                             )
                             time.sleep(1.0)
                             continue
+                        post_bridge_recovery_skip_reason = (
+                            _codex_cli_tui_post_bridge_recovery_skip_reason(
+                                capture,
+                                stage=post_bridge_blocker_stage,
+                                recovery_action=recovery_action,
+                            )
+                        )
+                        if (
+                            not post_bridge_recovery_skip_reason
+                            and recovery_action == "press_enter"
+                        ):
+                            post_bridge_recovery_skip_reason = "retry_limit_reached"
                         tmux_kill_session(tmux_name)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
@@ -1496,6 +1532,9 @@ class SkillsBenchLocalAcpRelay:
                                 post_bridge_recovery_attempt_count
                             ),
                             post_bridge_recovery_action=post_bridge_recovery_action,
+                            post_bridge_recovery_skip_reason=(
+                                post_bridge_recovery_skip_reason
+                            ),
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + post_bridge_blocker_stage
@@ -1525,6 +1564,9 @@ class SkillsBenchLocalAcpRelay:
                                 post_bridge_recovery_attempt_count
                             ),
                             post_bridge_recovery_action=post_bridge_recovery_action,
+                            post_bridge_recovery_skip_reason=(
+                                post_bridge_recovery_skip_reason
+                            ),
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_bridge_idle_timeout"
@@ -1560,6 +1602,7 @@ class SkillsBenchLocalAcpRelay:
                     thread_prewarm_observed=thread_prewarm_observed,
                     post_bridge_recovery_attempt_count=post_bridge_recovery_attempt_count,
                     post_bridge_recovery_action=post_bridge_recovery_action,
+                    post_bridge_recovery_skip_reason=post_bridge_recovery_skip_reason,
                 )
                 if goal_terminal_observed and not goal_failed_observed:
                     return "codex cli /goal completed"
@@ -1599,6 +1642,7 @@ class SkillsBenchLocalAcpRelay:
         thread_prewarm_observed: bool = False,
         post_bridge_recovery_attempt_count: int = 0,
         post_bridge_recovery_action: str = "",
+        post_bridge_recovery_skip_reason: str = "",
     ) -> None:
         if not self._config.worker_public_trace_dir:
             return
@@ -1654,6 +1698,9 @@ class SkillsBenchLocalAcpRelay:
                 "post_bridge_recovery_action": str(
                     post_bridge_recovery_action or ""
                 )[:40],
+                "post_bridge_recovery_skip_reason": str(
+                    post_bridge_recovery_skip_reason or ""
+                )[:80],
                 "reasoning_effort": str(self._config.reasoning_effort or "")[:40],
                 "codex_api_proxy_env_injected": bool(
                     codex_cli_tui_environment(self._config.codex_api_proxy)

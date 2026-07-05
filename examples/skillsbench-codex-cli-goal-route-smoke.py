@@ -404,6 +404,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         SkillsBenchLocalAcpRelay,
         _codex_cli_tui_post_bridge_blocker_stage,
         _codex_cli_tui_post_bridge_recovery_action,
+        _codex_cli_tui_post_bridge_recovery_skip_reason,
     )
     from scripts.skillsbench_automation_loop import (
         _merge_host_local_acp_relay_trace_summary,
@@ -432,9 +433,33 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         == ""
     )
     assert (
+        _codex_cli_tui_post_bridge_recovery_skip_reason(
+            "request timed out while waiting for model\n› ",
+            stage="post_bridge_tui_model_timeout",
+            recovery_action="",
+        )
+        == "no_retry_affordance"
+    )
+    assert (
         _codex_cli_tui_post_bridge_recovery_action(
             "rate limit reached\npress enter to retry\n› ",
             stage="post_bridge_tui_rate_limit",
+        )
+        == ""
+    )
+    assert (
+        _codex_cli_tui_post_bridge_recovery_skip_reason(
+            "rate limit reached\npress enter to retry\n› ",
+            stage="post_bridge_tui_rate_limit",
+            recovery_action="",
+        )
+        == "rate_limit_no_retry"
+    )
+    assert (
+        _codex_cli_tui_post_bridge_recovery_skip_reason(
+            "request timed out while waiting for model\npress enter to retry\n› ",
+            stage="post_bridge_tui_model_timeout",
+            recovery_action="press_enter",
         )
         == ""
     )
@@ -483,7 +508,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         )
         relay._publish_codex_cli_goal_trace(
             ok=False,
-            stage="post_bridge_tui_rate_limit",
+            stage="post_bridge_tui_error_prompt",
             goal_active_observed=False,
             goal_terminal_observed=False,
             first_action_observed=True,
@@ -501,19 +526,21 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
 
     prerequisites = plan["runner_prerequisites"]
     assert trace["codex_cli_goal_tui_trace_present"] is True, trace
-    assert trace["codex_cli_goal_tui_stage"] == "post_bridge_tui_rate_limit"
+    assert trace["codex_cli_goal_tui_stage"] == "post_bridge_tui_error_prompt"
+    assert trace["codex_cli_goal_tui_stages"] == ["post_bridge_tui_error_prompt"]
     assert trace["codex_cli_goal_tui_first_action_observed_count"] == 1
     assert trace["codex_cli_goal_tui_task_facing_success_count"] == 1
     assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 1
     assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == "press_enter"
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"] == ""
     assert trace["codex_cli_goal_tui_raw_material_recorded"] is False, trace
 
     public_prerequisites = _public_runner_prerequisites(prerequisites)
     assert public_prerequisites["codex_cli_goal_tui_stage"] == (
-        "post_bridge_tui_rate_limit"
+        "post_bridge_tui_error_prompt"
     )
     assert public_prerequisites["codex_cli_goal_tui_stages"] == [
-        "post_bridge_tui_rate_limit"
+        "post_bridge_tui_error_prompt"
     ]
     assert public_prerequisites["codex_cli_goal_tui_task_facing_success_count"] == 1
     assert (
@@ -524,6 +551,63 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         public_prerequisites["codex_cli_goal_tui_post_bridge_recovery_action"]
         == "press_enter"
     )
+
+    with tempfile.TemporaryDirectory() as temp:
+        temp_path = Path(temp)
+        trace_dir = temp_path / "trace"
+        bridge_summary = temp_path / "remote-bridge-agent-ops.jsonl"
+        bridge_summary.write_text(
+            json.dumps(
+                {
+                    "record_phase": "complete",
+                    "task_facing_operation": True,
+                    "success": True,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(worker_public_trace_dir=str(trace_dir))
+        )
+        relay._publish_codex_cli_goal_trace(
+            ok=False,
+            stage="post_bridge_tui_model_timeout",
+            goal_active_observed=False,
+            goal_terminal_observed=False,
+            first_action_observed=True,
+            bridge_summary_path=bridge_summary,
+            post_bridge_recovery_skip_reason="no_retry_affordance",
+        )
+        plan = {
+            "route": "codex-cli-goal-baseline",
+            "host_local_acp_relay_trace_dir": str(trace_dir),
+            "runner_prerequisites": {},
+        }
+        trace = {}
+        _merge_host_local_acp_relay_trace_summary(plan, trace)
+
+    prerequisites = plan["runner_prerequisites"]
+    assert trace["codex_cli_goal_tui_stage"] == "post_bridge_tui_model_timeout"
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 0
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == ""
+    assert (
+        trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"]
+        == "no_retry_affordance"
+    )
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] == [
+        "no_retry_affordance"
+    ]
+    public_prerequisites = _public_runner_prerequisites(prerequisites)
+    assert (
+        public_prerequisites[
+            "codex_cli_goal_tui_post_bridge_recovery_skip_reason"
+        ]
+        == "no_retry_affordance"
+    )
+    assert public_prerequisites[
+        "codex_cli_goal_tui_post_bridge_recovery_skip_reasons"
+    ] == ["no_retry_affordance"]
 
 
 def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:

@@ -2672,6 +2672,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_codex_exec_failure_category",
         "codex_cli_goal_tui_stage",
         "codex_cli_goal_tui_post_bridge_recovery_action",
+        "codex_cli_goal_tui_post_bridge_recovery_skip_reason",
         "codex_cli_goal_tui_reasoning_effort",
         "codex_api_egress_preflight_status",
         "codex_api_egress_preflight_error_kind",
@@ -3004,6 +3005,15 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
             action[:40]
             for action in recovery_actions
             if isinstance(action, str) and action
+        ][:8]
+    recovery_skip_reasons = value.get(
+        "codex_cli_goal_tui_post_bridge_recovery_skip_reasons"
+    )
+    if isinstance(recovery_skip_reasons, list):
+        compact["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] = [
+            reason[:80]
+            for reason in recovery_skip_reasons
+            if isinstance(reason, str) and reason
         ][:8]
     reasoning_efforts = value.get("codex_cli_goal_tui_reasoning_efforts")
     if isinstance(reasoning_efforts, list):
@@ -10735,6 +10745,7 @@ def _merge_host_local_acp_relay_trace_summary(
     codex_cli_goal_task_facing_success_count = 0
     codex_cli_goal_post_bridge_recovery_attempt_count = 0
     codex_cli_goal_post_bridge_recovery_actions: list[str] = []
+    codex_cli_goal_post_bridge_recovery_skip_reasons: list[str] = []
     codex_cli_goal_stages: list[str] = []
     codex_cli_goal_reasoning_efforts: list[str] = []
     raw_material_recorded = False
@@ -10973,6 +10984,16 @@ def _merge_host_local_acp_relay_trace_summary(
                 ):
                     codex_cli_goal_post_bridge_recovery_actions.append(
                         safe_recovery_action
+                    )
+            recovery_skip_reason = goal_trace.get("post_bridge_recovery_skip_reason")
+            if isinstance(recovery_skip_reason, str) and recovery_skip_reason:
+                safe_skip_reason = recovery_skip_reason[:80]
+                if (
+                    safe_skip_reason
+                    not in codex_cli_goal_post_bridge_recovery_skip_reasons
+                ):
+                    codex_cli_goal_post_bridge_recovery_skip_reasons.append(
+                        safe_skip_reason
                     )
             stage = goal_trace.get("stage")
             if isinstance(stage, str) and stage:
@@ -11259,6 +11280,14 @@ def _merge_host_local_acp_relay_trace_summary(
         if codex_cli_goal_post_bridge_recovery_actions
         else ""
     )
+    trace["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] = (
+        codex_cli_goal_post_bridge_recovery_skip_reasons
+    )
+    trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"] = (
+        codex_cli_goal_post_bridge_recovery_skip_reasons[0]
+        if codex_cli_goal_post_bridge_recovery_skip_reasons
+        else ""
+    )
     trace["codex_cli_goal_tui_stages"] = codex_cli_goal_stages
     trace["codex_cli_goal_tui_stage"] = (
         codex_cli_goal_stages[0] if codex_cli_goal_stages else ""
@@ -11454,6 +11483,14 @@ def _merge_host_local_acp_relay_trace_summary(
     prerequisites["codex_cli_goal_tui_post_bridge_recovery_action"] = (
         codex_cli_goal_post_bridge_recovery_actions[0]
         if codex_cli_goal_post_bridge_recovery_actions
+        else ""
+    )
+    prerequisites["codex_cli_goal_tui_post_bridge_recovery_skip_reasons"] = (
+        codex_cli_goal_post_bridge_recovery_skip_reasons
+    )
+    prerequisites["codex_cli_goal_tui_post_bridge_recovery_skip_reason"] = (
+        codex_cli_goal_post_bridge_recovery_skip_reasons[0]
+        if codex_cli_goal_post_bridge_recovery_skip_reasons
         else ""
     )
     prerequisites["codex_cli_goal_tui_stages"] = codex_cli_goal_stages
