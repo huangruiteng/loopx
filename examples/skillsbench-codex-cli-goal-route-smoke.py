@@ -861,6 +861,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "thread_prewarm_timeout" in source
     assert "timeout_sec=max(" in source
     assert "self._config.first_action_timeout_sec" in source
+    assert "post_bridge_recovery_attempt_count" in source
+    assert "last_bridge_activity_at >= 30.0" in source
     tui_source = (REPO_ROOT / "loopx/codex_cli_goal_tui.py").read_text(
         encoding="utf-8"
     )

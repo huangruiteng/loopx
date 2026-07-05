@@ -1536,7 +1536,7 @@ class SkillsBenchLocalAcpRelay:
                         and bridge_summary_path is not None
                         and not _bridge_summary_has_inflight_operation(
                             bridge_summary_path
-                        )
+                        ) and (not post_bridge_recovery_attempt_count or now - last_bridge_activity_at >= 30.0)
                     ):
                         post_bridge_blocker_stage = (
                             _codex_cli_tui_post_bridge_blocker_stage(
