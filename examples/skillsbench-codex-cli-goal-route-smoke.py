@@ -378,6 +378,73 @@ def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
     ]
 
 
+def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from loopx.benchmark_adapters.skillsbench_acp_relay import (
+        CodexExecConfig,
+        SkillsBenchLocalAcpRelay,
+    )
+    from loopx.benchmark_core.loop_protocol import CODEX_CLI_GOAL_BASELINE_ROUTE
+    from scripts.skillsbench_automation_loop import (
+        _apply_codex_cli_goal_countability_guard_attribution,
+        _merge_host_local_acp_relay_trace_summary,
+        _public_runner_prerequisites,
+    )
+
+    assert CodexExecConfig().goal_active_timeout_sec > 0
+
+    with tempfile.TemporaryDirectory() as temp:
+        trace_dir = Path(temp) / "trace"
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(worker_public_trace_dir=str(trace_dir))
+        )
+        relay._publish_codex_cli_goal_trace(
+            ok=False,
+            stage="goal_active_timeout",
+            goal_active_observed=False,
+            goal_terminal_observed=False,
+            first_action_observed=False,
+            bridge_summary_path=None,
+        )
+        plan = {
+            "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+            "host_local_acp_relay_trace_dir": str(trace_dir),
+            "runner_prerequisites": {},
+        }
+        trace: dict[str, object] = {}
+        _merge_host_local_acp_relay_trace_summary(plan, trace)
+
+    prerequisites = plan["runner_prerequisites"]
+    assert trace["codex_cli_goal_tui_trace_present"] is True, trace
+    assert trace["codex_cli_goal_tui_stage"] == "goal_active_timeout", trace
+    assert trace["codex_cli_goal_tui_goal_active_observed_count"] == 0
+    assert trace["codex_cli_goal_tui_first_action_observed_count"] == 0
+    assert trace["codex_cli_goal_tui_raw_material_recorded"] is False, trace
+
+    public_prerequisites = _public_runner_prerequisites(prerequisites)
+    assert public_prerequisites["codex_cli_goal_tui_stage"] == (
+        "goal_active_timeout"
+    )
+    assert public_prerequisites["codex_cli_goal_tui_stages"] == [
+        "goal_active_timeout"
+    ]
+
+    compact = {
+        "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+        "official_score_status": "completed",
+        "interaction_counters": trace,
+        "runner_prerequisites": prerequisites,
+        "failure_attribution_labels": ["official_score_zero_case_failure"],
+    }
+    assert _apply_codex_cli_goal_countability_guard_attribution(compact) is True
+    assert compact["score_failure_attribution"] == (
+        "skillsbench_codex_cli_goal_uncountable_goal_active_timeout"
+    )
+    contract = compact["codex_cli_goal_countability_contract"]
+    assert contract["goal_stage"] == "goal_active_timeout", contract
+    assert contract["raw_material_recorded"] is False, contract
+
+
 def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
@@ -473,6 +540,7 @@ def main() -> int:
     _assert_cli_goal_trace_merges_into_public_prerequisites()
     _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings()
     _assert_cli_goal_rate_limit_is_public_safe_retryable_stage()
+    _assert_cli_goal_active_timeout_is_public_countability_stage()
     _assert_cli_goal_input_is_submitted_as_one_buffer()
     _assert_cli_goal_codex_api_proxy_is_runtime_only()
     print("skillsbench-codex-cli-goal-route-smoke ok")
