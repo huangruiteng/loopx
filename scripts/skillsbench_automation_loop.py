@@ -4861,6 +4861,11 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         counters.get("codex_cli_goal_tui_trace_present") is True
         or runner_prerequisites.get("codex_cli_goal_tui_trace_present") is True
     )
+    goal_stage = str(
+        counters.get("codex_cli_goal_tui_stage")
+        or runner_prerequisites.get("codex_cli_goal_tui_stage")
+        or ""
+    )[:120]
     operation_trace_status = str(
         counters.get("remote_command_file_bridge_agent_operation_trace_status")
         or runner_prerequisites.get(
@@ -4875,6 +4880,8 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         return False
 
     label = "skillsbench_codex_cli_goal_uncountable_no_task_activity"
+    if goal_stage == "goal_active_timeout":
+        label = "skillsbench_codex_cli_goal_uncountable_goal_active_timeout"
     if goal_failed and not missing_task_activity:
         label = "skillsbench_codex_cli_goal_uncountable_goal_failed"
     compact["score_failure_attribution"] = label
@@ -4908,6 +4915,7 @@ def _apply_codex_cli_goal_countability_guard_attribution(
         "first_blocker": label,
         "trace_present": trace_present,
         "ok_count": ok_count,
+        "goal_stage": goal_stage,
         "request_count": request_count,
         "task_facing_activity_count": task_facing_count,
         "operation_trace_status": operation_trace_status,
@@ -4921,6 +4929,7 @@ def _apply_codex_cli_goal_countability_guard_attribution(
             "failure_category": label,
             "trace_present": trace_present,
             "ok_count": ok_count,
+            "goal_stage": goal_stage,
             "request_count": request_count,
             "task_facing_activity_count": task_facing_count,
             "raw_material_recorded": False,

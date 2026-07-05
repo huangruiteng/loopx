@@ -547,6 +547,7 @@ class CodexExecConfig:
     worker_script: str | None = None
     stream_heartbeat_interval_sec: float = 120.0
     first_action_timeout_sec: float = 0.0
+    goal_active_timeout_sec: float = 180.0
     app_server_goal_followup_max: int = 0
     app_server_goal_prompt_style: str = "bridge-only"
     bridge_idle_timeout_sec: float = 0.0
@@ -1206,6 +1207,16 @@ class SkillsBenchLocalAcpRelay:
                 time.sleep(0.8)
                 self._tmux_submit_enter(tmux_name)
                 deadline = time.monotonic() + self._config.timeout_sec
+                goal_active_deadline = 0.0
+                if (
+                    bridge_summary_path is not None
+                    and self._config.goal_active_timeout_sec > 0
+                    and _prompt_requires_bridge_first_action(prompt_for_codex)
+                ):
+                    goal_active_deadline = (
+                        time.monotonic()
+                        + max(1.0, self._config.goal_active_timeout_sec)
+                    )
                 first_action_deadline = 0.0
                 if (
                     bridge_summary_path is not None
@@ -1272,6 +1283,28 @@ class SkillsBenchLocalAcpRelay:
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + retryable_startup_blocker_stage
+                        )
+                    if (
+                        not goal_active_observed
+                        and not first_action_seen
+                        and goal_active_deadline
+                        and now >= goal_active_deadline
+                    ):
+                        self._tmux_kill_session(tmux_name)
+                        if bridge_summary_path is not None:
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage="goal_active_timeout",
+                            goal_active_observed=False,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=False,
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_cli_goal_goal_active_timeout"
                         )
                     if bridge_summary_path is not None:
                         try:
