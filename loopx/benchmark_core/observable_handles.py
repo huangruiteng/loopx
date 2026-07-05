@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import re
+from pathlib import Path
 from typing import Any, Mapping
 
 
@@ -172,6 +174,36 @@ _RESULT_CLOSEOUT_STATUS_VALUES = {
 }
 
 
+def write_benchmark_run_observable_status(
+    *,
+    jobs_dir: Any,
+    job_name: Any,
+    status: str,
+    record_pid: bool = False,
+) -> None:
+    """Write compact run-handle files used by public-safe status snapshots."""
+
+    jobs_dir_text = str(jobs_dir or "").strip()
+    job_name_text = str(job_name or "").strip()
+    if not jobs_dir_text or not job_name_text:
+        return
+    try:
+        job_dir = Path(jobs_dir_text).expanduser() / job_name_text
+        job_dir.mkdir(parents=True, exist_ok=True)
+        safe_status = re.sub(r"[^A-Za-z0-9_.=:-]+", "-", str(status).strip())
+        (job_dir / "status.env").write_text(
+            (safe_status or "unknown") + "\n",
+            encoding="utf-8",
+        )
+        if record_pid:
+            (job_dir / "pid.private").write_text(
+                f"{os.getpid()}\n",
+                encoding="utf-8",
+            )
+    except OSError:
+        return
+
+
 def _summary_items(run_snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     compact_results = run_snapshot.get("compact_results")
@@ -240,7 +272,21 @@ def build_benchmark_observable_handle_policy(
     terminal_closeout = compact_result_closeout or compact_failure_closeout
     exists = run_snapshot.get("exists") is True
     pid_present = bool(str(run_snapshot.get("pid") or "").strip())
-    pid_alive = run_snapshot.get("pid_alive") is True
+    status_text = str(run_snapshot.get("status") or "").strip().lower()
+    terminal_status = (
+        status_text.startswith("rc=")
+        or status_text.startswith("exception=")
+        or status_text
+        in {
+            "complete",
+            "completed",
+            "done",
+            "failed",
+            "interrupted",
+            "terminated",
+        }
+    )
+    pid_alive = run_snapshot.get("pid_alive") is True and not terminal_status
 
     if pid_alive:
         handle_state = "running"

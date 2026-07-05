@@ -37,6 +37,13 @@ def main() -> int:
         failure_run = root / "swe-case-terminal-failure-r1"
         failure_run.mkdir()
         (failure_run / "status.env").write_text("rc=1\n", encoding="utf-8")
+        exception_run = root / "skills-case-exception-r1"
+        exception_run.mkdir()
+        (exception_run / "status.env").write_text(
+            "exception=RuntimeError\n",
+            encoding="utf-8",
+        )
+        (exception_run / "pid.private").write_text(str(os.getpid()), encoding="utf-8")
         requests = work / "requests"
         requests.mkdir()
         (requests / "abc.request.json").write_text("{}", encoding="utf-8")
@@ -107,6 +114,8 @@ def main() -> int:
                 "skills-case-running-r1",
                 "--label",
                 "swe-case-terminal-failure-r1",
+                "--label",
+                "skills-case-exception-r1",
                 "--pattern",
                 "Working",
                 "--pretty",
@@ -127,6 +136,7 @@ def main() -> int:
         item = payload["runs"][0]
         running_item = payload["runs"][1]
         failure_item = payload["runs"][2]
+        exception_item = payload["runs"][3]
         assert item["status"] == "rc=0"
         assert item["run_dir_recorded"] is False
         assert item["pid_alive"] is True
@@ -176,6 +186,12 @@ def main() -> int:
         assert failure_policy["compact_failure_closeout"] is True
         assert failure_policy["cleanup_required"] is True
         assert failure_policy["blocker_required_before_rerun"] is False
+        exception_policy = exception_item["observable_handle_policy"]
+        assert exception_item["pid_alive"] is True
+        assert exception_policy["observable_handle"]["state"] == "ended"
+        assert exception_policy["terminal_closeout"] is False
+        assert exception_policy["cleanup_required"] is True
+        assert exception_policy["blocker_required_before_rerun"] is True
         assert "secret raw transcript" not in proc.stdout
         assert "TASK_PROMPT_SHOULD_NOT_APPEAR_IN_SNAPSHOT" not in proc.stdout
         assert str(root) not in proc.stdout

@@ -67,6 +67,7 @@ from .observable_handles import (
     BENCHMARK_OBSERVABLE_HANDLE_POLICY_SCHEMA_VERSION,
     build_benchmark_launch_observable_handle,
     build_benchmark_observable_handle_policy,
+    write_benchmark_run_observable_status,
 )
 from .parity import (
     CODEX_APP_PARITY_REQUIRED_CLI_CALLS,
@@ -131,6 +132,7 @@ __all__ = [
     "build_benchmark_loop_controller_trace",
     "build_benchmark_launch_observable_handle",
     "build_benchmark_observable_handle_policy",
+    "write_benchmark_run_observable_status",
     "build_round_artifact_restore_plan",
     "build_benchmark_candidate_source_boundary",
     "build_blind_loop_continuation_prompt",

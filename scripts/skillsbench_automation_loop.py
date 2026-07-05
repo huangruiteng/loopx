@@ -116,7 +116,10 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (  # noqa: E402
     run_skillsbench_remote_command_file_bridge_probe,
     skillsbench_remote_command_file_bridge_command_is_fixture_probe,
 )
-from loopx.benchmark_core import build_benchmark_launch_observable_handle  # noqa: E402
+from loopx.benchmark_core import (  # noqa: E402
+    build_benchmark_launch_observable_handle,
+    write_benchmark_run_observable_status,
+)
 from loopx.benchmark_core.loop_protocol import (  # noqa: E402
     BLIND_LOOP_DEFAULT_MAX_ROUNDS,
     CODEX_ACP_BLIND_LOOP_BASELINE_ROUTE,
@@ -16450,6 +16453,38 @@ async def async_main(
         plan = build_plan(args)
     if args.plan_only:
         return {"ok": True, "plan_only": True, "launch_plan": plan}
+    if not args.reduce_only:
+        write_benchmark_run_observable_status(
+            jobs_dir=plan.get("jobs_dir"),
+            job_name=plan.get("job_name"),
+            status="running",
+            record_pid=True,
+        )
+    runner_status_written = False
+    try:
+        return await _async_main_with_observable_handle(args, plan)
+    except BaseException as exc:
+        if not args.reduce_only:
+            write_benchmark_run_observable_status(
+                jobs_dir=plan.get("jobs_dir"),
+                job_name=plan.get("job_name"),
+                status=f"exception={type(exc).__name__}",
+            )
+            runner_status_written = True
+        raise
+    finally:
+        if not args.reduce_only and not runner_status_written:
+            write_benchmark_run_observable_status(
+                jobs_dir=plan.get("jobs_dir"),
+                job_name=plan.get("job_name"),
+                status="rc=0",
+            )
+
+
+async def _async_main_with_observable_handle(
+    args: argparse.Namespace,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
     runtime_layer = (
         plan.get("benchflow_agent_runtime_layer")
         if isinstance(plan.get("benchflow_agent_runtime_layer"), dict)
