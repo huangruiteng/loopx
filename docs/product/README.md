@@ -114,6 +114,10 @@ runtime contract, benchmark route, or launch draft.
   maintainer-first product design for signal inbox, selected anchors, agent
   lanes, review feed, and performance review so long-running Loop Agents can be
   evaluated by value, quality, cost, and user attention.
+- [Agent management observability MVP](agent-management-observability-mvp.md):
+  read-only ops dashboard slice for registered agents, claimed todos, state
+  badges, evidence/handoff links, quota/cadence hints, and workspace hints
+  without introducing a dispatcher or second task runtime.
 - [Complex request planning intake](complex-request-planning-intake.md):
   bounded intake pattern for turning a large mixed strategy request into a
   small typed todo batch with claim decisions, safe summaries, and a visible
