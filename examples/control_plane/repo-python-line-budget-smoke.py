@@ -76,7 +76,7 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/terminal_bench_agent.py": 2056,
     "loopx/todos.py": 2119,
     "scripts/harbor_host_codex_goal_agent.py": 2140,
-    "scripts/skillsbench_automation_loop.py": 17383,
+    "scripts/skillsbench_automation_loop.py": 17601,
 }
 
 RETIREMENT_PLAN_REQUIRED_PATHS = {

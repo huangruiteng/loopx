@@ -1178,6 +1178,14 @@ def _effective_local_codex_first_action_timeout_sec(args: argparse.Namespace) ->
         return max(0, int(configured or 0))
     if (
         bool(getattr(args, "host_local_acp_launch", False))
+        and getattr(args, "route", "") == CODEX_CLI_GOAL_BASELINE_ROUTE
+    ):
+        idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
+        if idle_timeout > 0:
+            return min(idle_timeout, DEFAULT_CODEX_CLI_GOAL_FIRST_ACTION_TIMEOUT_SEC)
+        return DEFAULT_CODEX_CLI_GOAL_FIRST_ACTION_TIMEOUT_SEC
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
         and getattr(args, "route", "") == "codex-app-server-goal-baseline"
     ):
         idle_timeout = max(0, int(getattr(args, "agent_idle_timeout", 0) or 0))
@@ -16080,7 +16088,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Optional watchdog for the first sandbox bridge operation from a "
-            "host-local Codex turn. Omit to use the app-server Goal default "
+            "host-local Codex turn. Omit to use the Codex CLI Goal default "
+            f"({DEFAULT_CODEX_CLI_GOAL_FIRST_ACTION_TIMEOUT_SEC}s) for "
+            "codex-cli-goal-baseline, or the app-server Goal default "
             f"({DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC}s) for "
             "codex-app-server-goal-baseline; 0 disables the watchdog."
         ),
