@@ -12,9 +12,19 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from loopx import status as status_module  # noqa: E402
+from loopx.control_plane.goals import active_state_metadata as active_state_metadata_read_model  # noqa: E402
+from loopx.control_plane.goals import global_registry_health as global_registry_health_read_model  # noqa: E402
 from loopx.control_plane.work_items import attention_item as attention_item_read_model  # noqa: E402
 from loopx.control_plane.work_items import autonomous_candidates as autonomous_read_model  # noqa: E402
+from loopx.control_plane.work_items import autonomous_replan_ack as replan_ack_read_model  # noqa: E402
 from loopx.control_plane.goals import global_registry_shadow as global_registry_shadow_read_model  # noqa: E402
+from loopx.control_plane.runtime import event_ledger as event_ledger_read_model  # noqa: E402
+from loopx.control_plane.runtime import run_compaction as run_compaction_read_model  # noqa: E402
+from loopx.control_plane.runtime import session_runtime as session_runtime_read_model  # noqa: E402
+from loopx.control_plane.quota import usage_summary as usage_summary_read_model  # noqa: E402
+from loopx.control_plane.todos import active_state_todo_parser as active_state_todo_parser_read_model  # noqa: E402
+from loopx.control_plane.todos import active_state_todos as active_state_todos_read_model  # noqa: E402
+from loopx.control_plane.todos import projection as todo_projection_read_model  # noqa: E402
 from loopx.control_plane.todos import todo_summary as todo_read_model  # noqa: E402
 
 
@@ -65,6 +75,36 @@ def fixture_todos() -> dict:
             }
         ],
     }
+
+
+def assert_direct_status_aliases() -> None:
+    assert status_module.parse_state_frontmatter is active_state_metadata_read_model.parse_state_frontmatter
+    assert status_module.todo_role_for_heading is active_state_metadata_read_model.todo_role_for_heading
+    assert status_module.parse_active_state_todos is active_state_todo_parser_read_model.parse_active_state_todos
+    assert status_module.attach_monitor_writeback_contract is active_state_todos_read_model.attach_monitor_writeback_contract
+    assert status_module.redacted_status_todo_fields is active_state_todos_read_model.redacted_status_todo_fields
+    assert status_module.todo_item_is_expired_monitor is todo_projection_read_model.todo_item_is_expired_monitor
+    assert status_module.open_todo_items is todo_read_model.open_todo_items
+    assert status_module.todo_lane_items is todo_read_model.todo_lane_items
+    assert status_module.first_open_todo_text is todo_read_model.first_open_todo_text
+    assert status_module.first_open_todo_item is todo_read_model.first_open_todo_item
+    assert status_module.project_asset_todo_summary is todo_read_model.project_asset_todo_summary
+    assert status_module.dependency_blocker_summary is todo_read_model.dependency_blocker_summary
+    assert status_module.attach_dependency_blockers is todo_read_model.attach_dependency_blockers
+    assert status_module.autonomous_replan_ack_recorded is replan_ack_read_model.autonomous_replan_ack_recorded
+    assert status_module.compact_autonomous_replan_ack is replan_ack_read_model.compact_autonomous_replan_ack
+    assert status_module.global_registry_finding is global_registry_health_read_model.global_registry_finding
+    assert status_module.attach_session_runtime_projection is session_runtime_read_model.attach_session_runtime_projection
+    assert status_module.compact_human_reward is run_compaction_read_model.compact_human_reward
+    assert status_module.compact_operator_gate is run_compaction_read_model.compact_operator_gate
+    assert status_module.compact_operator_gate_resume_contract is run_compaction_read_model.compact_operator_gate_resume_contract
+    assert status_module.compact_controller_readiness is run_compaction_read_model.compact_controller_readiness
+    assert status_module.quota_spend_slots is usage_summary_read_model.quota_spend_slots
+    assert status_module.is_automation_run is usage_summary_read_model.is_automation_run
+    assert status_module.is_progress_signal_run is usage_summary_read_model.is_progress_signal_run
+    assert status_module.blank_usage_goal is usage_summary_read_model.blank_usage_goal
+    assert status_module.blank_event_class_counts is event_ledger_read_model.blank_event_class_counts
+    assert status_module.blank_event_ledger_goal is event_ledger_read_model.blank_event_ledger_goal
 
 
 def assert_wrapper_parity() -> None:
@@ -258,6 +298,7 @@ def assert_active_state_todo_fields_redacts_review_material_paths() -> None:
 
 
 def main() -> None:
+    assert_direct_status_aliases()
     assert_wrapper_parity()
     assert_dependency_blocker_parity()
     assert_autonomous_candidate_parity()

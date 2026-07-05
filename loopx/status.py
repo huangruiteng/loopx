@@ -73,8 +73,8 @@ from .control_plane.work_items.autonomous_candidates import (
     MAX_AUTONOMOUS_TODO_CANDIDATES as _MAX_AUTONOMOUS_TODO_CANDIDATES,
     autonomous_backlog_candidates as _autonomous_backlog_candidates_read_model,
     autonomous_monitor_candidates as _autonomous_monitor_candidates_read_model,
-    autonomous_priority_label as _autonomous_priority_label,
-    autonomous_priority_rank as _autonomous_priority_rank,
+    autonomous_priority_label,
+    autonomous_priority_rank,
 )
 from .control_plane.agents.agent_lane_recommendation import (
     compact_agent_lane_recommendation as _compact_agent_lane_recommendation_read_model,
@@ -90,8 +90,8 @@ from .control_plane.goals.active_state_metadata import (
     AGENT_TODO_HEADER_MARKERS,
     TODO_ARCHIVE_HEADER_MARKERS,
     USER_TODO_HEADER_MARKERS,
-    parse_state_frontmatter as _parse_state_frontmatter_read_model,
-    todo_role_for_heading as _todo_role_for_heading_read_model,
+    parse_state_frontmatter,
+    todo_role_for_heading,
 )
 from .control_plane.goals.active_state_event_projection import (
     active_state_event_projection_fields as _active_state_event_projection_fields_read_model,
@@ -100,11 +100,11 @@ from .control_plane.goals.active_state_event_projection import (
 from .control_plane.todos.active_state_todos import (
     MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION as _MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION,
     active_state_todo_fields as _active_state_todo_fields_read_model,
-    attach_monitor_writeback_contract as _attach_monitor_writeback_contract_read_model,
-    redacted_status_todo_fields as _redacted_status_todo_fields_read_model,
+    attach_monitor_writeback_contract,
+    redacted_status_todo_fields,
 )
 from .control_plane.todos.active_state_todo_parser import (
-    parse_active_state_todos as _parse_active_state_todos_read_model,
+    parse_active_state_todos,
 )
 from .control_plane.work_items.attention_item import (
     attention_item as _attention_item_read_model,
@@ -121,8 +121,8 @@ from .control_plane.work_items.attention_fields import (
     readiness_attention_fields as _readiness_attention_fields_read_model,
 )
 from .control_plane.work_items.autonomous_replan_ack import (
-    autonomous_replan_ack_recorded as _autonomous_replan_ack_recorded_read_model,
-    compact_autonomous_replan_ack as _compact_autonomous_replan_ack_read_model,
+    autonomous_replan_ack_recorded,
+    compact_autonomous_replan_ack,
     latest_autonomous_replan_ack_for_projection as _latest_autonomous_replan_ack_for_projection_read_model,
 )
 from .control_plane.work_items.autonomous_replan_obligation import (
@@ -132,8 +132,8 @@ from .control_plane.work_items.autonomous_replan_obligation import (
     autonomous_replan_obligation_from_runs as _autonomous_replan_obligation_from_runs_read_model,
     autonomous_replan_periodic_review_from_runs as _autonomous_replan_periodic_review_from_runs_read_model,
     build_autonomous_replan_obligation as _build_autonomous_replan_obligation_read_model,
-    normalized_run_history_stall_signature as _normalized_run_history_stall_signature_read_model,
-    run_history_monitor_target as _run_history_monitor_target_read_model,
+    normalized_run_history_stall_signature as _normalized_run_history_stall_signature,
+    run_history_monitor_target as _run_history_monitor_target,
     run_history_monitor_wait_already_acknowledged as _run_history_monitor_wait_already_acknowledged_read_model,
     run_history_stall_signal as _run_history_stall_signal_read_model,
 )
@@ -165,10 +165,10 @@ from .control_plane.scheduler.monitor_display import (
 from .control_plane.runtime.run_compaction import (
     RUN_BASE_COMPACT_FIELDS,
     attach_run_summary_projections as _attach_run_summary_projections_read_model,
-    compact_controller_readiness as _compact_controller_readiness_read_model,
-    compact_human_reward as _compact_human_reward_read_model,
-    compact_operator_gate as _compact_operator_gate_read_model,
-    compact_operator_gate_resume_contract as _compact_operator_gate_resume_contract_read_model,
+    compact_controller_readiness,
+    compact_human_reward,
+    compact_operator_gate,
+    compact_operator_gate_resume_contract,
     compact_run_base as _compact_run_base_read_model,
 )
 from .control_plane.runtime.public_safety import (
@@ -182,8 +182,8 @@ from .control_plane.runtime.run_history import (
 from .control_plane.runtime.event_ledger import (
     EVENT_LEDGER_CLASSES,
     EVENT_LEDGER_PROXY_NOTE,
-    blank_event_class_counts as _blank_event_class_counts_read_model,
-    blank_event_ledger_goal as _blank_event_ledger_goal_read_model,
+    blank_event_class_counts,
+    blank_event_ledger_goal,
     build_event_ledger_summary as _build_event_ledger_summary_read_model,
     event_ledger_event_class as _event_ledger_event_class_read_model,
 )
@@ -194,7 +194,7 @@ from .control_plane.runtime.decision_freshness import (
     DECISION_FRESHNESS_WINDOW_DAYS,
     build_decision_freshness_summary as _build_decision_freshness_summary_read_model,
     decision_event_kinds as _decision_event_kinds_read_model,
-    decision_freshness_reason as _decision_freshness_reason_read_model,
+    decision_freshness_reason,
 )
 from .control_plane.runtime.promotion_readiness import (
     PROMOTION_READINESS_PROXY_NOTE,
@@ -206,12 +206,12 @@ from .control_plane.handoff.handoff_runs import (
     run_has_external_evidence_watch_signal as _run_has_external_evidence_watch_signal_read_model,
 )
 from .control_plane.goals.global_registry_shadow import (
-    attach_global_registry_shadow_finding as _attach_global_registry_shadow_finding_read_model,
-    compact_global_registry_shadow_finding as _compact_global_registry_shadow_finding_read_model,
+    attach_global_registry_shadow_finding,
+    compact_global_registry_shadow_finding,
 )
 from .control_plane.goals.global_registry_health import (
     collect_global_registry_health as _collect_global_registry_health_read_model,
-    global_registry_finding as _global_registry_finding_read_model,
+    global_registry_finding,
 )
 from .control_plane.goals.goal_channel import (
     attach_goal_channel_projection as _attach_goal_channel_projection_read_model,
@@ -232,7 +232,7 @@ from .control_plane.work_items.lifecycle import (
 from .control_plane.runtime.session_runtime import (
     compact_session_runtime_projection_from_run as _compact_session_runtime_projection_from_run_read_model,
     compact_session_runtime_readonly_projection as _compact_session_runtime_readonly_projection_read_model,
-    attach_session_runtime_projection as _attach_session_runtime_projection_read_model,
+    attach_session_runtime_projection,
     legacy_runtime_goal_attention as _legacy_runtime_goal_attention_read_model,
     session_runtime_projection_attention as _session_runtime_projection_attention_read_model,
     session_runtime_status_label as _session_runtime_status_label_read_model,
@@ -251,7 +251,6 @@ from .control_plane.runtime.stale_latest_run import (
 from .control_plane.work_items.status_contract import (
     build_contract_health_projection as _build_contract_health_projection_read_model,
     build_status_contract as _build_status_contract_read_model,
-    compact_status_contract_signals as _compact_status_contract_signals_read_model,
 )
 from .control_plane.todos.todo_summary import (
     MAX_DEFERRED_TODO_VISIBILITY_ITEMS as _TODO_SUMMARY_MAX_DEFERRED_TODO_VISIBILITY_ITEMS,
@@ -263,24 +262,24 @@ from .control_plane.todos.todo_summary import (
     MAX_TODO_VISIBILITY_LANE_ITEMS as _TODO_SUMMARY_MAX_TODO_VISIBILITY_LANE_ITEMS,
     active_state_todo_attention_item as _active_state_todo_attention_item_read_model,
     active_next_action_todo_ids,
-    attach_dependency_blockers as _attach_dependency_blockers_read_model,
+    attach_dependency_blockers,
     apply_resume_conditions,
     claimed_visibility_items,
     compact_active_next_action_todo_item,
     compact_todo_group,
     compact_todo_item,
-    dependency_blocker_summary as _dependency_blocker_summary_read_model,
-    first_open_todo_item as _first_open_todo_item_read_model,
-    first_open_todo_text as _first_open_todo_text_read_model,
+    dependency_blocker_summary,
+    first_open_todo_item,
+    first_open_todo_text,
     normalize_todo_text,
     normalized_pr_ref_parts,
-    open_todo_items as _open_todo_items_read_model,
+    open_todo_items,
     pr_merged_condition,
-    project_asset_todo_summary as _project_asset_todo_summary_read_model,
+    project_asset_todo_summary,
     rollout_event_pr_refs,
     structured_todo_item,
     sync_connected_attention_action_from_todos as _sync_connected_attention_action_from_todos_read_model,
-    todo_lane_items as _todo_lane_items_read_model,
+    todo_lane_items,
     todo_item_expires_at,
     todo_item_is_actionable_open,
     todo_item_is_deferred,
@@ -301,11 +300,11 @@ from .control_plane.todos.todo_index import (
 )
 from .control_plane.quota.usage_summary import (
     USAGE_PROXY_NOTE,
-    blank_usage_goal as _blank_usage_goal_read_model,
+    blank_usage_goal,
     build_usage_summary as _build_usage_summary_read_model,
-    is_automation_run as _is_automation_run_read_model,
-    is_progress_signal_run as _is_progress_signal_run_read_model,
-    quota_spend_slots as _quota_spend_slots_read_model,
+    is_automation_run,
+    is_progress_signal_run,
+    quota_spend_slots,
 )
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
@@ -350,8 +349,7 @@ from .control_plane.todos.contract import (
     todo_status_from_marker,
 )
 from .control_plane.todos.projection import (
-    todo_item_expires_at as projection_todo_item_expires_at,
-    todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
+    todo_item_is_expired_monitor,
 )
 
 
@@ -5841,50 +5839,6 @@ def compact_active_user_assisted_pilot(run: dict[str, Any]) -> dict[str, Any] | 
     return compact
 
 
-def parse_state_frontmatter(state_text: str) -> dict[str, str]:
-    return _parse_state_frontmatter_read_model(state_text)
-
-
-def todo_role_for_heading(heading: str) -> str | None:
-    return _todo_role_for_heading_read_model(heading)
-
-
-def todo_item_is_expired_monitor(item: dict[str, Any], *, now: datetime | None = None) -> bool:
-    return projection_todo_item_is_expired_monitor(item, now=now)
-
-
-def attach_monitor_writeback_contract(
-    fields: dict[str, Any],
-    *,
-    supported: bool,
-    source: str,
-) -> None:
-    _attach_monitor_writeback_contract_read_model(fields, supported=supported, source=source)
-
-
-def redacted_status_todo_fields(fields: dict[str, Any]) -> dict[str, Any]:
-    return _redacted_status_todo_fields_read_model(fields)
-
-
-def parse_active_state_todos(
-    state_text: str,
-    *,
-    goal: dict[str, Any] | None = None,
-    state_path: Path | None = None,
-    preferred_todo_ids: set[str] | None = None,
-    rollout_events: list[dict[str, Any]] | None = None,
-    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
-) -> dict[str, Any]:
-    return _parse_active_state_todos_read_model(
-        state_text,
-        goal=goal,
-        state_path=state_path,
-        preferred_todo_ids=preferred_todo_ids,
-        rollout_events=rollout_events,
-        item_limit=item_limit,
-    )
-
-
 def state_event_log_candidates(goal: dict[str, Any], *, state_path: Path) -> list[Path]:
     return _state_event_log_candidates_read_model(
         goal,
@@ -5983,14 +5937,6 @@ def build_autonomous_replan_obligation(
     )
 
 
-def _normalized_run_history_stall_signature(value: str) -> str:
-    return _normalized_run_history_stall_signature_read_model(value)
-
-
-def _run_history_monitor_target(run: dict[str, Any]) -> dict[str, Any] | None:
-    return _run_history_monitor_target_read_model(run)
-
-
 def _run_history_stall_signal(run: dict[str, Any]) -> dict[str, Any] | None:
     return _run_history_stall_signal_read_model(
         run,
@@ -6014,14 +5960,6 @@ def run_history_monitor_wait_already_acknowledged(
         autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
         neutral_classifications=AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS,
     )
-
-
-def autonomous_replan_ack_recorded(run: dict[str, Any]) -> bool:
-    return _autonomous_replan_ack_recorded_read_model(run)
-
-
-def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] | None:
-    return _compact_autonomous_replan_ack_read_model(run)
 
 
 def latest_autonomous_replan_ack_for_projection(
@@ -6068,80 +6006,6 @@ def autonomous_replan_obligation_from_runs(
         dead_monitor_repeat_schema_version=DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
         periodic_run_threshold=AUTONOMOUS_REPLAN_PERIODIC_RUN_THRESHOLD,
     )
-
-
-def open_todo_items(
-    todos: dict[str, Any] | None,
-    *,
-    limit: int = MAX_PROJECT_ASSET_TODO_ITEMS,
-    text_limit: int = 220,
-    source_keys: tuple[str, ...] = ("first_open_items", "items"),
-) -> list[dict[str, Any]]:
-    return _open_todo_items_read_model(
-        todos,
-        limit=limit,
-        text_limit=text_limit,
-        source_keys=source_keys,
-    )
-
-
-def todo_lane_items(
-    todos: dict[str, Any] | None,
-    lane: str,
-    *,
-    limit: int = MAX_STATUS_TODOS_PER_ROLE,
-    text_limit: int = 220,
-) -> list[dict[str, Any]]:
-    return _todo_lane_items_read_model(
-        todos,
-        lane,
-        limit=limit,
-        text_limit=text_limit,
-    )
-
-
-def first_open_todo_text(todos: dict[str, Any] | None) -> str | None:
-    return _first_open_todo_text_read_model(todos)
-
-
-def project_asset_todo_summary(
-    todos: dict[str, Any] | None,
-    *,
-    role: str | None = None,
-) -> dict[str, Any] | None:
-    return _project_asset_todo_summary_read_model(
-        todos,
-        role=role,
-    )
-
-
-def dependency_blocker_summary(
-    items: list[dict[str, Any]],
-    *,
-    current_goal_id: str,
-    limit: int = MAX_DEPENDENCY_BLOCKERS,
-) -> dict[str, Any] | None:
-    return _dependency_blocker_summary_read_model(
-        items,
-        current_goal_id=current_goal_id,
-        limit=limit,
-    )
-
-
-def attach_dependency_blockers(items: list[dict[str, Any]]) -> None:
-    _attach_dependency_blockers_read_model(items)
-
-
-def first_open_todo_item(todos: dict[str, Any] | None) -> dict[str, Any] | None:
-    return _first_open_todo_item_read_model(todos)
-
-
-def autonomous_priority_label(text: str) -> str | None:
-    return _autonomous_priority_label(text)
-
-
-def autonomous_priority_rank(priority: str | None) -> int:
-    return _autonomous_priority_rank(priority)
 
 
 def autonomous_backlog_candidates(
@@ -6568,14 +6432,6 @@ def normalize_monitor_quiet_attention_display(item: dict[str, Any]) -> None:
     )
 
 
-def compact_global_registry_shadow_finding(finding: dict[str, Any]) -> dict[str, Any]:
-    return _compact_global_registry_shadow_finding_read_model(finding)
-
-
-def attach_global_registry_shadow_finding(item: dict[str, Any], finding: dict[str, Any]) -> None:
-    _attach_global_registry_shadow_finding_read_model(item, finding)
-
-
 def merge_global_registry_attention_findings(
     *,
     health_items: list[dict[str, Any]],
@@ -6620,27 +6476,6 @@ def resolve_goal_local_path(raw: Any, goal: dict[str, Any], *, fallback_base: Pa
     if repo:
         return Path(str(repo)).expanduser() / path
     return fallback_base / path
-
-
-def global_registry_finding(
-    *,
-    kind: str,
-    severity: str,
-    message: str,
-    recommended_action: str,
-    goal_id: str | None = None,
-    path: Path | None = None,
-    goal_ids: list[str] | None = None,
-) -> dict[str, Any]:
-    return _global_registry_finding_read_model(
-        kind=kind,
-        severity=severity,
-        message=message,
-        recommended_action=recommended_action,
-        goal_id=goal_id,
-        path=path,
-        goal_ids=goal_ids,
-    )
 
 
 def collect_global_registry_health(
@@ -6839,10 +6674,6 @@ def session_runtime_status_label(projection: dict[str, Any]) -> str:
         projection,
         public_safe_compact_text=public_safe_compact_text,
     )
-
-
-def attach_session_runtime_projection(item: dict[str, Any], projection: dict[str, Any]) -> None:
-    _attach_session_runtime_projection_read_model(item, projection)
 
 
 def session_runtime_projection_attention(
@@ -7166,22 +6997,6 @@ def build_attention_queue(
     )
 
 
-def compact_human_reward(reward: Any) -> dict[str, Any] | None:
-    return _compact_human_reward_read_model(reward)
-
-
-def compact_operator_gate(operator_gate: Any) -> dict[str, Any] | None:
-    return _compact_operator_gate_read_model(operator_gate)
-
-
-def compact_operator_gate_resume_contract(contract: Any) -> dict[str, Any] | None:
-    return _compact_operator_gate_resume_contract_read_model(contract)
-
-
-def compact_controller_readiness(readiness: Any) -> dict[str, Any] | None:
-    return _compact_controller_readiness_read_model(readiness)
-
-
 def compact_run(run: dict[str, Any]) -> dict[str, Any]:
     compact = _compact_run_base_read_model(
         run,
@@ -7225,30 +7040,6 @@ def build_run_history(history: dict[str, Any], *, display_limit: int | None = No
         quota_status=quota_status,
         display_limit=display_limit,
     )
-
-
-def quota_spend_slots(run: dict[str, Any]) -> int:
-    return _quota_spend_slots_read_model(run)
-
-
-def is_automation_run(run: dict[str, Any]) -> bool:
-    return _is_automation_run_read_model(run)
-
-
-def is_progress_signal_run(run: dict[str, Any]) -> bool:
-    return _is_progress_signal_run_read_model(run)
-
-
-def blank_usage_goal(goal_id: str) -> dict[str, Any]:
-    return _blank_usage_goal_read_model(goal_id)
-
-
-def blank_event_class_counts() -> dict[str, int]:
-    return _blank_event_class_counts_read_model()
-
-
-def blank_event_ledger_goal(goal_id: str) -> dict[str, Any]:
-    return _blank_event_ledger_goal_read_model(goal_id)
 
 
 def event_ledger_event_class(run: dict[str, Any]) -> str:
@@ -7306,14 +7097,6 @@ def build_status_contract() -> dict[str, Any]:
     )
 
 
-def _compact_status_contract_signals(
-    value: Any,
-    *,
-    limit: int = STATUS_CONTRACT_SIGNAL_LIMIT,
-) -> dict[str, Any]:
-    return _compact_status_contract_signals_read_model(value, limit=limit)
-
-
 def build_contract_health_projection(contract: dict[str, Any]) -> dict[str, Any]:
     return _build_contract_health_projection_read_model(
         contract,
@@ -7326,13 +7109,6 @@ def decision_event_kinds(run: dict[str, Any]) -> list[str]:
         run,
         decision_classifications=EVENT_LEDGER_DECISION_CLASSIFICATIONS,
         classification_prefixes=DECISION_FRESHNESS_CLASSIFICATION_PREFIXES,
-    )
-
-
-def decision_freshness_reason(*, stale_by_age: bool, newer_event_count: int) -> str:
-    return _decision_freshness_reason_read_model(
-        stale_by_age=stale_by_age,
-        newer_event_count=newer_event_count,
     )
 
 
