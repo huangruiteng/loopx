@@ -108,6 +108,13 @@ path, and canary route rather than as a user-facing release baseline.
   `claude-code`, `manual`, or `other-agent`, rejects ambiguous inputs such as
   `codex`, and makes `/loopx <task>` activate or gate the correct host loop
   after todo writeback.
+- `v0.1.9` on 2026-07-05 21:45 +08:00: real auto-research and agent-scoped
+  evidence release at the matching `v0.1.9` tag. This release removes fake
+  auto-research demo metrics, makes the KNN preset use a real benchmark
+  workspace with public-safe evidence writeback, exposes role-named visible
+  research panes, wires agent-scoped evidence read hints into replan, and
+  hardens successor/frontier recovery when completed advancement has no next
+  executable todo.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
