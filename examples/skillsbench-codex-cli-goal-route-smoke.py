@@ -383,6 +383,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         CodexExecConfig,
         SkillsBenchLocalAcpRelay,
         _codex_cli_tui_post_bridge_blocker_stage,
+        _codex_cli_tui_post_bridge_recovery_action,
     )
     from scripts.skillsbench_automation_loop import (
         _merge_host_local_acp_relay_trace_summary,
@@ -395,6 +396,27 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             prompt_visible=True,
         )
         == "post_bridge_tui_model_timeout"
+    )
+    assert (
+        _codex_cli_tui_post_bridge_recovery_action(
+            "request timed out while waiting for model\npress enter to retry\n› ",
+            stage="post_bridge_tui_model_timeout",
+        )
+        == "press_enter"
+    )
+    assert (
+        _codex_cli_tui_post_bridge_recovery_action(
+            "request timed out while waiting for model\n› ",
+            stage="post_bridge_tui_model_timeout",
+        )
+        == ""
+    )
+    assert (
+        _codex_cli_tui_post_bridge_recovery_action(
+            "rate limit reached\npress enter to retry\n› ",
+            stage="post_bridge_tui_rate_limit",
+        )
+        == ""
     )
     assert (
         _codex_cli_tui_post_bridge_blocker_stage(
@@ -446,6 +468,8 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             goal_terminal_observed=False,
             first_action_observed=True,
             bridge_summary_path=bridge_summary,
+            post_bridge_recovery_attempt_count=1,
+            post_bridge_recovery_action="press_enter",
         )
         plan = {
             "route": "codex-cli-goal-baseline",
@@ -460,6 +484,8 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
     assert trace["codex_cli_goal_tui_stage"] == "post_bridge_tui_rate_limit"
     assert trace["codex_cli_goal_tui_first_action_observed_count"] == 1
     assert trace["codex_cli_goal_tui_task_facing_success_count"] == 1
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 1
+    assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == "press_enter"
     assert trace["codex_cli_goal_tui_raw_material_recorded"] is False, trace
 
     public_prerequisites = _public_runner_prerequisites(prerequisites)
@@ -470,6 +496,14 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         "post_bridge_tui_rate_limit"
     ]
     assert public_prerequisites["codex_cli_goal_tui_task_facing_success_count"] == 1
+    assert (
+        public_prerequisites["codex_cli_goal_tui_post_bridge_recovery_attempt_count"]
+        == 1
+    )
+    assert (
+        public_prerequisites["codex_cli_goal_tui_post_bridge_recovery_action"]
+        == "press_enter"
+    )
 
 
 def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
