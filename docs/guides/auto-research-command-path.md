@@ -233,16 +233,18 @@ Concrete KNN visible command:
 
 ```bash
 loopx --format json auto-research start \
-  "How can the KNN baseline improve holdout metric?" \
+  "How can the KNN solver improve exact-neighbor speedup?" \
   --preset knn-demo \
   --language zh \
   --execute
 ```
 
-`--preset knn-demo` is the public signal that the baseline metric, holdout
-split, and protected metric scope come from the built-in KNN demo fixture. The
-open question names the research topic; it does not smuggle the baseline into
-the system through natural-language inference.
+`--preset knn-demo` is the public signal that LoopX should materialize a small
+generated KNN benchmark workspace. The visible panes get `solution.py` as the
+only editable file, `task.py`/`eval.py`/`eval.sh` as protected files, and real
+commands for `bash eval.sh dev` and `bash eval.sh test`. The open question names
+the research topic; it does not smuggle the benchmark baseline into the system
+through natural-language inference.
 
 The generic path without a preset also works:
 
@@ -254,7 +256,8 @@ loopx auto-research start \
 
 KNN acceptance:
 
-- baseline metadata is loaded from the preset, not inferred from the question;
+- the preset materializes the generated benchmark workspace, not an inferred
+  natural-language baseline;
 - panes are named by research role, not backend agent implementation names;
 - the first tick is quota/frontier/status, not research completion;
 - dev/holdout uplift is absent until visible roles write real public-safe

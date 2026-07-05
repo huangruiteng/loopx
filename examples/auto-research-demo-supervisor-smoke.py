@@ -27,7 +27,7 @@ from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
 
 
 GOAL_ID = "loopx-auto-research-demo"
-QUESTION = "如何提升 KNN holdout metric？"
+QUESTION = "如何提升 KNN 精确近邻检索速度？"
 LANES = [
     "research-curator:research-curator:research_curator",
     "hypothesis-proposer:hypothesis-proposer:hypothesis_proposer",
@@ -199,9 +199,13 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
             assert profile["open_question"] == QUESTION, profile
             preset_context = profile["preset_context"]
             assert preset_context["preset_id"] == "knn-demo", preset_context
-            assert preset_context["metric_name"] == "holdout_metric", preset_context
+            assert preset_context["metric_name"] == "speedup", preset_context
             assert preset_context["baseline_metric"] == 1.0, preset_context
             assert preset_context["question_text_supplies_baseline"] is False, preset_context
+            assert preset_context["editable_scope"] == ["solution.py"], preset_context
+            assert preset_context["protected_scope"] == ["task.py", "eval.py", "eval.sh"], preset_context
+            assert preset_context["dev_eval_command"] == "bash eval.sh dev", preset_context
+            assert preset_context["holdout_eval_command"] == "bash eval.sh test", preset_context
         assert profile["worker_skill_source"].endswith("auto_research/worker_skill/SKILL.md"), profile
         assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile

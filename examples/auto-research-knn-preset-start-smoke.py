@@ -6,11 +6,18 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-QUESTION = "如何提升 KNN holdout metric?"
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.capabilities.auto_research.knn_demo_workspace import (  # noqa: E402
+    materialize_knn_demo_workspace,
+)
+
+QUESTION = "如何提升 KNN 精确近邻检索速度?"
 
 
 def main() -> int:
@@ -38,14 +45,19 @@ def main() -> int:
     contract = payload["user_contract"]
     preset = contract["preset_context"]
     assert preset["preset_id"] == "knn-demo", preset
-    assert preset["baseline_source"] == "preset_fixture_not_question_text", preset
+    assert preset["baseline_source"] == "generated_knn_benchmark_workspace", preset
     assert preset["question_text_supplies_baseline"] is False, preset
-    assert preset["metric_name"] == "holdout_metric", preset
+    assert preset["metric_name"] == "speedup", preset
     assert preset["baseline_metric"] == 1.0, preset
+    assert preset["benchmark_contract_file"] == "research_contract.public.json", preset
+    assert preset["editable_scope"] == ["solution.py"], preset
+    assert preset["protected_scope"] == ["task.py", "eval.py", "eval.sh"], preset
+    assert preset["dev_eval_command"] == "bash eval.sh dev", preset
+    assert preset["holdout_eval_command"] == "bash eval.sh test", preset
     assert payload["preset_context"] == preset, payload
     assert payload["route_contract"]["preset_id"] == "knn-demo", payload
     assert payload["route_contract"]["preset_baseline_source"] == (
-        "preset_fixture_not_question_text"
+        "generated_knn_benchmark_workspace"
     ), payload
     assert "--preset knn-demo" in contract["one_click_start"]["command"], contract
     assert "--preset knn-demo" in payload["commands"]["one_question_start"], payload
@@ -72,9 +84,32 @@ def main() -> int:
     markdown = markdown_result.stdout
     assert "## Preset Context" in markdown, markdown
     assert "- preset_id: `knn-demo`" in markdown, markdown
-    assert "- baseline_source: `preset_fixture_not_question_text`" in markdown, markdown
+    assert "- baseline_source: `generated_knn_benchmark_workspace`" in markdown, markdown
     assert "- question_text_supplies_baseline: `False`" in markdown, markdown
+    assert "- dev_eval_command: `bash eval.sh dev`" in markdown, markdown
+    assert "- holdout_eval_command: `bash eval.sh test`" in markdown, markdown
     assert "--preset knn-demo" in markdown, markdown
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        workspace = Path(temp_dir) / "knn-workspace"
+        marker = materialize_knn_demo_workspace(workspace)
+        assert marker["dev_eval_command"] == "bash eval.sh dev", marker
+        assert marker["holdout_eval_command"] == "bash eval.sh test", marker
+        assert (workspace / "solution.py").exists(), marker
+        assert (workspace / "task.py").exists(), marker
+        assert (workspace / "research_contract.public.json").exists(), marker
+        dev_result = subprocess.run(
+            ["bash", "eval.sh", "dev"],
+            cwd=workspace,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert "score:" in dev_result.stdout, dev_result.stdout
+        dev_payload = json.loads(dev_result.stdout.strip().splitlines()[-1])
+        assert dev_payload["ok"] is True, dev_payload
+        assert dev_payload["metric_name"] == "speedup", dev_payload
+        assert dev_payload["score"] > 0.0, dev_payload
 
     print("auto-research-knn-preset-start-smoke ok")
     return 0

@@ -18,9 +18,11 @@ from .evidence_packet import load_auto_research_evidence_packet_inputs
 from .defaults import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
+    AUTO_RESEARCH_KNN_DEMO_PRESET_ID,
     AUTO_RESEARCH_SUPPORTED_PRESET_IDS,
 )
 from .demo_e2e import run_auto_research_demo_e2e
+from .knn_demo_workspace import materialize_knn_demo_workspace
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
     capture_live_codex_e2e_evidence,
@@ -177,7 +179,7 @@ def register_auto_research_commands(
     contract_parser.add_argument(
         "--preset",
         choices=AUTO_RESEARCH_SUPPORTED_PRESET_IDS,
-        help="Explicit domain demo context, e.g. knn-demo supplies the KNN baseline fixture.",
+        help="Explicit domain demo context, e.g. knn-demo materializes a KNN benchmark workspace.",
     )
 
     start_parser = auto_research_sub.add_parser(
@@ -197,7 +199,7 @@ def register_auto_research_commands(
         choices=AUTO_RESEARCH_SUPPORTED_PRESET_IDS,
         help=(
             "Explicit domain demo context. Use knn-demo when the baseline/metric "
-            "come from the built-in KNN demo fixture rather than the question text."
+            "come from a generated KNN benchmark workspace rather than the question text."
         ),
     )
     start_parser.add_argument(
@@ -913,14 +915,23 @@ def handle_auto_research_command(
                 launch_visible=visible_policy.launch_visible,
                 default=True,
             )
+            prepared_preset_workspace: dict[str, object] | None = None
 
             def start_workspace_policy(_default_workspace: Path) -> tuple[str | None, bool, bool]:
+                nonlocal prepared_preset_workspace
                 default_start_workspace = args.workspace is None
-                return (
+                workspace = (
                     _default_auto_research_start_workspace(goal_id)
                     if default_start_workspace
-                    else args.workspace,
-                    True if default_start_workspace else args.create_workspace,
+                    else args.workspace
+                )
+                create_workspace = True if default_start_workspace else args.create_workspace
+                if preset_id == AUTO_RESEARCH_KNN_DEMO_PRESET_ID and workspace:
+                    prepared_preset_workspace = materialize_knn_demo_workspace(workspace)
+                    create_workspace = True
+                return (
+                    workspace,
+                    create_workspace,
                     codex_trust_visible_workspace,
                 )
 
@@ -966,6 +977,8 @@ def handle_auto_research_command(
                 visible_wake=visible_wake,
                 wake_visible_after_launch=visible_policy.wake_visible_after_launch,
             )
+            if prepared_preset_workspace:
+                payload["preset_workspace"] = prepared_preset_workspace
         elif args.auto_research_command == "frontier":
             if bool(args.fixture) == bool(args.goal_id):
                 raise ValueError(f"auto-research {args.auto_research_command} requires exactly one of --fixture or --goal-id")

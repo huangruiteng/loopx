@@ -86,6 +86,19 @@ Stop and report the exact blocker when any of these are true:
 - the work would require a leader/coordinator agent to select, promote, or
   rewrite the whole graph.
 
+## Benchmark Workspace Hints
+
+When the role profile or workspace exposes a benchmark contract, use that
+contract before writing research claims. For KNN-style demos this means:
+
+- read `research_contract.public.json`, `README.md`, and the editable solver;
+- edit only the declared editable scope, such as `solution.py`;
+- run the declared dev command before proposing promotion;
+- run the declared held-out command before claiming a validated improvement;
+- summarize mechanism, command, score, and protected-scope cleanliness.
+
+The pane-local tick can point at a todo; it cannot count as benchmark evidence.
+
 ## Research Curator
 
 Use when the role owns objective, metric, editable scope, protected scope,

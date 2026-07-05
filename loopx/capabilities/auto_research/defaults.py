@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 from ..multi_agent.contract import build_three_layer_minimality_contract
+from .knn_demo_workspace import (
+    KNN_DEMO_CONTRACT_FILE,
+    KNN_DEMO_DEV_EVAL_COMMAND,
+    KNN_DEMO_EDITABLE_SCOPE,
+    KNN_DEMO_HOLDOUT_EVAL_COMMAND,
+    KNN_DEMO_PROTECTED_SCOPE,
+)
 
 
 AUTO_RESEARCH_DEFAULT_GOAL_ID = "loopx-auto-research-demo"
@@ -15,14 +22,20 @@ AUTO_RESEARCH_KNN_DEMO_CONTEXT = {
     "schema_version": "auto_research_preset_context_v0",
     "preset_id": AUTO_RESEARCH_KNN_DEMO_PRESET_ID,
     "source": "built_in_demo_preset",
-    "baseline_source": "preset_fixture_not_question_text",
+    "baseline_source": "generated_knn_benchmark_workspace",
     "question_text_supplies_baseline": False,
-    "metric_name": "holdout_metric",
+    "metric_name": "speedup",
     "baseline_metric": 1.0,
-    "protected_scope": ["metric_definition", "baseline_metric", "holdout_split"],
+    "workspace_materializer": "built_in_knn_speedup_workspace_v0",
+    "benchmark_contract_file": KNN_DEMO_CONTRACT_FILE,
+    "editable_scope": list(KNN_DEMO_EDITABLE_SCOPE),
+    "protected_scope": list(KNN_DEMO_PROTECTED_SCOPE),
+    "dev_eval_command": KNN_DEMO_DEV_EVAL_COMMAND,
+    "holdout_eval_command": KNN_DEMO_HOLDOUT_EVAL_COMMAND,
+    "holdout_split": "test",
     "claim_boundary": (
-        "The KNN baseline and holdout split come from the explicit demo preset; "
-        "improvement claims still require public-safe evidence."
+        "The KNN baseline is a generated benchmark workspace. Only solution.py is "
+        "editable; improvement claims require public-safe dev and held-out command output."
     ),
 }
 

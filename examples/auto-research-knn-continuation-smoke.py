@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-QUESTION = "如何提升 KNN holdout metric?"
+QUESTION = "如何提升 KNN 精确近邻检索速度?"
 
 
 def main() -> int:
@@ -66,10 +66,14 @@ def main() -> int:
 
     preset = payload["preset_context"]
     assert preset["preset_id"] == "knn-demo", preset
-    assert preset["baseline_source"] == "preset_fixture_not_question_text", preset
+    assert preset["baseline_source"] == "generated_knn_benchmark_workspace", preset
     assert preset["question_text_supplies_baseline"] is False, preset
-    assert preset["metric_name"] == "holdout_metric", preset
+    assert preset["metric_name"] == "speedup", preset
     assert preset["baseline_metric"] == 1.0, preset
+    assert preset["editable_scope"] == ["solution.py"], preset
+    assert preset["protected_scope"] == ["task.py", "eval.py", "eval.sh"], preset
+    assert preset["dev_eval_command"] == "bash eval.sh dev", preset
+    assert preset["holdout_eval_command"] == "bash eval.sh test", preset
 
     worker_loop = payload["worker_loop"]
     assert worker_loop["selected_actions"] == [
