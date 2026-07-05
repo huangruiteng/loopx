@@ -16,6 +16,16 @@ from loopx.control_plane.work_items.work_lane import (  # noqa: E402
     due_monitor_can_preempt_advancement,
     due_monitor_preempts_advancement,
 )
+from loopx.control_plane.work_items.work_lane_context import (  # noqa: E402
+    build_work_lane_context_contract,
+    item_progress_scope,
+    latest_run_progress_scope,
+)
+from loopx.quota import build_quota_should_run  # noqa: E402
+
+
+GOAL_ID = "work-lane-policy-fixture"
+PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 
 
 def assert_contract(name: str, contract: dict | None, **expected: object) -> None:
@@ -24,7 +34,158 @@ def assert_contract(name: str, contract: dict | None, **expected: object) -> Non
         assert contract.get(key) == value, (name, key, contract)
 
 
+def status_payload(
+    *,
+    status: str,
+    agent_todo_items: list[dict] | None = None,
+    next_action: str = "Observe dependency state and then advance backlog if unchanged.",
+    post_handoff_latest_run: dict | None = None,
+) -> dict:
+    if agent_todo_items is None:
+        agent_todo_items = [
+            {
+                "index": 1,
+                "text": "[P1] Advance the self-repair planning slice with a validation-backed patch.",
+                "role": "agent",
+                "status": "open",
+                "priority": "P1",
+            }
+        ]
+    agent_todos = {
+        "schema_version": "todo_summary_v0",
+        "source_section": "Agent Todo",
+        "total_count": len(agent_todo_items),
+        "open_count": len(agent_todo_items),
+        "done_count": 0,
+        "first_open_items": agent_todo_items,
+    }
+    item = {
+        "goal_id": GOAL_ID,
+        "status": status,
+        "waiting_on": "codex",
+        "severity": "info",
+        "source": "project_asset",
+        "recommended_action": next_action,
+        "quota": {
+            "compute": 1.0,
+            "window_hours": 24,
+            "slot_minutes": 1,
+            "allowed_slots": 10,
+            "spent_slots": 0,
+            "state": "eligible",
+            "reason": "eligible fixture",
+        },
+        "project_asset": {
+            "next_action": next_action,
+            "stop_condition": "stop on private material",
+            "agent_todos": agent_todos,
+        },
+    }
+    if post_handoff_latest_run:
+        item["handoff_readiness"] = {
+            "post_handoff_run_seen": True,
+            "handoff_status": "post_handoff_run_seen",
+            "post_handoff_latest_run": post_handoff_latest_run,
+        }
+    return {
+        "ok": True,
+        "attention_queue": {"items": [item]},
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "registry_member": True,
+                    "status": status,
+                    "adapter_kind": "harness_self_improvement",
+                    "adapter_status": "connected-read-only",
+                    "quota": {
+                        "compute": 1.0,
+                        "window_hours": 24,
+                        "slot_minutes": 1,
+                        "allowed_slots": 10,
+                    },
+                }
+            ]
+        },
+    }
+
+
+def assert_work_lane_context_matches_quota_state_machine_cases() -> None:
+    due_todo = "[P0] Monitor the overdue update-note draft PR before feature work."
+    executable_todo = "[P1] Implement the bounded runtime repair slice."
+    cases = [
+        (
+            "dependency_observation",
+            status_payload(status="side_bypass_dependency_observation"),
+        ),
+        (
+            "surface_only_followthrough",
+            status_payload(
+                status="runner_contract_delivered",
+                next_action="Execute the compact runner batch or write the exact blocker.",
+                post_handoff_latest_run={
+                    "classification": "runner_contract_v0_delivered",
+                    "delivery_batch_scale": "implementation",
+                    "delivery_outcome": "surface_only",
+                },
+            ),
+        ),
+        (
+            "due_monitor_preempts_lower_priority_advancement",
+            status_payload(
+                status="monitor_due_preempts_lower_priority_advancement",
+                agent_todo_items=[
+                    {
+                        "index": 1,
+                        "text": due_todo,
+                        "role": "agent",
+                        "status": "open",
+                        "priority": "P0",
+                        "task_class": "continuous_monitor",
+                        "action_kind": "monitor",
+                        "next_due_at": PAST_DUE_AT,
+                    },
+                    {
+                        "index": 2,
+                        "text": executable_todo,
+                        "role": "agent",
+                        "status": "open",
+                        "priority": "P1",
+                        "task_class": "advancement_task",
+                    },
+                ],
+            ),
+        ),
+    ]
+    for name, payload in cases:
+        item = payload["attention_queue"]["items"][0]
+        guard = build_quota_should_run(payload, goal_id=GOAL_ID)
+        direct = build_work_lane_context_contract(
+            item,
+            agent_todo_summary=guard["agent_todo_summary"],
+        )
+        assert direct == guard["work_lane_contract"], (name, direct, guard)
+
+
+def assert_work_lane_context_progress_scope_sources() -> None:
+    dependency_payload = status_payload(status="side_bypass_dependency_observation")
+    dependency_item = dependency_payload["attention_queue"]["items"][0]
+    assert item_progress_scope(dependency_item) == "dependency_observation"
+    assert latest_run_progress_scope(
+        {"classification": "runner_dependency_observed"}
+    ) == "dependency_observation"
+    assert latest_run_progress_scope(
+        {
+            "classification": "runner_dependency_observed",
+            "progress_scope": "primary_goal",
+        }
+    ) == "primary_goal"
+
+
 def main() -> int:
+    assert_work_lane_context_matches_quota_state_machine_cases()
+    assert_work_lane_context_progress_scope_sources()
+
     advancement = build_work_lane_contract(
         progress_scope="agent_lane",
         external_poll_signal=True,

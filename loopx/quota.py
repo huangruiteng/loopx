@@ -15,7 +15,6 @@ from .control_plane.agents.agent_scope import (
     _agent_lane_frontier_hint,
     _agent_scope_filter_user_gate_items,
     _agent_scope_frontier_action,
-    _agent_scope_monitor_blocked_resume_candidates,
     _agent_scope_no_candidate_frontier,
     _agent_scope_selectable_todo_item,
     _agent_scoped_user_gate_override,
@@ -70,7 +69,10 @@ from .control_plane.goals.goal_frontier import (
     select_autonomous_replan_obligation,
 )
 from .control_plane.work_items.goal_route_hint import build_goal_route_hint
-from .control_plane.work_items.outcome_followthrough import build_outcome_followthrough_hint
+from .control_plane.work_items.work_lane_context import (
+    build_work_lane_context_contract,
+    latest_run_progress_scope,
+)
 from .control_plane.scheduler.scheduler_hint import (
     build_codex_app_scheduler_ack_event,
     build_scheduler_hint,
@@ -82,10 +84,6 @@ from .control_plane.scheduler.monitor_poll_policy import (
 )
 from .control_plane.scheduler.external_evidence_observation import (
     build_external_evidence_observation_obligation,
-    build_external_evidence_poll_signal,
-)
-from .control_plane.todos.projection import (
-    todo_summary_open_task_counts,
 )
 from .control_plane.scheduler.monitor_poll_writeback import write_monitor_poll_todo_state
 from .control_plane.scheduler.monitor_target import build_quota_monitor_target
@@ -96,10 +94,6 @@ from .control_plane.scheduler.state import (
     scheduler_state_path,
     write_scheduler_state,
 )
-from .control_plane.work_items.work_lane import (
-    build_work_lane_contract as build_work_lane_contract_policy,
-    due_monitor_preempts_advancement as work_lane_due_monitor_preempts_advancement,
-)
 from .state_projection import is_user_wait_text, next_action_projection_warning
 from .control_plane.todos.contract import (
     TODO_STATUS_OPEN,
@@ -107,7 +101,6 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_BLOCKER,
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
-    next_action_requires_advancement_text,
     normalize_required_capabilities,
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
@@ -145,10 +138,6 @@ from .control_plane.todos.projection import (
     todo_priority_rank as projection_todo_priority_rank,
     todo_projection_sort_key as projection_todo_projection_sort_key,
     todo_summary_claim_scope_agent_id as projection_todo_summary_claim_scope_agent_id,
-    todo_summary_first_executable_item as projection_todo_summary_first_executable_item,
-    todo_summary_monitor_due_count as projection_todo_summary_monitor_due_count,
-    todo_summary_monitor_due_items as projection_todo_summary_monitor_due_items,
-    todo_summary_monitor_schedule_gap_count as projection_todo_summary_monitor_schedule_gap_count,
     todo_summary_monitor_schedule_gap_items as projection_todo_summary_monitor_schedule_gap_items,
     todo_summary_monitor_writeback_contract as projection_todo_summary_monitor_writeback_contract,
     todo_summary_monitor_writeback_supported as projection_todo_summary_monitor_writeback_supported,
@@ -245,11 +234,6 @@ STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "recommended_action",
 )
 DECISION_FRESHNESS_WARNING_ITEM_LIMIT = 3
-DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS = (
-    "dependency_observed",
-    "dependency_observation",
-    "dependency_monitor",
-)
 AUTOMATION_LIVENESS_SCHEMA_VERSION = "automation_liveness_v0"
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
 DEFAULT_AVAILABLE_CAPABILITIES = (
@@ -361,109 +345,15 @@ def _has_focus_wait_marker(*values: Any) -> bool:
     return False
 
 
-def _latest_run_progress_scope(run: dict[str, Any]) -> str:
-    explicit = str(run.get("progress_scope") or "").strip()
-    if explicit:
-        return explicit
-    classification = str(run.get("classification") or "").strip().lower()
-    if any(hint in classification for hint in DEPENDENCY_OBSERVATION_CLASSIFICATION_HINTS):
-        return "dependency_observation"
-    return "primary_goal"
-
-
-def _item_progress_scope(item: dict[str, Any]) -> str:
-    explicit = str(item.get("progress_scope") or "").strip()
-    if explicit:
-        return explicit
-    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    project_explicit = str(project_asset.get("progress_scope") or "").strip()
-    if project_explicit:
-        return project_explicit
-    handoff_readiness = (
-        item.get("handoff_readiness")
-        if isinstance(item.get("handoff_readiness"), dict)
-        else {}
-    )
-    latest_handoff_run = (
-        handoff_readiness.get("post_handoff_latest_run")
-        if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
-        else {}
-    )
-    if latest_handoff_run:
-        return _latest_run_progress_scope(latest_handoff_run)
-    return _latest_run_progress_scope(
-        {
-            "classification": item.get("status") or item.get("latest_run_classification"),
-            "progress_scope": item.get("latest_run_progress_scope"),
-        }
-    )
-
-
-def _post_handoff_latest_run(item: dict[str, Any]) -> dict[str, Any]:
-    handoff_readiness = (
-        item.get("handoff_readiness")
-        if isinstance(item.get("handoff_readiness"), dict)
-        else {}
-    )
-    latest_run = (
-        handoff_readiness.get("post_handoff_latest_run")
-        if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
-        else {}
-    )
-    return latest_run
-
-
-def _outcome_followthrough_hint(item: dict[str, Any]) -> dict[str, Any] | None:
-    return build_outcome_followthrough_hint(_post_handoff_latest_run(item))
-
-
 def _work_lane_contract(
     item: dict[str, Any],
     *,
     agent_todo_summary: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    progress_scope = _item_progress_scope(item)
-    external_poll_signal = build_external_evidence_poll_signal(
+    return build_work_lane_context_contract(
         item,
         agent_todo_summary=agent_todo_summary,
-    )
-    todo_counts = todo_summary_open_task_counts(agent_todo_summary)
-    due_monitor_items = _todo_summary_monitor_due_items(agent_todo_summary)
-    due_monitor_count = _todo_summary_monitor_due_count(
-        agent_todo_summary,
-        due_items=due_monitor_items,
-    )
-    monitor_schedule_gap_items = _todo_summary_monitor_schedule_gap_items(agent_todo_summary)
-    monitor_schedule_gap_count = _todo_summary_monitor_schedule_gap_count(
-        agent_todo_summary,
-        gap_items=monitor_schedule_gap_items,
-    )
-    first_due_monitor = due_monitor_items[0] if due_monitor_items else None
-    first_advancement = _first_executable_todo_item(agent_todo_summary)
-    agent_id = _todo_summary_claim_scope_agent_id(agent_todo_summary or {})
-    monitor_blocked_resume_candidates = _agent_scope_monitor_blocked_resume_candidates(
-        agent_todo_summary,
-        agent_id=agent_id,
-    )
-    due_monitor_preempts_advancement = work_lane_due_monitor_preempts_advancement(
-        first_due_monitor,
-        first_advancement=first_advancement,
-    )
-    return build_work_lane_contract_policy(
-        progress_scope=progress_scope,
-        external_poll_signal=external_poll_signal,
-        todo_counts=todo_counts,
-        monitor_due_count=due_monitor_count,
-        due_monitor_items=due_monitor_items,
-        monitor_schedule_gap_count=monitor_schedule_gap_count,
-        monitor_schedule_gap_items=monitor_schedule_gap_items,
-        first_advancement=first_advancement,
-        due_monitor_preempts_advancement=due_monitor_preempts_advancement,
-        outcome_followthrough=_outcome_followthrough_hint(item),
-        next_action_requires_advancement=_next_action_requires_advancement(item),
         monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
-        resume_blocked_by_monitor_count=len(monitor_blocked_resume_candidates),
-        resume_blocked_by_monitor_items=monitor_blocked_resume_candidates,
     )
 
 
@@ -2177,39 +2067,6 @@ def _todo_summary_claim_scope_agent_id(summary: dict[str, Any]) -> str | None:
     return projection_todo_summary_claim_scope_agent_id(summary)
 
 
-def _todo_summary_monitor_due_items(summary: dict[str, Any] | None) -> list[dict[str, Any]]:
-    return projection_todo_summary_monitor_due_items(summary)
-
-
-def _todo_summary_monitor_due_count(
-    summary: dict[str, Any] | None,
-    *,
-    due_items: list[dict[str, Any]] | None = None,
-) -> int:
-    return projection_todo_summary_monitor_due_count(summary, due_items=due_items)
-
-
-def _todo_summary_monitor_schedule_gap_items(
-    summary: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
-    return projection_todo_summary_monitor_schedule_gap_items(summary)
-
-
-def _todo_summary_monitor_schedule_gap_count(
-    summary: dict[str, Any] | None,
-    *,
-    gap_items: list[dict[str, Any]] | None = None,
-) -> int:
-    return projection_todo_summary_monitor_schedule_gap_count(
-        summary,
-        gap_items=gap_items,
-    )
-
-
-def _first_executable_todo_item(agent_todo_summary: dict[str, Any] | None) -> dict[str, Any] | None:
-    return projection_todo_summary_first_executable_item(agent_todo_summary)
-
-
 def _outcome_floor_blocker_already_projected(
     agent_todo_summary: dict[str, Any] | None,
 ) -> bool:
@@ -2246,18 +2103,6 @@ def _outcome_floor_blocker_already_projected(
         TODO_TASK_CLASS_BLOCKER in visible_classes
         and all(task_class != TODO_TASK_CLASS_ADVANCEMENT for task_class in visible_classes)
     )
-
-
-def _next_action_requires_advancement(item: dict[str, Any]) -> bool:
-    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-    values = (
-        project_asset.get("next_action"),
-        project_asset.get("recommended_action"),
-        item.get("next_action"),
-        item.get("recommended_action"),
-    )
-    text = " ".join(str(value or "") for value in values if str(value or "").strip())
-    return next_action_requires_advancement_text(text)
 
 
 def _has_lifecycle_marker(*values: Any, marker: str) -> bool:
@@ -2807,7 +2652,7 @@ def _heartbeat_recommendation(
                 for key in POST_HANDOFF_RUN_COMPACT_FIELDS
                 if latest_handoff_run.get(key) is not None
             }
-            latest_run["progress_scope"] = _latest_run_progress_scope(latest_handoff_run)
+            latest_run["progress_scope"] = latest_run_progress_scope(latest_handoff_run)
         payload = {
             **base,
             "recommended_mode": "follow_work_lane_contract",
@@ -2856,7 +2701,7 @@ def _heartbeat_recommendation(
             if isinstance(post_handoff_observation.get("latest_run"), dict)
             else {}
         )
-        progress_scope = _latest_run_progress_scope(latest_observed_run)
+        progress_scope = latest_run_progress_scope(latest_observed_run)
         if isinstance(latest_observed_run, dict) and latest_observed_run:
             latest_observed_run.setdefault("progress_scope", progress_scope)
         if has_agent_todos and progress_scope == "dependency_observation":
