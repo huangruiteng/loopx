@@ -512,6 +512,39 @@ def _codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
     return ""
 
 
+def _codex_cli_tui_post_bridge_blocker_stage(
+    capture: str,
+    *,
+    prompt_visible: bool,
+) -> str:
+    """Classify public-safe Codex CLI TUI blockers after bridge activity."""
+
+    if not prompt_visible:
+        return ""
+    lowered = str(capture or "").lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "status 429",
+            "error 429",
+        )
+    ):
+        return "post_bridge_tui_rate_limit"
+    if any(marker in lowered for marker in ("timed out", "timeout")) and any(
+        marker in lowered for marker in ("model", "request", "error", "failed")
+    ):
+        return "post_bridge_tui_model_timeout"
+    if any(marker in lowered for marker in ("press enter", "press return")) and any(
+        marker in lowered
+        for marker in ("error", "failed", "timed out", "timeout", "model")
+    ):
+        return "post_bridge_tui_error_prompt"
+    return ""
+
+
 def _write_process_stdin_async(
     proc: subprocess.Popen[str],
     stdin_text: str | None,
@@ -1393,6 +1426,38 @@ class SkillsBenchLocalAcpRelay:
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
+                        )
+                    post_bridge_blocker_stage = ""
+                    if (
+                        bridge_activity_seen
+                        and bridge_summary_path is not None
+                        and not _bridge_summary_has_inflight_operation(
+                            bridge_summary_path
+                        )
+                    ):
+                        post_bridge_blocker_stage = (
+                            _codex_cli_tui_post_bridge_blocker_stage(
+                                capture,
+                                prompt_visible=(
+                                    self._codex_cli_tui_input_prompt_visible(capture)
+                                ),
+                            )
+                        )
+                    if post_bridge_blocker_stage:
+                        self._tmux_kill_session(tmux_name)
+                        self._publish_remote_bridge_agent_operations_trace(
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage=post_bridge_blocker_stage,
+                            goal_active_observed=goal_active_observed,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=first_action_seen,
+                            bridge_summary_path=bridge_summary_path,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_cli_goal_" + post_bridge_blocker_stage
                         )
                     if (
                         bridge_activity_seen
