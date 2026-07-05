@@ -12,10 +12,8 @@ from .control_plane.agents.agent_scope import (
     AgentScopeFrontierAction,
     _action_scope_tokens_from_text,
     _agent_lane_frontier_hint,
-    _agent_scope_filter_user_gate_items,
     _agent_scope_frontier_action,
     _agent_scope_no_candidate_frontier,
-    _agent_scope_selectable_todo_item,
     _agent_scoped_user_gate_override,
     _scoped_user_gate_fallback,
 )
@@ -106,29 +104,14 @@ from .control_plane.todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_BLOCKER,
-    TODO_TASK_CLASS_MONITOR,
-    TODO_TASK_CLASS_USER_GATE,
-    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_id,
     normalize_required_write_scopes,
     normalize_todo_status,
     normalize_todo_task_class,
 )
-from .control_plane.todos.claim_visibility import (
-    build_agent_claim_scoped_open_items,
-    build_todo_claim_visibility_lanes,
-)
-from .control_plane.todos.deferred_resume import (
-    build_todo_deferred_visibility_lanes,
-    build_todo_resume_blocked_visibility_lanes,
-)
-from .control_plane.todos.handoff_gate import build_todo_handoff_gate_lanes
-from .control_plane.todos.route_continuation import build_todo_route_continuation_lanes
-from .control_plane.todos.succession_warning import build_todo_succession_warning_lanes
 from .control_plane.todos.summary_item import (
     compact_todo_summary_item,
-    todo_summary_source_items,
 )
 from .control_plane.todos.projection import (
     todo_index_rank as projection_todo_index_rank,
@@ -143,9 +126,11 @@ from .control_plane.todos.projection import (
     todo_priority_rank as projection_todo_priority_rank,
     todo_projection_sort_key as projection_todo_projection_sort_key,
     todo_summary_claim_scope_agent_id as projection_todo_summary_claim_scope_agent_id,
-    todo_summary_monitor_schedule_gap_items as projection_todo_summary_monitor_schedule_gap_items,
-    todo_summary_monitor_writeback_contract as projection_todo_summary_monitor_writeback_contract,
-    todo_summary_monitor_writeback_supported as projection_todo_summary_monitor_writeback_supported,
+)
+from .control_plane.todos.quota_summary import (
+    is_user_gate_todo_item,
+    select_quota_todo_summary,
+    summarize_user_todos_for_quota,
 )
 
 
@@ -173,19 +158,6 @@ AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS = {
 }
 DEFAULT_SLOT_SPEND_SOURCE = "heartbeat"
 VALID_SLOT_SPEND_SOURCES = {"heartbeat", "controller", "adapter"}
-USER_GATE_ACTION_KIND_HINTS = (
-    "approval",
-    "approve",
-    "boundary",
-    "gate",
-    "blocker",
-    "credential",
-    "private",
-    "production",
-    "leaderboard",
-    "submission",
-    "public_claim",
-)
 FOCUS_WAIT_LIFECYCLE_MARKERS = {
     "continuation_boundary",
     "focus_wait",
@@ -216,9 +188,6 @@ STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "recommended_action",
 )
 DECISION_FRESHNESS_WARNING_ITEM_LIMIT = 3
-TODO_BACKLOG_ITEM_LIMIT = 8
-TODO_DEFERRED_VISIBILITY_LIMIT = 8
-TODO_VISIBILITY_LANE_LIMIT = 16
 MONITOR_DUE_ITEM_LIMIT = 1
 
 def _now_local() -> str:
@@ -619,376 +588,6 @@ def _todo_index_rank(item: dict[str, Any]) -> int:
 
 def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
     return projection_todo_projection_sort_key(item)
-
-
-def _todo_summary_monitor_writeback_contract(value: dict[str, Any] | None) -> dict[str, Any] | None:
-    return projection_todo_summary_monitor_writeback_contract(value)
-
-
-def _todo_summary_monitor_writeback_supported(value: dict[str, Any] | None) -> bool:
-    return projection_todo_summary_monitor_writeback_supported(value)
-
-
-def _is_user_gate_todo_item(item: dict[str, Any]) -> bool:
-    if _todo_task_class(item) == TODO_TASK_CLASS_USER_GATE:
-        return True
-    action_kind = str(item.get("action_kind") or "").strip().lower()
-    if not action_kind:
-        return False
-    return any(hint in action_kind for hint in USER_GATE_ACTION_KIND_HINTS)
-
-
-def _summarize_user_todos(
-    value: Any,
-    *,
-    agent_identity: dict[str, Any] | None = None,
-    filter_user_gate_blocks_agent: bool = False,
-) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    all_open_items = sorted(
-        todo_summary_source_items(value),
-        key=_todo_projection_sort_key,
-    )
-    blocking_open_items = all_open_items
-    other_agent_scoped_items: list[dict[str, Any]] = []
-    agent_scope_filter: dict[str, Any] | None = None
-    if filter_user_gate_blocks_agent:
-        (
-            blocking_open_items,
-            other_agent_scoped_items,
-            agent_scope_filter,
-        ) = _agent_scope_filter_user_gate_items(
-            all_open_items,
-            agent_identity=agent_identity,
-        )
-    open_items, claim_scope = build_agent_claim_scoped_open_items(
-        blocking_open_items,
-        agent_identity=agent_identity,
-        diagnostic_item_limit=3,
-    )
-    executable_items = [
-        item
-        for item in open_items
-        if _todo_item_is_actionable_open(item)
-        if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    ]
-    monitor_items = [
-        item
-        for item in open_items
-        if _todo_item_is_actionable_open(item)
-        if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-    ]
-    monitor_writeback_supported = _todo_summary_monitor_writeback_supported(value)
-    monitor_due_items = (
-        [
-            item
-            for item in monitor_items
-            if _todo_item_is_due_monitor(item)
-            if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-        ]
-        if monitor_writeback_supported
-        else []
-    )
-    monitor_schedule_gap_items = projection_todo_summary_monitor_schedule_gap_items(
-        {
-            "monitor_open_items": monitor_items,
-            "monitor_writeback": value.get("monitor_writeback"),
-        }
-    )
-    claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
-    gate_items = [
-        item
-        for item in open_items
-        if _is_user_gate_todo_item(item)
-    ]
-    active_next_action_items = [
-        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-        for item in (value.get("active_next_action_items") or [])
-        if isinstance(item, dict)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ] if isinstance(value.get("active_next_action_items"), list) else []
-    active_next_action_executable_items = [
-        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-        for item in (value.get("active_next_action_executable_items") or [])
-        if isinstance(item, dict)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ] if isinstance(value.get("active_next_action_executable_items"), list) else []
-    open_count = value.get("open_count", len(all_open_items))
-    if claim_scope is not None:
-        open_count = len(open_items)
-    if agent_scope_filter is not None:
-        open_count = len(blocking_open_items)
-    summary = {
-        "schema_version": value.get("schema_version"),
-        "source_section": value.get("source_section"),
-        "total_count": value.get("total_count"),
-        "open_count": open_count,
-        "done_count": value.get("done_count"),
-        "first_open_items": open_items[:3],
-        "first_executable_items": executable_items[:3],
-        "gate_open_items": gate_items[:3],
-        "monitor_open_items": monitor_items,
-        "monitor_due_count": len(monitor_due_items),
-        "monitor_due_items": monitor_due_items[:MONITOR_DUE_ITEM_LIMIT],
-        "monitor_schedule_gap_count": len(monitor_schedule_gap_items),
-        "monitor_schedule_gap_items": monitor_schedule_gap_items[:MONITOR_DUE_ITEM_LIMIT],
-        "active_next_action_items": active_next_action_items,
-        "active_next_action_executable_items": active_next_action_executable_items,
-        "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
-        "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
-    }
-    monitor_writeback = _todo_summary_monitor_writeback_contract(value)
-    if monitor_writeback:
-        summary["monitor_writeback"] = monitor_writeback
-    summary.update(
-        build_todo_claim_visibility_lanes(
-            blocking_open_items,
-            agent_identity=agent_identity,
-            backlog_item_limit=TODO_BACKLOG_ITEM_LIMIT,
-            visibility_lane_limit=TODO_VISIBILITY_LANE_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_deferred_visibility_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_resume_blocked_visibility_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_handoff_gate_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_BACKLOG_ITEM_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_route_continuation_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_BACKLOG_ITEM_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_succession_warning_lanes(
-            value,
-            item_limit=TODO_BACKLOG_ITEM_LIMIT,
-        )
-    )
-    if claimed_open_items or value.get("claimed_open_count"):
-        summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
-        summary["unclaimed_open_count"] = value.get(
-            "unclaimed_open_count",
-            max(0, int(open_count or 0) - len(claimed_open_items)),
-        )
-    if claim_scope:
-        summary["claim_scope"] = claim_scope
-    if agent_scope_filter:
-        summary["agent_scope_filter"] = agent_scope_filter
-        summary["all_open_count"] = value.get("open_count", len(all_open_items))
-        summary["other_agent_scoped_open_count"] = len(other_agent_scoped_items)
-        summary["other_agent_scoped_items"] = [
-            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-            for item in other_agent_scoped_items[:TODO_VISIBILITY_LANE_LIMIT]
-        ]
-    return summary
-
-
-def _summarize_project_asset_todos(
-    value: Any,
-    *,
-    agent_identity: dict[str, Any] | None = None,
-    filter_user_gate_blocks_agent: bool = False,
-) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    if (
-        isinstance(value.get("items"), list)
-        or isinstance(value.get("first_open_items"), list)
-    ) and (
-        "total_count" in value or "open_count" in value or "done_count" in value
-    ):
-        return _summarize_user_todos(
-            value,
-            agent_identity=agent_identity,
-            filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
-        )
-
-    all_open_items = sorted(
-        todo_summary_source_items(value),
-        key=_todo_projection_sort_key,
-    )
-    if not all_open_items:
-        next_text = str(value.get("next") or "").strip()
-        next_index = value.get("next_index", 1)
-        all_open_items = [{"index": next_index, "text": next_text}] if next_text else []
-        next_claimed_by = str(value.get("next_claimed_by") or "").strip()
-        if all_open_items and next_claimed_by:
-            all_open_items[0]["claimed_by"] = next_claimed_by
-    blocking_open_items = all_open_items
-    other_agent_scoped_items: list[dict[str, Any]] = []
-    agent_scope_filter: dict[str, Any] | None = None
-    if filter_user_gate_blocks_agent:
-        (
-            blocking_open_items,
-            other_agent_scoped_items,
-            agent_scope_filter,
-        ) = _agent_scope_filter_user_gate_items(
-            all_open_items,
-            agent_identity=agent_identity,
-        )
-    open_items, claim_scope = build_agent_claim_scoped_open_items(
-        blocking_open_items,
-        agent_identity=agent_identity,
-        diagnostic_item_limit=3,
-    )
-    executable_items = [
-        item
-        for item in open_items
-        if _todo_item_is_actionable_open(item)
-        if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-    ]
-    monitor_items = [
-        item
-        for item in open_items
-        if _todo_item_is_actionable_open(item)
-        if _todo_task_class(item) == TODO_TASK_CLASS_MONITOR
-    ]
-    monitor_writeback_supported = _todo_summary_monitor_writeback_supported(value)
-    monitor_due_items = (
-        [
-            item
-            for item in monitor_items
-            if _todo_item_is_due_monitor(item)
-            if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-        ]
-        if monitor_writeback_supported
-        else []
-    )
-    active_next_action_items = [
-        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-        for item in (value.get("active_next_action_items") or [])
-        if isinstance(item, dict)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ] if isinstance(value.get("active_next_action_items"), list) else []
-    active_next_action_executable_items = [
-        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-        for item in (value.get("active_next_action_executable_items") or [])
-        if isinstance(item, dict)
-        if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
-    ] if isinstance(value.get("active_next_action_executable_items"), list) else []
-    claimed_open_items = [item for item in blocking_open_items if item.get("claimed_by")]
-    open_count = value.get("open", value.get("open_count", len(all_open_items)))
-    if claim_scope is not None:
-        open_count = len(open_items)
-    if agent_scope_filter is not None:
-        open_count = len(blocking_open_items)
-    summary = {
-        "schema_version": value.get("schema_version"),
-        "source_section": value.get("source_section") or "project_asset",
-        "total_count": value.get("total", value.get("total_count")),
-        "open_count": open_count,
-        "done_count": value.get("done", value.get("done_count")),
-        "first_open_items": open_items[:3],
-        "first_executable_items": executable_items[:3],
-        "monitor_open_items": monitor_items,
-        "monitor_due_count": len(monitor_due_items),
-        "monitor_due_items": monitor_due_items[:MONITOR_DUE_ITEM_LIMIT],
-        "active_next_action_items": active_next_action_items,
-        "active_next_action_executable_items": active_next_action_executable_items,
-        "backlog_items": open_items[:TODO_BACKLOG_ITEM_LIMIT],
-        "executable_backlog_items": executable_items[:TODO_BACKLOG_ITEM_LIMIT],
-    }
-    monitor_writeback = _todo_summary_monitor_writeback_contract(value)
-    if monitor_writeback:
-        summary["monitor_writeback"] = monitor_writeback
-    summary.update(
-        build_todo_claim_visibility_lanes(
-            blocking_open_items,
-            agent_identity=agent_identity,
-            backlog_item_limit=TODO_BACKLOG_ITEM_LIMIT,
-            visibility_lane_limit=TODO_VISIBILITY_LANE_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_deferred_visibility_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_handoff_gate_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_BACKLOG_ITEM_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_route_continuation_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_BACKLOG_ITEM_LIMIT,
-        )
-    )
-    if claimed_open_items or value.get("claimed_open_count"):
-        summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
-        summary["unclaimed_open_count"] = value.get(
-            "unclaimed_open_count",
-            max(0, int(open_count or 0) - len(claimed_open_items)),
-        )
-    if claim_scope:
-        summary["claim_scope"] = claim_scope
-    if agent_scope_filter:
-        summary["agent_scope_filter"] = agent_scope_filter
-        summary["all_open_count"] = value.get("open", value.get("open_count", len(all_open_items)))
-        summary["other_agent_scoped_open_count"] = len(other_agent_scoped_items)
-        summary["other_agent_scoped_items"] = [
-            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-            for item in other_agent_scoped_items[:TODO_VISIBILITY_LANE_LIMIT]
-        ]
-    return summary
-
-
-def _is_canonical_attention_todo_summary(value: Any) -> bool:
-    if not isinstance(value, dict):
-        return False
-    if value.get("schema_version") == "todo_summary_v0":
-        return True
-    source_section = str(value.get("source_section") or "").strip().lower()
-    if source_section.startswith("raw "):
-        return False
-    return source_section in {"agent todo", "user todo"}
-
-
-def _select_todo_summary(
-    canonical_value: Any,
-    project_asset_value: Any,
-    *,
-    agent_identity: dict[str, Any] | None = None,
-    filter_user_gate_blocks_agent: bool = False,
-) -> dict[str, Any] | None:
-    canonical_summary = _summarize_user_todos(
-        canonical_value,
-        agent_identity=agent_identity,
-        filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
-    )
-    project_asset_summary = _summarize_project_asset_todos(
-        project_asset_value,
-        agent_identity=agent_identity,
-        filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
-    )
-    if _is_canonical_attention_todo_summary(canonical_value):
-        return canonical_summary or project_asset_summary
-    return project_asset_summary or canonical_summary
 
 
 def _same_todo_identity(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -1580,7 +1179,7 @@ def _build_gate_prompt(
         if str(gate).strip()
     ]
     if user_todo_summary is None:
-        user_todo_summary = _summarize_user_todos(item.get("user_todos"))
+        user_todo_summary = summarize_user_todos_for_quota(item.get("user_todos"))
     first_open = (
         user_todo_summary.get("first_open_items")
         if isinstance(user_todo_summary, dict) and isinstance(user_todo_summary.get("first_open_items"), list)
@@ -1676,7 +1275,7 @@ def _open_user_gate_todo_items(summary: dict[str, Any] | None) -> list[dict[str,
         for item in values:
             if not isinstance(item, dict) or item.get("done") is True:
                 continue
-            if not _is_user_gate_todo_item(item):
+            if not is_user_gate_todo_item(item):
                 continue
             item_key = (item.get("todo_id"), item.get("index"), item.get("text"))
             if any(
@@ -2402,13 +2001,13 @@ def build_quota_should_run(
             reason = "status or contract health is not ok; skip automatic compute"
         project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
         agent_identity = _quota_agent_identity(item, agent_id=agent_id)
-        user_todo_summary = _select_todo_summary(
+        user_todo_summary = select_quota_todo_summary(
             item.get("user_todos"),
             project_asset.get("user_todos") if project_asset else None,
             agent_identity=agent_identity,
             filter_user_gate_blocks_agent=True,
         )
-        agent_todo_summary = _select_todo_summary(
+        agent_todo_summary = select_quota_todo_summary(
             item.get("agent_todos"),
             project_asset.get("agent_todos") if project_asset else None,
             agent_identity=agent_identity,
