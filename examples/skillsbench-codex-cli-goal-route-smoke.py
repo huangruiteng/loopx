@@ -47,14 +47,34 @@ def _assert_cli_goal_route_requires_materialized_solver_bridge() -> None:
         "--route",
         "codex-cli-goal-baseline",
         "--host-local-acp-launch",
-        "--remote-command-file-bridge-ready",
     )
     assert proc.returncode == 2, proc
     payload = _json_from_stderr(proc)
     assert payload["error_type"] == "SkillsBenchCodexCliGoalDriverRequired", payload
     assert payload["host_local_acp_launch"] is True, payload
-    assert payload["remote_command_file_bridge_ready"] is True, payload
+    assert payload["remote_command_file_bridge_ready"] is False, payload
     assert payload["remote_command_file_bridge_solver_command_configured"] is False
+    assert payload["remote_command_file_bridge_sandbox_auto_wiring_pending"] is False
+
+    # The real Docker bridge command is only available after BenchFlow creates
+    # the scored sandbox, so this route must allow the auto-wiring state.
+    proc = _run_runner(
+        "--route",
+        "codex-cli-goal-baseline",
+        "--host-local-acp-launch",
+        "--remote-command-file-bridge-ready",
+        "--plan-only",
+    )
+    assert proc.returncode == 0, proc
+    payload = json.loads(proc.stdout)
+    assert payload["ok"] is True, payload
+    prereq = payload["launch_plan"]["runner_prerequisites"]
+    assert prereq["remote_command_file_bridge_materialized"] is True, prereq
+    assert (
+        prereq["remote_command_file_bridge_consumption_status"]
+        == "sandbox_bridge_auto_wiring_pending"
+    ), prereq
+    assert prereq["remote_command_file_bridge_agent_operation_trace_required"] is True
 
 
 def _assert_cli_goal_plan_and_relay_command() -> None:

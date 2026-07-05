@@ -17137,10 +17137,15 @@ def main(argv: list[str] | None = None) -> int:
             or args.remote_command_file_bridge_probe
         )
         bridge_command_configured = bool(args.remote_command_file_bridge_solver_command)
+        bridge_sandbox_auto_wiring_pending = bool(
+            args.host_local_acp_launch
+            and bridge_ready
+            and not bridge_command_configured
+        )
         if (
             not args.host_local_acp_launch
             or not bridge_ready
-            or not bridge_command_configured
+            or not (bridge_command_configured or bridge_sandbox_auto_wiring_pending)
         ):
             payload = {
                 "ok": False,
@@ -17166,6 +17171,9 @@ def main(argv: list[str] | None = None) -> int:
                 "remote_command_file_bridge_ready": bridge_ready,
                 "remote_command_file_bridge_solver_command_configured": (
                     bridge_command_configured
+                ),
+                "remote_command_file_bridge_sandbox_auto_wiring_pending": (
+                    bridge_sandbox_auto_wiring_pending
                 ),
             }
             print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
