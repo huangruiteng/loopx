@@ -13,6 +13,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 from loopx.status import compact_todo_group  # noqa: E402
+from loopx.control_plane.todos.succession_warning import (  # noqa: E402
+    build_todo_succession_warning_lanes,
+)
 
 
 GOAL_ID = "todo-succession-contract-fixture"
@@ -223,9 +226,54 @@ def assert_quota_projects_warning() -> None:
     assert "todo_missing_successor" in markdown, markdown
 
 
+def assert_quota_warning_lanes_strip_transient_evidence() -> None:
+    lanes = build_todo_succession_warning_lanes(
+        {
+            "todo_succession_warning": {
+                "count": 1,
+                "items": [
+                    {
+                        "todo_id": "todo_missing_successor",
+                        "text": "[P1] Missing successor.",
+                        "note": "operator-only note should not project",
+                        "evidence": "local run evidence should not project",
+                        "reason": "local rationale should not project",
+                        "required_write_scopes": "loopx/quota.py,../unsafe-scope.txt",
+                        "decision_scope": "write_scope:goal:loopx-meta",
+                        "required_decision_scopes": (
+                            "private_read:goal:loopx-meta,private_read:goal:loopx-meta"
+                        ),
+                        "action_kind": "monitor",
+                        "succession_tracked": True,
+                    }
+                ],
+            }
+        },
+        item_limit=8,
+    )
+    item = lanes["todo_succession_warning"]["items"][0]
+    assert item["todo_id"] == "todo_missing_successor", lanes
+    assert item["succession_tracked"] is True, lanes
+    assert "note" not in item, lanes
+    assert "evidence" not in item, lanes
+    assert "reason" not in item, lanes
+    assert item["required_write_scopes"] == ["loopx/quota.py"], lanes
+    assert item["decision_scope"]["kind"] == "write_scope", lanes
+    assert item["required_decision_scopes"] == [
+        {
+            "schema_version": "decision_scope_v0",
+            "kind": "private_read",
+            "granularity": "goal",
+            "scope_key": "loopx-meta",
+        }
+    ], lanes
+    assert item["task_class"] == "continuous_monitor", lanes
+
+
 def main() -> int:
     assert_status_summary_warning()
     assert_quota_projects_warning()
+    assert_quota_warning_lanes_strip_transient_evidence()
     print("todo-succession-contract-smoke ok")
     return 0
 

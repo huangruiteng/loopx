@@ -126,6 +126,7 @@ from .control_plane.todos.handoff_gate import (
     HandoffGateState,
     build_todo_handoff_gate_states,
 )
+from .control_plane.todos.succession_warning import build_todo_succession_warning_lanes
 from .control_plane.todos.projection import (
     todo_claimed_visibility_items as projection_todo_claimed_visibility_items,
     todo_index_rank as projection_todo_index_rank,
@@ -1990,59 +1991,6 @@ def _is_user_gate_todo_item(item: dict[str, Any]) -> bool:
     return any(hint in action_kind for hint in USER_GATE_ACTION_KIND_HINTS)
 
 
-def _compact_todo_succession_warning_item(item: dict[str, Any]) -> dict[str, Any]:
-    compact = _compact_todo_summary_item(item)
-    for key in (
-        "done",
-        "succession_tracked",
-        "recommended_action",
-    ):
-        if item.get(key) is not None:
-            compact[key] = item.get(key)
-    return compact
-
-
-def _todo_succession_warning_lanes(value: dict[str, Any]) -> dict[str, Any]:
-    warning = value.get("todo_succession_warning")
-    warning = warning if isinstance(warning, dict) else {}
-    source_items = (
-        warning.get("items")
-        if isinstance(warning.get("items"), list)
-        else value.get("completed_without_successor_items")
-    )
-    items = [
-        _compact_todo_succession_warning_item(item)
-        for item in (source_items or [])
-        if isinstance(item, dict)
-    ][:TODO_BACKLOG_ITEM_LIMIT]
-    count = warning.get("count", value.get("completed_without_successor_count"))
-    try:
-        count = max(0, int(count))
-    except (TypeError, ValueError):
-        count = len(items)
-    if count <= 0 and not items:
-        return {}
-
-    payload = {
-        "schema_version": warning.get("schema_version", "todo_succession_warning_v0"),
-        "reason_code": warning.get(
-            "reason_code",
-            "completed_advancement_without_successor",
-        ),
-        "count": count,
-        "items": items,
-        "recommended_action": warning.get(
-            "recommended_action",
-            "record no_followup=true or add/link a successor todo",
-        ),
-    }
-    return {
-        "completed_without_successor_count": count,
-        "completed_without_successor_items": items,
-        "todo_succession_warning": payload,
-    }
-
-
 def _summarize_user_todos(
     value: Any,
     *,
@@ -2175,7 +2123,12 @@ def _summarize_user_todos(
             agent_identity=agent_identity,
         )
     )
-    summary.update(_todo_succession_warning_lanes(value))
+    summary.update(
+        build_todo_succession_warning_lanes(
+            value,
+            item_limit=TODO_BACKLOG_ITEM_LIMIT,
+        )
+    )
     if claimed_open_items or value.get("claimed_open_count"):
         summary["claimed_open_count"] = value.get("claimed_open_count", len(claimed_open_items))
         summary["unclaimed_open_count"] = value.get(
