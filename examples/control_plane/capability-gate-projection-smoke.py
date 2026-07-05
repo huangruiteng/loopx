@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test capability-gate projection helpers used by quota."""
+"""Smoke-test capability-gate projection and decision contracts used by quota."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from loopx.control_plane.agents.capability_gate import (  # noqa: E402
     _capability_candidate_item,
     _capability_missing_action,
     _sort_capability_runnable_candidates,
+    build_capability_gate,
 )
 
 
@@ -119,10 +120,105 @@ def assert_current_agent_candidate_order_contract() -> None:
     ], ordered
 
 
+def assert_gate_prefers_active_next_and_exposes_blocked_fallback() -> None:
+    blocked = todo(
+        "todo_needs_network",
+        1,
+        "P0",
+        claimed_by=AGENT_ID,
+        required_capabilities=["network"],
+    )
+    runnable = todo(
+        "todo_local_refactor",
+        2,
+        "P1",
+        claimed_by=AGENT_ID,
+        required_capabilities=["shell"],
+    )
+    gate = build_capability_gate(
+        {
+            "active_next_action_executable_items": [blocked, blocked],
+            "executable_backlog_items": [runnable],
+        },
+        available_capabilities=["shell"],
+        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+    )
+    assert gate is not None
+    assert gate["schema_version"] == "capability_gate_v0", gate
+    assert gate["source"] == "agent_todo_summary.active_next_action_executable_items", gate
+    assert gate["action"] == "run", gate
+    assert gate["decision_owner"] == "agent", gate
+    assert gate["runnable_candidates"][0]["todo_id"] == "todo_local_refactor", gate
+    assert [item["todo_id"] for item in gate["blocked_candidates"]] == [
+        "todo_needs_network"
+    ], gate
+    assert gate["blocked_missing"] == ["network"], gate
+    assert gate["available"] == ["shell", "filesystem_read", "filesystem_write"], gate
+
+
+def assert_target_capability_creates_repair_hint_not_hard_block() -> None:
+    item = todo(
+        "todo_bridge_repair",
+        3,
+        "P1",
+        claimed_by=AGENT_ID,
+        required_capabilities=["shell", "benchmark_runner"],
+        target_capabilities=["benchmark_runner"],
+    )
+    gate = build_capability_gate(
+        {"executable_backlog_items": [item]},
+        available_capabilities=["shell"],
+        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+    )
+    assert gate is not None
+    assert gate["action"] == "run", gate
+    assert gate["repair_candidate_count"] == 1, gate
+    assert gate["repair_missing"] == ["benchmark_runner"], gate
+    candidate = gate["runnable_candidates"][0]
+    assert candidate["todo_id"] == "todo_bridge_repair", gate
+    assert candidate["capability_repair_mode"] is True, gate
+    assert candidate["capability_action"] == "repair_bridge", gate
+
+
+def assert_all_blocked_owner_capability_stops_delivery() -> None:
+    item = todo(
+        "todo_live_fetch",
+        4,
+        "P0",
+        required_capabilities=["network"],
+    )
+    gate = build_capability_gate(
+        {"first_executable_items": [item]},
+        available_capabilities=["shell"],
+        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+    )
+    assert gate is not None
+    assert gate["source"] == "agent_todo_summary.first_executable_items", gate
+    assert gate["action"] == "ask_owner", gate
+    assert gate["decision_owner"] == "capability_gate", gate
+    assert gate["blocks_delivery"] is True, gate
+    assert gate["missing"] == ["network"], gate
+    assert "provide an environment" in gate["owner_action"], gate
+
+
+def assert_requirement_free_advancement_does_not_create_gate() -> None:
+    item = todo("todo_plain_local", 5, "P2")
+    gate = build_capability_gate(
+        {"executable_backlog_items": [item]},
+        available_capabilities=[],
+        agent_identity={"agent_id": AGENT_ID, "primary_agent": PRIMARY_AGENT},
+    )
+    assert gate is None
+
+
 def main() -> int:
     assert_missing_action_contract()
     assert_candidate_compaction_contract()
     assert_current_agent_candidate_order_contract()
+    assert_gate_prefers_active_next_and_exposes_blocked_fallback()
+    assert_target_capability_creates_repair_hint_not_hard_block()
+    assert_all_blocked_owner_capability_stops_delivery()
+    assert_requirement_free_advancement_does_not_create_gate()
     print("capability-gate-projection-smoke ok")
     return 0
 
