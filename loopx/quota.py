@@ -83,6 +83,8 @@ from .control_plane.scheduler.monitor_poll_policy import (
 from .control_plane.scheduler.external_evidence_observation import (
     build_external_evidence_observation_obligation,
     build_external_evidence_poll_signal,
+)
+from .control_plane.todos.projection import (
     todo_summary_open_task_counts,
 )
 from .control_plane.scheduler.monitor_poll_writeback import write_monitor_poll_todo_state

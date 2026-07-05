@@ -15,7 +15,6 @@ from loopx.control_plane.scheduler.external_evidence_observation import (  # noq
     build_external_evidence_observation_obligation,
     build_external_evidence_poll_signal,
     projected_monitor_handle,
-    todo_summary_open_task_counts,
 )
 from loopx.control_plane.scheduler.monitor_poll_policy import (  # noqa: E402
     allows_no_spend_external_monitor_poll,
@@ -23,6 +22,9 @@ from loopx.control_plane.scheduler.monitor_poll_policy import (  # noqa: E402
 from loopx.control_plane.todos.contract import (  # noqa: E402
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
+)
+from loopx.control_plane.todos.projection import (  # noqa: E402
+    todo_summary_open_task_counts,
 )
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.status import compact_todo_group  # noqa: E402

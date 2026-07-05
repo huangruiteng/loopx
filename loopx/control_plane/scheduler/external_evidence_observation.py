@@ -3,20 +3,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..todos.contract import (
-    TODO_TASK_CLASS_ADVANCEMENT,
-    TODO_TASK_CLASS_MONITOR,
-    normalize_todo_claimed_by,
-    normalize_todo_id,
-)
+from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
 from ..todos.projection import (
-    todo_item_is_actionable_open,
-    todo_item_task_class,
     todo_summary_claim_scope_agent_id,
     todo_summary_has_only_future_scoped_monitor_work,
     todo_summary_monitor_due_count,
     todo_summary_monitor_items,
     todo_summary_monitor_schedule_gap_count,
+    todo_summary_open_count,
+    todo_summary_open_task_counts,
 )
 
 
@@ -49,92 +44,6 @@ EXTERNAL_EVIDENCE_HANDLE_ABSENT_PATTERNS = (
         r"(?:absent|missing|not\s+available|does\s+not\s+exist|exists\s+yet)\b"
     ),
 )
-
-
-def todo_summary_open_count(summary: dict[str, Any] | None) -> int:
-    if not isinstance(summary, dict):
-        return 0
-    try:
-        return max(0, int(summary.get("open_count") or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def todo_summary_open_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
-    open_count = todo_summary_open_count(summary)
-    classified_items: list[dict[str, Any]] = []
-    seen: set[tuple[Any, str]] = set()
-    executable_backlog_items: list[dict[str, Any]] | None = None
-    monitor_open_items: list[dict[str, Any]] | None = None
-    if isinstance(summary, dict):
-        raw_executable_backlog = summary.get("executable_backlog_items")
-        if isinstance(raw_executable_backlog, list):
-            executable_backlog_items = [
-                item
-                for item in raw_executable_backlog
-                if isinstance(item, dict)
-                if todo_item_is_actionable_open(item)
-                if todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-            ]
-        raw_monitor_open = summary.get("monitor_open_items")
-        if isinstance(raw_monitor_open, list):
-            monitor_open_items = [
-                item
-                for item in raw_monitor_open
-                if isinstance(item, dict)
-                if todo_item_is_actionable_open(item)
-                if todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
-            ]
-        for key in (
-            "first_executable_items",
-            "first_open_items",
-            "monitor_open_items",
-        ):
-            source_items = summary.get(key)
-            if not isinstance(source_items, list):
-                continue
-            for item in source_items:
-                if not isinstance(item, dict):
-                    continue
-                text = str(item.get("text") or "").strip()
-                if not text:
-                    continue
-                identity = (item.get("index"), text)
-                if identity in seen:
-                    continue
-                seen.add(identity)
-                classified_items.append(item)
-    if executable_backlog_items is not None:
-        advancement_count = len(executable_backlog_items)
-    else:
-        visible_open = min(open_count, len(classified_items))
-        advancement_visible_count = sum(
-            1
-            for item in classified_items[:visible_open]
-            if todo_item_is_actionable_open(item)
-            and todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-        )
-        hidden_count = max(0, open_count - visible_open)
-        advancement_count = advancement_visible_count + hidden_count
-    if monitor_open_items is not None:
-        monitor_visible_count = len(monitor_open_items)
-    else:
-        visible_open = min(open_count, len(classified_items))
-        monitor_visible_count = sum(
-            1
-            for item in classified_items[:visible_open]
-            if todo_item_is_actionable_open(item)
-            and todo_item_task_class(item) == TODO_TASK_CLASS_MONITOR
-        )
-    hidden_count = max(0, open_count - len(classified_items))
-    return {
-        "open": open_count,
-        "advancement": advancement_count,
-        "monitor": monitor_visible_count,
-        "monitor_due": todo_summary_monitor_due_count(summary),
-        "monitor_schedule_gap": todo_summary_monitor_schedule_gap_count(summary),
-        "hidden": hidden_count,
-    }
 
 
 def projected_monitor_handle(summary: dict[str, Any] | None) -> dict[str, Any] | None:

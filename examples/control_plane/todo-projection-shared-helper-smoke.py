@@ -38,6 +38,7 @@ from loopx.control_plane.todos.projection import (  # noqa: E402
     todo_projection_sort_key as shared_todo_projection_sort_key,
     todo_summary_first_executable_item as shared_first_executable_todo_item,
     todo_summary_monitor_items as shared_todo_summary_monitor_items,
+    todo_summary_open_task_counts as shared_todo_summary_open_task_counts,
 )
 from loopx.control_plane.scheduler.external_evidence_observation import (  # noqa: E402
     projected_monitor_handle,
@@ -305,6 +306,60 @@ def assert_monitor_item_collection_parity(summary: dict[str, Any]) -> None:
     assert handle["todo_id"] == "todo_monitor_p0", handle
 
 
+def assert_open_task_count_state_machine(summary: dict[str, Any]) -> None:
+    counts = shared_todo_summary_open_task_counts(summary)
+    assert counts == {
+        "open": 5,
+        "advancement": 3,
+        "monitor": 2,
+        "monitor_due": 1,
+        "monitor_schedule_gap": 1,
+        "hidden": 0,
+    }, counts
+
+    hidden_summary = {
+        "open_count": 3,
+        "first_open_items": [
+            todo(
+                1,
+                "[P1] Visible advancement work.",
+                task_class=TODO_TASK_CLASS_ADVANCEMENT,
+                todo_id="todo_visible_advancement",
+            )
+        ],
+    }
+    hidden_counts = shared_todo_summary_open_task_counts(hidden_summary)
+    assert hidden_counts["open"] == 3, hidden_counts
+    assert hidden_counts["advancement"] == 3, hidden_counts
+    assert hidden_counts["monitor"] == 0, hidden_counts
+    assert hidden_counts["hidden"] == 2, hidden_counts
+
+    explicit_backlog_summary = {
+        "open_count": 4,
+        "executable_backlog_items": [
+            todo(
+                4,
+                "[P2] Explicit executable backlog item.",
+                task_class=TODO_TASK_CLASS_ADVANCEMENT,
+                todo_id="todo_explicit_backlog",
+            )
+        ],
+        "monitor_open_items": [
+            todo(
+                5,
+                "[P2] Explicit monitor backlog item.",
+                task_class=TODO_TASK_CLASS_MONITOR,
+                todo_id="todo_explicit_monitor",
+                target_key="public-smoke:explicit",
+            )
+        ],
+    }
+    explicit_counts = shared_todo_summary_open_task_counts(explicit_backlog_summary)
+    assert explicit_counts["open"] == 4, explicit_counts
+    assert explicit_counts["advancement"] == 1, explicit_counts
+    assert explicit_counts["monitor"] == 1, explicit_counts
+
+
 def assert_first_executable_item_parity(summary: dict[str, Any]) -> None:
     for selector in (
         shared_first_executable_todo_item,
@@ -345,6 +400,7 @@ def main() -> int:
     assert_claimed_visibility_parity()
     assert_deferred_helper_parity()
     assert_monitor_item_collection_parity(summary)
+    assert_open_task_count_state_machine(summary)
     assert_first_executable_item_parity(summary)
     assert_quota_uses_executable_advancement(summary)
     return 0
