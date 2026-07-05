@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.quota import (  # noqa: E402
+from loopx.control_plane.agents.agent_scope import (  # noqa: E402
     _agent_lane_frontier_hint,
     _agent_scope_filter_user_gate_items,
     _agent_scope_no_candidate_frontier,

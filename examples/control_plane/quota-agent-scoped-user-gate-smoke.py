@@ -12,10 +12,25 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.todos.decision_scope import todo_gate_relation  # noqa: E402
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
+    quota_status_payload,
+    quota_todo_item,
+    quota_todo_summary,
+)
 from loopx.quota import build_quota_should_run  # noqa: E402
 
 
 GOAL_ID = "agent-scoped-user-gate-fixture"
+PRIMARY_AGENT = "codex-main-control"
+PRODUCT_AGENT = "codex-product-capability"
+VALUE_AGENT = "codex-value-explorer"
+
+
+def coordination(*agents: str, primary_agent: str = PRIMARY_AGENT) -> dict:
+    return {
+        "primary_agent": primary_agent,
+        "registered_agents": [primary_agent, *agents],
+    }
 
 
 def todo_item(
@@ -31,28 +46,25 @@ def todo_item(
     next_due_at: str | None = None,
     target_key: str | None = None,
 ) -> dict:
-    item = {
-        "todo_id": todo_id,
-        "index": 1,
-        "status": "open",
-        "done": False,
-        "role": role,
-        "task_class": task_class,
-        "text": text,
+    metadata = {
+        key: value
+        for key, value in {
+            "cadence": cadence,
+            "next_due_at": next_due_at,
+            "target_key": target_key,
+        }.items()
+        if value is not None
     }
-    if claimed_by:
-        item["claimed_by"] = claimed_by
-    if action_kind:
-        item["action_kind"] = action_kind
-    if blocks_agent:
-        item["blocks_agent"] = blocks_agent
-    if cadence:
-        item["cadence"] = cadence
-    if next_due_at:
-        item["next_due_at"] = next_due_at
-    if target_key:
-        item["target_key"] = target_key
-    return item
+    return quota_todo_item(
+        todo_id=todo_id,
+        text=text,
+        role=role,
+        task_class=task_class,
+        claimed_by=claimed_by,
+        action_kind=action_kind,
+        blocks_agent=blocks_agent,
+        **metadata,
+    )
 
 
 def todo_summary(item: dict, *, source_section: str) -> dict:
@@ -60,22 +72,47 @@ def todo_summary(item: dict, *, source_section: str) -> dict:
 
 
 def todo_summary_items(items: list[dict], *, source_section: str) -> dict:
-    executable_items = [
-        item
-        for item in items
-        if item.get("task_class") == "advancement_task"
-    ]
-    return {
-        "schema_version": "todo_summary_v0",
-        "source_section": source_section,
-        "total_count": len(items),
-        "open_count": len(items),
-        "done_count": 0,
-        "first_open_items": items,
-        "first_executable_items": executable_items,
-        "executable_backlog_items": executable_items,
-        "items": items,
+    role = "user" if source_section.lower().startswith("user") else "agent"
+    return quota_todo_summary(items, role=role)
+
+
+def status_fixture_payload(
+    *,
+    status: str,
+    recommended_action: str,
+    user_todos: dict,
+    agent_todos: dict,
+    quota_state: str = "eligible",
+    quota_extra: dict | None = None,
+    waiting_on: str | None = None,
+    severity: str = "info",
+    source: str = "active_state",
+    coordination_payload: dict | None = None,
+) -> dict:
+    quota = {
+        "allowed_slots": 1440,
+        "spent_slots": 0,
     }
+    if quota_extra:
+        quota.update(quota_extra)
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status=status,
+        recommended_action=recommended_action,
+        user_todos=user_todos,
+        agent_todos=agent_todos,
+        quota_state=quota_state,
+        quota_extra=quota,
+        waiting_on=waiting_on,
+        source=source,
+        coordination=coordination_payload,
+        registry_status="active",
+        item_extra={"severity": severity},
+        goal_extra={
+            "adapter_kind": "fixture_adapter_v0",
+            "adapter_status": "connected",
+        },
+    )
 
 
 def status_payload(*, blocks_agent: str | None = "codex-product-capability") -> dict:
@@ -92,56 +129,20 @@ def status_payload(*, blocks_agent: str | None = "codex-product-capability") -> 
         text="[P1] Debug benchmark lifecycle counters and validate the driver.",
         claimed_by="codex-main-control",
     )
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active",
-                    "waiting_on": "controller",
-                    "severity": "blocked",
-                    "source": "active_state",
-                    "recommended_action": (
-                        "Ask for the Lark Kanban target while benchmark work may "
-                        "continue on independent agent todos."
-                    ),
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "operator_gate",
-                        "reason": "open user gate",
-                    },
-                    "user_todos": todo_summary(user_gate, source_section="User Todo"),
-                    "agent_todos": todo_summary(agent_todo, source_section="Agent Todo"),
-                }
-            ]
-        },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": [
-                            "codex-main-control",
-                            "codex-product-capability",
-                        ],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+    return status_fixture_payload(
+        status="active",
+        waiting_on="controller",
+        severity="blocked",
+        recommended_action=(
+            "Ask for the Lark Kanban target while benchmark work may "
+            "continue on independent agent todos."
+        ),
+        quota_state="operator_gate",
+        quota_extra={"reason": "open user gate"},
+        user_todos=todo_summary(user_gate, source_section="User Todo"),
+        agent_todos=todo_summary(agent_todo, source_section="Agent Todo"),
+        coordination_payload=coordination(PRODUCT_AGENT),
+    )
 
 
 def scoped_no_candidate_status_payload() -> dict:
@@ -159,72 +160,19 @@ def scoped_no_candidate_status_payload() -> dict:
         next_due_at="2099-01-01T00:00:00Z",
         target_key="product-capability-rollout",
     )
-    agent_todos = {
-        "schema_version": "todo_summary_v0",
-        "source_section": "Agent Todo",
-        "total_count": 2,
-        "open_count": 2,
-        "done_count": 0,
-        "first_open_items": [primary_agent_todo, product_monitor],
-        "first_executable_items": [primary_agent_todo],
-        "executable_backlog_items": [primary_agent_todo],
-        "items": [primary_agent_todo, product_monitor],
-    }
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "skillsbench_retry_running_result_marker",
-                    "waiting_on": "",
-                    "severity": "active",
-                    "source": "active_state",
-                    "recommended_action": "Monitor run_group retry2b-running-result-marker from public compact artifacts only.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "eligible",
-                        "reason": "eligible",
-                    },
-                    "user_todos": {
-                        "schema_version": "todo_summary_v0",
-                        "source_section": "User Todo",
-                        "total_count": 0,
-                        "open_count": 0,
-                        "done_count": 0,
-                        "first_open_items": [],
-                        "items": [],
-                    },
-                    "agent_todos": agent_todos,
-                }
-            ]
-        },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": [
-                            "codex-main-control",
-                            "codex-product-capability",
-                        ],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+    return status_fixture_payload(
+        status="skillsbench_retry_running_result_marker",
+        waiting_on="",
+        severity="active",
+        recommended_action="Monitor run_group retry2b-running-result-marker from public compact artifacts only.",
+        quota_extra={"reason": "eligible"},
+        user_todos=quota_todo_summary([], role="user"),
+        agent_todos=todo_summary_items(
+            [primary_agent_todo, product_monitor],
+            source_section="Agent Todo",
+        ),
+        coordination_payload=coordination(PRODUCT_AGENT),
+    )
 
 
 def other_agent_gate_with_non_due_monitor_payload() -> dict:
@@ -249,56 +197,20 @@ def other_agent_gate_with_non_due_monitor_payload() -> dict:
         cadence="1h",
         next_due_at="2099-01-01T00:00:00Z",
     )
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active_state_user_todo",
-                    "waiting_on": "controller",
-                    "severity": "action",
-                    "source": "active_state",
-                    "recommended_action": "Primary-control PR review gate is pending.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "operator_gate",
-                        "reason": "open user gate",
-                    },
-                    "user_todos": todo_summary_items([primary_review_gate], source_section="User Todo"),
-                    "agent_todos": todo_summary_items(
-                        [primary_agent_todo, value_monitor],
-                        source_section="Agent Todo",
-                    ),
-                }
-            ]
-        },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": [
-                            "codex-main-control",
-                            "codex-value-explorer",
-                        ],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+    return status_fixture_payload(
+        status="active_state_user_todo",
+        waiting_on="controller",
+        severity="action",
+        recommended_action="Primary-control PR review gate is pending.",
+        quota_state="operator_gate",
+        quota_extra={"reason": "open user gate"},
+        user_todos=todo_summary_items([primary_review_gate], source_section="User Todo"),
+        agent_todos=todo_summary_items(
+            [primary_agent_todo, value_monitor],
+            source_section="Agent Todo",
+        ),
+        coordination_payload=coordination(VALUE_AGENT),
+    )
 
 
 def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
@@ -396,56 +308,25 @@ def unrelated_gate_status_payload() -> dict:
         claimed_by="codex-main-control",
         action_kind="feishu_user_request",
     )
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active_state_user_todo",
-                    "waiting_on": "controller",
-                    "severity": "action",
-                    "source": "active_state",
-                    "recommended_action": "Grant GitHub publication path.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "operator_gate",
-                        "blocked_action_scope": "gated_delivery",
-                        "safe_bypass_allowed": True,
-                        "safe_bypass_policy": (
-                            "Only the gated path is blocked; independent public-safe "
-                            "agent work may continue."
-                        ),
-                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
-                    },
-                    "user_todos": todo_summary(publication_gate, source_section="User Todo"),
-                    "agent_todos": todo_summary(feishu_request, source_section="Agent Todo"),
-                }
-            ]
+    return status_fixture_payload(
+        status="active_state_user_todo",
+        waiting_on="controller",
+        severity="action",
+        recommended_action="Grant GitHub publication path.",
+        quota_state="operator_gate",
+        quota_extra={
+            "blocked_action_scope": "gated_delivery",
+            "safe_bypass_allowed": True,
+            "safe_bypass_policy": (
+                "Only the gated path is blocked; independent public-safe "
+                "agent work may continue."
+            ),
+            "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": ["codex-main-control"],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+        user_todos=todo_summary(publication_gate, source_section="User Todo"),
+        agent_todos=todo_summary(feishu_request, source_section="Agent Todo"),
+        coordination_payload=coordination(),
+    )
 
 
 def assert_unrelated_user_gate_allows_feishu_fallback() -> None:
@@ -509,56 +390,25 @@ def exact_todo_gate_status_payload(*, include_fallback: bool = True) -> dict:
     if include_fallback:
         agent_items.append(independent_benchmark)
     agent_items.append(external_publish_monitor)
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active_state_user_todo",
-                    "waiting_on": "controller",
-                    "severity": "action",
-                    "source": "active_state",
-                    "recommended_action": "Choose benchmark target.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "operator_gate",
-                        "blocked_action_scope": "gated_delivery",
-                        "safe_bypass_allowed": True,
-                        "safe_bypass_policy": (
-                            "Only the gated todo is blocked; independent public-safe "
-                            "agent work may continue."
-                        ),
-                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
-                    },
-                    "user_todos": todo_summary(benchmark_gate, source_section="User Todo"),
-                    "agent_todos": todo_summary_items(agent_items, source_section="Agent Todo"),
-                }
-            ]
+    return status_fixture_payload(
+        status="active_state_user_todo",
+        waiting_on="controller",
+        severity="action",
+        recommended_action="Choose benchmark target.",
+        quota_state="operator_gate",
+        quota_extra={
+            "blocked_action_scope": "gated_delivery",
+            "safe_bypass_allowed": True,
+            "safe_bypass_policy": (
+                "Only the gated todo is blocked; independent public-safe "
+                "agent work may continue."
+            ),
+            "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": ["codex-main-control"],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+        user_todos=todo_summary(benchmark_gate, source_section="User Todo"),
+        agent_todos=todo_summary_items(agent_items, source_section="Agent Todo"),
+        coordination_payload=coordination(),
+    )
 
 
 def exact_todo_gate_with_decision_scope_migration_payload() -> dict:
@@ -589,59 +439,28 @@ def exact_todo_gate_with_decision_scope_migration_payload() -> dict:
         claimed_by="codex-main-control",
         action_kind="benchmark_run",
     )
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active_state_user_todo",
-                    "waiting_on": "controller",
-                    "severity": "action",
-                    "source": "active_state",
-                    "recommended_action": "Choose benchmark target.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "operator_gate",
-                        "blocked_action_scope": "gated_delivery",
-                        "safe_bypass_allowed": True,
-                        "safe_bypass_policy": (
-                            "Only the exact gated todo is blocked; independent "
-                            "public-safe agent work may continue during scope migration."
-                        ),
-                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
-                    },
-                    "user_todos": todo_summary(benchmark_gate, source_section="User Todo"),
-                    "agent_todos": todo_summary_items(
-                        [blocked_benchmark, independent_benchmark],
-                        source_section="Agent Todo",
-                    ),
-                }
-            ]
+    return status_fixture_payload(
+        status="active_state_user_todo",
+        waiting_on="controller",
+        severity="action",
+        recommended_action="Choose benchmark target.",
+        quota_state="operator_gate",
+        quota_extra={
+            "blocked_action_scope": "gated_delivery",
+            "safe_bypass_allowed": True,
+            "safe_bypass_policy": (
+                "Only the exact gated todo is blocked; independent "
+                "public-safe agent work may continue during scope migration."
+            ),
+            "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": ["codex-main-control"],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+        user_todos=todo_summary(benchmark_gate, source_section="User Todo"),
+        agent_todos=todo_summary_items(
+            [blocked_benchmark, independent_benchmark],
+            source_section="Agent Todo",
+        ),
+        coordination_payload=coordination(),
+    )
 
 
 def decision_scope_status_payload() -> dict:
@@ -687,59 +506,28 @@ def decision_scope_status_payload() -> dict:
             "scope_key": "helper_ledger_cleanup",
         }
     ]
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active_state_user_todo",
-                    "waiting_on": "controller",
-                    "severity": "action",
-                    "source": "active_state",
-                    "recommended_action": "Choose benchmark target.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "operator_gate",
-                        "blocked_action_scope": "gated_delivery",
-                        "safe_bypass_allowed": True,
-                        "safe_bypass_policy": (
-                            "Only the gated decision scope is blocked; independent "
-                            "public-safe agent work may continue."
-                        ),
-                        "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
-                    },
-                    "user_todos": todo_summary(benchmark_gate, source_section="User Todo"),
-                    "agent_todos": todo_summary_items(
-                        [blocked_target_run, independent_helper],
-                        source_section="Agent Todo",
-                    ),
-                }
-            ]
+    return status_fixture_payload(
+        status="active_state_user_todo",
+        waiting_on="controller",
+        severity="action",
+        recommended_action="Choose benchmark target.",
+        quota_state="operator_gate",
+        quota_extra={
+            "blocked_action_scope": "gated_delivery",
+            "safe_bypass_allowed": True,
+            "safe_bypass_policy": (
+                "Only the gated decision scope is blocked; independent "
+                "public-safe agent work may continue."
+            ),
+            "reason": "operator gate blocks gated delivery; safe non-gated steering may continue",
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "primary_agent": "codex-main-control",
-                        "registered_agents": ["codex-main-control"],
-                    },
-                    "latest_runs": [],
-                }
-            ]
-        },
-    }
+        user_todos=todo_summary(benchmark_gate, source_section="User Todo"),
+        agent_todos=todo_summary_items(
+            [blocked_target_run, independent_helper],
+            source_section="Agent Todo",
+        ),
+        coordination_payload=coordination(),
+    )
 
 
 def assert_exact_todo_gate_only_blocks_target_todo() -> None:
