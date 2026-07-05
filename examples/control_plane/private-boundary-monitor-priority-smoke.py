@@ -122,8 +122,68 @@ def test_private_boundary_due_monitor_is_context_only() -> None:
     ), guard
 
 
+def test_public_due_monitor_priority_matrix() -> None:
+    public_high_monitor = {
+        "index": 1,
+        "text": "[P0] Poll public release signal before implementation.",
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "task_class": "continuous_monitor",
+        "action_kind": "public_release_monitor",
+        "claimed_by": "codex-product-capability",
+        "next_due_at": PAST_DUE_AT,
+    }
+    public_low_monitor = {
+        **public_high_monitor,
+        "text": "[P2] Poll public release signal after implementation.",
+        "priority": "P2",
+    }
+    advancement_todo = {
+        "index": 2,
+        "text": "[P1] Continue canary-gated read-model cleanup.",
+        "role": "agent",
+        "status": "open",
+        "priority": "P1",
+        "task_class": "advancement_task",
+        "action_kind": "continue_canary_refactor",
+        "claimed_by": "codex-product-capability",
+    }
+
+    high_guard = build_quota_should_run(
+        status_payload(
+            monitor_todo=public_high_monitor,
+            advancement_todo=advancement_todo,
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-product-capability",
+    )
+    high_lane = high_guard["work_lane_contract"]
+    assert high_lane["lane"] == "continuous_monitor", high_lane
+    assert high_lane["monitor_kind"] == "todo_monitor_due", high_lane
+    assert high_lane["reason_codes"] == [
+        "monitor_due",
+        "due_monitor_priority_preempts_advancement",
+    ], high_lane
+    assert high_guard["recommended_action"] == public_high_monitor["text"], high_guard
+
+    low_guard = build_quota_should_run(
+        status_payload(
+            monitor_todo=public_low_monitor,
+            advancement_todo=advancement_todo,
+        ),
+        goal_id=GOAL_ID,
+        agent_id="codex-product-capability",
+    )
+    low_lane = low_guard["work_lane_contract"]
+    assert low_lane["lane"] == "advancement_task", low_lane
+    assert low_lane["reason_codes"] == ["open_agent_todo", "due_monitor_context"], low_lane
+    assert low_guard["recommended_action"] == advancement_todo["text"], low_guard
+
+
 def main() -> int:
     test_private_boundary_due_monitor_is_context_only()
+    test_public_due_monitor_priority_matrix()
     print("private-boundary-monitor-priority-smoke ok")
     return 0
 

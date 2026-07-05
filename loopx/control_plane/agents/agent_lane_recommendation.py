@@ -286,6 +286,16 @@ def build_agent_lane_next_action(
 
     preferred_todo_ids = _todo_ids_from_action(active_next_action)
     primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+    active_next_action_items = (
+        agent_todo_summary.get("active_next_action_executable_items")
+        if isinstance(agent_todo_summary.get("active_next_action_executable_items"), list)
+        else []
+    )
+    active_next_action_todo_ids = {
+        normalize_todo_id(item.get("todo_id"))
+        for item in active_next_action_items
+        if isinstance(item, dict)
+    }
 
     seen: set[tuple[str, str]] = set()
     for source, raw_items in candidate_sources:
@@ -330,6 +340,13 @@ def build_agent_lane_next_action(
             payload = _compact_todo_summary_item(raw_item, text=text)
             if selected_by == "unclaimed_todo":
                 payload["claim_required_before_work"] = True
+            lineage_source = source
+            if (
+                source == "capability_gate.runnable_candidates"
+                and selected_by == "active_next_action_todo"
+                and normalize_todo_id(todo_id) in active_next_action_todo_ids
+            ):
+                lineage_source = "agent_todo_summary.active_next_action_executable_items"
             blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
             unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
             if blocks_agent:
@@ -351,7 +368,7 @@ def build_agent_lane_next_action(
                     "primary_agent": normalize_todo_claimed_by(
                         agent_identity.get("primary_agent")
                     ),
-                    "source": source,
+                    "source": lineage_source,
                     "selected_by": selected_by,
                     "confidence": (
                         "selected"

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..todos.projection import todo_priority_label, todo_priority_rank
+
 
 WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v1"
 WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS = {
@@ -9,6 +11,42 @@ WORK_LANE_CURRENT_AGENT_MONITOR_REPAIR_OBLIGATIONS = {
     "repair_monitor_schedule_metadata",
     "repair_resume_gate_or_close_standing_monitor",
 }
+PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES = {
+    "private_boundary_no_authorized_read",
+}
+PRIVATE_BOUNDARY_MONITOR_ACTION_KIND_HINTS = (
+    "private",
+    "local_department_doc",
+)
+
+
+def due_monitor_can_preempt_advancement(item: dict[str, Any]) -> bool:
+    """Return false for monitor work that requires private/local material."""
+
+    result_hash = str(item.get("result_hash") or "").strip().lower()
+    if result_hash in PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES:
+        return False
+    action_kind = str(item.get("action_kind") or "").strip().lower()
+    if any(hint in action_kind for hint in PRIVATE_BOUNDARY_MONITOR_ACTION_KIND_HINTS):
+        return False
+    priority = str(todo_priority_label(item) or "").strip().upper()
+    if "LOCAL" in priority:
+        return False
+    return True
+
+
+def due_monitor_preempts_advancement(
+    due_monitor: dict[str, Any] | None,
+    *,
+    first_advancement: dict[str, Any] | None,
+) -> bool:
+    if not due_monitor:
+        return False
+    if not due_monitor_can_preempt_advancement(due_monitor):
+        return False
+    return first_advancement is None or (
+        todo_priority_rank(due_monitor) < todo_priority_rank(first_advancement)
+    )
 
 
 def work_lane_contract_requires_current_agent_attempt(

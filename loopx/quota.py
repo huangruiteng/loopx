@@ -100,6 +100,7 @@ from .control_plane.scheduler.state import (
 )
 from .control_plane.work_items.work_lane import (
     build_work_lane_contract as build_work_lane_contract_policy,
+    due_monitor_preempts_advancement as work_lane_due_monitor_preempts_advancement,
 )
 from .state_projection import is_user_wait_text, next_action_projection_warning
 from .control_plane.todos.contract import (
@@ -254,15 +255,6 @@ CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
 SIDE_AGENT_WORKSPACE_GUARD_SCHEMA_VERSION = "side_agent_workspace_guard_v0"
 AGENT_CLAIM_SCOPE_SCHEMA_VERSION = "agent_claim_scope_v0"
 SIDE_AGENT_CLAIM_SCOPE_SCHEMA_VERSION = AGENT_CLAIM_SCOPE_SCHEMA_VERSION
-PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES = {
-    "private_boundary_no_authorized_read",
-}
-PRIVATE_BOUNDARY_MONITOR_ACTION_KIND_HINTS = (
-    "private",
-    "local_department_doc",
-)
-
-
 DEFAULT_AVAILABLE_CAPABILITIES = (
     "shell",
     "filesystem_read",
@@ -643,13 +635,9 @@ def _work_lane_contract(
         agent_todo_summary,
         agent_id=agent_id,
     )
-    due_monitor_preempts_advancement = bool(
-        first_due_monitor
-        and _due_monitor_can_preempt_advancement(first_due_monitor)
-        and (
-            first_advancement is None
-            or _todo_priority_rank(first_due_monitor) < _todo_priority_rank(first_advancement)
-        )
+    due_monitor_preempts_advancement = work_lane_due_monitor_preempts_advancement(
+        first_due_monitor,
+        first_advancement=first_advancement,
     )
     return build_work_lane_contract_policy(
         progress_scope=progress_scope,
@@ -1275,26 +1263,6 @@ def _todo_priority_label(item: dict[str, Any]) -> str | None:
 
 def _todo_priority_rank(item: dict[str, Any]) -> int:
     return projection_todo_priority_rank(item)
-
-
-def _due_monitor_can_preempt_advancement(item: dict[str, Any]) -> bool:
-    """Return false for monitor work that requires private/local material.
-
-    A due monitor can remain visible as context, but it must not outrank a
-    public executable advancement slice when the monitor's own last writeback
-    says the agent has no authorized private read path.
-    """
-
-    result_hash = str(item.get("result_hash") or "").strip().lower()
-    if result_hash in PRIVATE_BOUNDARY_MONITOR_RESULT_HASHES:
-        return False
-    action_kind = str(item.get("action_kind") or "").strip().lower()
-    if any(hint in action_kind for hint in PRIVATE_BOUNDARY_MONITOR_ACTION_KIND_HINTS):
-        return False
-    priority = str(_todo_priority_label(item) or "").strip().upper()
-    if "LOCAL" in priority:
-        return False
-    return True
 
 
 def _todo_index_rank(item: dict[str, Any]) -> int:

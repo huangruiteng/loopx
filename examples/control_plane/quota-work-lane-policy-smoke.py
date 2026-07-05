@@ -11,7 +11,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.work_items.work_lane import build_work_lane_contract  # noqa: E402
+from loopx.control_plane.work_items.work_lane import (  # noqa: E402
+    build_work_lane_contract,
+    due_monitor_can_preempt_advancement,
+    due_monitor_preempts_advancement,
+)
 
 
 def assert_contract(name: str, contract: dict | None, **expected: object) -> None:
@@ -72,6 +76,37 @@ def main() -> int:
         selected_todo_id="todo_due",
     )
     assert len(due_monitor["monitor_due_items"]) == 1, due_monitor
+
+    private_due_monitor = {
+        "todo_id": "todo_private_due",
+        "priority": "P0-LOCAL",
+        "action_kind": "local_department_doc_todo_projection_monitor",
+        "result_hash": "private_boundary_no_authorized_read",
+    }
+    public_due_monitor = {
+        "todo_id": "todo_public_due",
+        "priority": "P0",
+        "action_kind": "monitor",
+    }
+    lower_priority_due_monitor = {
+        "todo_id": "todo_lower_due",
+        "priority": "P2",
+        "action_kind": "monitor",
+    }
+    first_advancement = {"todo_id": "todo_adv", "priority": "P1"}
+    assert not due_monitor_can_preempt_advancement(private_due_monitor), private_due_monitor
+    assert not due_monitor_preempts_advancement(
+        private_due_monitor,
+        first_advancement=first_advancement,
+    )
+    assert due_monitor_preempts_advancement(
+        public_due_monitor,
+        first_advancement=first_advancement,
+    )
+    assert not due_monitor_preempts_advancement(
+        lower_priority_due_monitor,
+        first_advancement=first_advancement,
+    )
 
     quiet_monitor = build_work_lane_contract(
         progress_scope="agent_lane",
