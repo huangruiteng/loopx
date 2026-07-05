@@ -19,9 +19,11 @@ from loopx.status import (  # noqa: E402
     MAX_TODO_VISIBILITY_LANE_ITEMS,
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
-    completed_todo_archive_warning,
     parse_active_state_todos,
     project_asset_todo_summary,
+)
+from loopx.control_plane.todos.completed_archive import (  # noqa: E402
+    completed_todo_archive_warning,
 )
 
 

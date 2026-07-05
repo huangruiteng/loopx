@@ -55,7 +55,6 @@ from .control_plane.work_items.project_asset import (
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     build_project_asset,
-    completed_todo_archive_warning,
     enrich_project_asset as _enrich_project_asset_read_model,
     project_asset_handoff_check_projection,
     project_asset_latest_validation,
@@ -65,6 +64,7 @@ from .control_plane.work_items.project_asset import (
     project_asset_todo_projection_gap,
     project_asset_user_todo_open_count,
 )
+from .control_plane.todos.completed_archive import completed_todo_archive_warning
 from .control_plane.handoff.project_handoff import (
     project_asset_handoff_readiness as _project_asset_handoff_readiness_read_model,
     project_asset_handoff_state as _project_asset_handoff_state_read_model,

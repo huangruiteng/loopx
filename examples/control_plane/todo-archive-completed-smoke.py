@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.status import parse_active_state_todos  # noqa: E402
+from loopx.control_plane.todos.completed_archive import completed_todo_archive_warning  # noqa: E402
 
 
 GOAL_ID = "todo-archive-completed-goal"
@@ -108,6 +109,11 @@ def main() -> int:
         parsed = parse_active_state_todos(original)
         assert parsed["agent_todos"]["done_count"] == 14, parsed
         assert parsed["agent_todos"]["open_count"] == 2, parsed
+        warning = completed_todo_archive_warning(parsed["agent_todos"])
+        assert warning is not None, parsed
+        assert warning["kind"] == "completed_agent_todo_archive_required", warning
+        assert warning["active_done_count"] == 14, warning
+        assert warning["active_open_count"] == 2, warning
 
         dry_run = run_cli(
             registry_path,
@@ -147,6 +153,7 @@ def main() -> int:
         parsed_after = parse_active_state_todos(updated)
         assert parsed_after["agent_todos"]["done_count"] == 12, parsed_after
         assert parsed_after["agent_todos"]["open_count"] == 2, parsed_after
+        assert completed_todo_archive_warning(parsed_after["agent_todos"]) is None, parsed_after
         assert updated.index("## Completed Work Archive") < updated.index("[P1] Completed implementation lane 1.")
         assert "Continuation detail must move with the archived item." in updated
         assert updated.count("[P1] Completed implementation lane 1.") == 1
