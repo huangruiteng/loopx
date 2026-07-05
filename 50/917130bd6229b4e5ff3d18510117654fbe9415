@@ -1,0 +1,31 @@
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_76ee28abb3c3a4::t_bead3d42e11347 220-232,241-242
+examples/control_plane/review-packet-cli-smoke.py
+  s_76ee28abb3c3a4::t_0ed4d9b65715f9 512-516,612-616,625-627
+loopx/control_plane/runtime/agent_scoped_evidence_log.py
+  s_76ee28abb3c3a4::t_d54dd2276eb45e 4,11,152-217
+loopx/control_plane/work_items/interaction_contract.py
+  s_76ee28abb3c3a4::t_7c21b7fe8053c0 657-671,812,836-838
+loopx/quota.py
+  s_76ee28abb3c3a4::t_23cf6c54716f64 80-82,2625-2632,2898-2943,2953-2972,4544-4556
+loopx/review_packet.py
+  s_76ee28abb3c3a4::t_571da307f01339 10-12,410-428,1026,1043-1057,1064,1082,1100,1118,1136,1154,1200,1246,1322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "50917130bd6229b4e5ff3d18510117654fbe9415",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
