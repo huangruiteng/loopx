@@ -1,0 +1,39 @@
+examples/auto-research-demo-supervisor-smoke.py
+  s_32e2a9a204a8e4::t_3bc14a29dfa533 209-217
+examples/auto-research-knn-evidence-normalization-smoke.py
+  s_32e2a9a204a8e4::t_e2863f4a3ee9dc 1-174
+examples/auto-research-knn-preset-start-smoke.py
+  s_32e2a9a204a8e4::t_cd8ae555230f3d 95-101
+examples/visible-multi-agent-launcher-smoke.py
+  s_32e2a9a204a8e4::t_e7684d6a0e7d91 116-117,121-122
+loopx/capabilities/auto_research/cli.py
+  s_32e2a9a204a8e4::t_a61f056ebf83e1 930-933
+loopx/capabilities/auto_research/evidence_packet.py
+  s_32e2a9a204a8e4::t_80b8169742b4f3 6,16,43,159-311,385,391,394-398,483,487-491,500,506,561,563,568
+loopx/capabilities/auto_research/knn_demo_workspace.py
+  s_32e2a9a204a8e4::t_18b22859e68e84 3,212-217,228-232,240-242,256,285,293
+loopx/capabilities/auto_research/preset.py
+  s_32e2a9a204a8e4::t_4dc3818710d5be 188-222,380-381
+loopx/capabilities/auto_research/worker_skill/SKILL.md
+  s_32e2a9a204a8e4::t_6400249b01e27a 99-100
+loopx/capabilities/multi_agent/runtime_scripts.py
+  s_32e2a9a204a8e4::t_02e4e67bfdc659 157-162,201-202,211,213,227,229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5929c81800b506cdb8913cd6b68ac4634b6e2281",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
