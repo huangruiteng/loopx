@@ -17,7 +17,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import loopx.cli_commands.quota as quota_command  # noqa: E402
-from loopx import quota as quota_module  # noqa: E402
 from loopx.control_plane.scheduler.monitor_poll_writeback import (  # noqa: E402
     resolve_monitor_todo_item,
     write_monitor_poll_todo_state,
@@ -481,20 +480,18 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         assert monitor_poll_records(registry_path) == [], run_index_records(registry_path)
 
 
-def assert_writeback_helper_matches_quota_wrapper() -> None:
+def assert_writeback_helper_preview_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-helper-parity-") as tmp:
         registry_path, _state_file = write_fixture(Path(tmp))
-        assert resolve_monitor_todo_item(
-            registry_path=registry_path,
-            goal_id=GOAL_ID,
-            todo_id=TODO_ID,
-        ) == quota_module._resolve_monitor_todo_item(
+        resolved = resolve_monitor_todo_item(
             registry_path=registry_path,
             goal_id=GOAL_ID,
             todo_id=TODO_ID,
         )
+        assert resolved["todo_id"] == TODO_ID, resolved
+        assert resolved["target_key"] == TARGET_KEY, resolved
         generated_at = "2026-01-01T00:05:00+00:00"
-        helper_writeback = write_monitor_poll_todo_state(
+        preview = write_monitor_poll_todo_state(
             registry_path=registry_path,
             goal_id=GOAL_ID,
             generated_at=generated_at,
@@ -502,32 +499,17 @@ def assert_writeback_helper_matches_quota_wrapper() -> None:
             todo_id=TODO_ID,
             result_hash="old",
         )
-        wrapper_writeback = quota_module._write_monitor_poll_todo_state(
-            registry_path=registry_path,
-            goal_id=GOAL_ID,
-            generated_at=generated_at,
-            execute=False,
-            todo_id=TODO_ID,
-            result_hash="old",
-        )
-        compared_keys = {
-            "schema_version",
-            "dry_run",
-            "goal_id",
-            "todo_id",
-            "target_key",
-            "result_hash",
-            "material_change",
-            "consecutive_no_change",
-            "last_checked_at",
-            "next_due_at",
-            "cadence",
-        }
-        assert {
-            key: helper_writeback.get(key) for key in compared_keys
-        } == {
-            key: wrapper_writeback.get(key) for key in compared_keys
-        }, (helper_writeback, wrapper_writeback)
+        assert preview["schema_version"] == "monitor_poll_todo_writeback_v0", preview
+        assert preview["dry_run"] is True, preview
+        assert preview["goal_id"] == GOAL_ID, preview
+        assert preview["todo_id"] == TODO_ID, preview
+        assert preview["target_key"] == TARGET_KEY, preview
+        assert preview["result_hash"] == "old", preview
+        assert preview["material_change"] is False, preview
+        assert preview["consecutive_no_change"] == 2, preview
+        assert preview["last_checked_at"] == generated_at, preview
+        assert preview["next_due_at"] != "2026-01-01T00:00:00+00:00", preview
+        assert preview["cadence"] == "15m", preview
 
 
 def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
@@ -599,7 +581,7 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
 
 def main() -> int:
     assert_cli_monitor_poll_uses_should_run_lookback()
-    assert_writeback_helper_matches_quota_wrapper()
+    assert_writeback_helper_preview_contract()
     assert_unchanged_writeback()
     assert_material_transition_followup()
     assert_due_monitor_poll_allowed_with_open_user_gate()

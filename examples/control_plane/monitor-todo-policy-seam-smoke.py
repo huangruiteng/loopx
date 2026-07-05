@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from loopx import quota as quota_module  # noqa: E402
 from loopx.control_plane.scheduler.monitor_todo import (  # noqa: E402
     monitor_cadence_delta,
     monitor_next_due_at,
@@ -55,19 +54,11 @@ def monitor_item(**overrides: object) -> dict[str, object]:
 def assert_policy_matches_wrappers(item: dict[str, object], *, due: bool, expired: bool) -> None:
     assert monitor_todo_is_due(item, now=NOW) is due, item
     assert todo_item_is_due_monitor(item, now=NOW) is due, item
-    assert quota_module._todo_item_is_due_monitor(item, now=NOW) is due, item
     assert monitor_todo_is_expired(item, now=NOW) is expired, item
     assert todo_item_is_expired_monitor(item, now=NOW) is expired, item
-    assert quota_module._todo_item_is_expired_monitor(item, now=NOW) is expired, item
     assert monitor_todo_next_due_at(item) == todo_item_next_due_at(item), item
-    assert monitor_todo_next_due_at(item) == quota_module._todo_item_next_due_at(item), item
     assert monitor_todo_is_actionable_open(item) == todo_item_is_actionable_open(item), item
-    assert monitor_todo_is_actionable_open(item) == quota_module._todo_item_is_actionable_open(item), item
     assert monitor_todo_missing_schedule(item, now=NOW) == todo_item_missing_monitor_schedule(
-        item,
-        now=NOW,
-    ), item
-    assert monitor_todo_missing_schedule(item, now=NOW) == quota_module._todo_item_missing_monitor_schedule(
         item,
         now=NOW,
     ), item
@@ -101,15 +92,16 @@ def main() -> int:
     assert_policy_matches_wrappers(unscheduled, due=False, expired=False)
     assert monitor_todo_missing_schedule(unscheduled, now=NOW) is True, unscheduled
     assert monitor_todo_next_due_at({"next_due_at": "2026-01-01T00:00:00"}) == NOW
-    assert parse_monitor_counter("3") == quota_module._parse_monitor_counter("3")
+    assert parse_monitor_counter("3") == 3
     assert parse_monitor_counter("not-a-number") == 0
-    assert monitor_cadence_delta("2h") == quota_module._monitor_cadence_delta("2h")
-    assert monitor_next_due_at(
+    assert monitor_cadence_delta("2h").total_seconds() == 7200
+    cadence_due_at = monitor_next_due_at(
         generated_at="2026-01-01T00:00:00+00:00",
         cadence="5m",
-    ) == quota_module._monitor_next_due_at(
-        generated_at="2026-01-01T00:00:00+00:00",
-        cadence="5m",
+    )
+    assert (
+        datetime.fromisoformat(cadence_due_at).astimezone(timezone.utc).isoformat()
+        == "2026-01-01T00:05:00+00:00"
     )
     assert monitor_next_due_at(
         generated_at="ignored",
@@ -122,13 +114,13 @@ def main() -> int:
         "recommended_action": " Observe due monitor without material transition. ",
     }
     assert monitor_target_summary("  Observe\n\nmonitor  ", limit=160) == "Observe monitor"
-    assert build_quota_monitor_target(
-        target_decision,
-        monitor_mode="due_monitor_observed_without_material_transition",
-    ) == quota_module._quota_monitor_target(
+    monitor_target = build_quota_monitor_target(
         target_decision,
         monitor_mode="due_monitor_observed_without_material_transition",
     )
+    assert monitor_target["schema_version"] == "quota_monitor_target_v0", monitor_target
+    assert monitor_target["monitor_mode"] == "due_monitor_observed_without_material_transition", monitor_target
+    assert monitor_target["action_summary"] == "Observe due monitor without material transition.", monitor_target
     print("monitor-todo-policy-seam-smoke ok")
     return 0
 
