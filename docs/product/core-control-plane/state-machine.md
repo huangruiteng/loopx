@@ -397,6 +397,13 @@ scope, acceptance summary, replan trigger, dreaming policy, and latest patch.
 The CLI/write API must enforce those budgets before quota or status consumes
 the projection.
 
+Vision is per `agent_id`, including closeout checks. A material
+`refresh-state` emits `vision_checkpoint_v0` for the current agent: patched,
+unchanged with reason, retired/superseded, missing required, or not required.
+Missing required checkpoints are preserved in compact run history, filtered by
+the current agent, and can become goal-frontier acceptance gaps before local
+quiet/wait decisions.
+
 ```mermaid
 stateDiagram-v2
   [*] --> Unset
@@ -430,6 +437,11 @@ The same ordering applies when an agent records a bounded
 `replan_trigger_summary` in its vision packet. Status/quota exposes that trigger
 as a goal-frontier `acceptance_gaps[]` entry. If no advancement frontier remains,
 the gap becomes a replan trigger before the lane can quietly back off.
+
+The same ordering also applies to `vision_checkpoint_v0`: if a role records
+material progress but omits both a vision patch and an unchanged/no-follow-up
+decision, quota should project that role's `vision_checkpoint_missing` gap and
+route that role back through replan.
 
 See
 [`goal_vision_replan_contract_v0`](../../reference/protocols/goal-vision-replan-contract-v0.md)

@@ -242,6 +242,33 @@ def agent_vision_gap_run() -> dict:
     }
 
 
+def missing_vision_checkpoint_run(*, agent_id: str = SIDE_AGENT) -> dict:
+    return {
+        "classification": "state_refreshed",
+        "generated_at": "2026-07-04T00:05:00+00:00",
+        "agent_id": agent_id,
+        "progress_scope": "agent_lane",
+        "delivery_outcome": "outcome_progress",
+        "vision_checkpoint": {
+            "schema_version": "vision_checkpoint_v0",
+            "agent_id": agent_id,
+            "required": True,
+            "satisfied": False,
+            "decision": "missing_required",
+            "triggers": [
+                {
+                    "kind": "material_delivery_outcome",
+                    "delivery_outcome": "outcome_progress",
+                }
+            ],
+            "required_resolution": [
+                "write_agent_vision_patch",
+                "record_unchanged_reason",
+            ],
+        },
+    }
+
+
 def assert_replan_beats_monitor_quiet_skip() -> None:
     payload = status_payload([monitor_item()], replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION)
     guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=SIDE_AGENT)
@@ -452,6 +479,41 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "deferred_ready=0 acceptance_gaps=1" in markdown, markdown
 
 
+def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
+    side_guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[missing_vision_checkpoint_run()],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert side_guard["decision"] == "autonomous_replan_required", side_guard
+    assert side_guard["effective_action"] == "autonomous_replan_required", side_guard
+    obligation = side_guard["autonomous_replan_obligation"]
+    assert obligation["agent_id"] == SIDE_AGENT, side_guard
+    assert obligation["triggers"][0]["kind"] == "vision_checkpoint_missing", side_guard
+    gaps = side_guard["goal_frontier_projection"]["acceptance_gaps"]
+    assert len(gaps) == 1, side_guard
+    assert gaps[0]["kind"] == "vision_checkpoint_missing", side_guard
+    assert gaps[0]["agent_id"] == SIDE_AGENT, side_guard
+    assert "material_delivery_outcome" in gaps[0]["replan_trigger_summary"], side_guard
+
+    primary_guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[missing_vision_checkpoint_run()],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=PRIMARY_AGENT,
+    )
+    primary_gaps = primary_guard["goal_frontier_projection"]["acceptance_gaps"]
+    assert primary_gaps == [], primary_guard
+    assert primary_guard.get("autonomous_replan_obligation") is None, primary_guard
+
+
 def assert_agent_scoped_replan_beats_agent_scope_wait() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -619,6 +681,7 @@ def main() -> None:
     assert_completed_advancement_without_successor_beats_monitor_quiet_skip()
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_agent_vision_gap_derives_replan()
+    assert_missing_vision_checkpoint_derives_agent_scoped_replan()
     assert_agent_scoped_replan_beats_agent_scope_wait()
     assert_unscoped_replan_defaults_to_primary_agent()
     assert_monitor_schedule_gap_requires_bounded_repair()

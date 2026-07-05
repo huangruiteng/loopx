@@ -1,6 +1,6 @@
 # goal_vision_replan_contract_v0
 
-`goal_vision_replan_contract_v0` defines the small per-goal contract that
+`goal_vision_replan_contract_v0` defines the small per-agent contract that
 connects bounded agent vision, autonomous replan, dreaming proposals, and
 goal-routing projection. It is a kernel contract, not an auto-research preset.
 
@@ -10,6 +10,10 @@ The purpose is to keep both the user layer and the product preset thin:
 - the preset supplies domain defaults and handoff hints;
 - the kernel owns bounded per-agent vision, replan state transitions, and the
   read/write protocol used by quota and status.
+
+Every vision packet and checkpoint is scoped by `agent_id`. Goal-level
+projection may aggregate the resulting gaps, but it must not let one role's
+vision drift or missing closeout satisfy, block, or wake another role.
 
 ## Ownership Boundary
 
@@ -48,10 +52,29 @@ Required write-path behavior:
 4. Keep the latest bounded packet visible in status/quota so agents can reason
    without reading private scratchpads or chat history.
 
-The first CLI write boundary is `loopx refresh-state --agent-vision-json
-<packet.json>`. When paired with `--autonomous-replan-recorded`, a valid packet
-counts as the machine-visible `goal_vision_patch` repair delta. An invalid or
-over-budget packet fails the command instead of recording a partial ACK.
+The normal lightweight CLI write boundary is `loopx refresh-state` with inline
+vision patch fields:
+
+```bash
+loopx refresh-state \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --vision-summary "<bounded direction>" \
+  --vision-acceptance "<bounded acceptance>" \
+  --vision-replan-trigger "<why the frontier is insufficient>"
+```
+
+For machine-generated or multi-field patches, the same command also accepts
+`--agent-vision-json <packet.json>`. The two forms are mutually exclusive and
+both pass through the same budget validation. When paired with
+`--autonomous-replan-recorded`, a valid packet counts as the machine-visible
+`goal_vision_patch` repair delta. An invalid or over-budget packet fails the
+command instead of recording a partial ACK.
+
+Inline vision writes require `--agent-id`. JSON packets must also resolve to
+the same `agent_id` as the refresh run. This keeps `research-executor`,
+`evaluator-promoter`, and other roles from overwriting or satisfying each
+other's active vision.
 
 When a valid packet includes `replan_trigger_summary`, status/quota projects it
 as `goal_frontier_projection.acceptance_gaps[]`. If no runnable advancement
@@ -60,6 +83,42 @@ produce `autonomous_replan_required`. This is the intended self-discovery path:
 an agent records the bounded reason the current vision is still incomplete, and
 LoopX turns that reason into the next replan obligation without relying on chat
 memory or owner reminders.
+
+## Vision Checkpoint
+
+`refresh-state` is the normal closeout boundary for a LoopX turn. When a turn
+records a material delivery outcome, records an autonomous replan ACK, or
+updates the durable `## Next Action`, it emits a per-agent
+`vision_checkpoint_v0`:
+
+```json
+{
+  "schema_version": "vision_checkpoint_v0",
+  "agent_id": "research-executor",
+  "required": true,
+  "satisfied": false,
+  "decision": "missing_required",
+  "triggers": [{"kind": "material_delivery_outcome"}],
+  "required_resolution": ["write_agent_vision_patch", "record_unchanged_reason"]
+}
+```
+
+Valid checkpoint decisions are:
+
+- `patched`: the refresh wrote a bounded `agent_vision` packet for the same
+  `agent_id`;
+- `unchanged_with_reason`: the current per-agent vision still applies, with a
+  compact public-safe reason;
+- `retired_or_superseded`: the frontier was explicitly closed, superseded, or
+  given a no-follow-up rationale;
+- `missing_required`: the turn was material but did not make a per-agent vision
+  decision; and
+- `not_required`: no material closeout trigger was present.
+
+`missing_required` is not a chat reminder. Status keeps it in compact run
+history, quota filters it by current `agent_id`, and goal-frontier projection
+turns it into `acceptance_gaps[]`. If the current agent has no runnable
+advancement frontier, that gap can trigger `autonomous_replan_required`.
 
 ## State Machine
 
@@ -81,7 +140,7 @@ stateDiagram-v2
 
 | State | Meaning | Required Exit Evidence |
 | --- | --- | --- |
-| `Unset` | No per-goal vision packet exists. | Goal configuration or preset seed. |
+| `Unset` | No per-agent vision packet exists. | Goal configuration or preset seed. |
 | `DraftVision` | A bounded packet is being prepared. | CLI budget validation and acceptance text. |
 | `ActiveVision` | Agents may use the packet for lane-local work. | Progress, evidence, replan trigger, or retirement. |
 | `VisionDriftDetected` | Current vision no longer explains the frontier. | Concrete trigger, not vague "needs planning". |
@@ -169,11 +228,40 @@ compact goal-route facts:
 These fields are projections. Writeback still goes through LoopX write APIs,
 not through dashboards, Lark mirrors, or chat text.
 
+## Write / Correction Mechanism
+
+Vision correction is a normal state-machine transition, not only a
+self-repair fallback. Agents should write a bounded vision patch when:
+
+- a normal progress turn changes the role's acceptance target;
+- a user correction narrows or redirects the goal;
+- a replan discovers that the current frontier no longer satisfies the
+  acceptance summary;
+- a monitor-only lane should remain a watch lane but needs an explicit
+  continuation or expiry condition; or
+- a product bottleneck is real but no current todo/frontier projection exposes
+  it.
+
+The inline flags keep the common path small. A role can update only the fields
+it knows, while the CLI still enforces field budgets and projects the resulting
+`agent_vision` through status/quota. JSON packets are for generated patches,
+tests, or multi-field updates where a file is clearer than a long command.
+
+When no patch is needed, the agent should still close a required checkpoint with
+`--vision-unchanged-reason`. That reason is per-agent and must explain why the
+existing acceptance and route still cover the material closeout.
+
 ## Acceptance
 
 A change satisfies this contract only when:
 
 - per-agent vision fields are rejected or compacted at the CLI/write boundary;
+- inline vision writes require a concrete `--agent-id`;
+- material `refresh-state` closeouts emit a per-agent `vision_checkpoint_v0`;
+- missing per-agent checkpoints can become agent-scoped replan gaps instead of
+  global goal-level noise;
+- ordinary `refresh-state` calls can write bounded vision corrections without a
+  separate self-repair-only path;
 - replan state is decided from goal-level projection before local quiet/wait
   classifications;
 - replan can clear an obligation only by writing a bounded delta;

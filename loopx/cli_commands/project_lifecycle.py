@@ -43,6 +43,42 @@ PROJECT_LIFECYCLE_COMMANDS = {
     "operator-gate",
 }
 
+INLINE_VISION_FIELDS = {
+    "vision_summary": "vision_summary",
+    "vision_role_scope": "role_scope",
+    "vision_acceptance": "acceptance_summary",
+    "vision_replan_trigger": "replan_trigger_summary",
+    "vision_dreaming_policy": "dreaming_policy",
+    "vision_last_patch": "last_patch_summary",
+}
+
+
+def _inline_agent_vision_packet(args: argparse.Namespace) -> dict[str, object] | None:
+    patch = {
+        field: str(value).strip()
+        for attr, field in INLINE_VISION_FIELDS.items()
+        for value in [getattr(args, attr, None)]
+        if str(value or "").strip()
+    }
+    todo_delta = [
+        str(item or "").strip()
+        for item in (getattr(args, "vision_todo_delta", None) or [])
+        if str(item or "").strip()
+    ]
+    state = str(getattr(args, "vision_state", None) or "").strip()
+    if not patch and not todo_delta and not state:
+        return None
+    if not str(getattr(args, "agent_id", None) or "").strip():
+        raise ValueError("inline agent vision requires --agent-id")
+    if not patch:
+        raise ValueError("inline agent vision requires at least one --vision-* patch field")
+    return {
+        "schema_version": "goal_vision_replan_contract_v0",
+        "state": state or "vision_patch_proposed",
+        "vision_patch": patch,
+        "todo_delta": todo_delta,
+    }
+
 
 def register_project_lifecycle_commands(
     subparsers: argparse._SubParsersAction,
@@ -114,6 +150,45 @@ def register_project_lifecycle_commands(
         help=(
             "Path to a goal_vision_replan_contract_v0 JSON packet. The CLI enforces "
             "per-field and total vision budgets before recording it."
+        ),
+    )
+    refresh_state_parser.add_argument(
+        "--vision-state",
+        help="Optional state for an inline goal_vision_replan_contract_v0 patch.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-summary",
+        help="Inline bounded vision_summary for a normal refresh-state vision patch.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-role-scope",
+        help="Inline bounded role_scope for the current agent's vision patch.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-acceptance",
+        help="Inline bounded acceptance_summary for the current agent's vision patch.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-replan-trigger",
+        help="Inline bounded replan_trigger_summary that quota can project as an acceptance gap.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-dreaming-policy",
+        help="Inline bounded dreaming_policy for the current agent's vision patch.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-last-patch",
+        help="Inline bounded last_patch_summary for the current agent's vision patch.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-todo-delta",
+        action="append",
+        help="Compact todo delta for an inline vision patch. Repeat for multiple deltas.",
+    )
+    refresh_state_parser.add_argument(
+        "--vision-unchanged-reason",
+        help=(
+            "Compact reason why a required vision checkpoint is intentionally unchanged."
         ),
     )
     refresh_state_parser.add_argument(
@@ -288,24 +363,31 @@ def handle_project_lifecycle_command(
     fmt = output_format(args)
     if args.command == "refresh-state":
         agent_vision_packet: dict[str, object] | None = None
-        if args.agent_vision_json:
-            try:
+        try:
+            inline_agent_vision_packet = _inline_agent_vision_packet(args)
+            if args.agent_vision_json and inline_agent_vision_packet:
+                raise ValueError(
+                    "--agent-vision-json cannot be combined with inline --vision-* fields"
+                )
+            if args.agent_vision_json:
                 agent_vision_packet = json.loads(
                     Path(args.agent_vision_json).expanduser().read_text(encoding="utf-8")
                 )
-            except Exception as exc:
-                payload = {
-                    "ok": False,
-                    "registry": str(registry_path),
-                    "runtime_root": args.runtime_root,
-                    "goal_id": args.goal_id,
-                    "classification": args.classification,
-                    "appended": False,
-                    "dry_run": bool(args.dry_run),
-                    "error": str(exc),
-                }
-                print_payload(payload, fmt, render_state_refresh_markdown)
-                return 1
+            elif inline_agent_vision_packet:
+                agent_vision_packet = inline_agent_vision_packet
+        except Exception as exc:
+            payload = {
+                "ok": False,
+                "registry": str(registry_path),
+                "runtime_root": args.runtime_root,
+                "goal_id": args.goal_id,
+                "classification": args.classification,
+                "appended": False,
+                "dry_run": bool(args.dry_run),
+                "error": str(exc),
+            }
+            print_payload(payload, fmt, render_state_refresh_markdown)
+            return 1
         try:
             payload = refresh_state_run(
                 registry_path=registry_path,
@@ -324,6 +406,7 @@ def handle_project_lifecycle_command(
                 autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
                 repair_delta_kinds=args.repair_delta_kinds,
                 agent_vision_packet=agent_vision_packet,
+                vision_unchanged_reason=args.vision_unchanged_reason,
                 dry_run=bool(args.dry_run),
                 sync_global=not bool(args.no_global_sync),
             )

@@ -58,6 +58,13 @@ REPAIR_DELTA_KIND_CHOICES = (
     "no_followup",
     "watch_lane_continuation",
 )
+VISION_CHECKPOINT_SCHEMA_VERSION = "vision_checkpoint_v0"
+VISION_CHECKPOINT_MATERIAL_OUTCOMES = {
+    "outcome_gap",
+    "outcome_progress",
+    "primary_goal_outcome",
+}
+VISION_UNCHANGED_REASON_LIMIT = 240
 
 
 def now_local() -> str:
@@ -247,6 +254,82 @@ def build_repair_delta_contract(
         "auto_evidence": evidence,
         "accepted_without_delta": False,
     }
+
+
+def build_vision_checkpoint(
+    *,
+    agent_id: str | None,
+    agent_vision: dict[str, Any] | None,
+    vision_unchanged_reason: str | None,
+    delivery_outcome: str | None,
+    autonomous_replan_recorded: bool,
+    active_state_next_action_update: dict[str, Any] | None,
+    repair_delta_kinds: list[str] | None,
+) -> dict[str, Any]:
+    """Return the explicit vision closeout decision for this refresh run."""
+
+    triggers: list[dict[str, Any]] = []
+    if autonomous_replan_recorded:
+        triggers.append({"kind": "autonomous_replan_recorded"})
+    if delivery_outcome in VISION_CHECKPOINT_MATERIAL_OUTCOMES:
+        triggers.append(
+            {
+                "kind": "material_delivery_outcome",
+                "delivery_outcome": delivery_outcome,
+            }
+        )
+    if active_state_next_action_update and active_state_next_action_update.get("would_update"):
+        triggers.append({"kind": "durable_next_action_update"})
+
+    delta_kinds = set(repair_delta_kinds or [])
+    unchanged = " ".join(str(vision_unchanged_reason or "").strip().split())
+    if unchanged:
+        validate_public_safe_text("vision_unchanged_reason", unchanged)
+        if len(unchanged) > VISION_UNCHANGED_REASON_LIMIT:
+            raise ValueError(
+                "vision_unchanged_reason exceeds "
+                f"{VISION_UNCHANGED_REASON_LIMIT} chars"
+            )
+
+    required = bool(triggers)
+    if agent_vision:
+        decision = "patched"
+        satisfied = True
+    elif unchanged:
+        decision = "unchanged_with_reason"
+        satisfied = True
+    elif delta_kinds & {"no_followup", "successor_or_supersede"}:
+        decision = "retired_or_superseded"
+        satisfied = True
+    elif required:
+        decision = "missing_required"
+        satisfied = False
+    else:
+        decision = "not_required"
+        satisfied = True
+
+    checkpoint: dict[str, Any] = {
+        "schema_version": VISION_CHECKPOINT_SCHEMA_VERSION,
+        "agent_id": agent_id,
+        "required": required,
+        "satisfied": satisfied,
+        "decision": decision,
+        "triggers": triggers,
+    }
+    if agent_vision:
+        checkpoint["agent_vision_state"] = agent_vision.get("state")
+    if unchanged:
+        checkpoint["unchanged_reason"] = unchanged
+    if delta_kinds:
+        checkpoint["repair_delta_kinds"] = sorted(delta_kinds)
+    if not satisfied:
+        checkpoint["required_resolution"] = [
+            "write_vision_patch",
+            "record_unchanged_reason",
+            "record_no_followup",
+            "link_successor_or_supersede",
+        ]
+    return checkpoint
 
 
 def next_action_section_bounds(lines: list[str]) -> tuple[int, int] | None:
@@ -468,6 +551,7 @@ def build_state_refresh_record(
     autonomous_replan_recorded: bool = False,
     repair_delta_contract: dict[str, Any] | None = None,
     agent_vision: dict[str, Any] | None = None,
+    vision_checkpoint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     frontmatter = parse_frontmatter(state_text)
     next_action = extract_section_lines(state_text, "Next Action")
@@ -520,6 +604,8 @@ def build_state_refresh_record(
             record["autonomous_replan_ack"]["delta_contract"] = repair_delta_contract
     if agent_vision:
         record["agent_vision"] = agent_vision
+    if vision_checkpoint:
+        record["vision_checkpoint"] = vision_checkpoint
     if progress_scope:
         record["progress_scope"] = progress_scope
     if agent_id:
@@ -584,6 +670,23 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
             f"agent_id={agent_vision.get('agent_id')} "
             f"budget={budget.get('total_usage')}/{budget.get('total_limit')}"
         )
+    vision_checkpoint = (
+        payload.get("vision_checkpoint")
+        if isinstance(payload.get("vision_checkpoint"), dict)
+        else {}
+    )
+    if vision_checkpoint:
+        lines.append(
+            "- vision_checkpoint: "
+            f"agent_id={vision_checkpoint.get('agent_id')} "
+            f"required={vision_checkpoint.get('required')} "
+            f"satisfied={vision_checkpoint.get('satisfied')} "
+            f"decision={vision_checkpoint.get('decision')}"
+        )
+        if vision_checkpoint.get("unchanged_reason"):
+            lines.append(
+                f"- vision_unchanged_reason: {vision_checkpoint.get('unchanged_reason')}"
+            )
 
     projection_gap = (
         payload.get("state_projection_gap")
@@ -686,6 +789,7 @@ def refresh_state_run(
     autonomous_replan_recorded: bool = False,
     repair_delta_kinds: list[str] | None = None,
     agent_vision_packet: dict[str, Any] | None = None,
+    vision_unchanged_reason: str | None = None,
     dry_run: bool,
     sync_global: bool = True,
 ) -> dict[str, Any]:
@@ -755,6 +859,8 @@ def refresh_state_run(
                 f"{primary_agent!r}; got {normalized_agent_id!r}"
             )
     agent_vision: dict[str, Any] | None = None
+    if (agent_vision_packet is not None or vision_unchanged_reason) and not normalized_agent_id:
+        raise ValueError("vision writeback requires --agent-id")
     if agent_vision_packet is not None:
         agent_vision = normalize_goal_vision_packet(
             agent_vision_packet,
@@ -806,6 +912,15 @@ def refresh_state_run(
             effective_autonomous_replan_recorded = False
             if normalized_delivery_outcome in {"outcome_progress", "primary_goal_outcome"}:
                 normalized_delivery_outcome = "outcome_gap"
+    vision_checkpoint = build_vision_checkpoint(
+        agent_id=normalized_agent_id or None,
+        agent_vision=agent_vision,
+        vision_unchanged_reason=vision_unchanged_reason,
+        delivery_outcome=normalized_delivery_outcome,
+        autonomous_replan_recorded=bool(autonomous_replan_recorded),
+        active_state_next_action_update=active_state_next_action_update,
+        repair_delta_kinds=normalized_repair_delta_kinds,
+    )
     record = build_state_refresh_record(
         goal_id=safe_goal_id,
         state_file=resolved_state_file,
@@ -823,6 +938,7 @@ def refresh_state_run(
         autonomous_replan_recorded=effective_autonomous_replan_recorded,
         repair_delta_contract=repair_delta_contract,
         agent_vision=agent_vision,
+        vision_checkpoint=vision_checkpoint,
     )
     if autonomous_replan_recorded:
         if "autonomous_replan_ack" not in record:
@@ -845,6 +961,8 @@ def refresh_state_run(
         record["active_state_next_action_update"] = active_state_next_action_update
     if agent_vision:
         record["agent_vision"] = agent_vision
+    if vision_checkpoint:
+        record["vision_checkpoint"] = vision_checkpoint
 
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     json_path, markdown_path = unique_run_paths(runs_dir, generated_at)
@@ -892,6 +1010,8 @@ def refresh_state_run(
             else [],
             "vision_budget": agent_vision.get("vision_budget"),
         }
+    if vision_checkpoint:
+        index_record["vision_checkpoint"] = vision_checkpoint
     if normalized_progress_scope:
         index_record["progress_scope"] = normalized_progress_scope
     if normalized_agent_id:
@@ -914,6 +1034,7 @@ def refresh_state_run(
         "autonomous_replan_recorded_requested": bool(autonomous_replan_recorded),
         "repair_delta_contract": repair_delta_contract,
         "agent_vision": agent_vision,
+        "vision_checkpoint": vision_checkpoint,
         "recommended_action": action,
         "recommended_action_source": recommended_action_source,
         "active_state_next_action_update": active_state_next_action_update,

@@ -69,9 +69,11 @@ def run_cli(
     registry_path: Path,
     runtime: Path,
     *,
-    vision_path: Path,
+    vision_path: Path | None = None,
+    inline_vision_args: list[str] | None = None,
     check: bool,
     dry_run: bool = True,
+    include_agent_id: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
@@ -86,8 +88,6 @@ def run_cli(
         "refresh-state",
         "--goal-id",
         GOAL_ID,
-        "--agent-id",
-        AGENT_ID,
         "--classification",
         "goal_vision_patch_recorded",
         "--delivery-batch-scale",
@@ -95,10 +95,14 @@ def run_cli(
         "--delivery-outcome",
         "outcome_progress",
         "--autonomous-replan-recorded",
-        "--agent-vision-json",
-        str(vision_path),
         "--no-global-sync",
     ]
+    if include_agent_id:
+        command.extend(["--agent-id", AGENT_ID])
+    if vision_path is not None:
+        command.extend(["--agent-vision-json", str(vision_path)])
+    if inline_vision_args:
+        command.extend(inline_vision_args)
     if dry_run:
         command.append("--dry-run")
     return subprocess.run(
@@ -177,6 +181,10 @@ def main() -> int:
         assert valid["agent_vision"]["vision_budget"]["status"] == "ok", valid
         assert valid["agent_vision"]["validation"]["budget_checked"] is True, valid
         assert valid["agent_vision"]["schema_version"] == "goal_vision_replan_contract_v0", valid
+        assert valid["vision_checkpoint"]["agent_id"] == AGENT_ID, valid
+        assert valid["vision_checkpoint"]["required"] is True, valid
+        assert valid["vision_checkpoint"]["satisfied"] is True, valid
+        assert valid["vision_checkpoint"]["decision"] == "patched", valid
 
         written = payload(
             run_cli(
@@ -196,6 +204,7 @@ def main() -> int:
         ]
         assert index_rows, written
         indexed_vision = index_rows[-1]["agent_vision"]
+        indexed_checkpoint = index_rows[-1]["vision_checkpoint"]
         assert indexed_vision["vision_patch"]["acceptance_summary"] == (
             "One successor todo plus evidence references."
         ), indexed_vision
@@ -203,6 +212,8 @@ def main() -> int:
             "Frontier exhausted while acceptance remains open."
         ), indexed_vision
         assert indexed_vision["todo_delta"] == ["create_successor"], indexed_vision
+        assert indexed_checkpoint["agent_id"] == AGENT_ID, indexed_checkpoint
+        assert indexed_checkpoint["decision"] == "patched", indexed_checkpoint
         status = run_status(registry_path, runtime)
         status_goal = next(
             goal
@@ -210,6 +221,7 @@ def main() -> int:
             if goal["id"] == GOAL_ID
         )
         latest_status_vision = status_goal["latest_runs"][0]["agent_vision"]
+        latest_status_checkpoint = status_goal["latest_runs"][0]["vision_checkpoint"]
         assert latest_status_vision["vision_patch"]["acceptance_summary"] == (
             "One successor todo plus evidence references."
         ), latest_status_vision
@@ -221,6 +233,79 @@ def main() -> int:
             "acceptance_summary": 44,
             "replan_trigger_summary": 49,
         }, latest_status_vision
+        assert latest_status_checkpoint["agent_id"] == AGENT_ID, latest_status_checkpoint
+        assert latest_status_checkpoint["decision"] == "patched", latest_status_checkpoint
+        assert latest_status_checkpoint["triggers"][0]["kind"] == (
+            "autonomous_replan_recorded"
+        ), latest_status_checkpoint
+
+        inline = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                inline_vision_args=[
+                    "--vision-state",
+                    "vision_drift_detected",
+                    "--vision-summary",
+                    "Keep the KNN research frontier tied to visible role-authored improvements.",
+                    "--vision-role-scope",
+                    "Owns research framing and successor routing.",
+                    "--vision-acceptance",
+                    "At least two visible research passes produce evidence-backed next steps.",
+                    "--vision-replan-trigger",
+                    "The current frontier explains mechanism work but not multi-round research uplift.",
+                    "--vision-todo-delta",
+                    "create_successor",
+                ],
+                check=True,
+            )
+        )
+        assert inline["ok"] is True, inline
+        assert inline["agent_vision"]["state"] == "vision_drift_detected", inline
+        assert inline["agent_vision"]["vision_patch"]["replan_trigger_summary"] == (
+            "The current frontier explains mechanism work but not multi-round research uplift."
+        ), inline
+        assert inline["agent_vision"]["todo_delta"] == ["create_successor"], inline
+        assert inline["vision_checkpoint"]["agent_id"] == AGENT_ID, inline
+        assert inline["vision_checkpoint"]["decision"] == "patched", inline
+
+        unchanged = payload(
+            run_cli(
+                registry_path,
+                runtime,
+                inline_vision_args=[
+                    "--vision-unchanged-reason",
+                    "Current per-agent vision still matches this bounded material closeout.",
+                ],
+                check=True,
+            )
+        )
+        assert unchanged["ok"] is True, unchanged
+        assert unchanged["agent_vision"] is None, unchanged
+        assert unchanged["vision_checkpoint"]["agent_id"] == AGENT_ID, unchanged
+        assert unchanged["vision_checkpoint"]["decision"] == "unchanged_with_reason", unchanged
+
+        no_agent_inline_result = run_cli(
+            registry_path,
+            runtime,
+            inline_vision_args=["--vision-summary", "Missing agent id should fail."],
+            check=False,
+            include_agent_id=False,
+        )
+        assert no_agent_inline_result.returncode == 1, no_agent_inline_result
+        no_agent_inline = payload(no_agent_inline_result)
+        assert "inline agent vision requires --agent-id" in no_agent_inline["error"], no_agent_inline
+
+        mixed_result = run_cli(
+            registry_path,
+            runtime,
+            vision_path=valid_path,
+            inline_vision_args=["--vision-summary", "Conflicting inline patch."],
+            check=False,
+        )
+        assert mixed_result.returncode == 1, mixed_result
+        mixed = payload(mixed_result)
+        assert "--agent-vision-json cannot be combined" in mixed["error"], mixed
 
         write_json(
             invalid_path,

@@ -10,6 +10,7 @@ AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
+VISION_CHECKPOINT_MISSING_TRIGGER = "vision_checkpoint_missing"
 TODO_SUCCESSION_GAP_TRIGGER = "completed_advancement_without_successor"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
@@ -232,6 +233,47 @@ def latest_agent_vision_from_status_payload(
     return None
 
 
+def latest_missing_vision_checkpoint_from_status_payload(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    """Return the newest unsatisfied per-agent vision checkpoint in run history."""
+
+    for run in _latest_runs_for_goal(status_payload, goal_id=goal_id):
+        checkpoint = run.get("vision_checkpoint")
+        if not isinstance(checkpoint, dict):
+            continue
+        checkpoint_agent_id = str(
+            checkpoint.get("agent_id") or run.get("agent_id") or ""
+        ).strip()
+        if agent_id and checkpoint_agent_id != agent_id:
+            continue
+        if not agent_id and checkpoint_agent_id:
+            continue
+        if checkpoint.get("required") is not True:
+            continue
+        if checkpoint.get("satisfied") is not False:
+            continue
+        if str(checkpoint.get("decision") or "") != "missing_required":
+            continue
+        return {
+            "schema_version": checkpoint.get("schema_version"),
+            "goal_id": goal_id,
+            "agent_id": checkpoint_agent_id or agent_id,
+            "decision": checkpoint.get("decision"),
+            "triggers": checkpoint.get("triggers")
+            if isinstance(checkpoint.get("triggers"), list)
+            else [],
+            "required_resolution": checkpoint.get("required_resolution")
+            if isinstance(checkpoint.get("required_resolution"), list)
+            else [],
+            "generated_at": run.get("generated_at"),
+        }
+    return None
+
+
 def acceptance_gaps_from_agent_vision(
     agent_vision: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
@@ -254,6 +296,39 @@ def acceptance_gaps_from_agent_vision(
     if acceptance:
         gap["acceptance_summary"] = acceptance
     generated_at = _compact_projection_text(agent_vision.get("generated_at"), limit=80)
+    if generated_at:
+        gap["generated_at"] = generated_at
+    return [gap]
+
+
+def acceptance_gaps_from_vision_checkpoint(
+    checkpoint: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Convert a missing per-agent vision checkpoint into a frontier gap."""
+
+    if not isinstance(checkpoint, dict):
+        return []
+    trigger_kinds = [
+        str(trigger.get("kind") or "").strip()
+        for trigger in (checkpoint.get("triggers") or [])
+        if isinstance(trigger, dict) and str(trigger.get("kind") or "").strip()
+    ]
+    trigger_text = ", ".join(trigger_kinds[:3]) or "required vision checkpoint"
+    gap: dict[str, Any] = {
+        "kind": VISION_CHECKPOINT_MISSING_TRIGGER,
+        "source": "latest_vision_checkpoint",
+        "agent_id": checkpoint.get("agent_id"),
+        "decision": checkpoint.get("decision"),
+        "replan_trigger_summary": (
+            "refresh-state closed a material segment without a per-agent vision "
+            f"decision; triggers={trigger_text}"
+        ),
+        "acceptance_summary": (
+            "Write a bounded agent vision patch, record an unchanged reason, "
+            "or retire/supersede the frontier with an explicit rationale."
+        ),
+    }
+    generated_at = _compact_projection_text(checkpoint.get("generated_at"), limit=80)
     if generated_at:
         gap["generated_at"] = generated_at
     return [gap]
@@ -614,11 +689,12 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         return {
             "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
             "required": True,
+            "agent_id": agent_id,
             "stall_threshold": 1,
             "trigger_count": len(compact_acceptance_gaps),
             "triggers": [
                 {
-                    "kind": VISION_ACCEPTANCE_GAP_TRIGGER,
+                    "kind": gap.get("kind") or VISION_ACCEPTANCE_GAP_TRIGGER,
                     "section": "goal_frontier_projection.acceptance_gaps",
                     "text": gap.get("replan_trigger_summary")
                     or "bounded agent vision reports an open acceptance gap",

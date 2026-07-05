@@ -172,6 +172,22 @@ def assert_compact_run_base_parity() -> None:
             },
             "private_note": "not compacted",
         },
+        "vision_checkpoint": {
+            "schema_version": "vision_checkpoint_v0",
+            "agent_id": "codex-product-capability",
+            "required": True,
+            "satisfied": False,
+            "decision": "missing_required",
+            "triggers": [
+                {
+                    "kind": "material_delivery_outcome",
+                    "delivery_outcome": "outcome_progress",
+                    "private_note": "not compacted",
+                }
+            ],
+            "required_resolution": ["write_agent_vision_patch", "record_unchanged_reason"],
+            "private_note": "not compacted",
+        },
         "human_reward": {"decision": "approve", "reward": 1, "private_note": "not compacted"},
         "operator_gate": {"decision": "approve", "operator_question": "Proceed?"},
         "operator_gate_resume_contract": {
@@ -213,6 +229,21 @@ def assert_compact_run_base_parity() -> None:
     }, compact_vision
     assert "private_note" not in compact_vision
     assert "field_limits" not in compact_vision["vision_budget"]
+    compact_checkpoint = compact["vision_checkpoint"]
+    assert compact_checkpoint == {
+        "schema_version": "vision_checkpoint_v0",
+        "agent_id": "codex-product-capability",
+        "required": True,
+        "satisfied": False,
+        "decision": "missing_required",
+        "triggers": [
+            {
+                "kind": "material_delivery_outcome",
+                "delivery_outcome": "outcome_progress",
+            }
+        ],
+        "required_resolution": ["write_agent_vision_patch", "record_unchanged_reason"],
+    }, compact_checkpoint
 
     explicit_lifecycle_run = {
         "generated_at": "2026-07-04T00:03:00Z",

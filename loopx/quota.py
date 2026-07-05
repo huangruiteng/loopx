@@ -56,11 +56,13 @@ from .control_plane.work_items.interaction_contract import (
 from .control_plane.goals.goal_frontier import (
     AUTONOMOUS_REPLAN_REQUIRED_MODE,
     acceptance_gaps_from_agent_vision,
+    acceptance_gaps_from_vision_checkpoint,
     autonomous_replan_decision_allowed,
     autonomous_replan_scope_decision,
     build_goal_frontier_projection_from_summaries,
     derive_goal_frontier_replan_obligation_from_summaries,
     latest_agent_vision_from_status_payload,
+    latest_missing_vision_checkpoint_from_status_payload,
     select_autonomous_replan_obligation,
 )
 from .control_plane.quota.heartbeat_recommendation import (
@@ -1921,8 +1923,14 @@ def build_quota_should_run(
             goal_id=safe_goal_id,
             agent_id=agent_frontier_id,
         )
-        goal_frontier_acceptance_gaps = acceptance_gaps_from_agent_vision(
-            latest_agent_vision
+        latest_missing_vision_checkpoint = latest_missing_vision_checkpoint_from_status_payload(
+            status_payload,
+            goal_id=safe_goal_id,
+            agent_id=agent_frontier_id,
+        )
+        goal_frontier_acceptance_gaps = (
+            acceptance_gaps_from_agent_vision(latest_agent_vision)
+            + acceptance_gaps_from_vision_checkpoint(latest_missing_vision_checkpoint)
         )
         frontier_replan_obligation = derive_goal_frontier_replan_obligation_from_summaries(
             user_todo_summary=user_todo_summary,

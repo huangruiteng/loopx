@@ -50,6 +50,19 @@ CONTROLLER_READINESS_GATE_FIELDS = (
     "ok",
     "review",
 )
+VISION_CHECKPOINT_COMPACT_FIELDS = (
+    "schema_version",
+    "agent_id",
+    "required",
+    "satisfied",
+    "decision",
+    "agent_vision_state",
+    "unchanged_reason",
+)
+VISION_CHECKPOINT_TRIGGER_FIELDS = (
+    "kind",
+    "delivery_outcome",
+)
 RUN_BASE_COMPACT_FIELDS = (
     "generated_at",
     "run_id",
@@ -143,6 +156,46 @@ def compact_controller_readiness(readiness: Any) -> dict[str, Any] | None:
     return compact or None
 
 
+def compact_vision_checkpoint(checkpoint: Any) -> dict[str, Any] | None:
+    if not isinstance(checkpoint, dict):
+        return None
+    compact = {
+        field: checkpoint[field]
+        for field in VISION_CHECKPOINT_COMPACT_FIELDS
+        if field in checkpoint
+    }
+    triggers: list[dict[str, Any]] = []
+    raw_triggers = checkpoint.get("triggers")
+    if isinstance(raw_triggers, list):
+        for trigger in raw_triggers[:5]:
+            if not isinstance(trigger, dict):
+                continue
+            compact_trigger = {
+                field: trigger[field]
+                for field in VISION_CHECKPOINT_TRIGGER_FIELDS
+                if field in trigger
+            }
+            if compact_trigger:
+                triggers.append(compact_trigger)
+    if triggers:
+        compact["triggers"] = triggers
+    required_resolution = checkpoint.get("required_resolution")
+    if isinstance(required_resolution, list):
+        compact["required_resolution"] = [
+            str(item)
+            for item in required_resolution[:5]
+            if str(item or "").strip()
+        ]
+    repair_delta_kinds = checkpoint.get("repair_delta_kinds")
+    if isinstance(repair_delta_kinds, list):
+        compact["repair_delta_kinds"] = [
+            str(item)
+            for item in repair_delta_kinds[:5]
+            if str(item or "").strip()
+        ]
+    return compact or None
+
+
 def compact_run_base(
     run: dict[str, Any],
     *,
@@ -167,6 +220,10 @@ def compact_run_base(
     agent_vision = compact_agent_vision(run.get("agent_vision")) if compact_agent_vision else None
     if agent_vision:
         compact["agent_vision"] = agent_vision
+
+    vision_checkpoint = compact_vision_checkpoint(run.get("vision_checkpoint"))
+    if vision_checkpoint:
+        compact["vision_checkpoint"] = vision_checkpoint
 
     reward = compact_human_reward(run.get("human_reward"))
     if reward:

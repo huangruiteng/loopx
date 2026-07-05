@@ -42,6 +42,15 @@ not only an apology or a one-off explanation.
      continue with a larger bounded batch.
    - If the machine projection misled the agent, fix CLI/status/quota
      projection and add a focused smoke.
+   - If the user correction changes the goal acceptance, says the agent missed
+     the intended loop, or exposes a product bottleneck that is not visible in
+     quota/status, write a bounded `goal_vision_replan_contract_v0` packet with
+     `replan_trigger_summary` through normal `loopx refresh-state --vision-*`
+     fields, using the same `--agent-id` as the current lane, or
+     `--agent-vision-json` for generated multi-field patches, before returning
+     to delivery. If the next executable step is already known, also add or
+     link the concrete successor todo; do not leave the correction only in chat
+     or an incident note.
    - If a design rule is missing, update the interaction model or todo list
      before implementing broad behavior.
    - If benchmark evidence is not attributable, add posthoc trace/parity
@@ -51,6 +60,42 @@ not only an apology or a one-off explanation.
    when docs/contracts changed.
 7. **Write back the lesson.** Update active goal state, docs, contributor
    tasks, or this skill so the same failure mode is visible next time.
+
+## Vision / Replan Writeback
+
+Use the bounded vision contract when self-repair discovers that LoopX did not
+notice a missing outcome, route, or acceptance condition by itself. The packet is
+the bridge from human or agent insight to quota-visible replan state:
+
+```json
+{
+  "schema_version": "goal_vision_replan_contract_v0",
+  "state": "vision_drift_detected",
+  "vision_patch": {
+    "vision_summary": "Name the corrected route or acceptance target.",
+    "acceptance_summary": "Name the machine-visible condition that must hold.",
+    "replan_trigger_summary": "Name why the current frontier is insufficient."
+  },
+  "todo_delta": ["create_successor"]
+}
+```
+
+Record it with normal inline `refresh-state --vision-summary
+--vision-acceptance --vision-replan-trigger` fields using the same `--agent-id`
+that ran the repair. Use `--agent-vision-json` when a generated patch is clearer
+than a command line. Pair `--autonomous-replan-recorded` only after a bounded
+replan delta was actually written, such as a successor todo, no-follow-up
+rationale, blocker, or updated vision. A vision patch without a runnable todo is
+still useful: `quota should-run` can promote its `replan_trigger_summary` into
+`goal_frontier_projection.acceptance_gaps[]` when the advancement frontier is
+empty.
+
+If the repair concludes that the existing per-agent vision is still correct,
+close the required checkpoint with `--vision-unchanged-reason` instead of
+writing a fake patch. If a material `refresh-state` lacks both a patch and an
+unchanged/no-follow-up decision, LoopX should preserve a per-agent
+`vision_checkpoint_v0` with `decision=missing_required` so the same agent's
+next quota check can enter replan.
 
 ## Evidence Discipline
 

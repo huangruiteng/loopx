@@ -13,6 +13,8 @@ DOCS_INDEX = ROOT / "docs" / "README.md"
 STATE_MACHINE = ROOT / "docs" / "product" / "core-control-plane" / "state-machine.md"
 RULE_SEAM = ROOT / "docs" / "product" / "core-control-plane" / "rule-seam-map.md"
 THREE_LAYER = ROOT / "docs" / "reference" / "protocols" / "multi-agent-three-layer-minimality-v0.md"
+SELF_REPAIR_SKILL = ROOT / "skills" / "loopx-self-repair" / "SKILL.md"
+REPAIR_PATTERNS = ROOT / "skills" / "loopx-self-repair" / "references" / "repair-patterns.md"
 
 
 PRIVATE_MARKERS = [
@@ -53,9 +55,22 @@ def main() -> int:
     state_machine = read(STATE_MACHINE)
     rule_seam = read(RULE_SEAM)
     three_layer = read(THREE_LAYER)
+    self_repair_skill = read(SELF_REPAIR_SKILL)
+    repair_patterns = read(REPAIR_PATTERNS)
 
     assert_public_safe(
-        "\n".join([protocol, protocol_index, docs_index, state_machine, rule_seam, three_layer]),
+        "\n".join(
+            [
+                protocol,
+                protocol_index,
+                docs_index,
+                state_machine,
+                rule_seam,
+                three_layer,
+                self_repair_skill,
+                repair_patterns,
+            ]
+        ),
         "goal vision/replan docs",
     )
 
@@ -69,8 +84,18 @@ def main() -> int:
             "Reject over-budget writes with `vision_budget_exceeded`",
             "Do not silently truncate fields",
             "Long reasoning belongs in evidence artifacts or design docs",
-            "`loopx refresh-state --agent-vision-json",
+            "The normal lightweight CLI write boundary is `loopx refresh-state`",
+            "--vision-summary",
+            "--vision-replan-trigger",
+            "`--agent-vision-json <packet.json>`",
+            "The two forms are mutually exclusive",
+            "Inline vision writes require `--agent-id`",
             "`goal_vision_patch` repair delta",
+            "Every vision packet and checkpoint is scoped by `agent_id`",
+            "Vision Checkpoint",
+            "`vision_checkpoint_v0`",
+            "`missing_required` is not a chat reminder",
+            "`--vision-unchanged-reason`",
             "State Machine",
             "ActiveVision --> VisionDriftDetected",
             "ReplanRequired --> ReplanDrafted",
@@ -81,6 +106,11 @@ def main() -> int:
             "An acknowledgement without a vision, todo, acceptance, or no-follow-up delta is",
             "`replan_noop`",
             "durable replan ACKs survive neutral scheduler/accounting runs",
+            "Write / Correction Mechanism",
+            "Vision correction is a normal state-machine transition",
+            "material `refresh-state` closeouts emit a per-agent `vision_checkpoint_v0`",
+            "ordinary `refresh-state` calls can write bounded vision corrections",
+            "missing per-agent checkpoints can become agent-scoped replan gaps",
             "`quota.py` consumes the resulting projection instead of storing vision logic",
         ],
         source=PROTOCOL,
@@ -89,8 +119,11 @@ def main() -> int:
         state_machine,
         [
             "Agent Vision / Replan Machine",
+            "Vision is per `agent_id`",
+            "`vision_checkpoint_v0`",
             "required replan is evaluated before",
             "An acknowledgement without a vision, todo, acceptance, or no-follow-up",
+            "`vision_checkpoint_missing`",
             "goal-vision-replan-contract-v0.md",
         ],
         source=STATE_MACHINE,
@@ -99,7 +132,9 @@ def main() -> int:
         rule_seam,
         [
             "Agent vision and goal routing contract",
+            "per-agent vision checkpoints",
             "Over-budget vision fails or compacts before status/quota",
+            "material closeouts emit `vision_checkpoint_v0`",
             "rather than expanding `quota.py`",
             "Per-agent vision is a bounded goal-routing contract",
         ],
@@ -114,6 +149,32 @@ def main() -> int:
             "product-specific fork of per-agent vision/replan mechanics",
         ],
         source=THREE_LAYER,
+    )
+    require(
+        self_repair_skill,
+        [
+            "Vision / Replan Writeback",
+            "goal_vision_replan_contract_v0",
+            "replan_trigger_summary",
+            "using the same `--agent-id` as the current lane",
+            "`--agent-vision-json`",
+            "`--vision-unchanged-reason`",
+            "`vision_checkpoint_v0`",
+            "goal_frontier_projection.acceptance_gaps[]",
+            "do not leave the correction only in chat or",
+        ],
+        source=SELF_REPAIR_SKILL,
+    )
+    require(
+        repair_patterns,
+        [
+            "vision_replan_writeback_gap",
+            "no `goal_frontier_projection.acceptance_gaps[]`",
+            "--agent-id <agent-id>",
+            "--vision-unchanged-reason",
+            "vision_checkpoint_missing",
+        ],
+        source=REPAIR_PATTERNS,
     )
     require(
         protocol_index,
