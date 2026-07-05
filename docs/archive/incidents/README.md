@@ -11,3 +11,4 @@ Current records:
 - [Default workflow planner gap incident, 2026-06-25](default-workflow-planner-gap-incident-20260625.md)
 - [Standing authorization reprompt incident, 2026-06-28](standing-authorization-reprompt-incident-20260628.md)
 - [Agent-scoped replan precedence incident, 2026-07-03](agent-scoped-replan-precedence-incident-20260703.md)
+- [Auto-research replan and multi-round demo bad case, 2026-07-05](auto-research-replan-multiround-badcase-20260705.md)
