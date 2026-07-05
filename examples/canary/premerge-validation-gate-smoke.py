@@ -48,6 +48,12 @@ def assert_control_plane_change_selects_state_machine_validation() -> None:
     assert "canary-runner" in classification["risk_profiles"], payload
     catalog_commands = commands_from(payload["catalog_run"])
     risk_commands = commands_from(payload["risk_profile_run"])
+    summary = payload["validation_summary"]
+    assert summary["schema_version"] == "premerge_validation_summary_v0", payload
+    assert summary["selected_check_count"] >= len(catalog_commands), payload
+    assert "python3 examples/control_plane/interaction-contract-state-machine-smoke.py" in (
+        summary["selected_commands"]
+    ), payload
     assert any("interaction-contract-state-machine-smoke.py" in item for item in catalog_commands), payload
     assert any("control-plane-integrated-canary-smoke.py" in item for item in catalog_commands), payload
     assert any("bounded-context-namespace-smoke.py" in item for item in catalog_commands), payload
@@ -120,6 +126,17 @@ def assert_cli_json_preview() -> None:
     payload = json.loads(completed.stdout)
     assert payload["schema_version"] == "loopx_premerge_validation_gate_v0", payload
     assert payload["gate"]["status"] == "preview_only", payload
+    summary = payload["validation_summary"]
+    assert summary["schema_version"] == "premerge_validation_summary_v0", payload
+    assert summary["direct_check_count"] >= 4, payload
+    assert any("git diff --check" in command for command in summary["direct_commands"]), payload
+    assert "python3 examples/canary/premerge-validation-gate-smoke.py" in (
+        summary["selected_commands"]
+    ), payload
+    assert len(summary["all_commands"]) >= len(summary["direct_commands"]) + len(
+        summary["selected_commands"]
+    ), payload
+    assert summary["failed_commands"] == [], payload
     selector_sources = payload.get("selector_sources")
     assert selector_sources is None or isinstance(selector_sources, dict), payload
 

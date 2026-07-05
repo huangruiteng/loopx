@@ -11,6 +11,7 @@ from .runner import build_canary_smoke_suite_run
 
 
 PREMERGE_GATE_SCHEMA_VERSION = "loopx_premerge_validation_gate_v0"
+PREMERGE_VALIDATION_SUMMARY_SCHEMA_VERSION = "premerge_validation_summary_v0"
 
 PREMERGE_TIERS = {"quick", "standard", "deep"}
 
@@ -326,6 +327,90 @@ def _gate_status(
     }
 
 
+def _check_command(check: dict[str, Any]) -> str:
+    normalized = (
+        check.get("normalized")
+        if isinstance(check.get("normalized"), dict)
+        else {}
+    )
+    display_argv = normalized.get("display_argv")
+    if isinstance(display_argv, list) and display_argv:
+        return " ".join(str(part) for part in display_argv)
+    return str(check.get("command") or "")
+
+
+def _run_summary(run: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(run, dict):
+        return None
+    selected_checks = [
+        check for check in run.get("selected_checks", [])
+        if isinstance(check, dict)
+    ]
+    executed_checks = [
+        check for check in selected_checks
+        if str(check.get("status") or "") not in {"", "ready", "skipped"}
+    ]
+    failures = [check for check in selected_checks if check.get("ok") is False]
+    return {
+        "ok": bool(run.get("ok")),
+        "selected_check_count": int(run.get("selected_check_count") or len(selected_checks)),
+        "executed_check_count": int(run.get("executed_check_count") or len(executed_checks)),
+        "failure_count": int(run.get("failure_count") or len(failures)),
+        "warning_count": int(run.get("warning_count") or 0),
+        "advisory_failure_count": int(run.get("advisory_failure_count") or 0),
+        "selected_commands": [_check_command(check) for check in selected_checks],
+        "failed_commands": [_check_command(check) for check in failures],
+    }
+
+
+def build_validation_summary(
+    *,
+    direct_checks: list[dict[str, Any]],
+    catalog_run: dict[str, Any],
+    risk_profile_run: dict[str, Any] | None,
+    boundary_run: dict[str, Any] | None,
+) -> dict[str, Any]:
+    direct_failures = [check for check in direct_checks if check.get("ok") is False]
+    direct_commands = [str(check.get("command") or "") for check in direct_checks]
+    run_summaries = {
+        "catalog_run": _run_summary(catalog_run),
+        "risk_profile_run": _run_summary(risk_profile_run),
+        "boundary_run": _run_summary(boundary_run),
+    }
+    active_run_summaries = [
+        summary for summary in run_summaries.values()
+        if isinstance(summary, dict)
+    ]
+    selected_commands: list[str] = []
+    failed_commands: list[str] = []
+    for summary in active_run_summaries:
+        selected_commands.extend(summary["selected_commands"])
+        failed_commands.extend(summary["failed_commands"])
+    failed_commands.extend(str(check.get("command") or "") for check in direct_failures)
+    return {
+        "schema_version": PREMERGE_VALIDATION_SUMMARY_SCHEMA_VERSION,
+        "direct_check_count": len(direct_checks),
+        "direct_failure_count": len(direct_failures),
+        "selected_check_count": sum(
+            int(summary["selected_check_count"]) for summary in active_run_summaries
+        ),
+        "executed_check_count": sum(
+            int(summary["executed_check_count"]) for summary in active_run_summaries
+        ),
+        "failure_count": len(direct_failures)
+        + sum(int(summary["failure_count"]) for summary in active_run_summaries),
+        "warning_count": sum(int(summary["warning_count"]) for summary in active_run_summaries),
+        "advisory_failure_count": sum(
+            int(summary["advisory_failure_count"]) for summary in active_run_summaries
+        ),
+        "direct_commands": [command for command in direct_commands if command],
+        "selected_commands": selected_commands,
+        "all_commands": [command for command in [*direct_commands, *selected_commands] if command],
+        "failed_commands": [command for command in failed_commands if command],
+        "runs": run_summaries,
+    }
+
+
 def _recompute_smoke_run_status(run: dict[str, Any]) -> None:
     results = [
         item for item in run.get("selected_checks", [])
@@ -482,6 +567,12 @@ def build_premerge_validation_gate(
         boundary_run=boundary_run,
         manual_holds=list(classification["manual_holds"]),
     )
+    validation_summary = build_validation_summary(
+        direct_checks=direct_checks,
+        catalog_run=catalog_run,
+        risk_profile_run=risk_profile_run,
+        boundary_run=boundary_run,
+    )
     ok = gate["status"] in {"passed", "no_changes"} or (
         not execute and gate["status"] in {"preview_only", "manual_review_required", "no_changes"}
     )
@@ -501,6 +592,7 @@ def build_premerge_validation_gate(
         "catalog_run": catalog_run,
         "risk_profile_run": risk_profile_run,
         "boundary_run": boundary_run,
+        "validation_summary": validation_summary,
         "gate": gate,
         "recommended_pr_comment_fields": [
             "changed_surfaces",
