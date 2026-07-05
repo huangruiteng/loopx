@@ -80,6 +80,7 @@ from .canary import handle_canary_command, register_canary_commands
 from .capability import handle_capability_command, register_capability_commands
 from .doctor import handle_doctor_command, register_doctor_command
 from .dreaming import handle_dreaming_command, register_dreaming_commands
+from .evidence_log import handle_evidence_log_command, register_evidence_log_command
 from .history import handle_history_command, register_history_command
 from .lark_kanban import handle_lark_kanban_command, register_lark_kanban_commands
 from .ml_experiment import handle_ml_experiment_command, register_ml_experiment_commands
@@ -205,6 +206,7 @@ __all__ = [
     "handle_demo_command",
     "handle_doctor_command",
     "handle_dreaming_command",
+    "handle_evidence_log_command",
     "handle_history_command",
     "handle_lark_kanban_command",
     "handle_ml_experiment_command",
@@ -252,6 +254,7 @@ __all__ = [
     "register_capability_commands",
     "register_doctor_command",
     "register_dreaming_commands",
+    "register_evidence_log_command",
     "register_history_command",
     "register_lark_kanban_commands",
     "register_ml_experiment_commands",

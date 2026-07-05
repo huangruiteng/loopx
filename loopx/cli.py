@@ -32,6 +32,7 @@ from .cli_commands import (
     handle_diagnose_command,
     handle_doctor_command,
     handle_dreaming_command,
+    handle_evidence_log_command,
     handle_history_command,
     handle_lark_kanban_command,
     handle_ml_experiment_command,
@@ -56,6 +57,7 @@ from .cli_commands import (
     register_capability_commands,
     register_doctor_command,
     register_dreaming_commands,
+    register_evidence_log_command,
     register_history_command,
     register_lark_kanban_commands,
     register_ml_experiment_commands,
@@ -179,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     register_pr_review_command(sub, add_subcommand_format)
     register_slash_commands_command(sub, add_subcommand_format)
     register_dreaming_commands(sub, add_subcommand_format)
+    register_evidence_log_command(sub, add_subcommand_format)
     register_todo_command(sub)
     register_task_lease_command(sub, add_subcommand_format)
     register_quota_command(sub)
@@ -433,6 +436,16 @@ def main(argv: list[str] | None = None) -> int:
             output_format=output_format,
             print_payload=print_payload,
         )
+
+    evidence_log_result = handle_evidence_log_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if evidence_log_result is not None:
+        return evidence_log_result
 
     if args.command == "todo":
         return handle_todo_command(
