@@ -104,6 +104,7 @@ from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E402
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
+from loopx.benchmark_adapters import skillsbench_runner_source as runner_source  # noqa: E402
 from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER,
     SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT,
@@ -2949,6 +2950,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), int) and not isinstance(value.get(field), bool):
             compact[field] = value[field]
+    compact.update(runner_source.compact_runner_source_public_fields(value))
     target_keys = value.get("host_local_acp_target_env_keys")
     if isinstance(target_keys, list):
         compact["host_local_acp_target_env_keys"] = [
@@ -8575,6 +8577,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     )
     agent_runtime_layer = _benchflow_agent_runtime_layer_contract(args)
     loopx_source_mount = _loopx_source_mount_contract(args)
+    runner_source_fingerprint = runner_source.build_runner_source_fingerprint(repo_root=REPO_ROOT, expected_git_head=getattr(args, "expected_loopx_git_head", ""))
     requires_preinstalled_runtime = bool(agent_runtime_layer.get("required"))
     is_app_server_goal_route = route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
     is_codex_cli_goal_route = route == CODEX_CLI_GOAL_BASELINE_ROUTE
@@ -8808,6 +8811,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "benchflow_agent_runtime_layer": agent_runtime_layer,
         "loopx_source_mount": loopx_source_mount,
+        "loopx_runner_source_fingerprint": runner_source_fingerprint,
         "skillsbench_root": str(Path(args.skillsbench_root).expanduser()),
         "jobs_dir": str(jobs_dir),
         "job_name": job_name,
@@ -9148,6 +9152,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "loopx_source_mount_injected": False,
             "loopx_source_mount_read_only": bool(loopx_source_mount.get("read_only")),
             "loopx_source_mount_source_recorded": False,
+            **runner_source.runner_source_prerequisite_fields(runner_source_fingerprint),
             "benchflow_agent_timeout_original_sec": 0,
             "benchflow_agent_timeout_effective_sec": 0,
             "benchflow_agent_timeout_overridden": False,
@@ -9401,6 +9406,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
             value = prerequisites.get(field)
             if isinstance(value, str) and value:
                 config[field] = value[:80]
+        config.update(runner_source.compact_runner_source_public_fields(prerequisites))
         value = prerequisites.get("codex_api_reverse_tunnel_proxy_endpoint_port")
         if isinstance(value, int) and not isinstance(value, bool):
             config["codex_api_reverse_tunnel_proxy_endpoint_port"] = value
@@ -13520,6 +13526,10 @@ def _build_product_mode_user(
 async def run_benchflow_case(args: argparse.Namespace, plan: dict[str, Any]) -> Path:
     prerequisites = plan.setdefault("runner_prerequisites", {})
     prerequisites["benchflow_run_stage"] = "entered"
+    source_fingerprint = plan.get("loopx_runner_source_fingerprint")
+    if isinstance(source_fingerprint, dict) and source_fingerprint.get("first_blocker"):
+        prerequisites["benchflow_run_stage"] = "runner_source_fingerprint_check"
+        raise RuntimeError(str(source_fingerprint["first_blocker"]))
     skillsbench_root = Path(args.skillsbench_root).expanduser().resolve()
     prerequisites["benchflow_run_stage"] = "task_path_check"
     task_path = skillsbench_root / "tasks" / args.task_id
@@ -15957,25 +15967,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--max-verifier-output-chars", type=int, default=0)
     parser.add_argument("--skillsbench-root", default=str(DEFAULT_SKILLSBENCH_ROOT))
-    parser.add_argument(
-        "--loopx-source-dir",
-        default=str(REPO_ROOT),
-        help=(
-            "Local LoopX checkout mounted read-only into docker product-mode "
-            "runs, or uploaded as a source fallback for older BenchFlow "
-            "host-local sandboxes, and executed with the real loopx.cli module. "
-            "Public compact artifacts record only the target/status, not this "
-            "host path."
-        ),
-    )
-    parser.add_argument(
-        "--no-loopx-source-mount",
-        action="store_true",
-        help=(
-            "Do not mount the local LoopX checkout for product-mode runs; the "
-            "case init falls back to the README GitHub installer."
-        ),
-    )
+    parser.add_argument("--loopx-source-dir", default=str(REPO_ROOT), help="Local LoopX checkout for product-mode source mount/upload; the path is not recorded.")
+    parser.add_argument("--expected-loopx-git-head", default="", help="Fail before task execution unless runner LoopX checkout HEAD starts with this public commit prefix.")
+    parser.add_argument("--no-loopx-source-mount", action="store_true", help="Disable product-mode LoopX source mount/upload and use the public installer path.")
     parser.add_argument(
         "--jobs-dir",
         default=str(REPO_ROOT / ".local/private-benchmark-jobs"),
