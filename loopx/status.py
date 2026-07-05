@@ -9,6 +9,9 @@ from typing import Any
 from .benchmark_adapters.skillsbench_signals import (
     build_skillsbench_solution_quality_signals,
 )
+from .benchmark_adapters.skillsbench_verifier_bootstrap import (
+    apply_skillsbench_verifier_bootstrap_missing_score_attribution,
+)
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .contract import check_contract
 from .control_plane.work_items.delivery_batch_scale import (
@@ -4504,6 +4507,12 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
                 compact_validation[field] = validation[field]
         compact["validation"] = compact_validation
         _apply_skillsbench_pre_agent_setup_compact_projection(compact)
+
+    apply_skillsbench_verifier_bootstrap_missing_score_attribution(
+        compact,
+        task_staging=compact.get("task_staging"),
+        setup_preflight=compact.get("task_setup_preflight"),
+    )
 
     solution_quality = build_skillsbench_solution_quality_signals(compact)
     if solution_quality:
