@@ -76,6 +76,8 @@ def main() -> None:
         "benchmark runner behavior, scoring, upload",
         "## Release Note Checklist",
         "public/private scan",
+        "## 中文摘要",
+        "avoid overfitting the release to one feature area",
     ]:
         assert_contains(doc, required, "release-readiness doc")
 

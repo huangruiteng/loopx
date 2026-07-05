@@ -267,6 +267,11 @@ Every public release note or update note should answer:
 - Which surfaces are still experimental or intentionally excluded?
 - Did the public/private scan run on the changed docs, examples, and workflow
   files?
+- For Chinese-speaking operators, include a compact `## 中文摘要` section that
+  mirrors the release highlights in neutral product language. Keep it shorter
+  than the full English notes, avoid overfitting the release to one feature
+  area, and name both the user-visible improvement and the control-plane
+  reliability work when both shipped.
 
 The note should link to durable docs or PRs when useful, but public git history
 and shipped CLI behavior remain the source of truth.
