@@ -12,8 +12,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.boundary_authority import build_checkpointed_boundary_authority_entry  # noqa: E402
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
+    quota_status_payload,
+    quota_todo_item,
+    quota_todo_summary,
+)
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
-from loopx.status import compact_todo_group, project_asset_todo_summary  # noqa: E402
+from loopx.status import project_asset_todo_summary  # noqa: E402
 from loopx.control_plane.todos.contract import format_todo_metadata_line, parse_todo_metadata_line  # noqa: E402
 
 
@@ -28,70 +33,34 @@ def status_payload(
     todos: list[dict] | None = None,
 ) -> dict:
     todo_items = todos or [
-        {
-            "index": 1,
-            "done": False,
-            "status": "open",
-            "text": TODO_TEXT,
-            "task_class": "advancement_task",
-            "action_kind": "implement",
-            "required_write_scopes": ["runners/openviking/**"],
-        }
+        quota_todo_item(
+            todo_id="todo_required_scope",
+            text=TODO_TEXT,
+            action_kind="implement",
+            required_write_scopes=["runners/openviking/**"],
+        )
     ]
-    agent_todos = {
-        "schema_version": "todo_summary_v0",
-        "source_section": "Agent Todo",
-        "open_count": len(todo_items),
-        "done_count": 0,
-        "total_count": len(todo_items),
-        "first_open_items": todo_items,
-        "first_executable_items": todo_items,
-        "items": todo_items,
-    }
-    return {
-        "ok": True,
-        "goal_count": 1,
-        "run_count": 0,
-        "attention_queue": {
-            "items": [
-                {
-                    "goal_id": GOAL_ID,
-                    "status": "active",
-                    "waiting_on": "codex",
-                    "severity": "action",
-                    "source": "latest_run",
-                    "recommended_action": "Execute the first agent todo only if its required scope is inside goal_boundary.",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 1440,
-                        "spent_slots": 0,
-                        "state": "eligible",
-                        "reason": "eligible fixture",
-                    },
-                    "agent_todos": agent_todos,
-                }
-            ]
+    agent_todos = quota_todo_summary(todo_items, role="agent")
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        recommended_action=(
+            "Execute the first agent todo only if its required scope is inside goal_boundary."
+        ),
+        agent_todos=agent_todos,
+        source="latest_run",
+        registry_status="active",
+        coordination={
+            "write_scope": allowed_scopes,
+            "requires_parent_approval": ["publish", "production-action"],
+            "checkpointed_boundary_authority": checkpointed_boundary_authority or [],
         },
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "active",
-                    "adapter_kind": "fixture_adapter_v0",
-                    "adapter_status": "connected",
-                    "coordination": {
-                        "write_scope": allowed_scopes,
-                        "requires_parent_approval": ["publish", "production-action"],
-                        "checkpointed_boundary_authority": checkpointed_boundary_authority or [],
-                    },
-                    "latest_runs": [],
-                }
-            ]
+        latest_runs=[],
+        goal_extra={
+            "adapter_kind": "fixture_adapter_v0",
+            "adapter_status": "connected",
         },
-    }
+    )
 
 
 def assert_missing_scope_repairs_boundary() -> None:
@@ -131,7 +100,7 @@ def assert_required_write_scope_metadata_roundtrip() -> None:
     parsed = parse_todo_metadata_line(metadata_line)
     assert parsed is not None, metadata_line
     assert parsed["required_write_scopes"] == ["runners/openviking/**", "docs/**"], parsed
-    group = compact_todo_group(
+    group = quota_todo_summary(
         [
             {
                 "index": 1,
@@ -140,7 +109,6 @@ def assert_required_write_scope_metadata_roundtrip() -> None:
                 **parsed,
             }
         ],
-        source_section="Agent Todo",
         role="agent",
     )
     assert group is not None, group

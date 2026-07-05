@@ -9,8 +9,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
+    quota_status_payload,
+    quota_todo_item,
+    quota_todo_summary,
+)
 from loopx.quota import build_quota_should_run  # noqa: E402
-from loopx.status import compact_todo_group, parse_active_state_todos  # noqa: E402
+from loopx.status import parse_active_state_todos  # noqa: E402
 
 
 GOAL_ID = "resume-gated-open-todo-fixture"
@@ -27,99 +32,51 @@ ARCHIVE_MONITOR_ACTION = "[P1] Monitor product refactor/catalog canary continuat
 
 
 def build_agent_todos(*, prerequisite_status: str) -> dict:
-    agent_todos = compact_todo_group(
+    agent_todos = quota_todo_summary(
         [
-            {
-                "index": 1,
-                "text": "[P0] Refresh the projection prerequisite.",
-                "role": "agent",
-                "status": prerequisite_status,
-                "priority": "P0",
-                "task_class": "continuous_monitor",
-                "claimed_by": "codex-side-bypass",
-                "todo_id": BLOCKING_TODO_ID,
-            },
-            {
-                "index": 2,
-                "text": GATED_ACTION,
-                "role": "agent",
-                "status": "open",
-                "priority": "P0",
-                "task_class": "advancement_task",
-                "claimed_by": AGENT_ID,
-                "todo_id": GATED_TODO_ID,
-                "required_capabilities": ["shell"],
-                "resume_when": f"todo_done:{BLOCKING_TODO_ID}",
-            },
-            {
-                "index": 3,
-                "text": FALLBACK_ACTION,
-                "role": "agent",
-                "status": "open",
-                "priority": "P1",
-                "task_class": "advancement_task",
-                "claimed_by": AGENT_ID,
-                "todo_id": FALLBACK_TODO_ID,
-                "required_capabilities": ["shell"],
-            },
+            quota_todo_item(
+                todo_id=BLOCKING_TODO_ID,
+                index=1,
+                text="[P0] Refresh the projection prerequisite.",
+                status=prerequisite_status,
+                task_class="continuous_monitor",
+                claimed_by="codex-side-bypass",
+            ),
+            quota_todo_item(
+                todo_id=GATED_TODO_ID,
+                index=2,
+                text=GATED_ACTION,
+                claimed_by=AGENT_ID,
+                required_capabilities=["shell"],
+                resume_when=f"todo_done:{BLOCKING_TODO_ID}",
+            ),
+            quota_todo_item(
+                todo_id=FALLBACK_TODO_ID,
+                index=3,
+                priority="P1",
+                text=FALLBACK_ACTION,
+                claimed_by=AGENT_ID,
+                required_capabilities=["shell"],
+            ),
         ],
-        source_section="Agent Todo",
         role="agent",
     )
-    assert agent_todos is not None, agent_todos
     return agent_todos
 
 
 def status_payload(agent_todos: dict, *, next_action: str) -> dict:
-    item = {
-        "goal_id": GOAL_ID,
-        "status": "resume_gated_open_todo_fixture",
-        "waiting_on": "codex",
-        "severity": "info",
-        "source": "project_asset",
-        "recommended_action": next_action,
-        "quota": {
-            "compute": 1.0,
-            "window_hours": 24,
-            "slot_minutes": 1,
-            "allowed_slots": 10,
-            "spent_slots": 0,
-            "state": "eligible",
-            "reason": "eligible fixture",
-        },
-        "coordination": {
-            "primary_agent": PRIMARY_AGENT,
-            "registered_agents": [PRIMARY_AGENT, "codex-side-bypass", AGENT_ID],
-        },
-        "project_asset": {
-            "next_action": next_action,
-            "stop_condition": "stop on private material",
-            "agent_todos": agent_todos,
-        },
-        "agent_todos": agent_todos,
+    coordination = {
+        "primary_agent": PRIMARY_AGENT,
+        "registered_agents": [PRIMARY_AGENT, "codex-side-bypass", AGENT_ID],
     }
-    return {
-        "ok": True,
-        "attention_queue": {"items": [item]},
-        "run_history": {
-            "goals": [
-                {
-                    "id": GOAL_ID,
-                    "registry_member": True,
-                    "status": "resume_gated_open_todo_fixture",
-                    "adapter_kind": "harness_self_improvement",
-                    "adapter_status": "connected-read-only",
-                    "quota": {
-                        "compute": 1.0,
-                        "window_hours": 24,
-                        "slot_minutes": 1,
-                        "allowed_slots": 10,
-                    },
-                    "coordination": item["coordination"],
-                }
-            ]
-        },
-    }
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status="resume_gated_open_todo_fixture",
+        recommended_action=next_action,
+        next_action=next_action,
+        agent_todos=agent_todos,
+        coordination=coordination,
+    )
 
 
 def selected_todo_id(payload: dict) -> str:
