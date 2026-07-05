@@ -16,6 +16,7 @@ Current contracts:
 - [Codex CLI wrapper action packet v0](protocol-action-packet-codex-cli-wrapper-v0.md)
 - [Action packet router comparison v0](protocol-action-packet-router-comparison-v0.md)
 - [task_graph_projection_v0](task-graph-projection-v0.md)
+- [agent_management_projection_v0](agent-management-projection-v0.md)
 - [todo_detail_cold_path_v0](todo-detail-cold-path-v0.md)
 - [long_horizon_agent_state_protocol_v0](long-horizon-agent-state-protocol-v0.md)
 - [decentralized_auto_research_state_v0](decentralized-auto-research-state-v0.md)
