@@ -7,6 +7,9 @@ from typing import Any
 from .control_plane.runtime.decision_freshness import (
     decision_freshness_warning as runtime_decision_freshness_warning,
 )
+from .control_plane.runtime.agent_scoped_evidence_log import (
+    build_agent_scoped_required_read,
+)
 from .execution_profile import (
     compact_execution_profile,
     execution_profile_outcome_floor,
@@ -402,6 +405,25 @@ def agent_member_summary(item: dict[str, Any] | None) -> str | None:
     if member.get("handoff_agent"):
         parts.append(f"handoff_agent={member.get('handoff_agent')}")
     return compact_packet_text(" ".join(str(part) for part in parts if part))
+
+
+def project_agent_required_reads(
+    goal_id: str,
+    item: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    member = agent_member_from_item(item)
+    if not member:
+        return []
+    agent_id = str(member.get("agent_id") or member.get("handoff_agent") or "").strip()
+    read = build_agent_scoped_required_read(
+        goal_id=goal_id,
+        agent_id=agent_id,
+        reason=(
+            "read this target agent's thin evidence ledger before replan or "
+            "handoff continuation; other agents stay frontier-only"
+        ),
+    )
+    return [read] if read else []
 
 
 def project_asset_source(item: dict[str, Any] | None) -> str:
@@ -1001,6 +1023,7 @@ def project_agent_section(
     agent_member_text: str | None = None,
     handoff_followthrough_text: str | None = None,
     handoff_delivery_contract_text: str | None = None,
+    required_reads: list[dict[str, Any]] | None = None,
     approved_operator_gate: bool = False,
     connected_delivery: bool = False,
 ) -> str:
@@ -1017,12 +1040,28 @@ def project_agent_section(
     member_line = f"Agent 成员：{agent_member_text}" if agent_member_text else None
     followthrough_line = f"交付观测：{handoff_followthrough_text}" if handoff_followthrough_text else None
     delivery_contract_line = f"交付合同：{handoff_delivery_contract_text}" if handoff_delivery_contract_text else None
+    first_required_read = next(
+        (
+            item
+            for item in (required_reads or [])
+            if isinstance(item, dict) and item.get("command")
+        ),
+        None,
+    )
+    required_read_line = (
+        "必读流水账：replan/接力前运行 "
+        f"`{compact_shell_command(str(first_required_read.get('command') or ''))}`；"
+        "只展开本 agent，其他 agent 只看 frontier。"
+        if first_required_read
+        else None
+    )
     if approved_operator_gate:
         lines = [
             goal_guard,
             context_rule,
             source_line,
             member_line,
+            required_read_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1040,6 +1079,7 @@ def project_agent_section(
             context_rule,
             source_line,
             member_line,
+            required_read_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1057,6 +1097,7 @@ def project_agent_section(
             context_rule,
             source_line,
             member_line,
+            required_read_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1074,6 +1115,7 @@ def project_agent_section(
             context_rule,
             source_line,
             member_line,
+            required_read_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1091,6 +1133,7 @@ def project_agent_section(
             context_rule,
             source_line,
             member_line,
+            required_read_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1108,6 +1151,7 @@ def project_agent_section(
             context_rule,
             source_line,
             member_line,
+            required_read_line,
             todo_line,
             *extra_todo_lines,
             authority_line,
@@ -1153,6 +1197,7 @@ def build_review_packet(
     chain_handoff = benchmark_report_chain_handoff(item)
     delivery_contract = handoff_delivery_contract(item)
     delivery_contract_text = handoff_delivery_contract_summary(delivery_contract)
+    required_reads = project_agent_required_reads(goal_id, item)
     freshness_warning = runtime_decision_freshness_warning(
         status_payload,
         goal_id=goal_id,
@@ -1198,6 +1243,7 @@ def build_review_packet(
         agent_member_text=member_summary,
         handoff_followthrough_text=followthrough_summary,
         handoff_delivery_contract_text=delivery_contract_text,
+        required_reads=required_reads,
         approved_operator_gate=approved_handoff,
         connected_delivery=delivery_handoff,
     )
@@ -1273,6 +1319,7 @@ def build_review_packet(
         "handoff_followthrough_summary": followthrough_summary,
         "benchmark_report_chain_handoff": chain_handoff,
         "handoff_delivery_contract": delivery_contract,
+        "project_agent_required_reads": required_reads,
         "handoff_interface_budget": handoff_interface_budget,
         "decision_freshness_warning": freshness_warning,
         "stale_latest_run_warning": stale_latest_run_warning,

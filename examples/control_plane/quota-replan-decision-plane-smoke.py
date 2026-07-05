@@ -217,6 +217,19 @@ def assert_replan_beats_monitor_quiet_skip() -> None:
     }, guard
     assert guard["goal_frontier_projection"]["acceptance_gaps"] == [], guard
     assert guard["autonomous_replan_scope"]["applies"] is True, guard
+    required_reads = guard["required_reads"]
+    assert required_reads[0]["kind"] == "agent_scoped_evidence_log", required_reads
+    assert required_reads[0]["agent_id"] == SIDE_AGENT, required_reads
+    assert required_reads[0]["todo_id"] == "todo_monitor_wait", required_reads
+    assert "evidence-log" in required_reads[0]["command"], required_reads
+    assert " --agent-id codex-side-bypass " in f" {required_reads[0]['command']} ", required_reads
+    assert guard["autonomous_replan_obligation"]["required_reads"] == required_reads, guard
+    assert (
+        guard["interaction_contract"]["agent_channel"]["required_reads"] == required_reads
+    ), guard
+    assert (
+        guard["interaction_contract"]["cli_channel"]["required_reads"] == required_reads
+    ), guard
     assert guard["autonomous_replan_decision"]["decision_plane"] == (
         "goal_frontier_before_lane_quiet_or_agent_scope_wait"
     ), guard
@@ -225,6 +238,8 @@ def assert_replan_beats_monitor_quiet_skip() -> None:
     assert "goal_frontier_projection: replan_required=True" in markdown, markdown
     assert "deferred_ready=0 acceptance_gaps=0" in markdown, markdown
     assert "autonomous_replan_decision: decision=autonomous_replan_required" in markdown, markdown
+    assert "required_read: kind=agent_scoped_evidence_log" in markdown, markdown
+    assert "evidence-log --goal-id replan-decision-plane-fixture" in markdown, markdown
 
 
 def assert_future_scheduled_monitor_quiets_without_generated_replan() -> None:

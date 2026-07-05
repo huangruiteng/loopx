@@ -509,6 +509,11 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
                         "gate": "none",
                         "next_action": "Attempt a ranker / cross-domain evidence segment or report blocker.",
                         "stop_condition": "stop if useful work needs unapproved scope",
+                        "agent_member": {
+                            "agent_id": "codex-side-bypass",
+                            "role": "side-agent",
+                            "scope_summary": "delivery-side-bypass",
+                        },
                         "agent_todos": {
                             "items": [
                                 {
@@ -604,6 +609,11 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
     contract = payload["handoff_delivery_contract"]
     assert payload["ok"] is True, payload
     assert payload["connected_delivery_handoff"] is True, payload
+    required_reads = payload["project_agent_required_reads"]
+    assert required_reads[0]["kind"] == "agent_scoped_evidence_log", required_reads
+    assert required_reads[0]["agent_id"] == "codex-side-bypass", required_reads
+    assert "evidence-log" in required_reads[0]["command"], required_reads
+    assert " --agent-id codex-side-bypass " in f" {required_reads[0]['command']} ", required_reads
     assert "quota should-run" in payload["project_agent_command"], payload
     assert "--goal-id delivery-side-bypass" in payload["project_agent_command"], payload
     assert contract["mode"] == "expand_after_surface_progress_loop", payload
@@ -612,6 +622,9 @@ def assert_connected_delivery_surface_loop_requires_macro_evidence() -> None:
     assert "connected-delivery" in handoff, handoff
     assert "真实 delivery" in handoff, handoff
     assert "可改文件、验证、写回、spend" in handoff, handoff
+    assert "必读流水账" in handoff, handoff
+    assert "evidence-log" in handoff, handoff
+    assert "codex-side-bypass" in handoff, handoff
     assert "surface-only 下游传播" in handoff, handoff
     assert "只读或 dry-run 路径" not in handoff, handoff
     assert "Agent 待办候选 2" in handoff, handoff

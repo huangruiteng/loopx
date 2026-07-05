@@ -654,6 +654,21 @@ def interaction_next_cli_actions(payload: dict[str, Any], *, mode: str) -> list[
     return ["no quota spend without validated transition/blocker writeback"]
 
 
+def _interaction_required_reads(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    reads = payload.get("required_reads")
+    if not isinstance(reads, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for item in reads:
+        if not isinstance(item, dict):
+            continue
+        command = protocol_action_text(item.get("command"), limit=360)
+        if not command:
+            continue
+        result.append({**item, "command": command})
+    return result
+
+
 def _interaction_spend_policy(
     execution_obligation: dict[str, Any],
     heartbeat_recommendation: dict[str, Any],
@@ -794,6 +809,7 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if user_reason:
         user_channel["reason"] = user_reason
+    required_reads = _interaction_required_reads(payload)
 
     contract = {
         "schema_version": INTERACTION_CONTRACT_SCHEMA_VERSION,
@@ -817,6 +833,9 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
             ),
         },
     }
+    if required_reads:
+        contract["agent_channel"]["required_reads"] = required_reads
+        contract["cli_channel"]["required_reads"] = required_reads
     if mode in {
         "user_gate",
         "user_todo_blocker_push",

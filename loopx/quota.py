@@ -77,6 +77,9 @@ from .control_plane.runtime.decision_freshness import (
     DECISION_FRESHNESS_WARNING_ITEM_LIMIT,
     decision_freshness_warning as _decision_freshness_warning,
 )
+from .control_plane.runtime.agent_scoped_evidence_log import (
+    build_agent_scoped_required_read,
+)
 from .control_plane.runtime.promotion_readiness import (
     promotion_readiness_warning as _promotion_readiness_warning,
 )
@@ -2619,6 +2622,14 @@ def build_quota_should_run(
             payload["next_handoff_condition"] = item.get("next_handoff_condition")
         if should_run and item.get("agent_command"):
             payload["agent_command"] = item.get("agent_command")
+        required_reads = _quota_required_reads(payload)
+        if required_reads:
+            payload["required_reads"] = required_reads
+            if isinstance(payload.get("autonomous_replan_obligation"), dict):
+                payload["autonomous_replan_obligation"] = {
+                    **payload["autonomous_replan_obligation"],
+                    "required_reads": required_reads,
+                }
         payload["automation_liveness"] = build_automation_liveness(payload)
         payload["interaction_contract"] = build_interaction_contract(payload)
         payload["scheduler_hint"] = _scheduler_hint(
@@ -2884,6 +2895,52 @@ def _compact_quota_decision(decision: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _first_todo_id_from_items(value: Any) -> str | None:
+    if not isinstance(value, list):
+        return None
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        todo_id = normalize_todo_id(item.get("todo_id") or item.get("id"))
+        if todo_id:
+            return todo_id
+    return None
+
+
+def _required_read_todo_id(decision: dict[str, Any]) -> str | None:
+    lane_action = (
+        decision.get("agent_lane_next_action")
+        if isinstance(decision.get("agent_lane_next_action"), dict)
+        else {}
+    )
+    todo_id = normalize_todo_id(lane_action.get("todo_id") or lane_action.get("id"))
+    if todo_id:
+        return todo_id
+    agent_scope_frontier = (
+        decision.get("agent_scope_frontier")
+        if isinstance(decision.get("agent_scope_frontier"), dict)
+        else {}
+    )
+    for key in (
+        "deferred_resume_candidates",
+        "route_continuation_replan_candidates",
+        "monitor_blocked_resume_candidates",
+    ):
+        todo_id = _first_todo_id_from_items(agent_scope_frontier.get(key))
+        if todo_id:
+            return todo_id
+    agent_todos = (
+        decision.get("agent_todo_summary")
+        if isinstance(decision.get("agent_todo_summary"), dict)
+        else {}
+    )
+    for key in ("first_executable_items", "first_open_items"):
+        todo_id = _first_todo_id_from_items(agent_todos.get(key))
+        if todo_id:
+            return todo_id
+    return None
+
+
 def _quota_decision_agent_id(decision: dict[str, Any]) -> str | None:
     agent_identity = (
         decision.get("agent_identity")
@@ -2891,6 +2948,26 @@ def _quota_decision_agent_id(decision: dict[str, Any]) -> str | None:
         else {}
     )
     return normalize_todo_claimed_by(agent_identity.get("agent_id"))
+
+
+def _quota_required_reads(decision: dict[str, Any]) -> list[dict[str, Any]]:
+    effective_action = str(decision.get("effective_action") or "")
+    replan_required = effective_action in {
+        AUTONOMOUS_REPLAN_REQUIRED_MODE,
+        AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value,
+    } or isinstance(decision.get("autonomous_replan_obligation"), dict)
+    if not replan_required:
+        return []
+    read = build_agent_scoped_required_read(
+        goal_id=str(decision.get("goal_id") or ""),
+        agent_id=_quota_decision_agent_id(decision),
+        todo_id=_required_read_todo_id(decision),
+        reason=(
+            "read this agent's thin public-safe evidence ledger before autonomous "
+            "replan; other agents stay frontier-only"
+        ),
+    )
+    return [read] if read else []
 
 
 def _scheduler_ack_failure(
@@ -4464,6 +4541,19 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         )
         if replan_obligation.get("next_validation_command"):
             lines.append(f"- autonomous_replan_validation: `{replan_obligation.get('next_validation_command')}`")
+    required_reads = payload.get("required_reads") if isinstance(payload.get("required_reads"), list) else []
+    for read in required_reads[:3]:
+        if not isinstance(read, dict):
+            continue
+        command = str(read.get("command") or "").strip()
+        if command:
+            lines.append(
+                "- required_read: "
+                f"kind={read.get('kind')} "
+                f"agent_id={read.get('agent_id')} "
+                f"todo_id={read.get('todo_id') or ''} "
+                f"command=`{command}`"
+            )
     work_lane_contract = (
         payload.get("work_lane_contract")
         if isinstance(payload.get("work_lane_contract"), dict)
