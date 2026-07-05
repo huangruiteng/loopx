@@ -122,7 +122,6 @@ def main() -> int:
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
-            "summarize_evidence",
         ], payload
 
         manual_turns = [
@@ -132,8 +131,10 @@ def main() -> int:
             "write_research_contract",
             "propose_hypothesis",
             "run_dev_eval",
-            "summarize_evidence",
         ], payload
+        no_action_turns = [turn for turn in payload["turns"] if turn.get("mode") == "no_action"]
+        assert [turn["agent_id"] for turn in no_action_turns] == ["evaluator-promoter"], payload
+        assert no_action_turns[0]["selected_action"] is None, payload
         assert all(turn["executed"] is False for turn in manual_turns), payload
         assert all(turn.get("completion_status") is None for turn in manual_turns), payload
         assert all(turn.get("dev_metric") is None for turn in payload["turns"]), payload

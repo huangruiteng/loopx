@@ -115,6 +115,16 @@ def assert_manual_research_required(payload: dict[str, Any], *, action: str) -> 
     assert_public_safe(payload)
 
 
+def assert_no_action(payload: dict[str, Any], *, agent_id: str) -> None:
+    assert payload["schema_version"] == "auto_research_worker_turn_v0", payload
+    assert payload["mode"] == "no_action", payload
+    assert payload["agent_id"] == agent_id, payload
+    assert payload["executed"] is False, payload
+    assert payload["frontier"]["frontier"]["selected"] is None, payload
+    assert payload["frontier"]["frontier"]["runnable_count"] == 0, payload
+    assert_public_safe(payload)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
@@ -127,12 +137,16 @@ def main() -> int:
             tmux_bin="tmux",
             reasoning_effort="high",
         )
-        _visible_control, registry, runtime_root = _seed_visible_demo_control_plane(
+        visible_control, registry, runtime_root = _seed_visible_demo_control_plane(
             demo_root=temp,
             goal_id=GOAL_ID,
             objective="Verify visible auto-research requires real role-authored evidence.",
             supervisor=supervisor,
         )
+        seeded_todos = visible_control["seeded_todos"]
+        executor_seed = next(item for item in seeded_todos if item["agent_id"] == EXECUTOR_AGENT_ID)
+        evaluator_seed = next(item for item in seeded_todos if item["agent_id"] == EVALUATOR_AGENT_ID)
+        assert evaluator_seed["resume_when"] == f"todo_done:{executor_seed['todo_id']}", visible_control
         workspace = temp / "visible-workspace"
         workspace.mkdir()
 
@@ -174,10 +188,7 @@ def main() -> int:
             execute=True,
             complete=False,
         )
-        assert_manual_research_required(evaluator_execute, action="summarize_evidence")
-        assert "dev_metric" not in evaluator_execute, evaluator_execute
-        assert "holdout_metric" not in evaluator_execute, evaluator_execute
-        assert_public_safe(evaluator_execute)
+        assert_no_action(evaluator_execute, agent_id=EVALUATOR_AGENT_ID)
     return 0
 
 

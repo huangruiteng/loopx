@@ -169,6 +169,7 @@ def _seed_visible_demo_control_plane(
     )
 
     seeded_todos: list[dict[str, object]] = []
+    seeded_todo_ids_by_action: dict[str, str] = {}
     for lane in lanes:
         agent_id = str(lane.get("agent_id") or "").strip()
         role_id = str(lane.get("role_id") or "").strip()
@@ -187,15 +188,25 @@ def _seed_visible_demo_control_plane(
             task_class="advancement_task",
             action_kind=action_kind,
             claimed_by=agent_id or None,
+            resume_when=(
+                f"todo_done:{seeded_todo_ids_by_action['run_dev_eval']}"
+                if action_kind == "summarize_evidence"
+                and seeded_todo_ids_by_action.get("run_dev_eval")
+                else None
+            ),
             project=control_project,
         )
+        todo_id = result.get("todo_id")
+        if isinstance(todo_id, str) and todo_id:
+            seeded_todo_ids_by_action.setdefault(action_kind, todo_id)
         seeded_todos.append(
             {
-                "todo_id": result.get("todo_id"),
+                "todo_id": todo_id,
                 "agent_id": agent_id,
                 "lane_id": lane_id,
                 "role_id": role_id,
                 "action_kind": action_kind,
+                "resume_when": result.get("resume_when"),
             }
         )
 

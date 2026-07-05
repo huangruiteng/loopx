@@ -98,6 +98,31 @@ case is not that KNN lacks a baseline; it is that the visible flow did not make
 successive, role-authored research and improvement obvious enough, and the
 control plane let the follow-up frontier disappear.
 
+One concrete visible-run subcase is an evaluator pane waking before the executor
+has appended evidence. That is not a reason to add a central workflow driver.
+The correct first-demo shape is Codex CLI pane/goal driven on the outside and
+LoopX state/frontier driven on the inside: the evaluator todo should be
+resumable on the executor evidence step, so the evaluator waits rather than
+recording `evidence=0` and closing itself early.
+
+A follow-up visible run confirmed the smaller fix path:
+
+- The evaluator seed todo waits on the executor dev-evidence todo through
+  `resume_when`, so the first evaluator turn reports a wait state instead of
+  closing on `evidence=0`.
+- The fixed wake broadcaster must resolve panes inside the requested tmux
+  session only and target stable lane metadata, not mutable Codex pane titles or
+  all tmux panes on the host.
+- Long-running Codex TUI panes may only show the bottom input prompt in the
+  capture window. Wake readiness and submit retry must recognize that footer
+  shape and retry when the fixed prompt tail remains in the input box.
+
+With those fixes, a real visible KNN run advanced through executor evidence,
+evaluator review, and a curator successor handoff without a hidden workflow
+driver. The remaining product question is how much of this state should be
+summarized as a compact `research_contract_v0` projection so future runs can
+explain the current stage without reading pane transcripts.
+
 ## Responsibility Split
 
 This was partly a LoopX control-plane gap:
