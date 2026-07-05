@@ -1619,6 +1619,13 @@ def skillsbench_runner_error_attribution(error_text: str) -> tuple[str, str, lis
             "skillsbench_verifier_setup_preflight_blocked",
             "skillsbench_environment_setup_error",
         ]
+    if "benchmark egress proxy preflight blocked" in text:
+        label = "skillsbench_benchmark_egress_proxy_preflight_blocked"
+        return label, label, [
+            label,
+            "skillsbench_benchmark_egress_proxy_required",
+            "skillsbench_environment_setup_error",
+        ]
     if "docker compose command failed" in text:
         if (
             "cannot connect to the docker daemon" in text

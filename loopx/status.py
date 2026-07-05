@@ -2787,6 +2787,119 @@ def _apply_skillsbench_pre_agent_setup_compact_projection(
     compact["native_goal_worker_pre_agent_setup_blocked"] = True
 
 
+def _apply_skillsbench_benchmark_egress_preflight_compact_projection(
+    compact: dict[str, Any],
+    *,
+    source: dict[str, Any] | None = None,
+) -> None:
+    source = source if isinstance(source, dict) else {}
+    source_runner_config = (
+        source.get("runner_config")
+        if isinstance(source.get("runner_config"), dict)
+        else {}
+    )
+    proxy_required = (
+        compact.get("benchmark_egress_proxy_required") is True
+        or source_runner_config.get("benchmark_egress_proxy_required") is True
+    )
+    proxy_ready = (
+        compact.get("benchmark_egress_proxy_ready") is True
+        or source_runner_config.get("benchmark_egress_proxy_ready") is True
+    )
+    proxy_status = public_safe_compact_text(
+        compact.get("benchmark_egress_proxy_status")
+        or source_runner_config.get("benchmark_egress_proxy_status"),
+        limit=120,
+    )
+    if not proxy_required or proxy_ready:
+        return
+    if proxy_status not in {
+        "failed",
+        "invalid_proxy_value",
+        "missing_required_proxy",
+        "proxy_connect_rejected",
+        "unsupported_proxy_scheme",
+    }:
+        return
+    if not _skillsbench_compact_official_score_missing(compact):
+        return
+
+    label = "skillsbench_benchmark_egress_proxy_preflight_blocked"
+    compact["score_failure_attribution"] = label
+    compact["first_blocker"] = label
+    compact["repeat_blocked_by"] = label
+    compact["official_score_comparable_to_native_codex"] = False
+    compact["official_score_comparable_to_loopx_treatment"] = False
+
+    labels = [
+        item
+        for item in compact.get("failure_attribution_labels", [])
+        if isinstance(item, str)
+        and item
+        and item
+        not in {
+            "skillsbench_product_mode_uncountable_treatment",
+            "skillsbench_remote_bridge_agent_operation_trace_missing",
+        }
+    ]
+    for item in (
+        label,
+        "skillsbench_environment_setup_error",
+        f"skillsbench_benchmark_egress_proxy_{proxy_status}",
+    ):
+        if item not in labels:
+            labels.append(item)
+    compact["failure_attribution_labels"] = labels[:MAX_BENCHMARK_RUN_LIST_ITEMS]
+
+    attempt_accounting = compact.get("attempt_accounting")
+    if isinstance(attempt_accounting, dict):
+        attempt_accounting["failure_label"] = label
+        attempt_accounting["failure_class"] = "job_materialization_failed"
+    runner_failure = compact.get("runner_failure")
+    if isinstance(runner_failure, dict):
+        runner_failure["failure_class"] = label
+        runner_failure["benchmark_egress_proxy_preflight_blocked"] = True
+
+    validation = (
+        compact.get("validation")
+        if isinstance(compact.get("validation"), dict)
+        else {}
+    )
+    validation["benchmark_egress_proxy_preflight_blocked"] = True
+    validation["raw_verifier_output_read"] = False
+    validation["all_passed"] = False
+    compact["validation"] = validation
+
+    compact["benchmark_egress_proxy_diagnostic"] = {
+        "schema_version": "skillsbench_benchmark_egress_proxy_diagnostic_v0",
+        "status": "benchmark_egress_proxy_preflight_blocked",
+        "score_failure_attribution": label,
+        "proxy_required": True,
+        "proxy_ready": False,
+        "proxy_status": proxy_status,
+        "proxy_error_kind": public_safe_compact_text(
+            compact.get("benchmark_egress_proxy_error_kind")
+            or source_runner_config.get("benchmark_egress_proxy_error_kind"),
+            limit=120,
+        ),
+        "proxy_mode_requested": public_safe_compact_text(
+            compact.get("benchmark_egress_proxy_mode_requested")
+            or source_runner_config.get("benchmark_egress_proxy_mode_requested"),
+            limit=80,
+        ),
+        "proxy_mode_effective": public_safe_compact_text(
+            compact.get("benchmark_egress_proxy_mode_effective")
+            or source_runner_config.get("benchmark_egress_proxy_mode_effective"),
+            limit=80,
+        ),
+        "proxy_url_recorded": False,
+        "raw_logs_read": False,
+        "raw_task_text_read": False,
+        "raw_trajectory_read": False,
+        "next_diagnostic_action": "configure_valid_private_benchmark_egress_proxy",
+    }
+
+
 def _compact_benchmark_result_discovery(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -4508,6 +4621,10 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         compact["validation"] = compact_validation
         _apply_skillsbench_pre_agent_setup_compact_projection(compact)
 
+    _apply_skillsbench_benchmark_egress_preflight_compact_projection(
+        compact,
+        source=source,
+    )
     apply_skillsbench_verifier_bootstrap_missing_score_attribution(
         compact,
         task_staging=compact.get("task_staging"),

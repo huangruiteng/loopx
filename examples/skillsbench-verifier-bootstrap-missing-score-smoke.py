@@ -223,6 +223,90 @@ def test_pre_agent_package_install_risk_overrides_bridge_trace_missing() -> None
     assert diagnostic["raw_trajectory_read"] is False, diagnostic
 
 
+def test_benchmark_egress_preflight_overrides_verifier_package_risk() -> None:
+    compact = _missing_score_compact()
+    plan = _package_install_pre_agent_plan()
+    compact.update(
+        {
+            "mode": "skillsbench_codex_cli_goal_baseline",
+            "route": "codex-cli-goal-baseline",
+            "task_id": "civ6-adjacency-optimizer",
+            "score_failure_attribution": (
+                "skillsbench_remote_bridge_agent_operation_trace_missing"
+            ),
+            "first_blocker": "skillsbench_remote_bridge_agent_operation_trace_missing",
+            "failure_attribution_labels": [
+                "skillsbench_remote_bridge_agent_operation_trace_missing",
+                "skillsbench_product_mode_uncountable_treatment",
+                "skillsbench_runner_setup_error",
+            ],
+            "runner_config": {
+                "schema_version": "skillsbench_runner_config_v0",
+                "benchmark_egress_proxy_required": True,
+                "benchmark_egress_proxy_ready": False,
+                "benchmark_egress_proxy_configured": False,
+                "benchmark_egress_proxy_status": "invalid_proxy_value",
+                "benchmark_egress_proxy_error_kind": "unexpanded_placeholder",
+                "benchmark_egress_proxy_mode_requested": "require",
+                "benchmark_egress_proxy_mode_effective": "require",
+                "benchmark_egress_proxy_url_recorded": False,
+                "fail_fast_on_verifier_bootstrap_risk": False,
+            },
+            "task_staging": plan["task_staging"],
+            "task_setup_preflight": plan["task_setup_preflight"],
+            "attempt_accounting": {
+                "schema_version": "skillsbench_attempt_accounting_v0",
+                "attempt_lifecycle_phase": "not_started",
+                "failure_class": "none",
+                "failure_label": "not_run_adapter_skeleton",
+            },
+            "runner_failure": {
+                "schema_version": "skillsbench_runner_failure_v0",
+                "exception_type": "SkillsBenchSetupPreflightBlocked",
+                "failure_class": (
+                    "skillsbench_remote_bridge_agent_operation_trace_missing"
+                ),
+                "raw_error_recorded": False,
+                "raw_logs_read": False,
+                "raw_task_text_read": False,
+                "raw_trajectory_read": False,
+            },
+        }
+    )
+
+    reduced = compact_benchmark_run(compact)
+
+    assert reduced is not None, compact
+    assert reduced["score_failure_attribution"] == (
+        "skillsbench_benchmark_egress_proxy_preflight_blocked"
+    ), reduced
+    assert reduced["first_blocker"] == (
+        "skillsbench_benchmark_egress_proxy_preflight_blocked"
+    ), reduced
+    assert reduced["runner_failure"]["failure_class"] == (
+        "skillsbench_benchmark_egress_proxy_preflight_blocked"
+    ), reduced
+    assert reduced["attempt_accounting"]["failure_class"] == (
+        "job_materialization_failed"
+    ), reduced
+    assert "skillsbench_remote_bridge_agent_operation_trace_missing" not in reduced[
+        "failure_attribution_labels"
+    ], reduced
+    assert "skillsbench_benchmark_egress_proxy_invalid_proxy_value" in reduced[
+        "failure_attribution_labels"
+    ], reduced
+    assert "verifier_bootstrap_diagnostic" not in reduced, reduced
+    diagnostic = reduced["benchmark_egress_proxy_diagnostic"]
+    assert diagnostic["proxy_required"] is True, diagnostic
+    assert diagnostic["proxy_ready"] is False, diagnostic
+    assert diagnostic["proxy_status"] == "invalid_proxy_value", diagnostic
+    assert diagnostic["proxy_error_kind"] == "unexpanded_placeholder", diagnostic
+    assert diagnostic["proxy_url_recorded"] is False, diagnostic
+    assert diagnostic["raw_logs_read"] is False, diagnostic
+    assert diagnostic["raw_task_text_read"] is False, diagnostic
+    assert diagnostic["raw_trajectory_read"] is False, diagnostic
+
+
 def test_completed_score_is_not_reclassified_by_bootstrap_risk() -> None:
     compact = _missing_score_compact()
     plan = _uv_bootstrap_plan()
@@ -256,5 +340,6 @@ def test_completed_score_is_not_reclassified_by_bootstrap_risk() -> None:
 if __name__ == "__main__":
     test_missing_score_uv_bootstrap_risk_gets_verifier_dependency_attribution()
     test_pre_agent_package_install_risk_overrides_bridge_trace_missing()
+    test_benchmark_egress_preflight_overrides_verifier_package_risk()
     test_completed_score_is_not_reclassified_by_bootstrap_risk()
     print("skillsbench-verifier-bootstrap-missing-score-smoke: ok")
