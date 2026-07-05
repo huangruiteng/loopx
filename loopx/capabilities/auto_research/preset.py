@@ -188,25 +188,59 @@ AUTO_RESEARCH_SEED_TITLES = {
 KNN_DEMO_VISIBLE_FIRST_STEP_COMMON = (
     "Read research_contract.public.json before claiming scope or metric facts.",
     "Do not treat $LOOPX_PANE_A2A_TICK output as research evidence.",
+    (
+        "Before claiming progress, leave one role-specific public-safe artifact, "
+        "todo update, or evidence packet that another pane can use."
+    ),
 )
 
 KNN_DEMO_VISIBLE_FIRST_STEPS_BY_ROLE = {
     "research_curator": (
-        "Inspect README.md, solution.py, and eval.py; summarize metric, editable scope, protected scope, and evidence gate.",
-        "If the first hypothesis todo is missing, add a hypothesis-proposer todo for two exact-KNN speedup hypotheses.",
+        (
+            "Write a compact contract note: metric direction, editable file, "
+            "protected files, dev/test gates, and promotion rule."
+        ),
+        (
+            "If the first hypothesis todo is missing, add a hypothesis-proposer "
+            "todo for two exact-KNN speedup hypotheses and cite the contract note."
+        ),
     ),
     "hypothesis_proposer": (
-        "Inspect solution.py, task.py, and eval.py; propose two bounded exact-KNN hypotheses with mechanism and risk.",
-        "Route exactly one dev-attempt todo to research-executor; keep alternatives visible.",
+        (
+            "Inspect solution.py, task.py, and eval.py; produce a two-row "
+            "hypothesis table with mechanism, expected speed source, correctness "
+            "risk, and eval command."
+        ),
+        (
+            "Route exactly one dev-attempt todo to research-executor and keep "
+            "the rejected/backup hypothesis visible as a retry candidate."
+        ),
     ),
     "research_executor": (
-        "Run `bash eval.sh dev` to record the current score before editing.",
-        "Edit only solution.py for one exact-KNN optimization, rerun `bash eval.sh dev`, then record command plus score.",
-        "After a dev improvement, run `bash eval.sh test`, save both JSON outputs, and feed them to `loopx auto-research evidence`.",
+        (
+            "Run `bash eval.sh dev` before editing and save the last JSON line "
+            "as baseline dev evidence."
+        ),
+        (
+            "Edit only solution.py for one exact-KNN optimization, rerun "
+            "`bash eval.sh dev`, and record the command, score, and diff summary."
+        ),
+        (
+            "After a dev improvement, run `bash eval.sh test`, save both JSON "
+            "outputs, and feed the real evaluator JSON to `loopx auto-research evidence`."
+        ),
     ),
     "evaluator_promoter": (
-        "Only when your own evaluator todo is runnable, classify current evidence; if no todo is selected, wait for research-executor evidence instead of closing the evaluator todo.",
-        "Classify claims as dev-only, held-out-supported, retry-needed, or blocked; do not promote without `bash eval.sh test` output.",
+        (
+            "Only when your own evaluator todo is runnable, read executor evidence "
+            "and classify it; if no todo is selected, wait for research-executor "
+            "evidence instead of closing the evaluator todo."
+        ),
+        (
+            "Write a verdict with split label, metric direction, protected-scope "
+            "cleanliness, and next successor/retry todo; do not promote without "
+            "`bash eval.sh test` output."
+        ),
     ),
 }
 

@@ -16,6 +16,12 @@ sys.path.insert(0, str(REPO_ROOT))
 from loopx.capabilities.auto_research.knn_demo_workspace import (  # noqa: E402
     materialize_knn_demo_workspace,
 )
+from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
+    build_auto_research_demo_supervisor_plan,
+)
+from loopx.capabilities.auto_research.user_contract import (  # noqa: E402
+    build_auto_research_preset_context,
+)
 
 QUESTION = "如何提升 KNN 精确近邻检索速度?"
 
@@ -62,6 +68,32 @@ def main() -> int:
     assert "--preset knn-demo" in contract["one_click_start"]["command"], contract
     assert "--preset knn-demo" in payload["commands"]["one_question_start"], payload
     assert payload["contract_acceptance"]["accepted"] is True, payload
+
+    supervisor = build_auto_research_demo_supervisor_plan(
+        goal_id="loopx-auto-research-knn-smoke",
+        open_question=QUESTION,
+        preset_context=build_auto_research_preset_context("knn-demo"),
+        output_language="zh",
+    )
+    role_steps = {
+        role["role_id"]: role["role_profile"]["visible_first_steps"]
+        for role in supervisor["lanes"]
+    }
+    assert "role-specific public-safe artifact" in " ".join(
+        role_steps["research_curator"]
+    ), role_steps
+    assert "two-row hypothesis table" in " ".join(
+        role_steps["hypothesis_proposer"]
+    ), role_steps
+    assert "save the last JSON line as baseline dev evidence" in " ".join(
+        role_steps["research_executor"]
+    ), role_steps
+    assert "feed the real evaluator JSON" in " ".join(
+        role_steps["research_executor"]
+    ), role_steps
+    assert "protected-scope cleanliness" in " ".join(
+        role_steps["evaluator_promoter"]
+    ), role_steps
 
     markdown_result = subprocess.run(
         [

@@ -34,6 +34,12 @@ Commands:
 Evidence rule:
 - Record the command, split, score, mechanism, and changed file before claiming an improvement.
 - Do not edit protected files to improve the score.
+
+Recording-friendly artifact checklist:
+- Curator: metric, editable/protected boundary, and promotion rule.
+- Hypothesis proposer: two exact-KNN speedup hypotheses with mechanism and risk.
+- Executor: baseline dev score, changed mechanism, post-change dev score, and held-out score when dev improves.
+- Evaluator: split-aware verdict and the next role todo or retry reason.
 """
 
 
@@ -44,6 +50,9 @@ Only edit `solution.py`.
 Do not edit `task.py`, `eval.py`, or `eval.sh`.
 
 Run `bash eval.sh dev` for development evidence and `bash eval.sh test` for held-out evidence.
+
+For visible auto-research, do not stop at a status/tick summary. Leave one compact
+public-safe artifact, todo update, or evidence packet that another role can use.
 """
 
 
