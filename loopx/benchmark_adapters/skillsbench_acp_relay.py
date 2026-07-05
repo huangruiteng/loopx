@@ -35,10 +35,14 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
     CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
     POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
+    PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
     codex_cli_tui_post_bridge_blocker_stage,
     codex_cli_tui_post_bridge_closeout_recovery_action,
     codex_cli_tui_post_bridge_recovery_action,
     codex_cli_tui_post_bridge_recovery_skip_reason,
+    codex_cli_tui_pre_bridge_blocker_stage,
+    codex_cli_tui_pre_bridge_recovery_action,
+    codex_cli_tui_pre_bridge_recovery_skip_reason,
 )
 from loopx.codex_cli_goal_tui import (
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
@@ -1203,6 +1207,9 @@ class SkillsBenchLocalAcpRelay:
             last_bridge_summary_size = 0
             last_bridge_activity_at = time.monotonic()
             meaningful_progress_seen = False
+            pre_bridge_recovery_attempt_count = 0
+            pre_bridge_recovery_action = ""
+            pre_bridge_recovery_skip_reason = ""
             post_bridge_recovery_attempt_count = 0
             post_bridge_recovery_action = ""
             post_bridge_recovery_skip_reason = ""
@@ -1281,9 +1288,13 @@ class SkillsBenchLocalAcpRelay:
                     and self._config.goal_active_timeout_sec > 0
                     and _prompt_requires_bridge_first_action(prompt_for_codex)
                 ):
+                    goal_active_timeout_sec = max(
+                        1.0,
+                        float(self._config.goal_active_timeout_sec or 0.0),
+                        float(self._config.first_action_timeout_sec or 0.0),
+                    )
                     goal_active_deadline = (
-                        time.monotonic()
-                        + max(1.0, self._config.goal_active_timeout_sec)
+                        time.monotonic() + goal_active_timeout_sec
                     )
                 first_action_deadline = 0.0
                 if (
@@ -1357,6 +1368,103 @@ class SkillsBenchLocalAcpRelay:
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + retryable_startup_blocker_stage
                         )
+                    pre_bridge_blocker_stage = ""
+                    if (
+                        bridge_summary_path is not None
+                        and not goal_active_observed
+                        and not first_action_seen
+                    ):
+                        pre_bridge_blocker_stage = (
+                            codex_cli_tui_pre_bridge_blocker_stage(
+                                capture,
+                                prompt_visible=(
+                                    codex_cli_tui_input_prompt_visible(capture)
+                                ),
+                            )
+                        )
+                    if pre_bridge_blocker_stage:
+                        recovery_action = codex_cli_tui_pre_bridge_recovery_action(
+                            capture,
+                            stage=pre_bridge_blocker_stage,
+                        )
+                        if recovery_action in {
+                            "press_enter",
+                            "typed_goal_resubmit",
+                        } and (
+                            pre_bridge_recovery_attempt_count
+                            < PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT
+                        ):
+                            pre_bridge_recovery_attempt_count += 1
+                            pre_bridge_recovery_action = recovery_action
+                            if recovery_action == "press_enter":
+                                tmux_submit_enter(tmux_name)
+                            else:
+                                tmux_type_text_and_submit(
+                                    tmux_name=tmux_name,
+                                    text=goal_command_text,
+                                )
+                            first_action_timeout_sec = max(
+                                1.0,
+                                float(self._config.first_action_timeout_sec or 0.0),
+                            )
+                            if goal_active_deadline:
+                                goal_active_deadline = now + max(
+                                    1.0,
+                                    float(self._config.goal_active_timeout_sec or 0.0),
+                                    first_action_timeout_sec,
+                                )
+                            if first_action_deadline:
+                                first_action_deadline = now + first_action_timeout_sec
+                            if meaningful_progress_deadline:
+                                meaningful_progress_deadline = now + max(
+                                    1.0,
+                                    first_action_timeout_sec,
+                                )
+                            if recovery_action == "typed_goal_resubmit":
+                                next_heartbeat = now + max(
+                                    1.0,
+                                    self._config.stream_heartbeat_interval_sec,
+                                )
+                            else:
+                                time.sleep(1.0)
+                            continue
+                        pre_bridge_recovery_skip_reason = (
+                            codex_cli_tui_pre_bridge_recovery_skip_reason(
+                                capture,
+                                stage=pre_bridge_blocker_stage,
+                                recovery_action=recovery_action,
+                            )
+                        )
+                        if (
+                            not pre_bridge_recovery_skip_reason
+                            and recovery_action
+                            in {"press_enter", "typed_goal_resubmit"}
+                        ):
+                            pre_bridge_recovery_skip_reason = "retry_limit_reached"
+                        tmux_kill_session(tmux_name)
+                        if bridge_summary_path is not None:
+                            self._publish_remote_bridge_agent_operations_trace(
+                                bridge_summary_path=bridge_summary_path,
+                            )
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage=pre_bridge_blocker_stage,
+                            goal_active_observed=goal_active_observed,
+                            goal_terminal_observed=goal_terminal_observed,
+                            first_action_observed=first_action_seen,
+                            bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=thread_prewarm_observed,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=(
+                                goal_command_submission_method
+                            ),
+                            post_bridge_recovery_attempt_count=pre_bridge_recovery_attempt_count,
+                            post_bridge_recovery_action=pre_bridge_recovery_action,
+                            post_bridge_recovery_skip_reason=pre_bridge_recovery_skip_reason,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_cli_goal_" + pre_bridge_blocker_stage
+                        )
                     if (
                         not goal_active_observed
                         and not first_action_seen
@@ -1380,6 +1488,9 @@ class SkillsBenchLocalAcpRelay:
                             goal_command_submission_method=(
                                 goal_command_submission_method
                             ),
+                            post_bridge_recovery_attempt_count=pre_bridge_recovery_attempt_count,
+                            post_bridge_recovery_action=pre_bridge_recovery_action,
+                            post_bridge_recovery_skip_reason=pre_bridge_recovery_skip_reason,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_goal_active_timeout"
@@ -1555,11 +1666,16 @@ class SkillsBenchLocalAcpRelay:
                                 goal_command_submission_method
                             ),
                             post_bridge_recovery_attempt_count=(
-                                post_bridge_recovery_attempt_count
+                                pre_bridge_recovery_attempt_count
+                                + post_bridge_recovery_attempt_count
                             ),
-                            post_bridge_recovery_action=post_bridge_recovery_action,
+                            post_bridge_recovery_action=(
+                                post_bridge_recovery_action
+                                or pre_bridge_recovery_action
+                            ),
                             post_bridge_recovery_skip_reason=(
                                 post_bridge_recovery_skip_reason
+                                or pre_bridge_recovery_skip_reason
                             ),
                         )
                         return _recoverable_codex_turn_failure_message(
@@ -1591,11 +1707,16 @@ class SkillsBenchLocalAcpRelay:
                                 goal_command_submission_method
                             ),
                             post_bridge_recovery_attempt_count=(
-                                post_bridge_recovery_attempt_count
+                                pre_bridge_recovery_attempt_count
+                                + post_bridge_recovery_attempt_count
                             ),
-                            post_bridge_recovery_action=post_bridge_recovery_action,
+                            post_bridge_recovery_action=(
+                                post_bridge_recovery_action
+                                or pre_bridge_recovery_action
+                            ),
                             post_bridge_recovery_skip_reason=(
                                 post_bridge_recovery_skip_reason
+                                or pre_bridge_recovery_skip_reason
                             ),
                         )
                         return _recoverable_codex_turn_failure_message(
@@ -1632,9 +1753,17 @@ class SkillsBenchLocalAcpRelay:
                     thread_prewarm_observed=thread_prewarm_observed,
                     goal_prompt_file_used=goal_prompt_file_used,
                     goal_command_submission_method=goal_command_submission_method,
-                    post_bridge_recovery_attempt_count=post_bridge_recovery_attempt_count,
-                    post_bridge_recovery_action=post_bridge_recovery_action,
-                    post_bridge_recovery_skip_reason=post_bridge_recovery_skip_reason,
+                    post_bridge_recovery_attempt_count=(
+                        pre_bridge_recovery_attempt_count
+                        + post_bridge_recovery_attempt_count
+                    ),
+                    post_bridge_recovery_action=(
+                        post_bridge_recovery_action or pre_bridge_recovery_action
+                    ),
+                    post_bridge_recovery_skip_reason=(
+                        post_bridge_recovery_skip_reason
+                        or pre_bridge_recovery_skip_reason
+                    ),
                 )
                 if goal_terminal_observed and not goal_failed_observed:
                     return "codex cli /goal completed"

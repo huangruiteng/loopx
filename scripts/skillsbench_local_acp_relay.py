@@ -124,6 +124,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--goal-active-timeout-sec",
+        type=float,
+        default=CodexExecConfig.goal_active_timeout_sec,
+        help=(
+            "Optional timeout for observing Codex CLI /goal active state before "
+            "the first sandbox bridge operation. 0 disables the startup watchdog."
+        ),
+    )
+    parser.add_argument(
         "--app-server-goal-followup-max",
         type=int,
         default=0,
@@ -242,6 +251,7 @@ def main(argv: list[str] | None = None) -> int:
             worker_script=args.worker_script,
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,
             first_action_timeout_sec=args.first_action_timeout_sec,
+            goal_active_timeout_sec=args.goal_active_timeout_sec,
             app_server_goal_followup_max=args.app_server_goal_followup_max,
             app_server_goal_prompt_style=args.app_server_goal_prompt_style,
             bridge_idle_timeout_sec=args.bridge_idle_timeout_sec,

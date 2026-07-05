@@ -3,6 +3,7 @@ from __future__ import annotations
 from loopx.codex_cli_goal_tui import codex_cli_tui_input_prompt_visible
 
 
+PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 2
 CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT = (
     "Continue the active SkillsBench goal after the transient model timeout. "
     "If ./skillsbench-task-prompt.md exists, read it before acting. Use the "
@@ -18,6 +19,95 @@ CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT = (
 POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 4
 
 
+def _capture_has_rate_limit(capture: str) -> bool:
+    lowered = str(capture or "").lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "status 429",
+            "error 429",
+        )
+    )
+
+
+def _capture_has_model_timeout(capture: str) -> bool:
+    lowered = str(capture or "").lower()
+    return any(marker in lowered for marker in ("timed out", "timeout")) and any(
+        marker in lowered for marker in ("model", "request", "error", "failed")
+    )
+
+
+def _capture_has_retry_affordance(capture: str) -> bool:
+    lowered = str(capture or "").lower()
+    return any(marker in lowered for marker in ("press enter", "press return"))
+
+
+def codex_cli_tui_pre_bridge_blocker_stage(
+    capture: str,
+    *,
+    prompt_visible: bool,
+) -> str:
+    """Classify public-safe Codex CLI TUI blockers before bridge activity."""
+
+    if not prompt_visible:
+        return ""
+    if _capture_has_rate_limit(capture):
+        return "pre_bridge_tui_rate_limit"
+    if _capture_has_model_timeout(capture):
+        return "pre_bridge_tui_model_timeout"
+    lowered = str(capture or "").lower()
+    if _capture_has_retry_affordance(capture) and any(
+        marker in lowered
+        for marker in ("error", "failed", "timed out", "timeout", "model")
+    ):
+        return "pre_bridge_tui_error_prompt"
+    return ""
+
+
+def codex_cli_tui_pre_bridge_recovery_action(capture: str, *, stage: str) -> str:
+    """Return a bounded recovery action before the first bridge request."""
+
+    if stage not in {
+        "pre_bridge_tui_model_timeout",
+        "pre_bridge_tui_error_prompt",
+    }:
+        return ""
+    if _capture_has_retry_affordance(capture):
+        return "press_enter"
+    if stage == "pre_bridge_tui_model_timeout" and codex_cli_tui_input_prompt_visible(
+        capture
+    ):
+        return "typed_goal_resubmit"
+    return ""
+
+
+def codex_cli_tui_pre_bridge_recovery_skip_reason(
+    capture: str,
+    *,
+    stage: str,
+    recovery_action: str,
+) -> str:
+    """Return why no pre-bridge recovery action was taken."""
+
+    if recovery_action:
+        return ""
+    if stage == "pre_bridge_tui_rate_limit":
+        return "rate_limit_no_retry"
+    if stage not in {
+        "pre_bridge_tui_model_timeout",
+        "pre_bridge_tui_error_prompt",
+    }:
+        return ""
+    if not _capture_has_retry_affordance(capture) and not codex_cli_tui_input_prompt_visible(
+        capture
+    ):
+        return "no_retry_affordance"
+    return "unsupported_recovery_action"
+
+
 def codex_cli_tui_post_bridge_blocker_stage(
     capture: str,
     *,
@@ -27,23 +117,12 @@ def codex_cli_tui_post_bridge_blocker_stage(
 
     if not prompt_visible:
         return ""
-    lowered = str(capture or "").lower()
-    if any(
-        marker in lowered
-        for marker in (
-            "rate limit",
-            "rate_limit",
-            "too many requests",
-            "status 429",
-            "error 429",
-        )
-    ):
+    if _capture_has_rate_limit(capture):
         return "post_bridge_tui_rate_limit"
-    if any(marker in lowered for marker in ("timed out", "timeout")) and any(
-        marker in lowered for marker in ("model", "request", "error", "failed")
-    ):
+    if _capture_has_model_timeout(capture):
         return "post_bridge_tui_model_timeout"
-    if any(marker in lowered for marker in ("press enter", "press return")) and any(
+    lowered = str(capture or "").lower()
+    if _capture_has_retry_affordance(capture) and any(
         marker in lowered
         for marker in ("error", "failed", "timed out", "timeout", "model")
     ):
@@ -59,8 +138,7 @@ def codex_cli_tui_post_bridge_recovery_action(capture: str, *, stage: str) -> st
         "post_bridge_tui_error_prompt",
     }:
         return ""
-    lowered = str(capture or "").lower()
-    if any(marker in lowered for marker in ("press enter", "press return")):
+    if _capture_has_retry_affordance(capture):
         return "press_enter"
     if (
         stage == "post_bridge_tui_model_timeout"
@@ -87,8 +165,7 @@ def codex_cli_tui_post_bridge_recovery_skip_reason(
         "post_bridge_tui_error_prompt",
     }:
         return ""
-    lowered = str(capture or "").lower()
-    if not any(marker in lowered for marker in ("press enter", "press return")):
+    if not _capture_has_retry_affordance(capture):
         return "no_retry_affordance"
     return "unsupported_recovery_action"
 

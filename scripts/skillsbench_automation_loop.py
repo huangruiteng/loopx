@@ -990,6 +990,8 @@ def _host_local_acp_launch_command(
             str(_effective_local_codex_exec_timeout_sec(args)),
             "--first-action-timeout-sec",
             str(_effective_local_codex_first_action_timeout_sec(args)),
+            "--goal-active-timeout-sec",
+            str(_effective_local_codex_goal_active_timeout_sec(args)),
             "--bridge-idle-timeout-sec",
             str(_effective_local_codex_bridge_idle_timeout_sec(args)),
             "--task-output-quiet-timeout-sec",
@@ -1193,6 +1195,18 @@ def _effective_local_codex_first_action_timeout_sec(args: argparse.Namespace) ->
         if idle_timeout > 0:
             return min(idle_timeout, DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC)
         return DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC
+    return 0
+
+
+def _effective_local_codex_goal_active_timeout_sec(args: argparse.Namespace) -> int:
+    configured = getattr(args, "local_codex_goal_active_timeout_sec", None)
+    if configured is not None:
+        return max(0, int(configured or 0))
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and getattr(args, "route", "") == CODEX_CLI_GOAL_BASELINE_ROUTE
+    ):
+        return _effective_local_codex_first_action_timeout_sec(args)
     return 0
 
 
@@ -4919,6 +4933,12 @@ def _apply_codex_cli_goal_countability_guard_attribution(
     label = "skillsbench_codex_cli_goal_uncountable_no_task_activity"
     if goal_stage == "goal_active_timeout":
         label = "skillsbench_codex_cli_goal_uncountable_goal_active_timeout"
+    elif goal_stage == "pre_bridge_tui_model_timeout":
+        label = "skillsbench_codex_cli_goal_uncountable_pre_bridge_model_timeout"
+    elif goal_stage == "pre_bridge_tui_error_prompt":
+        label = "skillsbench_codex_cli_goal_uncountable_pre_bridge_tui_error"
+    elif goal_stage == "pre_bridge_tui_rate_limit":
+        label = "skillsbench_codex_cli_goal_uncountable_pre_bridge_rate_limit"
     if goal_failed and not missing_task_activity:
         label = "skillsbench_codex_cli_goal_uncountable_goal_failed"
     compact["score_failure_attribution"] = label
@@ -16092,6 +16112,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "codex-cli-goal-baseline, or the app-server Goal default "
             f"({DEFAULT_APP_SERVER_GOAL_FIRST_ACTION_TIMEOUT_SEC}s) for "
             "codex-app-server-goal-baseline; 0 disables the watchdog."
+        ),
+    )
+    parser.add_argument(
+        "--local-codex-goal-active-timeout-sec",
+        type=int,
+        default=None,
+        help=(
+            "Optional watchdog for observing Codex CLI /goal active state before "
+            "the first sandbox bridge operation. Omit to match the "
+            "codex-cli-goal-baseline first-action watchdog; 0 disables this "
+            "startup watchdog."
         ),
     )
     parser.add_argument(

@@ -141,6 +141,11 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
         assert "--remote-command-file-bridge-command" in command, command
         bridge_index = command.index("--remote-command-file-bridge-command")
         assert command[bridge_index + 1] == "python bridge.py", command
+        assert "--goal-active-timeout-sec" in command, command
+        assert (
+            command[command.index("--goal-active-timeout-sec") + 1]
+            == command[command.index("--first-action-timeout-sec") + 1]
+        ), command
 
         proxy_url = "http://127.0.0.1:18182"
         args_with_proxy = parse_args(
@@ -522,10 +527,14 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
     from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
         CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
         POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
+        PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
         codex_cli_tui_post_bridge_blocker_stage,
         codex_cli_tui_post_bridge_closeout_recovery_action,
         codex_cli_tui_post_bridge_recovery_action,
         codex_cli_tui_post_bridge_recovery_skip_reason,
+        codex_cli_tui_pre_bridge_blocker_stage,
+        codex_cli_tui_pre_bridge_recovery_action,
+        codex_cli_tui_pre_bridge_recovery_skip_reason,
     )
     from scripts.skillsbench_automation_loop import (
         _merge_host_local_acp_relay_trace_summary,
@@ -533,8 +542,45 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
     )
 
     assert POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT == 4
+    assert PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT == 2
     assert "Close out the active SkillsBench goal" in (
         CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            "request timed out while waiting for model\n› ",
+            prompt_visible=True,
+        )
+        == "pre_bridge_tui_model_timeout"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_recovery_action(
+            "request timed out while waiting for model\npress enter to retry\n› ",
+            stage="pre_bridge_tui_model_timeout",
+        )
+        == "press_enter"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_recovery_action(
+            "request timed out while waiting for model\n› ",
+            stage="pre_bridge_tui_model_timeout",
+        )
+        == "typed_goal_resubmit"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_recovery_skip_reason(
+            "rate limit reached\npress enter to retry\n› ",
+            stage="pre_bridge_tui_rate_limit",
+            recovery_action="",
+        )
+        == "rate_limit_no_retry"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            "request timed out while waiting for model\n",
+            prompt_visible=False,
+        )
+        == ""
     )
     assert (
         codex_cli_tui_post_bridge_blocker_stage(
@@ -822,6 +868,48 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
     contract = compact["codex_cli_goal_countability_contract"]
     assert contract["goal_stage"] == "goal_active_timeout", contract
     assert contract["raw_material_recorded"] is False, contract
+
+    with tempfile.TemporaryDirectory() as temp:
+        trace_dir = Path(temp) / "trace"
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(worker_public_trace_dir=str(trace_dir))
+        )
+        relay._publish_codex_cli_goal_trace(
+            ok=False,
+            stage="pre_bridge_tui_model_timeout",
+            goal_active_observed=False,
+            goal_terminal_observed=False,
+            first_action_observed=False,
+            bridge_summary_path=None,
+            post_bridge_recovery_attempt_count=2,
+            post_bridge_recovery_action="typed_goal_resubmit",
+            post_bridge_recovery_skip_reason="retry_limit_reached",
+        )
+        plan = {
+            "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+            "host_local_acp_relay_trace_dir": str(trace_dir),
+            "runner_prerequisites": {},
+        }
+        trace = {}
+        _merge_host_local_acp_relay_trace_summary(plan, trace)
+
+    compact = {
+        "route": CODEX_CLI_GOAL_BASELINE_ROUTE,
+        "official_score_status": "completed",
+        "interaction_counters": trace,
+        "runner_prerequisites": plan["runner_prerequisites"],
+        "failure_attribution_labels": ["official_score_zero_case_failure"],
+    }
+    assert _apply_codex_cli_goal_countability_guard_attribution(compact) is True
+    assert compact["score_failure_attribution"] == (
+        "skillsbench_codex_cli_goal_uncountable_pre_bridge_model_timeout"
+    )
+    assert (
+        trace["codex_cli_goal_tui_post_bridge_recovery_action"]
+        == "typed_goal_resubmit"
+    )
+    contract = compact["codex_cli_goal_countability_contract"]
+    assert contract["goal_stage"] == "pre_bridge_tui_model_timeout", contract
 
     with tempfile.TemporaryDirectory() as temp:
         trace_dir = Path(temp) / "trace"
