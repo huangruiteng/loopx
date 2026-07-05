@@ -143,6 +143,7 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "resume_condition",
         "resume_ready",
         "no_followup",
+        "successor_todo_ids",
         "target_key",
         "cadence",
         "next_due_at",
@@ -156,6 +157,9 @@ def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None)
         "route_continuation_reason",
         "route_id",
         "route_key",
+        "completed_at",
+        "updated_at",
+        "superseded_by",
     ):
         if item.get(key) is not None:
             compact[key] = item.get(key)

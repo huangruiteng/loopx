@@ -1,11 +1,27 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Optional
+
+from ..todos.contract import (
+    TODO_TASK_CLASS_ADVANCEMENT,
+    normalize_todo_blocks_agent,
+    normalize_todo_claimed_by,
+    normalize_todo_id,
+)
+from ..work_items.interaction_contract import protocol_action_text
+from .agent_scope import (
+    _compact_todo_summary_item,
+    _todo_item_is_actionable_open,
+    _todo_task_class,
+)
+from .capability_gate import _agent_lane_candidate_sort_key
 
 
 PublicSafeText = Callable[..., Optional[str]]
 ActionAlignment = Callable[[Any, Any], bool]
 TimestampParser = Callable[[Any], Any]
+AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
 
 
 def is_status_neutral_run(
@@ -118,3 +134,259 @@ def latest_run_recommended_action_for_projection(
     if not latest_action or not latest_aligned:
         return lane_action, "agent_lane_recommendation"
     return latest_action, "latest_status_run"
+
+
+def _first_executable_todo_text(agent_todo_summary: dict[str, Any] | None) -> str | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    items = (
+        agent_todo_summary.get("first_executable_items")
+        if isinstance(agent_todo_summary.get("first_executable_items"), list)
+        else []
+    )
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not _todo_item_is_actionable_open(item):
+            continue
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        text = protocol_action_text(item.get("text"), limit=320)
+        if text:
+            return text
+    return None
+
+
+def _todo_ids_from_action(value: Any) -> set[str]:
+    text = str(value or "")
+    if not text:
+        return set()
+    return set(re.findall(r"\btodo_[A-Za-z0-9_]+\b", text))
+
+
+def selected_recommended_action_from_work_lane(
+    item: dict[str, Any],
+    *,
+    agent_todo_summary: dict[str, Any] | None,
+    work_lane_contract: dict[str, Any] | None,
+) -> Any:
+    raw_action = item.get("recommended_action")
+    if (
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("monitor_kind") == "todo_monitor_due"
+        and work_lane_contract.get("must_attempt_work") is True
+    ):
+        due_items = (
+            work_lane_contract.get("monitor_due_items")
+            if isinstance(work_lane_contract.get("monitor_due_items"), list)
+            else []
+        )
+        for due_item in due_items:
+            if not isinstance(due_item, dict):
+                continue
+            text = protocol_action_text(due_item.get("text"), limit=320)
+            if text:
+                return text
+        return raw_action
+    if (
+        isinstance(work_lane_contract, dict)
+        and work_lane_contract.get("lane") == "advancement_task"
+        and "open_agent_todo"
+        in (
+            work_lane_contract.get("reason_codes")
+            if isinstance(work_lane_contract.get("reason_codes"), list)
+            else []
+        )
+    ):
+        return _first_executable_todo_text(agent_todo_summary) or raw_action
+    return raw_action
+
+
+def build_agent_lane_next_action(
+    *,
+    agent_identity: dict[str, Any] | None,
+    agent_todo_summary: dict[str, Any] | None,
+    capability_gate: dict[str, Any] | None,
+    active_next_action: Any = None,
+    scoped_user_gate_fallback: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_identity, dict):
+        return None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id or not isinstance(agent_todo_summary, dict):
+        return None
+
+    if isinstance(scoped_user_gate_fallback, dict):
+        selected = scoped_user_gate_fallback.get("selected_executable")
+        if isinstance(selected, dict):
+            text = protocol_action_text(selected.get("text"), limit=500)
+            claimed_by = normalize_todo_claimed_by(selected.get("claimed_by"))
+            if (
+                text
+                and _todo_item_is_actionable_open(selected)
+                and _todo_task_class(selected) == TODO_TASK_CLASS_ADVANCEMENT
+                and (not claimed_by or claimed_by == agent_id)
+            ):
+                payload = dict(selected)
+                payload.update(
+                    {
+                        "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
+                        "agent_id": agent_id,
+                        "primary_agent": normalize_todo_claimed_by(
+                            agent_identity.get("primary_agent")
+                        ),
+                        "source": "scoped_user_gate_fallback.selected_executable",
+                        "selected_by": "scoped_user_gate_fallback",
+                        "confidence": "selected",
+                        "preserves_goal_next_action": False,
+                        "replaces_gated_goal_next_action": True,
+                    }
+                )
+                if not claimed_by:
+                    payload["claim_required_before_work"] = True
+                return payload
+
+    candidate_sources: list[tuple[str, list[Any]]] = []
+    if isinstance(capability_gate, dict) and capability_gate.get("action") == "run":
+        candidate_sources.append(
+            (
+                "capability_gate.runnable_candidates",
+                capability_gate.get("runnable_candidates")
+                if isinstance(capability_gate.get("runnable_candidates"), list)
+                else [],
+            )
+        )
+    else:
+        candidate_sources.append(
+            (
+                "agent_todo_summary.active_next_action_executable_items",
+                agent_todo_summary.get("active_next_action_executable_items")
+                if isinstance(
+                    agent_todo_summary.get("active_next_action_executable_items"), list
+                )
+                else [],
+            )
+        )
+    candidate_sources.append(
+        (
+            "agent_todo_summary.first_executable_items",
+            agent_todo_summary.get("first_executable_items")
+            if isinstance(agent_todo_summary.get("first_executable_items"), list)
+            else [],
+        )
+    )
+    candidate_sources.append(
+        (
+            "agent_todo_summary.executable_backlog_items",
+            agent_todo_summary.get("executable_backlog_items")
+            if isinstance(agent_todo_summary.get("executable_backlog_items"), list)
+            else [],
+        )
+    )
+
+    preferred_todo_ids = _todo_ids_from_action(active_next_action)
+    primary_agent = normalize_todo_claimed_by(agent_identity.get("primary_agent"))
+
+    seen: set[tuple[str, str]] = set()
+    for source, raw_items in candidate_sources:
+        source_candidates: list[dict[str, Any]] = []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            if not _todo_item_is_actionable_open(raw_item):
+                continue
+            if _todo_task_class(raw_item) != TODO_TASK_CLASS_ADVANCEMENT:
+                continue
+            text = protocol_action_text(raw_item.get("text"), limit=500)
+            if not text:
+                continue
+            identity = (str(raw_item.get("todo_id") or ""), text)
+            if identity in seen:
+                continue
+            claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+            if claimed_by and claimed_by != agent_id:
+                continue
+            seen.add(identity)
+            source_candidates.append(raw_item)
+        for raw_item in sorted(
+            source_candidates,
+            key=lambda candidate: _agent_lane_candidate_sort_key(
+                candidate,
+                agent_id=agent_id,
+                primary_agent=primary_agent,
+                preferred_todo_ids=preferred_todo_ids,
+            ),
+        ):
+            text = protocol_action_text(raw_item.get("text"), limit=500)
+            claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+            todo_id = str(raw_item.get("todo_id") or "").strip()
+            selected_by = (
+                "active_next_action_todo"
+                if todo_id and todo_id in preferred_todo_ids
+                else "current_agent_claimed_todo"
+                if claimed_by == agent_id
+                else "unclaimed_todo"
+            )
+            payload = _compact_todo_summary_item(raw_item, text=text)
+            if selected_by == "unclaimed_todo":
+                payload["claim_required_before_work"] = True
+            blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
+            unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
+            if blocks_agent:
+                payload["unblock_handoff"] = {"blocks_agent": blocks_agent}
+                if unblocks_todo_id:
+                    payload["unblock_handoff"]["unblocks_todo_id"] = unblocks_todo_id
+            for key in (
+                "missing_capabilities",
+                "missing_target_capabilities",
+                "capability_action",
+                "capability_repair_mode",
+            ):
+                if raw_item.get(key) is not None:
+                    payload[key] = raw_item.get(key)
+            payload.update(
+                {
+                    "schema_version": AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION,
+                    "agent_id": agent_id,
+                    "primary_agent": normalize_todo_claimed_by(
+                        agent_identity.get("primary_agent")
+                    ),
+                    "source": source,
+                    "selected_by": selected_by,
+                    "confidence": (
+                        "selected"
+                        if selected_by
+                        in {"active_next_action_todo", "current_agent_claimed_todo"}
+                        else "candidate"
+                    ),
+                    "preserves_goal_next_action": True,
+                }
+            )
+            return payload
+    return None
+
+
+def selected_action_with_agent_lane(
+    selected_action: Any,
+    *,
+    agent_lane_next_action: dict[str, Any] | None,
+) -> Any:
+    if not isinstance(agent_lane_next_action, dict):
+        return selected_action
+    if agent_lane_next_action.get("source") not in {
+        "capability_gate.runnable_candidates",
+        "agent_todo_summary.active_next_action_executable_items",
+    }:
+        return selected_action
+    selected_by = agent_lane_next_action.get("selected_by")
+    confidence = agent_lane_next_action.get("confidence")
+    if selected_by not in {
+        "active_next_action_todo",
+        "current_agent_claimed_todo",
+        "unclaimed_todo",
+    }:
+        return selected_action
+    if confidence not in {"selected", "candidate"}:
+        return selected_action
+    lane_text = str(agent_lane_next_action.get("text") or "").strip()
+    return lane_text or selected_action

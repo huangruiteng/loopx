@@ -20,6 +20,11 @@ NEXT_TODO_TEXT = (
     "Continue the side-agent self-iteration canary with scheduler and quota coverage."
 )
 GOAL_NEXT_ACTION = "Keep the primary goal route stable while the side-agent lane advances."
+CAPABILITY_BLOCKED_TODO_ID = "todo_self_iter_network_only"
+CAPABILITY_FALLBACK_TODO_ID = "todo_self_iter_filesystem_fallback"
+CAPABILITY_FALLBACK_TEXT = (
+    "Run the public-safe filesystem fallback while network capability is unavailable."
+)
 
 
 def run_cli(
@@ -55,6 +60,55 @@ def run_cli(
     return payload
 
 
+def write_registry(
+    *,
+    project: Path,
+    runtime: Path,
+    registry_path: Path,
+    adapter_kind: str,
+) -> None:
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "domain": "side-agent-self-iteration-fixture",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                        "adapter": {
+                            "kind": adapter_kind,
+                            "status": "connected-read-only",
+                        },
+                        "authority_sources": [],
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                            "allowed_slots": 5,
+                        },
+                        "coordination": {
+                            "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
+                            "primary_agent": PRIMARY_AGENT_ID,
+                        },
+                        "workspace_guard_policy": {
+                            "side_agent_independent_worktree_required": False,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
@@ -81,45 +135,50 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         f"claimed_by={AGENT_ID} -->\n",
         encoding="utf-8",
     )
-    registry_path.parent.mkdir(parents=True)
-    registry_path.write_text(
-        json.dumps(
-            {
-                "schema_version": "0.1",
-                "updated_at": "2026-01-01T00:00:00+00:00",
-                "common_runtime_root": str(runtime),
-                "goals": [
-                    {
-                        "id": GOAL_ID,
-                        "domain": "side-agent-self-iteration-fixture",
-                        "status": "active",
-                        "repo": str(project),
-                        "state_file": state_file,
-                        "adapter": {
-                            "kind": "side_agent_self_iteration_fixture_v0",
-                            "status": "connected-read-only",
-                        },
-                        "authority_sources": [],
-                        "quota": {
-                            "compute": 1.0,
-                            "window_hours": 24,
-                            "allowed_slots": 5,
-                        },
-                        "coordination": {
-                            "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
-                            "primary_agent": PRIMARY_AGENT_ID,
-                        },
-                        "workspace_guard_policy": {
-                            "side_agent_independent_worktree_required": False,
-                        },
-                    }
-                ],
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
+    write_registry(
+        project=project,
+        runtime=runtime,
+        registry_path=registry_path,
+        adapter_kind="side_agent_self_iteration_fixture_v0",
+    )
+    return project, runtime, registry_path
+
+
+def write_capability_fallback_fixture(root: Path) -> tuple[Path, Path, Path]:
+    project = root / "project"
+    runtime = root / "runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_path = project / state_file
+    registry_path = project / ".loopx" / "registry.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(
+        "---\n"
+        "status: active\n"
+        "owner_mode: goal\n"
+        'objective: "Exercise side-agent capability fallback routing."\n'
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Side-Agent Capability Fallback Fixture\n\n"
+        "## Objective\n\n"
+        "Exercise side-agent capability fallback routing.\n\n"
+        "## Next Action\n\n"
+        f"- Run {CAPABILITY_BLOCKED_TODO_ID} before fallback work.\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P0] Run the network-only side-agent canary path.\n"
+        f"  <!-- loopx:todo todo_id={CAPABILITY_BLOCKED_TODO_ID} status=open "
+        "task_class=advancement_task action_kind=state_machine_canary_refactor "
+        f"required_capabilities=network claimed_by={AGENT_ID} -->\n"
+        f"- [ ] [P1] {CAPABILITY_FALLBACK_TEXT}\n"
+        f"  <!-- loopx:todo todo_id={CAPABILITY_FALLBACK_TODO_ID} status=open "
+        "task_class=advancement_task action_kind=state_machine_canary_refactor "
+        f"required_capabilities=shell claimed_by={AGENT_ID} -->\n",
         encoding="utf-8",
+    )
+    write_registry(
+        project=project,
+        runtime=runtime,
+        registry_path=registry_path,
+        adapter_kind="side_agent_capability_fallback_fixture_v0",
     )
     return project, runtime, registry_path
 
@@ -305,8 +364,56 @@ def assert_self_iteration_flow() -> None:
         assert third["active_state_next_action"] == GOAL_NEXT_ACTION, third
 
 
+def assert_capability_fallback_preserves_frontier_and_scheduler() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-capability-fallback-") as tmp:
+        project, runtime, registry_path = write_capability_fallback_fixture(Path(tmp))
+
+        guard = should_run(registry_path, runtime, project)
+        assert guard["decision"] == "run", guard
+        assert guard["normal_delivery_allowed"] is True, guard
+        assert guard["active_state_next_action"] == (
+            f"Run {CAPABILITY_BLOCKED_TODO_ID} before fallback work."
+        ), guard
+
+        capability = guard["capability_gate"]
+        assert capability["action"] == "run", guard
+        assert capability["runnable_count"] == 1, capability
+        assert capability["runnable_candidates"][0]["todo_id"] == CAPABILITY_FALLBACK_TODO_ID, capability
+        assert capability["blocked_candidates"][0]["todo_id"] == CAPABILITY_BLOCKED_TODO_ID, capability
+        assert capability["blocked_missing"] == ["network"], capability
+
+        lane = guard["agent_lane_next_action"]
+        assert lane["todo_id"] == CAPABILITY_FALLBACK_TODO_ID, guard
+        assert lane["source"] == "capability_gate.runnable_candidates", guard
+        assert lane["selected_by"] == "current_agent_claimed_todo", guard
+        assert lane["required_capabilities"] == ["shell"], guard
+        assert lane["preserves_goal_next_action"] is True, guard
+        assert guard["recommended_action"].endswith(CAPABILITY_FALLBACK_TEXT), guard
+
+        frontier = guard["goal_frontier_projection"]
+        assert frontier["remaining_advancement_frontier"] == {
+            "current_agent_claimed_advancement_count": 2,
+            "unclaimed_advancement_count": 0,
+            "other_agent_claimed_advancement_count": 0,
+        }, frontier
+        assert frontier["replan_required"] is False, frontier
+
+        scheduler = guard["scheduler_hint"]
+        assert scheduler["action"] == "run_now", guard
+        assert scheduler["cadence_class"] == "active_work", guard
+        assert scheduler["codex_app"]["stateful_backoff"]["apply_needed"] is True, guard
+
+        assert_scheduler_ack_round_trip(
+            registry_path=registry_path,
+            runtime=runtime,
+            project=project,
+            guard=guard,
+        )
+
+
 def main() -> int:
     assert_self_iteration_flow()
+    assert_capability_fallback_preserves_frontier_and_scheduler()
     print("side-agent-self-iteration-state-machine-smoke ok")
     return 0
 
