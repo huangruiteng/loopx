@@ -217,6 +217,98 @@
       }
     ]
   },
+  "todo_index": {
+    "schema_version": "todo_index_v0",
+    "source": "synthetic_public_example",
+    "total_count": 3,
+    "current_projected_count": 3,
+    "rollout_event_count": 7,
+    "item_limit": 20,
+    "items": [
+      {
+        "goal_id": "docs-maintenance-goal",
+        "index": 1,
+        "done": false,
+        "text": "Run the first read-only adapter tick and save a compact run record.",
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_example_docs_tick",
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "title": "Run first read-only adapter tick",
+        "source_section": "agent_todos",
+        "task_class": "advancement_task",
+        "action_kind": "read_only_adapter_tick",
+        "claimed_by": "codex-main-control",
+        "agent_id": "codex-main-control",
+        "evidence": "latest_validation: connected_without_run",
+        "updated_at": "2026-06-01T00:09:00+00:00",
+        "latest_event_kind": "todo_claimed",
+        "latest_event_at": "2026-06-01T00:09:00+00:00",
+        "latest_event_status": "open",
+        "event_count": 2,
+        "event_kinds": [
+          "todo_added",
+          "todo_claimed"
+        ]
+      },
+      {
+        "goal_id": "experiment-controller-goal",
+        "index": 1,
+        "done": false,
+        "text": "Compare the latest reward signal with validation evidence, then propose the next experiment step.",
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_example_experiment_replan",
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "title": "Replan next comparable experiment",
+        "source_section": "agent_todos",
+        "task_class": "replan_task",
+        "action_kind": "evidence_aware_replan",
+        "claimed_by": "codex-value-explorer",
+        "agent_id": "codex-value-explorer",
+        "evidence": "event_ledger_summary: evidence+decision present",
+        "updated_at": "2026-06-01T00:06:00+00:00",
+        "latest_event_kind": "todo_updated",
+        "latest_event_at": "2026-06-01T00:06:00+00:00",
+        "latest_event_status": "open",
+        "event_count": 3,
+        "event_kinds": [
+          "todo_added",
+          "evidence_attached",
+          "todo_updated"
+        ]
+      },
+      {
+        "goal_id": "release-watch-goal",
+        "index": 1,
+        "done": false,
+        "text": "Poll the release-readiness monitor only when due and record unchanged evidence without spending quota.",
+        "schema_version": "todo_item_v0",
+        "todo_id": "todo_example_release_monitor",
+        "role": "agent",
+        "status": "open",
+        "priority": "P1",
+        "title": "Poll release-readiness monitor",
+        "source_section": "agent_todos",
+        "task_class": "continuous_monitor",
+        "action_kind": "monitor_poll",
+        "claimed_by": "codex-release-operator",
+        "agent_id": "codex-release-operator",
+        "evidence": "monitor: unchanged hash example",
+        "updated_at": "2026-06-01T00:04:00+00:00",
+        "latest_event_kind": "monitor_poll",
+        "latest_event_at": "2026-06-01T00:04:00+00:00",
+        "latest_event_status": "unchanged",
+        "event_count": 2,
+        "event_kinds": [
+          "todo_added",
+          "monitor_poll"
+        ]
+      }
+    ]
+  },
   "contract": {
     "ok": true,
     "summary": {

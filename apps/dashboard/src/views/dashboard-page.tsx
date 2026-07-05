@@ -296,6 +296,23 @@ type TodoExplorerItem = {
   sourceOrder: number;
 };
 
+type AgentManagementStatus = {
+  label: string;
+  variant: BadgeVariant;
+};
+
+type AgentManagementRow = {
+  agentId: string;
+  claimedTodos: TodoExplorerItem[];
+  evidenceRefs: string[];
+  goalIds: string[];
+  lastActivity?: string | null;
+  nextSafeAction: string;
+  primaryGoalId: string;
+  quotaHints: string[];
+  status: AgentManagementStatus;
+};
+
 function laneFor(item: QueueItem) {
   return laneConfig.find((lane) => lane.waitingOn.includes(item.waiting_on));
 }
@@ -1230,6 +1247,110 @@ function collectTodoExplorerItems(rows: GoalDirectoryRow[], todoIndex?: TodoInde
   });
 }
 
+function compactUnique(values: Array<string | null | undefined>, limit = 4) {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter(Boolean) as string[])).slice(0, limit);
+}
+
+function agentIdForTodo(item: TodoExplorerItem) {
+  const indexedAgent = (item.todo as { agent_id?: string | null }).agent_id?.trim();
+  return item.todo.claimed_by?.trim() || indexedAgent || "unassigned-agent-lane";
+}
+
+function todoActivityTimestamp(todo: TodoItem) {
+  return todo.updated_at || (todo as { latest_event_at?: string | null }).latest_event_at || null;
+}
+
+function timestampValue(value?: string | null) {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatAgentActivity(value?: string | null) {
+  if (!value) {
+    return "No activity timestamp";
+  }
+  return value.replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC");
+}
+
+function agentManagementStatus(openTodos: TodoExplorerItem[], claimedTodos: TodoExplorerItem[]): AgentManagementStatus {
+  if (openTodos.some((item) => todoDisplayStatus(item.todo) === "blocked")) {
+    return { label: "blocked", variant: "danger" };
+  }
+  if (openTodos.some((item) => item.todo.task_class === "continuous_monitor" || item.todo.action_kind?.includes("monitor"))) {
+    return { label: "monitoring", variant: "info" };
+  }
+  if (openTodos.length > 0) {
+    return { label: "active", variant: "success" };
+  }
+  if (claimedTodos.length > 0) {
+    return { label: "clear", variant: "neutral" };
+  }
+  return { label: "waiting", variant: "warning" };
+}
+
+function evidenceRefsForTodo(item: TodoExplorerItem) {
+  const todo = item.todo as TodoItem & {
+    latest_event_kind?: string | null;
+    latest_event_at?: string | null;
+  };
+  const eventRef = todo.latest_event_kind
+    ? `${todo.latest_event_kind}${todo.latest_event_at ? ` @ ${todo.latest_event_at}` : ""}`
+    : null;
+  return [
+    todo.evidence ? `evidence=${todo.evidence}` : null,
+    eventRef ? `event=${eventRef}` : null,
+    item.source ? `source=${item.source}` : null,
+    ...todo.review_materials.map((material) => material.label || material.path),
+  ];
+}
+
+function buildAgentManagementRows(rows: GoalDirectoryRow[], todoIndex?: TodoIndexSummary | null): AgentManagementRow[] {
+  const items = collectTodoExplorerItems(rows, todoIndex).filter((item) => item.role === "agent");
+  const rowByGoal = new Map(rows.map((row) => [row.goal.id, row]));
+  const grouped = new Map<string, TodoExplorerItem[]>();
+  for (const item of items) {
+    const agentId = agentIdForTodo(item);
+    const bucket = grouped.get(agentId) ?? [];
+    bucket.push(item);
+    grouped.set(agentId, bucket);
+  }
+
+  return Array.from(grouped.entries()).map(([agentId, claimedTodos]) => {
+    const goalIds = compactUnique(claimedTodos.map((item) => item.goalId), 6);
+    const openTodos = claimedTodos.filter((item) => !item.todo.done);
+    const primaryTodo = openTodos[0] ?? claimedTodos[0];
+    const primaryGoalId = primaryTodo?.goalId ?? goalIds[0] ?? "";
+    const latestActivity = claimedTodos
+      .map((item) => todoActivityTimestamp(item.todo))
+      .sort((left, right) => timestampValue(right) - timestampValue(left))[0] ?? null;
+    const quotaHints = compactUnique(goalIds.map((goalId) => {
+      const row = rowByGoal.get(goalId);
+      return buildQuotaView(row?.queueItem?.quota ?? row?.goal.quota)?.shortLine;
+    }), 3);
+    const evidenceRefs = compactUnique(claimedTodos.flatMap(evidenceRefsForTodo), 5);
+    return {
+      agentId,
+      claimedTodos,
+      evidenceRefs,
+      goalIds,
+      lastActivity: latestActivity,
+      nextSafeAction: primaryTodo ? todoDisplayTitle(primaryTodo.todo) : "Inspect status projection before taking work",
+      primaryGoalId,
+      quotaHints,
+      status: agentManagementStatus(openTodos, claimedTodos),
+    };
+  }).sort((left, right) => {
+    const leftOpen = left.claimedTodos.some((item) => !item.todo.done) ? 0 : 1;
+    const rightOpen = right.claimedTodos.some((item) => !item.todo.done) ? 0 : 1;
+    return leftOpen - rightOpen
+      || timestampValue(right.lastActivity) - timestampValue(left.lastActivity)
+      || left.agentId.localeCompare(right.agentId);
+  });
+}
+
 function todoExplorerHaystack(item: TodoExplorerItem) {
   const todo = item.todo;
   return [
@@ -1510,6 +1631,136 @@ function TodoFocusColumn({
         </div>
       )}
     </section>
+  );
+}
+
+function AgentManagementPanel({
+  onSelectGoal,
+  rows,
+  selectedGoalId,
+  todoIndex,
+}: {
+  onSelectGoal: (goalId: string) => void;
+  rows: GoalDirectoryRow[];
+  selectedGoalId: string;
+  todoIndex?: TodoIndexSummary | null;
+}) {
+  const [copiedAgentId, setCopiedAgentId] = useState<string | null>(null);
+  const agentRows = useMemo(() => buildAgentManagementRows(rows, todoIndex), [rows, todoIndex]);
+  const claimedTodoCount = agentRows.reduce((sum, row) => sum + row.claimedTodos.length, 0);
+
+  async function copyReadOnlyCommand(row: AgentManagementRow) {
+    const goalArg = row.primaryGoalId ? ` --goal-id ${shellQuote(row.primaryGoalId)}` : "";
+    const command = `loopx --format json status${goalArg} --agent-id ${shellQuote(row.agentId)}`;
+    const copied = await copyTextToClipboard(command);
+    setCopiedAgentId(copied ? row.agentId : null);
+  }
+
+  return (
+    <Card data-testid="agent-management-panel">
+      <CardHeader className="flex-wrap">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Agent Management
+          </CardTitle>
+          <p className="mt-2 text-sm text-slate-500 dark:text-zinc-400">
+            Read-only operator view over claimed todos, last activity, next safe action, and evidence refs.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant={agentRows.length > 0 ? "info" : "neutral"}>{agentRows.length} agents</Badge>
+          <Badge variant={claimedTodoCount > 0 ? "warning" : "neutral"}>{claimedTodoCount} claimed todos</Badge>
+          {todoIndex ? <Badge variant="neutral">{todoIndex.rollout_event_count} rollout events</Badge> : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {agentRows.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-zinc-700 dark:text-zinc-400">
+            No claimed agent rows yet. Add `claimed_by` or `agent_id` to projected agent todos to light up this panel.
+          </div>
+        ) : (
+          <div className="grid gap-3 xl:grid-cols-3">
+            {agentRows.map((row) => {
+              const openCount = row.claimedTodos.filter((item) => !item.todo.done).length;
+              return (
+                <div
+                  className={cn(
+                    "rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-zinc-800 dark:bg-zinc-900",
+                    row.goalIds.includes(selectedGoalId) && "border-sky-300 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/40",
+                  )}
+                  data-testid="agent-management-row"
+                  key={row.agentId}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      className="min-w-0 text-left"
+                      onClick={() => row.primaryGoalId && onSelectGoal(row.primaryGoalId)}
+                      type="button"
+                    >
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Badge variant={row.status.variant}>{row.status.label}</Badge>
+                        <span className="break-all text-sm font-semibold text-slate-950 dark:text-zinc-50">{row.agentId}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {row.goalIds.map((goalId) => (
+                          <Badge key={goalId} variant={goalId === selectedGoalId ? "info" : "neutral"}>
+                            {goalId}
+                          </Badge>
+                        ))}
+                      </div>
+                    </button>
+                    <Button
+                      aria-label={`copy read-only command for ${row.agentId}`}
+                      data-testid="agent-management-copy-command"
+                      onClick={() => void copyReadOnlyCommand(row)}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      <Copy className="h-4 w-4" />
+                      {copiedAgentId === row.agentId ? "copied" : "copy"}
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 text-sm">
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">claimed todos</div>
+                      <div className="mt-1 text-slate-700 dark:text-zinc-300">{openCount}/{row.claimedTodos.length} open</div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        last activity
+                      </div>
+                      <div className="mt-1 break-words text-slate-700 dark:text-zinc-300">{formatAgentActivity(row.lastActivity)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">next safe action</div>
+                      <p className="mt-1 line-clamp-2 break-words leading-6 text-slate-700 dark:text-zinc-300">{row.nextSafeAction}</p>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500 dark:text-zinc-500">evidence refs</div>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {(row.evidenceRefs.length > 0 ? row.evidenceRefs : ["status projection"]).map((ref) => (
+                          <Badge key={ref} variant="neutral">{ref}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    {row.quotaHints.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.quotaHints.map((hint) => (
+                          <Badge key={hint} variant="info">{hint}</Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -6258,6 +6509,15 @@ export function DashboardPage() {
                   selectedTodoGoalId={search.todoGoalId}
                   selectedGoalId={selectedGoalId}
                   status={search.todoStatus}
+                  todoIndex={payload.todo_index}
+                />
+              </section>
+
+              <section>
+                <AgentManagementPanel
+                  onSelectGoal={selectGoal}
+                  rows={goalRows}
+                  selectedGoalId={selectedReviewGoalId}
                   todoIndex={payload.todo_index}
                 />
               </section>
