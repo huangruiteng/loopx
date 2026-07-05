@@ -89,6 +89,22 @@ def side_agent_claimed_advancement() -> dict:
     }
 
 
+def completed_side_agent_advancement_without_successor() -> dict:
+    return {
+        "index": 3,
+        "todo_id": "todo_completed_without_successor",
+        "text": "[P0] Complete a visible auto-research advancement slice.",
+        "role": "agent",
+        "status": "done",
+        "done": True,
+        "priority": "P0",
+        "task_class": "advancement_task",
+        "action_kind": "fix_visible_auto_research_tick",
+        "claimed_by": SIDE_AGENT,
+        "completed_at": "2026-07-05T13:36:19+08:00",
+    }
+
+
 def blocking_handoff_review() -> dict:
     return {
         "index": 2,
@@ -267,6 +283,50 @@ def assert_future_scheduled_monitor_quiets_without_generated_replan() -> None:
     assert "required_reads" not in guard, guard
     assert "required_reads" not in guard["interaction_contract"]["agent_channel"], guard
     assert "required_reads" not in guard["interaction_contract"]["cli_channel"], guard
+
+
+def assert_completed_advancement_without_successor_beats_monitor_quiet_skip() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [
+                monitor_item(),
+                completed_side_agent_advancement_without_successor(),
+            ],
+            replan_obligation=None,
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["heartbeat_recommendation"]["recommended_mode"] == (
+        "autonomous_replan_required"
+    ), guard
+    assert guard["execution_obligation"]["kind"] == "autonomous_replan_required", guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
+    assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True, guard
+    warning = guard["agent_todo_summary"]["todo_succession_warning"]
+    assert warning["reason_code"] == "completed_advancement_without_successor", guard
+    assert warning["items"][0]["todo_id"] == "todo_completed_without_successor", guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["agent_id"] == SIDE_AGENT, guard
+    assert obligation["triggers"][0]["kind"] == "completed_advancement_without_successor", guard
+    assert obligation["triggers"][0]["todo_id"] == "todo_completed_without_successor", guard
+    assert "record explicit no-follow-up" in obligation["recommended_action"], guard
+    assert guard["autonomous_replan_scope"]["scope"] == "explicit_agent_owner", guard
+    assert guard["autonomous_replan_scope"]["applies"] is True, guard
+    frontier = guard["goal_frontier_projection"]
+    assert frontier["replan_required"] is True, guard
+    assert frontier["monitor_only_lanes"]["present"] is True, guard
+    assert frontier["remaining_advancement_frontier"] == {
+        "current_agent_claimed_advancement_count": 0,
+        "unclaimed_advancement_count": 0,
+        "other_agent_claimed_advancement_count": 0,
+    }, guard
+    markdown = render_quota_should_run_markdown(guard)
+    assert "goal_frontier_projection: replan_required=True" in markdown, markdown
+    assert "autonomous_replan_decision: decision=autonomous_replan_required" in markdown, markdown
 
 
 def assert_replan_preserves_current_agent_runnable_frontier() -> None:
@@ -487,6 +547,7 @@ def assert_blocking_handoff_gate_beats_derived_monitor_replan() -> None:
 def main() -> None:
     assert_replan_beats_monitor_quiet_skip()
     assert_future_scheduled_monitor_quiets_without_generated_replan()
+    assert_completed_advancement_without_successor_beats_monitor_quiet_skip()
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_agent_vision_gap_derives_replan()
     assert_agent_scoped_replan_beats_agent_scope_wait()

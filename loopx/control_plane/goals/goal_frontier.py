@@ -10,6 +10,7 @@ AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
+TODO_SUCCESSION_GAP_TRIGGER = "completed_advancement_without_successor"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
 FRONTIER_REPLAN_ACK_DELTA_KINDS = {
@@ -484,6 +485,35 @@ def _blocking_handoff_gate_count(
     )
 
 
+def _succession_gap_items(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(agent_todo_summary, dict):
+        return []
+    warning = (
+        agent_todo_summary.get("todo_succession_warning")
+        if isinstance(agent_todo_summary.get("todo_succession_warning"), dict)
+        else {}
+    )
+    source_items = (
+        warning.get("items")
+        if isinstance(warning.get("items"), list)
+        else agent_todo_summary.get("completed_without_successor_items")
+        if isinstance(agent_todo_summary.get("completed_without_successor_items"), list)
+        else []
+    )
+    items = [item for item in source_items if isinstance(item, dict)]
+    if not agent_id:
+        return items
+    return [
+        item
+        for item in items
+        if str(item.get("claimed_by") or "").strip() in {"", agent_id}
+    ]
+
+
 def derive_goal_frontier_replan_obligation_from_summaries(
     *,
     user_todo_summary: dict[str, Any] | None,
@@ -520,6 +550,62 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     ]
     if user_counts.get("open", 0) > 0:
         return None
+    succession_gap_items = _succession_gap_items(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if (
+        succession_gap_items
+        and agent_counts.get("advancement", 0) == 0
+        and total_frontier_advancement == 0
+    ):
+        triggers = [
+            {
+                "kind": TODO_SUCCESSION_GAP_TRIGGER,
+                "section": "agent_todo_summary.todo_succession_warning",
+                "todo_id": item.get("todo_id"),
+                "text": item.get("text")
+                or item.get("title")
+                or "completed advancement needs a successor or no-followup rationale",
+                "agent_id": agent_id,
+                "claimed_by": item.get("claimed_by"),
+            }
+            for item in succession_gap_items[:3]
+        ]
+        return {
+            "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            "required": True,
+            "agent_id": agent_id,
+            "stall_threshold": 1,
+            "trigger_count": len(succession_gap_items),
+            "triggers": triggers,
+            "guidance_actions": [
+                "create_successor",
+                "link_successor",
+                "record_no_followup",
+            ],
+            "todo_actions": [
+                {
+                    "action": "add",
+                    "role": "agent",
+                    "priority": "P0",
+                    "text": (
+                        "run a bounded successor replan: create or link the next "
+                        "runnable advancement todo, or record an explicit "
+                        "no-follow-up rationale"
+                    ),
+                }
+            ],
+            "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
+            "stop_condition": (
+                "stop if the successor decision requires private material, "
+                "credentials, destructive git, production actions, or owner-only decisions"
+            ),
+            "recommended_action": (
+                "run a bounded successor replan before another quiet poll: add/link "
+                "the next advancement todo, or record explicit no-follow-up"
+            ),
+        }
     if (
         compact_acceptance_gaps
         and agent_counts.get("advancement", 0) == 0
