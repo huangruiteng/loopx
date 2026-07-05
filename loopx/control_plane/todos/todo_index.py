@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from .contract import normalize_todo_id, normalize_todo_status, todo_done_for_status
+from .handoff_note import attach_todo_handoff_note
 from .todo_summary import compact_todo_item
 
 
@@ -45,6 +46,7 @@ def _indexed_status_todo(
             "title": public_safe_compact_text(todo.get("title"), limit=320) or text,
         }
     )
+    attach_todo_handoff_note(item, goal_id=goal_id, source=source)
     return item
 
 
@@ -80,7 +82,7 @@ def _indexed_rollout_todo_event(
     )
     if not summary:
         summary = f"todo event recorded for {todo_id}"
-    return {
+    item = {
         "schema_version": TODO_INDEX_ITEM_SCHEMA_VERSION,
         "goal_id": goal_id,
         "todo_id": todo_id,
@@ -98,6 +100,11 @@ def _indexed_rollout_todo_event(
         "latest_event_status": status,
         "agent_id": public_safe_compact_text(event.get("agent_id"), limit=120),
     }
+    handoff = event.get("handoff") or details.get("handoff")
+    if isinstance(handoff, dict):
+        item["handoff"] = handoff
+    attach_todo_handoff_note(item, goal_id=goal_id, source="rollout_event_log")
+    return item
 
 
 def build_todo_index(

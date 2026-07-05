@@ -159,8 +159,16 @@ history, and evidence refs:
 }
 ```
 
+LoopX derives this note from existing todo, history, and evidence rows. Current
+signals include `blocks_agent`, `claimed_by`, `unblocks_todo_id`,
+`successor_todo_ids`, `resume_when`, `note`, `evidence`, and compact rollout
+event refs. The same `handoff_note_v0` object can therefore appear inside
+`agent_todo_summary` items, `todo_index` rows, or future dashboard rows without
+introducing a second task model.
+
 The projection may show the latest handoff note in the agent row, but the note
-does not create a chat stream, dispatcher queue, or approval mechanism.
+does not create a chat stream, dispatcher queue, approval mechanism, or runtime
+task separate from the source todo.
 
 ## Stale Claim Hint
 

@@ -76,7 +76,8 @@ def state_text() -> str:
         "  <!-- loopx:todo todo_id=todo_deferred_surface status=deferred task_class=advancement_task claimed_by=codex-product-capability resume_when=todo_done:todo_done_cli -->\n"
         f"- [-] {PR_DEFERRED_TODO}\n"
         "  <!-- loopx:todo todo_id=todo_pr_deferred status=deferred task_class=advancement_task claimed_by=codex-side-bypass resume_when=pr_merged:#532 -->\n"
-        f"- [ ] {SECOND_OPEN_TODO}\n\n"
+        f"- [ ] {SECOND_OPEN_TODO}\n"
+        "  <!-- loopx:todo todo_id=todo_handoff_review status=open task_class=advancement_task action_kind=review_pr claimed_by=codex-builder blocks_agent=codex-reviewer evidence=smoke_handoff_note -->\n\n"
         "## Completed Work Archive\n\n"
         f"{archived_lines}"
     )
@@ -157,6 +158,13 @@ def assert_parseable_agent_todos(agent_todos: dict) -> None:
     assert second_open["priority"] == "P2", second_open
     assert second_open["status"] == "open", second_open
     assert second_open["text"] == SECOND_OPEN_TODO, second_open
+    handoff_note = second_open["handoff_note"]
+    assert handoff_note["schema_version"] == "handoff_note_v0", handoff_note
+    assert handoff_note["todo_id"] == "todo_handoff_review", handoff_note
+    assert handoff_note["from_agent"] == "codex-builder", handoff_note
+    assert handoff_note["to_agent"] == "codex-reviewer", handoff_note
+    assert handoff_note["intent"] == "review_pr", handoff_note
+    assert handoff_note["evidence_refs"] == ["todo:todo_handoff_review:evidence"], handoff_note
 
     deferred = agent_todos["deferred_items"][0]
     deferred_by_id = {item["todo_id"]: item for item in agent_todos["deferred_items"]}
@@ -220,6 +228,13 @@ def main() -> int:
         ), item
         assert item["project_asset"]["agent_todos"]["next"] == FIRST_OPEN_TODO, item
         assert item["project_asset"]["agent_todos"]["next_index"] == 1, item
+        indexed_handoff = next(
+            row
+            for row in status_payload["todo_index"]["items"]
+            if row.get("todo_id") == "todo_handoff_review"
+        )
+        assert indexed_handoff["handoff_note"]["goal_id"] == GOAL_ID, indexed_handoff
+        assert indexed_handoff["handoff_note"]["to_agent"] == "codex-reviewer", indexed_handoff
 
         guard = run_cli("quota", "should-run", "--goal-id", GOAL_ID, registry_path=registry_path, runtime=runtime)
         assert guard["should_run"] is True, guard

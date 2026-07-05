@@ -10,6 +10,7 @@ from .contract import (
     normalize_todo_resume_when,
 )
 from .handoff_gate import handoff_ready_successor_todo_ids
+from .handoff_note import attach_todo_handoff_note
 from .projection import todo_item_task_class
 
 
@@ -53,6 +54,7 @@ TODO_SUMMARY_COMPACT_FIELDS = (
     "completed_at",
     "updated_at",
     "superseded_by",
+    "handoff_note",
 )
 
 TODO_SUMMARY_SOURCE_KEYS = (
@@ -107,6 +109,7 @@ def compact_todo_summary_item(
     else:
         compact.pop("required_decision_scopes", None)
     compact["task_class"] = todo_item_task_class(compact)
+    attach_todo_handoff_note(compact)
     return compact
 
 

@@ -27,6 +27,7 @@ from .contract import (
     todo_done_for_status,
 )
 from .handoff_gate import build_todo_handoff_gate_states
+from .handoff_note import attach_todo_handoff_note
 from .projection import (
     todo_claimed_visibility_items as projection_todo_claimed_visibility_items,
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
@@ -321,6 +322,7 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
     ):
         if item.get(key) is not None:
             compact[key] = item.get(key)
+    attach_todo_handoff_note(compact)
     return compact
 
 
