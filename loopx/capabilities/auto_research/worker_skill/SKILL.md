@@ -96,6 +96,8 @@ contract before writing research claims. For KNN-style demos this means:
 - run the declared dev command before proposing promotion;
 - run the declared held-out command before claiming a validated improvement;
 - summarize mechanism, command, score, and protected-scope cleanliness.
+- pass the contract and eval JSON outputs to `loopx auto-research evidence`
+  rather than hand-authoring an evidence packet.
 
 The pane-local tick can point at a todo; it cannot count as benchmark evidence.
 

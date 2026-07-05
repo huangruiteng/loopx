@@ -92,7 +92,13 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as temp_dir:
         workspace = Path(temp_dir) / "knn-workspace"
-        marker = materialize_knn_demo_workspace(workspace)
+        marker = materialize_knn_demo_workspace(
+            workspace,
+            goal_id="loopx-auto-research-knn-smoke",
+        )
+        contract_payload = json.loads((workspace / "research_contract.public.json").read_text(encoding="utf-8"))
+        assert marker["goal_id"] == "loopx-auto-research-knn-smoke", marker
+        assert contract_payload["goal_id"] == "loopx-auto-research-knn-smoke", contract_payload
         assert marker["dev_eval_command"] == "bash eval.sh dev", marker
         assert marker["holdout_eval_command"] == "bash eval.sh test", marker
         assert (workspace / "solution.py").exists(), marker

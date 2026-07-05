@@ -927,7 +927,10 @@ def handle_auto_research_command(
                 )
                 create_workspace = True if default_start_workspace else args.create_workspace
                 if preset_id == AUTO_RESEARCH_KNN_DEMO_PRESET_ID and workspace:
-                    prepared_preset_workspace = materialize_knn_demo_workspace(workspace)
+                    prepared_preset_workspace = materialize_knn_demo_workspace(
+                        workspace,
+                        goal_id=goal_id,
+                    )
                     create_workspace = True
                 return (
                     workspace,

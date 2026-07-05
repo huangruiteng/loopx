@@ -185,6 +185,41 @@ AUTO_RESEARCH_SEED_TITLES = {
 }
 
 
+KNN_DEMO_VISIBLE_FIRST_STEP_COMMON = (
+    "Read research_contract.public.json before claiming scope or metric facts.",
+    "Do not treat $LOOPX_PANE_A2A_TICK output as research evidence.",
+)
+
+KNN_DEMO_VISIBLE_FIRST_STEPS_BY_ROLE = {
+    "research_curator": (
+        "Inspect README.md, solution.py, and eval.py; summarize metric, editable scope, protected scope, and evidence gate.",
+        "If the first hypothesis todo is missing, add a hypothesis-proposer todo for two exact-KNN speedup hypotheses.",
+    ),
+    "hypothesis_proposer": (
+        "Inspect solution.py, task.py, and eval.py; propose two bounded exact-KNN hypotheses with mechanism and risk.",
+        "Route exactly one dev-attempt todo to research-executor; keep alternatives visible.",
+    ),
+    "research_executor": (
+        "Run `bash eval.sh dev` to record the current score before editing.",
+        "Edit only solution.py for one exact-KNN optimization, rerun `bash eval.sh dev`, then record command plus score.",
+        "After a dev improvement, run `bash eval.sh test`, save both JSON outputs, and feed them to `loopx auto-research evidence`.",
+    ),
+    "evaluator_promoter": (
+        "If no dev/test evidence exists, record the gap and route an executor dev-attempt todo.",
+        "Classify claims as dev-only, held-out-supported, retry-needed, or blocked; do not promote without `bash eval.sh test` output.",
+    ),
+}
+
+
+def _knn_demo_visible_first_steps(role_id: str) -> list[str]:
+    """Return compact KNN-demo role hints; execution stays in visible panes."""
+
+    return [
+        *KNN_DEMO_VISIBLE_FIRST_STEP_COMMON,
+        *KNN_DEMO_VISIBLE_FIRST_STEPS_BY_ROLE.get(role_id, ()),
+    ]
+
+
 def default_auto_research_agent_specs() -> list[str]:
     return [
         f"{agent}:{lane}:{role}"
@@ -342,6 +377,8 @@ def build_auto_research_preset_role(
         role_profile["open_question"] = str(open_question).strip()
     if preset_context:
         role_profile["preset_context"] = dict(preset_context)
+        if str(preset_context.get("preset_id") or "") == "knn-demo":
+            role_profile["visible_first_steps"] = _knn_demo_visible_first_steps(role_id)
     return {
         "agent_id": agent_id,
         "lane_id": lane["lane_id"],

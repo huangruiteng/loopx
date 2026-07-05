@@ -206,6 +206,15 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
             assert preset_context["protected_scope"] == ["task.py", "eval.py", "eval.sh"], preset_context
             assert preset_context["dev_eval_command"] == "bash eval.sh dev", preset_context
             assert preset_context["holdout_eval_command"] == "bash eval.sh test", preset_context
+            first_steps = profile["visible_first_steps"]
+            assert "research_contract.public.json" in " ".join(first_steps), profile
+            assert "$LOOPX_PANE_A2A_TICK" in " ".join(first_steps), profile
+            if lane["role_id"] == "research_executor":
+                assert any("bash eval.sh dev" in item for item in first_steps), profile
+                assert any("solution.py" in item for item in first_steps), profile
+                assert any("bash eval.sh test" in item for item in first_steps), profile
+            if lane["role_id"] == "evaluator_promoter":
+                assert any("without `bash eval.sh test`" in item for item in first_steps), profile
         assert profile["worker_skill_source"].endswith("auto_research/worker_skill/SKILL.md"), profile
         assert expected_action_hints[lane["role_id"]] in profile["allowed_actions"], profile
         assert profile["write_scope"], profile

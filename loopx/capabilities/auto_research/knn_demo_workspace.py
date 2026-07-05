@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import stat
 from pathlib import Path
@@ -208,8 +209,12 @@ GITIGNORE = """__pycache__/
 """
 
 
-def _contract_payload() -> dict[str, object]:
-    return {
+def _sha256_text(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _contract_payload(*, goal_id: str | None = None) -> dict[str, object]:
+    payload: dict[str, object] = {
         "schema_version": "auto_research_benchmark_contract_v0",
         "preset_id": "knn-demo",
         "objective": "Improve exact KNN speedup while preserving correctness.",
@@ -220,6 +225,11 @@ def _contract_payload() -> dict[str, object]:
         },
         "editable_scope": list(KNN_DEMO_EDITABLE_SCOPE),
         "protected_scope": list(KNN_DEMO_PROTECTED_SCOPE),
+        "protected_scope_sha256": {
+            "task.py": _sha256_text(TASK_PY),
+            "eval.py": _sha256_text(EVAL_PY),
+            "eval.sh": _sha256_text(EVAL_SH),
+        },
         "dev_eval_command": KNN_DEMO_DEV_EVAL_COMMAND,
         "holdout_eval_command": KNN_DEMO_HOLDOUT_EVAL_COMMAND,
         "claim_boundary": (
@@ -227,6 +237,9 @@ def _contract_payload() -> dict[str, object]:
             "do not edit protected files."
         ),
     }
+    if goal_id:
+        payload["goal_id"] = goal_id
+    return payload
 
 
 def _write_if_missing(path: Path, content: str, *, executable: bool = False) -> bool:
@@ -240,7 +253,7 @@ def _write_if_missing(path: Path, content: str, *, executable: bool = False) -> 
     return True
 
 
-def materialize_knn_demo_workspace(workspace: str | Path) -> dict[str, object]:
+def materialize_knn_demo_workspace(workspace: str | Path, *, goal_id: str | None = None) -> dict[str, object]:
     """Create the real KNN demo benchmark workspace if it is missing."""
 
     workspace_path = Path(workspace).expanduser()
@@ -269,7 +282,7 @@ def materialize_knn_demo_workspace(workspace: str | Path) -> dict[str, object]:
 
     contract_path = workspace_path / KNN_DEMO_CONTRACT_FILE
     contract_path.write_text(
-        json.dumps(_contract_payload(), ensure_ascii=False, indent=2, sort_keys=True)
+        json.dumps(_contract_payload(goal_id=goal_id), ensure_ascii=False, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
     )
@@ -277,6 +290,7 @@ def materialize_knn_demo_workspace(workspace: str | Path) -> dict[str, object]:
     marker = {
         "schema_version": KNN_DEMO_WORKSPACE_SCHEMA_VERSION,
         "preset_id": "knn-demo",
+        "goal_id": goal_id or "",
         "workspace_created": created,
         "contract_file": KNN_DEMO_CONTRACT_FILE,
         "editable_scope": list(KNN_DEMO_EDITABLE_SCOPE),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import re
 from pathlib import Path
@@ -12,6 +13,7 @@ from ...rollout_event_log import build_rollout_event
 
 
 RESEARCH_CONTRACT_SCHEMA_VERSION = "research_contract_v0"
+AUTO_RESEARCH_BENCHMARK_CONTRACT_SCHEMA_VERSION = "auto_research_benchmark_contract_v0"
 RESEARCH_HYPOTHESIS_SCHEMA_VERSION = "research_hypothesis_v0"
 RESEARCH_EVIDENCE_EVENT_SCHEMA_VERSION = "research_evidence_event_v0"
 AUTO_RESEARCH_EVIDENCE_PACKET_SCHEMA_VERSION = "auto_research_evidence_packet_v0"
@@ -38,6 +40,7 @@ NEGATIVE_PRIMARY_METRIC_STATUSES = {"failed", "regressed"}
 RETRY_PRIMARY_METRIC_STATUSES = {"inconclusive"}
 
 _TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,95}$")
+_SHA256_RE = re.compile(r"^[A-Fa-f0-9]{64}$")
 _ABSOLUTE_PATH_RE = re.compile(
     r"(^|[\s:=])(?:"
     + "/" + "Users/"
@@ -153,6 +156,159 @@ def validate_research_contract(contract: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _command_artifact_ref(command: Any, *, field: str) -> str:
+    command_text = _compact_public_text(command, field=field, max_len=120)
+    compact = re.sub(r"[^A-Za-z0-9_.:-]+", "-", command_text).strip("-")
+    return _compact_public_text(f"command:{compact}", field=f"{field}.artifact_ref", max_len=140)
+
+
+def _hash_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _protected_scope_clean_from_hashes(
+    *,
+    contract_root: Path | None,
+    protected_scope_sha256: dict[str, Any],
+) -> bool | None:
+    if not contract_root or not protected_scope_sha256:
+        return None
+    for relative_path, expected in protected_scope_sha256.items():
+        rel = _compact_public_text(relative_path, field="protected_scope_sha256.path", max_len=120)
+        if rel.startswith(("/", "~")) or ".." in rel:
+            raise ValueError("protected_scope_sha256 paths must be relative public aliases")
+        expected_hash = _compact_public_text(expected, field="protected_scope_sha256.hash", max_len=64)
+        if not _SHA256_RE.match(expected_hash):
+            raise ValueError("protected_scope_sha256.hash must be a sha256 hex digest")
+        if _hash_file(contract_root / rel) != expected_hash:
+            return False
+    return True
+
+
+def _normalize_research_contract_for_packet(
+    contract: dict[str, Any],
+    *,
+    contract_root: Path | None = None,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    schema = _compact_public_token(contract.get("schema_version"), field="research_contract.schema_version")
+    if schema == RESEARCH_CONTRACT_SCHEMA_VERSION:
+        return contract, None
+    if schema != AUTO_RESEARCH_BENCHMARK_CONTRACT_SCHEMA_VERSION:
+        raise ValueError(f"research_contract.schema_version must be {RESEARCH_CONTRACT_SCHEMA_VERSION}")
+
+    metric = _json_obj(contract.get("metric"), field="benchmark_contract.metric")
+    normalized = {
+        "schema_version": RESEARCH_CONTRACT_SCHEMA_VERSION,
+        "goal_id": contract.get("goal_id") or contract.get("preset_id") or "auto_research_benchmark",
+        "research_objective": (
+            contract.get("research_objective")
+            or contract.get("objective")
+            or contract.get("claim_boundary")
+            or "Improve the benchmark metric inside the declared scope."
+        ),
+        "editable_scope": contract.get("editable_scope") or [],
+        "protected_scope": contract.get("protected_scope") or [],
+        "metric": {
+            "name": metric.get("name"),
+            "direction": metric.get("direction"),
+            "baseline": metric.get("baseline"),
+        },
+        "dev_eval": contract.get("dev_eval") or contract.get("dev_eval_command"),
+        "holdout_eval": contract.get("holdout_eval") or contract.get("holdout_eval_command"),
+        "promotion_policy": contract.get("promotion_policy") or "heldout_improvement_required",
+    }
+    benchmark_context = {
+        "schema_version": schema,
+        "preset_id": contract.get("preset_id"),
+        "contract_root": contract_root,
+        "protected_scope_clean": _protected_scope_clean_from_hashes(
+            contract_root=contract_root,
+            protected_scope_sha256=_json_obj(
+                contract.get("protected_scope_sha256") or {},
+                field="benchmark_contract.protected_scope_sha256",
+            ),
+        ),
+    }
+    return validate_research_contract(normalized), benchmark_context
+
+
+def _primary_metric_status(
+    *,
+    ok: bool,
+    value: float | None,
+    baseline: float | None,
+    direction: str,
+) -> str:
+    if not ok:
+        return "failed"
+    if value is None or baseline is None:
+        return "inconclusive"
+    if _metric_improved(value=value, baseline=baseline, direction=direction):
+        return "improved"
+    if value == baseline:
+        return "flat"
+    return "regressed"
+
+
+def _normalize_benchmark_eval_result(
+    result: dict[str, Any],
+    *,
+    contract: dict[str, Any],
+    benchmark_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if "metric" in result:
+        return result
+    if "score" not in result and "metric_name" not in result:
+        return result
+
+    raw_split = _compact_public_token(result.get("split") or "dev", field="eval_result.split")
+    split = "holdout" if raw_split == "test" else raw_split
+    metric = contract["metric"]
+    direction = _compact_public_token(
+        result.get("direction") or metric["direction"],
+        field="eval_result.direction",
+    )
+    if direction not in METRIC_DIRECTIONS:
+        raise ValueError("eval_result.direction must be maximize or minimize")
+    value = _finite_float(result.get("score"), field="eval_result.score")
+    baseline = _finite_float(
+        result.get("baseline_score", metric["baseline"]),
+        field="eval_result.baseline_score",
+    )
+    ok = bool(result.get("ok"))
+    command = contract["holdout_eval"] if split == "holdout" else contract["dev_eval"]
+    protected_scope_clean = result.get("protected_scope_clean")
+    if protected_scope_clean is None and benchmark_context:
+        protected_scope_clean = benchmark_context.get("protected_scope_clean")
+    if protected_scope_clean is None:
+        protected_scope_clean = False
+    return {
+        "schema_version": "auto_research_benchmark_eval_result_projection_v0",
+        "split": split,
+        "metric": {
+            "name": result.get("metric_name") or metric["name"],
+            "direction": direction,
+            "value": value,
+            "baseline": baseline,
+        },
+        "eval_status": "scored" if ok else "guardrail_failed",
+        "primary_metric_status": _primary_metric_status(
+            ok=ok,
+            value=value,
+            baseline=baseline,
+            direction=direction,
+        ),
+        "artifact_refs": result.get("artifact_refs") or [
+            f"public_eval:{split}:{result.get('metric_name') or metric['name']}",
+            _command_artifact_ref(command, field=f"eval_result.{split}.command"),
+        ],
+        "protected_scope_clean": bool(protected_scope_clean),
+        "no_upload": result.get("no_upload", True),
+    }
+
+
 def validate_research_hypothesis(item: dict[str, Any]) -> dict[str, Any]:
     schema = _compact_public_token(item.get("schema_version"), field="hypothesis.schema_version")
     if schema != RESEARCH_HYPOTHESIS_SCHEMA_VERSION:
@@ -226,13 +382,20 @@ def _load_json_object(path: str | Path, *, field: str) -> dict[str, Any]:
 def _eval_result_to_evidence_event(
     result: dict[str, Any],
     *,
+    contract: dict[str, Any],
     hypothesis_id: str,
     todo_id: str,
     agent_id: str,
     attempt: int,
     branch_ref: str | None = None,
+    benchmark_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     result = _json_obj(result, field="eval_result")
+    result = _normalize_benchmark_eval_result(
+        result,
+        contract=contract,
+        benchmark_context=benchmark_context,
+    )
     if result.get("no_upload") is False:
         raise ValueError("eval_result.no_upload must not be false for public auto-research evidence")
     metric = _json_obj(result.get("metric"), field="eval_result.metric")
@@ -317,10 +480,15 @@ def build_auto_research_evidence_packet(
     novelty_audit_ref: str | None = None,
     branch_ref: str | None = None,
     attempt_start: int = 1,
+    contract_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build public-safe research hypothesis/evidence records from eval outputs."""
 
-    contract = validate_research_contract(contract)
+    normalized_contract, benchmark_context = _normalize_research_contract_for_packet(
+        contract,
+        contract_root=Path(contract_root).expanduser() if contract_root else None,
+    )
+    contract = normalized_contract
     if not eval_results:
         raise ValueError("at least one eval result is required")
     hypothesis_token = _compact_public_token(hypothesis_id, field="hypothesis_id")
@@ -329,11 +497,13 @@ def build_auto_research_evidence_packet(
     events = [
         _eval_result_to_evidence_event(
             result,
+            contract=contract,
             hypothesis_id=hypothesis_token,
             todo_id=todo_token,
             agent_id=agent_token,
             attempt=attempt_start + index,
             branch_ref=branch_ref,
+            benchmark_context=benchmark_context,
         )
         for index, result in enumerate(eval_results)
     ]
@@ -388,12 +558,14 @@ def load_auto_research_evidence_packet_inputs(
     eval_result_paths: list[str | Path],
     **kwargs: Any,
 ) -> dict[str, Any]:
+    resolved_contract_path = Path(contract_path).expanduser()
     return build_auto_research_evidence_packet(
-        contract=_load_json_object(contract_path, field="research_contract_file"),
+        contract=_load_json_object(resolved_contract_path, field="research_contract_file"),
         eval_results=[
             _load_json_object(path, field="eval_result_file")
             for path in eval_result_paths
         ],
+        contract_root=resolved_contract_path.parent,
         **kwargs,
     )
 
