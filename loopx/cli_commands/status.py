@@ -509,6 +509,52 @@ def _build_agent_member_projection(
     return member
 
 
+def _agent_lane_text(next_action: dict[str, Any]) -> str | None:
+    text = str(next_action.get("text") or next_action.get("title") or "").strip()
+    return text or None
+
+
+def _guard_allows_agent_lane_next_action(guard: dict[str, object]) -> bool:
+    interaction = guard.get("interaction_contract")
+    if not isinstance(interaction, dict):
+        return False
+    user_channel = interaction.get("user_channel")
+    agent_channel = interaction.get("agent_channel")
+    user_action_required = (
+        bool(user_channel.get("action_required"))
+        if isinstance(user_channel, dict)
+        else False
+    )
+    agent_must_attempt = (
+        bool(agent_channel.get("must_attempt"))
+        if isinstance(agent_channel, dict)
+        else False
+    )
+    return agent_must_attempt and not user_action_required
+
+
+def _sync_status_item_next_action_from_agent_lane(
+    item: dict[str, object],
+    *,
+    next_action: dict[str, Any],
+    guard: dict[str, object],
+) -> None:
+    if item.get("status") not in {"connected_without_run", "active_state_agent_todo"}:
+        return
+    if not _guard_allows_agent_lane_next_action(guard):
+        return
+    text = _agent_lane_text(next_action)
+    if not text:
+        return
+    item["recommended_action"] = text
+    project_asset = item.get("project_asset")
+    if isinstance(project_asset, dict):
+        project_asset["next_action"] = text
+    goal_channel = item.get("goal_channel_projection")
+    if isinstance(goal_channel, dict):
+        goal_channel["next_action"] = text
+
+
 def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str) -> dict[str, object]:
     safe_agent_id = str(agent_id or "").strip()
     if not safe_agent_id:
@@ -541,6 +587,11 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
             item["agent_lane_next_action"] = next_action
             if isinstance(project_asset, dict):
                 project_asset["agent_lane_next_action"] = next_action
+            _sync_status_item_next_action_from_agent_lane(
+                item,
+                next_action=next_action,
+                guard=guard,
+            )
             attached += 1
             changed = True
         frontier = guard.get("agent_scope_frontier")

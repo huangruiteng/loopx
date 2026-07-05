@@ -371,6 +371,36 @@ def todo_texts_from_project_asset(item: dict[str, Any] | None, key: str, *, limi
     return open_todo_texts(item.get(key), limit=limit, rank_for_handoff=rank_for_handoff)
 
 
+def agent_lane_todo_text(item: dict[str, Any] | None) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
+    lane = (
+        project_asset.get("agent_lane_next_action")
+        if isinstance(project_asset.get("agent_lane_next_action"), dict)
+        else item.get("agent_lane_next_action")
+        if isinstance(item.get("agent_lane_next_action"), dict)
+        else None
+    )
+    if not isinstance(lane, dict):
+        return None
+    text = str(lane.get("text") or lane.get("title") or "").strip()
+    if not text:
+        return None
+    claimed_by = str(lane.get("claimed_by") or "").strip()
+    if claimed_by:
+        text = f"{text} claimed_by={claimed_by}"
+    return compact_packet_text(text)
+
+
+def agent_todo_texts_for_handoff(item: dict[str, Any] | None, *, limit: int = 3) -> list[str]:
+    items = todo_texts_from_project_asset(item, "agent_todos", limit=limit)
+    lane_text = agent_lane_todo_text(item)
+    if not lane_text:
+        return items
+    return [lane_text, *[text for text in items if text != lane_text]][:limit]
+
+
 def agent_member_from_item(item: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(item, dict):
         return None
@@ -1145,7 +1175,7 @@ def build_review_packet(
     question = str(item.get("operator_question") or prompt["question"]) if isinstance(item, dict) else prompt["question"]
     summary = str(item.get("recommended_action") or "当前状态源没有对应的 action card。") if isinstance(item, dict) else "当前状态源没有对应的 action card。"
     user_todo_text = todo_text_from_project_asset(item, "user_todos")
-    agent_todo_items = todo_texts_from_project_asset(item, "agent_todos")
+    agent_todo_items = agent_todo_texts_for_handoff(item)
     agent_todo_text = agent_todo_items[0] if agent_todo_items else None
     asset_source = project_asset_source(item)
     asset_source_line = project_asset_source_line(asset_source)

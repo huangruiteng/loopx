@@ -7129,6 +7129,7 @@ def build_attention_queue(
                         subagent_activity=subagent_activity,
                         interface_budget_cadence=interface_budget_cadence,
                     )
+                sync_connected_attention_action_from_todos(item)
                 normalize_monitor_quiet_attention_display(item)
             if include_task_graph:
                 task_graph_projection = build_task_graph_projection(

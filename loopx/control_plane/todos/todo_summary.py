@@ -162,9 +162,23 @@ def sync_connected_attention_action_from_todos(
 ) -> None:
     if item.get("status") != "connected_without_run":
         return
-    agent_action = first_open_todo_text(
-        item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None
+    agent_lane_action = (
+        item.get("agent_lane_next_action")
+        if isinstance(item.get("agent_lane_next_action"), dict)
+        else None
     )
+    if agent_lane_action is None and isinstance(item.get("project_asset"), dict):
+        project_asset = item["project_asset"]
+        agent_lane_action = (
+            project_asset.get("agent_lane_next_action")
+            if isinstance(project_asset.get("agent_lane_next_action"), dict)
+            else None
+        )
+    agent_action = normalize_todo_text(agent_lane_action.get("text")) if agent_lane_action else None
+    if not agent_action:
+        agent_action = first_open_todo_text(
+            item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None
+        )
     if not agent_action:
         return
     item["recommended_action"] = agent_action

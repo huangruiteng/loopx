@@ -28,11 +28,13 @@ from loopx.event_sourced_state import (  # noqa: E402
 
 GOAL_ID = "control-plane-integrated-canary"
 MONITOR_GOAL_ID = "control-plane-integrated-monitor-canary"
+MARKDOWN_GOAL_ID = "control-plane-markdown-continuation-canary"
 AGENT_ID = "codex-product-capability"
 PRIMARY_AGENT_ID = "codex-main-control"
 CANARY_TODO_ID = "todo_integrated_canary"
 CANARY_TODO_TITLE = "Design bounded status/quota/review-packet/event/read-path canary"
 SUCCESSOR_TODO_TITLE = "Continue integrated event-sourced successor routing canary"
+MARKDOWN_CONTINUATION_TITLE = "Continue same-agent markdown continuation through status and quota."
 MONITOR_TODO_ID = "todo_integrated_due_monitor"
 MONITOR_TARGET_KEY = "integrated-due-monitor-watch"
 VALIDATED_PROGRESS_CLASSIFICATION = "integrated_canary_validated_progress"
@@ -168,6 +170,71 @@ def write_monitor_fixture(root: Path) -> tuple[Path, Path]:
     return registry_path, runtime
 
 
+def write_markdown_continuation_fixture(root: Path) -> tuple[Path, Path, Path]:
+    project = root / "markdown-project"
+    runtime = root / "markdown-runtime"
+    state_file = project / ".codex" / "goals" / MARKDOWN_GOAL_ID / "ACTIVE_GOAL_STATE.md"
+    registry_path = project / ".loopx" / "registry.json"
+    state_file.parent.mkdir(parents=True)
+    state_file.write_text(
+        "---\n"
+        "status: active\n"
+        "updated_at: 2026-06-27T00:00:00+00:00\n"
+        "---\n\n"
+        "# Control Plane Markdown Continuation Canary\n\n"
+        "## Next Action\n\n"
+        "- Preserve same-agent markdown successor routing across status and quota.\n\n"
+        "## Agent Todo\n\n"
+        "- [ ] [P2] Markdown placeholder that should lose to the claimed P1 todo.\n"
+        "  <!-- loopx:todo todo_id=todo_markdown_placeholder status=open "
+        "task_class=advancement_task action_kind=stale_markdown -->\n",
+        encoding="utf-8",
+    )
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-06-27T00:00:00+00:00",
+                "common_runtime_root": str(runtime),
+                "goals": [
+                    {
+                        "id": MARKDOWN_GOAL_ID,
+                        "domain": "control-plane-canary",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": f".codex/goals/{MARKDOWN_GOAL_ID}/ACTIVE_GOAL_STATE.md",
+                        "adapter": {
+                            "kind": "generic_project_goal_v0",
+                            "status": "connected",
+                        },
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                            "slot_minutes": 1,
+                            "allowed_slots": 10,
+                        },
+                        "coordination": {
+                            "registered_agents": [PRIMARY_AGENT_ID, AGENT_ID],
+                            "primary_agent": PRIMARY_AGENT_ID,
+                        },
+                        "workspace_guard_policy": {
+                            "side_agent_independent_worktree_required": False,
+                        },
+                        "authority_sources": [],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    runtime.mkdir(parents=True, exist_ok=True)
+    return registry_path, runtime, project
+
+
 def append_event_todos(event_log: Path) -> None:
     store = AppendOnlyStateEventStore(event_log)
 
@@ -250,13 +317,13 @@ def run_cli(registry_path: Path, runtime_root: Path, *args: str) -> dict[str, An
     return json.loads(result.stdout)
 
 
-def find_queue_item(status_payload: dict[str, Any]) -> dict[str, Any]:
+def find_queue_item(status_payload: dict[str, Any], *, goal_id: str = GOAL_ID) -> dict[str, Any]:
     queue = status_payload.get("attention_queue")
     assert isinstance(queue, dict), status_payload
     for item in queue.get("items") or []:
-        if isinstance(item, dict) and item.get("goal_id") == GOAL_ID:
+        if isinstance(item, dict) and item.get("goal_id") == goal_id:
             return item
-    raise AssertionError(f"{GOAL_ID} missing from attention queue: {status_payload}")
+    raise AssertionError(f"{goal_id} missing from attention queue: {status_payload}")
 
 
 def assert_event_projected_agent_todo(summary: dict[str, Any]) -> None:
@@ -633,6 +700,170 @@ def assert_due_monitor_poll_state_machine(root: Path) -> None:
     assert quiet_payload["scheduler_hint"]["cadence_class"] == "monitor_wait", quiet_payload
 
 
+def assert_markdown_same_agent_continuation_read_path(root: Path) -> None:
+    registry_path, runtime_root, project = write_markdown_continuation_fixture(root)
+    added = run_cli(
+        registry_path,
+        runtime_root,
+        "todo",
+        "add",
+        "--goal-id",
+        MARKDOWN_GOAL_ID,
+        "--role",
+        "agent",
+        "--text",
+        MARKDOWN_CONTINUATION_TITLE,
+        "--claimed-by",
+        AGENT_ID,
+        "--task-class",
+        "advancement_task",
+        "--action-kind",
+        "state_machine_canary_refactor",
+    )
+    assert added["ok"] is True, added
+    assert added["added"] is True, added
+    source_todo_id = added["todo_id"]
+
+    status_payload = run_cli(
+        registry_path,
+        runtime_root,
+        "status",
+        "--scan-root",
+        str(project),
+        "--agent-id",
+        AGENT_ID,
+        "--limit",
+        "3",
+    )
+    queue_item = find_queue_item(status_payload, goal_id=MARKDOWN_GOAL_ID)
+    assert queue_item["status"] in {"active_state_agent_todo", "connected_without_run"}, queue_item
+    assert queue_item["waiting_on"] == "codex", queue_item
+    assert MARKDOWN_CONTINUATION_TITLE in queue_item["recommended_action"], queue_item
+
+    source_quota = run_cli(
+        registry_path,
+        runtime_root,
+        "quota",
+        "should-run",
+        "--goal-id",
+        MARKDOWN_GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+    )
+    assert source_quota["decision"] == "run", source_quota
+    assert source_quota["agent_lane_next_action"]["todo_id"] == source_todo_id, source_quota
+    assert source_quota["interaction_contract"]["mode"] == "bounded_delivery", source_quota
+    assert source_quota["interaction_contract"]["agent_channel"]["must_attempt"] is True, source_quota
+
+    completed = run_cli(
+        registry_path,
+        runtime_root,
+        "todo",
+        "complete",
+        "--goal-id",
+        MARKDOWN_GOAL_ID,
+        "--role",
+        "agent",
+        "--todo-id",
+        source_todo_id,
+        "--claimed-by",
+        AGENT_ID,
+        "--side-agent-self-merged",
+        "--evidence",
+        "fixture same-agent markdown continuation passed",
+        "--next-agent-todo",
+        MARKDOWN_CONTINUATION_TITLE,
+        "--next-claimed-by",
+        AGENT_ID,
+        "--next-task-class",
+        "advancement_task",
+        "--next-action-kind",
+        "state_machine_canary_refactor",
+    )
+    assert completed["ok"] is True, completed
+    assert completed["completed"] is True, completed
+    assert completed["side_agent_self_merged"] is True, completed
+    assert len(completed["next_todos"]) == 1, completed
+    successor = completed["next_todos"][0]
+    successor_todo_id = successor["todo_id"]
+    assert successor["added"] is True, completed
+    assert successor["already_exists"] is False, completed
+    assert successor_todo_id != source_todo_id, completed
+    assert successor["unblocks_todo_id"] == source_todo_id, completed
+    assert successor["claimed_by"] == AGENT_ID, completed
+
+    listed = run_cli(
+        registry_path,
+        runtime_root,
+        "todo",
+        "list",
+        "--goal-id",
+        MARKDOWN_GOAL_ID,
+        "--role",
+        "agent",
+        "--agent-id",
+        AGENT_ID,
+    )
+    assert listed["source"] == "markdown_active_state", listed
+    by_id = {item["todo_id"]: item for item in listed["todos"]}
+    assert by_id[source_todo_id]["status"] == "done", listed
+    assert by_id[successor_todo_id]["status"] == "open", listed
+    assert by_id[successor_todo_id]["unblocks_todo_id"] == source_todo_id, listed
+    assert "todo_succession_warning" not in listed["agent_todos"], listed
+
+    successor_quota = run_cli(
+        registry_path,
+        runtime_root,
+        "quota",
+        "should-run",
+        "--goal-id",
+        MARKDOWN_GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+    )
+    assert successor_quota["decision"] == "run", successor_quota
+    assert successor_quota["effective_action"] == "normal_run", successor_quota
+    assert successor_quota["agent_lane_next_action"]["todo_id"] == successor_todo_id, successor_quota
+    assert successor_quota["agent_lane_next_action"]["text"] == MARKDOWN_CONTINUATION_TITLE, successor_quota
+    assert successor_quota["agent_lane_next_action"]["unblocks_todo_id"] == source_todo_id, successor_quota
+    assert successor_quota["interaction_contract"]["user_channel"]["action_required"] is False, successor_quota
+    assert successor_quota["interaction_contract"]["agent_channel"]["must_attempt"] is True, successor_quota
+    assert successor_quota["scheduler_hint"]["action"] == "run_now", successor_quota
+
+    refreshed_status = run_cli(
+        registry_path,
+        runtime_root,
+        "status",
+        "--scan-root",
+        str(project),
+        "--agent-id",
+        AGENT_ID,
+        "--limit",
+        "3",
+    )
+    refreshed_item = find_queue_item(refreshed_status, goal_id=MARKDOWN_GOAL_ID)
+    assert refreshed_item["waiting_on"] == "codex", refreshed_item
+    assert successor_todo_id in json.dumps(refreshed_item["agent_todos"], sort_keys=True), refreshed_item
+    assert source_todo_id not in refreshed_item["recommended_action"], refreshed_item
+
+    packet_payload = run_cli(
+        registry_path,
+        runtime_root,
+        "review-packet",
+        "--goal-id",
+        MARKDOWN_GOAL_ID,
+        "--format",
+        "json",
+        "--agent-id",
+        AGENT_ID,
+    )
+    assert packet_payload["ok"] is True, packet_payload
+    assert packet_payload["handoff_interface_budget"]["within_budget"] is True, packet_payload
+    assert MARKDOWN_CONTINUATION_TITLE in packet_payload["agent_todo_text"], packet_payload
+    assert successor_todo_id in packet_payload["project_agent_handoff"], packet_payload
+    assert source_todo_id not in packet_payload["project_agent_handoff"], packet_payload
+
+
 def run_fixture_canary(root: Path) -> None:
     registry_path, _, event_log = write_fixture(root)
     runtime_root = root / "runtime"
@@ -695,6 +926,7 @@ def run_fixture_canary(root: Path) -> None:
     assert SUCCESSOR_TODO_TITLE in packet_payload["project_agent_handoff"], packet_payload
     assert CANARY_TODO_TITLE not in packet_payload["project_agent_handoff"], packet_payload
     assert packet_payload["handoff_interface_budget"]["within_budget"] is True, packet_payload
+    assert_markdown_same_agent_continuation_read_path(root)
     assert_due_monitor_poll_state_machine(root)
 
 
