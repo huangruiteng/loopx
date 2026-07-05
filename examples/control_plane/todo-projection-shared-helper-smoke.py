@@ -13,7 +13,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import (  # noqa: E402
-    _claimed_visibility_items as quota_claimed_visibility_items,
     _first_executable_todo_item as quota_first_executable_todo_item,
     _todo_summary_monitor_items as quota_todo_summary_monitor_items,
     _todo_projection_sort_key as quota_todo_projection_sort_key,
@@ -238,7 +237,6 @@ def assert_claimed_visibility_parity() -> None:
     for selector in (
         shared_claimed_visibility_items,
         status_claimed_visibility_items,
-        quota_claimed_visibility_items,
     ):
         selected_two = selector(items, limit=2)
         assert [item["todo_id"] for item in selected_two] == ["todo_a1", "todo_b1"], selected_two
