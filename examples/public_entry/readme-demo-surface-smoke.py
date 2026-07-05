@@ -31,7 +31,7 @@ def main() -> int:
         "Loop engineering for long-running AI agents.",
         "Manage Codex, Claude Code, Cursor, and other agent runtimes",
         "## How It Works",
-        "goal / issue / project",
+        "objective / issue / project",
         "LoopX state: objective + gates + todos + scope + evidence + quota",
         "Start agent-first: paste one setup message for the surface you already use",
         "Choose your surface:",
@@ -48,7 +48,7 @@ def main() -> int:
     assert "docs/assets/loopx-logo.png" not in first_screen
 
     for required in [
-        "`/loopx <implementation goal>`",
+        "`$loopx <complex task>`",
         "`loopx todo claim`",
         "`loopx review-packet`",
     ]:
