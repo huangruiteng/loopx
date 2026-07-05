@@ -402,6 +402,8 @@ def _build_collective_round_summary(
     expected_lanes: list[dict[str, object]] | None = None,
     lane_outcomes: list[dict[str, object]] | None = None,
     role_declared_successor_todos: list[dict[str, object]] | None = None,
+    visible_role_participation_verified: bool = False,
+    visible_role_participation_basis: str | None = None,
 ) -> dict[str, object]:
     baseline = 1.0
     integrated_evidence: dict[str, object] = {
@@ -468,12 +470,26 @@ def _build_collective_round_summary(
         "schema_version": "auto_research_collective_round_summary_v0",
         "loaded": collective_round_count > 0 or dev_metric is not None or holdout_metric is not None,
         "source": source,
+        "claim_source": source,
         "round_unit": "collective_agent_pass",
         "kernel_ledger": kernel_ledger,
         "definition": (
             "one collective research round means each configured research lane has "
             "one quota/frontier/worker-turn opportunity; pane-local tick loops are "
             "reported separately and do not by themselves prove multi-round research"
+        ),
+        "visible_role_participation_required": True,
+        "visible_role_participation_verified": bool(visible_role_participation_verified),
+        "visible_role_participation_basis": visible_role_participation_basis
+        or (
+            "visible_pane_artifacts_plus_live_evidence"
+            if visible_role_participation_verified
+            else "not_visible_pane_verified"
+        ),
+        "claim_boundary": (
+            "worker-loop summaries are control-plane plumbing evidence only; "
+            "visible multi-role research claims require visible pane artifacts "
+            "plus lane-authored public evidence"
         ),
         "agent_count": agent_count,
         "required_collective_round_count": 4,
@@ -566,6 +582,8 @@ def _collective_summary_from_worker_loop(
         ],
         lane_outcomes=[turn for turn in turns if isinstance(turn, dict)],
         role_declared_successor_todos=successors,
+        visible_role_participation_verified=False,
+        visible_role_participation_basis="headless_worker_loop_summary_only",
     )
 
 
@@ -602,6 +620,8 @@ def _collective_summary_from_visible_panes_and_evidence(
         expected_lanes=expected_lanes
         or (pane_rounds.get("lanes") if isinstance(pane_rounds.get("lanes"), list) else None),
         lane_outcomes=lane_outcomes,
+        visible_role_participation_verified=True,
+        visible_role_participation_basis="visible_pane_a2a_artifacts_plus_lane_evidence",
     )
 
 
@@ -758,6 +778,16 @@ def _load_collective_research_rounds_into_payload(
     visible_proof = payload["visible_worker_proof"]
     if isinstance(visible_proof, dict):
         visible_proof["collective_research_rounds_loaded"] = bool(rounds.get("loaded"))
+        visible_proof["collective_research_rounds_source"] = rounds.get("source")
+        visible_proof["visible_role_participation_required"] = (
+            rounds.get("visible_role_participation_required") is not False
+        )
+        visible_proof["visible_role_participation_verified"] = (
+            rounds.get("visible_role_participation_verified") is True
+        )
+        visible_proof["visible_role_participation_basis"] = rounds.get(
+            "visible_role_participation_basis"
+        )
         visible_proof["collective_research_round_count"] = rounds.get(
             "collective_round_count"
         )
@@ -766,6 +796,7 @@ def _load_collective_research_rounds_into_payload(
         )
         visible_proof["decentralized_a2a_rounds_verified"] = bool(
             rounds.get("multi_round_research_verified")
+            and rounds.get("visible_role_participation_verified") is True
         )
 
 
@@ -922,6 +953,9 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
         "collective_research_multi_round_verified": (
             collective_rounds.get("multi_round_research_verified") is True
         ),
+        "visible_role_participation_verified": (
+            proof.get("visible_role_participation_verified") is True
+        ),
         "lane_authored_evidence_loaded": proof.get("lane_authored_evidence_loaded") is True,
         "protected_scope_clean": protected_scope_clean,
         "positive_metric_over_baseline": (
@@ -977,6 +1011,12 @@ def _build_visible_readiness(payload: dict[str, object]) -> dict[str, object]:
                 "multi_round_research_verified"
             )
             is True,
+            "visible_role_participation_verified": collective_rounds.get(
+                "visible_role_participation_verified"
+            )
+            is True,
+            "claim_source": collective_rounds.get("claim_source")
+            or collective_rounds.get("source"),
             "full_participation_round_count": collective_rounds.get(
                 "full_participation_round_count"
             ),

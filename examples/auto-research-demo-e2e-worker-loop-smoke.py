@@ -129,9 +129,15 @@ def main() -> int:
 
     collective = payload["collective_research_rounds"]
     assert collective["multi_round_research_verified"] is False, collective
+    assert collective["claim_source"] == "worker_loop_collective_agent_passes", collective
+    assert collective["visible_role_participation_verified"] is False, collective
+    assert collective["visible_role_participation_basis"] == "headless_worker_loop_summary_only", collective
     assert collective["holdout_improvement_count"] == 0, collective
     assert collective["dev_metric_sequence"] == [], collective
     assert collective["holdout_metric_sequence"] == [], collective
+    proof = payload["visible_worker_proof"]
+    assert proof["visible_role_participation_verified"] is False, proof
+    assert proof["decentralized_a2a_rounds_verified"] is False, proof
     tonight = payload["tonight_experience"]
     assert tonight["positive_result"] is False, tonight
     assert tonight["dev_metric"] is None, tonight

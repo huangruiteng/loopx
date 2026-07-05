@@ -132,6 +132,12 @@ def _render_collective_round_summary(
             f"completed_turns: `{completed_turns}/{expected_turns}`"
         ),
         (
+            f"- claim_source: `{collective_rounds.get('claim_source') or collective_rounds.get('source')}`; "
+            f"visible_role_participation_verified: "
+            f"`{collective_rounds.get('visible_role_participation_verified')}`"
+        ),
+        f"- claim_boundary: {collective_rounds.get('claim_boundary')}",
+        (
             f"- role_cycle_gap: `{participation_gap.get('shortfall_by_agent') or {}}` "
             f"(required `{participation_gap.get('required_count')}`)"
         ),
@@ -443,8 +449,11 @@ def _render_demo_e2e(payload: dict[str, object]) -> str:
         f"- tonight_positive_result: `{tonight.get('positive_result')}`",
         f"- visible_lanes_launched: `{live.get('visible_lanes_launched')}`",
         f"- visible_lanes_accepted: `{live.get('visible_lanes_accepted')}`",
+        f"- visible_role_participation_verified: `{live.get('visible_role_participation_verified')}`",
+        f"- visible_role_participation_basis: `{live.get('visible_role_participation_basis')}`",
         f"- visible_pane_local_ticks: `{pane_rounds.get('max_rounds_completed')}`",
         f"- pane_ticks_count_as_research_rounds: `{pane_rounds.get('counts_as_collective_research_round')}`",
+        f"- collective_research_claim_source: `{collective_rounds.get('claim_source') or collective_rounds.get('source')}`",
         f"- collective_research_rounds: `{collective_rounds.get('collective_round_count')}`",
         f"- collective_research_rounds_verified: `{collective_rounds.get('multi_round_research_verified')}`",
         f"- collective_research_role_cycle_gap: `{role_cycle_shortfall}`",

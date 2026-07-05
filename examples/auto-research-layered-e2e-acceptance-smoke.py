@@ -134,6 +134,8 @@ def assert_headless_worker_loop_is_not_research_uplift() -> None:
 
     collective = payload["collective_research_rounds"]
     assert collective["multi_round_research_verified"] is False, collective
+    assert collective["visible_role_participation_verified"] is False, collective
+    assert collective["visible_role_participation_basis"] == "headless_worker_loop_summary_only", collective
     assert collective["holdout_improvement_count"] == 0, collective
     assert collective["dev_metric_sequence"] == [], collective
     assert collective["holdout_metric_sequence"] == [], collective
@@ -143,6 +145,8 @@ def assert_headless_worker_loop_is_not_research_uplift() -> None:
     assert tonight["holdout_metric"] is None, tonight
 
     markdown = render_auto_research_markdown(payload)
+    assert "claim_source: `worker_loop_collective_agent_passes`" in markdown, markdown
+    assert "visible_role_participation_verified: `False`" in markdown, markdown
     assert "dev_metric_sequence: `none`" in markdown, markdown
     assert "holdout_metric_sequence: `none`" in markdown, markdown
     assert "holdout_improvement_count: `0`" in markdown, markdown
