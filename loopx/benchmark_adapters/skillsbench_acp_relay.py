@@ -31,6 +31,15 @@ from loopx.benchmark_case_state import (
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
+from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
+    CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
+    CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT,
+    POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
+    codex_cli_tui_post_bridge_blocker_stage,
+    codex_cli_tui_post_bridge_closeout_recovery_action,
+    codex_cli_tui_post_bridge_recovery_action,
+    codex_cli_tui_post_bridge_recovery_skip_reason,
+)
 from loopx.codex_cli_goal_tui import (
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
     build_codex_cli_goal_file_objective,
@@ -96,13 +105,6 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
-CODEX_CLI_GOAL_POST_BRIDGE_CONTINUE_PROMPT = (
-    "Continue the active SkillsBench goal after the transient model timeout. "
-    "If ./skillsbench-task-prompt.md exists, read it before acting. Use the "
-    "private bridge command from the task instructions for one task-facing "
-    "action, then finish with compact status."
-)
-POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 4
 
 
 @contextlib.contextmanager
@@ -522,81 +524,6 @@ def _codex_cli_tui_retryable_startup_blocker_stage(capture: str) -> str:
     ):
         return "rate_limit_before_goal_active"
     return ""
-
-
-def _codex_cli_tui_post_bridge_blocker_stage(
-    capture: str,
-    *,
-    prompt_visible: bool,
-) -> str:
-    """Classify public-safe Codex CLI TUI blockers after bridge activity."""
-
-    if not prompt_visible:
-        return ""
-    lowered = str(capture or "").lower()
-    if any(
-        marker in lowered
-        for marker in (
-            "rate limit",
-            "rate_limit",
-            "too many requests",
-            "status 429",
-            "error 429",
-        )
-    ):
-        return "post_bridge_tui_rate_limit"
-    if any(marker in lowered for marker in ("timed out", "timeout")) and any(
-        marker in lowered for marker in ("model", "request", "error", "failed")
-    ):
-        return "post_bridge_tui_model_timeout"
-    if any(marker in lowered for marker in ("press enter", "press return")) and any(
-        marker in lowered
-        for marker in ("error", "failed", "timed out", "timeout", "model")
-    ):
-        return "post_bridge_tui_error_prompt"
-    return ""
-
-
-def _codex_cli_tui_post_bridge_recovery_action(capture: str, *, stage: str) -> str:
-    """Return a bounded public-safe recovery action for post-bridge TUI blockers."""
-
-    if stage not in {
-        "post_bridge_tui_model_timeout",
-        "post_bridge_tui_error_prompt",
-    }:
-        return ""
-    lowered = str(capture or "").lower()
-    if any(marker in lowered for marker in ("press enter", "press return")):
-        return "press_enter"
-    if (
-        stage == "post_bridge_tui_model_timeout"
-        and codex_cli_tui_input_prompt_visible(capture)
-    ):
-        return "typed_continue"
-    return ""
-
-
-def _codex_cli_tui_post_bridge_recovery_skip_reason(
-    capture: str,
-    *,
-    stage: str,
-    recovery_action: str,
-) -> str:
-    """Return why no post-bridge recovery action was taken."""
-
-    if recovery_action:
-        return ""
-    if stage == "post_bridge_tui_rate_limit":
-        return "rate_limit_no_retry"
-    if stage not in {
-        "post_bridge_tui_model_timeout",
-        "post_bridge_tui_error_prompt",
-    }:
-        return ""
-    lowered = str(capture or "").lower()
-    if not any(marker in lowered for marker in ("press enter", "press return")):
-        return "no_retry_affordance"
-    return "unsupported_recovery_action"
 
 
 def _write_process_stdin_async(
@@ -1279,6 +1206,7 @@ class SkillsBenchLocalAcpRelay:
             post_bridge_recovery_attempt_count = 0
             post_bridge_recovery_action = ""
             post_bridge_recovery_skip_reason = ""
+            post_bridge_closeout_attempted = False
             try:
                 subprocess.run(
                     [
@@ -1540,7 +1468,7 @@ class SkillsBenchLocalAcpRelay:
                         ) and (not post_bridge_recovery_attempt_count or now - last_bridge_activity_at >= 30.0)
                     ):
                         post_bridge_blocker_stage = (
-                            _codex_cli_tui_post_bridge_blocker_stage(
+                            codex_cli_tui_post_bridge_blocker_stage(
                                 capture,
                                 prompt_visible=(
                                     codex_cli_tui_input_prompt_visible(capture)
@@ -1548,7 +1476,7 @@ class SkillsBenchLocalAcpRelay:
                             )
                         )
                     if post_bridge_blocker_stage:
-                        recovery_action = _codex_cli_tui_post_bridge_recovery_action(
+                        recovery_action = codex_cli_tui_post_bridge_recovery_action(
                             capture,
                             stage=post_bridge_blocker_stage,
                         )
@@ -1576,8 +1504,30 @@ class SkillsBenchLocalAcpRelay:
                                 + max(1.0, self._config.stream_heartbeat_interval_sec)
                             )
                             continue
+                        closeout_action = (
+                            codex_cli_tui_post_bridge_closeout_recovery_action(
+                                recovery_action=recovery_action,
+                                recovery_attempt_count=(
+                                    post_bridge_recovery_attempt_count
+                                ),
+                                closeout_attempted=post_bridge_closeout_attempted,
+                            )
+                        )
+                        if closeout_action == "typed_closeout":
+                            post_bridge_closeout_attempted = True
+                            post_bridge_recovery_action = closeout_action
+                            tmux_type_text_and_submit(
+                                tmux_name=tmux_name,
+                                text=CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT,
+                            )
+                            last_bridge_activity_at = now
+                            next_heartbeat = (
+                                now
+                                + max(1.0, self._config.stream_heartbeat_interval_sec)
+                            )
+                            continue
                         post_bridge_recovery_skip_reason = (
-                            _codex_cli_tui_post_bridge_recovery_skip_reason(
+                            codex_cli_tui_post_bridge_recovery_skip_reason(
                                 capture,
                                 stage=post_bridge_blocker_stage,
                                 recovery_action=recovery_action,
