@@ -296,6 +296,7 @@ def assert_scheduler_ack_plan_validation() -> None:
     backoff = codex_app["stateful_backoff"]
     ack_hint = codex_app["ack_hint"]
     ack_args = ack_hint["args"]
+    ack_cli_args = ack_hint["cli_args"]
     assert ack_hint["schema_version"] == "codex_app_scheduler_ack_hint_v0", ack_hint
     assert ack_hint["after"] == "automation_update_rrule_success", ack_hint
     assert ack_hint["command"] == "quota scheduler-ack", ack_hint
@@ -310,6 +311,25 @@ def assert_scheduler_ack_plan_validation() -> None:
         "reset_token": backoff["reset_token"],
         "identity_signature": backoff["identity_signature"],
     }, ack_hint
+    assert ack_cli_args == [
+        "quota",
+        "scheduler-ack",
+        "--goal-id",
+        ack_args["goal_id"],
+        "--agent-id",
+        ack_args["agent_id"],
+        "--surface",
+        ack_args["surface"],
+        "--state-key",
+        ack_args["state_key"],
+        "--applied-rrule",
+        ack_args["applied_rrule"],
+        "--reset-token",
+        ack_args["reset_token"],
+        "--identity-signature",
+        ack_args["identity_signature"],
+        "--execute",
+    ], ack_hint
     plan = build_scheduler_ack_plan(
         {"scheduler_hint": first},
         agent_id=ack_args["agent_id"],
@@ -478,30 +498,17 @@ def assert_cli_scheduler_ack_progression() -> None:
         first_rrule = first["scheduler_hint"]["codex_app"]["recommended_rrule"]
         first_app = first["scheduler_hint"]["codex_app"]
         first_ack_args = first_app["ack_hint"]["args"]
+        first_ack_cli_args = first_app["ack_hint"]["cli_args"]
         assert first_app["stateful_backoff"]["apply_needed"] is True, first
         assert first_ack_args["goal_id"] == "needs-operator", first
         assert first_ack_args["agent_id"] == agent_id, first
         assert first_ack_args["applied_rrule"] == first_rrule, first
+        assert "--reset-token" in first_ack_cli_args, first
+        assert "--identity-signature" in first_ack_cli_args, first
 
         ack = run_cli(
             root,
-            "quota",
-            "scheduler-ack",
-            "--goal-id",
-            first_ack_args["goal_id"],
-            "--agent-id",
-            first_ack_args["agent_id"],
-            "--surface",
-            first_ack_args["surface"],
-            "--state-key",
-            first_ack_args["state_key"],
-            "--applied-rrule",
-            first_ack_args["applied_rrule"],
-            "--reset-token",
-            first_ack_args["reset_token"],
-            "--identity-signature",
-            first_ack_args["identity_signature"],
-            "--execute",
+            *first_ack_cli_args,
             registry_path=registry_path,
             runtime=runtime,
             project=project,
@@ -536,26 +543,13 @@ def assert_cli_scheduler_ack_progression() -> None:
             current_app = current["scheduler_hint"]["codex_app"]
             current_rrule = current_app["recommended_rrule"]
             current_ack_args = current_app["ack_hint"]["args"]
+            current_ack_cli_args = current_app["ack_hint"]["cli_args"]
             assert current_ack_args["applied_rrule"] == current_rrule, current
+            assert current_ack_args["reset_token"] in current_ack_cli_args, current
+            assert current_ack_args["identity_signature"] in current_ack_cli_args, current
             ack = run_cli(
                 root,
-                "quota",
-                "scheduler-ack",
-                "--goal-id",
-                current_ack_args["goal_id"],
-                "--agent-id",
-                current_ack_args["agent_id"],
-                "--surface",
-                current_ack_args["surface"],
-                "--state-key",
-                current_ack_args["state_key"],
-                "--applied-rrule",
-                current_ack_args["applied_rrule"],
-                "--reset-token",
-                current_ack_args["reset_token"],
-                "--identity-signature",
-                current_ack_args["identity_signature"],
-                "--execute",
+                *current_ack_cli_args,
                 registry_path=registry_path,
                 runtime=runtime,
                 project=project,
@@ -679,8 +673,8 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
         surface="codex_app",
         state_key="scheduler_hint.codex_app.stateful_backoff",
         applied_rrule="FREQ=MINUTELY;INTERVAL=10",
-        reset_token=None,
-        identity_signature=None,
+        reset_token="fixture-reset-token",
+        identity_signature="fixture-identity-signature",
         dry_run=False,
         execute=False,
         scan_root=str(REPO_ROOT),
@@ -707,6 +701,9 @@ def assert_cli_scheduler_ack_uses_should_run_lookback() -> None:
     assert rc == 0, rc
     assert seen["limit"] == AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, seen
     assert seen["payload"] == {"ok": True, "mode": "scheduler-ack", "dry_run": True}, seen
+    ack_kwargs = seen["ack_kwargs"]
+    assert ack_kwargs["reset_token"] == "fixture-reset-token", seen
+    assert ack_kwargs["identity_signature"] == "fixture-identity-signature", seen
 
 
 def main() -> int:

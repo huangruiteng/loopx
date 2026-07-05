@@ -77,6 +77,7 @@ def assert_compact_runtime_policy_complete(
     stateful_backoff = codex_app["stateful_backoff"]
     ack_hint = codex_app["ack_hint"]
     ack_args = ack_hint["args"]
+    ack_cli_args = ack_hint["cli_args"]
     assert codex_app["recommended_interval_minutes"], (name, compact)
     assert codex_app["recommended_rrule"], (name, compact)
     assert codex_app["max_interval_minutes"], (name, compact)
@@ -107,6 +108,25 @@ def assert_compact_runtime_policy_complete(
     assert ack_args["applied_rrule"] == codex_app["recommended_rrule"], (name, compact)
     assert ack_args["reset_token"] == stateful_backoff["reset_token"], (name, compact)
     assert ack_args["identity_signature"] == stateful_backoff["identity_signature"], (name, compact)
+    assert ack_cli_args == [
+        "quota",
+        "scheduler-ack",
+        "--goal-id",
+        ack_args["goal_id"],
+        "--agent-id",
+        ack_args["agent_id"],
+        "--surface",
+        ack_args["surface"],
+        "--state-key",
+        ack_args["state_key"],
+        "--applied-rrule",
+        ack_args["applied_rrule"],
+        "--reset-token",
+        ack_args["reset_token"],
+        "--identity-signature",
+        ack_args["identity_signature"],
+        "--execute",
+    ], (name, compact)
     for omitted in (
         "progression_minutes",
         "current_interval_minutes",
