@@ -205,7 +205,7 @@ KNN_DEMO_VISIBLE_FIRST_STEPS_BY_ROLE = {
         "After a dev improvement, run `bash eval.sh test`, save both JSON outputs, and feed them to `loopx auto-research evidence`.",
     ),
     "evaluator_promoter": (
-        "If no dev/test evidence exists, record the gap and route an executor dev-attempt todo.",
+        "Only when your own evaluator todo is runnable, classify current evidence; if no todo is selected, wait for research-executor evidence instead of closing the evaluator todo.",
         "Classify claims as dev-only, held-out-supported, retry-needed, or blocked; do not promote without `bash eval.sh test` output.",
     ),
 }

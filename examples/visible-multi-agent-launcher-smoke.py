@@ -118,8 +118,10 @@ def main() -> int:
     assert "codex-visible-first-prompt.public.txt" in launcher_source
     assert "LOOPX_CODEX_FULL_BOOTSTRAP_ARTIFACT" in launcher_source
     assert "不要把完整 bootstrap 合约当作用户首屏复述" in runtime_source
-    assert "继续执行上面的首轮动作" in runtime_source
-    assert "continue with the first move above" in runtime_source
+    assert "等待 resume gate" in runtime_source
+    assert "waiting on a resume gate" in runtime_source
+    assert "只有发现未 gate 的本角色 open todo" in runtime_source
+    assert "ungated open todo for this role" in runtime_source
     assert "selected_todo_id" in runtime_source
     assert "claim_allowed_rule" in runtime_source
     assert "Honor the role prompt's human output language" in contract_source
@@ -151,6 +153,10 @@ def main() -> int:
     assert "pane_input_ready_verified" in launcher_source
     assert "tmux_paste_buffer_after_codex_tui_first_turn_ready" in launcher_source
     assert "prompt_submit_checks" in launcher_source
+    assert "TMUX_LANE_ID_OPTION" in launcher_source
+    assert '"list-panes", "-s", "-t", session' in launcher_source
+    assert '"list-panes", "-a", "-t", session' not in launcher_source
+    assert '"set-option", "-p", "-t", pane_id, TMUX_LANE_ID_OPTION, lane_id' in launcher_source
     assert "_persist_codex_workspace_trust" in launcher_source
     assert "rev-parse\", \"--show-toplevel" in runtime_source
     assert "trust_level=" in runtime_source and "trusted" in runtime_source
@@ -637,6 +643,38 @@ def main() -> int:
                 0,
             ], wake
             os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
+                "\n"
+                "› Implement {feature}\n\n"
+                "  gpt-5.5 high · /tmp/loopx-visible-workspace\n"
+            )
+            footer_ready_wake = wake_visible_multi_agent_panes(
+                session_name="loopx-visible-launcher-smoke",
+                tmux_bin="tmux",
+                lanes=["planner", "reviewer"],
+                execute=True,
+            )
+            assert footer_ready_wake["pane_input_ready_verified"] is True, footer_ready_wake
+            assert footer_ready_wake["prompt_delivery"] == (
+                "tmux_paste_buffer_after_codex_tui_first_turn_ready"
+            ), footer_ready_wake
+            os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
+                "\n"
+                "› Honor the role prompt's human output language for summaries while keeping "
+                "machine artifact schema keys unchanged. Do not ask the broadcaster for "
+                "direction; LoopX state is the source of truth.\n\n"
+                "  gpt-5.5 high · /tmp/loopx-visible-workspace\n"
+            )
+            tail_retry_wake = wake_visible_multi_agent_panes(
+                session_name="loopx-visible-launcher-smoke",
+                tmux_bin="tmux",
+                lanes=["planner", "reviewer"],
+                execute=True,
+            )
+            assert [item["retry_count"] for item in tail_retry_wake["prompt_submit_checks"]] == [
+                1,
+                1,
+            ], tail_retry_wake
+            os.environ["FAKE_TMUX_CAPTURE_TEXT"] = (
                 "╭────────────────────────╮\n"
                 "│ >_ OpenAI Codex        │\n"
                 "│ model: gpt-5.5 high    │\n"
@@ -780,6 +818,18 @@ def main() -> int:
         log_entries = [json.loads(line) for line in tmux_log.read_text(encoding="utf-8").splitlines()]
         assert any(entry[:1] == ["new-session"] for entry in log_entries), log_entries
         assert sum(1 for entry in log_entries if entry[:1] == ["split-window"]) == 1, log_entries
+        assert any(entry[:3] == ["list-panes", "-s", "-t"] for entry in log_entries), log_entries
+        assert not any(entry[:2] == ["list-panes", "-a"] for entry in log_entries), log_entries
+        assert any(
+            entry[:4] == ["set-option", "-p", "-t", "%0"]
+            and entry[-2:] == ["@loopx_lane_id", "planner"]
+            for entry in log_entries
+        ), log_entries
+        assert any(
+            entry[:4] == ["set-option", "-p", "-t", "%1"]
+            and entry[-2:] == ["@loopx_lane_id", "reviewer"]
+            for entry in log_entries
+        ), log_entries
         assert any(entry[:1] == ["select-layout"] and entry[-1] == "tiled" for entry in log_entries), log_entries
         tmux_starts = [entry for entry in log_entries if entry[:1] in (["new-session"], ["split-window"])]
         assert all("-lc" not in entry for entry in tmux_starts), tmux_starts

@@ -80,8 +80,12 @@ def main() -> int:
         "write_research_contract",
         "propose_hypothesis",
         "run_dev_eval",
-        "summarize_evidence",
     ], worker_loop
+    evaluator_turn = next(
+        turn for turn in worker_loop["turns"] if turn["agent_id"] == "evaluator-promoter"
+    )
+    assert evaluator_turn["mode"] == "no_action", worker_loop
+    assert evaluator_turn["selected_action"] is None, worker_loop
     assert all(turn.get("dev_metric") is None for turn in worker_loop["turns"]), worker_loop
     assert all(turn.get("holdout_metric") is None for turn in worker_loop["turns"]), worker_loop
 

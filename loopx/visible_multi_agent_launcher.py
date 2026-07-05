@@ -38,6 +38,7 @@ def _q(value: object) -> str:
 PANE_A2A_WAKEUP_SCHEMA_VERSION = "multi_agent_pane_a2a_wakeup_v0"
 PANE_A2A_WAKEUP_PROMPT = PANE_LOCAL_A2A_WAKEUP_PROMPT
 PANE_A2A_INPUT_READY_TIMEOUT_SECONDS = 5.0
+TMUX_LANE_ID_OPTION = "@loopx_lane_id"
 
 
 def require_executable(command: str, *, field: str) -> str:
@@ -54,18 +55,23 @@ def build_pane_a2a_wakeup_prompt() -> str:
 
 
 def _codex_tui_input_ready(capture: str) -> bool:
-    if "OpenAI Codex" not in capture:
+    if not capture:
+        return False
+    prompt_index = max(capture.rfind("\n› "), capture.rfind("\r\n› "))
+    if prompt_index < 0:
         return False
     model_lines = [line for line in capture.splitlines() if "model:" in line]
-    if not model_lines or "loading" in model_lines[-1]:
+    if model_lines and "loading" in model_lines[-1]:
         return False
-    marker_index = capture.rfind(model_lines[-1])
-    current_view = capture[marker_index:] if marker_index >= 0 else capture
+    has_codex_surface = "OpenAI Codex" in capture or "gpt-" in capture[prompt_index:]
+    if not has_codex_surface:
+        return False
+    current_view = capture[prompt_index:]
     if "Queued follow-up inputs" in current_view or "Working (" in current_view:
         return False
     if "Starting MCP servers" in current_view:
         return False
-    return "\n› " in current_view or "\r\n› " in current_view
+    return True
 
 
 def _wait_for_tmux_pane_input_ready(
@@ -119,7 +125,15 @@ def _list_tmux_lane_targets(
     env: dict[str, str],
 ) -> list[dict[str, str]]:
     listed = subprocess.run(
-        [tmux_bin, "list-panes", "-a", "-t", session, "-F", "#{pane_id}\t#{pane_title}\t#{window_name}"],
+        [
+            tmux_bin,
+            "list-panes",
+            "-s",
+            "-t",
+            session,
+            "-F",
+            f"#{{pane_id}}\t#{{{TMUX_LANE_ID_OPTION}}}\t#{{pane_title}}\t#{{window_name}}\t#{{pane_index}}",
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -128,11 +142,21 @@ def _list_tmux_lane_targets(
     panes: list[dict[str, str]] = []
     if listed.returncode == 0:
         for line in listed.stdout.splitlines():
-            pane_id, pane_title, window_name = (line.split("\t") + ["", "", ""])[:3]
+            pane_id, lane_id, pane_title, window_name, pane_index = (
+                line.split("\t") + ["", "", "", "", ""]
+            )[:5]
             pane_id = pane_id.strip()
-            label = pane_title.strip() or window_name.strip() or pane_id
+            label = lane_id.strip() or pane_id
             if pane_id:
-                panes.append({"lane": label, "target": pane_id})
+                panes.append(
+                    {
+                        "lane": label,
+                        "target": pane_id,
+                        "pane_title": pane_title.strip(),
+                        "window_name": window_name.strip(),
+                        "pane_index": pane_index.strip(),
+                    }
+                )
     return panes
 
 
@@ -170,13 +194,16 @@ def _resolve_tmux_lane_targets(
 def _prompt_still_waiting_for_submit(capture: str, prompt: str) -> bool:
     if not capture or not prompt:
         return False
-    model_lines = [line for line in capture.splitlines() if "model:" in line]
-    marker_index = capture.rfind(model_lines[-1]) if model_lines else -1
-    current_view = capture[marker_index:] if marker_index >= 0 else capture
+    prompt_index = max(capture.rfind("\n› "), capture.rfind("\r\n› "))
+    current_view = capture[prompt_index:] if prompt_index >= 0 else capture
     if "Working (" in current_view or "Queued follow-up inputs" in current_view:
         return False
-    words = [part for part in prompt.split()[:4] if part]
-    return bool(words) and all(word in current_view for word in words)
+    words = [part for part in prompt.split() if part]
+    head = words[:4]
+    tail = words[-4:]
+    return (bool(head) and all(word in current_view for word in head)) or (
+        bool(tail) and all(word in current_view for word in tail)
+    )
 
 
 def _paste_and_submit_tmux_prompt(
@@ -631,6 +658,10 @@ def build_visible_multi_agent_payload(
                 f"{_q(tmux_bin)} select-pane -t {_q(session + ':' + window_name)} "
                 f"-T {_q(lane_id)}"
             )
+            start_script.append(
+                f"{_q(tmux_bin)} set-option -p -t {_q(session + ':' + window_name)} "
+                f"{_q(TMUX_LANE_ID_OPTION)} {_q(lane_id)}"
+            )
             start_script.append(f"{_q(tmux_bin)} set-option -t {_q(session)} remain-on-exit on")
         else:
             pane_var = f"LOOPX_TMUX_PANE_{index}"
@@ -641,6 +672,10 @@ def build_visible_multi_agent_payload(
             )
             start_script.append(
                 f"{_q(tmux_bin)} select-pane -t \"${pane_var}\" -T {_q(lane_id)}"
+            )
+            start_script.append(
+                f"{_q(tmux_bin)} set-option -p -t \"${pane_var}\" "
+                f"{_q(TMUX_LANE_ID_OPTION)} {_q(lane_id)}"
             )
             start_script.append(f"{_q(tmux_bin)} select-layout -t {_q(session + ':' + window_name)} tiled")
     start_script.append(
@@ -1210,6 +1245,11 @@ def _launch_with_tmux(
             env=env,
         )
         subprocess.run(
+            [tmux_bin, "set-option", "-p", "-t", pane_id, TMUX_LANE_ID_OPTION, lane_id],
+            check=False,
+            env=env,
+        )
+        subprocess.run(
             [tmux_bin, "select-layout", "-t", f"{session}:{window_name}", "tiled"],
             check=False,
             env=env,
@@ -1280,7 +1320,7 @@ def _tmux_acceptance(
     for attempt in range(32):
         time.sleep(0.25)
         list_result = subprocess.run(
-            [tmux_bin, "list-panes", "-a", "-t", session, "-F", "#{pane_id}\t#{pane_title}\t#{window_name}"],
+            [tmux_bin, "list-panes", "-s", "-t", session, "-F", "#{pane_id}\t#{pane_title}\t#{window_name}"],
             check=False,
             capture_output=True,
             text=True,

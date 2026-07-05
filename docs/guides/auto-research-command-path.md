@@ -82,6 +82,17 @@ run worker turns, or write LoopX state.
 The wake summary is state context for the pane to read, not a research result or
 skip gate. Later wake rounds still ask each role to check its own LoopX state and
 tick when runnable work remains.
+The fixed wake is session-scoped: it targets stable pane lane metadata inside
+the requested tmux session and must not infer work from mutable Codex pane
+titles, stale panes, or other sessions on the host.
+
+For the first visible demo, prefer a Codex CLI goal/pane-driven surface with a
+LoopX state-driven frontier. Do not replace it with a hidden dynamic workflow
+driver. The launcher may open panes and broadcast the fixed wake prompt, but
+dependency ordering must live in normal LoopX todos, resume gates, quota, and
+frontier projection. For example, an evaluator pane should wait on executor
+evidence through a resumable todo instead of closing its own review todo when
+evidence has not landed yet.
 
 The user still only supplies one open question; agent ids, pane-local tick
 commands, evidence schemas, and runner wiring stay inside the kernel. Pass
