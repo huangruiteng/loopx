@@ -6,8 +6,13 @@ from typing import Any, Callable
 
 DECISION_FRESHNESS_WINDOW_DAYS = 7
 DECISION_FRESHNESS_ITEM_LIMIT = 12
+DECISION_FRESHNESS_WARNING_ITEM_LIMIT = 3
 DECISION_FRESHNESS_PROXY_NOTE = (
     "checkpointed decision freshness projection; rebase old decisions at the decision point before reuse"
+)
+DECISION_FRESHNESS_WARNING_MESSAGE = (
+    "decision-point rebase required before reusing sampled reward/gate state; "
+    "refresh registry, ACTIVE_GOAL_STATE, quota, policy, and run status first"
 )
 DECISION_FRESHNESS_CLASSIFICATION_PREFIXES = (
     "human_reward",
@@ -145,5 +150,53 @@ def build_decision_freshness_summary(
             "rebase_required_count": rebase_required_count,
             "fresh_count": fresh_count,
         },
+        "items": items[:item_limit],
+    }
+
+
+def decision_freshness_warning(
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    item_limit: int = DECISION_FRESHNESS_WARNING_ITEM_LIMIT,
+    message: str = DECISION_FRESHNESS_WARNING_MESSAGE,
+) -> dict[str, Any] | None:
+    freshness = (
+        status_payload.get("decision_freshness_summary")
+        if isinstance(status_payload.get("decision_freshness_summary"), dict)
+        else {}
+    )
+    raw_items = freshness.get("items") if isinstance(freshness.get("items"), list) else []
+    items: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("goal_id") or "") != goal_id:
+            continue
+        if item.get("requires_decision_point_rebase") is not True:
+            continue
+        items.append(
+            {
+                "goal_id": item.get("goal_id"),
+                "decision_kind": item.get("decision_kind"),
+                "freshness_state": item.get("freshness_state"),
+                "decision_at": item.get("decision_at"),
+                "classification": item.get("classification"),
+                "age_days": item.get("age_days"),
+                "newer_event_count_7d": item.get("newer_event_count_7d"),
+                "reason": item.get("reason"),
+            }
+        )
+
+    if not items:
+        return None
+    summary = freshness.get("summary") if isinstance(freshness.get("summary"), dict) else {}
+    return {
+        "source": freshness.get("source") or "run_history",
+        "window_days": freshness.get("window_days"),
+        "message": message,
+        "rebase_required_count": len(items),
+        "global_rebase_required_count": summary.get("rebase_required_count"),
+        "global_stale_count": summary.get("stale_count"),
         "items": items[:item_limit],
     }
