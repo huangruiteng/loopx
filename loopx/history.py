@@ -37,6 +37,11 @@ REGISTRY_ATTENTION_FIELDS = (
     "recommended_action",
     "next_handoff_condition",
 )
+PER_AGENT_CONTEXT_RUN_FIELDS = (
+    "agent_vision",
+    "vision_checkpoint",
+    "autonomous_replan_ack",
+)
 
 
 def now_local() -> str:
@@ -665,6 +670,31 @@ def latest_status_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
+def latest_runs_with_agent_context(
+    runs: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Keep recent runs plus each agent's newest vision/replan context run."""
+
+    bounded = max(0, limit)
+    selected = list(runs[:bounded])
+    selected_ids = {id(run) for run in selected}
+    agents_with_context: set[str] = set()
+
+    for run in runs:
+        agent_id = str(run.get("agent_id") or "").strip()
+        if not agent_id or agent_id in agents_with_context:
+            continue
+        if not any(isinstance(run.get(field), dict) for field in PER_AGENT_CONTEXT_RUN_FIELDS):
+            continue
+        agents_with_context.add(agent_id)
+        if id(run) not in selected_ids:
+            selected.append(run)
+            selected_ids.add(id(run))
+    return selected
+
+
 def collect_history(
     *,
     registry_path: Path,
@@ -725,7 +755,7 @@ def collect_history(
             "raw_index_records": raw_count,
             "unique_runs": len(runs),
             "latest_status_run": latest_status_run(runs),
-            "latest_runs": runs[:limit],
+            "latest_runs": latest_runs_with_agent_context(runs, limit=limit),
         }
         if registry_member:
             for field in REGISTRY_ATTENTION_FIELDS:
