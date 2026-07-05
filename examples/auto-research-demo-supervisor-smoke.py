@@ -72,7 +72,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         "data_or_eval_entrypoint",
     ], layering
     assert "research_roles" in layering["preset_layer"]["owns"], layering
-    assert "metric_evidence_loop" in layering["preset_layer"]["owns"], layering
+    assert "metric_contract_hints" in layering["preset_layer"]["owns"], layering
     assert "multi_agent_runner" in layering["preset_layer"]["forbidden"], layering
     assert "decentralized_a2a_driver" in layering["preset_layer"]["forbidden"], layering
     assert "pane_local_a2a_tick" in layering["preset_layer"]["forbidden"], layering
@@ -96,7 +96,7 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
     assert preset["owns"] == [
         "research_roles",
         "handoff_hints",
-        "metric_evidence_loop",
+        "metric_contract_hints",
         "domain_defaults",
     ], preset
     assert "multi_agent_runner" in preset["forbidden"], preset
@@ -214,10 +214,10 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert lane["frontier"] == "agent-scoped LoopX todo/quota/frontier projection", lane
         assert lane["bootstrap_message"] == "role_prompt_public_artifact_for_first_turn_and_fixed_wake", lane
         assert lane["pane_local_a2a"]["tick_command"] == "$LOOPX_PANE_A2A_TICK", lane
-        assert lane["pane_local_a2a"]["worker_turn_configured"] is True, lane
+        assert lane["pane_local_a2a"]["worker_turn_configured"] is False, lane
         assert lane["pane_local_a2a"]["auto_start"] is True, lane
         assert lane["pane_local_a2a"]["auto_start_owner"] == "codex_tui_first_turn_prompt", lane
-        assert lane["pane_local_a2a"]["tick_rounds"] == 8, lane
+        assert lane["pane_local_a2a"]["tick_rounds"] == 1, lane
         assert lane["pane_local_a2a"]["tick_sleep_seconds"] == 1, lane
         assert lane["lane_timeline"] == [
             "role_profile",
@@ -230,17 +230,14 @@ def assert_supervisor_contract(payload: dict[str, Any]) -> None:
         assert "LOOPX_PANE_A2A_TICK" in command, lane
         assert "LOOPX_PANE_BOOTSTRAP_PROMPT" in command, lane
         assert "LOOPX_ROLE_PROFILE_ARTIFACT" in command, lane
-        assert "LOOPX_PANE_WORKER_TURN" in command, lane
-        assert "LOOPX_PANE_TICK_ROUNDS=8" in command, lane
+        assert "export LOOPX_PANE_WORKER_TURN=" not in command, lane
+        assert "LOOPX_PANE_TICK_ROUNDS=8" not in command, lane
         assert "LOOPX_PANE_TICK_SLEEP_SECONDS=1" in command, lane
         assert "pane-a2a-tick.output.txt" in command, lane
-        assert "auto-research worker-turn" in command, lane
-        assert "LOOPX_AUTO_RESEARCH_OUTPUT_LANGUAGE" in command, lane
+        assert "auto-research worker-turn" not in command, lane
+        assert "export LOOPX_AUTO_RESEARCH_OUTPUT_LANGUAGE=" not in command, lane
         assert "LOOPX_PANE_LOOPX_JSON" in command, lane
-        assert "--visible-lanes-accepted" in command, lane
         assert "LOOPX_VISIBLE_LANE_COUNT" in command, lane
-        assert "live-codex-e2e-evidence.public.json" in command, lane
-        assert "--complete-selected-todo" in command, lane
         assert "LOOPX_VISIBLE_TUI_SILENT_BOOTSTRAP=1" in command, lane
         assert "LOOPX_CODEX_TUI_MODE=interactive" in command, lane
         assert "LOOPX_CODEX_TUI_PROMPT_ARTIFACT" in command, lane

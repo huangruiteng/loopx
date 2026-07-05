@@ -55,7 +55,7 @@ def main() -> int:
         markdown,
     )
     require(
-        f"- evidence-first start: `loopx auto-research start '{QUESTION}' --execute`",
+        f"- visible role start: `loopx auto-research start '{QUESTION}' --execute`",
         markdown,
     )
     require(

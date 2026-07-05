@@ -187,7 +187,7 @@ def _render_operator_commands(payload: dict[str, object]) -> list[str]:
     stop_command = _string_value(launch_result, "stop_command")
     lines = ["", "## Operator Commands", ""]
     if default_start:
-        lines.append(f"- evidence-first start: `{default_start}`")
+        lines.append(f"- visible role start: `{default_start}`")
     if takeover_start:
         lines.append(f"- immediate takeover: `{takeover_start}`")
     if attach_semantics:
@@ -380,7 +380,7 @@ def _render_worker_loop(payload: dict[str, object]) -> str:
             continue
         lines.append(
             f"- round `{turn.get('round')}` agent `{turn.get('agent_id')}` "
-            f"role `{turn.get('role_id')}` iteration `{turn.get('demo_iteration')}` "
+            f"role `{turn.get('role_id')}` "
             f"mode `{turn.get('mode')}` action `{turn.get('selected_action')}` "
             f"executed `{turn.get('executed')}` completion `{turn.get('completion_status')}` "
             f"dev `{turn.get('dev_metric')}` holdout `{turn.get('holdout_metric')}`"

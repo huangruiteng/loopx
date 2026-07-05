@@ -4,26 +4,13 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 from .defaults import (
     AUTO_RESEARCH_DEFAULT_GOAL_ID,
     AUTO_RESEARCH_DEFAULT_OBJECTIVE,
 )
-from .evidence_packet import (
-    RESEARCH_CONTRACT_SCHEMA_VERSION,
-    RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
-    load_auto_research_evidence_packet_inputs,
-    validate_research_hypothesis,
-)
-from .kernel import (
-    LIGHTWEIGHT_AUTO_RESEARCH_RESULT_SCHEMA_VERSION,
-    lightweight_hypothesis,
-    run_lightweight_auto_research,
-)
 from .live_evidence import (
     LIVE_CODEX_E2E_DEFAULT_OUTPUT,
-    build_live_codex_e2e_evidence_from_packet,
 )
 from .preset import (
     auto_research_role_id_for_action,
@@ -74,41 +61,15 @@ GENERIC_VERIFIER_HANDOFF_KEYWORDS = (
 )
 
 AppendEvidence = Callable[[str], dict[str, object]]
-AUTO_RESEARCH_BUILTIN_KERNEL_MODE = "builtin_lightweight_metric_kernel"
-AUTO_RESEARCH_BUILTIN_EVAL_SCHEMA_VERSION = "auto_research_lightweight_eval_result_v0"
-AUTO_RESEARCH_DEMO_METRIC_NAME = "demo_quality_score"
-AUTO_RESEARCH_DEMO_BASELINE = 1.0
-AUTO_RESEARCH_DEMO_MECHANISM_FAMILY = "state_a2a_iteration"
-AUTO_RESEARCH_DEMO_CANDIDATE_KEY = "state_a2a_round"
-AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT = (
-    "Use a small state-mediated handoff loop so each role can improve the shared candidate."
-)
-AUTO_RESEARCH_DEMO_STAGE_METRICS = {
-    1: {"dev": 4.0, "holdout": 4.5},
-    2: {"dev": 4.8, "holdout": 5.2},
+AUTO_RESEARCH_STATE_SUMMARY_MODE = "rollout_evidence_summary"
+AUTO_RESEARCH_MANUAL_RESEARCH_REQUIRED_MODE = "manual_research_required"
+MANUAL_RESEARCH_REQUIRED_ACTIONS = {
+    "write_research_contract",
+    "propose_hypothesis",
+    "run_dev_eval",
+    "run_holdout_eval",
+    "write_evidence",
 }
-
-
-def _demo_stage(iteration: object) -> int:
-    try:
-        stage = int(iteration)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        stage = 1
-    return max(1, min(stage, max(AUTO_RESEARCH_DEMO_STAGE_METRICS)))
-
-
-def _demo_candidate_key(*, iteration: object) -> str:
-    return f"{AUTO_RESEARCH_DEMO_CANDIDATE_KEY}_{_demo_stage(iteration)}"
-
-
-def _demo_hypothesis_text(*, iteration: object) -> str:
-    stage = _demo_stage(iteration)
-    if stage == 1:
-        return AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT
-    return (
-        "Refine the shared state-mediated handoff loop so validated evidence "
-        "from the first branch routes a stronger second candidate."
-    )
 
 
 def _scored_rollout_metric_events(
@@ -129,14 +90,6 @@ def _scored_rollout_metric_events(
     return events
 
 
-def _next_demo_iteration(
-    rollout_events: list[dict[str, object]],
-    *,
-    split: str,
-) -> int:
-    return _demo_stage(len(_scored_rollout_metric_events(rollout_events, split=split)) + 1)
-
-
 def _holdout_metric_sequence(rollout_events: list[dict[str, object]]) -> list[float]:
     sequence: list[float] = []
     for event in _scored_rollout_metric_events(rollout_events, split="holdout"):
@@ -149,11 +102,19 @@ def _holdout_metric_sequence(rollout_events: list[dict[str, object]]) -> list[fl
     return sequence
 
 
-def _holdout_improvement_count(holdout_metrics: list[float]) -> int:
+def _holdout_improvement_count(
+    holdout_metrics: list[float],
+    *,
+    baseline: float | None,
+    direction: str,
+) -> int:
+    if baseline is None:
+        return 0
     count = 0
-    previous = AUTO_RESEARCH_DEMO_BASELINE
+    previous = baseline
     for metric in holdout_metrics:
-        if metric > previous:
+        improved = metric < previous if direction == "minimize" else metric > previous
+        if improved:
             count += 1
         previous = metric
     return count
@@ -177,195 +138,6 @@ def _artifact_summary(kind: str, *, filename: str) -> dict[str, object]:
     }
 
 
-def _demo_research_contract(*, goal_id: str, objective: str) -> dict[str, object]:
-    return {
-        "schema_version": RESEARCH_CONTRACT_SCHEMA_VERSION,
-        "goal_id": goal_id,
-        "research_objective": objective,
-        "editable_scope": [
-            "candidate_strategy",
-            "hypothesis_text",
-            "todo_handoff",
-        ],
-        "protected_scope": [
-            "metric_definition",
-            "baseline_metric",
-            "holdout_split",
-        ],
-        "metric": {
-            "name": AUTO_RESEARCH_DEMO_METRIC_NAME,
-            "direction": "maximize",
-            "baseline": AUTO_RESEARCH_DEMO_BASELINE,
-        },
-        "dev_eval": "builtin lightweight metric evaluator on dev split",
-        "holdout_eval": "builtin lightweight metric evaluator on holdout split",
-        "promotion_policy": "dev_and_holdout_improved",
-    }
-
-
-def _demo_metric_evaluator(hypothesis: dict[str, Any], split: str) -> dict[str, object]:
-    candidate_key = str(hypothesis.get("candidate_key") or AUTO_RESEARCH_DEMO_CANDIDATE_KEY)
-    raw_stage = candidate_key.rsplit("_", 1)[-1] if "_" in candidate_key else "1"
-    stage = _demo_stage(raw_stage)
-    metric_by_split = AUTO_RESEARCH_DEMO_STAGE_METRICS[stage]
-    metric = metric_by_split.get(split, AUTO_RESEARCH_DEMO_BASELINE)
-    return {
-        "metric": metric,
-        "exact": True,
-        "protected_scope_clean": True,
-        "strategy": candidate_key,
-        "artifact_refs": [f"public_metric:{split}:{candidate_key}"],
-        "result_source": "builtin_metric_evaluator",
-    }
-
-
-def _demo_kernel_result(
-    *,
-    goal_id: str,
-    todo_id: str,
-    agent_id: str,
-    iteration: int,
-) -> dict[str, object]:
-    candidate_key = _demo_candidate_key(iteration=iteration)
-    hypothesis = lightweight_hypothesis(
-        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{candidate_key}",
-        todo_id=todo_id,
-        claimed_by=agent_id,
-        text=_demo_hypothesis_text(iteration=iteration),
-        candidate_key=candidate_key,
-    )
-    return run_lightweight_auto_research(
-        goal_id=goal_id,
-        hypotheses=[hypothesis],
-        evaluate=_demo_metric_evaluator,
-        baseline=AUTO_RESEARCH_DEMO_BASELINE,
-        direction="maximize",
-        max_dev_rounds=1,
-    )
-
-
-def _demo_eval_result(
-    *,
-    goal_id: str,
-    todo_id: str,
-    agent_id: str,
-    split: str,
-    iteration: int,
-) -> dict[str, object]:
-    kernel_result = _demo_kernel_result(
-        goal_id=goal_id,
-        todo_id=todo_id,
-        agent_id=agent_id,
-        iteration=iteration,
-    )
-    if kernel_result.get("schema_version") != LIGHTWEIGHT_AUTO_RESEARCH_RESULT_SCHEMA_VERSION:
-        raise ValueError("unexpected lightweight auto-research kernel result")
-    matching = [
-        event
-        for event in kernel_result.get("evidence") or []
-        if isinstance(event, dict) and event.get("split") == split
-    ]
-    if not matching:
-        raise ValueError(f"lightweight auto-research kernel produced no {split} evidence")
-    event = matching[0]
-    improved = event.get("status") == "improved"
-    return {
-        "schema_version": AUTO_RESEARCH_BUILTIN_EVAL_SCHEMA_VERSION,
-        "split": split,
-        "metric": {
-            "name": AUTO_RESEARCH_DEMO_METRIC_NAME,
-            "value": event.get("metric"),
-            "direction": event.get("direction") or "maximize",
-            "baseline": event.get("baseline"),
-        },
-        "eval_status": "scored",
-        "primary_metric_status": "improved" if improved else "regressed",
-        "artifact_refs": event.get("artifact_refs") or [],
-        "protected_scope_clean": bool(event.get("protected_scope_clean")),
-        "no_upload": True,
-        "kernel_schema_version": kernel_result.get("schema_version"),
-        "result_source": event.get("result_source"),
-        "demo_iteration": _demo_stage(iteration),
-    }
-
-
-def _write_contract_artifact(
-    *,
-    output_path: Path,
-    goal_id: str,
-    objective: str,
-    todo_id: str,
-    agent_id: str,
-) -> dict[str, object]:
-    contract = _demo_research_contract(goal_id=goal_id, objective=objective)
-    artifact = {
-        "ok": True,
-        "schema_version": "auto_research_worker_contract_artifact_v0",
-        "goal_id": goal_id,
-        "todo_id": todo_id,
-        "agent_id": agent_id,
-        "research_contract": contract,
-        "summary": {
-            "status": "contract_written",
-            "metric": contract.get("metric"),
-            "promotion_policy": contract.get("promotion_policy"),
-        },
-        "public_boundary": {
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "absolute_paths_recorded": False,
-        },
-    }
-    _write_json(output_path, artifact)
-    return artifact
-
-
-def _write_hypothesis_artifact(
-    *,
-    output_path: Path,
-    goal_id: str,
-    todo_id: str,
-    agent_id: str,
-    iteration: int = 1,
-) -> dict[str, object]:
-    candidate_key = _demo_candidate_key(iteration=iteration)
-    hypothesis = validate_research_hypothesis(
-        {
-            "schema_version": RESEARCH_HYPOTHESIS_SCHEMA_VERSION,
-            "hypothesis_id": f"hyp_{_slug(todo_id, default='todo')}_{candidate_key}",
-            "parent_hypothesis_id": None,
-            "todo_id": todo_id,
-            "claimed_by": agent_id,
-            "mechanism_family": AUTO_RESEARCH_DEMO_MECHANISM_FAMILY,
-            "hypothesis": _demo_hypothesis_text(iteration=iteration),
-            "status": "active",
-            "grounding_refs": ["kernel:state_a2a_metric_demo"],
-            "blocked_by": [],
-        }
-    )
-    artifact = {
-        "ok": True,
-        "schema_version": "auto_research_worker_hypothesis_artifact_v0",
-        "goal_id": goal_id,
-        "todo_id": todo_id,
-        "agent_id": agent_id,
-        "hypothesis": hypothesis,
-        "summary": {
-            "status": "hypothesis_mapped",
-            "hypothesis_id": hypothesis["hypothesis_id"],
-            "mechanism_family": hypothesis["mechanism_family"],
-            "demo_iteration": _demo_stage(iteration),
-        },
-        "public_boundary": {
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "absolute_paths_recorded": False,
-        },
-    }
-    _write_json(output_path, artifact)
-    return artifact
-
-
 def _write_evaluation_summary_artifact(
     *,
     registry_path: Path,
@@ -384,7 +156,13 @@ def _write_evaluation_summary_artifact(
     )
     decisions = build_research_decision_candidates(graph)
     holdout_metrics = _holdout_metric_sequence(rollout_events)
-    holdout_improvements = _holdout_improvement_count(holdout_metrics)
+    metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
+    baseline = graph.get("baseline_metric")
+    holdout_improvements = _holdout_improvement_count(
+        holdout_metrics,
+        baseline=float(baseline) if isinstance(baseline, (int, float)) else None,
+        direction=str(metric.get("direction") or "maximize"),
+    )
     dev_pending_holdout_count = len(decisions.get("dev_promotion_candidates") or [])
     artifact = {
         "ok": True,
@@ -427,30 +205,48 @@ def _write_evaluation_summary_artifact(
     return artifact
 
 
-def _select_holdout_candidate(graph: dict[str, object]) -> dict[str, object]:
-    metric = graph.get("metric") if isinstance(graph.get("metric"), dict) else {}
-    direction = str(metric.get("direction") or "maximize")
-    candidates: list[dict[str, object]] = []
-    for item in graph.get("nodes") or []:
-        if not isinstance(item, dict):
-            continue
-        if item.get("best_holdout_metric") is not None:
-            continue
-        if int(item.get("negative_evidence_count") or 0) > 0:
-            continue
-        if item.get("best_dev_metric") is None:
-            continue
-        if not item.get("dev_improved"):
-            continue
-        candidates.append(item)
-    if not candidates:
-        raise ValueError("no dev-supported auto-research hypothesis is ready for holdout validation")
-    reverse = direction != "minimize"
-    return sorted(
-        candidates,
-        key=lambda item: float(item.get("best_dev_metric") or 0.0),
-        reverse=reverse,
-    )[0]
+def _manual_research_required_result(
+    *,
+    goal_id: str,
+    agent_id: str,
+    todo_id: str,
+    action: str,
+    complete_selected_todo: bool,
+    frontier_packet: dict[str, object],
+) -> dict[str, object]:
+    role_id = auto_research_role_id_for_action(action)
+    return {
+        "ok": True,
+        "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+        "mode": AUTO_RESEARCH_MANUAL_RESEARCH_REQUIRED_MODE,
+        "goal_id": goal_id,
+        "agent_id": agent_id,
+        "selected_todo_id": todo_id,
+        "selected_action": action,
+        "role_id": role_id,
+        "executed": False,
+        "manual_research_required": True,
+        "reason": "auto_research_visible_roles_must_author_real_evidence",
+        "next_steps": [
+            "read the role profile and selected frontier",
+            "perform the role's research work in the visible Codex TUI",
+            "write public-safe contract, hypothesis, evidence, or todo handoff through LoopX state",
+            "do not claim dev/holdout uplift unless it comes from an explicit evidence packet or real evaluator output",
+        ],
+        "completion": {
+            "requested": complete_selected_todo,
+            "executed": False,
+            "reason": "manual_research_required_before_completion",
+        },
+        "frontier": frontier_packet,
+        "public_boundary": {
+            "raw_logs_recorded": False,
+            "private_artifacts_recorded": False,
+            "absolute_paths_recorded": False,
+            "credentials_recorded": False,
+            "fake_metrics_recorded": False,
+        },
+    }
 
 
 def _maybe_add_role_successor_todos(
@@ -578,9 +374,9 @@ def _complete_selected_todo(
         todo_id=todo_id,
         role="agent",
         claimed_by=agent_id,
-        note=f"auto-research worker-turn completed {action}",
+        note=f"auto-research state summary completed {action}",
         evidence=(
-            f"worker-turn agent={agent_id} action={action} wrote public-safe local artifact "
+            f"state-summary agent={agent_id} action={action} wrote public-safe local artifact "
             "and obeyed quota/frontier before completion"
         ),
         no_followup=True,
@@ -745,134 +541,18 @@ def run_auto_research_worker_turn(
             "completion": {"requested": complete_selected_todo, "executed": False},
             "frontier": frontier_packet,
         }
-    if action in {"run_dev_eval", "run_holdout_eval", "write_evidence"} and append_evidence is None:
-        raise ValueError("execute requires an append_evidence callback")
+    if action in MANUAL_RESEARCH_REQUIRED_ACTIONS:
+        return _manual_research_required_result(
+            goal_id=goal_id,
+            agent_id=agent_id,
+            todo_id=todo_id,
+            action=action,
+            complete_selected_todo=complete_selected_todo,
+            frontier_packet=frontier_packet,
+        )
 
     run_dir = workspace / evidence_dir / _slug(agent_id, default="agent") / _slug(todo_id, default="todo")
-    contract_artifact_path = run_dir / "research-contract.public.json"
-    contract_input_path = run_dir / "research-contract-input.public.json"
-    hypothesis_artifact_path = run_dir / "hypothesis.public.json"
     evaluation_summary_path = run_dir / "evaluation-summary.public.json"
-    dev_result_path = run_dir / "dev-result.public.json"
-    holdout_result_path = run_dir / "holdout-result.public.json"
-    evidence_packet_path = run_dir / "evidence.public.json"
-    append_result_path = run_dir / "append-result.public.json"
-    live_evidence_path = run_dir / live_evidence_output
-
-    if action == "write_research_contract":
-        artifact = _write_contract_artifact(
-            output_path=contract_artifact_path,
-            goal_id=goal_id,
-            objective=objective,
-            todo_id=todo_id,
-            agent_id=agent_id,
-        )
-        role_id = auto_research_role_id_for_action(action)
-        completion = (
-            _complete_selected_todo(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                todo_id=todo_id,
-                agent_id=agent_id,
-                action=action,
-                execute=True,
-            )
-            if complete_selected_todo
-            else {"requested": False}
-        )
-        return {
-            "ok": True,
-            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
-            "mode": "execute",
-            "goal_id": goal_id,
-            "agent_id": agent_id,
-            "selected_todo_id": todo_id,
-            "selected_action": action,
-            "executed": True,
-            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
-            "artifact": _artifact_summary("research_contract", filename="research-contract.public.json"),
-            "artifact_status": artifact["summary"]["status"],
-            "role_id": role_id,
-            "completion": completion,
-            "frontier": frontier_packet,
-            "public_boundary": {
-                "raw_logs_recorded": False,
-                "private_artifacts_recorded": False,
-                "absolute_paths_recorded": False,
-                "credentials_recorded": False,
-            },
-        }
-
-    if action == "propose_hypothesis":
-        registry = load_registry(registry_path)
-        runtime_root = resolve_runtime_root(registry, runtime_root_arg)
-        rollout_events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
-        iteration = _next_demo_iteration(rollout_events, split="dev")
-        artifact = _write_hypothesis_artifact(
-            output_path=hypothesis_artifact_path,
-            goal_id=goal_id,
-            todo_id=todo_id,
-            agent_id=agent_id,
-            iteration=iteration,
-        )
-        summary_artifact = _write_evaluation_summary_artifact(
-            registry_path=registry_path,
-            runtime_root_arg=runtime_root_arg,
-            output_path=evaluation_summary_path,
-            goal_id=goal_id,
-            todo_id=todo_id,
-            agent_id=agent_id,
-        )
-        role_id = auto_research_role_id_for_action(action)
-        successor_todos = _maybe_add_role_successor_todos(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            source_todo_id=todo_id,
-            agent_id=agent_id,
-            role_id=role_id,
-            action=action,
-            decision_summary=summary_artifact["decision_summary"],
-            execute=True,
-        )
-        followup = first_successor_followup(successor_todos)
-        completion = (
-            _complete_selected_todo(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                todo_id=todo_id,
-                agent_id=agent_id,
-                action=action,
-                execute=True,
-            )
-            if complete_selected_todo
-            else {"requested": False}
-        )
-        return {
-            "ok": True,
-            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
-            "mode": "execute",
-            "goal_id": goal_id,
-            "agent_id": agent_id,
-            "selected_todo_id": todo_id,
-            "selected_action": action,
-            "executed": True,
-            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
-            "artifact": _artifact_summary("research_hypothesis", filename="hypothesis.public.json"),
-            "artifact_status": artifact["summary"]["status"],
-            "hypothesis_id": artifact["summary"]["hypothesis_id"],
-            "demo_iteration": artifact["summary"]["demo_iteration"],
-            "role_id": role_id,
-            "successor_todos": successor_todos,
-            "followup": followup,
-            "completion": completion,
-            "frontier": frontier_packet,
-            "public_boundary": {
-                "raw_logs_recorded": False,
-                "private_artifacts_recorded": False,
-                "absolute_paths_recorded": False,
-                "credentials_recorded": False,
-            },
-        }
 
     if action in {
         "classify_evidence",
@@ -923,7 +603,7 @@ def run_auto_research_worker_turn(
             "selected_todo_id": todo_id,
             "selected_action": action,
             "executed": True,
-            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
+            "summary_mode": AUTO_RESEARCH_STATE_SUMMARY_MODE,
             "artifact": _artifact_summary("evaluation_summary", filename="evaluation-summary.public.json"),
             "artifact_status": artifact["summary"]["status"],
             "claim_allowed": artifact["summary"]["claim_allowed"],
@@ -955,320 +635,11 @@ def run_auto_research_worker_turn(
             },
         }
 
-    if action == "run_holdout_eval":
-        registry = load_registry(registry_path)
-        runtime_root = resolve_runtime_root(registry, runtime_root_arg)
-        rollout_events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
-        graph = build_research_evidence_graph_from_rollout_events(
-            goal_id=goal_id,
-            rollout_events=rollout_events,
-        )
-        iteration = _next_demo_iteration(rollout_events, split="holdout")
-        try:
-            candidate = _select_holdout_candidate(graph)
-        except ValueError as exc:
-            return {
-                "ok": True,
-                "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
-                "mode": "blocked",
-                "goal_id": goal_id,
-                "agent_id": agent_id,
-                "selected_todo_id": todo_id,
-                "selected_action": action,
-                "executed": False,
-                "blocker": "waiting_for_dev_evidence",
-                "blocker_detail": str(exc),
-                "completion": {"requested": complete_selected_todo, "executed": False},
-                "frontier": frontier_packet,
-                "public_boundary": {
-                    "raw_logs_recorded": False,
-                    "private_artifacts_recorded": False,
-                    "absolute_paths_recorded": False,
-                    "credentials_recorded": False,
-                },
-            }
-        contract_artifact = _write_contract_artifact(
-            output_path=contract_artifact_path,
-            goal_id=goal_id,
-            objective=objective,
-            todo_id=todo_id,
-            agent_id=agent_id,
-        )
-        _write_json(contract_input_path, contract_artifact["research_contract"])
-        holdout_result = _demo_eval_result(
-            goal_id=goal_id,
-            todo_id=todo_id,
-            agent_id=agent_id,
-            split="holdout",
-            iteration=iteration,
-        )
-        _write_json(holdout_result_path, holdout_result)
-        packet = load_auto_research_evidence_packet_inputs(
-            contract_path=contract_input_path,
-            eval_result_paths=[holdout_result_path],
-            hypothesis_id=str(candidate["hypothesis_id"]),
-            todo_id=str(candidate["todo_id"]),
-            agent_id=agent_id,
-            claimed_by=str(candidate.get("claimed_by") or agent_id),
-            mechanism_family=str(candidate.get("mechanism_family") or AUTO_RESEARCH_DEMO_MECHANISM_FAMILY),
-            hypothesis=str(candidate.get("hypothesis") or AUTO_RESEARCH_DEMO_HYPOTHESIS_TEXT),
-            parent_hypothesis_id=str(candidate.get("parent_hypothesis_id") or "") or None,
-            grounding_refs=[
-                str(ref)
-                for ref in candidate.get("grounding_refs") or ["kernel:state_a2a_metric_demo"]
-                if str(ref).strip()
-            ],
-            novelty_audit_ref=str(candidate.get("novelty_audit_ref") or "") or None,
-            attempt_start=int(candidate.get("evidence_event_count") or 1) + 1,
-        )
-        _write_json(evidence_packet_path, packet)
-        append_result = append_evidence(str(evidence_packet_path))
-        _write_json(append_result_path, append_result)
-        summary_artifact = _write_evaluation_summary_artifact(
-            registry_path=registry_path,
-            runtime_root_arg=runtime_root_arg,
-            output_path=evaluation_summary_path,
-            goal_id=goal_id,
-            todo_id=todo_id,
-            agent_id=agent_id,
-        )
-        role_id = auto_research_role_id_for_action(action)
-        successor_todos = _maybe_add_role_successor_todos(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            source_todo_id=todo_id,
-            agent_id=agent_id,
-            role_id=role_id,
-            action=action,
-            decision_summary=summary_artifact["decision_summary"],
-            execute=True,
-        )
-        followup = first_successor_followup(successor_todos)
-        live_evidence: dict[str, object] | None = None
-        if visible_lanes_accepted:
-            live_evidence = build_live_codex_e2e_evidence_from_packet(
-                packet=packet,
-                append_result=append_result,
-                agent_id=agent_id,
-                lane_count=lane_count,
-                visible_lanes_accepted=True,
-            )
-            _write_json(live_evidence_path, live_evidence)
-        live_lane_evidence = (
-            live_evidence.get("lane_evidence")
-            if isinstance(live_evidence, dict) and isinstance(live_evidence.get("lane_evidence"), dict)
-            else {}
-        )
-        completion = (
-            _complete_selected_todo(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                todo_id=todo_id,
-                agent_id=agent_id,
-                action=action,
-                execute=True,
-            )
-            if complete_selected_todo
-            else {"requested": False}
-        )
-        return {
-            "ok": True,
-            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
-            "mode": "execute",
-            "goal_id": goal_id,
-            "agent_id": agent_id,
-            "selected_todo_id": todo_id,
-            "selected_action": action,
-            "executed": True,
-            "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
-            "contract_status": contract_artifact["summary"]["status"],
-            "validated_hypothesis_id": candidate["hypothesis_id"],
-            "holdout_metric": (holdout_result.get("metric") or {}).get("value")
-            if isinstance(holdout_result.get("metric"), dict)
-            else None,
-            "demo_iteration": holdout_result.get("demo_iteration"),
-            "packet_status": packet["summary"]["status"],
-            "append": {
-                "schema_version": append_result.get("schema_version"),
-                "goal_id": append_result.get("goal_id"),
-                "appended_count": append_result.get("appended_count"),
-                "counts_by_kind": append_result.get("counts_by_kind"),
-            },
-            "evaluation_summary": {
-                "claim_allowed": summary_artifact["summary"]["claim_allowed"],
-                "best_dev_metric": summary_artifact["evidence_graph_summary"]["best_dev_metric"],
-                "best_holdout_metric": summary_artifact["evidence_graph_summary"]["best_holdout_metric"],
-                "holdout_metric_sequence": summary_artifact["evidence_graph_summary"][
-                    "holdout_metric_sequence"
-                ],
-                "holdout_improvement_count": summary_artifact["decision_summary"][
-                    "holdout_improvement_count"
-                ],
-                "validated_promotion_candidate_count": summary_artifact["decision_summary"][
-                    "validated_promotion_candidate_count"
-                ],
-            },
-            "live_evidence": {
-                "written": live_evidence is not None,
-                "evidence_source": live_evidence.get("source") if live_evidence else None,
-                "holdout_metric": live_lane_evidence.get("holdout_metric"),
-            },
-            "role_id": role_id,
-            "successor_todos": successor_todos,
-            "followup": followup,
-            "artifact": _artifact_summary("holdout_validation", filename="evaluation-summary.public.json"),
-            "artifact_status": "holdout_evidence_appended",
-            "completion": completion,
-            "frontier": frontier_packet,
-            "public_boundary": {
-                "raw_logs_recorded": False,
-                "private_artifacts_recorded": False,
-                "absolute_paths_recorded": False,
-                "credentials_recorded": False,
-            },
-        }
-
-    contract_artifact = _write_contract_artifact(
-        output_path=contract_artifact_path,
+    return _manual_research_required_result(
         goal_id=goal_id,
-        objective=objective,
+        agent_id=agent_id,
         todo_id=todo_id,
-        agent_id=agent_id,
-    )
-    _write_json(contract_input_path, contract_artifact["research_contract"])
-    registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
-    rollout_events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
-    iteration = _next_demo_iteration(rollout_events, split="dev")
-    candidate_key = _demo_candidate_key(iteration=iteration)
-    dev_result = _demo_eval_result(
-        goal_id=goal_id,
-        todo_id=todo_id,
-        agent_id=agent_id,
-        split="dev",
-        iteration=iteration,
-    )
-    _write_json(dev_result_path, dev_result)
-    packet = load_auto_research_evidence_packet_inputs(
-        contract_path=contract_input_path,
-        eval_result_paths=[dev_result_path],
-        hypothesis_id=f"hyp_{_slug(todo_id, default='todo')}_{candidate_key}",
-        todo_id=todo_id,
-        agent_id=agent_id,
-        claimed_by=agent_id,
-        mechanism_family=AUTO_RESEARCH_DEMO_MECHANISM_FAMILY,
-        hypothesis=_demo_hypothesis_text(iteration=iteration),
-        grounding_refs=["kernel:state_a2a_metric_demo"],
-        attempt_start=1,
-    )
-    _write_json(evidence_packet_path, packet)
-    append_result = append_evidence(str(evidence_packet_path))
-    _write_json(append_result_path, append_result)
-    summary_artifact = _write_evaluation_summary_artifact(
-        registry_path=registry_path,
-        runtime_root_arg=runtime_root_arg,
-        output_path=evaluation_summary_path,
-        goal_id=goal_id,
-        todo_id=todo_id,
-        agent_id=agent_id,
-    )
-    role_id = auto_research_role_id_for_action(action)
-    successor_todos = _maybe_add_role_successor_todos(
-        registry_path=registry_path,
-        goal_id=goal_id,
-        source_todo_id=todo_id,
-        agent_id=agent_id,
-        role_id=role_id,
         action=action,
-        decision_summary=summary_artifact["decision_summary"],
-        execute=True,
+        complete_selected_todo=complete_selected_todo,
+        frontier_packet=frontier_packet,
     )
-    followup = first_successor_followup(successor_todos)
-
-    live_evidence: dict[str, object] | None = None
-    if visible_lanes_accepted:
-        live_evidence = build_live_codex_e2e_evidence_from_packet(
-            packet=packet,
-            append_result=append_result,
-            agent_id=agent_id,
-            lane_count=lane_count,
-            visible_lanes_accepted=True,
-        )
-        _write_json(live_evidence_path, live_evidence)
-
-    live_lane_evidence = (
-        live_evidence.get("lane_evidence")
-        if isinstance(live_evidence, dict) and isinstance(live_evidence.get("lane_evidence"), dict)
-        else {}
-    )
-    completion = (
-        _complete_selected_todo(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            todo_id=todo_id,
-            agent_id=agent_id,
-            action=action,
-            execute=True,
-        )
-        if complete_selected_todo
-        else {"requested": False}
-    )
-    return {
-        "ok": True,
-        "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
-        "mode": "execute",
-        "goal_id": goal_id,
-        "agent_id": agent_id,
-        "selected_todo_id": todo_id,
-        "selected_action": action,
-        "executed": True,
-        "kernel_mode": AUTO_RESEARCH_BUILTIN_KERNEL_MODE,
-        "contract_status": contract_artifact["summary"]["status"],
-        "dev_metric": (dev_result.get("metric") or {}).get("value")
-        if isinstance(dev_result.get("metric"), dict)
-        else None,
-        "demo_iteration": dev_result.get("demo_iteration"),
-        "packet_status": packet["summary"]["status"],
-        "append": {
-            "schema_version": append_result.get("schema_version"),
-            "goal_id": append_result.get("goal_id"),
-            "appended_count": append_result.get("appended_count"),
-            "counts_by_kind": append_result.get("counts_by_kind"),
-        },
-        "evaluation_summary": {
-            "claim_allowed": summary_artifact["summary"]["claim_allowed"],
-            "best_dev_metric": summary_artifact["evidence_graph_summary"]["best_dev_metric"],
-            "best_holdout_metric": summary_artifact["evidence_graph_summary"]["best_holdout_metric"],
-            "holdout_metric_sequence": summary_artifact["evidence_graph_summary"][
-                "holdout_metric_sequence"
-            ],
-            "holdout_improvement_count": summary_artifact["decision_summary"][
-                "holdout_improvement_count"
-            ],
-            "validated_promotion_candidate_count": summary_artifact["decision_summary"][
-                "validated_promotion_candidate_count"
-            ],
-        },
-        "live_evidence": {
-            "written": live_evidence is not None,
-            "evidence_source": live_evidence.get("source") if live_evidence else None,
-            "dev_metric": live_lane_evidence.get("dev_metric"),
-        },
-        "role_id": role_id,
-        "successor_todos": successor_todos,
-        "followup": followup,
-        "artifacts": {
-            "paths_are_local_only": True,
-            "evidence_packet": "evidence.public.json",
-            "append_result": "append-result.public.json",
-            "live_evidence": live_evidence_output if live_evidence else None,
-        },
-        "completion": completion,
-        "frontier": frontier_packet,
-        "public_boundary": {
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "absolute_paths_recorded": False,
-            "credentials_recorded": False,
-        },
-    }

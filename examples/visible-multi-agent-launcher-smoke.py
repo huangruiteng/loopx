@@ -119,7 +119,9 @@ def main() -> int:
     assert "selected_todo_id" in runtime_source
     assert "claim_allowed_rule" in runtime_source
     assert "Honor the role prompt's human output language" in contract_source
-    assert "This Codex TUI owns the first visible tick" in contract_source
+    assert "This Codex TUI owns the first visible research turn" in contract_source
+    assert "tick reads your quota/frontier; it runs a role worker only when" in contract_source
+    assert "manual research is required" in contract_source
     assert "Treat `$LOOPX_PANE_TICK_SUMMARY` as previous pane-local evidence" in contract_source
     assert "not a gate that cancels later fixed wakes" in contract_source
     assert "Use $loopx-project" in contract_source

@@ -75,17 +75,17 @@ Without `--execute`, `start` returns the same contract-anchored runner packet as
 a dry-run preview. With `--execute`, it creates an isolated research frontier
 and starts the visible Codex TUI lanes through the generic multi-agent kernel.
 The launcher then broadcasts the fixed pane-local A2A wake prompt so each pane
-runs its own `$LOOPX_PANE_A2A_TICK` against LoopX quota/frontier state and writes
-compact public evidence before the operator takes over. This is still
+runs its own `$LOOPX_PANE_A2A_TICK` against LoopX quota/frontier state. Research
+evidence must be authored by the visible role after it does real work. This is still
 decentralized A2A, not a workflow driver: the broadcaster does not select todos,
 run worker turns, or write LoopX state.
-The launcher pre-tick summary is prior evidence for the pane to read, not a
-skip gate for the fixed wake. Later wake rounds still ask each role to check its
-own LoopX state and tick when runnable work remains.
+The wake summary is state context for the pane to read, not a research result or
+skip gate. Later wake rounds still ask each role to check its own LoopX state and
+tick when runnable work remains.
 
 The user still only supplies one open question; agent ids, pane-local tick
 commands, evidence schemas, and runner wiring stay inside the kernel. Pass
-`--attach` when you want to skip the default evidence-first wake and immediately
+`--attach` when you want to skip the default visible role wake and immediately
 enter the tmux session.
 By default, visible panes open in a stable user-owned workspace under
 `~/loopx-auto-research/<run>/visible-workspace` so the first screen does not
@@ -180,7 +180,7 @@ loopx --registry "$LOOPX_REGISTRY" \
 That command starts visible panes, wakes each pane with the fixed
 decentralized A2A prompt, and keeps the current shell available for the compact
 JSON result. To attach immediately instead, pass `--attach`; that means
-operator takeover first and skips the default evidence-first wake:
+operator takeover first and skips the default visible role wake:
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -209,19 +209,13 @@ render those artifacts separately.
 
 Expected minimal E2E result:
 
-- `execution_kind` is `loopx_worker_loop`;
-- `result_source` is `loopx_worker_loop_public_evidence`;
-- `worker_loop.executed_turn_count` is at least `6`;
-- `worker_loop.selected_actions` is
-  `write_research_contract`, `propose_hypothesis`, `run_dev_eval`,
-  `summarize_evidence`,
-  `run_holdout_eval`, and `write_evaluation_summary`;
-- `tonight_experience.coordination_pattern` is `decentralized_state_a2a`;
-- `tonight_experience.dev_metric` is `4.0`;
-- `tonight_experience.holdout_metric` is `4.5`;
-- `tonight_experience.positive_result` is `true`;
-- `visible_worker_proof.lane_authored_evidence_loaded` is `false` unless a
-  compact lane evidence file is passed;
+- visible launch controls create real Codex TUI panes with role-local
+  bootstrap prompts;
+- each pane can run `$LOOPX_PANE_A2A_TICK` to read its own quota/frontier;
+- `pane_local_a2a.worker_turn_configured` is `false` for the default
+  auto-research preset;
+- no dev or holdout metric is claimed unless a lane-authored public-safe
+  evidence packet is explicitly supplied;
 - visible launch controls stay separate from the research result and only prove
   that panes can be inspected, stopped, or retried.
 
@@ -232,28 +226,16 @@ python3 examples/auto-research-layered-e2e-acceptance-smoke.py
 ```
 
 That smoke checks the shortest layered contract, the visible Codex TUI runner
-contract, todo handoff, public evidence writes, and two metric-improving rounds
-without making the auto-research preset own generic runner machinery.
+contract, todo/frontier routing, and the no-fake-metric boundary without making
+the auto-research preset own generic runner machinery.
 
-Concrete KNN proof command:
+Concrete KNN visible command:
 
 ```bash
 loopx --format json auto-research start \
   "How can the KNN baseline improve holdout metric?" \
   --preset knn-demo \
-  --execute \
-  --headless \
-  --worker-loop-rounds 4 \
-  --demo-run-id knn-multiround-proof
-```
-
-This is the maintainer proof for state-mediated continuation, not the visible
-operator experience. The matching visible path is still the one-command start:
-
-```bash
-loopx auto-research start \
-  "How can the KNN baseline improve holdout metric?" \
-  --preset knn-demo \
+  --language zh \
   --execute
 ```
 
@@ -262,79 +244,32 @@ split, and protected metric scope come from the built-in KNN demo fixture. The
 open question names the research topic; it does not smuggle the baseline into
 the system through natural-language inference.
 
-The validated KNN run demonstrates that the second round is carried by LoopX
-state and role-declared successor todos: the evidence runner owns
-`run_holdout_eval` after dev evidence is summarized, and the verifier owns
-`write_evaluation_summary` after holdout evidence exists. A generic continuation
-projector is not required for this preset; the role skill declares the next todo
-target and the kernel validates the target agent before writing state.
-
-KNN proof acceptance:
-
-- baseline metric is `1.0`;
-- dev metric is `4.0`;
-- holdout metric is `4.5`;
-- selected actions include `run_dev_eval`, `run_holdout_eval`, and
-  `write_evaluation_summary`;
-- the coordination pattern remains `decentralized_state_a2a`;
-- the public boundary records no raw logs, private artifacts, credentials, or
-  local absolute paths.
-
-Remaining boundary: the headless KNN proof validates the LoopX todo/state
-multi-round path. It is not, by itself, a claim that visible Codex panes authored
-the research result. That higher claim still needs compact lane-authored evidence
-or a visible readiness packet loaded through the public evidence path below.
-
-Evidence boundary:
-
-- `visible_worker_proof.visible_lanes_launched` reports whether panes were
-  started;
-- `visible_worker_proof.visible_lanes_accepted` reports whether the launcher
-  observed healthy panes;
-- `visible_worker_proof.lane_authored_evidence_loaded` reports whether compact
-  lane evidence was provided;
-- the default visible launch proves panes can start, but pane startup alone is
-  not a live Codex research result.
-
-To attach compact lane-authored evidence to the E2E result, first let the
-visible lane that appended evidence capture the public-safe evidence summary:
+The generic path without a preset also works:
 
 ```bash
-loopx --registry "$LOOPX_REGISTRY" \
-  --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research capture-live-evidence \
-  --packet ./evidence.public.json \
-  --append-result ./append-result.public.json \
-  --agent-id research-executor \
-  --lane-count 4 \
-  --visible-lanes-accepted \
-  --output ./live-codex-e2e-evidence.public.json \
+loopx auto-research start \
+  "How should we evaluate whether multi-agent auto research creates value?" \
   --execute
 ```
 
-Then pass that compact evidence packet back to the E2E readback command:
+KNN acceptance:
 
-```bash
-loopx --registry "$LOOPX_REGISTRY" \
-  --runtime-root "$LOOPX_RUNTIME_ROOT" \
-  --format json auto-research demo-e2e \
-  --agent-id auto-research-operator \
-  --reasoning-effort high \
-  --execute \
-  --headless \
-  --live-evidence ./live-codex-e2e-evidence.public.json
-```
+- baseline metadata is loaded from the preset, not inferred from the question;
+- panes are named by research role, not backend agent implementation names;
+- the first tick is quota/frontier/status, not research completion;
+- dev/holdout uplift is absent until visible roles write real public-safe
+  evidence;
+- the public boundary records no raw logs, private artifacts, credentials, or
+  local absolute paths.
 
-The capture helper requires `source: live_codex_lane_output`, matching goal and
-agent, accepted visible lanes, lane-authored evidence appended to LoopX state,
-and zero raw logs, private artifacts, credentials, or local absolute paths in
-the payload. With this packet, the E2E result includes `live_worker_evidence`
-and flips `visible_worker_proof.lane_authored_evidence_loaded=true`.
+Remaining boundary: video/showcase evidence should come from visible Codex panes
+performing the research work. A headless smoke can validate state plumbing, but
+it is not a claim that visible Codex panes authored the research result.
 
 For maintainer-level rehearsal, `demo-e2e --launch-visible --attach` is still
 accepted as a lower-level command. It is not the user-facing product path; the
 short `auto-research start "<open question>" --execute` command owns the
-default evidence-first wake behavior.
+default visible role wake behavior.
 
 ```bash
 loopx --registry "$LOOPX_REGISTRY" \
@@ -355,9 +290,9 @@ If a previous visible rehearsal is still alive, retry with
 tmux kill-session -t loopx-auto-research
 ```
 
-The one-command E2E path must not record raw logs, private artifacts,
-credentials, or local absolute workspace paths. It writes only public rollout
-evidence through the normal LoopX runtime root when `--execute` is present.
+The one-command path must not record raw logs, private artifacts, credentials,
+or local absolute workspace paths. It may write only public-safe LoopX state
+that the visible roles authored.
 
 ## 1. Preview The One-Command Start
 
@@ -377,9 +312,10 @@ loopx --format json auto-research start \
   --execute
 ```
 
-The visible lanes use the same tiny kernel path as the maintainer E2E proof:
-frontier/todo selection, role-local worker-turn, rollout append, and compact
-live evidence. Raw JSON is written only to local artifacts. Lower-level
+The visible lanes use LoopX state for quota, frontier, todo projection, and
+public-safe evidence. The first pane tick is only a guard/frontier read; the
+research result must be authored by the visible roles, not by a hidden demo
+metric loop. Raw JSON is written only to local artifacts. Lower-level
 `demo-e2e` commands remain available for maintainers, but they are not the
 user-facing entrypoint.
 

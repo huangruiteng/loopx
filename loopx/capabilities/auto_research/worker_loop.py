@@ -34,7 +34,6 @@ def _compact_turn(turn: dict[str, object], *, round_index: int) -> dict[str, obj
         "executed": bool(turn.get("executed")),
         "selected_todo_id": turn.get("selected_todo_id"),
         "selected_action": turn.get("selected_action"),
-        "demo_iteration": turn.get("demo_iteration"),
         "completion_status": completion.get("status"),
         "appended_count": append.get("appended_count"),
         "dev_metric": turn.get("dev_metric"),

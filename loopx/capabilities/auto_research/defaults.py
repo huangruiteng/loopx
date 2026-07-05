@@ -42,7 +42,7 @@ def build_auto_research_layer_contract() -> dict[str, object]:
         preset_responsibilities=[
             "research_roles",
             "handoff_hints",
-            "metric_evidence_loop",
+            "metric_contract_hints",
             "domain_defaults",
         ],
         preset_forbidden_mechanics=[

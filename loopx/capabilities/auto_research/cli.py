@@ -885,7 +885,7 @@ def handle_auto_research_command(
             default_attach_allowed=launch_visible,
                 attach_wake_conflict_message=(
                     "--attach cannot be combined with --wake-visible-after-launch; "
-                    "choose operator takeover (--attach) or evidence-first wake (--no-attach)"
+                    "choose operator takeover (--attach) or visible role wake (--no-attach)"
                 ),
             )
             goal_id, goal_surface_mode = _resolve_demo_goal_surface(
