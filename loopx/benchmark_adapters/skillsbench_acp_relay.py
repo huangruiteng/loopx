@@ -31,7 +31,17 @@ from loopx.benchmark_case_state import (
 from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
-from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
+from loopx.codex_cli_goal_tui import (
+    build_codex_cli_goal_tui_input,
+    build_codex_cli_tui_command,
+    codex_cli_tui_environment,
+    codex_cli_tui_shell_command,
+    prewarm_codex_cli_goal_thread,
+    tmux_capture,
+    tmux_kill_session,
+    tmux_paste_file_and_submit,
+    wait_for_codex_cli_tui_ready,
+)
 
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
@@ -1142,8 +1152,18 @@ class SkillsBenchLocalAcpRelay:
                 encoding="utf-8",
             )
             tmux_name = f"gh-sb-cli-goal-{uuid.uuid4().hex[:10]}"
-            cmd = self._codex_cli_tui_command(cwd=cwd, model=session.get("model"))
-            shell_command = self._codex_cli_tui_shell_command(cmd)
+            cmd = build_codex_cli_tui_command(
+                codex_bin=self._config.codex_bin,
+                sandbox=self._config.sandbox,
+                approval_policy=self._config.approval_policy,
+                cwd=cwd,
+                reasoning_effort=self._config.reasoning_effort,
+                model=self._config.model or session.get("model"),
+            )
+            shell_command = codex_cli_tui_shell_command(
+                cmd,
+                env=codex_cli_tui_environment(self._config.codex_api_proxy),
+            )
             goal_active_observed = False
             goal_terminal_observed = False
             goal_failed_observed = False
@@ -1169,8 +1189,8 @@ class SkillsBenchLocalAcpRelay:
                     stderr=subprocess.PIPE,
                     text=True,
                 )
-                if not self._wait_for_codex_cli_tui_ready(tmux_name):
-                    self._tmux_kill_session(tmux_name)
+                if not wait_for_codex_cli_tui_ready(tmux_name):
+                    tmux_kill_session(tmux_name)
                     self._publish_codex_cli_goal_trace(
                         ok=False,
                         stage="tui_ready_timeout",
@@ -1182,30 +1202,29 @@ class SkillsBenchLocalAcpRelay:
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
                     )
-                subprocess.run(
-                    ["tmux", "load-buffer", "-b", f"{tmux_name}-prompt", str(prompt_path)],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    text=True,
+                thread_prewarm_observed = prewarm_codex_cli_goal_thread(
+                    tmux_name=tmux_name,
+                    tmp_path=tmp_path,
                 )
-                subprocess.run(
-                    [
-                        "tmux",
-                        "paste-buffer",
-                        "-d",
-                        "-b",
-                        f"{tmux_name}-prompt",
-                        "-t",
-                        tmux_name,
-                    ],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    text=True,
+                if not thread_prewarm_observed:
+                    tmux_kill_session(tmux_name)
+                    self._publish_codex_cli_goal_trace(
+                        ok=False,
+                        stage="thread_prewarm_timeout",
+                        goal_active_observed=False,
+                        goal_terminal_observed=False,
+                        first_action_observed=False,
+                        bridge_summary_path=bridge_summary_path,
+                        thread_prewarm_observed=False,
+                    )
+                    return _recoverable_codex_turn_failure_message(
+                        "codex_exec_first_action_timeout"
+                    )
+                tmux_paste_file_and_submit(
+                    tmux_name=tmux_name,
+                    prompt_path=prompt_path,
+                    buffer_suffix="prompt",
                 )
-                time.sleep(0.8)
-                self._tmux_submit_enter(tmux_name)
                 deadline = time.monotonic() + self._config.timeout_sec
                 goal_active_deadline = 0.0
                 if (
@@ -1252,7 +1271,7 @@ class SkillsBenchLocalAcpRelay:
                 )
                 while time.monotonic() < deadline:
                     now = time.monotonic()
-                    capture = self._tmux_capture(tmux_name)
+                    capture = tmux_capture(tmux_name)
                     if "Goal active" in capture or "Pursuing goal" in capture:
                         goal_active_observed = True
                     if "Goal achieved" in capture:
@@ -1268,7 +1287,7 @@ class SkillsBenchLocalAcpRelay:
                             _codex_cli_tui_retryable_startup_blocker_stage(capture)
                         )
                     if retryable_startup_blocker_stage:
-                        self._tmux_kill_session(tmux_name)
+                        tmux_kill_session(tmux_name)
                         if bridge_summary_path is not None:
                             self._publish_remote_bridge_agent_operations_trace(
                                 bridge_summary_path=bridge_summary_path,
@@ -1280,6 +1299,7 @@ class SkillsBenchLocalAcpRelay:
                             goal_terminal_observed=goal_terminal_observed,
                             first_action_observed=first_action_seen,
                             bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=thread_prewarm_observed,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + retryable_startup_blocker_stage
@@ -1290,7 +1310,7 @@ class SkillsBenchLocalAcpRelay:
                         and goal_active_deadline
                         and now >= goal_active_deadline
                     ):
-                        self._tmux_kill_session(tmux_name)
+                        tmux_kill_session(tmux_name)
                         if bridge_summary_path is not None:
                             self._publish_remote_bridge_agent_operations_trace(
                                 bridge_summary_path=bridge_summary_path,
@@ -1302,6 +1322,7 @@ class SkillsBenchLocalAcpRelay:
                             goal_terminal_observed=goal_terminal_observed,
                             first_action_observed=False,
                             bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=thread_prewarm_observed,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_goal_active_timeout"
@@ -1333,7 +1354,7 @@ class SkillsBenchLocalAcpRelay:
                         and first_action_deadline
                         and now >= first_action_deadline
                     ):
-                        self._tmux_kill_session(tmux_name)
+                        tmux_kill_session(tmux_name)
                         if bridge_summary_path is not None:
                             self._publish_remote_bridge_agent_operations_trace(
                                 bridge_summary_path=bridge_summary_path,
@@ -1345,6 +1366,7 @@ class SkillsBenchLocalAcpRelay:
                             goal_terminal_observed=goal_terminal_observed,
                             first_action_observed=False,
                             bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=thread_prewarm_observed,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
@@ -1355,7 +1377,7 @@ class SkillsBenchLocalAcpRelay:
                         and meaningful_progress_deadline
                         and now >= meaningful_progress_deadline
                     ):
-                        self._tmux_kill_session(tmux_name)
+                        tmux_kill_session(tmux_name)
                         if bridge_summary_path is not None:
                             self._publish_remote_bridge_agent_operations_trace(
                                 bridge_summary_path=bridge_summary_path,
@@ -1367,6 +1389,7 @@ class SkillsBenchLocalAcpRelay:
                             goal_terminal_observed=goal_terminal_observed,
                             first_action_observed=first_action_seen,
                             bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=thread_prewarm_observed,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_first_action_timeout"
@@ -1380,7 +1403,7 @@ class SkillsBenchLocalAcpRelay:
                         )
                         and now - last_bridge_activity_at >= bridge_idle_timeout_sec
                     ):
-                        self._tmux_kill_session(tmux_name)
+                        tmux_kill_session(tmux_name)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
                         )
@@ -1391,6 +1414,7 @@ class SkillsBenchLocalAcpRelay:
                             goal_terminal_observed=goal_terminal_observed,
                             first_action_observed=first_action_seen,
                             bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=thread_prewarm_observed,
                         )
                         return _recoverable_codex_turn_failure_message(
                             "codex_exec_bridge_idle_timeout"
@@ -1423,6 +1447,7 @@ class SkillsBenchLocalAcpRelay:
                     goal_terminal_observed=goal_terminal_observed,
                     first_action_observed=first_action_seen,
                     bridge_summary_path=bridge_summary_path,
+                    thread_prewarm_observed=thread_prewarm_observed,
                 )
                 if goal_terminal_observed and not goal_failed_observed:
                     return "codex cli /goal completed"
@@ -1443,182 +1468,12 @@ class SkillsBenchLocalAcpRelay:
                     goal_terminal_observed=goal_terminal_observed,
                     first_action_observed=first_action_seen,
                     bridge_summary_path=bridge_summary_path,
+                    thread_prewarm_observed=False,
                 )
                 raise RuntimeError("codex cli goal worker failed before run") from exc
             finally:
-                self._tmux_kill_session(tmux_name)
+                tmux_kill_session(tmux_name)
                 self._terminate_bridge_server_process(bridge_server_proc)
-
-    def _codex_cli_tui_command(
-        self,
-        *,
-        cwd: str,
-        model: Any,
-    ) -> list[str]:
-        cmd = [
-            self._config.codex_bin,
-            "--no-alt-screen",
-            "-s",
-            self._config.sandbox,
-            "-a",
-            self._config.approval_policy or "never",
-            "-C",
-            cwd,
-        ]
-        if self._config.reasoning_effort:
-            cmd.extend(
-                [
-                    "-c",
-                    "model_reasoning_effort="
-                    + json.dumps(str(self._config.reasoning_effort)),
-                ]
-            )
-        for trust_path in (cwd, os.path.realpath(cwd)):
-            if trust_path:
-                cmd.extend(
-                    [
-                        "-c",
-                        f"projects.{json.dumps(trust_path)}.trust_level=\"trusted\"",
-                    ]
-                )
-        resolved_model = self._config.model or model
-        if resolved_model:
-            cmd.extend(["-m", str(resolved_model)])
-        return cmd
-
-    def _codex_cli_tui_environment(self) -> dict[str, str]:
-        proxy_url = (self._config.codex_api_proxy or "").strip()
-        if not proxy_url:
-            for key in (
-                "HTTPS_PROXY",
-                "HTTP_PROXY",
-                "ALL_PROXY",
-                "https_proxy",
-                "http_proxy",
-                "all_proxy",
-            ):
-                value = os.environ.get(key)
-                if value:
-                    proxy_url = value.strip()
-                    break
-        if not proxy_url:
-            return {}
-        env = {
-            "HTTPS_PROXY": proxy_url,
-            "HTTP_PROXY": proxy_url,
-            "ALL_PROXY": proxy_url,
-            "https_proxy": proxy_url,
-            "http_proxy": proxy_url,
-            "all_proxy": proxy_url,
-        }
-        no_proxy_entries: list[str] = []
-        for raw in (os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or "").split(","):
-            entry = raw.strip()
-            if entry and entry not in no_proxy_entries:
-                no_proxy_entries.append(entry)
-        for entry in ("localhost", "127.0.0.1", "::1"):
-            if entry not in no_proxy_entries:
-                no_proxy_entries.append(entry)
-        no_proxy = ",".join(no_proxy_entries)
-        env["NO_PROXY"] = no_proxy
-        env["no_proxy"] = no_proxy
-        return env
-
-    def _codex_cli_tui_shell_command(self, cmd: list[str]) -> str:
-        env = self._codex_cli_tui_environment()
-        if not env:
-            return " ".join(shlex.quote(part) for part in cmd)
-        env_parts = [shlex.quote(f"{key}={value}") for key, value in sorted(env.items())]
-        cmd_parts = [shlex.quote(part) for part in cmd]
-        return " ".join(["env", *env_parts, *cmd_parts])
-
-    def _tmux_send_literal(self, tmux_name: str, text: str) -> None:
-        subprocess.run(
-            ["tmux", "send-keys", "-t", tmux_name, "-l", text],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-
-    def _tmux_submit_enter(self, tmux_name: str) -> None:
-        # Codex TUI uses enhanced keyboard handling; the Kitty Enter sequence
-        # submits reliably where a plain carriage return may only insert a line.
-        try:
-            self._tmux_send_literal(tmux_name, "\x1b[13u")
-        except subprocess.SubprocessError:
-            subprocess.run(
-                ["tmux", "send-keys", "-t", tmux_name, "C-m"],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                text=True,
-            )
-
-    def _wait_for_codex_cli_tui_ready(
-        self,
-        tmux_name: str,
-        *,
-        timeout_sec: float = 30.0,
-        settle_sec: float = 5.0,
-    ) -> bool:
-        """Wait until Codex TUI startup noise has settled before pasting /goal."""
-
-        deadline = time.monotonic() + max(1.0, float(timeout_sec or 0.0))
-        first_nonempty_at = 0.0
-        while time.monotonic() < deadline:
-            now = time.monotonic()
-            capture = self._tmux_capture(tmux_name)
-            lowered = capture.lower()
-            if not capture.strip():
-                time.sleep(0.5)
-                continue
-            if not first_nonempty_at:
-                first_nonempty_at = now
-            if self._codex_cli_tui_input_prompt_visible(capture):
-                return True
-            if any(
-                marker in lowered
-                for marker in (
-                    "what can i help",
-                    "ask codex",
-                    "message codex",
-                    "send a message",
-                    "type a message",
-                )
-            ):
-                return True
-            # Startup MCP warnings can occupy the TUI before the input box is
-            # ready. Seeing only those warnings is not enough; wait until the
-            # actual prompt marker appears.
-            time.sleep(0.5)
-        return False
-
-    def _codex_cli_tui_input_prompt_visible(self, capture: str) -> bool:
-        if not capture:
-            return False
-        if "›" in capture:
-            return True
-        return bool(re.search(r"(?m)^\\s*[>❯]\\s*(?:$|\\[)", capture))
-
-    def _tmux_capture(self, tmux_name: str) -> str:
-        proc = subprocess.run(
-            ["tmux", "capture-pane", "-p", "-J", "-S", "-2000", "-t", tmux_name],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-        return proc.stdout or ""
-
-    def _tmux_kill_session(self, tmux_name: str) -> None:
-        subprocess.run(
-            ["tmux", "kill-session", "-t", tmux_name],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
 
     def _publish_codex_cli_goal_trace(
         self,
@@ -1629,6 +1484,7 @@ class SkillsBenchLocalAcpRelay:
         goal_terminal_observed: bool,
         first_action_observed: bool,
         bridge_summary_path: Path | None,
+        thread_prewarm_observed: bool = False,
     ) -> None:
         if not self._config.worker_public_trace_dir:
             return
@@ -1671,6 +1527,7 @@ class SkillsBenchLocalAcpRelay:
                 "schema_version": "skillsbench_codex_cli_goal_tui_v0",
                 "stage": safe_stage,
                 "goal_slash_command_submitted": True,
+                "goal_thread_prewarm_observed": bool(thread_prewarm_observed),
                 "goal_active_observed": bool(goal_active_observed),
                 "goal_terminal_observed": bool(goal_terminal_observed),
                 "first_action_observed": bool(first_action_observed),
@@ -1678,7 +1535,7 @@ class SkillsBenchLocalAcpRelay:
                 "task_facing_success_count": task_facing_success_count,
                 "reasoning_effort": str(self._config.reasoning_effort or "")[:40],
                 "codex_api_proxy_env_injected": bool(
-                    self._codex_cli_tui_environment()
+                    codex_cli_tui_environment(self._config.codex_api_proxy)
                 ),
                 "codex_api_proxy_raw_url_recorded": False,
                 "raw_tui_capture_recorded": False,

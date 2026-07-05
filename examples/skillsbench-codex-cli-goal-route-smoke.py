@@ -293,12 +293,8 @@ def _assert_cli_goal_trace_merges_into_public_prerequisites() -> None:
 
 def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
     sys.path.insert(0, str(REPO_ROOT))
-    from loopx.benchmark_adapters.skillsbench_acp_relay import (
-        CodexExecConfig,
-        SkillsBenchLocalAcpRelay,
-    )
+    import loopx.codex_cli_goal_tui as goal_tui
 
-    relay = SkillsBenchLocalAcpRelay(CodexExecConfig())
     captures = iter(
         [
             "",
@@ -312,12 +308,15 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
         except StopIteration:
             return "Codex startup\nMCP server failed: HTTP request failed\n› \n"
 
-    relay._tmux_capture = fake_capture  # type: ignore[method-assign]
-    assert relay._wait_for_codex_cli_tui_ready(
-        "fake-session",
-        timeout_sec=1.0,
-        settle_sec=0.0,
-    )
+    original_capture = goal_tui.tmux_capture
+    try:
+        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        assert goal_tui.wait_for_codex_cli_tui_ready(
+            "fake-session",
+            timeout_sec=1.0,
+        )
+    finally:
+        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
 
 
 def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
@@ -447,7 +446,11 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
 
 def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
     sys.path.insert(0, str(REPO_ROOT))
-    from loopx.codex_cli_goal_tui import build_codex_cli_goal_tui_input
+    from loopx.codex_cli_goal_tui import (
+        CODEX_CLI_GOAL_THREAD_PREWARM_MARKER,
+        CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT,
+        build_codex_cli_goal_tui_input,
+    )
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
         CodexExecConfig,
         SkillsBenchLocalAcpRelay,
@@ -455,6 +458,9 @@ def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
         _prompt_requires_meaningful_bridge_progress,
     )
 
+    assert CODEX_CLI_GOAL_THREAD_PREWARM_MARKER not in (
+        CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT
+    )
     objective = "Solve the task.\nUse the private bridge."
     assert build_codex_cli_goal_tui_input(objective) == (
         "/goal Solve the task.\nUse the private bridge."
@@ -483,10 +489,23 @@ def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
         source = (REPO_ROOT / relative).read_text(encoding="utf-8")
         assert '"/goal", "C-m"' not in source, relative
         assert '_tmux_send_literal(tmux_name, "/goal ")' not in source, relative
+    source = (
+        REPO_ROOT / "loopx/benchmark_adapters/skillsbench_acp_relay.py"
+    ).read_text(encoding="utf-8")
+    assert "prewarm_codex_cli_goal_thread(" in source
+    assert "thread_prewarm_timeout" in source
+    tui_source = (REPO_ROOT / "loopx/codex_cli_goal_tui.py").read_text(
+        encoding="utf-8"
+    )
+    assert "goal-thread-prewarm.txt" in tui_source
 
 
 def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:
     sys.path.insert(0, str(REPO_ROOT))
+    from loopx.codex_cli_goal_tui import (
+        codex_cli_tui_environment,
+        codex_cli_tui_shell_command,
+    )
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
         CodexExecConfig,
         SkillsBenchLocalAcpRelay,
@@ -501,7 +520,7 @@ def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:
                 worker_public_trace_dir=str(trace_dir),
             )
         )
-        env = relay._codex_cli_tui_environment()
+        env = codex_cli_tui_environment(proxy_url)
         for key in (
             "HTTPS_PROXY",
             "HTTP_PROXY",
@@ -513,7 +532,10 @@ def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:
             assert env[key] == proxy_url, env
         assert "127.0.0.1" in env["NO_PROXY"], env
 
-        shell_command = relay._codex_cli_tui_shell_command(["codex", "--version"])
+        shell_command = codex_cli_tui_shell_command(
+            ["codex", "--version"],
+            env=env,
+        )
         assert shell_command.startswith("env "), shell_command
         assert "HTTPS_PROXY=" in shell_command, shell_command
 
@@ -531,6 +553,31 @@ def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:
         assert proxy_url not in json.dumps(payload, sort_keys=True), payload
         assert payload["codex_cli_goal"]["codex_api_proxy_env_injected"] is True
         assert payload["codex_cli_goal"]["codex_api_proxy_raw_url_recorded"] is False
+        assert payload["codex_cli_goal"]["goal_thread_prewarm_observed"] is False
+
+        relay._publish_codex_cli_goal_trace(
+            ok=True,
+            stage="goal_achieved",
+            goal_active_observed=True,
+            goal_terminal_observed=True,
+            first_action_observed=True,
+            bridge_summary_path=None,
+            thread_prewarm_observed=True,
+        )
+        traces = sorted(trace_dir.glob("*.compact.json"))
+        assert len(traces) == 2, traces
+        payloads = [
+            json.loads(trace.read_text(encoding="utf-8")) for trace in traces
+        ]
+        achieved_payload = next(
+            payload
+            for payload in payloads
+            if payload["codex_cli_goal"]["stage"] == "goal_achieved"
+        )
+        assert (
+            achieved_payload["codex_cli_goal"]["goal_thread_prewarm_observed"]
+            is True
+        )
 
 
 def main() -> int:
