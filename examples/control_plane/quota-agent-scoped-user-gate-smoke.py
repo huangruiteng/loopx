@@ -29,6 +29,7 @@ def todo_item(
     blocks_agent: str | None = None,
     cadence: str | None = None,
     next_due_at: str | None = None,
+    target_key: str | None = None,
 ) -> dict:
     item = {
         "todo_id": todo_id,
@@ -49,6 +50,8 @@ def todo_item(
         item["cadence"] = cadence
     if next_due_at:
         item["next_due_at"] = next_due_at
+    if target_key:
+        item["target_key"] = target_key
     return item
 
 
@@ -154,6 +157,7 @@ def scoped_no_candidate_status_payload() -> dict:
         claimed_by="codex-product-capability",
         cadence="15m",
         next_due_at="2099-01-01T00:00:00Z",
+        target_key="product-capability-rollout",
     )
     agent_todos = {
         "schema_version": "todo_summary_v0",
@@ -174,13 +178,11 @@ def scoped_no_candidate_status_payload() -> dict:
             "items": [
                 {
                     "goal_id": GOAL_ID,
-                    "status": "active",
+                    "status": "skillsbench_retry_running_result_marker",
                     "waiting_on": "",
                     "severity": "active",
                     "source": "active_state",
-                    "recommended_action": (
-                        "Repair the primary-owned benchmark lifecycle driver."
-                    ),
+                    "recommended_action": "Monitor run_group retry2b-running-result-marker from public compact artifacts only.",
                     "quota": {
                         "compute": 1.0,
                         "window_hours": 24,
@@ -871,6 +873,8 @@ def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet
     assert payload["effective_action"] == "monitor_quiet_skip", payload
     assert payload["should_run"] is False, payload
     assert payload["normal_delivery_allowed"] is False, payload
+    assert "external_evidence_observation" not in payload, payload
+    assert payload["work_lane_contract"]["monitor_kind"] == "todo_monitor", payload
     assert payload.get("agent_lane_next_action") is None, payload
     assert "agent_scope_frontier" not in payload, payload
     hint = payload["agent_lane_frontier_hint"]

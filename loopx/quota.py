@@ -527,6 +527,8 @@ def _external_evidence_poll_signal(
         return None
     if scoped_monitor_watch and not scoped_monitor_handle:
         return None
+    if scoped_monitor_watch and _todo_summary_monitor_due_count(agent_todo_summary) <= 0:
+        return None
 
     scoped_monitor_target = (
         str(scoped_monitor_handle.get("target_text") or "").strip()
