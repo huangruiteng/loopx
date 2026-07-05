@@ -1280,6 +1280,10 @@ class SkillsBenchLocalAcpRelay:
                 thread_prewarm_observed = prewarm_codex_cli_goal_thread(
                     tmux_name=tmux_name,
                     tmp_path=tmp_path,
+                    timeout_sec=max(
+                        90.0,
+                        float(self._config.first_action_timeout_sec or 0.0),
+                    ),
                 )
                 if not thread_prewarm_observed:
                     tmux_kill_session(tmux_name)

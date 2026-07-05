@@ -168,6 +168,44 @@ def tmux_submit_enter(tmux_name: str) -> None:
         )
 
 
+def tmux_send_plain_enter(tmux_name: str) -> None:
+    subprocess.run(
+        ["tmux", "send-keys", "-t", tmux_name, "C-m"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+
+
+def codex_cli_tui_active_input_prompt_contains(
+    capture: str,
+    prompt_text: str,
+) -> bool:
+    """Return true when the pasted text still appears in the active input row."""
+
+    stripped_prompt = prompt_text.strip()
+    if not capture or not stripped_prompt:
+        return False
+    first_prompt_line = next(
+        (line.strip() for line in stripped_prompt.splitlines() if line.strip()),
+        "",
+    )
+    if not first_prompt_line:
+        return False
+    needle = first_prompt_line[: min(len(first_prompt_line), 48)]
+    for raw_line in reversed(capture.splitlines()[-12:]):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if not (line.startswith("›") or re.match(r"^[>❯]\s*", line)):
+            continue
+        if needle and needle in line:
+            return True
+        return False
+    return False
+
+
 def tmux_paste_file_and_submit(
     *,
     tmux_name: str,
@@ -191,6 +229,10 @@ def tmux_paste_file_and_submit(
     )
     time.sleep(0.8)
     tmux_submit_enter(tmux_name)
+    prompt_text = prompt_path.read_text(encoding="utf-8", errors="ignore")
+    time.sleep(1.0)
+    if codex_cli_tui_active_input_prompt_contains(tmux_capture(tmux_name), prompt_text):
+        tmux_send_plain_enter(tmux_name)
 
 
 def codex_cli_tui_input_prompt_visible(capture: str) -> bool:
@@ -236,6 +278,7 @@ def prewarm_codex_cli_goal_thread(
     *,
     tmux_name: str,
     tmp_path: Path,
+    timeout_sec: float = 90.0,
 ) -> bool:
     """Create the persisted TUI thread before submitting ``/goal``."""
 
@@ -246,7 +289,7 @@ def prewarm_codex_cli_goal_thread(
         prompt_path=prompt_path,
         buffer_suffix="prewarm",
     )
-    deadline = time.monotonic() + 90.0
+    deadline = time.monotonic() + max(1.0, float(timeout_sec or 0.0))
     while time.monotonic() < deadline:
         capture = tmux_capture(tmux_name)
         if CODEX_CLI_GOAL_THREAD_PREWARM_MARKER in capture:

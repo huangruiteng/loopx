@@ -339,6 +339,65 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
         goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
 
 
+def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    import loopx.codex_cli_goal_tui as goal_tui
+
+    prompt_text = "Start this persisted Codex thread."
+    assert goal_tui.codex_cli_tui_active_input_prompt_contains(
+        f"Header\n› {prompt_text}\n",
+        prompt_text,
+    )
+    assert not goal_tui.codex_cli_tui_active_input_prompt_contains(
+        f"User message: {prompt_text}\nThinking\n",
+        prompt_text,
+    )
+
+    calls: list[object] = []
+
+    def fake_run(args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.CompletedProcess(args=args, returncode=0)
+
+    def fake_submit(tmux_name: str) -> None:
+        calls.append(("kitty-enter", tmux_name))
+
+    def fake_plain_enter(tmux_name: str) -> None:
+        calls.append(("plain-enter", tmux_name))
+
+    def fake_capture(_tmux_name: str) -> str:
+        return f"Codex\n› {prompt_text}\n"
+
+    original_run = goal_tui.subprocess.run
+    original_sleep = goal_tui.time.sleep
+    original_submit = goal_tui.tmux_submit_enter
+    original_plain_enter = goal_tui.tmux_send_plain_enter
+    original_capture = goal_tui.tmux_capture
+    try:
+        goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
+        goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
+        goal_tui.tmux_submit_enter = fake_submit  # type: ignore[assignment]
+        goal_tui.tmux_send_plain_enter = fake_plain_enter  # type: ignore[assignment]
+        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        with tempfile.TemporaryDirectory() as temp:
+            prompt_path = Path(temp) / "prompt.txt"
+            prompt_path.write_text(prompt_text, encoding="utf-8")
+            goal_tui.tmux_paste_file_and_submit(
+                tmux_name="fake-session",
+                prompt_path=prompt_path,
+                buffer_suffix="prewarm",
+            )
+    finally:
+        goal_tui.subprocess.run = original_run  # type: ignore[assignment]
+        goal_tui.time.sleep = original_sleep  # type: ignore[assignment]
+        goal_tui.tmux_submit_enter = original_submit  # type: ignore[assignment]
+        goal_tui.tmux_send_plain_enter = original_plain_enter  # type: ignore[assignment]
+        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
+
+    assert ("kitty-enter", "fake-session") in calls, calls
+    assert ("plain-enter", "fake-session") in calls, calls
+
+
 def _assert_cli_goal_rate_limit_is_public_safe_retryable_stage() -> None:
     sys.path.insert(0, str(REPO_ROOT))
     from loopx.benchmark_adapters.skillsbench_acp_relay import (
@@ -727,10 +786,13 @@ def _assert_cli_goal_input_is_submitted_as_one_buffer() -> None:
     ).read_text(encoding="utf-8")
     assert "prewarm_codex_cli_goal_thread(" in source
     assert "thread_prewarm_timeout" in source
+    assert "timeout_sec=max(" in source
+    assert "self._config.first_action_timeout_sec" in source
     tui_source = (REPO_ROOT / "loopx/codex_cli_goal_tui.py").read_text(
         encoding="utf-8"
     )
     assert "goal-thread-prewarm.txt" in tui_source
+    assert "tmux_send_plain_enter" in tui_source
 
 
 def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:
@@ -819,6 +881,7 @@ def main() -> int:
     _assert_cli_goal_plan_and_relay_command()
     _assert_cli_goal_trace_merges_into_public_prerequisites()
     _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings()
+    _assert_cli_goal_paste_submit_falls_back_to_plain_enter()
     _assert_cli_goal_rate_limit_is_public_safe_retryable_stage()
     _assert_cli_goal_post_bridge_blocker_is_public_safe_stage()
     _assert_cli_goal_active_timeout_is_public_countability_stage()
