@@ -113,10 +113,7 @@ from .control_plane.todos.contract import (
     normalize_target_capabilities,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
-    normalize_todo_decision_scope,
     normalize_todo_id,
-    normalize_todo_required_decision_scopes,
-    normalize_todo_resume_when,
     normalize_required_write_scopes,
     normalize_todo_status,
     normalize_todo_task_class,
@@ -129,12 +126,13 @@ from .control_plane.todos.deferred_resume import (
     build_todo_deferred_visibility_lanes,
     build_todo_resume_blocked_visibility_lanes,
 )
-from .control_plane.todos.handoff_gate import (
-    build_todo_handoff_gate_lanes,
-    handoff_ready_successor_todo_ids as todo_handoff_ready_successor_todo_ids,
-)
+from .control_plane.todos.handoff_gate import build_todo_handoff_gate_lanes
 from .control_plane.todos.route_continuation import build_todo_route_continuation_lanes
 from .control_plane.todos.succession_warning import build_todo_succession_warning_lanes
+from .control_plane.todos.summary_item import (
+    compact_todo_summary_item,
+    todo_summary_source_items,
+)
 from .control_plane.todos.projection import (
     todo_index_rank as projection_todo_index_rank,
     todo_item_expires_at as projection_todo_item_expires_at,
@@ -1025,75 +1023,6 @@ def _quota_sort_key(item: dict[str, Any]) -> tuple[int, float, int, str]:
     return (state_index, -compute, spent_slots, str(item.get("goal_id") or ""))
 
 
-def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None) -> dict[str, Any]:
-    compact: dict[str, Any] = {
-        "index": item.get("index"),
-        "text": text if text is not None else item.get("text"),
-    }
-    for key in (
-        "schema_version",
-        "todo_id",
-        "role",
-        "status",
-        "priority",
-        "title",
-        "archive_state",
-        "source_section",
-        "task_class",
-        "action_kind",
-        "required_write_scopes",
-        "required_capabilities",
-        "target_capabilities",
-        "decision_scope",
-        "required_decision_scopes",
-        "claimed_by",
-        "blocks_agent",
-        "unblocks_todo_id",
-        "resume_when",
-        "resume_condition",
-        "resume_ready",
-        "no_followup",
-        "successor_todo_ids",
-        "target_key",
-        "cadence",
-        "next_due_at",
-        "expires_at",
-        "last_checked_at",
-        "result_hash",
-        "consecutive_no_change",
-        "material_change",
-        "max_no_change_before_replan",
-        "route_continuation_replan_required",
-        "route_continuation_reason",
-        "route_id",
-        "route_key",
-        "completed_at",
-        "updated_at",
-        "superseded_by",
-    ):
-        if item.get(key) is not None:
-            compact[key] = item.get(key)
-    required_write_scopes = normalize_required_write_scopes(compact.get("required_write_scopes"))
-    if required_write_scopes:
-        compact["required_write_scopes"] = required_write_scopes
-    else:
-        compact.pop("required_write_scopes", None)
-    decision_scope = normalize_todo_decision_scope(compact.get("decision_scope"))
-    if decision_scope:
-        compact["decision_scope"] = decision_scope
-    else:
-        compact.pop("decision_scope", None)
-    required_decision_scopes = normalize_todo_required_decision_scopes(
-        compact.get("required_decision_scopes")
-    )
-    if required_decision_scopes:
-        compact["required_decision_scopes"] = required_decision_scopes
-    else:
-        compact.pop("required_decision_scopes", None)
-    compact["task_class"] = _todo_task_class(compact)
-    return compact
-
-
 def _available_capabilities(value: Any) -> list[str]:
     capabilities = list(DEFAULT_AVAILABLE_CAPABILITIES)
     for capability in normalize_required_capabilities(value):
@@ -1277,63 +1206,6 @@ def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
     return projection_todo_projection_sort_key(item)
 
 
-def _todo_summary_source_items(value: dict[str, Any]) -> list[dict[str, Any]]:
-    source_keys = (
-        "active_next_action_items",
-        "active_next_action_executable_items",
-        "first_open_items",
-        "backlog_items",
-        "unclaimed_priority_open_items",
-        "claimed_open_items",
-        "claimed_advancement_open_items",
-        "claimed_monitor_open_items",
-        "current_agent_claimed_open_items",
-        "current_agent_claimed_advancement_items",
-        "current_agent_claimed_monitor_items",
-        "resume_blocked_items",
-        "monitor_blocked_resume_candidates",
-        "current_agent_monitor_blocked_resume_candidates",
-        "unclaimed_monitor_blocked_resume_candidates",
-        "items",
-    )
-    ready_successor_todo_ids = todo_handoff_ready_successor_todo_ids(value)
-    open_items: list[dict[str, Any]] = []
-    for key in source_keys:
-        source_items = value.get(key) if isinstance(value.get(key), list) else []
-        for item in source_items:
-            if not isinstance(item, dict) or item.get("done") is True:
-                continue
-            text = str(item.get("text") or "").strip()
-            if not text:
-                continue
-            duplicate = any(
-                existing.get("todo_id") == item.get("todo_id")
-                if item.get("todo_id") and existing.get("todo_id")
-                else existing.get("index") == item.get("index")
-                and str(existing.get("text") or "").strip() == text
-                for existing in open_items
-            )
-            if duplicate:
-                continue
-            compact = _compact_todo_summary_item(item, text=text)
-            todo_id = normalize_todo_id(compact.get("todo_id"))
-            if (
-                todo_id
-                and todo_id in ready_successor_todo_ids
-                and normalize_todo_resume_when(compact.get("resume_when"))
-                and "resume_ready" not in compact
-            ):
-                compact["resume_ready"] = True
-                compact["resume_condition"] = {
-                    "schema_version": "todo_resume_condition_v0",
-                    "resume_when": compact.get("resume_when"),
-                    "satisfied": True,
-                    "source": "handoff_gate_cleared_with_successor",
-                }
-            open_items.append(compact)
-    return open_items
-
-
 def _todo_summary_monitor_writeback_contract(value: dict[str, Any] | None) -> dict[str, Any] | None:
     return projection_todo_summary_monitor_writeback_contract(value)
 
@@ -1360,7 +1232,7 @@ def _summarize_user_todos(
     if not isinstance(value, dict):
         return None
     all_open_items = sorted(
-        _todo_summary_source_items(value),
+        todo_summary_source_items(value),
         key=_todo_projection_sort_key,
     )
     blocking_open_items = all_open_items
@@ -1416,13 +1288,13 @@ def _summarize_user_todos(
         if _is_user_gate_todo_item(item)
     ]
     active_next_action_items = [
-        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
         if isinstance(item, dict)
         if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_items"), list) else []
     active_next_action_executable_items = [
-        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_executable_items") or [])
         if isinstance(item, dict)
         if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
@@ -1509,7 +1381,7 @@ def _summarize_user_todos(
         summary["all_open_count"] = value.get("open_count", len(all_open_items))
         summary["other_agent_scoped_open_count"] = len(other_agent_scoped_items)
         summary["other_agent_scoped_items"] = [
-            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
             for item in other_agent_scoped_items[:TODO_VISIBILITY_LANE_LIMIT]
         ]
     return summary
@@ -1536,7 +1408,7 @@ def _summarize_project_asset_todos(
         )
 
     all_open_items = sorted(
-        _todo_summary_source_items(value),
+        todo_summary_source_items(value),
         key=_todo_projection_sort_key,
     )
     if not all_open_items:
@@ -1587,13 +1459,13 @@ def _summarize_project_asset_todos(
         else []
     )
     active_next_action_items = [
-        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_items") or [])
         if isinstance(item, dict)
         if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
     ] if isinstance(value.get("active_next_action_items"), list) else []
     active_next_action_executable_items = [
-        _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         for item in (value.get("active_next_action_executable_items") or [])
         if isinstance(item, dict)
         if _agent_scope_selectable_todo_item(item, agent_identity=agent_identity)
@@ -1665,7 +1537,7 @@ def _summarize_project_asset_todos(
         summary["all_open_count"] = value.get("open", value.get("open_count", len(all_open_items)))
         summary["other_agent_scoped_open_count"] = len(other_agent_scoped_items)
         summary["other_agent_scoped_items"] = [
-            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
             for item in other_agent_scoped_items[:TODO_VISIBILITY_LANE_LIMIT]
         ]
     return summary
@@ -1750,12 +1622,12 @@ def _blocked_priority_fallback(
         text = str(item.get("text") or "").strip()
         if not text:
             continue
-        blocked_items.append(_compact_todo_summary_item(item, text=text))
+        blocked_items.append(compact_todo_summary_item(item, text=text))
 
     if not blocked_items:
         return None
     selected_text = str(selected.get("text") or "").strip()
-    selected_item = _compact_todo_summary_item(selected, text=selected_text) if selected_text else dict(selected)
+    selected_item = compact_todo_summary_item(selected, text=selected_text) if selected_text else dict(selected)
     return {
         "schema_version": "blocked_priority_fallback_v0",
         "kind": "blocked_priority_fallback",

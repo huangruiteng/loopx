@@ -11,12 +11,9 @@ from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
-    normalize_required_write_scopes,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
-    normalize_todo_decision_scope,
     normalize_todo_id,
-    normalize_todo_required_decision_scopes,
     normalize_todo_status,
     normalize_todo_task_class,
 )
@@ -28,6 +25,7 @@ from ..todos.projection import (
     todo_item_task_class,
     todo_projection_sort_key,
 )
+from ..todos.summary_item import compact_todo_summary_item
 
 
 AGENT_SCOPE_FRONTIER_SCHEMA_VERSION = "agent_scope_frontier_v0"
@@ -113,75 +111,6 @@ def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int, int, str]
 
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
     return todo_item_is_actionable_open(item)
-
-
-def _compact_todo_summary_item(item: dict[str, Any], *, text: str | None = None) -> dict[str, Any]:
-    compact: dict[str, Any] = {
-        "index": item.get("index"),
-        "text": text if text is not None else item.get("text"),
-    }
-    for key in (
-        "schema_version",
-        "todo_id",
-        "role",
-        "status",
-        "priority",
-        "title",
-        "archive_state",
-        "source_section",
-        "task_class",
-        "action_kind",
-        "required_write_scopes",
-        "required_capabilities",
-        "target_capabilities",
-        "decision_scope",
-        "required_decision_scopes",
-        "claimed_by",
-        "blocks_agent",
-        "unblocks_todo_id",
-        "resume_when",
-        "resume_condition",
-        "resume_ready",
-        "no_followup",
-        "successor_todo_ids",
-        "target_key",
-        "cadence",
-        "next_due_at",
-        "expires_at",
-        "last_checked_at",
-        "result_hash",
-        "consecutive_no_change",
-        "material_change",
-        "max_no_change_before_replan",
-        "route_continuation_replan_required",
-        "route_continuation_reason",
-        "route_id",
-        "route_key",
-        "completed_at",
-        "updated_at",
-        "superseded_by",
-    ):
-        if item.get(key) is not None:
-            compact[key] = item.get(key)
-    required_write_scopes = normalize_required_write_scopes(compact.get("required_write_scopes"))
-    if required_write_scopes:
-        compact["required_write_scopes"] = required_write_scopes
-    else:
-        compact.pop("required_write_scopes", None)
-    decision_scope = normalize_todo_decision_scope(compact.get("decision_scope"))
-    if decision_scope:
-        compact["decision_scope"] = decision_scope
-    else:
-        compact.pop("decision_scope", None)
-    required_decision_scopes = normalize_todo_required_decision_scopes(
-        compact.get("required_decision_scopes")
-    )
-    if required_decision_scopes:
-        compact["required_decision_scopes"] = required_decision_scopes
-    else:
-        compact.pop("required_decision_scopes", None)
-    compact["task_class"] = _todo_task_class(compact)
-    return compact
 
 
 def _protocol_action_text(value: Any, *, limit: int = 220) -> str | None:
@@ -400,7 +329,7 @@ def _scoped_user_gate_fallback(
         if matching_gate:
             blocking_gate = blocking_gate or matching_gate
             text = str(item.get("text") or "").strip()
-            blocked_item = _compact_todo_summary_item(item, text=text)
+            blocked_item = compact_todo_summary_item(item, text=text)
             relation = _todo_gate_relation(matching_gate, item)
             if relation:
                 blocked_item["todo_gate_relation"] = relation
@@ -416,7 +345,7 @@ def _scoped_user_gate_fallback(
 
     selected_text = str(selected.get("text") or "").strip()
     gate_to_surface = blocking_gate or gates[0]
-    selected_item = _compact_todo_summary_item(selected, text=selected_text)
+    selected_item = compact_todo_summary_item(selected, text=selected_text)
     selected_relation = _todo_gate_relation(gate_to_surface, selected)
     if selected_relation:
         selected_item["todo_gate_relation"] = selected_relation
@@ -436,7 +365,7 @@ def _scoped_user_gate_fallback(
         "notify_user": True,
         "requires_user_action": True,
         "reason": reason,
-        "blocked_user_gate": _compact_todo_summary_item(gate_to_surface, text=gate_text),
+        "blocked_user_gate": compact_todo_summary_item(gate_to_surface, text=gate_text),
         "blocked_agent_items": blocked_items[:3],
         "selected_executable": selected_item,
         "recommended_action": (
@@ -814,7 +743,7 @@ def _agent_scope_deferred_resume_candidates(
         if identity in seen:
             continue
         seen.add(identity)
-        unique.append(_compact_todo_summary_item(item, text=str(item.get("text") or "").strip()))
+        unique.append(compact_todo_summary_item(item, text=str(item.get("text") or "").strip()))
     return sorted(unique, key=_todo_projection_sort_key)
 
 
@@ -864,7 +793,7 @@ def _agent_scope_monitor_blocked_resume_candidates(
         if identity in seen:
             continue
         seen.add(identity)
-        compact = _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact = compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         if target_todo_id:
             compact["blocking_monitor_todo_id"] = target_todo_id
         unique.append(compact)
@@ -992,7 +921,7 @@ def _agent_scope_route_continuation_replan_candidates(
         if not identity or identity in seen:
             continue
         seen.add(identity)
-        compact = _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+        compact = compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
         compact["route_continuation_replan_required"] = True
         if item.get("route_continuation_reason") is not None:
             compact["route_continuation_reason"] = item.get("route_continuation_reason")
@@ -1370,7 +1299,7 @@ def _agent_scope_no_candidate_frontier(
         "other_claimants": other_claimants,
         "blocking_review_claimants": blocking_review_claimants,
         "other_agent_claimed_items": [
-            _compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
             for item in other_advancement_items[:3]
         ],
     }

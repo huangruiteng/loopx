@@ -9,9 +9,9 @@ from ..todos.contract import (
     normalize_todo_claimed_by,
     normalize_todo_id,
 )
+from ..todos.summary_item import compact_todo_summary_item
 from ..work_items.interaction_contract import protocol_action_text
 from .agent_scope import (
-    _compact_todo_summary_item,
     _todo_item_is_actionable_open,
     _todo_task_class,
 )
@@ -337,7 +337,7 @@ def build_agent_lane_next_action(
                 if claimed_by == agent_id
                 else "unclaimed_todo"
             )
-            payload = _compact_todo_summary_item(raw_item, text=text)
+            payload = compact_todo_summary_item(raw_item, text=text)
             if selected_by == "unclaimed_todo":
                 payload["claim_required_before_work"] = True
             lineage_source = source

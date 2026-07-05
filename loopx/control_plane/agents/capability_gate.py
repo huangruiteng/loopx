@@ -9,7 +9,7 @@ from ..todos.contract import (
     normalize_todo_claimed_by,
 )
 from ..todos.projection import todo_index_rank, todo_priority_rank
-from .agent_scope import _compact_todo_summary_item
+from ..todos.summary_item import compact_todo_summary_item
 
 
 CAPABILITY_REPAIR_BRIDGE_HINTS = {
@@ -43,7 +43,7 @@ def _capability_candidate_item(
     missing_target_capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     text = str(item.get("text") or "").strip()
-    payload = _compact_todo_summary_item(item, text=text)
+    payload = compact_todo_summary_item(item, text=text)
     required = normalize_required_capabilities(item.get("required_capabilities"))
     targets = normalize_target_capabilities(item.get("target_capabilities"))
     payload["required_capabilities"] = required
