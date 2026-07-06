@@ -345,6 +345,67 @@ def main() -> int:
         runtime_root = temp / "runtime"
         write_summary_state(state_file)
         write_registry(registry, project=project, state_file=state_file, runtime_root=runtime_root)
+        promotion_todo = add_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            role="agent",
+            text=(
+                "[P0-auto-research-live] Review promotion readiness and "
+                "open the next research round when acceptance is not met."
+            ),
+            task_class="advancement_task",
+            action_kind="review_promotion_readiness",
+            claimed_by=EVALUATOR_AGENT_ID,
+            dry_run=False,
+        )
+        promotion_todo_id = promotion_todo["todo_id"]
+        append_real_fixture_evidence(registry=registry, runtime_root=runtime_root, temp=temp)
+        workspace = project / "visible-workspace"
+        workspace.mkdir()
+
+        promotion_review = run_worker_turn(
+            registry=registry,
+            runtime_root=runtime_root,
+            workspace=workspace,
+            agent_id=EVALUATOR_AGENT_ID,
+            execute=True,
+            complete=True,
+        )
+        assert promotion_review["mode"] == "execute", promotion_review
+        assert promotion_review["selected_action"] == "review_promotion_readiness", promotion_review
+        assert promotion_review["evaluation_summary"]["holdout_improvement_count"] == 1, promotion_review
+        successor_todos = promotion_review["successor_todos"]
+        assert successor_todos["executed"] is True, successor_todos
+        successor_ids = [
+            successor["todo_id"]
+            for successor in successor_todos["successors"]
+            if successor.get("todo_id")
+        ]
+        assert len(successor_ids) == 2, successor_todos
+        assert {
+            successor["action_kind"]
+            for successor in successor_todos["successors"]
+            if successor.get("todo_id")
+        } == {"propose_hypothesis", "review_research_contract"}, successor_todos
+        completion = promotion_review["completion"]
+        assert completion["executed"] is True, completion
+        assert completion["successor_todo_ids"] == successor_ids, promotion_review
+        state_text = state_file.read_text(encoding="utf-8")
+        assert f"todo_id={promotion_todo_id} status=done" in state_text, state_text
+        assert "no_followup=true" not in state_text, state_text
+        for successor_id in successor_ids:
+            assert successor_id in state_text, state_text
+        assert_public_safe(promotion_review)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp = Path(temp_dir)
+        project = temp / "project"
+        project.mkdir()
+        state_file = project / "ACTIVE_GOAL_STATE.md"
+        registry = temp / "registry.json"
+        runtime_root = temp / "runtime"
+        write_summary_state(state_file)
+        write_registry(registry, project=project, state_file=state_file, runtime_root=runtime_root)
         generic_todo = add_goal_todo(
             registry_path=registry,
             goal_id=GOAL_ID,
