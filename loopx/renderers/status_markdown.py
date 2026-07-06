@@ -317,6 +317,133 @@ def append_usage_summary_markdown(lines: list[str], usage: dict[str, Any]) -> No
         )
 
 
+def append_project_asset_warning_markdown(
+    lines: list[str],
+    project_asset: dict[str, Any],
+    item: dict[str, Any],
+) -> None:
+    projection_warning = (
+        project_asset.get("stale_latest_run_warning")
+        if isinstance(project_asset.get("stale_latest_run_warning"), dict)
+        else {}
+    )
+    if projection_warning:
+        lines.append(
+            "    - stale_latest_run_warning: "
+            f"requires_refresh_state={projection_warning.get('requires_refresh_state')} "
+            f"active_state_updated_at={markdown_scalar(projection_warning.get('active_state_updated_at') or '')} "
+            f"latest_run_generated_at={markdown_scalar(projection_warning.get('latest_run_generated_at') or '')} "
+            f"reason={markdown_scalar(projection_warning.get('reason') or '')}"
+        )
+    next_action_warning = (
+        project_asset.get("next_action_projection_warning")
+        if isinstance(project_asset.get("next_action_projection_warning"), dict)
+        else item.get("next_action_projection_warning")
+        if isinstance(item.get("next_action_projection_warning"), dict)
+        else {}
+    )
+    if next_action_warning:
+        lines.append(
+            "    - next_action_projection_warning: "
+            f"requires_state_writeback={next_action_warning.get('requires_state_writeback')} "
+            f"reason={markdown_scalar(next_action_warning.get('reason') or '')}"
+        )
+    backlog_warning = (
+        project_asset.get("backlog_hygiene_warning")
+        if isinstance(project_asset.get("backlog_hygiene_warning"), dict)
+        else {}
+    )
+    if backlog_warning:
+        lines.append(
+            "    - backlog_hygiene_warning: "
+            f"requires_agent_todo={backlog_warning.get('requires_agent_todo')} "
+            f"evidence_count={backlog_warning.get('evidence_count')} "
+            f"source_sections={markdown_scalar(','.join(backlog_warning.get('source_sections') or []))}"
+        )
+    projection_gap = (
+        project_asset.get("state_projection_gap")
+        if isinstance(project_asset.get("state_projection_gap"), dict)
+        else {}
+    )
+    if projection_gap:
+        lines.append(
+            "    - state_projection_gap: "
+            f"requires_todo_expansion={projection_gap.get('requires_todo_expansion')} "
+            f"user_open={projection_gap.get('user_open_count')} "
+            f"agent_open={projection_gap.get('agent_open_count')} "
+            f"target_roles={markdown_scalar(','.join(projection_gap.get('target_roles') or []))}"
+        )
+    todo_projection_gap = (
+        project_asset.get("todo_projection_gap")
+        if isinstance(project_asset.get("todo_projection_gap"), dict)
+        else {}
+    )
+    if todo_projection_gap:
+        lines.append(
+            "    - todo_projection_gap: "
+            f"missing_roles={markdown_scalar(','.join(todo_projection_gap.get('missing_roles') or []))} "
+            f"source={markdown_scalar(todo_projection_gap.get('source') or '')}"
+        )
+    archive_warning = (
+        project_asset.get("completed_todo_archive_warning")
+        if isinstance(project_asset.get("completed_todo_archive_warning"), dict)
+        else {}
+    )
+    if archive_warning:
+        lines.append(
+            "    - completed_todo_archive_warning: "
+            f"requires_archive={archive_warning.get('requires_archive')} "
+            f"active_done={archive_warning.get('active_done_count')} "
+            f"max_active_done={archive_warning.get('max_active_done_count')} "
+            f"archive_section={markdown_scalar(archive_warning.get('archive_section') or '')}"
+        )
+    replan_obligation = (
+        project_asset.get("autonomous_replan_obligation")
+        if isinstance(project_asset.get("autonomous_replan_obligation"), dict)
+        else {}
+    )
+    if replan_obligation:
+        trigger_kinds = [
+            str(trigger.get("kind") or "")
+            for trigger in replan_obligation.get("triggers") or []
+            if isinstance(trigger, dict) and trigger.get("kind")
+        ]
+        lines.append(
+            "    - autonomous_replan_obligation: "
+            f"required={replan_obligation.get('required')} "
+            f"trigger_count={replan_obligation.get('trigger_count')} "
+            f"triggers={markdown_scalar(','.join(trigger_kinds))}"
+        )
+    interface_budget_cadence = (
+        project_asset.get("interface_budget_cadence")
+        if isinstance(project_asset.get("interface_budget_cadence"), dict)
+        else {}
+    )
+    if interface_budget_cadence:
+        lines.append(
+            "    - interface_budget_cadence: "
+            f"overdue={interface_budget_cadence.get('overdue')} "
+            f"within_budget={interface_budget_cadence.get('within_budget')} "
+            f"checked_at={markdown_scalar(interface_budget_cadence.get('checked_at') or '')} "
+            f"next_check_due_at={markdown_scalar(interface_budget_cadence.get('next_check_due_at') or '')} "
+            f"tightest={markdown_scalar(interface_budget_cadence.get('tightest_surface') or '')}/"
+            f"{markdown_scalar(interface_budget_cadence.get('tightest_metric') or '')} "
+            f"headroom={interface_budget_cadence.get('headroom_remaining')} "
+            f"recommendation={markdown_scalar(interface_budget_cadence.get('recommendation') or '')}"
+        )
+    latest_validation = (
+        project_asset.get("latest_validation")
+        if isinstance(project_asset.get("latest_validation"), dict)
+        else {}
+    )
+    if latest_validation:
+        lines.append(
+            "    - latest_validation: "
+            f"classification={markdown_scalar(latest_validation.get('classification') or '')} "
+            f"at={markdown_scalar(latest_validation.get('generated_at') or '')}"
+        )
+
+
 def append_attention_queue_summary_markdown(
     lines: list[str],
     queue: dict[str, Any],

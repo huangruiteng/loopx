@@ -322,6 +322,7 @@ from .renderers.status_markdown import (
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
     append_human_reward_markdown as _append_human_reward_markdown,
     append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
+    append_project_asset_warning_markdown as _append_project_asset_warning_markdown,
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
     append_usage_summary_markdown as _append_usage_summary_markdown,
@@ -7563,126 +7564,7 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                     f"state={asset_quota.get('state')} "
                     f"slots={asset_quota.get('spent_slots')}/{asset_quota.get('allowed_slots')}"
                 )
-            projection_warning = (
-                project_asset.get("stale_latest_run_warning")
-                if isinstance(project_asset.get("stale_latest_run_warning"), dict)
-                else {}
-            )
-            if projection_warning:
-                lines.append(
-                    "    - stale_latest_run_warning: "
-                    f"requires_refresh_state={projection_warning.get('requires_refresh_state')} "
-                    f"active_state_updated_at={_markdown_scalar(projection_warning.get('active_state_updated_at') or '')} "
-                    f"latest_run_generated_at={_markdown_scalar(projection_warning.get('latest_run_generated_at') or '')} "
-                    f"reason={_markdown_scalar(projection_warning.get('reason') or '')}"
-                )
-            next_action_warning = (
-                project_asset.get("next_action_projection_warning")
-                if isinstance(project_asset.get("next_action_projection_warning"), dict)
-                else item.get("next_action_projection_warning")
-                if isinstance(item.get("next_action_projection_warning"), dict)
-                else {}
-            )
-            if next_action_warning:
-                lines.append(
-                    "    - next_action_projection_warning: "
-                    f"requires_state_writeback={next_action_warning.get('requires_state_writeback')} "
-                    f"reason={_markdown_scalar(next_action_warning.get('reason') or '')}"
-                )
-            backlog_warning = (
-                project_asset.get("backlog_hygiene_warning")
-                if isinstance(project_asset.get("backlog_hygiene_warning"), dict)
-                else {}
-            )
-            if backlog_warning:
-                lines.append(
-                    "    - backlog_hygiene_warning: "
-                    f"requires_agent_todo={backlog_warning.get('requires_agent_todo')} "
-                    f"evidence_count={backlog_warning.get('evidence_count')} "
-                    f"source_sections={_markdown_scalar(','.join(backlog_warning.get('source_sections') or []))}"
-                )
-            projection_gap = (
-                project_asset.get("state_projection_gap")
-                if isinstance(project_asset.get("state_projection_gap"), dict)
-                else {}
-            )
-            if projection_gap:
-                lines.append(
-                    "    - state_projection_gap: "
-                    f"requires_todo_expansion={projection_gap.get('requires_todo_expansion')} "
-                    f"user_open={projection_gap.get('user_open_count')} "
-                    f"agent_open={projection_gap.get('agent_open_count')} "
-                    f"target_roles={_markdown_scalar(','.join(projection_gap.get('target_roles') or []))}"
-                )
-            todo_projection_gap = (
-                project_asset.get("todo_projection_gap")
-                if isinstance(project_asset.get("todo_projection_gap"), dict)
-                else {}
-            )
-            if todo_projection_gap:
-                lines.append(
-                    "    - todo_projection_gap: "
-                    f"missing_roles={_markdown_scalar(','.join(todo_projection_gap.get('missing_roles') or []))} "
-                    f"source={_markdown_scalar(todo_projection_gap.get('source') or '')}"
-                )
-            archive_warning = (
-                project_asset.get("completed_todo_archive_warning")
-                if isinstance(project_asset.get("completed_todo_archive_warning"), dict)
-                else {}
-            )
-            if archive_warning:
-                lines.append(
-                    "    - completed_todo_archive_warning: "
-                    f"requires_archive={archive_warning.get('requires_archive')} "
-                    f"active_done={archive_warning.get('active_done_count')} "
-                    f"max_active_done={archive_warning.get('max_active_done_count')} "
-                    f"archive_section={_markdown_scalar(archive_warning.get('archive_section') or '')}"
-                )
-            replan_obligation = (
-                project_asset.get("autonomous_replan_obligation")
-                if isinstance(project_asset.get("autonomous_replan_obligation"), dict)
-                else {}
-            )
-            if replan_obligation:
-                trigger_kinds = [
-                    str(trigger.get("kind") or "")
-                    for trigger in replan_obligation.get("triggers") or []
-                    if isinstance(trigger, dict) and trigger.get("kind")
-                ]
-                lines.append(
-                    "    - autonomous_replan_obligation: "
-                    f"required={replan_obligation.get('required')} "
-                    f"trigger_count={replan_obligation.get('trigger_count')} "
-                    f"triggers={_markdown_scalar(','.join(trigger_kinds))}"
-                )
-            interface_budget_cadence = (
-                project_asset.get("interface_budget_cadence")
-                if isinstance(project_asset.get("interface_budget_cadence"), dict)
-                else {}
-            )
-            if interface_budget_cadence:
-                lines.append(
-                    "    - interface_budget_cadence: "
-                    f"overdue={interface_budget_cadence.get('overdue')} "
-                    f"within_budget={interface_budget_cadence.get('within_budget')} "
-                    f"checked_at={_markdown_scalar(interface_budget_cadence.get('checked_at') or '')} "
-                    f"next_check_due_at={_markdown_scalar(interface_budget_cadence.get('next_check_due_at') or '')} "
-                    f"tightest={_markdown_scalar(interface_budget_cadence.get('tightest_surface') or '')}/"
-                    f"{_markdown_scalar(interface_budget_cadence.get('tightest_metric') or '')} "
-                    f"headroom={interface_budget_cadence.get('headroom_remaining')} "
-                    f"recommendation={_markdown_scalar(interface_budget_cadence.get('recommendation') or '')}"
-                )
-            latest_validation = (
-                project_asset.get("latest_validation")
-                if isinstance(project_asset.get("latest_validation"), dict)
-                else {}
-            )
-            if latest_validation:
-                lines.append(
-                    "    - latest_validation: "
-                    f"classification={_markdown_scalar(latest_validation.get('classification') or '')} "
-                    f"at={_markdown_scalar(latest_validation.get('generated_at') or '')}"
-                )
+            _append_project_asset_warning_markdown(lines, project_asset, item)
             session_projection = (
                 project_asset.get("session_runtime_projection")
                 if isinstance(project_asset.get("session_runtime_projection"), dict)
