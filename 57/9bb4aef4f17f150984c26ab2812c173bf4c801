@@ -1,0 +1,31 @@
+docs/product/core-control-plane/state-machine.md
+  s_32e2a9a204a8e4::t_6df9d113144d84 441-447
+docs/reference/protocols/goal-vision-replan-contract-v0.md
+  s_32e2a9a204a8e4::t_b0cb926fc83f16 144-145,147-150,163-166,219-220
+docs/status-data-contract.md
+  s_32e2a9a204a8e4::t_42d948f7dc9121 1247-1250
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_32e2a9a204a8e4::t_fb7cc872c0a7b2 77-82,84-86,491-528,560,570-576,887
+examples/project/goal-vision-replan-contract-smoke.py
+  s_32e2a9a204a8e4::t_c9ce8e0ad0e02a 114-115,120,124,145-146
+loopx/control_plane/goals/goal_frontier.py
+  s_32e2a9a204a8e4::t_2e6dc9b622a5d9 14,20-21,397,412,417-419,465-470,484-485,490-496,636-688,958-1012
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "579bb4aef4f17f150984c26ab2812c173bf4c801",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
