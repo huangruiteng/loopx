@@ -1067,7 +1067,7 @@ def build_skillsbench_post_run_debug_gate(
                 public_safe_compact_text(lifecycle.get("missing_reason"), limit=140)
                 or "loopx_lifecycle_incomplete"
             )
-    elif closeout_status in {"missing", "partial"}:
+    elif closeout_status in {"missing", "partial"} and not case_closeout_complete:
         attribution_layer = "loopx_lifecycle"
         first_blocker = "loopx_closeout_incomplete"
     elif runner_recovery_blocked:
