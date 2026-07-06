@@ -529,9 +529,13 @@ def write_operator_gate_fixture(root: Path) -> tuple[Path, Path, Path]:
         "## Next Action\n\n"
         "- Ask the owner whether this planned adapter may run.\n\n"
         "## User Todo / Owner Review Reading Queue\n\n"
-        "- [ ] [P1] Approve or defer the planned adapter opt-in.\n\n"
+        "- [ ] [P1] Approve or defer the planned adapter opt-in.\n"
+        "  <!-- loopx:todo todo_id=todo_operator_gate_opt_in status=open "
+        "task_class=user_gate action_kind=controller_opt_in global_gate=true -->\n\n"
         "## Agent Todo\n\n"
-        "- [ ] [P2] If the gate is already surfaced, prepare a read-only checklist that does not execute the gated adapter.\n",
+        "- [ ] [P2] If the gate is already surfaced, prepare a read-only checklist that does not execute the gated adapter.\n"
+        "  <!-- loopx:todo todo_id=todo_operator_gate_readonly_checklist status=open "
+        "task_class=advancement_task action_kind=read_only_checklist -->\n",
         encoding="utf-8",
     )
     registry_path.parent.mkdir(parents=True, exist_ok=True)

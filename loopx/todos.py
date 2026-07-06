@@ -8,7 +8,6 @@ from .agent_registry import (
     primary_agent_id_from_registry,
     registered_agent_ids_from_registry,
     require_registered_agent_id,
-    side_agent_handoff_agent_id_from_registry,
 )
 from .file_lock import exclusive_file_lock
 from .history import load_registry
@@ -48,6 +47,10 @@ from .control_plane.todos.contract import (
     todo_done_for_status,
     todo_marker_for_status,
     todo_status_from_marker,
+)
+from .control_plane.todos.completion_policy import (
+    linked_successor_from_todo,
+    resolve_completion_policy,
 )
 from .control_plane.todos.event_writeback import (
     complete_event_projected_goal_todo,
@@ -130,11 +133,6 @@ def require_user_todo_task_class(
             "user_action is non-blocking and cannot set blocks_agent or global_gate; "
             "use --task-class user_gate for blocking decisions"
         )
-
-
-def _is_primary_review_action_kind(value: Any) -> bool:
-    action_kind = str(value or "").strip()
-    return action_kind == "primary_review" or action_kind.startswith("primary_review_")
 
 
 def _attach_todo_write_correctness_dry_run_packet(
@@ -1608,90 +1606,34 @@ def complete_goal_todo(
         original = resolved_state_file.read_text(encoding="utf-8")
         lines = original.splitlines()
         updated_at = now_local()
-        effective_claimed_by = (
-            require_registered_agent_id(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                agent_id=claimed_by,
-            )
-            if claimed_by
-            else None
-        )
-        primary_agent = primary_agent_id_from_registry(registry_path, goal_id)
-        registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
-        configured_handoff_agent = side_agent_handoff_agent_id_from_registry(
-            registry_path,
-            goal_id,
-            agent_id=effective_claimed_by,
-        )
-        handoff_agent = configured_handoff_agent or primary_agent
-        if configured_handoff_agent:
-            handoff_agent = require_registered_agent_id(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                agent_id=configured_handoff_agent,
-                field="side_agent_handoff_agent",
-            )
-        effective_next_claimed_by = (
-            require_registered_agent_id(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                agent_id=next_claimed_by,
-                field="next_claimed_by",
-            )
-            if next_claimed_by
-            else None
-        )
-        if effective_claimed_by and not primary_agent:
-            raise ValueError(
-                "todo complete with --claimed-by requires coordination.primary_agent "
-                "so LoopX can distinguish the primary agent from side agents"
-            )
-        side_agent_completion = bool(
-            effective_claimed_by and primary_agent and effective_claimed_by != primary_agent
-        )
-        explicit_primary_review_handoff = bool(
-            side_agent_completion
-            and next_agent_todo
-            and not side_agent_self_merged
-            and primary_agent
-            and effective_next_claimed_by == primary_agent
-            and _is_primary_review_action_kind(next_action_kind)
-        )
-        if side_agent_completion:
-            if side_agent_self_merged and not evidence:
-                raise ValueError(
-                    "--side-agent-self-merged requires --evidence with a public-safe "
-                    "self-merge, commit, and validation summary"
-                )
-            if not side_agent_self_merged and not next_agent_todo:
-                raise ValueError(
-                    f"side-agent completion by {effective_claimed_by!r} requires "
-                    "--next-agent-todo for independent handoff, verification, and merge, "
-                    "or --side-agent-self-merged with --evidence for a small validated self-merge"
-                )
-            if not side_agent_self_merged and handoff_agent == effective_claimed_by:
-                raise ValueError(
-                    "side-agent handoff todo cannot be claimed by the completing side agent; "
-                    "use --side-agent-self-merged with --evidence for same-agent delivery, "
-                    "or configure side_agent_handoff_agent to another registered agent"
-                )
-            if (
-                not side_agent_self_merged
-                and effective_next_claimed_by
-                and effective_next_claimed_by != handoff_agent
-                and not explicit_primary_review_handoff
-            ):
-                raise ValueError(
-                    f"side-agent completion handoff todo must be claimed_by handoff_agent={handoff_agent!r}"
-                )
-            if next_agent_todo and not side_agent_self_merged and not effective_next_claimed_by:
-                effective_next_claimed_by = handoff_agent
-        if effective_next_claimed_by and not next_agent_todo:
-            raise ValueError("--next-claimed-by requires --next-agent-todo")
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
         if successor_todo_ids and not normalized_successor_todo_ids:
             raise ValueError("successor_todo_ids must contain public todo_<letters-digits-underscore-hyphen> tokens")
+        linked_successors = []
+        for successor_todo_id in normalized_successor_todo_ids:
+            successor_match = find_todo_block(lines, todo_id=successor_todo_id)
+            if successor_match:
+                successor_role, _section, _start, _end, successor_block = successor_match
+                successor_item = dict(successor_block)
+                successor_item["role"] = successor_role
+                linked_successors.append(linked_successor_from_todo(successor_item))
+        completion_policy = resolve_completion_policy(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            claimed_by=claimed_by,
+            next_claimed_by=next_claimed_by,
+            next_agent_todo=next_agent_todo,
+            next_action_kind=next_action_kind,
+            side_agent_self_merged=side_agent_self_merged,
+            evidence=evidence,
+            linked_successors=linked_successors,
+        )
+        effective_claimed_by = completion_policy.effective_claimed_by
+        primary_agent = completion_policy.primary_agent
+        registered_agents = completion_policy.registered_agents
+        effective_next_claimed_by = completion_policy.effective_next_claimed_by
+        side_agent_completion = completion_policy.side_agent_completion
+        effective_side_agent_self_merged = completion_policy.side_agent_self_merged
         if not find_todo_block(lines, todo_id=todo_id, role=role):
             event_context = event_projection_todo_context(
                 registry_path=registry_path,
@@ -1718,7 +1660,7 @@ def complete_goal_todo(
                     next_task_class=next_task_class,
                     next_action_kind=next_action_kind,
                     side_agent_completion=side_agent_completion,
-                    side_agent_self_merged=side_agent_self_merged,
+                    side_agent_self_merged=effective_side_agent_self_merged,
                     registered_agents=registered_agents,
                     primary_agent=primary_agent,
                     updated_at=updated_at,
@@ -1745,7 +1687,7 @@ def complete_goal_todo(
             if next_agent_todo
             else None
         )
-        if side_agent_completion and next_agent_todo and not side_agent_self_merged:
+        if side_agent_completion and next_agent_todo and not effective_side_agent_self_merged:
             next_blocks_agent = effective_claimed_by
         next_user_blocks_agent = None
         if next_user_todo and len(registered_agents) > 1:
@@ -1800,7 +1742,8 @@ def complete_goal_todo(
         **update_result,
         "changed": changed,
         "next_todos": next_results,
-        "side_agent_self_merged": bool(side_agent_completion and side_agent_self_merged),
+        "side_agent_self_merged": effective_side_agent_self_merged,
+        "linked_handoff_successor_id": completion_policy.linked_handoff_successor_id,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,

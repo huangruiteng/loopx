@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.control_plane.testing.canary_harness import (  # noqa: E402
     run_json_cli,
+    run_json_cli_result,
     write_fixture_registry,
 )
 
@@ -32,6 +33,11 @@ CAPABILITY_FALLBACK_TODO_ID = "todo_self_iter_filesystem_fallback"
 CAPABILITY_FALLBACK_TEXT = (
     "Run the public-safe filesystem fallback while network capability is unavailable."
 )
+EXISTING_SUCCESSOR_START_TODO_ID = "todo_self_iter_existing_start"
+EXISTING_SUCCESSOR_HANDOFF_TODO_ID = "todo_self_iter_existing_handoff"
+EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID = "todo_self_iter_existing_same_agent"
+EXISTING_SUCCESSOR_START_TEXT = "Finish a side-agent slice with an already-created handoff successor."
+EXISTING_SUCCESSOR_HANDOFF_TEXT = "Review and merge the completed side-agent slice."
 
 
 def run_cli(
@@ -40,6 +46,19 @@ def run_cli(
     runtime: Path,
 ) -> dict:
     return run_json_cli(
+        *args,
+        registry_path=registry_path,
+        runtime_root=runtime,
+        cwd=REPO_ROOT,
+    )
+
+
+def run_cli_result(
+    *args: str,
+    registry_path: Path,
+    runtime: Path,
+) -> tuple[int, dict]:
+    return run_json_cli_result(
         *args,
         registry_path=registry_path,
         runtime_root=runtime,
@@ -100,6 +119,50 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
         runtime=runtime,
         registry_path=registry_path,
         adapter_kind="side_agent_self_iteration_fixture_v0",
+    )
+    return project, runtime, registry_path
+
+
+def write_existing_successor_fixture(
+    root: Path,
+    *,
+    successor_todo_id: str,
+    successor_claimed_by: str,
+) -> tuple[Path, Path, Path]:
+    project = root / "project"
+    runtime = root / "runtime"
+    state_file = f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_path = project / state_file
+    registry_path = project / ".loopx" / "registry.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(
+        "---\n"
+        "status: active\n"
+        "owner_mode: goal\n"
+        'objective: "Exercise existing successor completion."\n'
+        "updated_at: 2026-01-01T00:00:00+00:00\n"
+        "---\n\n"
+        "# Existing Successor Completion Fixture\n\n"
+        "## Objective\n\n"
+        "Exercise existing successor completion.\n\n"
+        "## Next Action\n\n"
+        f"- {GOAL_NEXT_ACTION}\n\n"
+        "## Agent Todo\n\n"
+        f"- [ ] [P1] {EXISTING_SUCCESSOR_START_TEXT}\n"
+        f"  <!-- loopx:todo todo_id={EXISTING_SUCCESSOR_START_TODO_ID} status=open "
+        "task_class=advancement_task action_kind=state_machine_canary_refactor "
+        f"claimed_by={AGENT_ID} -->\n"
+        f"- [ ] [P1] {EXISTING_SUCCESSOR_HANDOFF_TEXT}\n"
+        f"  <!-- loopx:todo todo_id={successor_todo_id} status=open "
+        "task_class=advancement_task action_kind=primary_review "
+        f"claimed_by={successor_claimed_by} -->\n",
+        encoding="utf-8",
+    )
+    write_registry(
+        project=project,
+        runtime=runtime,
+        registry_path=registry_path,
+        adapter_kind="side_agent_existing_successor_fixture_v0",
     )
     return project, runtime, registry_path
 
@@ -324,6 +387,107 @@ def assert_self_iteration_flow() -> None:
         assert third["active_state_next_action"] == GOAL_NEXT_ACTION, third
 
 
+def assert_existing_handoff_successor_flow() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-existing-successor-") as tmp:
+        project, runtime, registry_path = write_existing_successor_fixture(
+            Path(tmp),
+            successor_todo_id=EXISTING_SUCCESSOR_HANDOFF_TODO_ID,
+            successor_claimed_by=PRIMARY_AGENT_ID,
+        )
+
+        first = should_run(registry_path, runtime, project)
+        assert_initial_side_agent_lane(first, expected_todo_id=EXISTING_SUCCESSOR_START_TODO_ID)
+
+        completed = run_cli(
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            EXISTING_SUCCESSOR_START_TODO_ID,
+            "--claimed-by",
+            AGENT_ID,
+            "--evidence",
+            "fixture linked an existing public handoff successor",
+            "--successor-todo-id",
+            EXISTING_SUCCESSOR_HANDOFF_TODO_ID,
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert completed["ok"] is True, completed
+        assert completed["status"] == "done", completed
+        assert completed["side_agent_self_merged"] is False, completed
+        assert completed["linked_handoff_successor_id"] == EXISTING_SUCCESSOR_HANDOFF_TODO_ID, completed
+        assert completed["successor_todo_ids"] == [EXISTING_SUCCESSOR_HANDOFF_TODO_ID], completed
+        assert completed["next_todos"] == [], completed
+
+        successor_lookup = run_cli(
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            EXISTING_SUCCESSOR_HANDOFF_TODO_ID,
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert successor_lookup["matched"] is True, successor_lookup
+        assert successor_lookup["todo"]["status"] == "open", successor_lookup
+        assert successor_lookup["todo"]["claimed_by"] == PRIMARY_AGENT_ID, successor_lookup
+
+        primary_guard = run_cli(
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            PRIMARY_AGENT_ID,
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert primary_guard["decision"] == "run", primary_guard
+        assert primary_guard["effective_action"] == "normal_run", primary_guard
+        assert primary_guard["agent_identity"]["role"] == "primary-agent", primary_guard
+        primary_next_action = primary_guard["agent_lane_next_action"]
+        assert primary_next_action["todo_id"] == EXISTING_SUCCESSOR_HANDOFF_TODO_ID, primary_guard
+        assert primary_next_action["claimed_by"] == PRIMARY_AGENT_ID, primary_guard
+
+
+def assert_same_agent_existing_successor_still_requires_self_merge_or_handoff() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-side-agent-same-successor-") as tmp:
+        _project, runtime, registry_path = write_existing_successor_fixture(
+            Path(tmp),
+            successor_todo_id=EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID,
+            successor_claimed_by=AGENT_ID,
+        )
+
+        returncode, rejected = run_cli_result(
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            EXISTING_SUCCESSOR_START_TODO_ID,
+            "--claimed-by",
+            AGENT_ID,
+            "--evidence",
+            "fixture attempted same-agent successor link",
+            "--successor-todo-id",
+            EXISTING_SUCCESSOR_SAME_AGENT_TODO_ID,
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert returncode != 0, rejected
+        assert "handoff_agent='codex-main-control'" in rejected["error"], rejected
+        assert "--side-agent-self-merged" in rejected["error"], rejected
+
+
 def assert_capability_fallback_preserves_frontier_and_scheduler() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-side-agent-capability-fallback-") as tmp:
         project, runtime, registry_path = write_capability_fallback_fixture(Path(tmp))
@@ -373,6 +537,8 @@ def assert_capability_fallback_preserves_frontier_and_scheduler() -> None:
 
 def main() -> int:
     assert_self_iteration_flow()
+    assert_existing_handoff_successor_flow()
+    assert_same_agent_existing_successor_still_requires_self_merge_or_handoff()
     assert_capability_fallback_preserves_frontier_and_scheduler()
     print("side-agent-self-iteration-state-machine-smoke ok")
     return 0

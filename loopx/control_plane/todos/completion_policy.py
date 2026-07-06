@@ -1,0 +1,188 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable, Mapping
+
+from ...agent_registry import (
+    primary_agent_id_from_registry,
+    registered_agent_ids_from_registry,
+    require_registered_agent_id,
+    side_agent_handoff_agent_id_from_registry,
+)
+from .contract import normalize_todo_claimed_by
+
+
+@dataclass(frozen=True)
+class LinkedSuccessor:
+    todo_id: str
+    role: str | None = None
+    status: str | None = None
+    task_class: str | None = None
+    action_kind: str | None = None
+    claimed_by: str | None = None
+
+
+@dataclass(frozen=True)
+class CompletionPolicy:
+    effective_claimed_by: str | None
+    primary_agent: str | None
+    registered_agents: list[str]
+    handoff_agent: str | None
+    effective_next_claimed_by: str | None
+    side_agent_completion: bool
+    side_agent_self_merged: bool
+    linked_handoff_successor_id: str | None = None
+
+
+def is_primary_review_action_kind(value: Any) -> bool:
+    action_kind = str(value or "").strip()
+    return action_kind == "primary_review" or action_kind.startswith("primary_review_")
+
+
+def linked_successor_from_todo(todo: Mapping[str, Any]) -> LinkedSuccessor:
+    return LinkedSuccessor(
+        todo_id=str(todo.get("todo_id") or ""),
+        role=str(todo.get("role") or "").strip() or None,
+        status=str(todo.get("status") or "").strip() or None,
+        task_class=str(todo.get("task_class") or "").strip() or None,
+        action_kind=str(todo.get("action_kind") or "").strip() or None,
+        claimed_by=normalize_todo_claimed_by(todo.get("claimed_by")),
+    )
+
+
+def _linked_handoff_successor_id(
+    *,
+    successors: Iterable[LinkedSuccessor],
+    handoff_agent: str | None,
+    completing_agent: str | None,
+) -> str | None:
+    if not handoff_agent or not completing_agent:
+        return None
+    for successor in successors:
+        if successor.role != "agent":
+            continue
+        if successor.status and successor.status != "open":
+            continue
+        if successor.claimed_by != handoff_agent:
+            continue
+        if successor.claimed_by == completing_agent:
+            continue
+        if successor.todo_id:
+            return successor.todo_id
+    return None
+
+
+def resolve_completion_policy(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    claimed_by: str | None = None,
+    next_claimed_by: str | None = None,
+    next_agent_todo: str | None = None,
+    next_action_kind: str | None = None,
+    side_agent_self_merged: bool = False,
+    evidence: str | None = None,
+    linked_successors: Iterable[LinkedSuccessor] = (),
+) -> CompletionPolicy:
+    effective_claimed_by = (
+        require_registered_agent_id(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            agent_id=claimed_by,
+        )
+        if claimed_by
+        else None
+    )
+    primary_agent = primary_agent_id_from_registry(registry_path, goal_id)
+    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
+    configured_handoff_agent = side_agent_handoff_agent_id_from_registry(
+        registry_path,
+        goal_id,
+        agent_id=effective_claimed_by,
+    )
+    handoff_agent = configured_handoff_agent or primary_agent
+    if configured_handoff_agent:
+        handoff_agent = require_registered_agent_id(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            agent_id=configured_handoff_agent,
+            field="side_agent_handoff_agent",
+        )
+    effective_next_claimed_by = (
+        require_registered_agent_id(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            agent_id=next_claimed_by,
+            field="next_claimed_by",
+        )
+        if next_claimed_by
+        else None
+    )
+    if effective_claimed_by and not primary_agent:
+        raise ValueError(
+            "todo complete with --claimed-by requires coordination.primary_agent "
+            "so LoopX can distinguish the primary agent from side agents"
+        )
+
+    side_agent_completion = bool(
+        effective_claimed_by and primary_agent and effective_claimed_by != primary_agent
+    )
+    linked_handoff_successor_id = _linked_handoff_successor_id(
+        successors=linked_successors,
+        handoff_agent=handoff_agent,
+        completing_agent=effective_claimed_by,
+    )
+    explicit_primary_review_handoff = bool(
+        side_agent_completion
+        and next_agent_todo
+        and not side_agent_self_merged
+        and primary_agent
+        and effective_next_claimed_by == primary_agent
+        and is_primary_review_action_kind(next_action_kind)
+    )
+
+    if side_agent_completion:
+        if side_agent_self_merged and not evidence:
+            raise ValueError(
+                "--side-agent-self-merged requires --evidence with a public-safe "
+                "self-merge, commit, and validation summary"
+            )
+        if not side_agent_self_merged and not next_agent_todo and not linked_handoff_successor_id:
+            raise ValueError(
+                f"side-agent completion by {effective_claimed_by!r} requires "
+                "--next-agent-todo for independent handoff, verification, and merge; "
+                "--successor-todo-id pointing at an open agent successor claimed by "
+                f"handoff_agent={handoff_agent!r}; or --side-agent-self-merged "
+                "with --evidence for a small validated self-merge"
+            )
+        if not side_agent_self_merged and handoff_agent == effective_claimed_by:
+            raise ValueError(
+                "side-agent handoff todo cannot be claimed by the completing side agent; "
+                "use --side-agent-self-merged with --evidence for same-agent delivery, "
+                "or configure side_agent_handoff_agent to another registered agent"
+            )
+        if (
+            not side_agent_self_merged
+            and effective_next_claimed_by
+            and effective_next_claimed_by != handoff_agent
+            and not explicit_primary_review_handoff
+        ):
+            raise ValueError(
+                f"side-agent completion handoff todo must be claimed_by handoff_agent={handoff_agent!r}"
+            )
+        if next_agent_todo and not side_agent_self_merged and not effective_next_claimed_by:
+            effective_next_claimed_by = handoff_agent
+    if effective_next_claimed_by and not next_agent_todo:
+        raise ValueError("--next-claimed-by requires --next-agent-todo")
+
+    return CompletionPolicy(
+        effective_claimed_by=effective_claimed_by,
+        primary_agent=primary_agent,
+        registered_agents=registered_agents,
+        handoff_agent=handoff_agent,
+        effective_next_claimed_by=effective_next_claimed_by,
+        side_agent_completion=side_agent_completion,
+        side_agent_self_merged=bool(side_agent_completion and side_agent_self_merged),
+        linked_handoff_successor_id=linked_handoff_successor_id,
+    )
