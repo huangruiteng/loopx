@@ -957,6 +957,7 @@ def _host_local_acp_launch_command(
             command.extend(["--worker-public-trace-dir", worker_trace_dir])
     elif args.route == CODEX_CLI_GOAL_BASELINE_ROUTE:
         command.extend(["--codex-cli-goal-worker"])
+        if getattr(args, "codex_cli_goal_thread_prewarm", False): command.extend(["--codex-cli-goal-thread-prewarm"])
         proxy_url, _proxy_source = _codex_api_reverse_tunnel_proxy(args)
         if (
             proxy_url
@@ -8809,6 +8810,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "include_task_skills": bool(args.include_task_skills),
         "host_local_acp_launch": bool(args.host_local_acp_launch),
+        "codex_cli_goal_thread_prewarm": bool(getattr(args, "codex_cli_goal_thread_prewarm", False)),
         "bootstrap_light_candidate_required": bool(
             _formal_app_server_goal_bootstrap_light_guard_required(args)
         ),
@@ -9351,6 +9353,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
     for field in (
         "include_task_skills",
         "host_local_acp_launch",
+        "codex_cli_goal_thread_prewarm",
         "bootstrap_light_candidate_required",
         "bootstrap_light_fail_fast_required",
         "allow_staged_bootstrap_repair_run",
@@ -16147,12 +16150,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "0 disables the watchdog."
         ),
     )
-    parser.add_argument(
-        "--local-codex-ping-timeout-sec",
-        type=int,
-        default=120,
-        help="Timeout for --local-codex-participant-ping.",
-    )
+    parser.add_argument("--local-codex-ping-timeout-sec", type=int, default=120, help="Timeout for --local-codex-participant-ping.")
+    parser.add_argument("--codex-cli-goal-thread-prewarm", action="store_true", help="Prewarm the Codex CLI TUI thread before codex-cli-goal /goal startup canaries.")
     parser.add_argument(
         "--local-driver-worker-handshake-preflight",
         action="store_true",
