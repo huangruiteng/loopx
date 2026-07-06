@@ -56,6 +56,7 @@ MAX_COMPLETED_SUCCESSION_WARNING_ITEMS = 5
 
 TODO_ITEM_SCHEMA_VERSION = "todo_item_v0"
 TODO_SUCCESSION_WARNING_SCHEMA_VERSION = "todo_succession_warning_v0"
+TODO_ARCHIVE_STATE_ACTIVE = "active"
 AttentionItemBuilder = Callable[..., dict[str, Any]]
 GoalLifecycleFields = Callable[[dict[str, Any], Optional[dict[str, Any]]], dict[str, Any]]
 PublicSafeText = Callable[..., Optional[str]]
@@ -83,6 +84,11 @@ def normalize_todo_text(text: str, *, limit: int = 500) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 1].rstrip() + "…"
+
+
+def todo_archive_state(item: dict[str, Any]) -> str:
+    value = str(item.get("archive_state") or TODO_ARCHIVE_STATE_ACTIVE).strip()
+    return value or TODO_ARCHIVE_STATE_ACTIVE
 
 
 def active_state_todo_attention_item(
@@ -728,6 +734,8 @@ def todo_successor_todo_ids(
 
 
 def todo_item_is_succession_tracked_completion(item: dict[str, Any]) -> bool:
+    if todo_archive_state(item) != TODO_ARCHIVE_STATE_ACTIVE:
+        return False
     if not item.get("done"):
         return False
     if todo_item_is_deferred(item):
@@ -800,7 +808,12 @@ def compact_todo_group(
     if not items:
         return None
     items = [
-        structured_todo_item(item, role=role, source_section=source_section)
+        structured_todo_item(
+            item,
+            role=role,
+            source_section=source_section,
+            archive_state=todo_archive_state(item),
+        )
         if isinstance(item, dict)
         else item
         for item in items

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import hashlib
 from pathlib import Path
 import re
@@ -12,7 +11,7 @@ from .benchmark_adapters.skillsbench_signals import (
 from .benchmark_adapters.skillsbench_verifier_bootstrap import (
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
-from .control_plane import compact_control_plane_policy, control_plane_policy_summary
+from .control_plane import compact_control_plane_policy
 from .contract import check_contract
 from .control_plane.work_items.delivery_batch_scale import (
     SMALL_DELIVERY_BATCH_SCALES as STRUCTURED_SMALL_DELIVERY_BATCH_SCALES,
@@ -55,6 +54,7 @@ from .control_plane.work_items.project_asset import (
     PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
+    attach_active_state_project_asset_fields as _attach_active_state_project_asset_fields,
     build_project_asset,
     enrich_project_asset as _enrich_project_asset_read_model,
     project_asset_handoff_check_projection,
@@ -173,9 +173,12 @@ from .control_plane.runtime.run_compaction import (
     compact_run_base as _compact_run_base_read_model,
 )
 from .control_plane.runtime.public_safety import (
+    compact_loopx_command_records as _compact_loopx_command_records,
+    compact_numeric_map as _compact_numeric_map,
     public_safe_compact_list,
     public_safe_compact_text,
 )
+from .control_plane.runtime.time import parse_timestamp
 from .control_plane.runtime.run_history import (
     build_run_history as _build_run_history_read_model,
     latest_run as _latest_run_read_model,
@@ -214,6 +217,7 @@ from .control_plane.goals.global_registry_health import (
     collect_global_registry_health as _collect_global_registry_health_read_model,
     global_registry_finding,
 )
+from .control_plane.goals.path_resolution import resolve_goal_local_path, same_path
 from .control_plane.goals.goal_channel import (
     attach_goal_channel_projection as _attach_goal_channel_projection_read_model,
 )
@@ -311,13 +315,18 @@ from .control_plane.quota.usage_summary import (
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
 from .registry import registry_goals
-from .renderers.status_markdown import (
+from .presentation.renderers.status_markdown import (
     append_attention_queue_item_header_markdown as _append_attention_queue_item_header_markdown,
+    append_attention_queue_item_operational_markdown as _append_attention_queue_item_operational_markdown,
     append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
+    append_handoff_readiness_markdown as _append_handoff_readiness_markdown,
     append_human_reward_markdown as _append_human_reward_markdown,
     append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
+    append_project_asset_session_runtime_markdown as _append_project_asset_session_runtime_markdown,
+    append_project_asset_todo_quota_markdown as _append_project_asset_todo_quota_markdown,
+    append_project_asset_warning_markdown as _append_project_asset_warning_markdown,
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
     append_usage_summary_markdown as _append_usage_summary_markdown,
@@ -581,60 +590,6 @@ AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS = {
 AUTONOMOUS_RUN_HISTORY_STALL_PATTERN = re.compile(
     r"(?i)(?:monitor|observe|observation|poll|watch|quiet|no[-_ ]?op|no[-_ ]?progress|stalled?|unchanged|dependency|停转|无进展|重复|反复|观察|轮询)"
 )
-
-
-def _compact_numeric_map(value: Any, *, keys: tuple[str, ...] | None = None) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    source = value
-    selected_keys = keys or tuple(str(key) for key in source.keys())
-    compact: dict[str, Any] = {}
-    for key in selected_keys:
-        raw = source.get(key)
-        if isinstance(raw, bool) or raw is None:
-            continue
-        if isinstance(raw, (int, float)):
-            compact[key] = raw
-            continue
-        try:
-            if isinstance(raw, str) and raw.strip():
-                compact[key] = float(raw) if "." in raw else int(raw)
-        except ValueError:
-            continue
-    return compact
-
-
-def _compact_loopx_command_records(value: Any, *, limit: int = 128) -> list[dict[str, str]]:
-    if not isinstance(value, list):
-        return []
-    allowed_subcommands = {
-        "quota should-run",
-        "todo claim",
-        "todo update",
-        "todo complete",
-        "refresh-state",
-        "quota spend-slot",
-        "status",
-        "diagnose",
-    }
-    records: list[dict[str, str]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            continue
-        subcommand = public_safe_compact_text(item.get("subcommand"), limit=80)
-        if subcommand not in allowed_subcommands:
-            continue
-        record: dict[str, str] = {"subcommand": subcommand}
-        todo_id = public_safe_compact_text(item.get("todo_id"), limit=100)
-        if todo_id and re.match(r"^todo_[A-Za-z0-9_-]{6,80}$", todo_id):
-            record["todo_id"] = todo_id
-        goal_id = public_safe_compact_text(item.get("goal_id"), limit=140)
-        if goal_id and re.match(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$", goal_id):
-            record["goal_id"] = goal_id
-        records.append(record)
-        if len(records) >= limit:
-            break
-    return records
 
 
 def _compact_benchmark_case_event_timeline(value: Any) -> dict[str, Any]:
@@ -6508,34 +6463,6 @@ def merge_global_registry_attention_findings(
     )
 
 
-def parse_timestamp(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def same_path(left: Path, right: Path) -> bool:
-    return left.expanduser().resolve() == right.expanduser().resolve()
-
-
-def resolve_goal_local_path(raw: Any, goal: dict[str, Any], *, fallback_base: Path) -> Path | None:
-    if not raw:
-        return None
-    path = Path(str(raw)).expanduser()
-    if path.is_absolute():
-        return path
-    repo = goal.get("repo")
-    if repo:
-        return Path(str(repo)).expanduser() / path
-    return fallback_base / path
-
-
 def collect_global_registry_health(
     *,
     registry_path: Path,
@@ -6924,62 +6851,13 @@ def build_attention_queue(
                 if active_state_fields is None:
                     active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
                 item.update(active_state_fields)
-                if isinstance(item.get("project_asset"), dict):
-                    active_next_action = item.get("active_state_next_action")
-                    if active_next_action:
-                        item["project_asset"]["active_state_next_action"] = active_next_action
-                    issue_meta_surface = (
-                        item.get("issue_meta_surface")
-                        if isinstance(item.get("issue_meta_surface"), dict)
-                        else None
-                    )
-                    if issue_meta_surface:
-                        item["project_asset"]["issue_meta_surface"] = issue_meta_surface
-                    next_action_warning = next_action_projection_warning(
-                        active_state_next_action=active_next_action,
-                        latest_run_recommended_action=item.get("latest_run_recommended_action"),
-                    )
-                    if next_action_warning:
-                        item["next_action_projection_warning"] = next_action_warning
-                        item["project_asset"]["next_action_projection_warning"] = next_action_warning
                 sync_connected_attention_action_from_todos(item)
-                backlog_warning = (
-                    item.get("backlog_hygiene_warning")
-                    if isinstance(item.get("backlog_hygiene_warning"), dict)
-                    else None
+                _attach_active_state_project_asset_fields(
+                    item,
+                    latest_runs=goal_latest_runs,
+                    next_action_projection_warning=next_action_projection_warning,
+                    autonomous_replan_obligation_from_runs=autonomous_replan_obligation_from_runs,
                 )
-                if backlog_warning and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["backlog_hygiene_warning"] = backlog_warning
-                projection_gap = (
-                    item.get("state_projection_gap")
-                    if isinstance(item.get("state_projection_gap"), dict)
-                    else None
-                )
-                if projection_gap and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["state_projection_gap"] = projection_gap
-                archive_warning = (
-                    item.get("completed_todo_archive_warning")
-                    if isinstance(item.get("completed_todo_archive_warning"), dict)
-                    else None
-                )
-                if archive_warning and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["completed_todo_archive_warning"] = archive_warning
-                replan_obligation = (
-                    item.get("autonomous_replan_obligation")
-                    if isinstance(item.get("autonomous_replan_obligation"), dict)
-                    else None
-                )
-                if not replan_obligation:
-                    replan_obligation = autonomous_replan_obligation_from_runs(
-                        goal_latest_runs,
-                        agent_todos=item.get("agent_todos")
-                        if isinstance(item.get("agent_todos"), dict)
-                        else None,
-                    )
-                    if replan_obligation:
-                        item["autonomous_replan_obligation"] = replan_obligation
-                if replan_obligation and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["autonomous_replan_obligation"] = replan_obligation
                 item["quota"] = quota_status(
                     goal,
                     waiting_on=str(item.get("waiting_on") or ""),
@@ -7627,446 +7505,24 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
                         f"      - child_run: role={role} state={state} "
                         f"run_id={run_id} parent_run_id={parent_run_id}"
                     )
-            asset_user_todos = (
-                project_asset.get("user_todos")
-                if isinstance(project_asset.get("user_todos"), dict)
-                else {}
+            _append_project_asset_todo_quota_markdown(
+                lines,
+                project_asset,
+                goal_todo_scope_suffix=goal_todo_scope_suffix,
             )
-            asset_agent_todos = (
-                project_asset.get("agent_todos")
-                if isinstance(project_asset.get("agent_todos"), dict)
-                else {}
-            )
-            if asset_user_todos or asset_agent_todos:
-                todo_parts = []
-                if asset_user_todos:
-                    todo_parts.append(f"user_open={asset_user_todos.get('open')}")
-                    if asset_user_todos.get("claimed_open_count"):
-                        todo_parts.append(f"user_claimed={asset_user_todos.get('claimed_open_count')}")
-                if asset_agent_todos:
-                    todo_parts.append(f"agent_open={asset_agent_todos.get('open')}")
-                    if asset_agent_todos.get("claimed_open_count"):
-                        todo_parts.append(f"agent_claimed={asset_agent_todos.get('claimed_open_count')}")
-                lines.append(f"    - asset_todos: {' '.join(todo_parts)}")
-                if asset_user_todos.get("next"):
-                    claimed = asset_user_todos.get("next_claimed_by")
-                    claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                    lines.append(f"      - asset_user_todo: {_markdown_scalar(asset_user_todos.get('next') or '')}{claim_suffix}")
-                for todo in (asset_user_todos.get("items") or [])[1:3]:
-                    if isinstance(todo, dict) and todo.get("text"):
-                        index = todo.get("index")
-                        suffix = f"[{index}]" if index is not None else ""
-                        claimed = todo.get("claimed_by")
-                        claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                        lines.append(f"      - asset_user_todo{suffix}: {_markdown_scalar(todo.get('text') or '')}{claim_suffix}")
-                if asset_agent_todos.get("next"):
-                    claimed = asset_agent_todos.get("next_claimed_by")
-                    claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                    lines.append(
-                        f"      - asset_agent_todo: "
-                        f"{_markdown_scalar(asset_agent_todos.get('next') or '')}"
-                        f"{claim_suffix}{goal_todo_scope_suffix}"
-                    )
-                for todo in (asset_agent_todos.get("items") or [])[1:3]:
-                    if isinstance(todo, dict) and todo.get("text"):
-                        index = todo.get("index")
-                        suffix = f"[{index}]" if index is not None else ""
-                        claimed = todo.get("claimed_by")
-                        claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                        lines.append(
-                            f"      - asset_agent_todo{suffix}: "
-                            f"{_markdown_scalar(todo.get('text') or '')}"
-                            f"{claim_suffix}{goal_todo_scope_suffix}"
-                        )
-            asset_quota = (
-                project_asset.get("quota")
-                if isinstance(project_asset.get("quota"), dict)
-                else {}
-            )
-            if asset_quota:
-                lines.append(
-                    "    - asset_quota: "
-                    f"compute={asset_quota.get('compute')} "
-                    f"state={asset_quota.get('state')} "
-                    f"slots={asset_quota.get('spent_slots')}/{asset_quota.get('allowed_slots')}"
-                )
-            projection_warning = (
-                project_asset.get("stale_latest_run_warning")
-                if isinstance(project_asset.get("stale_latest_run_warning"), dict)
-                else {}
-            )
-            if projection_warning:
-                lines.append(
-                    "    - stale_latest_run_warning: "
-                    f"requires_refresh_state={projection_warning.get('requires_refresh_state')} "
-                    f"active_state_updated_at={_markdown_scalar(projection_warning.get('active_state_updated_at') or '')} "
-                    f"latest_run_generated_at={_markdown_scalar(projection_warning.get('latest_run_generated_at') or '')} "
-                    f"reason={_markdown_scalar(projection_warning.get('reason') or '')}"
-                )
-            next_action_warning = (
-                project_asset.get("next_action_projection_warning")
-                if isinstance(project_asset.get("next_action_projection_warning"), dict)
-                else item.get("next_action_projection_warning")
-                if isinstance(item.get("next_action_projection_warning"), dict)
-                else {}
-            )
-            if next_action_warning:
-                lines.append(
-                    "    - next_action_projection_warning: "
-                    f"requires_state_writeback={next_action_warning.get('requires_state_writeback')} "
-                    f"reason={_markdown_scalar(next_action_warning.get('reason') or '')}"
-                )
-            backlog_warning = (
-                project_asset.get("backlog_hygiene_warning")
-                if isinstance(project_asset.get("backlog_hygiene_warning"), dict)
-                else {}
-            )
-            if backlog_warning:
-                lines.append(
-                    "    - backlog_hygiene_warning: "
-                    f"requires_agent_todo={backlog_warning.get('requires_agent_todo')} "
-                    f"evidence_count={backlog_warning.get('evidence_count')} "
-                    f"source_sections={_markdown_scalar(','.join(backlog_warning.get('source_sections') or []))}"
-                )
-            projection_gap = (
-                project_asset.get("state_projection_gap")
-                if isinstance(project_asset.get("state_projection_gap"), dict)
-                else {}
-            )
-            if projection_gap:
-                lines.append(
-                    "    - state_projection_gap: "
-                    f"requires_todo_expansion={projection_gap.get('requires_todo_expansion')} "
-                    f"user_open={projection_gap.get('user_open_count')} "
-                    f"agent_open={projection_gap.get('agent_open_count')} "
-                    f"target_roles={_markdown_scalar(','.join(projection_gap.get('target_roles') or []))}"
-                )
-            todo_projection_gap = (
-                project_asset.get("todo_projection_gap")
-                if isinstance(project_asset.get("todo_projection_gap"), dict)
-                else {}
-            )
-            if todo_projection_gap:
-                lines.append(
-                    "    - todo_projection_gap: "
-                    f"missing_roles={_markdown_scalar(','.join(todo_projection_gap.get('missing_roles') or []))} "
-                    f"source={_markdown_scalar(todo_projection_gap.get('source') or '')}"
-                )
-            archive_warning = (
-                project_asset.get("completed_todo_archive_warning")
-                if isinstance(project_asset.get("completed_todo_archive_warning"), dict)
-                else {}
-            )
-            if archive_warning:
-                lines.append(
-                    "    - completed_todo_archive_warning: "
-                    f"requires_archive={archive_warning.get('requires_archive')} "
-                    f"active_done={archive_warning.get('active_done_count')} "
-                    f"max_active_done={archive_warning.get('max_active_done_count')} "
-                    f"archive_section={_markdown_scalar(archive_warning.get('archive_section') or '')}"
-                )
-            replan_obligation = (
-                project_asset.get("autonomous_replan_obligation")
-                if isinstance(project_asset.get("autonomous_replan_obligation"), dict)
-                else {}
-            )
-            if replan_obligation:
-                trigger_kinds = [
-                    str(trigger.get("kind") or "")
-                    for trigger in replan_obligation.get("triggers") or []
-                    if isinstance(trigger, dict) and trigger.get("kind")
-                ]
-                lines.append(
-                    "    - autonomous_replan_obligation: "
-                    f"required={replan_obligation.get('required')} "
-                    f"trigger_count={replan_obligation.get('trigger_count')} "
-                    f"triggers={_markdown_scalar(','.join(trigger_kinds))}"
-                )
-            interface_budget_cadence = (
-                project_asset.get("interface_budget_cadence")
-                if isinstance(project_asset.get("interface_budget_cadence"), dict)
-                else {}
-            )
-            if interface_budget_cadence:
-                lines.append(
-                    "    - interface_budget_cadence: "
-                    f"overdue={interface_budget_cadence.get('overdue')} "
-                    f"within_budget={interface_budget_cadence.get('within_budget')} "
-                    f"checked_at={_markdown_scalar(interface_budget_cadence.get('checked_at') or '')} "
-                    f"next_check_due_at={_markdown_scalar(interface_budget_cadence.get('next_check_due_at') or '')} "
-                    f"tightest={_markdown_scalar(interface_budget_cadence.get('tightest_surface') or '')}/"
-                    f"{_markdown_scalar(interface_budget_cadence.get('tightest_metric') or '')} "
-                    f"headroom={interface_budget_cadence.get('headroom_remaining')} "
-                    f"recommendation={_markdown_scalar(interface_budget_cadence.get('recommendation') or '')}"
-                )
-            latest_validation = (
-                project_asset.get("latest_validation")
-                if isinstance(project_asset.get("latest_validation"), dict)
-                else {}
-            )
-            if latest_validation:
-                lines.append(
-                    "    - latest_validation: "
-                    f"classification={_markdown_scalar(latest_validation.get('classification') or '')} "
-                    f"at={_markdown_scalar(latest_validation.get('generated_at') or '')}"
-                )
-            session_projection = (
-                project_asset.get("session_runtime_projection")
-                if isinstance(project_asset.get("session_runtime_projection"), dict)
-                else {}
-            )
-            if session_projection:
-                first_screen = (
-                    session_projection.get("first_screen")
-                    if isinstance(session_projection.get("first_screen"), dict)
-                    else {}
-                )
-                boundary = (
-                    session_projection.get("boundary")
-                    if isinstance(session_projection.get("boundary"), dict)
-                    else {}
-                )
-                source = (
-                    session_projection.get("source")
-                    if isinstance(session_projection.get("source"), dict)
-                    else {}
-                )
-                lines.append(
-                    "    - session_runtime_projection: "
-                    f"waiting_on={_markdown_scalar(first_screen.get('waiting_on') or '')} "
-                    f"agent_can_continue={first_screen.get('agent_can_continue')} "
-                    f"user_action_required={first_screen.get('user_action_required')} "
-                    f"gate={_markdown_scalar(first_screen.get('gate_state') or '')} "
-                    f"raw_material_detected={boundary.get('raw_material_detected')} "
-                    f"runtime_writeback_allowed={boundary.get('runtime_writeback_allowed')} "
-                    f"host={_markdown_scalar(source.get('host_kind') or '')}"
-                )
-                if first_screen.get("first_user_todo"):
-                    lines.append(
-                        "      - session_runtime_user_todo: "
-                        f"{_markdown_scalar(first_screen.get('first_user_todo') or '')}"
-                    )
-                if first_screen.get("first_agent_todo"):
-                    lines.append(
-                        "      - session_runtime_agent_todo: "
-                        f"{_markdown_scalar(first_screen.get('first_agent_todo') or '')}"
-                    )
+            _append_project_asset_warning_markdown(lines, project_asset, item)
+            _append_project_asset_session_runtime_markdown(lines, project_asset)
             handoff_readiness = (
                 item.get("handoff_readiness")
                 if isinstance(item.get("handoff_readiness"), dict)
                 else {}
             )
-            if handoff_readiness:
-                lines.append(
-                    "    - handoff_readiness: "
-                    f"ready={handoff_readiness.get('ready')} "
-                    f"codex_ready={handoff_readiness.get('codex_ready')} "
-                    f"source={_markdown_scalar(handoff_readiness.get('source') or '')} "
-                    f"quota_state={_markdown_scalar(handoff_readiness.get('quota_state') or '')}"
-                )
-                interface_budget = (
-                    handoff_readiness.get("handoff_interface_budget")
-                    if isinstance(handoff_readiness.get("handoff_interface_budget"), dict)
-                    else {}
-                )
-                if interface_budget:
-                    lines.append(
-                        "      - handoff_interface_budget: "
-                        f"mode={_markdown_scalar(interface_budget.get('mode') or '')} "
-                        f"max_lines={interface_budget.get('max_lines')} "
-                        f"max_chars={interface_budget.get('max_chars')}"
-                    )
-                checks = (
-                    handoff_readiness.get("checks")
-                    if isinstance(handoff_readiness.get("checks"), dict)
-                    else {}
-                )
-                passed = [key for key, value in checks.items() if value]
-                failed = [key for key, value in checks.items() if not value]
-                if checks:
-                    lines.append(
-                        "      - handoff_checks: "
-                        f"pass={','.join(passed) if passed else '-'} "
-                        f"fail={','.join(failed) if failed else '-'}"
-                    )
-                lines.append(
-                    "      - handoff_state: "
-                    f"status={_markdown_scalar(handoff_readiness.get('handoff_status') or '')} "
-                    f"post_handoff_run_seen={handoff_readiness.get('post_handoff_run_seen')} "
-                    f"ready_at={_markdown_scalar(handoff_readiness.get('handoff_ready_at') or '')}"
-                )
-                latest_handoff_run = (
-                    handoff_readiness.get("post_handoff_latest_run")
-                    if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
-                    else {}
-                )
-                if latest_handoff_run:
-                    outcome_suffix = ""
-                    if latest_handoff_run.get("delivery_outcome"):
-                        outcome_suffix = (
-                            " "
-                            f"outcome={_markdown_scalar(latest_handoff_run.get('delivery_outcome') or '')}"
-                        )
-                    turn_kind_suffix = ""
-                    if latest_handoff_run.get("delivery_turn_kind"):
-                        turn_kind_suffix = (
-                            " "
-                            f"turn_kind={_markdown_scalar(latest_handoff_run.get('delivery_turn_kind') or '')}"
-                        )
-                    lines.append(
-                        "      - post_handoff_run: "
-                        f"classification={_markdown_scalar(latest_handoff_run.get('classification') or '')} "
-                        f"at={_markdown_scalar(latest_handoff_run.get('generated_at') or '')} "
-                        f"scale={_markdown_scalar(latest_handoff_run.get('delivery_batch_scale') or '')}"
-                        f"{outcome_suffix}"
-                        f"{turn_kind_suffix}"
-                    )
-                recent_handoff_runs = (
-                    handoff_readiness.get("post_handoff_recent_runs")
-                    if isinstance(handoff_readiness.get("post_handoff_recent_runs"), list)
-                    else []
-                )
-                recent_scales = [
-                    _markdown_scalar(str(run.get("delivery_batch_scale") or ""))
-                    for run in recent_handoff_runs
-                    if isinstance(run, dict)
-                ]
-                if recent_scales:
-                    recent_outcomes = [
-                        _markdown_scalar(str(run.get("delivery_outcome") or ""))
-                        for run in recent_handoff_runs
-                        if isinstance(run, dict) and run.get("delivery_outcome")
-                    ]
-                    outcome_text = f" outcome={','.join(recent_outcomes)}" if recent_outcomes else ""
-                    recent_turn_kinds = [
-                        _markdown_scalar(str(run.get("delivery_turn_kind") or ""))
-                        for run in recent_handoff_runs
-                        if isinstance(run, dict) and run.get("delivery_turn_kind")
-                    ]
-                    turn_kind_text = (
-                        f" turn_kind={','.join(recent_turn_kinds)}" if recent_turn_kinds else ""
-                    )
-                    gap_text = (
-                        f" outcome_gap_streak={handoff_readiness.get('post_handoff_outcome_gap_streak')}"
-                        if "post_handoff_outcome_gap_streak" in handoff_readiness
-                        else ""
-                    )
-                    lines.append(
-                        "      - post_handoff_recent_scales: "
-                        f"{','.join(recent_scales)} "
-                        f"small_streak={handoff_readiness.get('post_handoff_small_scale_streak', 0)}"
-                        f"{outcome_text}"
-                        f"{turn_kind_text}"
-                        f"{gap_text}"
-                    )
-                if handoff_readiness.get("next_probe"):
-                    handoff_probe = _markdown_scalar(handoff_readiness.get("next_probe") or "")
-                    lines.append(f"      - handoff_probe: `{handoff_probe}`")
-        user_todos = item.get("user_todos") if isinstance(item.get("user_todos"), dict) else {}
-        if user_todos:
-            todo_parts = [
-                f"open={user_todos.get('open_count')}",
-                f"done={user_todos.get('done_count')}",
-                f"total={user_todos.get('total_count')}",
-            ]
-            if user_todos.get("claimed_open_count"):
-                todo_parts.insert(1, f"claimed={user_todos.get('claimed_open_count')}")
-                todo_parts.insert(2, f"unclaimed={user_todos.get('unclaimed_open_count', 0)}")
-            lines.append(f"  - user_todos: {' '.join(todo_parts)}")
-            for todo in user_todos.get("items") or []:
-                if not isinstance(todo, dict) or todo.get("done"):
-                    continue
-                claimed = todo.get("claimed_by")
-                claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                lines.append(f"    - next_user_todo: {_markdown_scalar(todo.get('text') or '')}{claim_suffix}")
-                for material in todo.get("review_materials") or []:
-                    if not isinstance(material, dict):
-                        continue
-                    lines.append(
-                        "      - review_material: "
-                        f"{_markdown_scalar(material.get('label') or material.get('path') or '')} "
-                        f"exists={material.get('exists')}"
-                    )
-                break
-        agent_todos = item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else {}
-        if agent_todos:
-            todo_parts = [
-                f"open={agent_todos.get('open_count')}",
-                f"done={agent_todos.get('done_count')}",
-                f"total={agent_todos.get('total_count')}",
-            ]
-            if agent_todos.get("claimed_open_count"):
-                todo_parts.insert(1, f"claimed={agent_todos.get('claimed_open_count')}")
-                todo_parts.insert(2, f"unclaimed={agent_todos.get('unclaimed_open_count', 0)}")
-            lines.append(f"  - agent_todos: {' '.join(todo_parts)}")
-            for todo in agent_todos.get("items") or []:
-                if not isinstance(todo, dict) or todo.get("done"):
-                    continue
-                claimed = todo.get("claimed_by")
-                claim_suffix = f" claimed_by={_markdown_scalar(claimed)}" if claimed else ""
-                lines.append(
-                    f"    - next_agent_todo: "
-                    f"{_markdown_scalar(todo.get('text') or '')}"
-                    f"{claim_suffix}{goal_todo_scope_suffix}"
-                )
-                break
-        dependency_blockers = (
-            item.get("dependency_blockers")
-            if isinstance(item.get("dependency_blockers"), dict)
-            else {}
+            _append_handoff_readiness_markdown(lines, handoff_readiness)
+        _append_attention_queue_item_operational_markdown(
+            lines,
+            item,
+            goal_todo_scope_suffix=goal_todo_scope_suffix,
         )
-        if dependency_blockers:
-            lines.append(
-                "  - dependency_blockers: "
-                f"open={dependency_blockers.get('open_count')} "
-                f"source={_markdown_scalar(dependency_blockers.get('source') or '')}"
-            )
-            for blocker in dependency_blockers.get("items") or []:
-                if not isinstance(blocker, dict):
-                    continue
-                lines.append(
-                    "    - dependency_user_todo: "
-                    f"goal={_markdown_scalar(blocker.get('goal_id') or '')} "
-                    f"waiting_on={_markdown_scalar(blocker.get('waiting_on') or '')} "
-                    f"text={_markdown_scalar(blocker.get('text') or '')}"
-                )
-        quota = item.get("quota") if isinstance(item.get("quota"), dict) else {}
-        if quota:
-            lines.append(
-                "  - quota: "
-                f"compute={quota.get('compute')} "
-                f"state={quota.get('state')} "
-                f"slots={quota.get('spent_slots')}/{quota.get('allowed_slots')} "
-                f"reason={quota.get('reason')}"
-            )
-        control_plane = item.get("control_plane") if isinstance(item.get("control_plane"), dict) else None
-        if control_plane:
-            lines.append(f"  - control_plane: {control_plane_policy_summary(control_plane)}")
-        operator_question = item.get("operator_question")
-        agent_command = item.get("agent_command")
-        if operator_question:
-            lines.append(f"  - operator_question: {operator_question}")
-            if agent_command:
-                goal_id = item.get("goal_id")
-                lines.append(
-                    "  - operator_gate_dry_run: "
-                    f"`loopx operator-gate --goal-id {goal_id} --decision approve "
-                    '--reason-summary "<public-safe reason>" --dry-run`'
-                )
-        if agent_command:
-            lines.append(f"  - agent_command: `{agent_command}`")
-        gates = item.get("missing_gates") if isinstance(item.get("missing_gates"), list) else []
-        gate_text = ", ".join(str(gate) for gate in gates if gate)
-        controller_stage = item.get("controller_stage")
-        next_condition = item.get("next_handoff_condition")
-        if controller_stage or gate_text:
-            lines.append(
-                "  - gates: "
-                f"stage={controller_stage or 'none'} "
-                f"missing={gate_text or 'none'}"
-            )
-        if next_condition:
-            lines.append(f"  - next_handoff_condition: {next_condition}")
 
     run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
     run_goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []

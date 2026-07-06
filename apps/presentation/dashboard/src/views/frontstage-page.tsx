@@ -16,9 +16,9 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
-import showcaseCatalog from "../../../../docs/showcases/showcase-catalog.json";
-import rolloutProjectionFixture from "../../../../examples/fixtures/frontstage-rollout-projections.public.json";
-import rolloutFixture from "../../../../examples/fixtures/long-horizon-self-iteration-rollout.public.json";
+import showcaseCatalog from "../../../../../docs/showcases/showcase-catalog.json";
+import rolloutProjectionFixture from "../../../../../examples/fixtures/frontstage-rollout-projections.public.json";
+import rolloutFixture from "../../../../../examples/fixtures/long-horizon-self-iteration-rollout.public.json";
 import { frontstageRoute } from "../router";
 import {
   GoalChannelProjection,

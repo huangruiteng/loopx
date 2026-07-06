@@ -269,6 +269,34 @@ def missing_vision_checkpoint_run(*, agent_id: str = SIDE_AGENT) -> dict:
     }
 
 
+def satisfied_vision_checkpoint_run(*, decision: str, agent_id: str = SIDE_AGENT) -> dict:
+    checkpoint: dict = {
+        "schema_version": "vision_checkpoint_v0",
+        "agent_id": agent_id,
+        "required": True,
+        "satisfied": True,
+        "decision": decision,
+        "triggers": [
+            {
+                "kind": "material_delivery_outcome",
+                "delivery_outcome": "outcome_progress",
+            }
+        ],
+    }
+    if decision == "unchanged_with_reason":
+        checkpoint["unchanged_reason"] = "The current per-agent vision still applies."
+    if decision == "retired_or_superseded":
+        checkpoint["repair_delta_kinds"] = ["no_followup"]
+    return {
+        "classification": f"vision_checkpoint_{decision}",
+        "generated_at": "2026-07-04T00:10:00+00:00",
+        "agent_id": agent_id,
+        "progress_scope": "agent_lane",
+        "delivery_outcome": "outcome_progress",
+        "vision_checkpoint": checkpoint,
+    }
+
+
 def assert_replan_beats_monitor_quiet_skip() -> None:
     payload = status_payload([monitor_item()], replan_obligation=SIDE_AGENT_REPLAN_OBLIGATION)
     guard = build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=SIDE_AGENT)
@@ -338,6 +366,7 @@ def assert_future_scheduled_monitor_quiets_without_generated_replan() -> None:
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is False, guard
     assert guard["interaction_contract"]["agent_channel"]["quiet_noop_allowed"] is True, guard
     assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+    assert "vision_continuation_audit" not in guard, guard
     assert guard.get("autonomous_replan_obligation") is None, guard
     assert "required_reads" not in guard, guard
     assert "required_reads" not in guard["interaction_contract"]["agent_channel"], guard
@@ -475,8 +504,57 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert gaps[0]["kind"] == "vision_acceptance_gap", guard
     assert "synthetic" in gaps[0]["replan_trigger_summary"], guard
     assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    audit = guard["vision_continuation_audit"]
+    assert audit["schema_version"] == "vision_continuation_audit_v0", guard
+    assert audit["required"] is True, guard
+    assert audit["agent_id"] == SIDE_AGENT, guard
+    assert audit["selected_todo_is_goal_completion"] is False, guard
+    assert audit["closeout_allowed_without_evidence"] is False, guard
+    assert "todo_completion_alone" in audit["not_satisfied_by"], guard
+    assert "create_successor_or_write_vision_replan_trigger_when_unproven" in (
+        audit["required_before_closeout"]
+    ), guard
+    assert "public_safe_evidence_records" in audit["authoritative_evidence_kinds"], guard
+    assert "Show the next runnable auto-research frontier" in audit["acceptance_requirements"][0], guard
+    judge = audit["vision_gap_judge"]
+    assert judge["schema_version"] == "vision_gap_judge_v0", guard
+    assert judge["goal_id"] == "replan-decision-plane-fixture", guard
+    assert judge["done"] is False, guard
+    assert judge["decision"] == "continue", guard
+    assert "synthetic" in judge["reason"], guard
+    assert "Judge vision closure" in judge["agent_judge_instruction"], guard
+    assert "evidence-log" in judge["agent_judge_instruction"], guard
+    assert (
+        "loopx evidence-log --goal-id replan-decision-plane-fixture "
+        "--agent-id codex-side-bypass --thin"
+    ) in judge["evidence_read_instruction"], guard
+    assert "authoritative_evidence_satisfies_acceptance" in (
+        judge["done_only_when"]
+    ), guard
+    assert "todo_lifecycle_or_protocol_status_is_the_only_proof" in (
+        judge["continue_when"]
+    ), guard
+    assert judge["otherwise"] == "continue", guard
+    assert guard["goal_frontier_projection"]["vision_continuation_audit"] == audit, guard
+    assert guard["interaction_contract"]["agent_channel"]["vision_continuation_audit"] == audit, guard
+    assert guard["interaction_contract"]["cli_channel"]["vision_continuation_audit"]["required"] is True, guard
+    assert guard["interaction_contract"]["cli_channel"]["vision_continuation_audit"][
+        "vision_gap_judge"
+    ]["done"] is False, guard
+    cli_judge = guard["interaction_contract"]["cli_channel"][
+        "vision_continuation_audit"
+    ]["vision_gap_judge"]
+    assert "Judge vision closure" in cli_judge["agent_judge_instruction"], guard
+    assert "loopx evidence-log --goal-id replan-decision-plane-fixture" in (
+        cli_judge["evidence_read_instruction"]
+    ), guard
+    assert "todo_lifecycle_or_protocol_status_is_the_only_proof" in (
+        cli_judge["continue_when"]
+    ), guard
     markdown = render_quota_should_run_markdown(guard)
     assert "deferred_ready=0 acceptance_gaps=1" in markdown, markdown
+    assert "vision_continuation_audit: required=True" in markdown, markdown
+    assert "vision_gap_judge: done=False decision=continue" in markdown, markdown
 
 
 def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
@@ -499,6 +577,20 @@ def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
     assert gaps[0]["kind"] == "vision_checkpoint_missing", side_guard
     assert gaps[0]["agent_id"] == SIDE_AGENT, side_guard
     assert "material_delivery_outcome" in gaps[0]["replan_trigger_summary"], side_guard
+    audit = side_guard["vision_continuation_audit"]
+    assert audit["required"] is True, side_guard
+    assert audit["agent_id"] == SIDE_AGENT, side_guard
+    assert "Write a bounded agent vision patch" in audit["acceptance_requirements"][0], side_guard
+    judge = audit["vision_gap_judge"]
+    assert judge["schema_version"] == "vision_gap_judge_v0", side_guard
+    assert judge["goal_id"] == "replan-decision-plane-fixture", side_guard
+    assert judge["done"] is False, side_guard
+    assert judge["decision"] == "continue", side_guard
+    assert "material_delivery_outcome" in judge["reason"], side_guard
+    assert (
+        side_guard["interaction_contract"]["agent_channel"]["vision_continuation_audit"]
+        == audit
+    ), side_guard
 
     primary_guard = build_quota_should_run(
         status_payload(
@@ -511,7 +603,32 @@ def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
     )
     primary_gaps = primary_guard["goal_frontier_projection"]["acceptance_gaps"]
     assert primary_gaps == [], primary_guard
+    assert "vision_continuation_audit" not in primary_guard, primary_guard
     assert primary_guard.get("autonomous_replan_obligation") is None, primary_guard
+
+
+def assert_satisfied_vision_checkpoint_supersedes_older_missing() -> None:
+    for decision in ("patched", "unchanged_with_reason", "retired_or_superseded"):
+        guard = build_quota_should_run(
+            status_payload(
+                [monitor_item()],
+                replan_obligation=None,
+                latest_runs=[
+                    satisfied_vision_checkpoint_run(decision=decision),
+                    missing_vision_checkpoint_run(),
+                ],
+            ),
+            goal_id=GOAL_ID,
+            agent_id=SIDE_AGENT,
+        )
+        assert guard["decision"] == "skip", guard
+        assert guard["effective_action"] == "monitor_quiet_skip", guard
+        assert guard["should_run"] is False, guard
+        assert guard["interaction_contract"]["mode"] == "monitor_quiet_skip", guard
+        assert guard["goal_frontier_projection"]["acceptance_gaps"] == [], guard
+        assert guard["goal_frontier_projection"]["replan_required"] is False, guard
+        assert guard.get("vision_continuation_audit") is None, guard
+        assert guard.get("autonomous_replan_obligation") is None, guard
 
 
 def assert_agent_scoped_replan_beats_agent_scope_wait() -> None:
@@ -658,6 +775,43 @@ def assert_agent_ack_survives_other_agent_run_and_monitor_poll() -> None:
     assert guard.get("autonomous_replan_obligation") is None, guard
 
 
+def assert_agent_vision_gap_beats_replan_ack() -> None:
+    guard = build_quota_should_run(
+        status_payload(
+            [monitor_item()],
+            replan_obligation=None,
+            latest_runs=[
+                {
+                    "classification": "monitor_poll_autonomous_replan_recorded_v0",
+                    "agent_id": SIDE_AGENT,
+                    "progress_scope": "agent_lane",
+                    "autonomous_replan_ack": {
+                        "schema_version": "autonomous_replan_ack_v0",
+                        "recorded": True,
+                        "source": "refresh_state",
+                        "delta_contract": {
+                            "schema_version": "repair_delta_contract_v0",
+                            "delta_present": True,
+                            "delta_kinds": ["watch_lane_continuation", "no_followup"],
+                        },
+                    },
+                },
+                agent_vision_gap_run(),
+            ],
+        ),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    gaps = guard["goal_frontier_projection"]["acceptance_gaps"]
+    assert len(gaps) == 1, guard
+    assert gaps[0]["kind"] == "vision_acceptance_gap", guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    assert guard["vision_continuation_audit"]["required"] is True, guard
+    assert "autonomous_replan_ack_alone" in guard["vision_continuation_audit"]["not_satisfied_by"], guard
+
+
 def assert_blocking_handoff_gate_beats_derived_monitor_replan() -> None:
     guard = build_quota_should_run(
         status_payload([monitor_item(), blocking_handoff_review()], replan_obligation=None),
@@ -682,10 +836,12 @@ def main() -> None:
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_agent_vision_gap_derives_replan()
     assert_missing_vision_checkpoint_derives_agent_scoped_replan()
+    assert_satisfied_vision_checkpoint_supersedes_older_missing()
     assert_agent_scoped_replan_beats_agent_scope_wait()
     assert_unscoped_replan_defaults_to_primary_agent()
     assert_monitor_schedule_gap_requires_bounded_repair()
     assert_agent_ack_survives_other_agent_run_and_monitor_poll()
+    assert_agent_vision_gap_beats_replan_ack()
     assert_blocking_handoff_gate_beats_derived_monitor_replan()
     print("quota-replan-decision-plane-smoke ok")
 

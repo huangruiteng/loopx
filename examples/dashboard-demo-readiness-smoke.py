@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DASHBOARD_DIR = REPO_ROOT / "apps" / "dashboard"
+DASHBOARD_DIR = REPO_ROOT / "apps" / "presentation" / "dashboard"
 
 BASE_COMMANDS = [
     ("launchagent status output", [sys.executable, "examples/macos-dashboard-launchagent-status-smoke.py"], REPO_ROOT),
@@ -61,14 +61,14 @@ def ensure_dashboard_dependencies(env: dict[str, str]) -> bool:
     if shutil.which("npm", path=env.get("PATH")) is None:
         print(
             "dashboard demo-readiness smoke requires npm; install Node/npm "
-            "before running apps/dashboard smokes"
+            "before running apps/presentation/dashboard smokes"
         )
         return False
     tsc_bin = DASHBOARD_DIR / "node_modules" / ".bin" / ("tsc.cmd" if os.name == "nt" else "tsc")
     if not tsc_bin.exists():
         print(
             "dashboard npm dependencies are missing; run "
-            "`cd apps/dashboard && npm ci` before "
+            "`cd apps/presentation/dashboard && npm ci` before "
             "`npm run smoke:demo-readiness -- --skip-browser`"
         )
         return False

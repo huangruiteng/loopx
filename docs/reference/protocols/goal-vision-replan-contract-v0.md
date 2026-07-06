@@ -119,6 +119,59 @@ Valid checkpoint decisions are:
 history, quota filters it by current `agent_id`, and goal-frontier projection
 turns it into `acceptance_gaps[]`. If the current agent has no runnable
 advancement frontier, that gap can trigger `autonomous_replan_required`.
+For the same `agent_id`, a newer satisfied checkpoint with `patched`,
+`unchanged_with_reason`, or `retired_or_superseded` supersedes older
+`missing_required` checkpoints; `not_required` does not.
+
+Checkpoint and autonomous-replan ACK packets are protocol records, not semantic
+completion proof. A recent ACK may suppress duplicate monitor-only replan
+requests only after the current per-agent vision has no projected acceptance
+gap. If evidence, successor state, blocker state, or a superseding vision packet
+still shows the vision is unmet, the acceptance gap remains authoritative and
+quota must continue to project replan work.
+
+## Vision Continuation Audit
+
+Every selected todo is a bounded step toward the active per-agent vision, not a
+replacement for that vision. Before an agent records `todo complete`, a
+no-follow-up rationale, `--vision-unchanged-reason`, or an autonomous replan
+ACK, it must audit the current evidence against the active
+`acceptance_summary`:
+
+1. Derive the explicit requirements from the active vision, current todo,
+   user correction, and protected scope.
+2. Name the authoritative evidence for each requirement: changed files,
+   public-safe evidence records, evaluation outputs, successor state, blocker
+   state, or a superseding vision packet.
+3. Treat weak, indirect, stale, or protocol-only evidence as incomplete.
+4. If any requirement remains unproven, keep the vision active by creating a
+   successor todo or writing a compact `--vision-replan-trigger`.
+
+Quota/status expose this as `vision_continuation_audit_v0` in the CLI payload
+and `interaction_contract`. This mirrors the `/goal` continuation rule: goal
+state persists across turns until evidence proves the requested end state. It
+prevents a role from declaring success merely because it consumed the currently
+selected todo, recorded a checkpoint, or observed that another lane is quiet.
+
+The audit also exposes a compact deterministic `vision_gap_judge_v0`
+instruction packet for the agent. It borrows the strict done-judge stance used
+by autonomous goal loops without calling an LLM: the agent is told to compare
+the active vision `acceptance_summary` with projected evidence, using
+projected required reads and an explicit agent-scoped `loopx evidence-log
+--goal-id <goal> --agent-id <agent> --thin` read when available, and default to
+`continue` while a projected acceptance gap exists. `done=true` is only valid
+when the response or state clearly provides one of these outcomes:
+
+- explicit completion with authoritative evidence;
+- final deliverable or evaluation output satisfying the acceptance summary;
+- a projected blocker/user gate that makes the goal unachievable without input;
+- a superseding vision or no-follow-up rationale that explicitly closes the
+  frontier.
+
+Otherwise the judge remains `continue` and quota should keep projecting either
+the runnable successor or the replan trigger. This is intentionally stricter
+than todo lifecycle status: a completed todo is only evidence input, not the
+judge result.
 
 ## State Machine
 
@@ -260,6 +313,9 @@ A change satisfies this contract only when:
 - material `refresh-state` closeouts emit a per-agent `vision_checkpoint_v0`;
 - missing per-agent checkpoints can become agent-scoped replan gaps instead of
   global goal-level noise;
+- quota/status and `interaction_contract` expose a
+  `vision_continuation_audit_v0` before todo closeout, no-follow-up,
+  `--vision-unchanged-reason`, or replan ACK;
 - ordinary `refresh-state` calls can write bounded vision corrections without a
   separate self-repair-only path;
 - replan state is decided from goal-level projection before local quiet/wait

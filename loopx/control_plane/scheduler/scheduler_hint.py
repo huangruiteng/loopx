@@ -15,6 +15,7 @@ from .state import (
     build_scheduler_state,
     rrule_for_minutes,
 )
+from .time import parse_scheduler_timestamp
 
 
 SCHEDULER_HINT_SCHEMA_VERSION = "scheduler_hint_v0"
@@ -187,16 +188,7 @@ def _int_number(value: Any, *, default: int) -> int:
 
 
 def _parse_monitor_timestamp(value: Any) -> datetime | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
+    return parse_scheduler_timestamp(value)
 
 
 def _monitor_cadence_minutes(value: Any) -> int | None:

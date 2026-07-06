@@ -235,7 +235,7 @@ def assert_status_project_asset_monitor_display_contract() -> None:
 
 
 def assert_dashboard_first_screen_render_contract() -> None:
-    dashboard = (REPO_ROOT / "apps/dashboard/src/views/dashboard-page.tsx").read_text(
+    dashboard = (REPO_ROOT / "apps/presentation/dashboard/src/views/dashboard-page.tsx").read_text(
         encoding="utf-8"
     )
     for marker in (

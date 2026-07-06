@@ -65,7 +65,7 @@ LEGACY_OVERSIZED_LIMITS = {
     "loopx/benchmark_adapters/terminal_bench.py": 10083,
     "loopx/benchmark_ledger.py": 3745,
     "loopx/capabilities/content_ops/surface.py": 2549,
-    "loopx/capabilities/lark/kanban.py": 3034,
+    "loopx/presentation/sinks/lark/kanban.py": 3034,
     "loopx/codex_cli_probe.py": 3546,
     "loopx/quota.py": 10628,
     "loopx/status.py": 11758,

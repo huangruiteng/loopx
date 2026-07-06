@@ -20,7 +20,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DASHBOARD_DIR = REPO_ROOT / "apps" / "dashboard"
+DASHBOARD_DIR = REPO_ROOT / "apps" / "presentation" / "dashboard"
 
 COMMON_NODE_PATHS = [
     "/opt/homebrew/bin",
@@ -35,7 +35,7 @@ READINESS_RECOMMENDED_ACTION = (
 )
 READINESS_RECOMMENDED_ACTION_DASHBOARD_SKIPPED = (
     "Canary promotion-readiness smoke passed for the installed release boundary; "
-    "dashboard readiness was skipped because apps/dashboard is not shipped in the release snapshot."
+    "dashboard readiness was skipped because apps/presentation/dashboard is not shipped in the release snapshot."
 )
 
 BASE_COMMANDS = [
@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
         choices=("auto", "require", "skip"),
         default="auto",
         help=(
-            "Dashboard readiness policy: auto runs it when apps/dashboard is present, "
+            "Dashboard readiness policy: auto runs it when apps/presentation/dashboard is present, "
             "require fails if the dashboard app is absent, and skip records the release-boundary omission."
         ),
     )
@@ -172,7 +172,7 @@ def dashboard_readiness_plan(
             "command": command,
         }
     reason = (
-        "apps/dashboard is not present in this checkout or release snapshot; "
+        "apps/presentation/dashboard is not present in this checkout or release snapshot; "
         "run from a source checkout or pass --dashboard-mode=skip to omit it intentionally"
     )
     if dashboard_mode == "require" or include_browser:

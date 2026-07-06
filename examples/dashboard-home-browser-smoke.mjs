@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dashboardDir = resolve(repoRoot, "apps/dashboard");
+const dashboardDir = resolve(repoRoot, "apps/presentation/dashboard");
 const fixtureName = "status.home.browser-smoke.json";
 const fixturePath = resolve(dashboardDir, "public", fixtureName);
 const visualOutputDir = resolve(repoRoot, "output/playwright/dashboard-home-visual-acceptance");

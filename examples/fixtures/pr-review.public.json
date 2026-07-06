@@ -50,7 +50,7 @@
         {"path": "README.zh-CN.md", "additions": 20, "deletions": 5},
         {"path": "docs/showcases/index.html", "additions": 150, "deletions": 20},
         {"path": "docs/showcases/showcase-catalog.json", "additions": 190, "deletions": 5},
-        {"path": "apps/dashboard/src/views/frontstage-page.tsx", "additions": 80, "deletions": 4}
+        {"path": "apps/presentation/dashboard/src/views/frontstage-page.tsx", "additions": 80, "deletions": 4}
       ],
       "commits": [
         {"messageHeadline": "docs: require first-screen owner review"},
@@ -77,7 +77,7 @@
       "additions": 40,
       "deletions": 0,
       "files": [
-        {"path": "apps/dashboard/src/views/pr-review-card.tsx", "additions": 40, "deletions": 0}
+        {"path": "apps/presentation/dashboard/src/views/pr-review-card.tsx", "additions": 40, "deletions": 0}
       ],
       "commits": [
         {"messageHeadline": "draft: explore PR review cards"}

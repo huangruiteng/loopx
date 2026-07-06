@@ -225,10 +225,12 @@ moving.
 
 The boundary should be explicit:
 
-- `loopx/` owns schemas, CLI writes, status projection, quota, gates, and
-  public/private checks;
-- `apps/dashboard/` owns read-first operator UI, review-feed mock actions, and
-  URL-backed filters;
+- `loopx/control_plane/` owns source-of-truth schemas, CLI writes, status
+  projection, quota, gates, and public/private checks;
+- `loopx/presentation/` owns display projections, renderers, and external
+  display sinks built from public-safe LoopX state;
+- `apps/presentation/dashboard/` owns read-first operator UI, review-feed mock
+  actions, and URL-backed filters;
 - `docs/product/` owns product contracts and acceptance criteria;
 - public showcase routes explain the idea, while ops routes manage real local
   state;

@@ -19,7 +19,7 @@ so a fresh checkout can validate and open the UI before starting any local
 status server:
 
 ```bash
-cd apps/dashboard
+cd apps/presentation/dashboard
 npm ci
 npm run smoke:demo-readiness -- --skip-browser
 npm run dev
@@ -99,7 +99,7 @@ To create a public-safe static bundle for demos, Lark shares, or future GitHub
 Pages hosting, export the frontstage with the sanitized fixture:
 
 ```bash
-cd apps/dashboard
+cd apps/presentation/dashboard
 npm run export:frontstage-share
 ```
 
@@ -266,8 +266,8 @@ reward draft but cannot append feedback.
 Use a local static export:
 
 ```bash
-python3 -m loopx.cli --format json status > apps/dashboard/public/status.local.json
-cd apps/dashboard
+python3 -m loopx.cli --format json status > apps/presentation/dashboard/public/status.local.json
+cd apps/presentation/dashboard
 npm run dev
 ```
 
@@ -296,7 +296,7 @@ the three browser smokes below. In CI environments without Playwright/Chrome,
 use:
 
 ```bash
-python3 ../../examples/dashboard-demo-readiness-smoke.py --skip-browser
+python3 ../../../examples/dashboard-demo-readiness-smoke.py --skip-browser
 ```
 
 The individual browser smokes are still available when you want to debug one

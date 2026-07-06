@@ -10,6 +10,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.testing.quota_fixtures import quota_status_payload  # noqa: E402
+from loopx.control_plane.scheduler import monitor_todo as monitor_todo_module  # noqa: E402
+from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module  # noqa: E402
+from loopx.control_plane.scheduler import time as scheduler_time  # noqa: E402
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 
 
@@ -138,6 +141,16 @@ def guard_for(
         ),
         goal_id=GOAL_ID,
         agent_id=agent_id,
+    )
+
+
+def assert_scheduler_timestamp_parser_is_shared_and_utc_normalized() -> None:
+    assert monitor_todo_module.parse_monitor_timestamp is scheduler_time.parse_scheduler_timestamp
+    assert scheduler_hint_module._parse_monitor_timestamp("2026-01-01T08:00:00+08:00").isoformat() == (
+        "2026-01-01T00:00:00+00:00"
+    )
+    assert monitor_todo_module.parse_monitor_timestamp(" 2026-01-01T00:00:00Z ").isoformat() == (
+        "2026-01-01T00:00:00+00:00"
     )
 
 
@@ -486,6 +499,7 @@ def assert_other_agent_claimed_work_stays_diagnostic_when_no_current_lane() -> N
 
 
 def main() -> int:
+    assert_scheduler_timestamp_parser_is_shared_and_utc_normalized()
     assert_not_due_monitor_waits_quietly()
     assert_not_due_monitor_scheduler_honors_monitor_cadence()
     assert_unscheduled_monitor_requires_metadata_repair()

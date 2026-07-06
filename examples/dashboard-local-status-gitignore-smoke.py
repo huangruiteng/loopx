@@ -9,9 +9,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_ONLY_PATHS = [
-    "apps/dashboard/public/status.local.json",
-    "apps/dashboard/dist/status.local.json",
-    "apps/dashboard/dist/index.html",
+    "apps/presentation/dashboard/public/status.local.json",
+    "apps/presentation/dashboard/dist/status.local.json",
+    "apps/presentation/dashboard/dist/index.html",
 ]
 
 
@@ -31,7 +31,7 @@ def main() -> int:
         output = git_check_ignore(path)
         assert path in output, output
 
-    readme = (REPO_ROOT / "apps/dashboard/README.md").read_text(encoding="utf-8")
+    readme = (REPO_ROOT / "apps/presentation/dashboard/README.md").read_text(encoding="utf-8")
     assert "`status.local.json` is intentionally git-ignored" in readme, readme
     assert "examples/status.example.json" in readme, readme
 

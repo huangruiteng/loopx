@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...status import compact_todo_group
+from ..todos.todo_summary import compact_todo_group
 
 
 DEFAULT_FIXTURE_QUOTA = {

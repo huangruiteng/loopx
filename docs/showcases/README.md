@@ -37,7 +37,7 @@ The dashboard frontstage now has a separate public-safe share-bundle path for
 showing a live-looking control-plane board without exposing local state:
 
 ```bash
-cd apps/dashboard
+cd apps/presentation/dashboard
 npm run export:frontstage-share
 ```
 

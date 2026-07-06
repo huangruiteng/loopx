@@ -73,7 +73,7 @@ CODE_EXTENSIONS = (
 )
 
 UI_PREFIXES = (
-    "apps/dashboard/",
+    "apps/presentation/dashboard/",
     "apps/web/",
     "apps/frontend/",
     "apps/site/",

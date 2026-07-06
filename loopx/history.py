@@ -9,6 +9,12 @@ from typing import Any, Callable
 
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
+from .control_plane.runtime.run_index_duplicates import (
+    STRUCTURED_INDEX_KEYS,
+    classify_index_duplicate_records,
+    duplicate_repair_decision,
+    index_identity,
+)
 from .control_plane.work_items.delivery_batch_scale import require_delivery_batch_scale
 from .control_plane.work_items.delivery_outcome import require_delivery_outcome
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
@@ -820,29 +826,10 @@ def inspect_index_duplicates(
                 continue
             duplicate_row_count += len(records) - 1
             generated_at, json_path, markdown_path = key
-            normalized = [
-                {record_key: value for record_key, value in record.items() if record_key != "human_reward"}
-                for _, record in records
-            ]
-            normalized_keys = {json.dumps(record, sort_keys=True, ensure_ascii=False) for record in normalized}
             reward_records = sum(1 for _, record in records if isinstance(record.get("human_reward"), dict))
             classifications = sorted({str(record.get("classification") or "") for _, record in records})
             health_checks = sorted({str(record.get("health_check") or "") for _, record in records if record.get("health_check")})
-            if reward_records and len(normalized_keys) == 1:
-                duplicate_kind = "reward_overlay"
-                severity = "info"
-                repair_hint = "no index repair needed; reward overlay rows merge into the base run"
-            elif len(normalized_keys) == 1:
-                duplicate_kind = "plain_duplicate"
-                severity = "warning"
-                repair_hint = "append-only ledger repair can archive or supersede the extra identical index row"
-            else:
-                duplicate_kind = "artifact_identity_collision"
-                severity = "warning"
-                repair_hint = (
-                    "do not delete blindly; inspect artifacts and append an explicit repair/supersede event "
-                    "or rebuild a reviewed index copy"
-                )
+            duplicate_classification = classify_index_duplicate_records([record for _, record in records])
             groups.append(
                 {
                     "goal_id": current_goal_id,
@@ -855,12 +842,12 @@ def inspect_index_duplicates(
                     "line_numbers": [line_number for line_number, _ in records],
                     "raw_rows": len(records),
                     "duplicate_rows": len(records) - 1,
-                    "duplicate_kind": duplicate_kind,
-                    "severity": severity,
+                    "duplicate_kind": duplicate_classification.get("duplicate_kind"),
+                    "severity": duplicate_classification.get("severity"),
                     "classifications": classifications,
                     "health_checks": health_checks,
                     "reward_overlay_rows": reward_records,
-                    "repair_hint": repair_hint,
+                    "repair_hint": duplicate_classification.get("repair_hint"),
                 }
             )
 
@@ -888,96 +875,6 @@ def inspect_index_duplicates(
     }
 
 
-STRUCTURED_INDEX_KEYS = (
-    "benchmark_run",
-    "benchmark_result",
-    "benchmark_comparison",
-    "benchmark_learning_ledger",
-    "benchmark_experiment_report",
-    "active_user_assisted_pilot",
-)
-
-
-def _index_identity(record: dict[str, Any]) -> tuple[str, str, str]:
-    return (
-        str(record.get("generated_at") or ""),
-        str(record.get("json_path") or ""),
-        str(record.get("markdown_path") or ""),
-    )
-
-
-def _has_structured_index_payload(record: dict[str, Any]) -> bool:
-    return any(isinstance(record.get(key), dict) for key in STRUCTURED_INDEX_KEYS)
-
-
-def _duplicate_repair_decision(records: list[tuple[int, dict[str, Any]]]) -> dict[str, Any]:
-    line_numbers = [line_number for line_number, _ in records]
-    reward_records = sum(1 for _, record in records if isinstance(record.get("human_reward"), dict))
-    normalized = [
-        {record_key: value for record_key, value in record.items() if record_key != "human_reward"}
-        for _, record in records
-    ]
-    normalized_keys = {json.dumps(record, sort_keys=True, ensure_ascii=False) for record in normalized}
-    classifications = {str(record.get("classification") or "") for _, record in records}
-    health_checks = {str(record.get("health_check") or "") for _, record in records}
-
-    if reward_records and len(normalized_keys) == 1:
-        return {
-            "action": "preserve_reward_overlay",
-            "repairable": False,
-            "line_numbers": line_numbers,
-            "kept_line_numbers": line_numbers,
-            "removed_line_numbers": [],
-            "reason": "reward overlay rows are intentionally merged by status checks",
-        }
-
-    if len(normalized_keys) == 1:
-        return {
-            "action": "drop_plain_duplicate_rows",
-            "repairable": True,
-            "line_numbers": line_numbers,
-            "kept_line_numbers": [line_numbers[0]],
-            "removed_line_numbers": line_numbers[1:],
-            "reason": "duplicate rows are byte-equivalent after reward fields are ignored",
-        }
-
-    structured_rows = [
-        (line_number, record)
-        for line_number, record in records
-        if _has_structured_index_payload(record)
-    ]
-    if (
-        len(structured_rows) == 1
-        and len(classifications) == 1
-        and len(health_checks) > 1
-        and all(
-            (
-                _has_structured_index_payload(record)
-                or all(key not in record for key in STRUCTURED_INDEX_KEYS)
-            )
-            for _, record in records
-        )
-    ):
-        kept_line = structured_rows[0][0]
-        return {
-            "action": "keep_structured_artifact_row",
-            "repairable": True,
-            "line_numbers": line_numbers,
-            "kept_line_numbers": [kept_line],
-            "removed_line_numbers": [line_number for line_number in line_numbers if line_number != kept_line],
-            "reason": "one row carries the compact structured artifact payload and siblings only repeat the artifact identity",
-        }
-
-    return {
-        "action": "blocked_artifact_identity_collision",
-        "repairable": False,
-        "line_numbers": line_numbers,
-        "kept_line_numbers": line_numbers,
-        "removed_line_numbers": [],
-        "reason": "artifact identity collision is not auto-repairable without reviewed merge semantics",
-    }
-
-
 def repair_index_duplicates(
     *,
     registry_path: Path,
@@ -992,6 +889,7 @@ def repair_index_duplicates(
     raw_index_records = 0
     removed_row_count = 0
     preserved_reward_overlay_rows = 0
+    preserved_structured_artifact_bundle_rows = 0
     unrepaired_group_count = 0
     groups: list[dict[str, Any]] = []
 
@@ -1013,16 +911,18 @@ def repair_index_duplicates(
                 continue
             if not isinstance(item, dict):
                 continue
-            grouped.setdefault(_index_identity(item), []).append((line_number, item))
+            grouped.setdefault(index_identity(item), []).append((line_number, item))
 
         remove_lines: set[int] = set()
         for records in grouped.values():
             if len(records) <= 1:
                 continue
-            decision = _duplicate_repair_decision(records)
+            decision = duplicate_repair_decision(records)
             removed_lines = list(decision.get("removed_line_numbers") or [])
             if decision.get("action") == "preserve_reward_overlay":
                 preserved_reward_overlay_rows += len(records) - 1
+            elif decision.get("action") == "preserve_structured_artifact_bundle":
+                preserved_structured_artifact_bundle_rows += len(records) - 1
             elif decision.get("repairable"):
                 remove_lines.update(int(line_number) for line_number in removed_lines)
                 removed_row_count += len(removed_lines)
@@ -1068,6 +968,7 @@ def repair_index_duplicates(
         "raw_index_records": raw_index_records,
         "removed_row_count": removed_row_count,
         "preserved_reward_overlay_rows": preserved_reward_overlay_rows,
+        "preserved_structured_artifact_bundle_rows": preserved_structured_artifact_bundle_rows,
         "unrepaired_group_count": unrepaired_group_count,
         "groups": limited_groups,
         "truncated": len(groups) > len(limited_groups),
@@ -1091,6 +992,7 @@ def render_index_duplicate_repair_markdown(payload: dict[str, Any]) -> str:
         f"- raw_index_records: `{payload.get('raw_index_records')}`",
         f"- removed_rows: `{payload.get('removed_row_count')}`",
         f"- preserved_reward_overlay_rows: `{payload.get('preserved_reward_overlay_rows')}`",
+        f"- preserved_structured_artifact_bundle_rows: `{payload.get('preserved_structured_artifact_bundle_rows')}`",
         f"- unrepaired_groups: `{payload.get('unrepaired_group_count')}`",
         f"- truncated: `{payload.get('truncated')}`",
         "",

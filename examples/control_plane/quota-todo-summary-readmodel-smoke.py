@@ -115,19 +115,29 @@ def assert_agent_scoped_user_gate_and_monitor_state() -> None:
         filter_user_gate_blocks_agent=True,
     )
     assert summary is not None
-    assert summary["open_count"] == 4, summary
+    assert summary["open_count"] == 1, summary
     assert summary["all_open_count"] == 5, summary
-    assert summary["other_agent_scoped_open_count"] == 2, summary
+    assert summary["user_action_open_count"] == 4, summary
+    assert summary["other_agent_scoped_open_count"] == 1, summary
     assert summary["gate_open_items"][0]["todo_id"] == "todo_gate_current", summary
     assert {
         item.get("todo_id")
         for item in summary["other_agent_scoped_items"]
-    } == {"todo_gate_other", "todo_other_agent_next"}, summary
+    } == {"todo_gate_other"}, summary
+    assert {
+        item.get("todo_id")
+        for item in summary["user_action_items"]
+    } == {
+        "todo_monitor_due",
+        "todo_monitor_gap",
+        "todo_refactor_next",
+        "todo_other_agent_next",
+    }, summary
 
-    assert summary["monitor_due_count"] == 1, summary
-    assert summary["monitor_due_items"][0]["todo_id"] == "todo_monitor_due", summary
-    assert summary["monitor_schedule_gap_count"] == 1, summary
-    assert summary["monitor_schedule_gap_items"][0]["todo_id"] == "todo_monitor_gap", summary
+    assert summary["monitor_due_count"] == 0, summary
+    assert summary["monitor_due_items"] == [], summary
+    assert summary["monitor_schedule_gap_count"] == 0, summary
+    assert summary["monitor_schedule_gap_items"] == [], summary
     assert summary["active_next_action_items"][0]["todo_id"] == "todo_refactor_next", summary
     assert all(
         item.get("todo_id") != "todo_other_agent_next"
@@ -185,12 +195,18 @@ def assert_project_asset_summary_reuses_canonical_shape() -> None:
     )
     assert summary is not None
     assert summary["source_section"] == "agent todo", summary
-    assert summary["monitor_due_count"] == 1, summary
-    assert summary["other_agent_scoped_open_count"] == 2, summary
+    assert summary["monitor_due_count"] == 0, summary
+    assert summary["other_agent_scoped_open_count"] == 1, summary
 
 
 def assert_user_gate_hint_detection_is_preserved() -> None:
     assert is_user_gate_todo_item(
+        {
+            "text": "Credential decision",
+            "action_kind": "credential_rotation",
+        }
+    )
+    assert not is_user_gate_todo_item(
         {
             "text": "Credential decision",
             "task_class": "advancement_task",
@@ -200,7 +216,6 @@ def assert_user_gate_hint_detection_is_preserved() -> None:
     assert is_user_gate_todo_item(
         {
             "text": "Public claim decision",
-            "task_class": "advancement_task",
             "action_kind": "public_claim_review",
         }
     )

@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from .control_plane.runtime.time import parse_timestamp as _parse_timestamp
 from .control_plane.todos.contract import normalize_required_write_scopes
 
 
@@ -26,19 +27,6 @@ PRIVATE_TEXT_PATTERNS = (
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).astimezone()
-
-
-def _parse_timestamp(value: Any) -> datetime | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 def _validate_public_safe_text(label: str, value: str | None) -> None:

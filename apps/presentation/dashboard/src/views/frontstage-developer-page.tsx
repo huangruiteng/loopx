@@ -23,12 +23,12 @@ type CockpitPanelProps = {
 const contractFields = [
   {
     label: "status payload",
-    source: "apps/dashboard/src/data/status.ts",
+    source: "apps/presentation/dashboard/src/data/status.ts",
     detail: "status_contract, attention_queue, local_dashboard_api, run_history",
   },
   {
     label: "channel projection",
-    source: "apps/dashboard/src/data/goal-channel-frontstage.ts",
+    source: "apps/presentation/dashboard/src/data/goal-channel-frontstage.ts",
     detail: "decision_frame, todos, gates, leases, artifacts, truth_contract",
   },
   {
@@ -38,7 +38,7 @@ const contractFields = [
   },
   {
     label: "route smoke",
-    source: "apps/dashboard/smoke/frontstage-route-smoke.ts",
+    source: "apps/presentation/dashboard/smoke/frontstage-route-smoke.ts",
     detail: "static route contract, source guards, component expectations",
   },
 ];
@@ -86,11 +86,11 @@ const fixtureRules = [
 ];
 
 const smokeChecklist = [
-  "npm --prefix apps/dashboard run smoke:frontstage-route",
-  "npm --prefix apps/dashboard run smoke:frontstage-browser",
-  "npm --prefix apps/dashboard run smoke:frontstage-share-bundle",
-  "npm --prefix apps/dashboard run build",
-  "loopx check --scan-path apps/dashboard --scan-path docs/status-data-contract.md",
+  "npm --prefix apps/presentation/dashboard run smoke:frontstage-route",
+  "npm --prefix apps/presentation/dashboard run smoke:frontstage-browser",
+  "npm --prefix apps/presentation/dashboard run smoke:frontstage-share-bundle",
+  "npm --prefix apps/presentation/dashboard run build",
+  "loopx check --scan-path apps/presentation/dashboard --scan-path docs/status-data-contract.md",
 ];
 
 const componentExamples = [

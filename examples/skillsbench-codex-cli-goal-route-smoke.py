@@ -83,6 +83,7 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
     from loopx.benchmark_adapters.skillsbench import skillsbench_route_contract
     from scripts.skillsbench_automation_loop import (
         _host_local_acp_launch_command,
+        _public_runner_config,
         build_plan,
         parse_args,
     )
@@ -135,6 +136,7 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
 
         command = _host_local_acp_launch_command(args, plan)
         assert "--codex-cli-goal-worker" in command, command
+        assert "--codex-cli-goal-thread-prewarm" not in command, command
         assert "--app-server-goal-worker" not in command, command
         assert "--reasoning-effort" in command, command
         assert command[command.index("--reasoning-effort") + 1] == "xhigh", command
@@ -146,6 +148,36 @@ def _assert_cli_goal_plan_and_relay_command() -> None:
             command[command.index("--goal-active-timeout-sec") + 1]
             == command[command.index("--first-action-timeout-sec") + 1]
         ), command
+        default_config = _public_runner_config(plan)
+        assert default_config["codex_cli_goal_thread_prewarm"] is False
+
+        prewarm_args = parse_args(
+            [
+                "--route",
+                CODEX_CLI_GOAL_BASELINE_ROUTE,
+                "--host-local-acp-launch",
+                "--remote-command-file-bridge-ready",
+                "--remote-command-file-bridge-solver-command",
+                "python bridge.py",
+                "--reasoning-effort",
+                "xhigh",
+                "--codex-cli-goal-thread-prewarm",
+                "--plan-only",
+                "--skillsbench-root",
+                str(skillsbench_root),
+                "--jobs-dir",
+                str(temp_path / "jobs-with-prewarm"),
+                "--ledger-path",
+                str(temp_path / "ledger-with-prewarm.json"),
+                "--global-ledger-path",
+                str(temp_path / "global-ledger-with-prewarm.json"),
+            ]
+        )
+        prewarm_plan = build_plan(prewarm_args)
+        prewarm_command = _host_local_acp_launch_command(prewarm_args, prewarm_plan)
+        assert "--codex-cli-goal-thread-prewarm" in prewarm_command, prewarm_command
+        prewarm_config = _public_runner_config(prewarm_plan)
+        assert prewarm_config["codex_cli_goal_thread_prewarm"] is True
 
         proxy_url = "http://127.0.0.1:18182"
         args_with_proxy = parse_args(
@@ -323,7 +355,12 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
     captures = iter(
         [
             "",
-            "Codex startup\nMCP server failed: HTTP request failed\n› \n",
+            (
+                "Codex startup\n"
+                "MCP server failed: HTTP request failed\n"
+                "│ model:     gpt-5.5 xhigh   /model to change │\n"
+                "› \n"
+            ),
         ]
     )
 
@@ -331,17 +368,57 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
         try:
             return next(captures)
         except StopIteration:
-            return "Codex startup\nMCP server failed: HTTP request failed\n› \n"
+            return (
+                "Codex startup\n"
+                "MCP server failed: HTTP request failed\n"
+                "│ model:     gpt-5.5 xhigh   /model to change │\n"
+                "› \n"
+            )
 
-    original_capture = goal_tui.tmux_capture
+    original_capture = goal_tui.tmux_capture_visible
     try:
-        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = fake_capture  # type: ignore[assignment]
         assert goal_tui.wait_for_codex_cli_tui_ready(
             "fake-session",
-            timeout_sec=1.0,
+            timeout_sec=2.0,
+            startup_grace_sec=0.0,
+            stable_sec=0.0,
         )
     finally:
-        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = original_capture  # type: ignore[assignment]
+
+
+def _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    import loopx.codex_cli_goal_tui as goal_tui
+
+    trust_prompt = (
+        "Do you trust the contents of this directory?\n"
+        "› 1. Yes, continue\n"
+        "  2. No, quit\n"
+        "Press enter to continue\n"
+    )
+    assert goal_tui.codex_cli_tui_startup_blocker(trust_prompt) == "trust_prompt"
+    assert not goal_tui.codex_cli_tui_input_prompt_visible(trust_prompt)
+
+    current_model_loading = (
+        "│ model:     loading   /model to change │\n"
+        "› Explain this codebase\n"
+    )
+    assert (
+        goal_tui.codex_cli_tui_startup_blocker(current_model_loading)
+        == "model_loading"
+    )
+
+    historical_loading_then_ready = (
+        "│ model:     loading   /model to change │\n"
+        "› Explain this codebase\n"
+        "│ model:     gpt-5.5 xhigh   /model to change │\n"
+        "› Explain this codebase\n"
+    )
+    assert goal_tui.codex_cli_tui_startup_blocker(historical_loading_then_ready) == ""
+    assert goal_tui.codex_cli_tui_input_prompt_visible(historical_loading_then_ready)
+    assert goal_tui.codex_cli_tui_input_prompt_visible("  > \n")
 
 
 def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
@@ -377,13 +454,13 @@ def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
     original_sleep = goal_tui.time.sleep
     original_submit = goal_tui.tmux_submit_enter
     original_plain_enter = goal_tui.tmux_send_plain_enter
-    original_capture = goal_tui.tmux_capture
+    original_capture = goal_tui.tmux_capture_visible
     try:
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = fake_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = fake_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = fake_capture  # type: ignore[assignment]
         with tempfile.TemporaryDirectory() as temp:
             prompt_path = Path(temp) / "prompt.txt"
             prompt_path.write_text(prompt_text, encoding="utf-8")
@@ -397,7 +474,7 @@ def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
         goal_tui.time.sleep = original_sleep  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = original_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = original_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = original_capture  # type: ignore[assignment]
 
     assert ("kitty-enter", "fake-session") in calls, calls
     assert ("plain-enter", "fake-session") in calls, calls
@@ -427,13 +504,13 @@ def _assert_cli_goal_typed_submit_avoids_paste_buffer() -> None:
     original_sleep = goal_tui.time.sleep
     original_submit = goal_tui.tmux_submit_enter
     original_plain_enter = goal_tui.tmux_send_plain_enter
-    original_capture = goal_tui.tmux_capture
+    original_capture = goal_tui.tmux_capture_visible
     try:
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = fake_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = fake_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = fake_capture  # type: ignore[assignment]
         goal_tui.tmux_type_text_and_submit(
             tmux_name="fake-session",
             text=goal_text,
@@ -443,7 +520,7 @@ def _assert_cli_goal_typed_submit_avoids_paste_buffer() -> None:
         goal_tui.time.sleep = original_sleep  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = original_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = original_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = original_capture  # type: ignore[assignment]
 
     assert any(
         isinstance(call, list)
@@ -529,6 +606,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT,
         POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
         PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
+        TUI_BLOCKER_RECENT_LINE_WINDOW,
         codex_cli_tui_post_bridge_blocker_stage,
         codex_cli_tui_post_bridge_closeout_recovery_action,
         codex_cli_tui_post_bridge_recovery_action,
@@ -536,15 +614,17 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
         codex_cli_tui_pre_bridge_blocker_stage,
         codex_cli_tui_pre_bridge_recovery_action,
         codex_cli_tui_pre_bridge_recovery_skip_reason,
+        codex_cli_tui_pre_bridge_terminal_skip_reason,
     )
     from scripts.skillsbench_automation_loop import (
         _merge_host_local_acp_relay_trace_summary,
         _public_runner_prerequisites,
     )
 
-    assert POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT == 4
-    assert POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT == 3
+    assert POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT == 6
+    assert POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT == 8
     assert PRE_BRIDGE_RECOVERY_ATTEMPT_LIMIT == 2
+    assert TUI_BLOCKER_RECENT_LINE_WINDOW == 40
     assert "Close out the active SkillsBench goal" in (
         CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT
     )
@@ -554,6 +634,28 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             prompt_visible=True,
         )
         == "pre_bridge_tui_model_timeout"
+    )
+    first_turn_terminal_timeout_capture = "\n".join(
+        [
+            "Goal active",
+            "request timed out while waiting for model",
+            "Goal failed",
+            "› ",
+        ]
+    )
+    assert (
+        codex_cli_tui_pre_bridge_blocker_stage(
+            first_turn_terminal_timeout_capture,
+            prompt_visible=True,
+        )
+        == "pre_bridge_tui_model_timeout"
+    )
+    assert (
+        codex_cli_tui_pre_bridge_terminal_skip_reason(
+            "Goal active\nGoal failed\n› ",
+            prompt_visible=True,
+        )
+        == "pre_bridge_terminal:p=1,timeout=0,rate=0,retry=0,error=1"
     )
     assert (
         codex_cli_tui_pre_bridge_recovery_action(
@@ -590,6 +692,38 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             prompt_visible=True,
         )
         == "post_bridge_tui_model_timeout"
+    )
+    stale_timeout_scrollback = "\n".join(
+        [
+            "request timed out while waiting for model",
+            *[f"historical tui line {index}" for index in range(50)],
+            "Goal active",
+            "Pursuing goal",
+            "› ",
+        ]
+    )
+    assert (
+        codex_cli_tui_post_bridge_blocker_stage(
+            stale_timeout_scrollback,
+            prompt_visible=True,
+        )
+        == ""
+    )
+    stale_rate_limit_scrollback = "\n".join(
+        [
+            "rate limit reached; press enter to retry",
+            *[f"historical tui line {index}" for index in range(50)],
+            "Goal active",
+            "Pursuing goal",
+            "› ",
+        ]
+    )
+    assert (
+        codex_cli_tui_post_bridge_blocker_stage(
+            stale_rate_limit_scrollback,
+            prompt_visible=True,
+        )
+        == ""
     )
     assert (
         codex_cli_tui_post_bridge_recovery_action(
@@ -775,7 +909,7 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
             goal_terminal_observed=False,
             first_action_observed=True,
             bridge_summary_path=bridge_summary,
-            post_bridge_recovery_attempt_count=4,
+            post_bridge_recovery_attempt_count=POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT,
             post_bridge_recovery_action="typed_closeout",
             post_bridge_recovery_skip_reason="closeout_retry_limit_reached",
         )
@@ -789,7 +923,10 @@ def _assert_cli_goal_post_bridge_blocker_is_public_safe_stage() -> None:
 
     prerequisites = plan["runner_prerequisites"]
     assert trace["codex_cli_goal_tui_stage"] == "post_bridge_tui_model_timeout"
-    assert trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"] == 4
+    assert (
+        trace["codex_cli_goal_tui_post_bridge_recovery_attempt_count"]
+        == POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT
+    )
     assert trace["codex_cli_goal_tui_post_bridge_recovery_action"] == "typed_closeout"
     assert (
         trace["codex_cli_goal_tui_post_bridge_recovery_skip_reason"]
@@ -888,8 +1025,8 @@ def _assert_cli_goal_active_timeout_is_public_countability_stage() -> None:
         relay._publish_codex_cli_goal_trace(
             ok=False,
             stage="pre_bridge_tui_model_timeout",
-            goal_active_observed=False,
-            goal_terminal_observed=False,
+            goal_active_observed=True,
+            goal_terminal_observed=True,
             first_action_observed=False,
             bridge_summary_path=None,
             post_bridge_recovery_attempt_count=2,
@@ -1022,15 +1159,21 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     source = (
         REPO_ROOT / "loopx/benchmark_adapters/skillsbench_acp_relay.py"
     ).read_text(encoding="utf-8")
+    assert "CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120" in source
     assert "CODEX_CLI_GOAL_TASK_PROMPT_FILENAME" in source
     assert "prompt_instruction_path.write_text(" in source
     assert "build_codex_cli_goal_file_objective(" in source
     assert "tmux_type_text_and_submit(" in source
     assert "build_codex_cli_goal_tui_input(prompt_for_codex)" not in source
+    assert "codex_cli_goal_thread_prewarm: bool = False" in source
+    assert "if self._config.codex_cli_goal_thread_prewarm:" in source
     assert "prewarm_codex_cli_goal_thread(" in source
     assert "thread_prewarm_timeout" in source
-    assert "timeout_sec=max(" in source
-    assert "self._config.first_action_timeout_sec" in source
+    assert "timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC" in source
+    assert (
+        "max(90.0, float(self._config.first_action_timeout_sec or 0.0))"
+        not in source
+    )
     assert "post_bridge_recovery_attempt_count" in source
     assert "post_bridge_closeout_attempt_count" in source
     assert "POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT" in source
@@ -1068,6 +1211,32 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
         assert trace["goal_prompt_file_used"] is True, trace
         assert trace["goal_prompt_file_raw_path_recorded"] is False, trace
         assert trace["goal_command_submission_method"] == "typed", trace
+
+    with tempfile.TemporaryDirectory() as temp:
+        trace_dir = Path(temp) / "trace"
+        relay = SkillsBenchLocalAcpRelay(
+            CodexExecConfig(
+                codex_cli_goal_thread_prewarm=True,
+                first_action_timeout_sec=7200.0,
+                worker_public_trace_dir=str(trace_dir),
+            )
+        )
+        relay._publish_codex_cli_goal_trace(
+            ok=False,
+            stage="thread_prewarm_timeout",
+            goal_active_observed=False,
+            goal_terminal_observed=False,
+            first_action_observed=False,
+            bridge_summary_path=None,
+            thread_prewarm_observed=False,
+            goal_prompt_file_used=True,
+            goal_command_submission_method="typed",
+        )
+        traces = list(trace_dir.glob("*.compact.json"))
+        assert len(traces) == 1, traces
+        payload = json.loads(traces[0].read_text(encoding="utf-8"))
+        trace = payload["codex_cli_goal"]
+        assert trace["goal_thread_prewarm_timeout_sec"] == 120, trace
 
 
 def _assert_cli_goal_codex_api_proxy_is_runtime_only() -> None:
@@ -1156,6 +1325,7 @@ def main() -> int:
     _assert_cli_goal_plan_and_relay_command()
     _assert_cli_goal_trace_merges_into_public_prerequisites()
     _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings()
+    _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts()
     _assert_cli_goal_paste_submit_falls_back_to_plain_enter()
     _assert_cli_goal_typed_submit_avoids_paste_buffer()
     _assert_cli_goal_rate_limit_is_public_safe_retryable_stage()

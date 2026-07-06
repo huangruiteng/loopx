@@ -43,6 +43,7 @@ from loopx.benchmark_adapters.skillsbench_codex_goal_recovery import (
     codex_cli_tui_pre_bridge_blocker_stage,
     codex_cli_tui_pre_bridge_recovery_action,
     codex_cli_tui_pre_bridge_recovery_skip_reason,
+    codex_cli_tui_pre_bridge_terminal_skip_reason,
 )
 from loopx.codex_cli_goal_tui import (
     CODEX_CLI_GOAL_TASK_PROMPT_FILENAME,
@@ -60,7 +61,6 @@ from loopx.codex_cli_goal_tui import (
     tmux_type_text_and_submit,
     wait_for_codex_cli_tui_ready,
 )
-
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
 SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
@@ -87,16 +87,12 @@ SKILLSBENCH_LOCAL_ACP_RELAY_PROBE_SCHEMA_VERSION = (
 SKILLSBENCH_HOST_LOCAL_ACP_TRANSPORT_PROBE_SCHEMA_VERSION = (
     "skillsbench_host_local_acp_transport_probe_v0"
 )
-SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER = (
-    "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_READY"
-)
+SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER = "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_READY"
 SKILLSBENCH_LOCAL_ACP_RELAY_HEALTH_PROMPT = (
     "LoopX relay health check. Reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_READY_MARKER} and end the turn."
 )
-SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER = (
-    "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_READY"
-)
+SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER = "LOOPX_SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_READY"
 SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "LoopX bridge action preflight. First use the private bridge command from "
     "the relay packet to run one JSON preflight request that does not require "
@@ -109,6 +105,7 @@ SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_PROMPT = (
     "After the bridge response returns, reply exactly "
     f"{SKILLSBENCH_LOCAL_ACP_RELAY_BRIDGE_PREFLIGHT_MARKER} and end the turn."
 )
+CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC = 120
 
 
 @contextlib.contextmanager
@@ -118,7 +115,6 @@ def _temporary_directory_ignore_cleanup_errors(*, prefix: str):
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
-
 
 def _prompt_requires_bridge_first_action(prompt: str) -> bool:
     text = prompt or ""
@@ -582,6 +578,7 @@ class CodexExecConfig:
     task_output_quiet_timeout_sec: float = 0.0
     reasoning_effort: str | None = None
     codex_api_proxy: str | None = None
+    codex_cli_goal_thread_prewarm: bool = False
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
     remote_command_file_bridge_agent_command: str | None = None
@@ -1246,30 +1243,29 @@ class SkillsBenchLocalAcpRelay:
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
                     )
-                thread_prewarm_observed = prewarm_codex_cli_goal_thread(
-                    tmux_name=tmux_name,
-                    tmp_path=tmp_path,
-                    timeout_sec=max(
-                        90.0,
-                        float(self._config.first_action_timeout_sec or 0.0),
-                    ),
-                )
-                if not thread_prewarm_observed:
-                    tmux_kill_session(tmux_name)
-                    self._publish_codex_cli_goal_trace(
-                        ok=False,
-                        stage="thread_prewarm_timeout",
-                        goal_active_observed=False,
-                        goal_terminal_observed=False,
-                        first_action_observed=False,
-                        bridge_summary_path=bridge_summary_path,
-                        thread_prewarm_observed=False,
-                        goal_prompt_file_used=goal_prompt_file_used,
-                        goal_command_submission_method=goal_command_submission_method,
+                thread_prewarm_observed = False
+                if self._config.codex_cli_goal_thread_prewarm:
+                    thread_prewarm_observed = prewarm_codex_cli_goal_thread(
+                        tmux_name=tmux_name,
+                        tmp_path=tmp_path,
+                        timeout_sec=CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC,
                     )
-                    return _recoverable_codex_turn_failure_message(
-                        "codex_exec_first_action_timeout"
-                    )
+                    if not thread_prewarm_observed:
+                        tmux_kill_session(tmux_name)
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage="thread_prewarm_timeout",
+                            goal_active_observed=False,
+                            goal_terminal_observed=False,
+                            first_action_observed=False,
+                            bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=False,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=goal_command_submission_method,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_first_action_timeout"
+                        )
                 if goal_prompt_file_used:
                     tmux_type_text_and_submit(
                         tmux_name=tmux_name,
@@ -1334,12 +1330,9 @@ class SkillsBenchLocalAcpRelay:
                     capture = tmux_capture(tmux_name)
                     if "Goal active" in capture or "Pursuing goal" in capture:
                         goal_active_observed = True
+                    goal_failed_now = "Goal failed" in capture or "Goal blocked" in capture
                     if "Goal achieved" in capture:
                         goal_terminal_observed = True
-                        break
-                    if "Goal failed" in capture or "Goal blocked" in capture:
-                        goal_terminal_observed = True
-                        goal_failed_observed = True
                         break
                     retryable_startup_blocker_stage = ""
                     if not goal_active_observed and not first_action_seen:
@@ -1371,7 +1364,6 @@ class SkillsBenchLocalAcpRelay:
                     pre_bridge_blocker_stage = ""
                     if (
                         bridge_summary_path is not None
-                        and not goal_active_observed
                         and not first_action_seen
                     ):
                         pre_bridge_blocker_stage = (
@@ -1465,6 +1457,12 @@ class SkillsBenchLocalAcpRelay:
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_" + pre_bridge_blocker_stage
                         )
+                    if goal_failed_now:
+                        if bridge_summary_path is not None and not first_action_seen:
+                            pre_bridge_recovery_skip_reason = codex_cli_tui_pre_bridge_terminal_skip_reason(capture, prompt_visible=codex_cli_tui_input_prompt_visible(capture))
+                        goal_terminal_observed = True
+                        goal_failed_observed = True
+                        break
                     if (
                         not goal_active_observed
                         and not first_action_seen
@@ -1850,6 +1848,7 @@ class SkillsBenchLocalAcpRelay:
                 "stage": safe_stage,
                 "goal_slash_command_submitted": True,
                 "goal_thread_prewarm_observed": bool(thread_prewarm_observed),
+                "goal_thread_prewarm_timeout_sec": CODEX_CLI_GOAL_THREAD_PREWARM_TIMEOUT_SEC if self._config.codex_cli_goal_thread_prewarm else 0,
                 "goal_prompt_file_used": bool(goal_prompt_file_used),
                 "goal_prompt_file_raw_path_recorded": False,
                 "goal_command_submission_method": str(

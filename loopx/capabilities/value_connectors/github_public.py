@@ -594,6 +594,41 @@ def build_value_connector_install_check_packet(
             "external_write_capability": False,
         },
         {
+            "connector_id": "agent_reach_ops_source_map",
+            "status": "ready" if shutil.which("agent-reach") else "needs_agent_reach",
+            "install": [
+                "Install Agent-Reach when available, then run `agent-reach doctor --json`.",
+                "Use `loopx value-connectors source-map --connector agent_reach_ops_source_map --format json` before drafting from external signals.",
+                "Keep Agent-Reach routes read-only; use LoopX evidence cards, maturity scores, and publish/audit gates for action.",
+            ],
+            "optional_tools": [
+                {
+                    "tool": "agent-reach",
+                    "installed": shutil.which("agent-reach") is not None,
+                    "needed_for": "source routing across public/read-only external channels",
+                    "install_hint": "Install Agent-Reach in the active agent environment and rerun `agent-reach doctor --json`.",
+                },
+                {
+                    "tool": "gh",
+                    "installed": shutil.which("gh") is not None,
+                    "needed_for": "GitHub-backed source routes and public repository search",
+                    "install_hint": "Install GitHub CLI and authenticate if GitHub source routes are needed.",
+                },
+            ],
+            "external_write_capability": False,
+        },
+        {
+            "connector_id": "finance_market_snapshot",
+            "status": "probed_candidate",
+            "install": [
+                "Use `loopx value-connectors source-map --connector finance_market_snapshot --format json` for the boundary packet.",
+                "Plan finance information pulls as public/reference snapshots, not advice or trading actions.",
+                "Stop for credentials, AK/SK, paid feeds, private portfolio data, or trading intent.",
+            ],
+            "optional_tools": [],
+            "external_write_capability": False,
+        },
+        {
             "connector_id": "botmail_identity",
             "status": "host_connector_required",
             "install": [

@@ -11,6 +11,7 @@ from ..todos.contract import (
     normalize_todo_status,
     normalize_todo_task_class,
 )
+from .time import parse_scheduler_timestamp
 
 MONITOR_CADENCE_PATTERN = re.compile(
     r"^\s*(?P<count>[1-9][0-9]{0,4})\s*"
@@ -19,16 +20,7 @@ MONITOR_CADENCE_PATTERN = re.compile(
 )
 
 
-def parse_monitor_timestamp(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
+parse_monitor_timestamp = parse_scheduler_timestamp
 
 
 def parse_monitor_counter(value: Any) -> int:

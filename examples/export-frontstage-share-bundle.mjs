@@ -8,7 +8,7 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dashboardDir = resolve(repoRoot, "apps/dashboard");
+const dashboardDir = resolve(repoRoot, "apps/presentation/dashboard");
 const defaultOutDir = resolve("/tmp", "loopx-frontstage-share-bundle");
 const statusFileName = "status.frontstage-share.json";
 const manifestFileName = "frontstage-share-manifest.json";
@@ -45,7 +45,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node examples/export-frontstage-share-bundle.mjs [--out-dir DIR] [--base /path/]
 
-Builds apps/dashboard into a public-safe static bundle, writes a sanitized
+Builds apps/presentation/dashboard into a public-safe static bundle, writes a sanitized
 goal_channel_projection_v0 status fixture, and creates /frontstage/index.html
 for direct static hosting.
 
@@ -315,7 +315,7 @@ async function main() {
   const siteDir = resolve(outDir, "site");
 
   if (!existsSync(resolve(dashboardDir, "node_modules"))) {
-    throw new Error("apps/dashboard/node_modules is missing; run `npm ci` in apps/dashboard first");
+    throw new Error("apps/presentation/dashboard/node_modules is missing; run `npm ci` in apps/presentation/dashboard first");
   }
 
   await rm(outDir, { force: true, recursive: true });

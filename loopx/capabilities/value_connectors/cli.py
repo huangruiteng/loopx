@@ -23,6 +23,11 @@ from .planner import (
     build_value_connector_plan_packet,
     render_value_connector_plan_markdown,
 )
+from .source_map import (
+    SOURCE_PROFILE_IDS,
+    build_value_connector_source_map_packet,
+    render_value_connector_source_map_markdown,
+)
 
 
 PrintPayload = Callable[
@@ -61,6 +66,8 @@ def register_value_connector_commands(
         "--connector",
         choices=[
             "all",
+            "agent_reach_ops_source_map",
+            "finance_market_snapshot",
             "github_public_channel",
             "botmail_identity",
             "community_channel",
@@ -68,6 +75,20 @@ def register_value_connector_commands(
         ],
         default="all",
         help="Connector profile to check.",
+    )
+    source_map_parser = sub.add_parser(
+        "source-map",
+        help=(
+            "Render a read-first source-map packet so agents can use proven "
+            "connectors without opening internal docs."
+        ),
+    )
+    add_subcommand_format(source_map_parser)
+    source_map_parser.add_argument(
+        "--connector",
+        choices=sorted(SOURCE_PROFILE_IDS),
+        default="all",
+        help="Connector source profile to render.",
     )
     plan_parser = sub.add_parser(
         "plan",
@@ -220,6 +241,16 @@ def handle_value_connector_command(
                 render_value_connector_install_check_markdown,
             )
             return 0
+        if args.value_connectors_command == "source-map":
+            payload = build_value_connector_source_map_packet(
+                connector=args.connector,
+            )
+            print_payload(
+                payload,
+                output_format(args),
+                render_value_connector_source_map_markdown,
+            )
+            return 0
         if args.value_connectors_command == "github-public-probe":
             payload = build_github_public_channel_probe_packet(
                 url=args.url,
@@ -253,7 +284,7 @@ def handle_value_connector_command(
         if args.value_connectors_command != "plan":
             raise ValueError(
                 "value-connectors requires `install-check`, `plan`, "
-                "`github-public-probe`, or `github-reply-monitor`"
+                "`source-map`, `github-public-probe`, or `github-reply-monitor`"
             )
         if args.connector_id:
             missing = [

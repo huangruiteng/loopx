@@ -13,7 +13,12 @@ from ...event_sourced_state import (
     make_state_event,
 )
 from ...history import load_registry
-from ...status import active_state_event_projection_fields, state_event_log_candidates
+from ..goals.active_state_event_projection import (
+    active_state_event_projection_fields,
+    state_event_log_candidates,
+)
+from ..goals.path_resolution import resolve_goal_local_path
+from .active_state_todo_parser import parse_active_state_todos
 from .contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
@@ -59,6 +64,8 @@ def event_projection_todo_context(
     fields = active_state_event_projection_fields(
         goal,
         state_path=state_path,
+        resolve_goal_local_path=resolve_goal_local_path,
+        parse_active_state_todos=parse_active_state_todos,
         item_limit=None,
     )
     if not fields.get("state_event_projection"):
@@ -86,7 +93,15 @@ def event_projection_todo_context(
     if not matched_item or matched_role is None:
         return None
     event_log_path = next(
-        (path for path in state_event_log_candidates(goal, state_path=state_path) if path.exists()),
+        (
+            path
+            for path in state_event_log_candidates(
+                goal,
+                state_path=state_path,
+                resolve_goal_local_path=resolve_goal_local_path,
+            )
+            if path.exists()
+        ),
         None,
     )
     if event_log_path is None:

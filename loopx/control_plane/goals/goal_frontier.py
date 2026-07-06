@@ -4,6 +4,8 @@ from typing import Any
 
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
+VISION_CONTINUATION_AUDIT_SCHEMA_VERSION = "vision_continuation_audit_v0"
+VISION_GAP_JUDGE_SCHEMA_VERSION = "vision_gap_judge_v0"
 AUTONOMOUS_REPLAN_DECISION_SCHEMA_VERSION = "autonomous_replan_decision_v0"
 AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION = "autonomous_replan_scope_v0"
 AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
@@ -14,6 +16,11 @@ VISION_CHECKPOINT_MISSING_TRIGGER = "vision_checkpoint_missing"
 TODO_SUCCESSION_GAP_TRIGGER = "completed_advancement_without_successor"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
+VISION_CHECKPOINT_SATISFIED_DECISIONS = {
+    "patched",
+    "retired_or_superseded",
+    "unchanged_with_reason",
+}
 FRONTIER_REPLAN_ACK_DELTA_KINDS = {
     "active_state_next_action",
     "blocker",
@@ -252,11 +259,17 @@ def latest_missing_vision_checkpoint_from_status_payload(
             continue
         if not agent_id and checkpoint_agent_id:
             continue
+        decision = str(checkpoint.get("decision") or "").strip()
+        if (
+            checkpoint.get("satisfied") is True
+            and decision in VISION_CHECKPOINT_SATISFIED_DECISIONS
+        ):
+            return None
         if checkpoint.get("required") is not True:
             continue
         if checkpoint.get("satisfied") is not False:
             continue
-        if str(checkpoint.get("decision") or "") != "missing_required":
+        if decision != "missing_required":
             continue
         return {
             "schema_version": checkpoint.get("schema_version"),
@@ -332,6 +345,147 @@ def acceptance_gaps_from_vision_checkpoint(
     if generated_at:
         gap["generated_at"] = generated_at
     return [gap]
+
+
+def build_vision_continuation_audit(
+    *,
+    goal_id: str | None = None,
+    agent_id: str | None,
+    acceptance_gaps: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Return the closeout audit contract for an open per-agent vision gap.
+
+    This is a read-path contract: quota/status can tell an agent that the
+    selected todo is only a step toward the active vision. Writeback still goes
+    through normal todo, evidence, and refresh-state commands.
+    """
+
+    compact_acceptance_gaps = [
+        gap for gap in (acceptance_gaps or []) if isinstance(gap, dict)
+    ]
+    if not compact_acceptance_gaps:
+        return None
+    vision_gap_judge = build_vision_gap_judge(
+        goal_id=goal_id,
+        agent_id=agent_id,
+        acceptance_gaps=compact_acceptance_gaps,
+    )
+    acceptance_requirements = [
+        text
+        for text in (
+            _compact_projection_text(gap.get("acceptance_summary"), limit=180)
+            for gap in compact_acceptance_gaps
+        )
+        if text
+    ]
+    audit: dict[str, Any] = {
+        "schema_version": VISION_CONTINUATION_AUDIT_SCHEMA_VERSION,
+        "required": True,
+        "agent_id": agent_id,
+        "decision": "acceptance_gap_open",
+        "selected_todo_is_goal_completion": False,
+        "closeout_allowed_without_evidence": False,
+        "trigger_count": len(compact_acceptance_gaps),
+        "acceptance_gaps": compact_acceptance_gaps[:5],
+        "vision_gap_judge": vision_gap_judge,
+        "authoritative_evidence_kinds": [
+            "changed_files",
+            "public_safe_evidence_records",
+            "evaluation_outputs",
+            "successor_state",
+            "blocker_state",
+            "superseding_agent_vision",
+        ],
+        "not_satisfied_by": [
+            "todo_completion_alone",
+            "autonomous_replan_ack_alone",
+            "vision_checkpoint_alone",
+            "no_followup_without_acceptance_evidence",
+        ],
+        "required_before_closeout": [
+            "derive_requirements_from_active_vision_and_current_todo",
+            "name_authoritative_evidence_for_each_requirement",
+            "create_successor_or_write_vision_replan_trigger_when_unproven",
+        ],
+        "recommended_action": (
+            "audit active per-agent vision acceptance before todo closeout; "
+            "if evidence is weak or missing, keep the vision active with a "
+            "successor todo or --vision-replan-trigger"
+        ),
+    }
+    if acceptance_requirements:
+        audit["acceptance_requirements"] = acceptance_requirements[:5]
+    return audit
+
+
+def build_vision_gap_judge(
+    *,
+    goal_id: str | None = None,
+    agent_id: str | None,
+    acceptance_gaps: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Return the strict done/continue judge for active per-agent vision gaps.
+
+    The read model keeps the prompt essence compact: unless current evidence
+    satisfies, blocks, or supersedes the active vision, the agent should judge
+    the vision as still CONTINUE.
+    """
+
+    compact_acceptance_gaps = [
+        gap for gap in (acceptance_gaps or []) if isinstance(gap, dict)
+    ]
+    first_gap = compact_acceptance_gaps[0] if compact_acceptance_gaps else {}
+    reason = _compact_projection_text(
+        first_gap.get("replan_trigger_summary")
+        or "active per-agent vision still has an open acceptance gap",
+        limit=220,
+    )
+    evidence_command = None
+    if goal_id and agent_id:
+        evidence_command = (
+            f"loopx evidence-log --goal-id {goal_id} "
+            f"--agent-id {agent_id} --thin"
+        )
+    evidence_read_instruction = (
+        "Before judging, read any projected required_reads; then read the "
+        "agent-scoped evidence log"
+    )
+    if evidence_command:
+        evidence_read_instruction = f"{evidence_read_instruction}: `{evidence_command}`."
+    else:
+        evidence_read_instruction = (
+            f"{evidence_read_instruction} when goal_id and agent_id are available."
+        )
+    return {
+        "schema_version": VISION_GAP_JUDGE_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "agent_id": agent_id,
+        "done": False,
+        "decision": "continue",
+        "reason": (
+            reason
+            or "active per-agent vision still has an open acceptance gap"
+        ),
+        "agent_judge_instruction": (
+            "Judge vision closure: compare active vision acceptance_summary "
+            "with projected evidence and agent-scoped evidence-log reads. "
+            "Mark done only when evidence proves completion, a blocker/user "
+            "gate, or superseding/no-follow-up closure; otherwise continue."
+        ),
+        "evidence_read_instruction": evidence_read_instruction,
+        "done_only_when": [
+            "authoritative_evidence_satisfies_acceptance",
+            "final_deliverable_or_eval_output_satisfies_acceptance",
+            "blocker_or_user_gate_is_projected",
+            "superseding_vision_or_no_followup_closes_the_frontier",
+        ],
+        "continue_when": [
+            "evidence_is_missing_weak_or_stale",
+            "todo_lifecycle_or_protocol_status_is_the_only_proof",
+            "acceptance_gap_is_still_projected",
+        ],
+        "otherwise": "continue",
+    }
 
 
 def _open_todo_count(summary: dict[str, Any] | None) -> int:
@@ -608,8 +762,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
 
     if autonomous_replan_is_required(existing_replan_obligation):
         return None
-    if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
-        return None
     if _blocking_handoff_gate_count(agent_todo_summary, agent_id=agent_id) > 0:
         return None
 
@@ -731,6 +883,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "record no-follow-up"
             ),
         }
+    if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
+        return None
     if not _is_monitor_only_lane(work_lane_contract):
         return None
     if agent_counts.get("monitor", 0) <= 0:
@@ -915,6 +1069,11 @@ def build_goal_frontier_projection(
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
+    vision_continuation_audit = build_vision_continuation_audit(
+        goal_id=goal_id,
+        agent_id=agent_id,
+        acceptance_gaps=compact_acceptance_gaps,
+    )
     projection: dict[str, Any] = {
         "schema_version": GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION,
         "goal_id": goal_id,
@@ -948,6 +1107,8 @@ def build_goal_frontier_projection(
         "autonomy_blockers": blockers,
         "replan_required": replan_required,
     }
+    if vision_continuation_audit:
+        projection["vision_continuation_audit"] = vision_continuation_audit
     if replan_required and isinstance(replan_obligation, dict):
         projection["autonomous_replan_decision"] = build_autonomous_replan_decision(
             replan_obligation

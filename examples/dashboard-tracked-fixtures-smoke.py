@@ -10,7 +10,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TRACKED_PATHS = [
-    "apps/dashboard",
+    "apps/presentation/dashboard",
     "examples/status.example.json",
     "examples/render-status-dashboard.py",
 ]

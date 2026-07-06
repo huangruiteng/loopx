@@ -19,6 +19,11 @@ from loopx.session_runtime import SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VER
 def assert_status_uses_direct_read_models() -> None:
     assert status_module.public_safe_compact_text is public_safety_read_model.public_safe_compact_text
     assert status_module.public_safe_compact_list is public_safety_read_model.public_safe_compact_list
+    assert status_module._compact_numeric_map is public_safety_read_model.compact_numeric_map
+    assert (
+        status_module._compact_loopx_command_records
+        is public_safety_read_model.compact_loopx_command_records
+    )
     assert (
         status_module.compact_session_runtime_readonly_projection
         is session_runtime_read_model.compact_session_runtime_readonly_projection
@@ -51,6 +56,73 @@ def assert_public_safe_list_parity() -> None:
     assert status_module.public_safe_compact_list(values, limit=2) == expected
     assert public_safety_read_model.public_safe_compact_list(values, limit=2) == expected
     assert status_module.public_safe_compact_list("single", limit=4) == ["single"]
+
+
+def assert_numeric_map_compaction() -> None:
+    source = {
+        "count": "3",
+        "ratio": "2.5",
+        "native": 7,
+        "false_flag": False,
+        "truthy_flag": True,
+        "empty": "",
+        "word": "many",
+    }
+
+    assert public_safety_read_model.compact_numeric_map(source) == {
+        "count": 3,
+        "ratio": 2.5,
+        "native": 7,
+    }
+    assert public_safety_read_model.compact_numeric_map(
+        source,
+        keys=("ratio", "missing", "word", "native"),
+    ) == {"ratio": 2.5, "native": 7}
+    assert public_safety_read_model.compact_numeric_map(["not", "a", "map"]) == {}
+
+
+def assert_loopx_command_record_compaction() -> None:
+    local_path = "/" + "tmp" + "/loopx-command-record.json"
+    records = [
+        {
+            "subcommand": "quota should-run",
+            "todo_id": "todo_abc12345",
+            "goal_id": "loopx-meta",
+        },
+        {
+            "subcommand": "agent_command",
+            "todo_id": "todo_private",
+            "goal_id": "loopx-meta",
+        },
+        {
+            "subcommand": "todo complete",
+            "todo_id": local_path,
+            "goal_id": "loopx-meta",
+        },
+        {
+            "subcommand": "refresh-state",
+            "todo_id": "todo_followup123",
+            "goal_id": local_path,
+        },
+    ]
+
+    assert public_safety_read_model.compact_loopx_command_records(records, limit=8) == [
+        {
+            "subcommand": "quota should-run",
+            "todo_id": "todo_abc12345",
+            "goal_id": "loopx-meta",
+        },
+        {"subcommand": "todo complete", "goal_id": "loopx-meta"},
+        {"subcommand": "refresh-state", "todo_id": "todo_followup123"},
+    ]
+    assert public_safety_read_model.compact_loopx_command_records(records, limit=1) == [
+        {
+            "subcommand": "quota should-run",
+            "todo_id": "todo_abc12345",
+            "goal_id": "loopx-meta",
+        }
+    ]
+    assert public_safety_read_model.compact_loopx_command_records({"not": "a-list"}) == []
 
 
 def assert_session_runtime_defaults() -> None:
@@ -113,6 +185,8 @@ def main() -> None:
     assert_status_uses_direct_read_models()
     assert_public_safe_text_parity()
     assert_public_safe_list_parity()
+    assert_numeric_map_compaction()
+    assert_loopx_command_record_compaction()
     assert_session_runtime_defaults()
 
 

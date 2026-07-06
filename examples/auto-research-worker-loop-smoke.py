@@ -20,6 +20,7 @@ from loopx.capabilities.auto_research.demo_e2e import _seed_visible_demo_control
 from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
     build_auto_research_demo_supervisor_plan,
 )
+from loopx.state_projection import state_projection_gap_warning  # noqa: E402
 
 
 GOAL_ID = "loopx-auto-research-demo"
@@ -71,6 +72,28 @@ def main() -> int:
             objective="Verify worker-loop cannot manufacture auto-research evidence.",
             supervisor=supervisor,
         )
+        state_file = (
+            temp
+            / "visible-control-plane"
+            / ".codex"
+            / "goals"
+            / GOAL_ID
+            / "ACTIVE_GOAL_STATE.md"
+        )
+        state_text = state_file.read_text(encoding="utf-8")
+        assert "Run `loopx check` against the project registry" not in state_text
+        assert (
+            "Goal-level route delegates to role frontier; panes own execution."
+            in state_text
+        )
+        route_only_state = (
+            "## Agent Todo\n\n"
+            "- [x] Complete role-frontier auto-research work.\n\n"
+            "## Next Action\n\n"
+            "- Goal-level route delegates to role frontier; panes own execution.\n"
+        )
+        assert state_projection_gap_warning(route_only_state) is None
+
         workspace = temp / "shared-research-workspace"
         workspace.mkdir()
         env = os.environ.copy()

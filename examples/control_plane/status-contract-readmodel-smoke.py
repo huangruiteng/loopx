@@ -42,11 +42,12 @@ def main() -> None:
     assert status_module.build_status_contract() == direct_status_contract()
 
     signals = [" first ", "", None, "second", "third"]
-    assert status_module._compact_status_contract_signals(signals, limit=2) == direct_compact_signals(
-        signals,
-        limit=2,
-    )
-    assert status_module._compact_status_contract_signals(signals, limit=0) == {
+    assert direct_compact_signals(signals, limit=2) == {
+        "items": ["first", "None"],
+        "total_count": 4,
+        "truncated": True,
+    }
+    assert direct_compact_signals(signals, limit=0) == {
         "items": [],
         "total_count": 4,
         "truncated": True,

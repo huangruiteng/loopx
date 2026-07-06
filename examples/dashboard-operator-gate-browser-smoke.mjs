@@ -9,7 +9,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const dashboardDir = resolve(repoRoot, "apps/dashboard");
+const dashboardDir = resolve(repoRoot, "apps/presentation/dashboard");
 const fixtureName = "status.operator-gate.browser-smoke.json";
 const approvedFixtureName = "status.operator-gate-approved.browser-smoke.json";
 const staleHistoryApprovedFixtureName = "status.operator-gate-approved-stale-history.browser-smoke.json";

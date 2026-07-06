@@ -15,5 +15,5 @@
     "isolatedModules": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", "../../examples/status.example.json"]
+  "include": ["src", "../../../examples/status.example.json"]
 }

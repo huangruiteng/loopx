@@ -122,6 +122,15 @@ path, and canary route rather than as a user-facing release baseline.
   status projections, and continues moving quota, todo, scheduler, review
   packet, and handoff rules into bounded control-plane contexts with focused
   canary coverage.
+- `v0.1.11` on 2026-07-06 19:38 +08:00: vision-replan and recovery-routing
+  release at the matching `v0.1.11` tag. This release makes goal-vision gaps
+  participate in the quota/replan decision plane, preserves continuation audits
+  in quota and interaction contracts, supersedes stale vision checkpoint gaps
+  when newer evidence closes them, and adds judge guidance for when a vision
+  gap is real work versus stale state. It also promotes the latest control-plane
+  bounded-context cleanup, auto-research successor/evidence fixes, connector
+  source-map packets, structured run-index classification, and Codex CLI/TUI
+  recovery fixes.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.
@@ -176,7 +185,7 @@ python3 examples/canary/canary-promotion-readiness-smoke.py --no-write-evidence
 ```
 
 The default dashboard policy is `--dashboard-mode=auto`: source checkouts run
-dashboard demo-readiness when `apps/dashboard` is present, while installed
+dashboard demo-readiness when `apps/presentation/dashboard` is present, while installed
 release snapshots that omit the dashboard app skip that optional surface and
 keep the omission visible in the canary output. Use `--dashboard-mode=require`
 when the dashboard/frontstage itself is being promoted, and

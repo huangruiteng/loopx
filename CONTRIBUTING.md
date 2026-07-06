@@ -73,7 +73,7 @@ git diff --check
 For dashboard changes:
 
 ```bash
-cd apps/dashboard
+cd apps/presentation/dashboard
 npm install
 npm run build
 npm run smoke:demo-readiness

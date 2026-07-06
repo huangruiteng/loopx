@@ -252,6 +252,69 @@ def enrich_project_asset(
     item["long_task_cadence_hint"] = cadence_hint
 
 
+def attach_active_state_project_asset_fields(
+    item: dict[str, Any],
+    *,
+    latest_runs: list[dict[str, Any]] | None = None,
+    next_action_projection_warning: Callable[..., dict[str, Any] | None] | None = None,
+    autonomous_replan_obligation_from_runs: Callable[..., dict[str, Any] | None] | None = None,
+) -> dict[str, Any]:
+    project_asset = item.get("project_asset")
+    if not isinstance(project_asset, dict):
+        return {}
+
+    attached: dict[str, Any] = {}
+    active_next_action = item.get("active_state_next_action")
+    if active_next_action:
+        project_asset["active_state_next_action"] = active_next_action
+        attached["active_state_next_action"] = active_next_action
+
+    issue_meta_surface = (
+        item.get("issue_meta_surface") if isinstance(item.get("issue_meta_surface"), dict) else None
+    )
+    if issue_meta_surface:
+        project_asset["issue_meta_surface"] = issue_meta_surface
+        attached["issue_meta_surface"] = issue_meta_surface
+
+    if next_action_projection_warning is not None:
+        warning = next_action_projection_warning(
+            active_state_next_action=active_next_action,
+            latest_run_recommended_action=item.get("latest_run_recommended_action"),
+        )
+        if warning:
+            item["next_action_projection_warning"] = warning
+            project_asset["next_action_projection_warning"] = warning
+            attached["next_action_projection_warning"] = warning
+
+    for key in (
+        "backlog_hygiene_warning",
+        "state_projection_gap",
+        "completed_todo_archive_warning",
+    ):
+        value = item.get(key) if isinstance(item.get(key), dict) else None
+        if value:
+            project_asset[key] = value
+            attached[key] = value
+
+    replan_obligation = (
+        item.get("autonomous_replan_obligation")
+        if isinstance(item.get("autonomous_replan_obligation"), dict)
+        else None
+    )
+    if replan_obligation is None and autonomous_replan_obligation_from_runs is not None:
+        replan_obligation = autonomous_replan_obligation_from_runs(
+            latest_runs or [],
+            agent_todos=item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
+        )
+        if replan_obligation:
+            item["autonomous_replan_obligation"] = replan_obligation
+    if replan_obligation:
+        project_asset["autonomous_replan_obligation"] = replan_obligation
+        attached["autonomous_replan_obligation"] = replan_obligation
+
+    return attached
+
+
 def project_asset_summary_is_public_safe(project_asset: dict[str, Any]) -> bool:
     text = repr(project_asset)
     return not LOCAL_PATH_SURFACE_PATTERN.search(text) and not SECRET_LIKE_SURFACE_PATTERN.search(text)

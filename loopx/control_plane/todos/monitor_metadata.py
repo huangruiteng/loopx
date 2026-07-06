@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...status import parse_timestamp
+from ..runtime.time import parse_timestamp
 from .contract import TODO_MONITOR_METADATA_FIELDS
 
 

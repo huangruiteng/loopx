@@ -2,6 +2,7 @@
 .venv/
 node_modules/
 apps/dashboard/public/*.local.json
+apps/presentation/dashboard/public/*.local.json
 __pycache__/
 *.pyc
 *.tsbuildinfo

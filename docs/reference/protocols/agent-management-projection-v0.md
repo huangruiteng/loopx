@@ -204,7 +204,7 @@ clear the claim, reassign work, or discard evidence from this projection alone.
   "label": "codex/value-explorer",
   "path_safe": false,
   "branch": "codex/value-explorer-post702",
-  "write_scope": ["docs/**", "apps/dashboard/**"]
+  "write_scope": ["docs/**", "apps/presentation/dashboard/**"]
 }
 ```
 

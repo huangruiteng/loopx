@@ -114,6 +114,9 @@ runtime contract, benchmark route, or launch draft.
   maintainer-first product design for signal inbox, selected anchors, agent
   lanes, review feed, and performance review so long-running Loop Agents can be
   evaluated by value, quality, cost, and user attention.
+- [Presentation surface layout](presentation-surface-layout.md):
+  repository boundary for frontend apps, display projections, renderers, sinks,
+  capability facades, and value-connector separation.
 - [Agent management observability MVP](agent-management-observability-mvp.md):
   read-only ops dashboard slice for registered agents, claimed todos, state
   badges, evidence/handoff links, quota/cadence hints, and workspace hints

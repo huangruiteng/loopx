@@ -24,3 +24,28 @@ or published.
 - Raw chats, transcripts, credentials, logs, and local paths are not copied into
   public packets.
 - Publishing remains blocked until an explicit user decision.
+
+## Connector-First Ops Pattern
+
+For social and creator operations, start with a connector source map instead of
+drafting from memory:
+
+```bash
+loopx value-connectors source-map --format json
+```
+
+This packet gives a newly connected agent the current read-first connector
+catalog, including public GitHub metadata, content-ops public handles,
+browser-backed X research, Agent-Reach source routing, and finance snapshot
+probes:
+
+```text
+doctor -> read-only source map -> maturity score -> ops brief -> draft packet
+       -> publish/audit record -> compact monitor
+```
+
+The pattern lets a newly connected LoopX agent reuse external signals without
+turning LoopX into a raw platform archive or untracked publisher. Even when an
+owner grants broad posting discretion, the agent should still record the exact
+body, account/channel, source map, timing, and stop condition before an external
+post.

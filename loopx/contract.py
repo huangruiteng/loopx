@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from .agent_registry import registered_agent_ids_for_goal
-from .history import STRUCTURED_INDEX_KEYS, collect_history, load_registry
+from .control_plane.runtime.run_index_duplicates import (
+    classify_index_duplicate_records,
+    index_identity,
+)
+from .history import collect_history, load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, rel_or_abs, resolve_runtime_root
 from .registry import inspect_registry, inspect_registry_boundary, registry_goals, resolve_state_file
 from .control_plane.todos.contract import (
@@ -159,6 +163,7 @@ def _index_duplicate_summary(index_path: Path) -> dict[str, Any]:
         return {
             "duplicate_rows": 0,
             "reward_overlay_rows": 0,
+            "structured_artifact_bundle_rows": 0,
             "unexpected_duplicate_rows": 0,
             "repairable_duplicate_rows": 0,
             "artifact_identity_collision_rows": 0,
@@ -175,14 +180,10 @@ def _index_duplicate_summary(index_path: Path) -> dict[str, Any]:
                 continue
             if not isinstance(item, dict):
                 continue
-            key = (
-                str(item.get("generated_at") or ""),
-                str(item.get("json_path") or ""),
-                str(item.get("markdown_path") or ""),
-            )
-            groups.setdefault(key, []).append(item)
+            groups.setdefault(index_identity(item), []).append(item)
 
     reward_overlay_rows = 0
+    structured_artifact_bundle_rows = 0
     unexpected_duplicate_rows = 0
     repairable_duplicate_rows = 0
     artifact_identity_collision_rows = 0
@@ -191,16 +192,13 @@ def _index_duplicate_summary(index_path: Path) -> dict[str, Any]:
         if len(records) <= 1:
             continue
         duplicate_rows = len(records) - 1
-        normalized = []
-        reward_records = 0
-        for record in records:
-            if isinstance(record.get("human_reward"), dict):
-                reward_records += 1
-            normalized.append({key: value for key, value in record.items() if key != "human_reward"})
-        normalized_keys = {json.dumps(record, sort_keys=True, ensure_ascii=False) for record in normalized}
-        if reward_records and len(normalized_keys) == 1:
+        duplicate_classification = classify_index_duplicate_records(records)
+        duplicate_kind = duplicate_classification.get("duplicate_kind")
+        if duplicate_kind == "reward_overlay":
             reward_overlay_rows += duplicate_rows
-        elif len(normalized_keys) == 1 or _is_repairable_structured_artifact_duplicate(records):
+        elif duplicate_kind == "structured_artifact_bundle":
+            structured_artifact_bundle_rows += duplicate_rows
+        elif duplicate_classification.get("repairable"):
             unexpected_duplicate_rows += duplicate_rows
             repairable_duplicate_rows += duplicate_rows
         else:
@@ -209,33 +207,14 @@ def _index_duplicate_summary(index_path: Path) -> dict[str, Any]:
             artifact_identity_collision_groups += 1
 
     return {
-        "duplicate_rows": reward_overlay_rows + unexpected_duplicate_rows,
+        "duplicate_rows": reward_overlay_rows + structured_artifact_bundle_rows + unexpected_duplicate_rows,
         "reward_overlay_rows": reward_overlay_rows,
+        "structured_artifact_bundle_rows": structured_artifact_bundle_rows,
         "unexpected_duplicate_rows": unexpected_duplicate_rows,
         "repairable_duplicate_rows": repairable_duplicate_rows,
         "artifact_identity_collision_rows": artifact_identity_collision_rows,
         "artifact_identity_collision_groups": artifact_identity_collision_groups,
     }
-
-
-def _has_structured_index_payload(record: dict[str, Any]) -> bool:
-    return any(isinstance(record.get(key), dict) for key in STRUCTURED_INDEX_KEYS)
-
-
-def _is_repairable_structured_artifact_duplicate(records: list[dict[str, Any]]) -> bool:
-    classifications = {str(record.get("classification") or "") for record in records}
-    health_checks = {str(record.get("health_check") or "") for record in records if record.get("health_check")}
-    structured_rows = [record for record in records if _has_structured_index_payload(record)]
-    return (
-        len(structured_rows) == 1
-        and len(classifications) == 1
-        and len(health_checks) > 1
-        and all(
-            _has_structured_index_payload(record)
-            or all(key not in record for key in STRUCTURED_INDEX_KEYS)
-            for record in records
-        )
-    )
 
 
 def _index_duplicate_warning(
@@ -252,6 +231,7 @@ def _index_duplicate_warning(
     artifact_collision_rows = int(duplicate_summary.get("artifact_identity_collision_rows") or 0)
     artifact_collision_groups = int(duplicate_summary.get("artifact_identity_collision_groups") or 0)
     reward_overlay_rows = int(duplicate_summary.get("reward_overlay_rows") or 0)
+    structured_artifact_bundle_rows = int(duplicate_summary.get("structured_artifact_bundle_rows") or 0)
     if unexpected_rows:
         detail_parts.append(f"unexpected={unexpected_rows}")
     if repairable_rows:
@@ -262,6 +242,8 @@ def _index_duplicate_warning(
         detail_parts.append(f"artifact_collision_rows={artifact_collision_rows}")
     if reward_overlay_rows:
         detail_parts.append(f"reward_overlays={reward_overlay_rows}")
+    if structured_artifact_bundle_rows:
+        detail_parts.append(f"structured_artifact_bundles={structured_artifact_bundle_rows}")
     if not detail_parts and raw > unique:
         detail_parts.append(f"duplicates={raw - unique}")
     detail = f" {' '.join(detail_parts)}" if detail_parts else ""
@@ -572,13 +554,22 @@ def check_contract(
             duplicate_summary = _index_duplicate_summary(Path(str(item.get("index_path") or "")))
             if duplicate_summary.get("unexpected_duplicate_rows"):
                 warnings.append(_index_duplicate_warning(item.get("id"), raw, unique, duplicate_summary))
-            elif duplicate_summary.get("reward_overlay_rows"):
-                checks.append(
-                    f"{item.get('id')}: reward overlay rows raw={raw} unique={unique} "
-                    f"overlays={duplicate_summary.get('reward_overlay_rows')}"
-                )
             else:
-                warnings.append(_index_duplicate_warning(item.get("id"), raw, unique, duplicate_summary))
+                emitted_check = False
+                if duplicate_summary.get("reward_overlay_rows"):
+                    emitted_check = True
+                    checks.append(
+                        f"{item.get('id')}: reward overlay rows raw={raw} unique={unique} "
+                        f"overlays={duplicate_summary.get('reward_overlay_rows')}"
+                    )
+                if duplicate_summary.get("structured_artifact_bundle_rows"):
+                    emitted_check = True
+                    checks.append(
+                        f"{item.get('id')}: structured artifact bundle rows raw={raw} unique={unique} "
+                        f"bundles={duplicate_summary.get('structured_artifact_bundle_rows')}"
+                    )
+                if not emitted_check:
+                    warnings.append(_index_duplicate_warning(item.get("id"), raw, unique, duplicate_summary))
 
     boundary = scan_public_boundary(scan_roots, registry=registry)
     if boundary.get("ok"):
