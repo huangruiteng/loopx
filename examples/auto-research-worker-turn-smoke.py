@@ -335,6 +335,48 @@ def main() -> int:
         for successor_id in successor_ids:
             assert successor_id in state_text, state_text
         assert_public_safe(evaluator_summary)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp = Path(temp_dir)
+        project = temp / "project"
+        project.mkdir()
+        state_file = project / "ACTIVE_GOAL_STATE.md"
+        registry = temp / "registry.json"
+        runtime_root = temp / "runtime"
+        write_summary_state(state_file)
+        write_registry(registry, project=project, state_file=state_file, runtime_root=runtime_root)
+        generic_todo = add_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            role="agent",
+            text=(
+                "[P1] Fix auto-research completion projection after validated "
+                "promotion and holdout evidence."
+            ),
+            task_class="advancement_task",
+            claimed_by=EVALUATOR_AGENT_ID,
+            dry_run=False,
+        )
+        generic_todo_id = generic_todo["todo_id"]
+        append_real_fixture_evidence(registry=registry, runtime_root=runtime_root, temp=temp)
+        workspace = project / "visible-workspace"
+        workspace.mkdir()
+
+        generic_turn = run_worker_turn(
+            registry=registry,
+            runtime_root=runtime_root,
+            workspace=workspace,
+            agent_id=EVALUATOR_AGENT_ID,
+            execute=True,
+            complete=True,
+        )
+        assert generic_turn["mode"] == "unsupported_action", generic_turn
+        assert generic_turn["selected_action"] == "advance_todo", generic_turn
+        assert generic_turn["executed"] is False, generic_turn
+        state_text = state_file.read_text(encoding="utf-8")
+        assert f"todo_id={generic_todo_id} status=done" not in state_text, state_text
+        assert "satisfied_generic_handoff_closed" not in json.dumps(generic_turn), generic_turn
+        assert_public_safe(generic_turn)
     return 0
 
 

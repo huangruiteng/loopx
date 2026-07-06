@@ -49,17 +49,6 @@ SUPPORTED_WORKER_ACTIONS = {
     "write_evaluation_summary",
     "review_promotion_readiness",
 }
-GENERIC_VERIFIER_HANDOFF_KEYWORDS = (
-    "verify",
-    "verifier",
-    "validate",
-    "validation",
-    "evidence",
-    "holdout",
-    "promotion",
-    "promote",
-)
-
 AppendEvidence = Callable[[str], dict[str, object]]
 AUTO_RESEARCH_STATE_SUMMARY_MODE = "rollout_evidence_summary"
 AUTO_RESEARCH_MANUAL_RESEARCH_REQUIRED_MODE = "manual_research_required"
@@ -309,90 +298,6 @@ def _executed_successor_todo_ids(successor_todos: dict[str, object]) -> list[str
     return todo_ids
 
 
-def _generic_handoff_is_satisfied(
-    *,
-    selected: dict[str, object],
-    evidence_graph: dict[str, object],
-    decisions: dict[str, list[dict[str, object]]],
-) -> bool:
-    if not decisions.get("validated_promotion_candidates"):
-        return False
-    if not evidence_graph.get("holdout_improved"):
-        return False
-    selected_text = " ".join(
-        str(selected.get(key) or "")
-        for key in ("title", "mechanism_family", "source_kind", "todo_id")
-    ).lower()
-    return any(keyword in selected_text for keyword in GENERIC_VERIFIER_HANDOFF_KEYWORDS)
-
-
-def _maybe_close_satisfied_generic_handoff(
-    *,
-    registry_path: Path,
-    runtime_root_arg: str | None,
-    goal_id: str,
-    todo_id: str,
-    agent_id: str,
-    selected: dict[str, object],
-    action: str,
-    execute: bool,
-    complete_selected_todo: bool,
-    frontier_packet: dict[str, object],
-) -> dict[str, object] | None:
-    if action != "advance_todo":
-        return None
-    registry = load_registry(registry_path)
-    runtime_root = resolve_runtime_root(registry, runtime_root_arg)
-    graph = build_research_evidence_graph_from_rollout_events(
-        goal_id=goal_id,
-        rollout_events=load_rollout_events(rollout_event_log_path(runtime_root, goal_id)),
-    )
-    decisions = build_research_decision_candidates(graph)
-    if not _generic_handoff_is_satisfied(
-        selected=selected,
-        evidence_graph=graph,
-        decisions=decisions,
-    ):
-        return None
-
-    completion = (
-        _complete_selected_todo(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            todo_id=todo_id,
-            agent_id=agent_id,
-            action="satisfied_generic_handoff",
-            execute=True,
-        )
-        if execute and complete_selected_todo
-        else {"requested": complete_selected_todo, "executed": False}
-    )
-    return {
-        "ok": True,
-        "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
-        "mode": "execute" if execute else "dry_run",
-        "goal_id": goal_id,
-        "agent_id": agent_id,
-        "selected_todo_id": todo_id,
-        "selected_action": action,
-        "executed": bool(execute and complete_selected_todo),
-        "artifact_status": "satisfied_generic_handoff_closed",
-        "decision_summary": {
-            "validated_promotion_candidate_count": len(decisions.get("validated_promotion_candidates") or []),
-            "holdout_improved": bool(graph.get("holdout_improved")),
-        },
-        "completion": completion,
-        "frontier": frontier_packet,
-        "public_boundary": {
-            "source": "rollout_event_log_and_todo_projection",
-            "raw_logs_recorded": False,
-            "private_artifacts_recorded": False,
-            "absolute_paths_recorded": False,
-            "credentials_recorded": False,
-        },
-    }
-
-
 def _complete_selected_todo(
     *,
     registry_path: Path,
@@ -541,20 +446,6 @@ def run_auto_research_worker_turn(
             "executed": False,
             "frontier": frontier_packet,
         }
-    cleanup = _maybe_close_satisfied_generic_handoff(
-        registry_path=registry_path,
-        runtime_root_arg=runtime_root_arg,
-        goal_id=goal_id,
-        todo_id=todo_id,
-        agent_id=agent_id,
-        selected=selected,
-        action=action,
-        execute=execute,
-        complete_selected_todo=complete_selected_todo,
-        frontier_packet=frontier_packet,
-    )
-    if cleanup is not None:
-        return cleanup
     if action not in SUPPORTED_WORKER_ACTIONS:
         return {
             "ok": True,
