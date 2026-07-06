@@ -73,6 +73,7 @@ association, timestamp, and URL metadata, then emits either
 | `github_public_reply_monitor` | implemented starter | yes | none |
 | `social_browser_x` | ego-browser-backed profile | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
 | `finance_market_snapshot` | probed candidate profile | plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
+| `agent_reach_ops_source_map` | field-derived pattern | [read-only source-map profile](agent-reach-ops-source-map.md) | publish/audit record required for every external write |
 | `botmail_identity` | host connector profile | install-check only | exact send gate required |
 | `community_channel` | host/browser connector profile | install-check and plan | exact account/message gate required |
 
@@ -130,6 +131,20 @@ install-check -> metadata probe -> value connector plan -> approval gate -> host
 LoopX owns the compact control packet and value metric. Host products or user
 connectors own account login, private reads, external sends, and production
 actions.
+
+## Agent-Reach Ops Source Map
+
+`agent_reach_ops_source_map` is a reusable field pattern for connector-backed
+content operations. Agent-Reach is used as a source router: first run
+`agent-reach doctor --json`, then collect read-only signals from available
+routes such as GitHub, public web/RSS, V2EX, or Bilibili. LoopX stores compact
+evidence cards, maturity scores, the ops brief, draft packet, publish/audit
+record, and monitor state.
+
+This profile is intentionally source-first and action-gated. Broad posting
+discretion does not remove the need to record exact body, channel/account,
+time, source refs, and stop conditions. See the
+[Agent-Reach ops source-map profile](agent-reach-ops-source-map.md).
 
 ## Finance Market Snapshot Profile
 
