@@ -27,6 +27,7 @@ from .worker_loop import run_auto_research_worker_loop
 from ..multi_agent.collective_round_ledger import (
     build_multi_agent_collective_round_ledger,
 )
+from ...control_plane.todos.contract import normalize_required_write_scopes
 
 
 AppendEvidence = Callable[[str], dict[str, object]]
@@ -46,6 +47,7 @@ AUTO_RESEARCH_SEED_ACTION_ORDER = {
 AUTO_RESEARCH_SEED_PREREQUISITE_ACTION_BY_ACTION = dict(
     zip(AUTO_RESEARCH_SEED_ACTION_CHAIN[1:], AUTO_RESEARCH_SEED_ACTION_CHAIN)
 )
+AUTO_RESEARCH_DEMO_CONTROL_WRITE_SCOPE = ("examples/**", "experiments/**", ".local/**")
 
 
 def _prepare_visible_demo_workspace_route(
@@ -94,12 +96,24 @@ def _prepare_visible_demo_workspace_route(
     }
 
 
+def _visible_demo_goal_write_scope(
+    preset_context: dict[str, object] | None,
+) -> list[str]:
+    scopes = list(AUTO_RESEARCH_DEMO_CONTROL_WRITE_SCOPE)
+    if isinstance(preset_context, dict):
+        scopes.extend(
+            normalize_required_write_scopes(preset_context.get("editable_scope"))
+        )
+    return list(dict.fromkeys(scopes))
+
+
 def _seed_visible_demo_control_plane(
     *,
     demo_root: Path,
     goal_id: str,
     objective: str,
     supervisor: dict[str, object],
+    preset_context: dict[str, object] | None = None,
 ) -> tuple[dict[str, object], Path, str]:
     """Create a tiny demo-local LoopX queue for visible workers."""
 
@@ -128,7 +142,7 @@ def _seed_visible_demo_control_plane(
         spawn_allowed=True,
         max_children=4,
         allowed_domains=["auto-research-demo"],
-        write_scope=["examples/**", "experiments/**", ".local/**"],
+        write_scope=_visible_demo_goal_write_scope(preset_context),
         claim_ttl_minutes=60,
         onboarding_scan_enabled=False,
         accept_onboarding_agent_todos=False,
@@ -1404,6 +1418,7 @@ def run_auto_research_demo_e2e(
                     goal_id=goal_id,
                     objective=objective,
                     supervisor=supervisor,
+                    preset_context=preset_context,
                 )
                 payload["visible_control_plane"] = visible_control
             return visible_control, visible_registry_path, visible_runtime_root_arg
