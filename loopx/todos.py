@@ -45,15 +45,14 @@ from .control_plane.todos.contract import (
     todo_marker_for_status,
 )
 from .control_plane.todos.active_state_editing import (
-    COMPLETED_WORK_ARCHIVE_HEADING,
     TODO_SECTION_HEADINGS,
-    insert_archive_blocks,
     insert_into_existing_section,
     insert_new_section,
     replace_updated_at,
     section_bounds,
     todo_blocks,
 )
+from .control_plane.todos.completed_archive import archive_completed_todo_lines
 from .control_plane.todos.completion_policy import (
     linked_successor_from_todo,
     resolve_completion_policy,
@@ -1669,49 +1668,15 @@ def archive_completed_todos(
     with exclusive_file_lock(resolved_state_file):
         original = resolved_state_file.read_text(encoding="utf-8")
         lines = original.splitlines()
-        bounds = section_bounds(lines, role)
-        section = bounds[2] if bounds else TODO_SECTION_HEADINGS[role]
-        moved_blocks: list[list[str]] = []
-        active_done_count = 0
-        moved_count = 0
-        kept_done_count = 0
-
-        if bounds:
-            blocks = todo_blocks(lines, bounds[0], bounds[1], role=role, source_section=section)
-            done_blocks = [block for block in blocks if block.get("done") is True]
-            active_done_count = len(done_blocks)
-            move_count = max(0, active_done_count - max_active_done)
-            move_starts = {int(block["start"]) for block in done_blocks[:move_count]}
-            kept_done_count = active_done_count - move_count
-            for block in done_blocks[:move_count]:
-                moved_blocks.append(lines[int(block["start"]) : int(block["end"])])
-            if move_starts:
-                new_lines: list[str] = []
-                index = 0
-                while index < len(lines):
-                    if index in move_starts:
-                        matching = next(
-                            block
-                            for block in done_blocks[:move_count]
-                            if int(block["start"]) == index
-                        )
-                        index = int(matching["end"])
-                        while (
-                            new_lines
-                            and not new_lines[-1].strip()
-                            and index < len(lines)
-                            and not lines[index].strip()
-                        ):
-                            index += 1
-                        continue
-                    new_lines.append(lines[index])
-                    index += 1
-                lines = new_lines
-                insert_archive_blocks(lines, moved_blocks)
-                moved_count = move_count
+        archive_result = archive_completed_todo_lines(
+            lines,
+            role=role,
+            max_active_done=max_active_done,
+        )
+        lines = archive_result.pop("lines")
 
         updated_at = now_local()
-        changed = moved_count > 0
+        changed = bool(archive_result["changed"])
         new_text = "\n".join(lines) + ("\n" if original.endswith("\n") else "")
         if changed:
             new_text = replace_updated_at(new_text, updated_at)
@@ -1721,15 +1686,8 @@ def archive_completed_todos(
     return {
         "ok": True,
         "dry_run": dry_run,
-        "changed": changed,
         "goal_id": goal_id,
-        "role": role,
-        "section": section,
-        "archive_section": COMPLETED_WORK_ARCHIVE_HEADING,
-        "active_done_before": active_done_count,
-        "active_done_after": kept_done_count,
-        "max_active_done": max_active_done,
-        "moved_count": moved_count,
+        **archive_result,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,
