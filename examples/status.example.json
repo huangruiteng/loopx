@@ -1,9 +1,9 @@
 {
   "ok": true,
-  "registry": "./fixtures/project-registry.json",
-  "runtime_root": "./runtime",
-  "goal_count": 4,
-  "run_count": 3,
+  "registry": "$HOME/.codex/loopx/registry.global.json",
+  "runtime_root": "$HOME/.codex/loopx",
+  "goal_count": 1,
+  "run_count": 8440,
   "status_contract": {
     "schema_version": 2,
     "minimum_dashboard_schema_version": 2,
@@ -13,51 +13,39 @@
   "usage_summary": {
     "available": true,
     "source": "run_history",
-    "generated_at": "2026-06-01T00:10:00+00:00",
-    "sample_run_count": 3,
+    "generated_at": "2026-07-06T06:49:06.471166+00:00",
+    "sample_run_count": 20,
     "proxy_note": "run-history proxy; excludes token counts and raw thread logs",
     "totals": {
-      "runs_24h": 3,
-      "runs_7d": 3,
-      "quota_spend_slots_24h": 0,
-      "quota_spend_slots_7d": 0,
-      "automation_run_count_24h": 0,
-      "automation_run_count_7d": 0,
-      "progress_signal_run_count_24h": 3,
-      "progress_signal_run_count_7d": 3
+      "runs_24h": 20,
+      "runs_7d": 20,
+      "quota_spend_slots_24h": 11,
+      "quota_spend_slots_7d": 11,
+      "automation_run_count_24h": 11,
+      "automation_run_count_7d": 11,
+      "progress_signal_run_count_24h": 9,
+      "progress_signal_run_count_7d": 9
     },
     "goals": [
       {
-        "goal_id": "complex-project-main-control",
-        "runs_24h": 2,
-        "runs_7d": 2,
-        "quota_spend_slots_24h": 0,
-        "quota_spend_slots_7d": 0,
-        "automation_run_count_24h": 0,
-        "automation_run_count_7d": 0,
-        "progress_signal_run_count_24h": 2,
-        "progress_signal_run_count_7d": 2,
-        "project_share_24h": 0.667
-      },
-      {
-        "goal_id": "experiment-controller-goal",
-        "runs_24h": 1,
-        "runs_7d": 1,
-        "quota_spend_slots_24h": 0,
-        "quota_spend_slots_7d": 0,
-        "automation_run_count_24h": 0,
-        "automation_run_count_7d": 0,
-        "progress_signal_run_count_24h": 1,
-        "progress_signal_run_count_7d": 1,
-        "project_share_24h": 0.333
+        "goal_id": "loopx-meta",
+        "runs_24h": 20,
+        "runs_7d": 20,
+        "quota_spend_slots_24h": 11,
+        "quota_spend_slots_7d": 11,
+        "automation_run_count_24h": 11,
+        "automation_run_count_7d": 11,
+        "progress_signal_run_count_24h": 9,
+        "progress_signal_run_count_7d": 9,
+        "project_share_24h": 1.0
       }
     ]
   },
   "event_ledger_summary": {
     "available": true,
     "source": "run_history",
-    "generated_at": "2026-06-01T00:10:00+00:00",
-    "sample_run_count": 3,
+    "generated_at": "2026-07-06T06:49:06.360662+00:00",
+    "sample_run_count": 20,
     "proxy_note": "append-only run-history projection; compact event-class counts only",
     "event_classes": [
       "accounting",
@@ -67,93 +55,77 @@
       "work"
     ],
     "totals": {
-      "events_24h": 3,
-      "events_7d": 3,
+      "events_24h": 20,
+      "events_7d": 20,
+      "benchmark_runs_24h": 0,
+      "benchmark_runs_7d": 0,
       "by_class_24h": {
-        "accounting": 0,
-        "decision": 1,
-        "evidence": 1,
+        "accounting": 11,
+        "decision": 0,
+        "evidence": 0,
         "state": 0,
-        "work": 1
+        "work": 9
       },
       "by_class_7d": {
-        "accounting": 0,
-        "decision": 1,
-        "evidence": 1,
+        "accounting": 11,
+        "decision": 0,
+        "evidence": 0,
         "state": 0,
-        "work": 1
+        "work": 9
       }
     },
     "goals": [
       {
-        "goal_id": "complex-project-main-control",
-        "events_24h": 2,
-        "events_7d": 2,
+        "goal_id": "loopx-meta",
+        "events_24h": 20,
+        "events_7d": 20,
+        "benchmark_runs_24h": 0,
+        "benchmark_runs_7d": 0,
         "by_class_24h": {
-          "accounting": 0,
-          "decision": 1,
+          "accounting": 11,
+          "decision": 0,
           "evidence": 0,
           "state": 0,
-          "work": 1
+          "work": 9
         },
         "by_class_7d": {
-          "accounting": 0,
-          "decision": 1,
+          "accounting": 11,
+          "decision": 0,
           "evidence": 0,
           "state": 0,
-          "work": 1
+          "work": 9
         },
-        "latest_event_class": "decision",
-        "latest_event_at": "2026-05-31T21:15:00+00:00"
-      },
-      {
-        "goal_id": "experiment-controller-goal",
-        "events_24h": 1,
-        "events_7d": 1,
-        "by_class_24h": {
-          "accounting": 0,
-          "decision": 0,
-          "evidence": 1,
-          "state": 0,
-          "work": 0
-        },
-        "by_class_7d": {
-          "accounting": 0,
-          "decision": 0,
-          "evidence": 1,
-          "state": 0,
-          "work": 0
-        },
-        "latest_event_class": "evidence",
-        "latest_event_at": "2026-05-31T20:44:00+00:00"
+        "latest_event_class": "accounting",
+        "latest_event_at": "2026-07-06T14:37:32+08:00",
+        "latest_benchmark_run": null
       }
     ]
   },
   "promotion_readiness_summary": {
     "available": true,
-    "source": "run_history",
+    "source": "run_history_full_scan",
     "goal_id": "loopx-meta",
-    "generated_at": "2026-06-01T00:08:00+00:00",
+    "generated_at": "2026-07-05T20:02:02+08:00",
     "classification": "canary_promotion_readiness_smoke_group",
     "delivery_batch_scale": "multi_surface",
     "delivery_outcome": "primary_goal_outcome",
-    "recommended_action": "Run the promotion readiness smoke before release promotion.",
+    "recommended_action": "Canary promotion-readiness smoke passed; promotion may proceed after doctor/status reports fresh evidence.",
     "json_exists": true,
     "markdown_exists": true,
     "freshness_window_hours": 24,
     "freshness_status": "fresh",
     "is_fresh": true,
     "requires_readiness_run": false,
-    "age_seconds": 120,
-    "age_hours": 0.03,
-    "freshness_reference_time": "2026-06-01T00:10:00+00:00",
-    "sample_run_count": 1,
+    "age_seconds": 67624,
+    "age_hours": 18.78,
+    "freshness_reference_time": "2026-07-06T06:49:06.408527+00:00",
+    "sample_run_count": 0,
     "proxy_note": "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
   },
   "promotion_gate": {
     "ok": true,
-    "registry": "./fixtures/project-registry.json",
-    "runtime_root": "./runtime",
+    "registry": "$HOME/.codex/loopx/registry.global.json",
+    "runtime_root": "$HOME/.codex/loopx",
     "gate": "promotion_readiness",
     "gate_state": "ready",
     "can_promote": true,
@@ -162,149 +134,289 @@
     "recommended_action": "promotion readiness is fresh",
     "readiness": {
       "available": true,
-      "source": "run_history",
       "goal_id": "loopx-meta",
-      "generated_at": "2026-06-01T00:08:00+00:00",
+      "generated_at": "2026-07-05T20:02:02+08:00",
       "classification": "canary_promotion_readiness_smoke_group",
       "delivery_batch_scale": "multi_surface",
       "delivery_outcome": "primary_goal_outcome",
-      "recommended_action": "Run the promotion readiness smoke before release promotion.",
+      "recommended_action": "Canary promotion-readiness smoke passed; promotion may proceed after doctor/status reports fresh evidence.",
       "json_exists": true,
       "markdown_exists": true,
+      "runtime_root": "$HOME/.codex/loopx",
       "freshness_window_hours": 24,
       "freshness_status": "fresh",
       "is_fresh": true,
       "requires_readiness_run": false,
-      "age_seconds": 120,
-      "age_hours": 0.03,
-      "freshness_reference_time": "2026-06-01T00:10:00+00:00",
-      "sample_run_count": 1,
-      "proxy_note": "canary promotion-readiness projection from append-only run history; exact evidence stays in run artifacts"
+      "age_seconds": 67624,
+      "age_hours": 18.78,
+      "freshness_reference_time": "2026-07-06T06:49:06.471087+00:00"
     }
   },
   "decision_freshness_summary": {
     "available": true,
     "source": "run_history",
-    "generated_at": "2026-06-01T00:10:00+00:00",
-    "sample_run_count": 3,
+    "generated_at": "2026-07-06T06:49:06.471133+00:00",
+    "sample_run_count": 20,
     "window_days": 7,
     "proxy_note": "checkpointed decision freshness projection; rebase old decisions at the decision point before reuse",
     "summary": {
-      "decision_count": 1,
+      "decision_count": 0,
       "stale_count": 0,
-      "rebase_required_count": 1,
+      "rebase_required_count": 0,
       "fresh_count": 0
     },
-    "items": [
-      {
-        "goal_id": "complex-project-main-control",
-        "decision_kind": "operator_gate",
-        "decision_at": "2026-05-31T21:15:00+00:00",
-        "classification": "operator_gate_approved",
-        "age_days": 0.13,
-        "stale_by_age": false,
-        "newer_event_count_7d": 1,
-        "newer_event_classes_7d": {
-          "accounting": 0,
-          "decision": 0,
-          "evidence": 0,
-          "state": 0,
-          "work": 1
-        },
-        "freshness_state": "rebase_required",
-        "requires_decision_point_rebase": true,
-        "reason": "newer sampled events exist after decision; rebase at decision point"
-      }
-    ]
+    "items": []
   },
   "todo_index": {
     "schema_version": "todo_index_v0",
-    "source": "synthetic_public_example",
-    "total_count": 3,
-    "current_projected_count": 3,
-    "rollout_event_count": 7,
-    "item_limit": 20,
+    "source": "live_loopx_status_public_slice",
+    "total_count": 12,
+    "current_projected_count": 12,
+    "rollout_event_count": 94,
+    "item_limit": 12,
     "items": [
       {
-        "goal_id": "docs-maintenance-goal",
-        "index": 1,
+        "goal_id": "loopx-meta",
+        "index": 0,
         "done": false,
-        "text": "Run the first read-only adapter tick and save a compact run record.",
-        "schema_version": "todo_item_v0",
-        "todo_id": "todo_example_docs_tick",
+        "text": "todo update recorded for todo_1596c3a678bb",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_1596c3a678bb",
         "role": "agent",
         "status": "open",
-        "priority": "P0",
-        "title": "Run first read-only adapter tick",
-        "source_section": "agent_todos",
-        "task_class": "advancement_task",
-        "action_kind": "read_only_adapter_tick",
-        "claimed_by": "codex-main-control",
+        "title": "todo update recorded for todo_1596c3a678bb",
+        "source": "rollout_event_log",
         "agent_id": "codex-main-control",
-        "evidence": "latest_validation: connected_without_run",
-        "updated_at": "2026-06-01T00:09:00+00:00",
-        "latest_event_kind": "todo_claimed",
-        "latest_event_at": "2026-06-01T00:09:00+00:00",
+        "latest_event_kind": "todo_update",
+        "latest_event_at": "2026-07-06T06:33:32Z",
         "latest_event_status": "open",
-        "event_count": 2,
+        "event_count": 7,
         "event_kinds": [
-          "todo_added",
-          "todo_claimed"
+          "todo_update"
         ]
       },
       {
-        "goal_id": "experiment-controller-goal",
-        "index": 1,
+        "goal_id": "loopx-meta",
+        "index": 24,
         "done": false,
-        "text": "Compare the latest reward signal with validation evidence, then propose the next experiment step.",
-        "schema_version": "todo_item_v0",
-        "todo_id": "todo_example_experiment_replan",
+        "text": "Monitor ArcticDB #3179 LoopX comment https://github.com/man-group/ArcticDB/issues/3179#issuecomment-4797835630 for metadata-only maintainer reply signal; do not read private material or reply again without owner approva…",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_15bc0926a494",
+        "role": "agent",
+        "status": "open",
+        "priority": "P0-REVENUE MONITOR",
+        "title": "Monitor ArcticDB #3179 LoopX comment https://github.com/man-group/ArcticDB/issues/3179#issuecomment-4797835630 for metadata-only maintainer reply signal; do not read private material or reply again without owner approva…",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "continuous_monitor",
+        "action_kind": "github_public_reply_metadata_monitor",
+        "claimed_by": "codex-value-explorer",
+        "evidence": "autonomous replan: bounded current value-explorer monitor lane with explicit expires_at.",
+        "note": "Set bounded watch expiry for metadata-only public reply monitor; no catch-up after expiry.",
+        "updated_at": "2026-07-05T06:27:15+08:00"
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 17,
+        "done": false,
+        "text": "Block direct merge of legacy PR #199 until it is rebased/rewritten onto LoopX: rename goal_harness paths/imports and goal-harness CLI strings to loopx, rerun launch-artifact-handle smoke, and verify it does not reintrod…",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_2bf560b48a0c",
         "role": "agent",
         "status": "open",
         "priority": "P0",
-        "title": "Replan next comparable experiment",
-        "source_section": "agent_todos",
-        "task_class": "replan_task",
-        "action_kind": "evidence_aware_replan",
-        "claimed_by": "codex-value-explorer",
+        "title": "Block direct merge of legacy PR #199 until it is rebased/rewritten onto LoopX: rename goal_harness paths/imports and goal-harness CLI strings to loopx, rerun launch-artifact-handle smoke, and verify it does not reintrod…",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "blocker",
+        "action_kind": "legacy_open_pr_rename_blocker",
+        "claimed_by": "codex-main-control"
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 23,
+        "done": false,
+        "text": "Fix or bypass local SkillsBench Docker verifier reward collection before using local fallback for canonical base/test comparison; organize-messy-files base on merged #668 reached final verifier but produced empty verifi…",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_3ed1c4a69164",
+        "role": "agent",
+        "status": "open",
+        "priority": "P0",
+        "title": "Fix or bypass local SkillsBench Docker verifier reward collection before using local fallback for canonical base/test comparison; organize-messy-files base on merged #668 reached final verifier but produced empty verifi…",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "blocker",
+        "action_kind": "skillsbench_local_verifier_reward_collection",
+        "claimed_by": "codex-main-control",
+        "required_capabilities": [
+          "benchmark_runner"
+        ]
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 32,
+        "done": false,
+        "text": "Rerun SkillsBench raw vs loopx-goal-start-product-mode on citation-check and powerlifting with PR #779 merged; inspect compact public counters for soft_verify_exception_continued, probe_operation_count, task-facing solv…",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_44907a5f355d",
+        "role": "agent",
+        "status": "blocked",
+        "priority": "P0",
+        "title": "Rerun SkillsBench raw vs loopx-goal-start-product-mode on citation-check and powerlifting with PR #779 merged; inspect compact public counters for soft_verify_exception_continued, probe_operation_count, task-facing solv…",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "advancement_task",
+        "action_kind": "skillsbench_goal_start_raw_new_rerun",
+        "claimed_by": "codex-main-control",
+        "evidence": "Public-safe redacted live LoopX text; inspect local status for the full row.",
+        "note": "Do not spend a full citation-check loopx rerun yet: #865 fixed scored output paths and #874 added bootstrap preflight attribution, but citation-check itself still preflights as apt+verifier bootstrap risk on ECS.",
+        "updated_at": "2026-06-29T00:49:36+08:00"
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 39,
+        "done": false,
+        "text": "Run the next SkillsBench loopx-goal-start-product-mode reverse-channel case on latest main (no local Docker), prioritizing a currently bad or uncertain case, then update the public case ledger and true LoopX issue analy…",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_4762c790e583",
+        "role": "agent",
+        "status": "blocked",
+        "priority": "P0",
+        "title": "Run the next SkillsBench loopx-goal-start-product-mode reverse-channel case on latest main (no local Docker), prioritizing a currently bad or uncertain case, then update the public case ledger and true LoopX issue analy…",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "advancement_task",
+        "action_kind": "skillsbench_goal_start_remote_rerun",
+        "claimed_by": "codex-main-control",
+        "evidence": "PR #894 merged db7a5c6b; validation: py_compile, examples/skillsbench-benchmark-run-smoke.py, examples/skillsbench-host-local-launch-plan-smoke.py; main synced clean. Next: rerun a setup-stable SkillsBench bad/uncertain…",
+        "note": "2026-06-29: fixed host-local ACP idle/no-output root cause in PR #894. ACP protocol tool_call_count=0 is now distinguished from reverse-channel task-facing bridge activity; repeated codex_exec_bridge_idle_timeout withou…",
+        "updated_at": "2026-06-29T19:40:32+08:00"
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 0,
+        "done": false,
+        "text": "todo add recorded for todo_584f55f8f3b4",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_584f55f8f3b4",
+        "role": "agent",
+        "status": "open",
+        "title": "todo add recorded for todo_584f55f8f3b4",
+        "source": "rollout_event_log",
         "agent_id": "codex-value-explorer",
-        "evidence": "event_ledger_summary: evidence+decision present",
-        "updated_at": "2026-06-01T00:06:00+00:00",
-        "latest_event_kind": "todo_updated",
-        "latest_event_at": "2026-06-01T00:06:00+00:00",
+        "latest_event_kind": "todo_update",
+        "latest_event_at": "2026-07-06T06:48:49Z",
         "latest_event_status": "open",
         "event_count": 3,
         "event_kinds": [
-          "todo_added",
-          "evidence_attached",
-          "todo_updated"
+          "todo_add",
+          "todo_update"
         ]
       },
       {
-        "goal_id": "release-watch-goal",
-        "index": 1,
+        "goal_id": "loopx-meta",
+        "index": 40,
         "done": false,
-        "text": "Poll the release-readiness monitor only when due and record unchanged evidence without spending quota.",
-        "schema_version": "todo_item_v0",
-        "todo_id": "todo_example_release_monitor",
+        "text": "Monitor r10 SkillsBench 30-case codex-app-server-goal-baseline batch, summarize completed compact results into the common case ledger, and stop/repair if setup/bootstrap creates new non-solver blockers.",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_62debf065fec",
+        "role": "agent",
+        "status": "blocked",
+        "priority": "P0 MONITOR",
+        "title": "Monitor r10 SkillsBench 30-case codex-app-server-goal-baseline batch, summarize completed compact results into the common case ledger, and stop/repair if setup/bootstrap creates new non-solver blockers.",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "continuous_monitor",
+        "action_kind": "monitor_skillsbench_batch",
+        "claimed_by": "codex-main-control",
+        "evidence": "Observed 2026-06-30T02:52+08: active-state target_key=skillsbench-goal-baseline-30case-20260629T1826Z-r10; local ps/tmux/recent artifact search found no r10 batch process or compact artifact; no raw task/log/trajectory …",
+        "updated_at": "2026-06-30T02:54:54+08:00"
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 0,
+        "done": false,
+        "text": "todo add recorded for todo_93bc6439c521",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_93bc6439c521",
         "role": "agent",
         "status": "open",
-        "priority": "P1",
-        "title": "Poll release-readiness monitor",
-        "source_section": "agent_todos",
-        "task_class": "continuous_monitor",
-        "action_kind": "monitor_poll",
-        "claimed_by": "codex-release-operator",
-        "agent_id": "codex-release-operator",
-        "evidence": "monitor: unchanged hash example",
-        "updated_at": "2026-06-01T00:04:00+00:00",
-        "latest_event_kind": "monitor_poll",
-        "latest_event_at": "2026-06-01T00:04:00+00:00",
-        "latest_event_status": "unchanged",
+        "title": "todo add recorded for todo_93bc6439c521",
+        "source": "rollout_event_log",
+        "agent_id": "codex-main-control",
+        "latest_event_kind": "todo_claim",
+        "latest_event_at": "2026-07-06T06:32:52Z",
+        "latest_event_status": "open",
         "event_count": 2,
         "event_kinds": [
-          "todo_added",
-          "monitor_poll"
+          "todo_add",
+          "todo_claim"
+        ]
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 27,
+        "done": false,
+        "text": "Run the SkillsBench two-arm comparison after the goal-start route is countable: raw Codex vs new loopx-goal-start-product-mode, reporting task_score/control_score/time and compact public-safe LoopX todo rollout evidence.",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_aad7e9716927",
+        "role": "agent",
+        "status": "blocked",
+        "priority": "P0",
+        "title": "Run the SkillsBench two-arm comparison after the goal-start route is countable: raw Codex vs new loopx-goal-start-product-mode, reporting task_score/control_score/time and compact public-safe LoopX todo rollout evidence.",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "advancement_task",
+        "action_kind": "run_goal_start_product_mode_matrix",
+        "claimed_by": "codex-main-control",
+        "evidence": "driver.status shows DONE raw then RUN loopx-goal-start with no running driver; raw benchmark_run.compact first_blocker=skillsbench_codex_acp_provider_zero_activity; source guard requires --host-local-acp-launch for Loop…",
+        "note": "Remote run group skillsbench-raw-new-goal-start-20260627T0420Z produced a material closeout for citation-check raw only; raw compact attribution is skillsbench_codex_acp_provider_zero_activity with official score missin…",
+        "updated_at": "2026-06-27T13:05:47+08:00"
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 21,
+        "done": false,
+        "text": "Observe remote official SkillsBench powerlifting-coef-calc base/test runtime-layer mountfix pair skillsbench-powerlifting-coef-calc-remote-canonical-runtime-mountfix-pair-20260623T022028Z: use compact/public artifacts o…",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_aec1873c7f28",
+        "role": "agent",
+        "status": "open",
+        "priority": "P0 MONITOR",
+        "title": "Observe remote official SkillsBench powerlifting-coef-calc base/test runtime-layer mountfix pair skillsbench-powerlifting-coef-calc-remote-canonical-runtime-mountfix-pair-20260623T022028Z: use compact/public artifacts o…",
+        "archive_state": "active",
+        "source_section": "Agent Todo",
+        "source": "attention_queue",
+        "task_class": "continuous_monitor",
+        "claimed_by": "codex-main-control",
+        "note": "2026-06-23 projection fix: this is monitor context for the powerlifting run, not an advancement next action; current executable path is SkillsBench build cache/prewarm repair.",
+        "updated_at": "2026-06-23T10:37:43+08:00"
+      },
+      {
+        "goal_id": "loopx-meta",
+        "index": 0,
+        "done": false,
+        "text": "todo add recorded for todo_c02cb7d19607",
+        "schema_version": "todo_index_item_v0",
+        "todo_id": "todo_c02cb7d19607",
+        "role": "agent",
+        "status": "open",
+        "title": "todo add recorded for todo_c02cb7d19607",
+        "source": "rollout_event_log",
+        "agent_id": "codex-value-explorer",
+        "latest_event_kind": "todo_add",
+        "latest_event_at": "2026-07-06T03:47:54Z",
+        "latest_event_status": "open",
+        "event_count": 1,
+        "event_kinds": [
+          "todo_add"
         ]
       }
     ]
@@ -313,51 +425,111 @@
     "schema_version": "agent_management_projection_v0",
     "mode": "read_only",
     "goal_id": "loopx-meta",
-    "generated_at": "2026-06-01T00:10:00+00:00",
-    "summary": {
-      "projected_agent_count": 1,
-      "todo_source": "synthetic_public_example"
+    "generated_at": "2026-07-06T06:49:06Z",
+    "style_hint": null,
+    "truth_contract": {
+      "todo_is_runtime_work_item": true,
+      "projection_is_writable": false,
+      "introduces_task_runtime": false,
+      "write_api": false
+    },
+    "source_summary": {
+      "registered_agent_count": 4,
+      "projected_agent_count": 4,
+      "todo_source": "live_loopx_status_public_slice",
+      "public_safe_export": true
     },
     "agents": [
       {
-        "agent_id": "codex-value-explorer",
-        "role": "side-agent",
-        "state": "active",
+        "agent_id": "codex-main-control",
+        "role": "primary",
+        "state": "blocked",
+        "next_action": "Continue projected todo todo_2bf560b48a0c.",
+        "last_activity_at": "2026-06-29T00:49:36+08:00",
+        "evidence_refs": [
+          "todo:todo_e72afc24f04a:evidence"
+        ],
+        "goal_ids": [
+          "loopx-meta"
+        ],
+        "stale_claim_hint": {
+          "state": "activity_missing",
+          "claimed_by": "codex-main-control",
+          "reason": "claimed open todo has no projected activity timestamp",
+          "recommended_operator_action": "inspect evidence before considering reassignment"
+        },
         "current_todo": {
-          "schema_version": "agent_management_todo_row_v0",
-          "todo_id": "todo_example_experiment_replan",
-          "goal_id": "experiment-controller-goal",
+          "schema_version": "todo_row_v0",
+          "todo_id": "todo_2bf560b48a0c",
+          "goal_id": "loopx-meta",
           "role": "agent",
           "status": "open",
           "priority": "P0",
-          "title": "Replan next comparable experiment",
-          "task_class": "replan_task",
-          "action_kind": "evidence_aware_replan",
-          "claimed_by": "codex-value-explorer"
-        },
-        "next_action": "Review the handoff note, then continue from the evidence-aware replan todo.",
-        "last_activity_at": "2026-06-01T00:10:00+00:00",
+          "title": "Block direct merge of legacy PR #199 until it is rebased/rewritten onto LoopX: rename goal_harn…",
+          "task_class": "blocker",
+          "action_kind": "legacy_open_pr_rename_blocker",
+          "claimed_by": "codex-main-control"
+        }
+      },
+      {
+        "agent_id": "codex-product-capability",
+        "role": "side-agent",
+        "state": "monitoring",
+        "next_action": "Continue projected todo todo_ded745761822.",
+        "last_activity_at": "2026-07-06T06:29:53Z",
         "evidence_refs": [
-          "event_ledger_summary: evidence+decision present"
+          "todo:todo_ded745761822:evidence"
         ],
-        "handoff_refs": [
-          "handoff_note_v0:todo_example_experiment_replan"
-        ],
-        "handoff_note": {
-          "schema_version": "handoff_note_v0",
-          "from_agent": "codex-main-control",
-          "to_agent": "codex-value-explorer",
-          "intent": "display_only_replan_context",
-          "summary": "Use the local evidence timeline before replanning; keep the dashboard read-only.",
-          "suggested_next_action": "Continue from the current replan todo after checking compact evidence.",
-          "evidence_refs": [
-            "todo_example_experiment_replan"
-          ],
-          "updated_at": "2026-06-01T00:10:00+00:00"
-        },
         "goal_ids": [
-          "experiment-controller-goal"
+          "loopx-meta"
+        ],
+        "current_todo": {
+          "schema_version": "todo_row_v0",
+          "todo_id": "todo_ded745761822",
+          "goal_id": "loopx-meta",
+          "role": "agent",
+          "status": "open",
+          "priority": "P0-LOCAL",
+          "title": "Public-safe redacted live LoopX text; inspect local status for the full row.",
+          "task_class": "continuous_monitor",
+          "action_kind": "Public-safe redacted live LoopX text; inspect local status for the full row.",
+          "claimed_by": "codex-product-capability",
+          "updated_at": "2026-07-04T20:22:45+08:00"
+        }
+      },
+      {
+        "agent_id": "codex-side-bypass",
+        "role": "side-agent",
+        "state": "waiting",
+        "next_action": "Inspect status projection before taking work.",
+        "last_activity_at": "2026-07-06T06:32:16Z",
+        "evidence_refs": [
+          "rollout_event:todo_complete:todo_22c946938115"
+        ],
+        "goal_ids": [
+          "loopx-meta"
         ]
+      },
+      {
+        "agent_id": "codex-value-explorer",
+        "role": "side-agent",
+        "state": "monitoring",
+        "next_action": "Continue projected todo todo_584f55f8f3b4.",
+        "last_activity_at": "2026-07-06T09:39:59+08:00",
+        "evidence_refs": [
+          "rollout_event:todo_update:todo_584f55f8f3b4"
+        ],
+        "goal_ids": [
+          "loopx-meta"
+        ],
+        "current_todo": {
+          "schema_version": "todo_row_v0",
+          "todo_id": "todo_584f55f8f3b4",
+          "goal_id": "loopx-meta",
+          "role": "agent",
+          "status": "open",
+          "title": "todo add recorded for todo_584f55f8f3b4"
+        }
       }
     ]
   },
@@ -365,435 +537,499 @@
     "ok": true,
     "summary": {
       "errors": 0,
-      "warnings": 0,
-      "checks": 4
+      "warnings": 1,
+      "checks": 6
     },
     "errors": [],
-    "warnings": [],
+    "warnings": [
+      "loopx-meta: duplicate index rows raw=8444 unique=8440 unexpected=3 artifact_identity_collisions=2 artifact_collision_rows=3 reward_overlays=1; inspect with `loopx history --goal-id loopx-meta inspect-index-duplicates`; artifact identity collisions need review…"
+    ],
     "checks": [
-      "registry goals checked: 4",
-      "runtime indexes checked: 4",
-      "run-history goals=4 runs=3",
-      "public boundary scan clean: 14 files"
+      "registry goals checked: 12",
+      "registry boundary: shared_local_registry push_allowed=False tracked=False ignored=False",
+      "user-gate scopes checked: 6 open multi-agent gates",
+      "runtime root resolved: $HOME/.codex/loopx",
+      "run-history goals=28 runs=10210",
+      "public boundary scan clean: 1218 files"
     ]
   },
   "global_registry": {
     "available": true,
     "ok": true,
-    "registry": "./fixtures/registry.global.json",
-    "current_registry": "./fixtures/project-registry.json",
-    "current_registry_is_global": false,
-    "global_goal_count": 5,
-    "current_goal_count": 4,
-    "source_registry_count": 2,
+    "registry": "$HOME/.codex/loopx/registry.global.json",
+    "current_registry": "$HOME/.codex/loopx/registry.global.json",
+    "current_registry_is_global": true,
+    "global_goal_count": 12,
+    "current_goal_count": 12,
+    "source_registry_count": 7,
     "summary": {
       "high": 0,
-      "action": 0,
-      "info": 1,
+      "action": 8,
+      "info": 0,
       "checks": 2,
-      "findings": 1
+      "findings": 8
     },
     "findings": [
       {
-        "kind": "current_registry_scope_excludes_global_goals",
-        "severity": "info",
-        "message": "current registry excludes 1 global goal(s)",
-        "recommended_action": "for multi-project dashboard/controller status, run `loopx status` without `--registry` or pass the global registry",
-        "goal_ids": [
-          "platform-migration-goal"
-        ]
+        "kind": "source_registry_missing",
+        "severity": "action",
+        "message": "`cc-test` source registry is missing",
+        "recommended_action": "reconnect `cc-test` from its project or archive it if the project is obsolete",
+        "goal_id": "cc-test",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
+      },
+      {
+        "kind": "state_file_missing",
+        "severity": "action",
+        "message": "`cc-test` active state file is missing",
+        "recommended_action": "repair `cc-test` state_file or reconnect the project",
+        "goal_id": "cc-test",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
+      },
+      {
+        "kind": "source_registry_missing",
+        "severity": "action",
+        "message": "`cc-tmp` source registry is missing",
+        "recommended_action": "reconnect `cc-tmp` from its project or archive it if the project is obsolete",
+        "goal_id": "cc-tmp",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
+      },
+      {
+        "kind": "state_file_missing",
+        "severity": "action",
+        "message": "`cc-tmp` active state file is missing",
+        "recommended_action": "repair `cc-tmp` state_file or reconnect the project",
+        "goal_id": "cc-tmp",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
+      },
+      {
+        "kind": "source_registry_missing",
+        "severity": "action",
+        "message": "`cc-tmp-xdrchpuaul` source registry is missing",
+        "recommended_action": "reconnect `cc-tmp-xdrchpuaul` from its project or archive it if the project is obsolete",
+        "goal_id": "cc-tmp-xdrchpuaul",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
+      },
+      {
+        "kind": "state_file_missing",
+        "severity": "action",
+        "message": "`cc-tmp-xdrchpuaul` active state file is missing",
+        "recommended_action": "repair `cc-tmp-xdrchpuaul` state_file or reconnect the project",
+        "goal_id": "cc-tmp-xdrchpuaul",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
+      },
+      {
+        "kind": "source_registry_missing",
+        "severity": "action",
+        "message": "`loopx-auto-research-e2e-probe-20260628-2225-goal` source registry is missing",
+        "recommended_action": "reconnect `loopx-auto-research-e2e-probe-20260628-2225-goal` from its project or archive it if the project is obsolete",
+        "goal_id": "loopx-auto-research-e2e-probe-20260628-2225-goal",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
+      },
+      {
+        "kind": "state_file_missing",
+        "severity": "action",
+        "message": "`loopx-auto-research-e2e-probe-20260628-2225-goal` active state file is missing",
+        "recommended_action": "repair `loopx-auto-research-e2e-probe-20260628-2225-goal` state_file or reconnect the project",
+        "goal_id": "loopx-auto-research-e2e-probe-20260628-2225-goal",
+        "path": "Public-safe redacted live LoopX text; inspect local status for the full row."
       }
     ],
     "checks": [
-      "global registry goals checked: 5",
-      "global source registries checked: 2"
+      "global registry goals checked: 12",
+      "global source registries checked: 7"
     ]
   },
   "attention_queue": {
     "available": true,
-    "item_count": 3,
-    "needs_user_or_controller": 1,
+    "item_count": 1,
+    "needs_user_or_controller": 0,
     "needs_controller": 0,
-    "needs_codex": 2,
+    "needs_codex": 1,
     "watching_external_evidence": 0,
     "items": [
       {
-        "goal_id": "complex-project-main-control",
-        "status": "ready_for_controller_opt_in",
-        "lifecycle_phase": "controller_gated",
+        "goal_id": "loopx-meta",
+        "status": "skillsbench_codex_cli_goal_tail4_keepalive_relaunched",
+        "lifecycle_phase": "adapter_inspected",
         "lifecycle_flags": [
-          "controller_gated",
           "adapter_inspected"
-        ],
-        "waiting_on": "user_or_controller",
-        "severity": "action",
-        "recommended_action": "ask the target controller to opt into a read-only map before any mutation",
-        "source": "latest_run",
-        "controller_stage": "ready_for_read_only_not_decision",
-        "missing_gates": [
-          "human_reward_capture",
-          "aligned_eval_decision_evidence"
-        ],
-        "next_handoff_condition": "record aligned eval evidence and one human reward event",
-        "quota": {
-          "compute": 0.5,
-          "window_hours": 24,
-          "slot_minutes": 1,
-          "allowed_slots": 720,
-          "spent_slots": 0,
-          "state": "operator_gate",
-          "reason": "human or target-controller gate must clear before spending compute"
-        }
-      },
-      {
-        "goal_id": "docs-maintenance-goal",
-        "status": "connected_without_run",
-        "lifecycle_phase": "connected",
-        "lifecycle_flags": [
-          "connected"
         ],
         "waiting_on": "codex",
         "severity": "action",
-        "recommended_action": "run the first read-only adapter tick and save a compact run record",
-        "source": "run_history",
+        "recommended_action": "Monitor run_group skillsbench-codex-cli-goal-xhigh-tail4-keepalive-20260706T143132CST using public compact/public artifacts only; once benchmark_run.compact.json lands for each case, classify launcher/case/solver/verifi…",
+        "source": "latest_run",
         "quota": {
-          "compute": 1,
+          "compute": 1.0,
           "window_hours": 24,
           "slot_minutes": 1,
           "allowed_slots": 1440,
-          "spent_slots": 0,
+          "spent_slots": 97,
           "state": "eligible",
           "reason": "1 compute quota; eligible for the next automatic agent turn"
-        }
-      },
-      {
-        "goal_id": "experiment-controller-goal",
-        "status": "design_next_experiment",
-        "lifecycle_phase": "controller_ready",
-        "lifecycle_flags": [
-          "controller_ready",
-          "reward_judged",
-          "adapter_inspected"
-        ],
-        "waiting_on": "codex",
-        "severity": "action",
-        "recommended_action": "use the latest human reward signal to design the next comparable experiment",
-        "source": "latest_run",
-        "quota": {
-          "compute": 0.3,
-          "window_hours": 24,
-          "slot_minutes": 1,
-          "allowed_slots": 432,
-          "spent_slots": 0,
-          "state": "eligible",
-          "reason": "0.3 compute quota; eligible for the next automatic agent turn"
+        },
+        "agent_todos": {
+          "source_section": "Agent Todo",
+          "total_count": 12,
+          "open_count": 12,
+          "done_count": 0,
+          "items": [
+            {
+              "goal_id": "loopx-meta",
+              "index": 0,
+              "done": false,
+              "text": "todo update recorded for todo_1596c3a678bb",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_1596c3a678bb",
+              "role": "agent",
+              "status": "open",
+              "title": "todo update recorded for todo_1596c3a678bb",
+              "source": "rollout_event_log",
+              "agent_id": "codex-main-control",
+              "latest_event_kind": "todo_update",
+              "latest_event_at": "2026-07-06T06:33:32Z",
+              "latest_event_status": "open",
+              "event_count": 7,
+              "event_kinds": [
+                "todo_update"
+              ]
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 24,
+              "done": false,
+              "text": "Monitor ArcticDB #3179 LoopX comment https://github.com/man-group/ArcticDB/issues/3179#issuecomment-4797835630 for metadata-only maintainer reply signal; do not read private material or reply again without owner approva…",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_15bc0926a494",
+              "role": "agent",
+              "status": "open",
+              "priority": "P0-REVENUE MONITOR",
+              "title": "Monitor ArcticDB #3179 LoopX comment https://github.com/man-group/ArcticDB/issues/3179#issuecomment-4797835630 for metadata-only maintainer reply signal; do not read private material or reply again without owner approva…",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "continuous_monitor",
+              "action_kind": "github_public_reply_metadata_monitor",
+              "claimed_by": "codex-value-explorer",
+              "evidence": "autonomous replan: bounded current value-explorer monitor lane with explicit expires_at.",
+              "note": "Set bounded watch expiry for metadata-only public reply monitor; no catch-up after expiry.",
+              "updated_at": "2026-07-05T06:27:15+08:00"
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 17,
+              "done": false,
+              "text": "Block direct merge of legacy PR #199 until it is rebased/rewritten onto LoopX: rename goal_harness paths/imports and goal-harness CLI strings to loopx, rerun launch-artifact-handle smoke, and verify it does not reintrod…",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_2bf560b48a0c",
+              "role": "agent",
+              "status": "open",
+              "priority": "P0",
+              "title": "Block direct merge of legacy PR #199 until it is rebased/rewritten onto LoopX: rename goal_harness paths/imports and goal-harness CLI strings to loopx, rerun launch-artifact-handle smoke, and verify it does not reintrod…",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "blocker",
+              "action_kind": "legacy_open_pr_rename_blocker",
+              "claimed_by": "codex-main-control"
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 23,
+              "done": false,
+              "text": "Fix or bypass local SkillsBench Docker verifier reward collection before using local fallback for canonical base/test comparison; organize-messy-files base on merged #668 reached final verifier but produced empty verifi…",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_3ed1c4a69164",
+              "role": "agent",
+              "status": "open",
+              "priority": "P0",
+              "title": "Fix or bypass local SkillsBench Docker verifier reward collection before using local fallback for canonical base/test comparison; organize-messy-files base on merged #668 reached final verifier but produced empty verifi…",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "blocker",
+              "action_kind": "skillsbench_local_verifier_reward_collection",
+              "claimed_by": "codex-main-control",
+              "required_capabilities": [
+                "benchmark_runner"
+              ]
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 32,
+              "done": false,
+              "text": "Rerun SkillsBench raw vs loopx-goal-start-product-mode on citation-check and powerlifting with PR #779 merged; inspect compact public counters for soft_verify_exception_continued, probe_operation_count, task-facing solv…",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_44907a5f355d",
+              "role": "agent",
+              "status": "blocked",
+              "priority": "P0",
+              "title": "Rerun SkillsBench raw vs loopx-goal-start-product-mode on citation-check and powerlifting with PR #779 merged; inspect compact public counters for soft_verify_exception_continued, probe_operation_count, task-facing solv…",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "advancement_task",
+              "action_kind": "skillsbench_goal_start_raw_new_rerun",
+              "claimed_by": "codex-main-control",
+              "evidence": "Public-safe redacted live LoopX text; inspect local status for the full row.",
+              "note": "Do not spend a full citation-check loopx rerun yet: #865 fixed scored output paths and #874 added bootstrap preflight attribution, but citation-check itself still preflights as apt+verifier bootstrap risk on ECS.",
+              "updated_at": "2026-06-29T00:49:36+08:00"
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 39,
+              "done": false,
+              "text": "Run the next SkillsBench loopx-goal-start-product-mode reverse-channel case on latest main (no local Docker), prioritizing a currently bad or uncertain case, then update the public case ledger and true LoopX issue analy…",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_4762c790e583",
+              "role": "agent",
+              "status": "blocked",
+              "priority": "P0",
+              "title": "Run the next SkillsBench loopx-goal-start-product-mode reverse-channel case on latest main (no local Docker), prioritizing a currently bad or uncertain case, then update the public case ledger and true LoopX issue analy…",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "advancement_task",
+              "action_kind": "skillsbench_goal_start_remote_rerun",
+              "claimed_by": "codex-main-control",
+              "evidence": "PR #894 merged db7a5c6b; validation: py_compile, examples/skillsbench-benchmark-run-smoke.py, examples/skillsbench-host-local-launch-plan-smoke.py; main synced clean. Next: rerun a setup-stable SkillsBench bad/uncertain…",
+              "note": "2026-06-29: fixed host-local ACP idle/no-output root cause in PR #894. ACP protocol tool_call_count=0 is now distinguished from reverse-channel task-facing bridge activity; repeated codex_exec_bridge_idle_timeout withou…",
+              "updated_at": "2026-06-29T19:40:32+08:00"
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 0,
+              "done": false,
+              "text": "todo add recorded for todo_584f55f8f3b4",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_584f55f8f3b4",
+              "role": "agent",
+              "status": "open",
+              "title": "todo add recorded for todo_584f55f8f3b4",
+              "source": "rollout_event_log",
+              "agent_id": "codex-value-explorer",
+              "latest_event_kind": "todo_update",
+              "latest_event_at": "2026-07-06T06:48:49Z",
+              "latest_event_status": "open",
+              "event_count": 3,
+              "event_kinds": [
+                "todo_add",
+                "todo_update"
+              ]
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 40,
+              "done": false,
+              "text": "Monitor r10 SkillsBench 30-case codex-app-server-goal-baseline batch, summarize completed compact results into the common case ledger, and stop/repair if setup/bootstrap creates new non-solver blockers.",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_62debf065fec",
+              "role": "agent",
+              "status": "blocked",
+              "priority": "P0 MONITOR",
+              "title": "Monitor r10 SkillsBench 30-case codex-app-server-goal-baseline batch, summarize completed compact results into the common case ledger, and stop/repair if setup/bootstrap creates new non-solver blockers.",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "continuous_monitor",
+              "action_kind": "monitor_skillsbench_batch",
+              "claimed_by": "codex-main-control",
+              "evidence": "Observed 2026-06-30T02:52+08: active-state target_key=skillsbench-goal-baseline-30case-20260629T1826Z-r10; local ps/tmux/recent artifact search found no r10 batch process or compact artifact; no raw task/log/trajectory …",
+              "updated_at": "2026-06-30T02:54:54+08:00"
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 0,
+              "done": false,
+              "text": "todo add recorded for todo_93bc6439c521",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_93bc6439c521",
+              "role": "agent",
+              "status": "open",
+              "title": "todo add recorded for todo_93bc6439c521",
+              "source": "rollout_event_log",
+              "agent_id": "codex-main-control",
+              "latest_event_kind": "todo_claim",
+              "latest_event_at": "2026-07-06T06:32:52Z",
+              "latest_event_status": "open",
+              "event_count": 2,
+              "event_kinds": [
+                "todo_add",
+                "todo_claim"
+              ]
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 27,
+              "done": false,
+              "text": "Run the SkillsBench two-arm comparison after the goal-start route is countable: raw Codex vs new loopx-goal-start-product-mode, reporting task_score/control_score/time and compact public-safe LoopX todo rollout evidence.",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_aad7e9716927",
+              "role": "agent",
+              "status": "blocked",
+              "priority": "P0",
+              "title": "Run the SkillsBench two-arm comparison after the goal-start route is countable: raw Codex vs new loopx-goal-start-product-mode, reporting task_score/control_score/time and compact public-safe LoopX todo rollout evidence.",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "advancement_task",
+              "action_kind": "run_goal_start_product_mode_matrix",
+              "claimed_by": "codex-main-control",
+              "evidence": "driver.status shows DONE raw then RUN loopx-goal-start with no running driver; raw benchmark_run.compact first_blocker=skillsbench_codex_acp_provider_zero_activity; source guard requires --host-local-acp-launch for Loop…",
+              "note": "Remote run group skillsbench-raw-new-goal-start-20260627T0420Z produced a material closeout for citation-check raw only; raw compact attribution is skillsbench_codex_acp_provider_zero_activity with official score missin…",
+              "updated_at": "2026-06-27T13:05:47+08:00"
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 21,
+              "done": false,
+              "text": "Observe remote official SkillsBench powerlifting-coef-calc base/test runtime-layer mountfix pair skillsbench-powerlifting-coef-calc-remote-canonical-runtime-mountfix-pair-20260623T022028Z: use compact/public artifacts o…",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_aec1873c7f28",
+              "role": "agent",
+              "status": "open",
+              "priority": "P0 MONITOR",
+              "title": "Observe remote official SkillsBench powerlifting-coef-calc base/test runtime-layer mountfix pair skillsbench-powerlifting-coef-calc-remote-canonical-runtime-mountfix-pair-20260623T022028Z: use compact/public artifacts o…",
+              "archive_state": "active",
+              "source_section": "Agent Todo",
+              "source": "attention_queue",
+              "task_class": "continuous_monitor",
+              "claimed_by": "codex-main-control",
+              "note": "2026-06-23 projection fix: this is monitor context for the powerlifting run, not an advancement next action; current executable path is SkillsBench build cache/prewarm repair.",
+              "updated_at": "2026-06-23T10:37:43+08:00"
+            },
+            {
+              "goal_id": "loopx-meta",
+              "index": 0,
+              "done": false,
+              "text": "todo add recorded for todo_c02cb7d19607",
+              "schema_version": "todo_index_item_v0",
+              "todo_id": "todo_c02cb7d19607",
+              "role": "agent",
+              "status": "open",
+              "title": "todo add recorded for todo_c02cb7d19607",
+              "source": "rollout_event_log",
+              "agent_id": "codex-value-explorer",
+              "latest_event_kind": "todo_add",
+              "latest_event_at": "2026-07-06T03:47:54Z",
+              "latest_event_status": "open",
+              "event_count": 1,
+              "event_kinds": [
+                "todo_add"
+              ]
+            }
+          ]
         }
       }
     ]
   },
   "run_history": {
     "available": true,
-    "goal_count": 4,
-    "run_count": 3,
+    "goal_count": 1,
+    "run_count": 5,
     "goals": [
       {
-        "id": "complex-project-main-control",
-        "domain": "complex-project-control",
+        "id": "loopx-meta",
+        "domain": "loopx-platform",
         "status": "active-read-only",
-        "lifecycle_phase": "controller_gated",
-        "lifecycle_flags": [
-          "controller_gated",
-          "adapter_inspected"
-        ],
-        "registry_member": true,
-        "legacy_runtime_goal": false,
-        "adapter_kind": "complex_project_read_only_map_v0",
-        "adapter_status": "connected-read-only",
-        "authority_registry": {
-          "declared": true,
-          "required": false,
-          "path": "docs/meta/DOC_REGISTRY.yaml",
-          "path_exists": true,
-          "read_status": "read",
-          "default_entry_count": 3,
-          "default_entries_checked": 3,
-          "default_entries_present": 3,
-          "topic_authority_count": 8,
-          "project_material_count": 6,
-          "project_material_repository_count": 2,
-          "project_material_owner_review_required_count": 1,
-          "project_material_stale_count": 1,
-          "project_material_current_authority_count": 1,
-          "deprecated_source_count": 0,
-          "conflict_risk": "low"
-        },
-        "index_exists": true,
-        "raw_index_records": 2,
-        "unique_runs": 2,
-        "latest_runs": [
-          {
-            "generated_at": "2026-05-31T21:15:00+00:00",
-            "goal_id": "complex-project-main-control",
-            "classification": "ready_for_controller_opt_in",
-            "lifecycle_phase": "controller_gated",
-            "lifecycle_flags": [
-              "controller_gated",
-              "adapter_inspected"
-            ],
-            "recommended_action": "ask the target controller to opt into a read-only map before any mutation",
-            "health_check": "8/8",
-            "controller_readiness": {
-              "classification": "ready_for_read_only_not_decision",
-              "read_only_observer_ready": true,
-              "decision_advisor_ready": false,
-              "write_controller_ready": false,
-              "missing_gates": [
-                "human_reward_capture",
-                "aligned_eval_decision_evidence"
-              ],
-              "review_judgment": "safe to connect read-only observation, but not decision advice",
-              "next_handoff_condition": "record aligned eval evidence and one human reward event",
-              "gates": [
-                {
-                  "id": "durable_goal_context",
-                  "ok": true,
-                  "review": "goal state and run history are available"
-                },
-                {
-                  "id": "human_reward_capture",
-                  "ok": false,
-                  "review": "no operator reward has been recorded yet"
-                },
-                {
-                  "id": "aligned_eval_decision_evidence",
-                  "ok": false,
-                  "review": "comparable validation evidence is not present yet"
-                }
-              ]
-            },
-            "json_exists": true,
-            "markdown_exists": true
-          },
-          {
-            "generated_at": "2026-05-31T20:40:00+00:00",
-            "goal_id": "complex-project-main-control",
-            "classification": "needs_more_read_only_evidence",
-            "lifecycle_phase": "adapter_inspected",
-            "lifecycle_flags": [
-              "adapter_inspected"
-            ],
-            "recommended_action": "inspect docs, TODOs, and validation surfaces before writing a handoff packet",
-            "health_check": "6/8",
-            "json_exists": true,
-            "markdown_exists": true
-          }
-        ],
-        "quota": {
-          "compute": 0.5,
-          "window_hours": 24,
-          "slot_minutes": 1,
-          "allowed_slots": 720,
-          "spent_slots": 0,
-          "state": "operator_gate",
-          "reason": "human or target-controller gate must clear before spending compute"
-        }
-      },
-      {
-        "id": "docs-maintenance-goal",
-        "domain": "knowledge-base-maintenance",
-        "status": "active",
-        "lifecycle_phase": "connected",
-        "lifecycle_flags": [
-          "connected"
-        ],
-        "registry_member": true,
-        "legacy_runtime_goal": false,
-        "adapter_kind": "generic_project_goal_v0",
-        "adapter_status": "connected",
-        "index_exists": false,
-        "raw_index_records": 0,
-        "unique_runs": 0,
-        "latest_runs": [],
-        "quota": {
-          "compute": 1,
-          "window_hours": 24,
-          "slot_minutes": 1,
-          "allowed_slots": 1440,
-          "spent_slots": 0,
-          "state": "eligible",
-          "reason": "1 compute quota; eligible for the next automatic agent turn"
-        }
-      },
-      {
-        "id": "experiment-controller-goal",
-        "domain": "long-running-experiment-control",
-        "status": "active-read-only",
-        "lifecycle_phase": "controller_ready",
-        "lifecycle_flags": [
-          "controller_ready",
-          "reward_judged",
-          "adapter_inspected"
-        ],
-        "registry_member": true,
-        "legacy_runtime_goal": false,
-        "adapter_kind": "experiment_controller_v0",
-        "adapter_status": "connected-read-only",
-        "index_exists": true,
-        "raw_index_records": 1,
-        "unique_runs": 1,
-        "latest_runs": [
-          {
-            "generated_at": "2026-06-01T00:00:00+00:00",
-            "goal_id": "experiment-controller-goal",
-            "classification": "design_next_experiment",
-            "lifecycle_phase": "controller_ready",
-            "lifecycle_flags": [
-              "controller_ready",
-              "reward_judged",
-              "adapter_inspected"
-            ],
-            "recommended_action": "use the latest human reward signal to design the next comparable experiment",
-            "health_check": "7/7",
-            "controller_readiness": {
-              "classification": "ready_for_decision_advisor",
-              "read_only_observer_ready": true,
-              "decision_advisor_ready": true,
-              "write_controller_ready": false,
-              "missing_gates": [],
-              "review_judgment": "controller can advise the next experiment because durable context, comparable evidence, and human reward are present",
-              "next_handoff_condition": "operator approval is still required before launching or stopping experiments",
-              "gates": [
-                {
-                  "id": "durable_goal_context",
-                  "ok": true,
-                  "review": "goal state, experiment board, and run history are available"
-                },
-                {
-                  "id": "human_reward_capture",
-                  "ok": true,
-                  "review": "operator reward was recorded as a compact signal"
-                },
-                {
-                  "id": "aligned_eval_decision_evidence",
-                  "ok": true,
-                  "review": "comparable validation evidence is present"
-                }
-              ]
-            },
-            "human_reward": {
-              "recorded_at": "2026-06-01T00:05:00+00:00",
-              "decision": "continue_route",
-              "reward": "positive",
-              "reason_summary": "operator accepted the route because the comparable metric improved and validation was aligned",
-              "follow_up": "promote the route to a longer-window check"
-            },
-            "json_exists": true,
-            "markdown_exists": true
-          }
-        ],
-        "quota": {
-          "compute": 0.3,
-          "window_hours": 24,
-          "slot_minutes": 1,
-          "allowed_slots": 432,
-          "spent_slots": 0,
-          "state": "eligible",
-          "reason": "0.3 compute quota; eligible for the next automatic agent turn"
-        }
-      },
-      {
-        "id": "release-watch-goal",
-        "domain": "release-monitoring",
-        "status": "watching",
-        "lifecycle_phase": "connected",
-        "lifecycle_flags": [
-          "connected"
-        ],
-        "registry_member": true,
-        "legacy_runtime_goal": false,
-        "adapter_kind": "release_monitor_v0",
-        "adapter_status": "connected-read-only",
-        "index_exists": false,
-        "raw_index_records": 0,
-        "unique_runs": 0,
-        "latest_runs": []
-      }
-    ],
-    "recent_runs": [
-      {
-        "generated_at": "2026-06-01T00:00:00+00:00",
-        "goal_id": "experiment-controller-goal",
-        "classification": "design_next_experiment",
-        "lifecycle_phase": "controller_ready",
-        "lifecycle_flags": [
-          "controller_ready",
-          "reward_judged",
-          "adapter_inspected"
-        ],
-        "recommended_action": "use the latest human reward signal to design the next comparable experiment",
-        "health_check": "7/7",
-        "controller_readiness": {
-          "classification": "ready_for_decision_advisor",
-          "read_only_observer_ready": true,
-          "decision_advisor_ready": true,
-          "write_controller_ready": false,
-          "missing_gates": [],
-          "review_judgment": "controller can advise the next experiment because durable context, comparable evidence, and human reward are present",
-          "next_handoff_condition": "operator approval is still required before launching or stopping experiments",
-          "gates": [
-            {
-              "id": "durable_goal_context",
-              "ok": true,
-              "review": "goal state, experiment board, and run history are available"
-            },
-            {
-              "id": "human_reward_capture",
-              "ok": true,
-              "review": "operator reward was recorded as a compact signal"
-            },
-            {
-              "id": "aligned_eval_decision_evidence",
-              "ok": true,
-              "review": "comparable validation evidence is present"
-            }
-          ]
-        },
-        "human_reward": {
-          "recorded_at": "2026-06-01T00:05:00+00:00",
-          "decision": "continue_route",
-          "reward": "positive",
-          "reason_summary": "operator accepted the route because the comparable metric improved and validation was aligned",
-          "follow_up": "promote the route to a longer-window check"
-        },
-        "json_exists": true,
-        "markdown_exists": true
-      },
-      {
-        "generated_at": "2026-05-31T21:15:00+00:00",
-        "goal_id": "complex-project-main-control",
-        "classification": "ready_for_controller_opt_in",
-        "lifecycle_phase": "controller_gated",
-        "lifecycle_flags": [
-          "controller_gated",
-          "adapter_inspected"
-        ],
-        "recommended_action": "ask the target controller to opt into a read-only map before any mutation",
-        "health_check": "8/8",
-        "json_exists": true,
-        "markdown_exists": true
-      },
-      {
-        "generated_at": "2026-05-31T20:40:00+00:00",
-        "goal_id": "complex-project-main-control",
-        "classification": "needs_more_read_only_evidence",
         "lifecycle_phase": "adapter_inspected",
         "lifecycle_flags": [
           "adapter_inspected"
         ],
-        "recommended_action": "inspect docs, TODOs, and validation surfaces before writing a handoff packet",
-        "health_check": "6/8",
-        "json_exists": true,
-        "markdown_exists": true
+        "registry_member": true,
+        "legacy_runtime_goal": false,
+        "adapter_kind": "harness_self_improvement",
+        "adapter_status": "connected-read-only",
+        "index_exists": true,
+        "raw_index_records": 8444,
+        "unique_runs": 8440,
+        "quota": {
+          "compute": 1.0,
+          "window_hours": 24,
+          "slot_minutes": 1,
+          "allowed_slots": 1440,
+          "spent_slots": 97,
+          "state": "waiting",
+          "reason": "no active Codex-ready work is currently selected"
+        },
+        "latest_runs": [
+          {
+            "generated_at": "2026-07-06T14:37:32+08:00",
+            "goal_id": "loopx-meta",
+            "classification": "quota_slot_spent",
+            "agent_id": "codex-value-explorer",
+            "recommended_action": "审阅 PR #1524 的 Agent Management 面板视觉方向：workspace hint 与 stale claim hint 是否符合预期；确认后允许 codex-value-explorer 自合并。",
+            "health_check": "quota safe-bypass operator gate; quota slot spend event public-safe",
+            "json_exists": true,
+            "markdown_exists": true,
+            "lifecycle_phase": "adapter_inspected",
+            "lifecycle_flags": [
+              "adapter_inspected"
+            ]
+          },
+          {
+            "generated_at": "2026-07-06T14:33:55+08:00",
+            "goal_id": "loopx-meta",
+            "classification": "quota_slot_spent",
+            "agent_id": "codex-main-control",
+            "recommended_action": "[P1] Repair SkillsBench post-run debug gate consistency for countable codex-cli-goal official-zero runs: when attempt_accounting is countable and case_closeout_complete=true, do not project first_blocker=loopx_closeout_…",
+            "health_check": "quota should-run eligible; quota slot spend event public-safe",
+            "json_exists": true,
+            "markdown_exists": true,
+            "lifecycle_phase": "adapter_inspected",
+            "lifecycle_flags": [
+              "adapter_inspected"
+            ]
+          },
+          {
+            "generated_at": "2026-07-06T14:33:54+08:00",
+            "goal_id": "loopx-meta",
+            "classification": "skillsbench_codex_cli_goal_tail4_keepalive_relaunched",
+            "agent_id": "codex-main-control",
+            "progress_scope": "goal",
+            "delivery_batch_scale": "single_surface",
+            "delivery_outcome": "outcome_progress",
+            "recommended_action": "Monitor run_group skillsbench-codex-cli-goal-xhigh-tail4-keepalive-20260706T143132CST using public compact/public artifacts only; once benchmark_run.compact.json lands for each case, classify launcher/case/solver/verifi…",
+            "health_check": "state_file 1/1; registry_goal 1/1; authority_sources 10",
+            "json_exists": true,
+            "markdown_exists": true,
+            "lifecycle_phase": "adapter_inspected",
+            "lifecycle_flags": [
+              "adapter_inspected"
+            ]
+          },
+          {
+            "generated_at": "2026-07-06T14:33:34+08:00",
+            "goal_id": "loopx-meta",
+            "classification": "quota_slot_spent",
+            "agent_id": "codex-side-bypass",
+            "recommended_action": "[P0] Rerun real KNN visible auto-research after the successor-link fix and verify evaluator completion projects a second-round hypothesis/frontier or explicit completion gate without manual intervention; keep evidence p…",
+            "health_check": "quota should-run eligible; quota slot spend event public-safe",
+            "json_exists": true,
+            "markdown_exists": true,
+            "lifecycle_phase": "adapter_inspected",
+            "lifecycle_flags": [
+              "adapter_inspected"
+            ]
+          },
+          {
+            "generated_at": "2026-07-06T14:32:57+08:00",
+            "goal_id": "loopx-meta",
+            "classification": "auto_research_successor_link_fix_merged",
+            "agent_id": "codex-side-bypass",
+            "progress_scope": "agent_lane",
+            "delivery_batch_scale": "implementation",
+            "delivery_outcome": "outcome_progress",
+            "recommended_action": "[P0] Rerun real KNN visible auto-research after the successor-link fix and verify evaluator completion projects a second-round hypothesis/frontier or explicit completion gate without manual intervention; keep evidence p…",
+            "health_check": "state_file 1/1; registry_goal 1/1; authority_sources 0",
+            "json_exists": true,
+            "markdown_exists": true,
+            "lifecycle_phase": "adapter_inspected",
+            "lifecycle_flags": [
+              "adapter_inspected"
+            ]
+          }
+        ]
       }
     ]
   }

@@ -215,9 +215,23 @@ The first implementation should prove:
 - copied or adapted external UI code carries a license/attribution note, or the
   implementation is native LoopX code.
 
+## Implemented Slice
+
+`apps/dashboard` now renders the read-only Agent Management panel from
+`agent_management_projection_v0` when live status exposes it. The panel shows
+agent rows, current todos, evidence refs, typed handoff notes, quota hints, and
+display-only workspace/stale-claim warnings. These hints do not expose reclaim,
+cancel, dispatch, unblock, or workspace-write actions.
+
+The bundled dashboard example is refreshed from a public-safe live LoopX
+`loopx-meta` agent slice by
+`examples/control_plane/export-agent-management-status-example.py`. It keeps
+real agent ids, todo ids, states, and timestamps where safe, redacts private
+local text, and does not invent workspace or handoff fields when the live
+projection does not have them. The synthetic smoke still covers workspace,
+handoff, and stale-claim rendering as a contract fixture.
+
 ## Next Slice
 
-Implement a fixture-backed read-only Agent Management panel in
-`apps/dashboard` with the mature console style. Keep it behind an ops route or
-developer route until browser smokes prove desktop/mobile scanability and the
-public/private boundary.
+Add filters for agent state, claim freshness, and workspace kind after the panel
+has enough real operator use to justify more controls.

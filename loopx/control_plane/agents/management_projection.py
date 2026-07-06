@@ -13,6 +13,8 @@ AGENT_MANAGEMENT_MODE = "read_only"
 MAX_AGENT_ROWS = 24
 MAX_AGENT_TODOS = 8
 MAX_REFS = 1
+MAX_WORKSPACE_SCOPES = 4
+STALE_CLAIM_THRESHOLD_HOURS = 36
 
 _PRIORITY_RANK = {
     "P0": 0,
@@ -36,6 +38,18 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 def _as_list(value: Any) -> list[Any]:
     return list(value) if isinstance(value, list) else []
+
+
+def _string_list(value: Any, *, limit: int = MAX_WORKSPACE_SCOPES) -> list[str]:
+    items = value if isinstance(value, list) else [value] if value not in (None, "") else []
+    compact: list[str] = []
+    for item in items:
+        text = _compact(item, limit=140)
+        if text and text not in compact:
+            compact.append(text)
+        if len(compact) >= limit:
+            break
+    return compact
 
 
 def _todo_status(todo: dict[str, Any]) -> str:
@@ -155,6 +169,7 @@ def _todo_row(todo: dict[str, Any]) -> dict[str, Any]:
     }
     for key in (
         "required_capabilities",
+        "required_write_scopes",
         "target_capabilities",
         "blocks_agent",
         "unblocks_todo_id",
@@ -166,6 +181,101 @@ def _todo_row(todo: dict[str, Any]) -> dict[str, Any]:
         if value not in (None, "", [], {}):
             row[key] = value
     return {key: value for key, value in row.items() if value not in (None, "", [], {})}
+
+
+def _workspace_ref_from_todo(todo: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not todo:
+        return None
+    raw = _as_dict(todo.get("workspace_ref"))
+    scopes = _string_list(
+        raw.get("write_scope")
+        or todo.get("required_write_scopes")
+        or todo.get("required_write_scope")
+    )
+    if raw:
+        workspace: dict[str, Any] = {
+            "kind": _compact(raw.get("kind") or "unknown", limit=80),
+            "label": _compact(raw.get("label") or raw.get("branch") or raw.get("kind"), limit=140),
+            "path_safe": raw.get("path_safe") is True,
+        }
+        branch = _compact(raw.get("branch"), limit=120)
+        if branch:
+            workspace["branch"] = branch
+        if scopes:
+            workspace["write_scope"] = scopes
+        return {key: value for key, value in workspace.items() if value not in (None, "", [], {})}
+
+    policy = _compact(
+        todo.get("worktree_policy")
+        or todo.get("workspace_policy")
+        or todo.get("workspace_kind"),
+        limit=120,
+    )
+    if not (policy or scopes):
+        return None
+    policy_lower = (policy or "").lower()
+    kind = "worktree" if "worktree" in policy_lower else "unknown"
+    workspace = {
+        "kind": kind,
+        "label": policy or "workspace not projected",
+        "path_safe": False,
+        "write_scope": scopes,
+    }
+    return {key: value for key, value in workspace.items() if value not in (None, "", [], {})}
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _stale_claim_hint(todo: dict[str, Any] | None, *, agent_id: str) -> dict[str, Any] | None:
+    if not todo or _is_done(todo):
+        return None
+    if todo.get("task_class") == "continuous_monitor":
+        return None
+    claimed_by = (
+        normalize_todo_claimed_by(todo.get("claimed_by"))
+        or normalize_todo_claimed_by(todo.get("agent_id"))
+        or agent_id
+    )
+    if not claimed_by:
+        return None
+    last_activity = _compact(todo.get("updated_at") or todo.get("latest_event_at"), limit=80)
+    if not last_activity:
+        return {
+            "state": "activity_missing",
+            "claimed_by": claimed_by,
+            "reason": "claimed open todo has no projected activity timestamp",
+            "recommended_operator_action": "inspect evidence before considering reassignment",
+        }
+    parsed = _parse_timestamp(last_activity)
+    if not parsed:
+        return {
+            "state": "activity_unparsed",
+            "claimed_by": claimed_by,
+            "last_activity_at": last_activity,
+            "reason": "projected activity timestamp could not be parsed",
+            "recommended_operator_action": "inspect status/evidence before considering reassignment",
+        }
+    age_hours = (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds() / 3600
+    if age_hours <= STALE_CLAIM_THRESHOLD_HOURS:
+        return None
+    return {
+        "state": "suspected_stale",
+        "claimed_by": claimed_by,
+        "last_activity_at": last_activity,
+        "threshold_hours": STALE_CLAIM_THRESHOLD_HOURS,
+        "reason": "last projected activity is older than the stale-claim warning threshold",
+        "recommended_operator_action": "ask the same agent to resume or inspect evidence before manual handoff",
+    }
 
 
 def _refs_from_todo(todo: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -284,6 +394,12 @@ def build_agent_management_projection(status_payload: dict[str, Any]) -> dict[st
             "handoff_refs": handoff_refs[:MAX_REFS],
             "goal_ids": _as_list(raw_row.get("_goal_ids"))[:MAX_REFS],
         }
+        workspace_ref = _workspace_ref_from_todo(current)
+        if workspace_ref:
+            agent_row["workspace_ref"] = workspace_ref
+        stale_claim_hint = _stale_claim_hint(current, agent_id=agent_id)
+        if stale_claim_hint:
+            agent_row["stale_claim_hint"] = stale_claim_hint
         agents.append(
             {
                 key: value

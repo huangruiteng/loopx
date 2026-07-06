@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--goal-id",
-        help="Optional live goal id. When omitted, only the synthetic fixture is checked.",
+        help="Optional live goal id. When omitted, the bundled public example and synthetic fixture are checked.",
     )
     parser.add_argument("--agent-id", help="Expected agent row in the live status projection.")
     parser.add_argument(
@@ -142,7 +142,14 @@ def fixture_status_payload() -> dict[str, Any]:
                                 "task_class": "advancement_task",
                                 "action_kind": "review_projection",
                                 "claimed_by": "agent-reviewer",
-                                "updated_at": "2026-07-05T00:00:00Z",
+                                "required_write_scopes": ["apps/dashboard/**"],
+                                "workspace_ref": {
+                                    "kind": "worktree",
+                                    "label": "agent-reviewer-worktree",
+                                    "path_safe": False,
+                                    "branch": "codex/agent-reviewer",
+                                },
+                                "updated_at": "2026-01-01T00:00:00Z",
                                 "handoff_note": {
                                     "schema_version": "handoff_note_v0",
                                     "handoff_id": "handoff_live_handoff",
@@ -196,6 +203,62 @@ def assert_synthetic_projection() -> None:
     assert by_agent["agent-reviewer"]["current_todo"]["todo_id"] == "todo_live_handoff", by_agent
     assert by_agent["agent-reviewer"]["handoff_refs"] == ["handoff_live_handoff"], by_agent
     assert "run:fixture-refresh" in by_agent["agent-reviewer"]["evidence_refs"], by_agent
+    workspace_ref = by_agent["agent-reviewer"].get("workspace_ref")
+    assert workspace_ref.get("kind") == "worktree", by_agent
+    assert workspace_ref.get("path_safe") is False, by_agent
+    assert "apps/dashboard/**" in workspace_ref.get("write_scope", []), by_agent
+    stale_hint = by_agent["agent-reviewer"].get("stale_claim_hint")
+    assert stale_hint.get("state") == "suspected_stale", by_agent
+    assert stale_hint.get("claimed_by") == "agent-reviewer", by_agent
+    assert "reclaim_url" not in json.dumps(stale_hint, sort_keys=True), stale_hint
+
+
+def assert_bundled_public_example() -> dict[str, Any]:
+    payload = json.loads((REPO_ROOT / "examples" / "status.example.json").read_text(encoding="utf-8"))
+    projection = payload.get("agent_management_projection")
+    assert isinstance(projection, dict), "bundled example should expose agent_management_projection"
+    assert_projection_shape(projection, expected_agent_id="codex-value-explorer", require_handoff=False)
+    source_summary = projection.get("source_summary") if isinstance(projection.get("source_summary"), dict) else {}
+    assert source_summary.get("todo_source") == "live_loopx_status_public_slice", source_summary
+    assert source_summary.get("public_safe_export") is True, source_summary
+    agent_ids = {
+        row.get("agent_id")
+        for row in projection.get("agents", [])
+        if isinstance(row, dict)
+    }
+    expected_agents = {
+        "codex-main-control",
+        "codex-product-capability",
+        "codex-side-bypass",
+        "codex-value-explorer",
+    }
+    assert expected_agents.issubset(agent_ids), agent_ids
+    todo_ids = {
+        row.get("current_todo", {}).get("todo_id")
+        for row in projection.get("agents", [])
+        if isinstance(row, dict) and isinstance(row.get("current_todo"), dict)
+    }
+    assert "todo_2bf560b48a0c" in todo_ids, todo_ids
+    assert "todo_584f55f8f3b4" in todo_ids, todo_ids
+    rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    forbidden_snippets = (
+        "todo_example_",
+        "experiment-controller-goal",
+        "department-",
+        "department_",
+        ".local",
+        "/Users/",
+        "/private/",
+        "/tmp/",
+        "AK=",
+        "SK=",
+    )
+    for snippet in forbidden_snippets:
+        assert snippet not in rendered, f"bundled example leaked {snippet}"
+    return {
+        "agent_rows": len(projection.get("agents") or []),
+        "todo_source": source_summary.get("todo_source"),
+    }
 
 
 def run_loopx_status(args: argparse.Namespace) -> dict[str, Any]:
@@ -258,7 +321,10 @@ def assert_live_projection(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     args = parse_args()
     assert_synthetic_projection()
-    result: dict[str, Any] = {"synthetic": "ok"}
+    result: dict[str, Any] = {
+        "synthetic": "ok",
+        "bundled_example": assert_bundled_public_example(),
+    }
     if args.goal_id:
         result["live"] = assert_live_projection(args)
     print(json.dumps(result, ensure_ascii=False, indent=2))

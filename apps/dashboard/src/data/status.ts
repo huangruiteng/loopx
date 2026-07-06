@@ -108,6 +108,23 @@ export const todoIndexSchema = z.object({
   items: z.array(todoIndexItemSchema).optional().default([]),
 });
 
+export const agentManagementWorkspaceRefSchema = z.object({
+  kind: z.string().optional().nullable(),
+  label: z.string().optional().nullable(),
+  path_safe: z.boolean().optional().default(false),
+  branch: z.string().optional().nullable(),
+  write_scope: z.array(z.string()).optional().default([]),
+}).passthrough();
+
+export const agentManagementStaleClaimHintSchema = z.object({
+  state: z.string().optional().nullable(),
+  claimed_by: z.string().optional().nullable(),
+  last_activity_at: z.string().optional().nullable(),
+  threshold_hours: z.number().optional().nullable(),
+  reason: z.string().optional().nullable(),
+  recommended_operator_action: z.string().optional().nullable(),
+}).passthrough();
+
 export const agentManagementTodoRowSchema = z.object({
   schema_version: z.string().optional().nullable(),
   todo_id: z.string().optional().nullable(),
@@ -119,6 +136,8 @@ export const agentManagementTodoRowSchema = z.object({
   task_class: z.string().optional().nullable(),
   action_kind: z.string().optional().nullable(),
   claimed_by: z.string().optional().nullable(),
+  required_write_scopes: z.array(z.string()).optional().default([]),
+  workspace_ref: agentManagementWorkspaceRefSchema.optional().nullable(),
 }).passthrough();
 
 export const agentManagementHandoffNoteSchema = z.object({
@@ -143,6 +162,8 @@ export const agentManagementRowSchema = z.object({
   evidence_refs: z.array(z.string()).optional().default([]),
   handoff_refs: z.array(z.string()).optional().default([]),
   handoff_note: agentManagementHandoffNoteSchema.optional().nullable(),
+  workspace_ref: agentManagementWorkspaceRefSchema.optional().nullable(),
+  stale_claim_hint: agentManagementStaleClaimHintSchema.optional().nullable(),
   goal_ids: z.array(z.string()).optional().default([]),
 }).passthrough();
 
@@ -783,6 +804,8 @@ export type TodoGroup = z.infer<typeof todoGroupSchema>;
 export type TodoItem = z.infer<typeof todoItemSchema>;
 export type TodoIndexItem = z.infer<typeof todoIndexItemSchema>;
 export type TodoIndexSummary = z.infer<typeof todoIndexSchema>;
+export type AgentManagementWorkspaceRef = z.infer<typeof agentManagementWorkspaceRefSchema>;
+export type AgentManagementStaleClaimHint = z.infer<typeof agentManagementStaleClaimHintSchema>;
 export type AgentManagementHandoffNote = z.infer<typeof agentManagementHandoffNoteSchema>;
 export type AgentManagementProjection = z.infer<typeof agentManagementProjectionSchema>;
 export type ReviewMaterial = z.infer<typeof reviewMaterialSchema>;

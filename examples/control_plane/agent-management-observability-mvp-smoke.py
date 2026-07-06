@@ -51,7 +51,8 @@ def main() -> int:
         "dispatch",
         "stale claim is a warning only",
         "agent_management_projection_v0",
-        "fixture-backed read-only Agent Management panel",
+        "export-agent-management-status-example.py",
+        "does not invent workspace or handoff fields",
         "license/attribution note",
     ]:
         assert_contains(doc, needle, "mvp doc")

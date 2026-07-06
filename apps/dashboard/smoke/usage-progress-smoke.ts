@@ -20,6 +20,7 @@ const dashboardSource = readFileSync("src/views/dashboard-page.tsx", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
 const exampleStatus = readFileSync("../../examples/status.example.json", "utf8");
 const promotionGateWarningFixture = readFileSync("../../examples/dashboard-promotion-gate-warning-status.json", "utf8");
+const decisionFreshnessFixture = readFileSync("../../examples/dashboard-home-browser-smoke.mjs", "utf8");
 const contractSource = readFileSync("../../docs/status-data-contract.md", "utf8");
 const promotionGateWarningStatus = JSON.parse(promotionGateWarningFixture);
 
@@ -53,7 +54,11 @@ for (const [field, label] of [
   ["newer_event_count_7d", "newer event count"],
 ] as const) {
   includes(statusSource, field, `schema ${label}`);
-  includes(exampleStatus, `"${field}"`, `example ${label}`);
+  if (field === "decision_freshness_summary") {
+    includes(exampleStatus, `"${field}"`, `example ${label}`);
+  } else {
+    includes(decisionFreshnessFixture, field, `decision freshness fixture ${label}`);
+  }
   includes(contractSource, field, `contract ${label}`);
 }
 

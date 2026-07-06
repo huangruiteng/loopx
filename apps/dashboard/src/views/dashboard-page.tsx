@@ -66,6 +66,8 @@ import {
   DecisionFreshnessSummary,
   UsageSummary,
   exampleStatusPayload,
+  AgentManagementStaleClaimHint,
+  AgentManagementWorkspaceRef,
   formatStatusError,
   parseRewardDryRunResponse,
   parseStatusPayload,
@@ -313,7 +315,9 @@ type AgentManagementRow = {
   nextSafeAction: string;
   primaryGoalId: string;
   quotaHints: string[];
+  staleClaimHint?: AgentManagementStaleClaimHint | null;
   status: AgentManagementStatus;
+  workspaceRef?: AgentManagementWorkspaceRef | null;
 };
 
 function laneFor(item: QueueItem) {
@@ -1370,6 +1374,65 @@ function handoffNoteBadges(note: AgentManagementHandoffNote) {
   ], 4);
 }
 
+function normalizeWorkspaceRef(ref?: AgentManagementWorkspaceRef | null): AgentManagementWorkspaceRef | null {
+  if (!ref) {
+    return null;
+  }
+  const hasBody = [
+    ref.kind,
+    ref.label,
+    ref.branch,
+    ...(ref.write_scope ?? []),
+  ].some((value) => value?.trim());
+  return hasBody ? ref : null;
+}
+
+function workspaceRefSummary(ref: AgentManagementWorkspaceRef) {
+  const kind = ref.kind?.trim() || "unknown workspace";
+  const label = ref.label?.trim() || ref.branch?.trim();
+  if (label) {
+    return `${kind.replace(/_/g, " ")} · ${label}`;
+  }
+  return kind.replace(/_/g, " ");
+}
+
+function workspaceRefBadges(ref: AgentManagementWorkspaceRef) {
+  return compactUnique([
+    ref.path_safe ? "path safe" : "path hidden",
+    ref.branch ? `branch=${ref.branch}` : null,
+    ...(ref.write_scope ?? []).slice(0, 3).map((scope) => `scope=${scope}`),
+  ], 4);
+}
+
+function normalizeStaleClaimHint(hint?: AgentManagementStaleClaimHint | null): AgentManagementStaleClaimHint | null {
+  if (!hint) {
+    return null;
+  }
+  const hasBody = [
+    hint.state,
+    hint.claimed_by,
+    hint.last_activity_at,
+    hint.reason,
+    hint.recommended_operator_action,
+  ].some((value) => value?.trim());
+  return hasBody ? hint : null;
+}
+
+function staleClaimSummary(hint: AgentManagementStaleClaimHint) {
+  return hint.reason?.trim()
+    || hint.recommended_operator_action?.trim()
+    || "Claim freshness needs operator attention before manual handoff.";
+}
+
+function staleClaimBadges(hint: AgentManagementStaleClaimHint) {
+  return compactUnique([
+    hint.state ?? "claim freshness",
+    hint.claimed_by ? `claimed_by=${hint.claimed_by}` : null,
+    hint.last_activity_at ? `last=${formatAgentActivity(hint.last_activity_at)}` : null,
+    hint.threshold_hours ? `>${hint.threshold_hours}h` : null,
+  ], 4);
+}
+
 const agentAvatarTones = [
   "from-cyan-200 to-teal-300 text-teal-950",
   "from-emerald-200 to-lime-300 text-emerald-950",
@@ -1469,6 +1532,8 @@ function buildAgentManagementRows(
       ...(projected?.evidence_refs ?? []),
     ], 5);
     const handoffNote = normalizeHandoffNote(projected?.handoff_note);
+    const workspaceRef = normalizeWorkspaceRef(projected?.workspace_ref ?? projected?.current_todo?.workspace_ref);
+    const staleClaimHint = normalizeStaleClaimHint(projected?.stale_claim_hint);
     return {
       agentId,
       claimedTodos,
@@ -1480,9 +1545,11 @@ function buildAgentManagementRows(
         || (primaryTodo ? todoDisplayTitle(primaryTodo.todo) : "Inspect status projection before taking work"),
       primaryGoalId,
       quotaHints,
+      staleClaimHint,
       status: claimedTodos.length > 0
         ? agentManagementStatus(openTodos, claimedTodos)
         : agentManagementProjectionStatus(projected?.state),
+      workspaceRef,
     };
   }).sort((left, right) => {
     const leftOpen = left.claimedTodos.some((item) => !item.todo.done) ? 0 : 1;
@@ -1937,6 +2004,72 @@ function AgentManagementPanel({
                       </div>
                       <p className="mt-2 line-clamp-2 break-words leading-6 text-emerald-50/85">{row.nextSafeAction}</p>
                     </div>
+                    {row.workspaceRef ? (
+                      <div
+                        className="rounded-xl border border-teal-100/[0.18] bg-teal-100/[0.055] p-3 shadow-[inset_0_1px_0_rgba(255,246,225,0.05)]"
+                        data-testid="agent-management-workspace-ref"
+                      >
+                        <div className="flex gap-3">
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-teal-100/20 bg-teal-100/10 text-teal-50">
+                            <GitBranch className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-teal-50/[0.78]">
+                              workspace hint
+                              <span className="rounded-full border border-teal-100/20 px-1.5 py-0.5 text-[9px] tracking-normal text-teal-50/[0.62]">
+                                read-only
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 break-words text-sm leading-6 text-teal-50/[0.88]">
+                              {workspaceRefSummary(row.workspaceRef)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {workspaceRefBadges(row.workspaceRef).map((badge) => (
+                            <span
+                              className="rounded-full border border-teal-100/[0.15] bg-black/20 px-2 py-0.5 text-[11px] font-medium text-teal-50/[0.72]"
+                              key={badge}
+                            >
+                              {badge}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {row.staleClaimHint ? (
+                      <div
+                        className="rounded-xl border border-[#f3d7aa]/[0.28] bg-[#f3d7aa]/[0.09] p-3 shadow-[inset_0_1px_0_rgba(255,246,225,0.06)]"
+                        data-testid="agent-management-stale-claim-hint"
+                      >
+                        <div className="flex gap-3">
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#f3d7aa]/[0.25] bg-[#f3d7aa]/[0.12] text-[#ffe6bd]">
+                            <CircleAlert className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffe6bd]/[0.78]">
+                              stale claim hint
+                              <span className="rounded-full border border-[#f3d7aa]/[0.25] px-1.5 py-0.5 text-[9px] tracking-normal text-[#ffe6bd]/[0.68]">
+                                warning only
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 break-words text-sm leading-6 text-[#ffe6bd]/90">
+                              {staleClaimSummary(row.staleClaimHint)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {staleClaimBadges(row.staleClaimHint).map((badge) => (
+                            <span
+                              className="rounded-full border border-[#f3d7aa]/20 bg-black/20 px-2 py-0.5 text-[11px] font-medium text-[#ffe6bd]/[0.78]"
+                              key={badge}
+                            >
+                              {badge}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     {row.handoffNote ? (
                       <div
                         className="rounded-xl border border-cyan-100/20 bg-cyan-100/[0.07] p-3 shadow-[inset_0_1px_0_rgba(255,246,225,0.06)]"
