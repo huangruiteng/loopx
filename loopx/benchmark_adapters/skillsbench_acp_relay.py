@@ -582,6 +582,7 @@ class CodexExecConfig:
     task_output_quiet_timeout_sec: float = 0.0
     reasoning_effort: str | None = None
     codex_api_proxy: str | None = None
+    codex_cli_goal_thread_prewarm: bool = False
     worker_public_trace_dir: str | None = None
     remote_command_file_bridge_command: str | None = None
     remote_command_file_bridge_agent_command: str | None = None
@@ -1246,30 +1247,29 @@ class SkillsBenchLocalAcpRelay:
                     return _recoverable_codex_turn_failure_message(
                         "codex_exec_first_action_timeout"
                     )
-                thread_prewarm_observed = prewarm_codex_cli_goal_thread(
-                    tmux_name=tmux_name,
-                    tmp_path=tmp_path,
-                    timeout_sec=max(
-                        90.0,
-                        float(self._config.first_action_timeout_sec or 0.0),
-                    ),
-                )
-                if not thread_prewarm_observed:
-                    tmux_kill_session(tmux_name)
-                    self._publish_codex_cli_goal_trace(
-                        ok=False,
-                        stage="thread_prewarm_timeout",
-                        goal_active_observed=False,
-                        goal_terminal_observed=False,
-                        first_action_observed=False,
-                        bridge_summary_path=bridge_summary_path,
-                        thread_prewarm_observed=False,
-                        goal_prompt_file_used=goal_prompt_file_used,
-                        goal_command_submission_method=goal_command_submission_method,
+                thread_prewarm_observed = False
+                if self._config.codex_cli_goal_thread_prewarm:
+                    thread_prewarm_observed = prewarm_codex_cli_goal_thread(
+                        tmux_name=tmux_name,
+                        tmp_path=tmp_path,
+                        timeout_sec=max(90.0, float(self._config.first_action_timeout_sec or 0.0)),
                     )
-                    return _recoverable_codex_turn_failure_message(
-                        "codex_exec_first_action_timeout"
-                    )
+                    if not thread_prewarm_observed:
+                        tmux_kill_session(tmux_name)
+                        self._publish_codex_cli_goal_trace(
+                            ok=False,
+                            stage="thread_prewarm_timeout",
+                            goal_active_observed=False,
+                            goal_terminal_observed=False,
+                            first_action_observed=False,
+                            bridge_summary_path=bridge_summary_path,
+                            thread_prewarm_observed=False,
+                            goal_prompt_file_used=goal_prompt_file_used,
+                            goal_command_submission_method=goal_command_submission_method,
+                        )
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_first_action_timeout"
+                        )
                 if goal_prompt_file_used:
                     tmux_type_text_and_submit(
                         tmux_name=tmux_name,

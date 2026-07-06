@@ -100,6 +100,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--codex-cli-goal-thread-prewarm",
+        action="store_true",
+        help=(
+            "Opt into the legacy Codex CLI TUI thread prewarm prompt before "
+            "submitting /goal. The default path submits the file-backed /goal "
+            "objective directly so model startup latency is attributed to the "
+            "real goal/bridge watchdogs."
+        ),
+    )
+    parser.add_argument(
         "--response-timeout-sec",
         type=float,
         default=30.0,
@@ -247,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
             approval_policy=args.approval_policy,
             reasoning_effort=args.reasoning_effort,
             codex_api_proxy=args.codex_api_proxy,
+            codex_cli_goal_thread_prewarm=args.codex_cli_goal_thread_prewarm,
             response_timeout_sec=args.response_timeout_sec,
             worker_script=args.worker_script,
             stream_heartbeat_interval_sec=args.stream_heartbeat_interval_sec,

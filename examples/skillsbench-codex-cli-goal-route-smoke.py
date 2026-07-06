@@ -1027,6 +1027,8 @@ def _assert_cli_goal_uses_short_file_backed_objective_for_bridge_packet() -> Non
     assert "build_codex_cli_goal_file_objective(" in source
     assert "tmux_type_text_and_submit(" in source
     assert "build_codex_cli_goal_tui_input(prompt_for_codex)" not in source
+    assert "codex_cli_goal_thread_prewarm: bool = False" in source
+    assert "if self._config.codex_cli_goal_thread_prewarm:" in source
     assert "prewarm_codex_cli_goal_thread(" in source
     assert "thread_prewarm_timeout" in source
     assert "timeout_sec=max(" in source

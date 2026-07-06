@@ -57,6 +57,7 @@ def test_codex_cli_goal_first_action_timeout_defaults_to_bounded_watchdog() -> N
             command[command.index("--goal-active-timeout-sec") + 1]
             == str(DEFAULT_CODEX_CLI_GOAL_FIRST_ACTION_TIMEOUT_SEC)
         )
+        assert "--codex-cli-goal-thread-prewarm" not in command
 
         disabled_args = parse_args(
             [
