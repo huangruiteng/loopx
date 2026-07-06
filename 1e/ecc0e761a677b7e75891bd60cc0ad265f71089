@@ -1,0 +1,35 @@
+docs/capabilities/content-ops/README.md
+  s_76ee28abb3c3a4::t_be75782e5facce 31-40
+docs/capabilities/value-connectors/README.md
+  s_76ee28abb3c3a4::t_667dd333b38173 26-31,82,143-155
+docs/capabilities/value-connectors/agent-reach-ops-source-map.md
+  s_76ee28abb3c3a4::t_7a184e5d9718a1 5-22,175-186,217-223
+examples/value-connectors-github-public-probe-smoke.py
+  s_76ee28abb3c3a4::t_50903c4692f128 28-30,90-91,96-138,446-452
+loopx/capabilities/catalog.py
+  s_76ee28abb3c3a4::t_2ea50f945a59fc 214,221-225,278-282
+loopx/capabilities/value_connectors/cli.py
+  s_76ee28abb3c3a4::t_937a07a39dbaf0 26-30,69-70,79-92,244-253,287
+loopx/capabilities/value_connectors/github_public.py
+  s_76ee28abb3c3a4::t_6c24e726a8bf19 596-630
+loopx/capabilities/value_connectors/source_map.py
+  s_76ee28abb3c3a4::t_779bd1f71cd0ad 1-355
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1eecc0e761a677b7e75891bd60cc0ad265f71089",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
