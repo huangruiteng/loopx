@@ -1,0 +1,37 @@
+apps/presentation/dashboard/README.md
+  s_32e2a9a204a8e4::t_657696ac8dbec7 22,102,269-270,299
+apps/presentation/dashboard/package.json
+  s_32e2a9a204a8e4::t_646e73717f6aa8 9,12-14,16-17,19-20
+apps/presentation/dashboard/smoke/frontstage-route-smoke.ts
+  s_32e2a9a204a8e4::t_9faaa73c0fdede 33-35,37,400-401,403
+apps/presentation/dashboard/smoke/home-route-smoke.ts
+  s_32e2a9a204a8e4::t_82c6d329aad3a9 21,23
+apps/presentation/dashboard/smoke/usage-progress-smoke.ts
+  s_32e2a9a204a8e4::t_9db94a938846a3 21-24
+apps/presentation/dashboard/src/data/status.ts
+  s_32e2a9a204a8e4::t_d2ced22845c5df 1
+apps/presentation/dashboard/src/views/frontstage-developer-page.tsx
+  s_32e2a9a204a8e4::t_2c439f07c156c8 26,31,41,89-93
+apps/presentation/dashboard/src/views/frontstage-page.tsx
+  s_32e2a9a204a8e4::t_22ad83fe44a5a4 19-21
+apps/presentation/dashboard/tsconfig.json
+  s_32e2a9a204a8e4::t_448da94ae4daeb 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e1d13bd78c86defd41ea86d179c7e90c9fdc35f9",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
