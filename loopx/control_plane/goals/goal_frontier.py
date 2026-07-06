@@ -4,6 +4,7 @@ from typing import Any
 
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
+VISION_CONTINUATION_AUDIT_SCHEMA_VERSION = "vision_continuation_audit_v0"
 AUTONOMOUS_REPLAN_DECISION_SCHEMA_VERSION = "autonomous_replan_decision_v0"
 AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION = "autonomous_replan_scope_v0"
 AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
@@ -332,6 +333,70 @@ def acceptance_gaps_from_vision_checkpoint(
     if generated_at:
         gap["generated_at"] = generated_at
     return [gap]
+
+
+def build_vision_continuation_audit(
+    *,
+    agent_id: str | None,
+    acceptance_gaps: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Return the closeout audit contract for an open per-agent vision gap.
+
+    This is a read-path contract: quota/status can tell an agent that the
+    selected todo is only a step toward the active vision. Writeback still goes
+    through normal todo, evidence, and refresh-state commands.
+    """
+
+    compact_acceptance_gaps = [
+        gap for gap in (acceptance_gaps or []) if isinstance(gap, dict)
+    ]
+    if not compact_acceptance_gaps:
+        return None
+    acceptance_requirements = [
+        text
+        for text in (
+            _compact_projection_text(gap.get("acceptance_summary"), limit=180)
+            for gap in compact_acceptance_gaps
+        )
+        if text
+    ]
+    audit: dict[str, Any] = {
+        "schema_version": VISION_CONTINUATION_AUDIT_SCHEMA_VERSION,
+        "required": True,
+        "agent_id": agent_id,
+        "decision": "acceptance_gap_open",
+        "selected_todo_is_goal_completion": False,
+        "closeout_allowed_without_evidence": False,
+        "trigger_count": len(compact_acceptance_gaps),
+        "acceptance_gaps": compact_acceptance_gaps[:5],
+        "authoritative_evidence_kinds": [
+            "changed_files",
+            "public_safe_evidence_records",
+            "evaluation_outputs",
+            "successor_state",
+            "blocker_state",
+            "superseding_agent_vision",
+        ],
+        "not_satisfied_by": [
+            "todo_completion_alone",
+            "autonomous_replan_ack_alone",
+            "vision_checkpoint_alone",
+            "no_followup_without_acceptance_evidence",
+        ],
+        "required_before_closeout": [
+            "derive_requirements_from_active_vision_and_current_todo",
+            "name_authoritative_evidence_for_each_requirement",
+            "create_successor_or_write_vision_replan_trigger_when_unproven",
+        ],
+        "recommended_action": (
+            "audit active per-agent vision acceptance before todo closeout; "
+            "if evidence is weak or missing, keep the vision active with a "
+            "successor todo or --vision-replan-trigger"
+        ),
+    }
+    if acceptance_requirements:
+        audit["acceptance_requirements"] = acceptance_requirements[:5]
+    return audit
 
 
 def _open_todo_count(summary: dict[str, Any] | None) -> int:
@@ -915,6 +980,10 @@ def build_goal_frontier_projection(
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
+    vision_continuation_audit = build_vision_continuation_audit(
+        agent_id=agent_id,
+        acceptance_gaps=compact_acceptance_gaps,
+    )
     projection: dict[str, Any] = {
         "schema_version": GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION,
         "goal_id": goal_id,
@@ -948,6 +1017,8 @@ def build_goal_frontier_projection(
         "autonomy_blockers": blockers,
         "replan_required": replan_required,
     }
+    if vision_continuation_audit:
+        projection["vision_continuation_audit"] = vision_continuation_audit
     if replan_required and isinstance(replan_obligation, dict):
         projection["autonomous_replan_decision"] = build_autonomous_replan_decision(
             replan_obligation
