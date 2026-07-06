@@ -28,8 +28,16 @@ or published.
 ## Connector-First Ops Pattern
 
 For social and creator operations, start with a connector source map instead of
-drafting from memory. The current reusable pattern is
-[`agent_reach_ops_source_map`](../value-connectors/agent-reach-ops-source-map.md):
+drafting from memory:
+
+```bash
+loopx value-connectors source-map --format json
+```
+
+This packet gives a newly connected agent the current read-first connector
+catalog, including public GitHub metadata, content-ops public handles,
+browser-backed X research, Agent-Reach source routing, and finance snapshot
+probes:
 
 ```text
 doctor -> read-only source map -> maturity score -> ops brief -> draft packet

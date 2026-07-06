@@ -211,12 +211,17 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
             "channel metadata into LoopX value signals while gating account "
             "setup, sends, posts, and private reads."
         ),
-        "entry_command": "loopx value-connectors install-check --format json",
+        "entry_command": "loopx value-connectors source-map --format json",
         "commands": [
             {
                 "command": "loopx value-connectors install-check --format json",
                 "purpose": "Show connector starter install/use commands and local dependency status.",
                 "write_boundary": "local check only; no external read or write",
+            },
+            {
+                "command": "loopx value-connectors source-map --format json",
+                "purpose": "Give agents a read-first source-map packet for all currently surfaced connector profiles.",
+                "write_boundary": "packet only; no external read, write, account setup, or raw payload capture",
             },
             {
                 "command": "loopx value-connectors github-public-probe --url <github-issue-or-pr-url> --format json",
@@ -269,6 +274,11 @@ CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "schema_version": "value_connector_install_check_packet_v0",
                 "module": "loopx.capabilities.value_connectors.github_public",
                 "doc": "docs/reference/protocols/value-connector-plan-v0.md",
+            },
+            {
+                "schema_version": "value_connector_source_map_packet_v0",
+                "module": "loopx.capabilities.value_connectors.source_map",
+                "doc": "docs/capabilities/value-connectors/agent-reach-ops-source-map.md",
             },
         ],
         "smokes": [

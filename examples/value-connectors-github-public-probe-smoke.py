@@ -25,6 +25,9 @@ from loopx.capabilities.value_connectors.github_public import (  # noqa: E402
 from loopx.capabilities.value_connectors.planner import (  # noqa: E402
     VALUE_CONNECTOR_PLAN_PACKET_SCHEMA_VERSION,
 )
+from loopx.capabilities.value_connectors.source_map import (  # noqa: E402
+    VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION,
+)
 
 
 PRIVATE_PATTERNS = [
@@ -84,9 +87,54 @@ def main() -> int:
     assert install["schema_version"] == VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION
     connector_ids = {item["connector_id"] for item in install["checks"]}
     assert "github_public_channel" in connector_ids, connector_ids
+    assert "agent_reach_ops_source_map" in connector_ids, connector_ids
+    assert "finance_market_snapshot" in connector_ids, connector_ids
     assert "botmail_identity" in connector_ids, connector_ids
     assert "social_browser_x" in connector_ids, connector_ids
     assert_public_safe(install)
+
+    source_map = json.loads(
+        run_cli(["--format", "json", "value-connectors", "source-map"]).stdout
+    )
+    assert source_map["ok"] is True, source_map
+    assert source_map["schema_version"] == VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION
+    assert source_map["external_reads_performed"] is False, source_map
+    assert source_map["external_writes_performed"] is False, source_map
+    assert source_map["projection"]["agent_can_start_without_docs"] is True, source_map
+    profile_ids = {item["connector_id"] for item in source_map["source_profiles"]}
+    assert "github_public_channel" in profile_ids, profile_ids
+    assert "github_public_reply_monitor" in profile_ids, profile_ids
+    assert "content_ops_public_handle" in profile_ids, profile_ids
+    assert "social_browser_x" in profile_ids, profile_ids
+    assert "agent_reach_ops_source_map" in profile_ids, profile_ids
+    assert "finance_market_snapshot" in profile_ids, profile_ids
+    action_ids = {item["connector_id"] for item in source_map["action_gated_profiles"]}
+    assert "botmail_identity" in action_ids, action_ids
+    assert "community_channel" in action_ids, action_ids
+    assert source_map["generic_evidence_card_schema"]["operation"] == "read", source_map
+    assert "loopx value-connectors plan" in source_map["agent_prompt"], source_map
+    assert_public_safe(source_map)
+
+    agent_reach_map = json.loads(
+        run_cli(
+            [
+                "--format",
+                "json",
+                "value-connectors",
+                "source-map",
+                "--connector",
+                "agent_reach_ops_source_map",
+            ]
+        ).stdout
+    )
+    assert agent_reach_map["ok"] is True, agent_reach_map
+    assert len(agent_reach_map["source_profiles"]) == 1, agent_reach_map
+    agent_reach_profile = agent_reach_map["source_profiles"][0]
+    assert agent_reach_profile["connector_id"] == "agent_reach_ops_source_map", agent_reach_profile
+    assert agent_reach_profile["external_reads_allowed"] is True, agent_reach_profile
+    assert agent_reach_profile["external_writes_allowed"] is False, agent_reach_profile
+    assert not agent_reach_map["action_gated_profiles"], agent_reach_map
+    assert_public_safe(agent_reach_map)
 
     x_install = json.loads(
         run_cli(
@@ -394,6 +442,13 @@ def main() -> int:
     assert "LoopX GitHub Public Channel Probe" in markdown, markdown
     assert "external_writes_performed: `False`" in markdown, markdown
     assert_public_safe(markdown)
+
+    source_map_markdown = run_cli(["value-connectors", "source-map"]).stdout
+    assert "LoopX Value Connector Source Map" in source_map_markdown, source_map_markdown
+    assert "agent_can_start_without_docs: `True`" in source_map_markdown, source_map_markdown
+    assert "`github_public_channel`" in source_map_markdown, source_map_markdown
+    assert "`finance_market_snapshot`" in source_map_markdown, source_map_markdown
+    assert_public_safe(source_map_markdown)
 
     reply_markdown = run_cli(
         [

@@ -2,11 +2,24 @@
 
 Status: public-safe field pattern for connector-backed content operations.
 
-This note turns the Agent-Reach value-explorer experiments into a reusable
-LoopX capability pattern. It is not a hard dependency on Agent-Reach and it does
-not grant permission to publish. It describes how a LoopX agent can use
-Agent-Reach as a source router, then let LoopX own evidence, gates, drafts,
-monitors, and handoff state.
+This note turns the Agent-Reach value-explorer experiments into one reusable
+LoopX source profile inside the broader connector source map. It is not a hard
+dependency on Agent-Reach and it does not grant permission to publish. It
+describes how a LoopX agent can use Agent-Reach as a source router, then let
+LoopX own evidence, gates, drafts, monitors, and handoff state.
+
+Agents do not need to read this document before acting. The executable
+entrypoint is:
+
+```bash
+loopx value-connectors source-map --connector agent_reach_ops_source_map --format json
+```
+
+For all currently surfaced connector profiles, use:
+
+```bash
+loopx value-connectors source-map --format json
+```
 
 ## When To Use It
 
@@ -159,7 +172,18 @@ monitor boundary.
 
 ## Reusable Agent Prompt
 
-When onboarding a new LoopX agent for creator/operator work, include:
+When onboarding a new LoopX agent for creator/operator work, the preferred
+instruction is to call the CLI packet:
+
+```text
+Run `loopx value-connectors source-map --format json` before drafting from
+external signals. Choose a read-only source profile, emit compact evidence
+cards, score maturity, and write an ops brief. Use `loopx value-connectors plan`
+before any signup, send, post, reply, upload, production action, credentialed
+read, or private-source expansion.
+```
+
+The longer fallback prompt is:
 
 ```text
 Before drafting social content, run connector-first source mapping.
@@ -190,10 +214,14 @@ reviewable: evidence cards, gates, draft packets, and monitors.
 
 ## Productization Boundary
 
-Keep early runs local until at least two successful batches prove the card
-shape and source boundaries. Productize only the stable parts:
+The first stable part is now productized as a packet:
 
-- `loopx value-connectors source-map --connector agent-reach ...`;
+- `loopx value-connectors source-map --connector agent_reach_ops_source_map ...`;
+
+Keep live collection and publish tooling local until at least two successful
+batches prove the card shape and source boundaries. Productize only the stable
+parts:
+
 - `loopx content-ops draft --from-source-map ...`;
 - `loopx content-ops publish-record --from-draft ...`;
 - `loopx content-ops monitor --published-url ...`.
