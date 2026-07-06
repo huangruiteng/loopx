@@ -355,7 +355,12 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
     captures = iter(
         [
             "",
-            "Codex startup\nMCP server failed: HTTP request failed\n› \n",
+            (
+                "Codex startup\n"
+                "MCP server failed: HTTP request failed\n"
+                "│ model:     gpt-5.5 xhigh   /model to change │\n"
+                "› \n"
+            ),
         ]
     )
 
@@ -363,17 +368,57 @@ def _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings() -> None:
         try:
             return next(captures)
         except StopIteration:
-            return "Codex startup\nMCP server failed: HTTP request failed\n› \n"
+            return (
+                "Codex startup\n"
+                "MCP server failed: HTTP request failed\n"
+                "│ model:     gpt-5.5 xhigh   /model to change │\n"
+                "› \n"
+            )
 
-    original_capture = goal_tui.tmux_capture
+    original_capture = goal_tui.tmux_capture_visible
     try:
-        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = fake_capture  # type: ignore[assignment]
         assert goal_tui.wait_for_codex_cli_tui_ready(
             "fake-session",
-            timeout_sec=1.0,
+            timeout_sec=2.0,
+            startup_grace_sec=0.0,
+            stable_sec=0.0,
         )
     finally:
-        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = original_capture  # type: ignore[assignment]
+
+
+def _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    import loopx.codex_cli_goal_tui as goal_tui
+
+    trust_prompt = (
+        "Do you trust the contents of this directory?\n"
+        "› 1. Yes, continue\n"
+        "  2. No, quit\n"
+        "Press enter to continue\n"
+    )
+    assert goal_tui.codex_cli_tui_startup_blocker(trust_prompt) == "trust_prompt"
+    assert not goal_tui.codex_cli_tui_input_prompt_visible(trust_prompt)
+
+    current_model_loading = (
+        "│ model:     loading   /model to change │\n"
+        "› Explain this codebase\n"
+    )
+    assert (
+        goal_tui.codex_cli_tui_startup_blocker(current_model_loading)
+        == "model_loading"
+    )
+
+    historical_loading_then_ready = (
+        "│ model:     loading   /model to change │\n"
+        "› Explain this codebase\n"
+        "│ model:     gpt-5.5 xhigh   /model to change │\n"
+        "› Explain this codebase\n"
+    )
+    assert goal_tui.codex_cli_tui_startup_blocker(historical_loading_then_ready) == ""
+    assert goal_tui.codex_cli_tui_input_prompt_visible(historical_loading_then_ready)
+    assert goal_tui.codex_cli_tui_input_prompt_visible("  > \n")
 
 
 def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
@@ -409,13 +454,13 @@ def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
     original_sleep = goal_tui.time.sleep
     original_submit = goal_tui.tmux_submit_enter
     original_plain_enter = goal_tui.tmux_send_plain_enter
-    original_capture = goal_tui.tmux_capture
+    original_capture = goal_tui.tmux_capture_visible
     try:
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = fake_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = fake_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = fake_capture  # type: ignore[assignment]
         with tempfile.TemporaryDirectory() as temp:
             prompt_path = Path(temp) / "prompt.txt"
             prompt_path.write_text(prompt_text, encoding="utf-8")
@@ -429,7 +474,7 @@ def _assert_cli_goal_paste_submit_falls_back_to_plain_enter() -> None:
         goal_tui.time.sleep = original_sleep  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = original_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = original_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = original_capture  # type: ignore[assignment]
 
     assert ("kitty-enter", "fake-session") in calls, calls
     assert ("plain-enter", "fake-session") in calls, calls
@@ -459,13 +504,13 @@ def _assert_cli_goal_typed_submit_avoids_paste_buffer() -> None:
     original_sleep = goal_tui.time.sleep
     original_submit = goal_tui.tmux_submit_enter
     original_plain_enter = goal_tui.tmux_send_plain_enter
-    original_capture = goal_tui.tmux_capture
+    original_capture = goal_tui.tmux_capture_visible
     try:
         goal_tui.subprocess.run = fake_run  # type: ignore[assignment]
         goal_tui.time.sleep = lambda _seconds: None  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = fake_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = fake_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = fake_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = fake_capture  # type: ignore[assignment]
         goal_tui.tmux_type_text_and_submit(
             tmux_name="fake-session",
             text=goal_text,
@@ -475,7 +520,7 @@ def _assert_cli_goal_typed_submit_avoids_paste_buffer() -> None:
         goal_tui.time.sleep = original_sleep  # type: ignore[assignment]
         goal_tui.tmux_submit_enter = original_submit  # type: ignore[assignment]
         goal_tui.tmux_send_plain_enter = original_plain_enter  # type: ignore[assignment]
-        goal_tui.tmux_capture = original_capture  # type: ignore[assignment]
+        goal_tui.tmux_capture_visible = original_capture  # type: ignore[assignment]
 
     assert any(
         isinstance(call, list)
@@ -1280,6 +1325,7 @@ def main() -> int:
     _assert_cli_goal_plan_and_relay_command()
     _assert_cli_goal_trace_merges_into_public_prerequisites()
     _assert_cli_goal_tui_ready_wait_tolerates_startup_warnings()
+    _assert_cli_goal_tui_ready_wait_rejects_startup_artifacts()
     _assert_cli_goal_paste_submit_falls_back_to_plain_enter()
     _assert_cli_goal_typed_submit_avoids_paste_buffer()
     _assert_cli_goal_rate_limit_is_public_safe_retryable_stage()

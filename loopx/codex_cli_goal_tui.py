@@ -19,6 +19,8 @@ CODEX_CLI_GOAL_THREAD_PREWARM_PROMPT = (
     "joining LOOPX, GOAL, THREAD, and READY with underscores. Do not use tools."
 )
 CODEX_CLI_GOAL_TASK_PROMPT_FILENAME = "skillsbench-task-prompt.md"
+CODEX_CLI_TUI_READY_STARTUP_GRACE_SEC = 15.0
+CODEX_CLI_TUI_READY_STABLE_SEC = 2.0
 
 
 def build_codex_cli_goal_tui_input(objective: str) -> str:
@@ -148,6 +150,17 @@ def tmux_capture(tmux_name: str) -> str:
     return proc.stdout or ""
 
 
+def tmux_capture_visible(tmux_name: str) -> str:
+    proc = subprocess.run(
+        ["tmux", "capture-pane", "-p", "-J", "-t", tmux_name],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    return proc.stdout or ""
+
+
 def tmux_kill_session(tmux_name: str) -> None:
     subprocess.run(
         ["tmux", "kill-session", "-t", tmux_name],
@@ -246,7 +259,10 @@ def tmux_paste_file_and_submit(
     tmux_submit_enter(tmux_name)
     prompt_text = prompt_path.read_text(encoding="utf-8", errors="ignore")
     time.sleep(1.0)
-    if codex_cli_tui_active_input_prompt_contains(tmux_capture(tmux_name), prompt_text):
+    if codex_cli_tui_active_input_prompt_contains(
+        tmux_capture_visible(tmux_name),
+        prompt_text,
+    ):
         tmux_send_plain_enter(tmux_name)
 
 
@@ -257,35 +273,82 @@ def tmux_type_text_and_submit(*, tmux_name: str, text: str) -> None:
     time.sleep(0.2)
     tmux_submit_enter(tmux_name)
     time.sleep(1.0)
-    if codex_cli_tui_active_input_prompt_contains(tmux_capture(tmux_name), text):
+    if codex_cli_tui_active_input_prompt_contains(
+        tmux_capture_visible(tmux_name),
+        text,
+    ):
         tmux_send_plain_enter(tmux_name)
+
+
+def codex_cli_tui_trust_prompt_visible(capture: str) -> bool:
+    lowered = (capture or "").lower()
+    return (
+        "do you trust the contents of this directory" in lowered
+        or ("yes, continue" in lowered and "press enter to continue" in lowered)
+    )
+
+
+def codex_cli_tui_latest_model_line(capture: str) -> str:
+    model_lines = [
+        line.strip()
+        for line in (capture or "").splitlines()
+        if "model:" in line.lower()
+    ]
+    return model_lines[-1] if model_lines else ""
+
+
+def codex_cli_tui_startup_blocker(capture: str) -> str:
+    if not (capture or "").strip():
+        return "empty_capture"
+    if codex_cli_tui_trust_prompt_visible(capture):
+        return "trust_prompt"
+    latest_model_line = codex_cli_tui_latest_model_line(capture)
+    if "loading" in latest_model_line.lower():
+        return "model_loading"
+    if "queued follow-up inputs" in capture.lower():
+        return "queued_followup"
+    return ""
 
 
 def codex_cli_tui_input_prompt_visible(capture: str) -> bool:
     if not capture:
         return False
-    if "›" in capture:
-        return True
-    return bool(re.search(r"(?m)^\\s*[>❯]\\s*(?:$|\\[)", capture))
+    if codex_cli_tui_trust_prompt_visible(capture):
+        return False
+    for raw_line in reversed(capture.splitlines()[-20:]):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("›"):
+            return True
+        if re.match(r"^[>❯]\s*(?:$|\S)", line):
+            return True
+    return False
 
 
 def wait_for_codex_cli_tui_ready(
     tmux_name: str,
     *,
-    timeout_sec: float = 30.0,
+    timeout_sec: float = 60.0,
+    startup_grace_sec: float = CODEX_CLI_TUI_READY_STARTUP_GRACE_SEC,
+    stable_sec: float = CODEX_CLI_TUI_READY_STABLE_SEC,
 ) -> bool:
     """Wait until Codex TUI startup noise has settled before pasting input."""
 
-    deadline = time.monotonic() + max(1.0, float(timeout_sec or 0.0))
+    timeout = max(1.0, float(timeout_sec or 0.0))
+    deadline = time.monotonic() + timeout
+    grace = max(0.0, min(float(startup_grace_sec or 0.0), max(0.0, timeout - 1.0)))
+    if grace:
+        time.sleep(grace)
+    stable_ready_since = 0.0
     while time.monotonic() < deadline:
-        capture = tmux_capture(tmux_name)
+        capture = tmux_capture_visible(tmux_name)
         lowered = capture.lower()
-        if not capture.strip():
+        if codex_cli_tui_startup_blocker(capture):
+            stable_ready_since = 0.0
             time.sleep(0.5)
             continue
-        if codex_cli_tui_input_prompt_visible(capture):
-            return True
-        if any(
+        ready = codex_cli_tui_input_prompt_visible(capture) or any(
             marker in lowered
             for marker in (
                 "what can i help",
@@ -294,7 +357,15 @@ def wait_for_codex_cli_tui_ready(
                 "send a message",
                 "type a message",
             )
-        ):
+        )
+        if not ready:
+            stable_ready_since = 0.0
+            time.sleep(0.5)
+            continue
+        now = time.monotonic()
+        if not stable_ready_since:
+            stable_ready_since = now
+        if now - stable_ready_since >= max(0.0, float(stable_sec or 0.0)):
             return True
         time.sleep(0.5)
     return False
