@@ -1332,6 +1332,28 @@ class SkillsBenchLocalAcpRelay:
                     if "Goal active" in capture or "Pursuing goal" in capture:
                         goal_active_observed = True
                     goal_failed_now = "Goal failed" in capture or "Goal blocked" in capture
+                    if bridge_summary_path is not None:
+                        try:
+                            current_bridge_summary_size = bridge_summary_path.stat().st_size
+                        except OSError:
+                            current_bridge_summary_size = 0
+                        if current_bridge_summary_size > last_bridge_summary_size:
+                            last_bridge_summary_size = current_bridge_summary_size
+                            last_bridge_activity_at = now
+                            bridge_activity_seen = True
+                            first_action_seen = True
+                        elif (
+                            not first_action_seen
+                            and current_bridge_summary_size > 0
+                        ):
+                            first_action_seen = True
+                        if not meaningful_progress_seen:
+                            meaningful_progress_seen = (
+                                _bridge_summary_has_meaningful_agent_progress(
+                                    bridge_summary_path,
+                                    allow_loopx_closeout=False,
+                                )
+                            )
                     if "Goal achieved" in capture:
                         goal_terminal_observed = True
                         break
@@ -1495,28 +1517,6 @@ class SkillsBenchLocalAcpRelay:
                         return _recoverable_codex_turn_failure_message(
                             "codex_cli_goal_goal_active_timeout"
                         )
-                    if bridge_summary_path is not None:
-                        try:
-                            current_bridge_summary_size = bridge_summary_path.stat().st_size
-                        except OSError:
-                            current_bridge_summary_size = 0
-                        if current_bridge_summary_size > last_bridge_summary_size:
-                            last_bridge_summary_size = current_bridge_summary_size
-                            last_bridge_activity_at = now
-                            bridge_activity_seen = True
-                            first_action_seen = True
-                        elif (
-                            not first_action_seen
-                            and current_bridge_summary_size > 0
-                        ):
-                            first_action_seen = True
-                        if not meaningful_progress_seen:
-                            meaningful_progress_seen = (
-                                _bridge_summary_has_meaningful_agent_progress(
-                                    bridge_summary_path,
-                                    allow_loopx_closeout=False,
-                                )
-                            )
                     if (
                         not first_action_seen
                         and first_action_deadline
