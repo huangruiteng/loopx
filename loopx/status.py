@@ -110,6 +110,8 @@ from .control_plane.work_items.attention_item import (
     attention_item as _attention_item_read_model,
 )
 from .control_plane.work_items.attention_queue import (
+    AttentionQueueContext,
+    build_attention_queue as _build_attention_queue_read_model,
     build_attention_queue_projection as _build_attention_queue_projection_read_model,
     merge_global_registry_findings as _merge_global_registry_findings_read_model,
 )
@@ -6731,188 +6733,46 @@ def build_attention_queue(
     include_task_graph: bool = False,
     goal_id_filter: str | None = None,
 ) -> dict[str, Any]:
-    health_items: list[dict[str, Any]] = []
-    history_items: list[dict[str, Any]] = []
-    if contract.get("ok") is False:
-        health_items.append(
-            attention_item(
-                goal_id="loopx-contract",
-                status="contract_check_failed",
-                waiting_on="codex",
-                severity="high",
-                recommended_action="fix contract errors before advancing goal adapters",
-                source="contract",
-            )
-        )
-
-    for goal in history.get("goals") or []:
-        if not isinstance(goal, dict):
-            continue
-        active_state_fields: dict[str, Any] | None = None
-        active_state_item: dict[str, Any] | None = None
-        current_status_run = latest_run(goal)
-        goal_latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
-        if goal.get("registry_member"):
-            active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
-            active_state_item = active_state_todo_attention_item(goal, active_state_fields, current_status_run)
-        if active_state_item and active_state_item.get("waiting_on") in {"controller", "user_or_controller"}:
-            item = active_state_item
-        else:
-            item = goal_attention(goal)
-            if not item:
-                item = active_state_item
-        if item:
-            agent_lane_recommendation = compact_agent_lane_recommendation(
-                latest_agent_lane_run(goal)
-            )
-            active_state_next_action = (
-                active_state_fields.get("active_state_next_action")
-                if isinstance(active_state_fields, dict)
-                else None
-            )
-            latest_run_action, latest_run_action_source = latest_run_recommended_action_for_projection(
-                current_status_run=current_status_run,
-                agent_lane_recommendation=agent_lane_recommendation,
-                active_state_next_action=active_state_next_action,
-                preferred_agent_id=(
-                    goal.get("coordination", {}).get("primary_agent")
-                    if isinstance(goal.get("coordination"), dict)
-                    else None
-                ),
-            )
-            if latest_run_action:
-                item["latest_run_recommended_action"] = latest_run_action
-                if latest_run_action_source:
-                    item["latest_run_recommended_action_source"] = latest_run_action_source
-                if isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["latest_run_recommended_action"] = latest_run_action
-                    if latest_run_action_source:
-                        item["project_asset"][
-                            "latest_run_recommended_action_source"
-                        ] = latest_run_action_source
-            replan_ack = compact_autonomous_replan_ack(
-                current_status_run
-            ) or latest_autonomous_replan_ack_for_projection(goal_latest_runs)
-            if replan_ack:
-                item["autonomous_replan_ack"] = replan_ack
-                if isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["autonomous_replan_ack"] = replan_ack
-            control_plane = compact_control_plane_policy(goal.get("control_plane"))
-            if control_plane:
-                item["control_plane"] = control_plane
-            if agent_lane_recommendation:
-                item["agent_lane_recommendation"] = agent_lane_recommendation
-            subagent_activity = subagent_activity_for_goal(goal)
-            interface_budget_cadence = interface_budget_cadence_for_runs(goal_latest_runs)
-            projection_warning = active_state_projection_warning(goal, latest_run(goal))
-            enrich_project_asset(
-                item,
-                latest_validation=project_asset_latest_validation(latest_run(goal)),
-                latest_runs=goal_latest_runs,
-                execution_profile=(
-                    goal.get("execution_profile")
-                    if isinstance(goal.get("execution_profile"), dict)
-                    else None
-                ),
-                orchestration=(
-                    goal.get("spawn_policy")
-                    if isinstance(goal.get("spawn_policy"), dict)
-                    else None
-                ),
-                subagent_activity=subagent_activity,
-                interface_budget_cadence=interface_budget_cadence,
-            )
-            if control_plane and isinstance(item.get("project_asset"), dict):
-                item["project_asset"]["control_plane"] = control_plane
-            if agent_lane_recommendation and isinstance(item.get("project_asset"), dict):
-                item["project_asset"]["agent_lane_recommendation"] = agent_lane_recommendation
-            if projection_warning:
-                item["stale_latest_run_warning"] = projection_warning
-                if isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["stale_latest_run_warning"] = projection_warning
-            if goal.get("registry_member"):
-                if active_state_fields is None:
-                    active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
-                item.update(active_state_fields)
-                sync_connected_attention_action_from_todos(item)
-                _attach_active_state_project_asset_fields(
-                    item,
-                    latest_runs=goal_latest_runs,
-                    next_action_projection_warning=next_action_projection_warning,
-                    autonomous_replan_obligation_from_runs=autonomous_replan_obligation_from_runs,
-                )
-                item["quota"] = quota_status(
-                    goal,
-                    waiting_on=str(item.get("waiting_on") or ""),
-                    severity=str(item.get("severity") or ""),
-                    lifecycle_phase=item.get("lifecycle_phase"),
-                    lifecycle_flags=item.get("lifecycle_flags"),
-                    status=item.get("status"),
-                )
-                enrich_project_asset(
-                    item,
-                    user_todos=item.get("user_todos") if isinstance(item.get("user_todos"), dict) else None,
-                    agent_todos=item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
-                    quota=item.get("quota") if isinstance(item.get("quota"), dict) else None,
-                    latest_runs=goal_latest_runs,
-                    subagent_activity=subagent_activity,
-                    interface_budget_cadence=interface_budget_cadence,
-                )
-                guarded_quota = quota_with_handoff_outcome_floor(
-                    item.get("quota") if isinstance(item.get("quota"), dict) else {},
-                    waiting_on=str(item.get("waiting_on") or ""),
-                    project_asset=item.get("project_asset")
-                    if isinstance(item.get("project_asset"), dict)
-                    else None,
-                    handoff_readiness=item.get("handoff_readiness")
-                    if isinstance(item.get("handoff_readiness"), dict)
-                    else None,
-                )
-                if guarded_quota != item.get("quota"):
-                    item["quota"] = guarded_quota
-                    enrich_project_asset(
-                        item,
-                        user_todos=item.get("user_todos") if isinstance(item.get("user_todos"), dict) else None,
-                        agent_todos=item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,
-                        quota=guarded_quota,
-                        latest_runs=goal_latest_runs,
-                        subagent_activity=subagent_activity,
-                        interface_budget_cadence=interface_budget_cadence,
-                    )
-                sync_connected_attention_action_from_todos(item)
-                normalize_monitor_quiet_attention_display(item)
-            if include_task_graph:
-                task_graph_projection = build_task_graph_projection(
-                    item,
-                    goal=goal,
-                    goal_latest_runs=goal_latest_runs,
-                )
-                if task_graph_projection:
-                    item["task_graph_projection"] = task_graph_projection
-            attach_goal_channel_projection(
-                item,
-                goal=goal,
-                goal_latest_runs=goal_latest_runs,
-            )
-            history_items.append(item)
-
-    merge_global_registry_attention_findings(
-        health_items=health_items,
-        history_items=history_items,
-        findings=global_registry.get("findings") or [],
+    return _build_attention_queue_read_model(
+        contract=contract,
+        history=history,
+        global_registry=global_registry,
+        context=AttentionQueueContext(
+            active_state_todo_fields=active_state_todo_fields,
+            active_state_todo_attention_item=active_state_todo_attention_item,
+            latest_run=latest_run,
+            goal_attention=goal_attention,
+            compact_agent_lane_recommendation=compact_agent_lane_recommendation,
+            latest_agent_lane_run=latest_agent_lane_run,
+            latest_run_recommended_action_for_projection=latest_run_recommended_action_for_projection,
+            compact_autonomous_replan_ack=compact_autonomous_replan_ack,
+            latest_autonomous_replan_ack_for_projection=latest_autonomous_replan_ack_for_projection,
+            compact_control_plane_policy=compact_control_plane_policy,
+            subagent_activity_for_goal=subagent_activity_for_goal,
+            interface_budget_cadence_for_runs=interface_budget_cadence_for_runs,
+            active_state_projection_warning=active_state_projection_warning,
+            enrich_project_asset=enrich_project_asset,
+            project_asset_latest_validation=project_asset_latest_validation,
+            attach_active_state_project_asset_fields=_attach_active_state_project_asset_fields,
+            sync_connected_attention_action_from_todos=sync_connected_attention_action_from_todos,
+            quota_status=quota_status,
+            quota_with_handoff_outcome_floor=quota_with_handoff_outcome_floor,
+            normalize_monitor_quiet_attention_display=normalize_monitor_quiet_attention_display,
+            build_task_graph_projection=build_task_graph_projection,
+            attach_goal_channel_projection=attach_goal_channel_projection,
+            attach_dependency_blockers=attach_dependency_blockers,
+            autonomous_backlog_candidates=autonomous_backlog_candidates,
+            autonomous_monitor_candidates=autonomous_monitor_candidates,
+            attention_item=attention_item,
+            attach_global_registry_shadow_finding=attach_global_registry_shadow_finding,
+            next_action_projection_warning=next_action_projection_warning,
+            autonomous_replan_obligation_from_runs=autonomous_replan_obligation_from_runs,
+            source_registry_shadow_findings=SOURCE_REGISTRY_SHADOW_FINDINGS,
+            monitor_signal_waiting_on=MONITOR_SIGNAL_WAITING_ON,
+        ),
+        runtime_root=runtime_root,
+        include_task_graph=include_task_graph,
         goal_id_filter=goal_id_filter,
-    )
-
-    items = [*health_items, *history_items]
-    attach_dependency_blockers(items)
-    backlog_candidates = autonomous_backlog_candidates(items)
-    monitor_candidates = autonomous_monitor_candidates(items)
-
-    return build_attention_queue_projection(
-        items=items,
-        goal_id_filter=goal_id_filter,
-        autonomous_backlog_candidates=backlog_candidates,
-        autonomous_monitor_candidates=monitor_candidates,
     )
 
 
