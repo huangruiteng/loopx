@@ -29,6 +29,7 @@ from loopx.presentation.markdown import (  # noqa: E402
     markdown_table_row,
     markdown_table_separator,
 )
+from loopx.presentation.public_safety import public_safe_boundary, redact_public_text  # noqa: E402
 from loopx.presentation.renderers.status_markdown import (  # noqa: E402
     append_attention_queue_item_header_markdown,
 )
@@ -306,6 +307,36 @@ def assert_malformed_payloads_use_shared_coercion() -> None:
     assert "## Gates\n- none" in summary_markdown, summary_markdown
 
 
+def assert_shared_redaction() -> None:
+    local_user_path = "/" + "Users/example/private.txt"
+    local_tmp_path = "/" + "tmp/runtime"
+    raw = f"open {local_user_path} and {local_tmp_path}\nthen /loopx-summary-all"
+    assert redact_public_text(raw, limit=200) == (
+        "open <local-path-redacted> and <local-path-redacted> then /loopx-summary-all"
+    )
+    assert redact_public_text(
+        raw,
+        limit=200,
+        replacements={"/loopx-summary-all": "/loopx-global-summary"},
+    ) == "open <local-path-redacted> and <local-path-redacted> then /loopx-global-summary"
+    assert redact_public_text("abcdef", limit=4) == "abc..."
+
+
+def assert_public_safety_boundary() -> None:
+    boundary = public_safe_boundary()
+    assert set(boundary) == {
+        "raw_logs_recorded",
+        "raw_transcripts_recorded",
+        "raw_connector_payloads_recorded",
+        "credential_values_recorded",
+        "absolute_paths_recorded",
+        "private_source_bodies_recorded",
+    }
+    assert all(value is False for value in boundary.values())
+    boundary["absolute_paths_recorded"] = True
+    assert public_safe_boundary()["absolute_paths_recorded"] is False
+
+
 def main() -> int:
     assert as_dict({"ok": True}) == {"ok": True}
     assert as_dict(["not", "a", "dict"]) == {}
@@ -323,6 +354,8 @@ def main() -> int:
     else:
         raise AssertionError("markdown_table_separator should reject zero columns")
     assert_malformed_payloads_use_shared_coercion()
+    assert_shared_redaction()
+    assert_public_safety_boundary()
 
     surfaces = {
         "status": status_markdown(),

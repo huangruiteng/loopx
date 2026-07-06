@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -9,6 +8,7 @@ from .history import collect_history, load_registry
 from .paths import resolve_runtime_root
 from .presentation.markdown import as_dict as _as_dict
 from .presentation.markdown import as_list as _as_list
+from .presentation.public_safety import public_safe_boundary, redact_public_text
 from .quota import build_quota_should_run
 from .status import collect_status
 
@@ -20,14 +20,7 @@ LEGACY_COMMAND_ALIASES = {
 }
 SCHEMA_VERSION = "global_manager_command_response_v0"
 
-BOUNDARY = {
-    "raw_logs_recorded": False,
-    "raw_transcripts_recorded": False,
-    "raw_connector_payloads_recorded": False,
-    "credential_values_recorded": False,
-    "absolute_paths_recorded": False,
-    "private_source_bodies_recorded": False,
-}
+BOUNDARY = public_safe_boundary()
 
 SOURCE_SURFACES = [
     "global registry compact status",
@@ -48,12 +41,6 @@ LANE_PRIORITY = {
     "paused": 4,
     "quota_unavailable": 5,
 }
-
-LOCAL_PATH_PATTERNS = (
-    re.compile(r"/(?:Users|home|private|tmp|var)/[^\s`|,)]+"),
-    re.compile(r"[A-Za-z]:\\\\Users\\\\[^\s`|,)]+"),
-)
-
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -80,15 +67,12 @@ def _parse_datetime(value: object) -> datetime | None:
 
 
 def _redact_text(value: object, *, limit: int = 260) -> str:
-    text = str(value or "").strip()
-    for alias, canonical in LEGACY_COMMAND_ALIASES.items():
-        text = text.replace(alias, canonical)
-    for pattern in LOCAL_PATH_PATTERNS:
-        text = pattern.sub("<local-path-redacted>", text)
-    text = re.sub(r"\s+", " ", text)
-    if len(text) > limit:
-        return text[: max(0, limit - 1)].rstrip() + "…"
-    return text
+    return redact_public_text(
+        value,
+        limit=limit,
+        replacements=LEGACY_COMMAND_ALIASES,
+        truncation_marker="…",
+    )
 
 
 def _first_open_todo(quota_payload: dict[str, Any]) -> dict[str, Any] | None:
