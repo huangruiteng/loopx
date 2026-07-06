@@ -14,6 +14,9 @@ Current capability paths:
   external-value connector starters, beginning with body-free GitHub public
   channel metadata probes, plus gated candidate profiles such as X/browser
   social work and finance market snapshots.
+- [explore](explore/README.md): record long-running exploration results as a
+  compact topology (nodes, edges, findings) and project them into a
+  Feishu/Lark Base result board and result card.
 
 Do not add a capability path until there is at least one real CLI entrypoint and
 one smoke test. Future ideas belong in product planning docs until they have
