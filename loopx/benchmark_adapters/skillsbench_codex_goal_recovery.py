@@ -17,6 +17,7 @@ CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT = (
     "complete, report the blocker compactly and end the active goal."
 )
 POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 4
+POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT = 3
 
 
 def _capture_has_rate_limit(capture: str) -> bool:
@@ -175,13 +176,18 @@ def codex_cli_tui_post_bridge_closeout_recovery_action(
     recovery_action: str,
     recovery_attempt_count: int,
     closeout_attempted: bool,
+    closeout_attempt_count: int = 0,
 ) -> str:
     """Return the final bounded closeout action after continue retries are spent."""
 
-    if closeout_attempted:
-        return ""
     if recovery_action not in {"press_enter", "typed_continue"}:
         return ""
     if recovery_attempt_count < POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT:
+        return ""
+    effective_closeout_count = max(
+        int(closeout_attempted),
+        max(0, int(closeout_attempt_count or 0)),
+    )
+    if effective_closeout_count >= POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT:
         return ""
     return "typed_closeout"

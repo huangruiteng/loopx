@@ -1213,7 +1213,7 @@ class SkillsBenchLocalAcpRelay:
             post_bridge_recovery_attempt_count = 0
             post_bridge_recovery_action = ""
             post_bridge_recovery_skip_reason = ""
-            post_bridge_closeout_attempted = False
+            post_bridge_closeout_attempt_count = 0
             try:
                 subprocess.run(
                     [
@@ -1618,14 +1618,13 @@ class SkillsBenchLocalAcpRelay:
                         closeout_action = (
                             codex_cli_tui_post_bridge_closeout_recovery_action(
                                 recovery_action=recovery_action,
-                                recovery_attempt_count=(
-                                    post_bridge_recovery_attempt_count
-                                ),
-                                closeout_attempted=post_bridge_closeout_attempted,
+                                recovery_attempt_count=post_bridge_recovery_attempt_count,
+                                closeout_attempted=post_bridge_closeout_attempt_count > 0,
+                                closeout_attempt_count=post_bridge_closeout_attempt_count,
                             )
                         )
                         if closeout_action == "typed_closeout":
-                            post_bridge_closeout_attempted = True
+                            post_bridge_closeout_attempt_count += 1
                             post_bridge_recovery_action = closeout_action
                             tmux_type_text_and_submit(
                                 tmux_name=tmux_name,
@@ -1648,7 +1647,7 @@ class SkillsBenchLocalAcpRelay:
                             not post_bridge_recovery_skip_reason
                             and recovery_action in {"press_enter", "typed_continue"}
                         ):
-                            post_bridge_recovery_skip_reason = "retry_limit_reached"
+                            post_bridge_recovery_skip_reason = "closeout_retry_limit_reached" if post_bridge_closeout_attempt_count else "retry_limit_reached"
                         tmux_kill_session(tmux_name)
                         self._publish_remote_bridge_agent_operations_trace(
                             bridge_summary_path=bridge_summary_path,
