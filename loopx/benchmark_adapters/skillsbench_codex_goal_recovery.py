@@ -16,8 +16,8 @@ CODEX_CLI_GOAL_POST_BRIDGE_CLOSEOUT_PROMPT = (
     "finish the active goal now with compact status. If the task is not "
     "complete, report the blocker compactly and end the active goal."
 )
-POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 4
-POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT = 3
+POST_BRIDGE_RECOVERY_ATTEMPT_LIMIT = 6
+POST_BRIDGE_CLOSEOUT_ATTEMPT_LIMIT = 8
 
 
 def _capture_has_rate_limit(capture: str) -> bool:
