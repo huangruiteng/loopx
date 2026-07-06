@@ -54,6 +54,7 @@ from .control_plane.work_items.project_asset import (
     PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
     TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
     TODO_PROJECTION_VIEW_SCHEMA_VERSION,
+    attach_active_state_project_asset_fields as _attach_active_state_project_asset_fields,
     build_project_asset,
     enrich_project_asset as _enrich_project_asset_read_model,
     project_asset_handoff_check_projection,
@@ -6845,62 +6846,13 @@ def build_attention_queue(
                 if active_state_fields is None:
                     active_state_fields = active_state_todo_fields(goal, runtime_root=runtime_root)
                 item.update(active_state_fields)
-                if isinstance(item.get("project_asset"), dict):
-                    active_next_action = item.get("active_state_next_action")
-                    if active_next_action:
-                        item["project_asset"]["active_state_next_action"] = active_next_action
-                    issue_meta_surface = (
-                        item.get("issue_meta_surface")
-                        if isinstance(item.get("issue_meta_surface"), dict)
-                        else None
-                    )
-                    if issue_meta_surface:
-                        item["project_asset"]["issue_meta_surface"] = issue_meta_surface
-                    next_action_warning = next_action_projection_warning(
-                        active_state_next_action=active_next_action,
-                        latest_run_recommended_action=item.get("latest_run_recommended_action"),
-                    )
-                    if next_action_warning:
-                        item["next_action_projection_warning"] = next_action_warning
-                        item["project_asset"]["next_action_projection_warning"] = next_action_warning
                 sync_connected_attention_action_from_todos(item)
-                backlog_warning = (
-                    item.get("backlog_hygiene_warning")
-                    if isinstance(item.get("backlog_hygiene_warning"), dict)
-                    else None
+                _attach_active_state_project_asset_fields(
+                    item,
+                    latest_runs=goal_latest_runs,
+                    next_action_projection_warning=next_action_projection_warning,
+                    autonomous_replan_obligation_from_runs=autonomous_replan_obligation_from_runs,
                 )
-                if backlog_warning and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["backlog_hygiene_warning"] = backlog_warning
-                projection_gap = (
-                    item.get("state_projection_gap")
-                    if isinstance(item.get("state_projection_gap"), dict)
-                    else None
-                )
-                if projection_gap and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["state_projection_gap"] = projection_gap
-                archive_warning = (
-                    item.get("completed_todo_archive_warning")
-                    if isinstance(item.get("completed_todo_archive_warning"), dict)
-                    else None
-                )
-                if archive_warning and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["completed_todo_archive_warning"] = archive_warning
-                replan_obligation = (
-                    item.get("autonomous_replan_obligation")
-                    if isinstance(item.get("autonomous_replan_obligation"), dict)
-                    else None
-                )
-                if not replan_obligation:
-                    replan_obligation = autonomous_replan_obligation_from_runs(
-                        goal_latest_runs,
-                        agent_todos=item.get("agent_todos")
-                        if isinstance(item.get("agent_todos"), dict)
-                        else None,
-                    )
-                    if replan_obligation:
-                        item["autonomous_replan_obligation"] = replan_obligation
-                if replan_obligation and isinstance(item.get("project_asset"), dict):
-                    item["project_asset"]["autonomous_replan_obligation"] = replan_obligation
                 item["quota"] = quota_status(
                     goal,
                     waiting_on=str(item.get("waiting_on") or ""),
