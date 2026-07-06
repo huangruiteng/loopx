@@ -1,0 +1,29 @@
+examples/contract-reward-overlay-smoke.py
+  s_e3f612788718c1::t_021e6a648fb48a 49-73,88,94,98,107-111,140-147,181-182
+examples/history-index-duplicate-inspection-smoke.py
+  s_e3f612788718c1::t_b1cdaaaab82ef7 66-90,114,173-174,181-182,193,199,217,222
+loopx/contract.py
+  s_e3f612788718c1::t_77bc7e4faab33d 11-15,166,183,186,195-197,199-201,210,212,234,245-246,558-572
+loopx/control_plane/runtime/run_index_duplicates.py
+  s_e3f612788718c1::t_f8c00ac1a76bef 1-156
+loopx/history.py
+  s_e3f612788718c1::t_373551147ef8d8 12-17,832,845-846,850,892,914,920,924-925,971,995
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "bbeee740d6aafe8bff3bb8b149192599edf9f74b",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
