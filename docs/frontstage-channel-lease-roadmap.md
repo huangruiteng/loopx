@@ -155,8 +155,8 @@ The first product-path read model lives in
 stays read-only: callers pass already-compact status, quota, run-history,
 review-packet, artifact, and lease/claim payloads; the builder emits
 `source_warnings` when raw or private-looking fields appear instead of copying
-those values into the channel. The static HTML renderer in `loopx.frontstage`
-and fixture in
+those values into the channel. The static HTML renderer in
+`loopx/presentation/renderers/goal_channel_html.py` and fixture in
 `examples/goal-channel-frontstage-fixture.py` renders that projection into
 semantic panels with `data-panel` markers, no write controls, and a visible
 truth contract. `loopx --format json status` and the loopback

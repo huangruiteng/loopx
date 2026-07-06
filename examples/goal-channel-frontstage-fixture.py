@@ -16,7 +16,9 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.control_plane.goals.goal_channel_projection import (  # noqa: E402
     build_goal_channel_projection,
 )
-from loopx.frontstage import render_goal_channel_projection_html  # noqa: E402
+from loopx.presentation.renderers.goal_channel_html import (  # noqa: E402
+    render_goal_channel_projection_html,
+)
 
 
 REDACTED_LOCAL_PATH = "/" + "Users/example/private-control-plane.md"

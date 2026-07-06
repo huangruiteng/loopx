@@ -3,7 +3,7 @@ from __future__ import annotations
 from html import escape
 from typing import Any, Mapping, Sequence
 
-from .control_plane.goals.goal_channel_projection import (
+from ...control_plane.goals.goal_channel_projection import (
     GOAL_CHANNEL_PROJECTION_SCHEMA_VERSION,
     compact_goal_channel_text,
 )
