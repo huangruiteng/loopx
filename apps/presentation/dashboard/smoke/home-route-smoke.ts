@@ -18,9 +18,9 @@ function excludes(source: string, snippet: string, label: string) {
 const routerSource = readFileSync("src/router.tsx", "utf8");
 const dashboardSource = readFileSync("src/views/dashboard-page.tsx", "utf8");
 const readmeSource = readFileSync("README.md", "utf8");
-const contractSource = readFileSync("../../docs/status-data-contract.md", "utf8");
+const contractSource = readFileSync("../../../docs/status-data-contract.md", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
-const exampleSource = readFileSync("../../examples/status.example.json", "utf8");
+const exampleSource = readFileSync("../../../examples/status.example.json", "utf8");
 
 const shareGoalSpecStart = dashboardSource.indexOf("const shareGoalSpecs");
 const shareGoalSpecEnd = dashboardSource.indexOf("const shareStatusLabel", shareGoalSpecStart);

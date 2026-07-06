@@ -18,10 +18,10 @@ function excludes(source: string, snippet: string, label: string) {
 const statusSource = readFileSync("src/data/status.ts", "utf8");
 const dashboardSource = readFileSync("src/views/dashboard-page.tsx", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
-const exampleStatus = readFileSync("../../examples/status.example.json", "utf8");
-const promotionGateWarningFixture = readFileSync("../../examples/dashboard-promotion-gate-warning-status.json", "utf8");
-const decisionFreshnessFixture = readFileSync("../../examples/dashboard-home-browser-smoke.mjs", "utf8");
-const contractSource = readFileSync("../../docs/status-data-contract.md", "utf8");
+const exampleStatus = readFileSync("../../../examples/status.example.json", "utf8");
+const promotionGateWarningFixture = readFileSync("../../../examples/dashboard-promotion-gate-warning-status.json", "utf8");
+const decisionFreshnessFixture = readFileSync("../../../examples/dashboard-home-browser-smoke.mjs", "utf8");
+const contractSource = readFileSync("../../../docs/status-data-contract.md", "utf8");
 const promotionGateWarningStatus = JSON.parse(promotionGateWarningFixture);
 
 for (const [field, label] of [

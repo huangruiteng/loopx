@@ -1,4 +1,4 @@
-import rawStatus from "../../../../examples/status.example.json";
+import rawStatus from "../../../../../examples/status.example.json";
 import { z } from "zod";
 
 import { goalChannelProjectionSchema } from "./goal-channel-frontstage";
