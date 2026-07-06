@@ -32,17 +32,16 @@ from .doctor import (
 from .execution_profile import (
     compact_execution_profile,
     execution_profile_outcome_floor,
-    execution_profile_summary,
 )
 from .frontstage import build_goal_channel_projection
 from .handoff_budget import handoff_budget_contract
 from .history import collect_history, load_registry
 from .history import STATUS_NEUTRAL_CLASSIFICATIONS as HISTORY_STATUS_NEUTRAL_CLASSIFICATIONS
 from .interface_budget import interface_budget_cadence_for_runs
-from .long_task_cadence import build_long_task_cadence_hint, long_task_cadence_hint_summary
+from .long_task_cadence import build_long_task_cadence_hint
 from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
-from .orchestration import compact_orchestration_policy, orchestration_policy_summary
+from .orchestration import compact_orchestration_policy
 from .paths import global_registry_path, resolve_runtime_root
 from .control_plane.work_items.task_graph import (
     TASK_GRAPH_MAX_USER_GATE_NODES,
@@ -318,18 +317,16 @@ from .registry import registry_goals
 from .presentation.renderers.status_markdown import (
     append_attention_queue_item_header_markdown as _append_attention_queue_item_header_markdown,
     append_attention_queue_item_operational_markdown as _append_attention_queue_item_operational_markdown,
+    append_attention_queue_project_asset_markdown as _append_attention_queue_project_asset_markdown,
     append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
-    append_handoff_readiness_markdown as _append_handoff_readiness_markdown,
     append_human_reward_markdown as _append_human_reward_markdown,
     append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
-    append_project_asset_session_runtime_markdown as _append_project_asset_session_runtime_markdown,
-    append_project_asset_todo_quota_markdown as _append_project_asset_todo_quota_markdown,
-    append_project_asset_warning_markdown as _append_project_asset_warning_markdown,
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
     append_usage_summary_markdown as _append_usage_summary_markdown,
+    attention_queue_goal_todo_scope_suffix as _attention_queue_goal_todo_scope_suffix,
     authority_registry_markdown_summary as _authority_registry_markdown_summary,
     goals_by_id as _goals_by_id,
     markdown_scalar as _markdown_scalar,
@@ -7300,224 +7297,12 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             item,
             authority_summary=authority_summary,
         )
-        project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
-        agent_lane_next_action = (
-            project_asset.get("agent_lane_next_action")
-            if isinstance(project_asset.get("agent_lane_next_action"), dict)
-            else item.get("agent_lane_next_action")
-            if isinstance(item.get("agent_lane_next_action"), dict)
-            else {}
+        goal_todo_scope_suffix = _attention_queue_goal_todo_scope_suffix(item)
+        _append_attention_queue_project_asset_markdown(
+            lines,
+            item,
+            goal_todo_scope_suffix=goal_todo_scope_suffix,
         )
-        agent_lane_frontier_hint = (
-            project_asset.get("agent_lane_frontier_hint")
-            if isinstance(project_asset.get("agent_lane_frontier_hint"), dict)
-            else item.get("agent_lane_frontier_hint")
-            if isinstance(item.get("agent_lane_frontier_hint"), dict)
-            else {}
-        )
-        goal_todo_scope_suffix = " scope=goal_all_agents" if agent_lane_next_action else ""
-        lines.append(
-            "  - project_asset_source: "
-            + (
-                "project_asset"
-                if project_asset
-                else "legacy/raw fallback; owner/gate/stop are not project_asset-backed"
-            )
-        )
-        if project_asset:
-            lines.append(
-                "  - project_asset: "
-                f"owner={_markdown_scalar(project_asset.get('owner') or '')} "
-                f"gate={_markdown_scalar(project_asset.get('gate') or '')} "
-                f"stop={_markdown_scalar(project_asset.get('stop_condition') or '')}"
-            )
-            asset_next_action = _markdown_scalar(project_asset.get("next_action") or "")
-            if asset_next_action:
-                lines.append(f"    - asset_next_action: {asset_next_action}")
-            asset_active_next_action = _markdown_scalar(
-                project_asset.get("active_state_next_action") or ""
-            )
-            if asset_active_next_action:
-                lines.append(f"    - asset_active_state_next_action: {asset_active_next_action}")
-            asset_latest_run_action = _markdown_scalar(
-                project_asset.get("latest_run_recommended_action") or ""
-            )
-            if asset_latest_run_action:
-                lines.append(f"    - asset_latest_run_recommended_action: {asset_latest_run_action}")
-            agent_lane_recommendation = (
-                project_asset.get("agent_lane_recommendation")
-                if isinstance(project_asset.get("agent_lane_recommendation"), dict)
-                else {}
-            )
-            if agent_lane_recommendation:
-                lane = _markdown_scalar(agent_lane_recommendation.get("agent_lane") or "")
-                agent = _markdown_scalar(agent_lane_recommendation.get("agent_id") or "")
-                recommendation = _markdown_scalar(
-                    agent_lane_recommendation.get("recommended_action") or ""
-                )
-                lines.append(
-                    "    - agent_lane_recommendation: "
-                    f"agent={agent} lane={lane} action={recommendation}"
-                )
-            agent_member = (
-                project_asset.get("agent_member")
-                if isinstance(project_asset.get("agent_member"), dict)
-                else item.get("agent_member")
-                if isinstance(item.get("agent_member"), dict)
-                else {}
-            )
-            if agent_member:
-                current_claims = ",".join(
-                    _markdown_scalar(claim)
-                    for claim in (agent_member.get("current_claims") or [])
-                    if str(claim or "").strip()
-                )
-                lines.append(
-                    "    - agent_member: "
-                    f"agent={_markdown_scalar(agent_member.get('agent_id') or '')} "
-                    f"role={_markdown_scalar(agent_member.get('role') or '')} "
-                    f"scope={_markdown_scalar(agent_member.get('scope_summary') or '')} "
-                    f"worktree_policy={_markdown_scalar(agent_member.get('worktree_policy') or '')} "
-                    f"claims={_markdown_scalar(current_claims)} "
-                    f"handoff_agent={_markdown_scalar(agent_member.get('handoff_agent') or '')} "
-                    f"source={_markdown_scalar(agent_member.get('profile_source') or '')} "
-                    "authority=advisory_projection"
-                )
-            if agent_lane_next_action:
-                agent = _markdown_scalar(agent_lane_next_action.get("agent_id") or "")
-                todo_id = _markdown_scalar(agent_lane_next_action.get("todo_id") or "")
-                selected_by = _markdown_scalar(agent_lane_next_action.get("selected_by") or "")
-                confidence = _markdown_scalar(agent_lane_next_action.get("confidence") or "")
-                action = _markdown_scalar(agent_lane_next_action.get("text") or "")
-                lines.append(
-                    "    - current_agent_todo: "
-                    f"agent={agent} todo_id={todo_id} selected_by={selected_by} "
-                    f"confidence={confidence} source=agent_lane_next_action action={action}"
-                )
-            if agent_lane_frontier_hint:
-                lines.append(
-                    "    - agent_lane_frontier_hint: "
-                    f"agent={_markdown_scalar(agent_lane_frontier_hint.get('agent_id') or '')} "
-                    f"decision={_markdown_scalar(agent_lane_frontier_hint.get('decision') or '')} "
-                    f"source={_markdown_scalar(agent_lane_frontier_hint.get('source') or '')} "
-                    f"reason_code={_markdown_scalar(agent_lane_frontier_hint.get('reason_code') or '')} "
-                    f"target_todo_id={_markdown_scalar(agent_lane_frontier_hint.get('target_todo_id') or '')}"
-                )
-            goal_frontier = (
-                project_asset.get("goal_frontier_projection")
-                if isinstance(project_asset.get("goal_frontier_projection"), dict)
-                else item.get("goal_frontier_projection")
-                if isinstance(item.get("goal_frontier_projection"), dict)
-                else {}
-            )
-            if goal_frontier:
-                remaining = (
-                    goal_frontier.get("remaining_advancement_frontier")
-                    if isinstance(goal_frontier.get("remaining_advancement_frontier"), dict)
-                    else {}
-                )
-                deferred_successors = (
-                    goal_frontier.get("deferred_successors")
-                    if isinstance(goal_frontier.get("deferred_successors"), dict)
-                    else {}
-                )
-                acceptance_gaps = (
-                    goal_frontier.get("acceptance_gaps")
-                    if isinstance(goal_frontier.get("acceptance_gaps"), list)
-                    else []
-                )
-                lines.append(
-                    "    - goal_frontier_projection: "
-                    f"replan_required={goal_frontier.get('replan_required')} "
-                    f"current_agent_advancement={remaining.get('current_agent_claimed_advancement_count')} "
-                    f"unclaimed_advancement={remaining.get('unclaimed_advancement_count')} "
-                    f"other_agent_advancement={remaining.get('other_agent_claimed_advancement_count')} "
-                    f"deferred_ready={deferred_successors.get('ready_count')} "
-                    f"acceptance_gaps={len(acceptance_gaps)}"
-                )
-            dreaming_lane_badge = (
-                project_asset.get("dreaming_lane_badge")
-                if isinstance(project_asset.get("dreaming_lane_badge"), dict)
-                else {}
-            )
-            if dreaming_lane_badge:
-                lines.append(
-                    "    - dreaming_lane_badge: "
-                    f"lane={_markdown_scalar(dreaming_lane_badge.get('lane') or '')} "
-                    f"status={_markdown_scalar(dreaming_lane_badge.get('status') or '')} "
-                    f"proposal_id={_markdown_scalar(dreaming_lane_badge.get('proposal_id') or '')} "
-                    f"advisory={dreaming_lane_badge.get('advisory')} "
-                    f"interrupts_delivery={dreaming_lane_badge.get('interrupts_delivery')} "
-                    f"execution_allowed={dreaming_lane_badge.get('execution_allowed')}"
-                )
-            asset_execution_profile = (
-                project_asset.get("execution_profile")
-                if isinstance(project_asset.get("execution_profile"), dict)
-                else None
-            )
-            if asset_execution_profile:
-                lines.append(
-                    "    - execution_profile: "
-                    f"{_markdown_scalar(execution_profile_summary(asset_execution_profile))}"
-                )
-            long_task_cadence_hint = (
-                project_asset.get("long_task_cadence_hint")
-                if isinstance(project_asset.get("long_task_cadence_hint"), dict)
-                else None
-            )
-            if long_task_cadence_hint:
-                lines.append(
-                    "    - long_task_cadence_hint: "
-                    f"{_markdown_scalar(long_task_cadence_hint_summary(long_task_cadence_hint))}"
-                )
-            asset_orchestration = (
-                project_asset.get("orchestration")
-                if isinstance(project_asset.get("orchestration"), dict)
-                else None
-            )
-            if asset_orchestration:
-                lines.append(
-                    "    - orchestration: "
-                    f"{_markdown_scalar(orchestration_policy_summary(asset_orchestration))}"
-                )
-            subagent_activity = (
-                project_asset.get("subagent_activity")
-                if isinstance(project_asset.get("subagent_activity"), dict)
-                else {}
-            )
-            if subagent_activity:
-                lines.append(
-                    "    - subagent_activity: "
-                    f"children={subagent_activity.get('child_count')} "
-                    f"visible={subagent_activity.get('visible_child_count')} "
-                    f"active={subagent_activity.get('active_count')} "
-                    f"completed={subagent_activity.get('completed_count')} "
-                    f"quota_slots={subagent_activity.get('quota_spend_slots')}"
-                )
-                for child in (subagent_activity.get("items") or [])[:3]:
-                    if not isinstance(child, dict):
-                        continue
-                    role = _markdown_scalar(child.get("agent_role") or "subagent")
-                    state = _markdown_scalar(child.get("state") or "unknown")
-                    run_id = _markdown_scalar(child.get("run_id") or "")
-                    parent_run_id = _markdown_scalar(child.get("parent_run_id") or "")
-                    lines.append(
-                        f"      - child_run: role={role} state={state} "
-                        f"run_id={run_id} parent_run_id={parent_run_id}"
-                    )
-            _append_project_asset_todo_quota_markdown(
-                lines,
-                project_asset,
-                goal_todo_scope_suffix=goal_todo_scope_suffix,
-            )
-            _append_project_asset_warning_markdown(lines, project_asset, item)
-            _append_project_asset_session_runtime_markdown(lines, project_asset)
-            handoff_readiness = (
-                item.get("handoff_readiness")
-                if isinstance(item.get("handoff_readiness"), dict)
-                else {}
-            )
-            _append_handoff_readiness_markdown(lines, handoff_readiness)
         _append_attention_queue_item_operational_markdown(
             lines,
             item,
