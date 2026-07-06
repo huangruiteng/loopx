@@ -113,6 +113,9 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
         "allowed_actions": ["write_research_contract", "review_research_contract"],
         "write_scope": ["research_contract_v0", "todo_item_v0"],
         "handoff": ["Create the first hypothesis-proposer todo."],
+        "successor_todos": [
+            _successor("review_research_contract", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "propose_hypothesis", AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT),
+        ],
     },
     "hypothesis_proposer": {
         "phase": "hypothesis",
@@ -149,9 +152,7 @@ AUTO_RESEARCH_ROLE_PROFILES: dict[str, dict[str, object]] = {
         "successor_todos": [
             _successor("summarize_evidence", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
             _successor("summarize_evidence", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "review_hypothesis_frontier", AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT),
-            _successor("write_evaluation_summary", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "propose_hypothesis", AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT),
             _successor("write_evaluation_summary", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
-            _successor("review_promotion_readiness", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "propose_hypothesis", AUTO_RESEARCH_REFINED_HYPOTHESIS_SUCCESSOR_TEXT),
             _successor("review_promotion_readiness", AUTO_RESEARCH_NEXT_HYPOTHESIS_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
             _successor("review_promotion_readiness", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "research-curator", "research_curator", "review_research_contract", AUTO_RESEARCH_CURATOR_REVIEW_SUCCESSOR_TEXT),
             _successor("review_promotion_readiness", AUTO_RESEARCH_HOLDOUT_SUCCESSOR_CONDITION, "hypothesis-proposer", "hypothesis_proposer", "review_hypothesis_frontier", AUTO_RESEARCH_HYPOTHESIS_FRONTIER_REVIEW_SUCCESSOR_TEXT),

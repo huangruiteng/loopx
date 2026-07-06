@@ -23,10 +23,14 @@ from loopx.capabilities.auto_research.demo_supervisor import (  # noqa: E402
 from loopx.capabilities.auto_research.evidence_packet import (  # noqa: E402
     build_auto_research_evidence_packet,
 )
+from loopx.capabilities.auto_research.preset import (  # noqa: E402
+    auto_research_successor_specs_for_action,
+)
 from loopx.capabilities.auto_research.rollout_append import (  # noqa: E402
     append_auto_research_rollout_events,
 )
-from loopx.todos import add_goal_todo  # noqa: E402
+from loopx.capabilities.multi_agent.role_successor import apply_role_successor_todos  # noqa: E402
+from loopx.todos import add_goal_todo, complete_goal_todo  # noqa: E402
 
 from examples.auto_research_lightweight_fixture import (  # noqa: E402
     AGENT_ID as EVIDENCE_AGENT_ID,
@@ -42,6 +46,7 @@ from examples.auto_research_lightweight_fixture import (  # noqa: E402
 
 GOAL_ID = "loopx-auto-research-demo"
 CURATOR_AGENT_ID = "research-curator"
+HYPOTHESIS_AGENT_ID = "hypothesis-proposer"
 EXECUTOR_AGENT_ID = "research-executor"
 EVALUATOR_AGENT_ID = "evaluator-promoter"
 LANES = [
@@ -175,7 +180,7 @@ def write_registry(path: Path, *, project: Path, state_file: Path, runtime_root:
                             "primary_agent": CURATOR_AGENT_ID,
                             "registered_agents": [
                                 CURATOR_AGENT_ID,
-                                "hypothesis-proposer",
+                                HYPOTHESIS_AGENT_ID,
                                 EXECUTOR_AGENT_ID,
                                 EVALUATOR_AGENT_ID,
                             ]
@@ -325,7 +330,9 @@ def main() -> int:
             for successor in successor_todos["successors"]
             if successor.get("todo_id")
         ]
-        assert len(successor_ids) == 2, successor_todos
+        assert len(successor_ids) == 1, successor_todos
+        assert successor_todos["successors"][0]["claimed_by"] == CURATOR_AGENT_ID, successor_todos
+        assert successor_todos["successors"][0]["action_kind"] == "review_research_contract", successor_todos
         completion = evaluator_summary["completion"]
         assert completion["executed"] is True, completion
         assert completion["successor_todo_ids"] == successor_ids, evaluator_summary
@@ -381,12 +388,9 @@ def main() -> int:
             for successor in successor_todos["successors"]
             if successor.get("todo_id")
         ]
-        assert len(successor_ids) == 2, successor_todos
-        assert {
-            successor["action_kind"]
-            for successor in successor_todos["successors"]
-            if successor.get("todo_id")
-        } == {"propose_hypothesis", "review_research_contract"}, successor_todos
+        assert len(successor_ids) == 1, successor_todos
+        assert successor_todos["successors"][0]["claimed_by"] == CURATOR_AGENT_ID, successor_todos
+        assert successor_todos["successors"][0]["action_kind"] == "review_research_contract", successor_todos
         completion = promotion_review["completion"]
         assert completion["executed"] is True, completion
         assert completion["successor_todo_ids"] == successor_ids, promotion_review
@@ -396,6 +400,52 @@ def main() -> int:
         for successor_id in successor_ids:
             assert successor_id in state_text, state_text
         assert_public_safe(promotion_review)
+
+        curator_handoff = apply_role_successor_todos(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            source_todo_id=successor_ids[0],
+            current_agent_id=CURATOR_AGENT_ID,
+            role_id="research_curator",
+            action="review_research_contract",
+            successor_specs=auto_research_successor_specs_for_action(
+                role_id="research_curator",
+                action="review_research_contract",
+            ),
+            decision_summary={
+                "validated_promotion_candidate_count": 1,
+                "holdout_improvement_count": 1,
+            },
+            execute=True,
+        )
+        assert curator_handoff["executed"] is True, curator_handoff
+        curator_successor_ids = [
+            successor["todo_id"]
+            for successor in curator_handoff["successors"]
+            if successor.get("todo_id")
+        ]
+        assert len(curator_successor_ids) == 1, curator_handoff
+        assert curator_handoff["successors"][0]["claimed_by"] == HYPOTHESIS_AGENT_ID, curator_handoff
+        assert curator_handoff["successors"][0]["action_kind"] == "propose_hypothesis", curator_handoff
+        curator_completion = complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=successor_ids[0],
+            role="agent",
+            claimed_by=CURATOR_AGENT_ID,
+            note="auto-research curator review routed the next hypothesis round",
+            evidence="state-summary agent=research-curator action=review_research_contract linked next hypothesis successor",
+            successor_todo_ids=curator_successor_ids,
+            side_agent_self_merged=True,
+            dry_run=False,
+        )
+        assert curator_completion["completed"] is True, curator_completion
+        assert curator_completion["successor_todo_ids"] == curator_successor_ids, curator_completion
+        state_text = state_file.read_text(encoding="utf-8")
+        assert "no_followup=true" not in state_text, state_text
+        for successor_id in curator_successor_ids:
+            assert successor_id in state_text, state_text
+        assert_public_safe(curator_handoff)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp = Path(temp_dir)
