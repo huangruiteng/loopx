@@ -9,6 +9,7 @@ from typing import Any
 from ...file_lock import exclusive_file_lock
 from ...history import load_registry
 from ...paths import resolve_runtime_root
+from ..runtime.time import parse_timestamp
 from ..todos.contract import (
     normalize_required_write_scopes,
     normalize_todo_claimed_by,
@@ -35,21 +36,6 @@ def now_utc() -> datetime:
 
 def isoformat(value: datetime) -> str:
     return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def parse_timestamp(value: Any) -> datetime | None:
-    candidate = str(value or "").strip()
-    if not candidate:
-        return None
-    if candidate.endswith("Z"):
-        candidate = candidate[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(candidate)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
 
 
 def normalize_idempotency_key(value: Any) -> str:

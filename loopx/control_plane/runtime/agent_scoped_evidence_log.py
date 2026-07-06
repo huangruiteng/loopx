@@ -3,26 +3,16 @@ from __future__ import annotations
 import re
 import shlex
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
+
+from .time import parse_timestamp
 
 
 SCHEMA_VERSION = "agent_scoped_evidence_log_v0"
 REQUIRED_READ_SCHEMA_VERSION = "loopx_agent_required_read_v0"
 
 _AK_SK_PATTERN = re.compile(r"(?i)\b(?:ak|sk|access[_-]?key|secret[_-]?key)\b\s*[:=]\s*\S+")
-
-
-def _parse_timestamp(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 def _compact_text(value: Any, *, limit: int = 220) -> str | None:
@@ -108,7 +98,7 @@ def _event_matches(
     if event_kinds and _normalize_event_kind(str(event.get("event_kind") or "")) not in event_kinds:
         return False
     if since is not None:
-        recorded_at = _parse_timestamp(event.get("recorded_at"))
+        recorded_at = parse_timestamp(event.get("recorded_at"))
         if recorded_at is None or recorded_at < since:
             return False
     return True
@@ -139,7 +129,7 @@ def _run_matches(
     if todo_id and not _run_mentions_todo(run, todo_id):
         return False
     if since is not None:
-        recorded_at = _parse_timestamp(run.get("generated_at"))
+        recorded_at = parse_timestamp(run.get("generated_at"))
         if recorded_at is None or recorded_at < since:
             return False
     return True
@@ -263,7 +253,7 @@ def build_agent_scoped_evidence_log(
     if not safe_agent_id:
         raise ValueError("agent_id is required")
     safe_todo_id = _compact_text(todo_id, limit=180) if todo_id else None
-    since_dt = _parse_timestamp(since)
+    since_dt = parse_timestamp(since)
     if since and since_dt is None:
         raise ValueError(f"invalid --since timestamp: {since}")
     normalized_kinds = {

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from ..runtime.public_safety import public_safe_compact_text
+from ..runtime.time import parse_timestamp
 from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
 
 
@@ -224,18 +225,6 @@ def _workspace_ref_from_todo(todo: dict[str, Any] | None) -> dict[str, Any] | No
     return {key: value for key, value in workspace.items() if value not in (None, "", [], {})}
 
 
-def _parse_timestamp(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
 def _stale_claim_hint(todo: dict[str, Any] | None, *, agent_id: str) -> dict[str, Any] | None:
     if not todo or _is_done(todo):
         return None
@@ -256,7 +245,7 @@ def _stale_claim_hint(todo: dict[str, Any] | None, *, agent_id: str) -> dict[str
             "reason": "claimed open todo has no projected activity timestamp",
             "recommended_operator_action": "inspect evidence before considering reassignment",
         }
-    parsed = _parse_timestamp(last_activity)
+    parsed = parse_timestamp(last_activity)
     if not parsed:
         return {
             "state": "activity_unparsed",
