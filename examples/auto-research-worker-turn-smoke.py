@@ -178,7 +178,7 @@ def main() -> int:
             execute=True,
             complete=True,
         )
-        assert_manual_research_required(executor_execute, action="run_dev_eval")
+        assert_no_action(executor_execute, agent_id=EXECUTOR_AGENT_ID)
 
         evaluator_execute = run_worker_turn(
             registry=registry,

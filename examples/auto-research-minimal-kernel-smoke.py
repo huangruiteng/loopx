@@ -126,7 +126,6 @@ def assert_evidence_packet_boundary() -> None:
     assert "RESEARCH_HYPOTHESIS_SCHEMA_VERSION" not in worker_text
     assert "load_auto_research_evidence_packet_inputs" not in worker_text
     assert "AUTO_RESEARCH_MANUAL_RESEARCH_REQUIRED_MODE" in worker_text
-    assert "fake_metrics_recorded" in worker_text
     assert "from .evidence_packet import load_auto_research_evidence_packet_inputs" in cli_text
     assert "from .research_state import (" in cli_text
     assert "auto-research quickstart" not in cli_text

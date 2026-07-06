@@ -539,6 +539,7 @@ def _build_collective_round_summary(
         verification.get("verified") is True
         and verification.get("dev_metric_over_baseline") is True
         and holdout_metric is not None
+        and visible_role_participation_verified
     )
     return {
         "schema_version": "auto_research_collective_round_summary_v0",

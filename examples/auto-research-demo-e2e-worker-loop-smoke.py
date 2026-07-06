@@ -33,7 +33,10 @@ def assert_public_safe(payload: Any) -> None:
 
 def main() -> int:
     sys.path.insert(0, str(REPO_ROOT))
-    from loopx.capabilities.auto_research.demo_e2e import run_auto_research_demo_e2e
+    from loopx.capabilities.auto_research.demo_e2e import (
+        _build_collective_round_summary,
+        run_auto_research_demo_e2e,
+    )
     from loopx.capabilities.auto_research.human_view import render_auto_research_markdown
     from loopx.capabilities.auto_research.preset import default_auto_research_agent_specs
 
@@ -156,6 +159,51 @@ def main() -> int:
     assert tonight["dev_metric"] is None, tonight
     assert tonight["holdout_metric"] is None, tonight
     assert_public_safe(payload)
+
+    headless_with_metrics = _build_collective_round_summary(
+        source="worker_loop_collective_agent_passes",
+        agent_count=4,
+        collective_round_count=4,
+        dev_metric=4.8,
+        holdout_metric=5.2,
+        dev_metric_sequence=[4.0, 4.8],
+        holdout_metric_sequence=[4.5, 5.2],
+        holdout_improvement_count=2,
+        expected_lanes=[
+            {"agent_id": "research-curator"},
+            {"agent_id": "hypothesis-proposer"},
+            {"agent_id": "research-executor"},
+            {"agent_id": "evaluator-promoter"},
+        ],
+        lane_outcomes=[
+            {
+                "round": round_index,
+                "agent_id": agent_id,
+                "selected_todo_id": f"todo_{round_index}_{agent_id}",
+                "selected_action": "summarize_evidence",
+                "executed": True,
+                "completion_status": "done",
+            }
+            for round_index in range(1, 5)
+            for agent_id in (
+                "research-curator",
+                "hypothesis-proposer",
+                "research-executor",
+                "evaluator-promoter",
+            )
+        ],
+        visible_role_participation_verified=False,
+        visible_role_participation_basis="headless_worker_loop_summary_only",
+    )
+    assert headless_with_metrics["kernel_ledger"]["collective_research_verification"][
+        "verified"
+    ] is True, headless_with_metrics
+    assert headless_with_metrics["multi_round_research_verified"] is False, (
+        headless_with_metrics
+    )
+    assert headless_with_metrics["claim_boundary"].startswith(
+        "worker-loop summaries are control-plane plumbing evidence only"
+    ), headless_with_metrics
 
     print("auto-research-demo-e2e-worker-loop-smoke ok")
     return 0
