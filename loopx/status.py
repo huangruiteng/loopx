@@ -326,6 +326,7 @@ from .presentation.renderers.status_markdown import (
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
     append_run_history_markdown as _append_run_history_markdown,
+    append_status_overview_markdown as _append_status_overview_markdown,
     append_usage_summary_markdown as _append_usage_summary_markdown,
     attention_queue_goal_todo_scope_suffix as _attention_queue_goal_todo_scope_suffix,
     authority_registry_markdown_summary as _authority_registry_markdown_summary,
@@ -7174,60 +7175,9 @@ def collect_status(
 
 
 def render_status_markdown(payload: dict[str, Any]) -> str:
-    lines = [
-        "# LoopX Status",
-        "",
-        f"- ok: `{payload.get('ok')}`",
-        f"- registry: `{payload.get('registry')}`",
-        f"- runtime_root: `{payload.get('runtime_root')}`",
-        f"- goals: `{payload.get('goal_count')}`",
-        f"- runs: `{payload.get('run_count')}`",
-    ]
-
-    status_contract = (
-        payload.get("status_contract")
-        if isinstance(payload.get("status_contract"), dict)
-        else {}
-    )
-    if status_contract:
-        lines.append(
-            "- status_contract: "
-            f"schema_version={status_contract.get('schema_version')}, "
-            f"minimum_dashboard_schema_version={status_contract.get('minimum_dashboard_schema_version')}, "
-            f"producer={status_contract.get('producer')}"
-        )
-    if payload.get("goal_filter"):
-        lines.append(f"- goal_filter: `{payload.get('goal_filter')}`")
-
+    lines: list[str] = []
+    _append_status_overview_markdown(lines, payload)
     contract = payload.get("contract") if isinstance(payload.get("contract"), dict) else {}
-    summary = contract.get("summary") if isinstance(contract.get("summary"), dict) else {}
-    lines.append(
-        "- contract: "
-        f"ok={contract.get('ok')}, "
-        f"errors={summary.get('errors')}, "
-        f"warnings={summary.get('warnings')}, "
-        f"checks={summary.get('checks')}"
-    )
-    contract_errors = (
-        payload.get("contract_errors") if isinstance(payload.get("contract_errors"), list) else []
-    )
-    contract_warnings = (
-        payload.get("contract_warnings") if isinstance(payload.get("contract_warnings"), list) else []
-    )
-    if contract_errors or contract_warnings:
-        lines.extend(["", "## Status Contract Signals"])
-        for item in contract_errors:
-            lines.append(f"- error: {item}")
-        if payload.get("contract_errors_truncated"):
-            lines.append(
-                f"- contract_errors_truncated: total={payload.get('contract_errors_total_count')}"
-            )
-        for item in contract_warnings:
-            lines.append(f"- warning: {item}")
-        if payload.get("contract_warnings_truncated"):
-            lines.append(
-                f"- contract_warnings_truncated: total={payload.get('contract_warnings_total_count')}"
-            )
 
     global_registry = payload.get("global_registry") if isinstance(payload.get("global_registry"), dict) else {}
     _append_global_registry_summary_markdown(lines, global_registry)
