@@ -1,0 +1,25 @@
+examples/control_plane/project-asset-active-state-fields-smoke.py
+  s_e3f612788718c1::t_35e720864c7be1 1-69
+loopx/control_plane/work_items/project_asset.py
+  s_e3f612788718c1::t_317797cee1dcd7 255-317
+loopx/status.py
+  s_e3f612788718c1::t_cac11595dc9745 57,6850-6854
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d8d5f0a04a91829a539c743746259cfe638619a6",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
