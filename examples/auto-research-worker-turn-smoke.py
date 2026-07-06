@@ -300,11 +300,11 @@ def main() -> int:
             goal_id=GOAL_ID,
             role="agent",
             text=(
-                "[P0-auto-research-live] Summarize held-out validation and "
+                "[P0-auto-research-live] Summarize visible held-out evidence and "
                 "open the next research round."
             ),
             task_class="advancement_task",
-            action_kind="write_evaluation_summary",
+            action_kind="summarize_evidence",
             claimed_by=EVALUATOR_AGENT_ID,
             dry_run=False,
         )
@@ -322,7 +322,7 @@ def main() -> int:
             complete=True,
         )
         assert evaluator_summary["mode"] == "execute", evaluator_summary
-        assert evaluator_summary["selected_action"] == "write_evaluation_summary", evaluator_summary
+        assert evaluator_summary["selected_action"] == "summarize_evidence", evaluator_summary
         successor_todos = evaluator_summary["successor_todos"]
         assert successor_todos["executed"] is True, successor_todos
         successor_ids = [
