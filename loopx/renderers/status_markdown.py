@@ -444,6 +444,165 @@ def append_project_asset_warning_markdown(
         )
 
 
+def append_project_asset_session_runtime_markdown(
+    lines: list[str],
+    project_asset: dict[str, Any],
+) -> None:
+    session_projection = (
+        project_asset.get("session_runtime_projection")
+        if isinstance(project_asset.get("session_runtime_projection"), dict)
+        else {}
+    )
+    if not session_projection:
+        return
+    first_screen = (
+        session_projection.get("first_screen")
+        if isinstance(session_projection.get("first_screen"), dict)
+        else {}
+    )
+    boundary = (
+        session_projection.get("boundary")
+        if isinstance(session_projection.get("boundary"), dict)
+        else {}
+    )
+    source = (
+        session_projection.get("source")
+        if isinstance(session_projection.get("source"), dict)
+        else {}
+    )
+    lines.append(
+        "    - session_runtime_projection: "
+        f"waiting_on={markdown_scalar(first_screen.get('waiting_on') or '')} "
+        f"agent_can_continue={first_screen.get('agent_can_continue')} "
+        f"user_action_required={first_screen.get('user_action_required')} "
+        f"gate={markdown_scalar(first_screen.get('gate_state') or '')} "
+        f"raw_material_detected={boundary.get('raw_material_detected')} "
+        f"runtime_writeback_allowed={boundary.get('runtime_writeback_allowed')} "
+        f"host={markdown_scalar(source.get('host_kind') or '')}"
+    )
+    if first_screen.get("first_user_todo"):
+        lines.append(
+            "      - session_runtime_user_todo: "
+            f"{markdown_scalar(first_screen.get('first_user_todo') or '')}"
+        )
+    if first_screen.get("first_agent_todo"):
+        lines.append(
+            "      - session_runtime_agent_todo: "
+            f"{markdown_scalar(first_screen.get('first_agent_todo') or '')}"
+        )
+
+
+def append_handoff_readiness_markdown(
+    lines: list[str],
+    handoff_readiness: dict[str, Any],
+) -> None:
+    if not handoff_readiness:
+        return
+    lines.append(
+        "    - handoff_readiness: "
+        f"ready={handoff_readiness.get('ready')} "
+        f"codex_ready={handoff_readiness.get('codex_ready')} "
+        f"source={markdown_scalar(handoff_readiness.get('source') or '')} "
+        f"quota_state={markdown_scalar(handoff_readiness.get('quota_state') or '')}"
+    )
+    interface_budget = (
+        handoff_readiness.get("handoff_interface_budget")
+        if isinstance(handoff_readiness.get("handoff_interface_budget"), dict)
+        else {}
+    )
+    if interface_budget:
+        lines.append(
+            "      - handoff_interface_budget: "
+            f"mode={markdown_scalar(interface_budget.get('mode') or '')} "
+            f"max_lines={interface_budget.get('max_lines')} "
+            f"max_chars={interface_budget.get('max_chars')}"
+        )
+    checks = (
+        handoff_readiness.get("checks")
+        if isinstance(handoff_readiness.get("checks"), dict)
+        else {}
+    )
+    passed = [key for key, value in checks.items() if value]
+    failed = [key for key, value in checks.items() if not value]
+    if checks:
+        lines.append(
+            "      - handoff_checks: "
+            f"pass={','.join(passed) if passed else '-'} "
+            f"fail={','.join(failed) if failed else '-'}"
+        )
+    lines.append(
+        "      - handoff_state: "
+        f"status={markdown_scalar(handoff_readiness.get('handoff_status') or '')} "
+        f"post_handoff_run_seen={handoff_readiness.get('post_handoff_run_seen')} "
+        f"ready_at={markdown_scalar(handoff_readiness.get('handoff_ready_at') or '')}"
+    )
+    latest_handoff_run = (
+        handoff_readiness.get("post_handoff_latest_run")
+        if isinstance(handoff_readiness.get("post_handoff_latest_run"), dict)
+        else {}
+    )
+    if latest_handoff_run:
+        outcome_suffix = ""
+        if latest_handoff_run.get("delivery_outcome"):
+            outcome_suffix = (
+                " "
+                f"outcome={markdown_scalar(latest_handoff_run.get('delivery_outcome') or '')}"
+            )
+        turn_kind_suffix = ""
+        if latest_handoff_run.get("delivery_turn_kind"):
+            turn_kind_suffix = (
+                " "
+                f"turn_kind={markdown_scalar(latest_handoff_run.get('delivery_turn_kind') or '')}"
+            )
+        lines.append(
+            "      - post_handoff_run: "
+            f"classification={markdown_scalar(latest_handoff_run.get('classification') or '')} "
+            f"at={markdown_scalar(latest_handoff_run.get('generated_at') or '')} "
+            f"scale={markdown_scalar(latest_handoff_run.get('delivery_batch_scale') or '')}"
+            f"{outcome_suffix}"
+            f"{turn_kind_suffix}"
+        )
+    recent_handoff_runs = (
+        handoff_readiness.get("post_handoff_recent_runs")
+        if isinstance(handoff_readiness.get("post_handoff_recent_runs"), list)
+        else []
+    )
+    recent_scales = [
+        markdown_scalar(str(run.get("delivery_batch_scale") or ""))
+        for run in recent_handoff_runs
+        if isinstance(run, dict)
+    ]
+    if recent_scales:
+        recent_outcomes = [
+            markdown_scalar(str(run.get("delivery_outcome") or ""))
+            for run in recent_handoff_runs
+            if isinstance(run, dict) and run.get("delivery_outcome")
+        ]
+        outcome_text = f" outcome={','.join(recent_outcomes)}" if recent_outcomes else ""
+        recent_turn_kinds = [
+            markdown_scalar(str(run.get("delivery_turn_kind") or ""))
+            for run in recent_handoff_runs
+            if isinstance(run, dict) and run.get("delivery_turn_kind")
+        ]
+        turn_kind_text = f" turn_kind={','.join(recent_turn_kinds)}" if recent_turn_kinds else ""
+        gap_text = (
+            f" outcome_gap_streak={handoff_readiness.get('post_handoff_outcome_gap_streak')}"
+            if "post_handoff_outcome_gap_streak" in handoff_readiness
+            else ""
+        )
+        lines.append(
+            "      - post_handoff_recent_scales: "
+            f"{','.join(recent_scales)} "
+            f"small_streak={handoff_readiness.get('post_handoff_small_scale_streak', 0)}"
+            f"{outcome_text}"
+            f"{turn_kind_text}"
+            f"{gap_text}"
+        )
+    if handoff_readiness.get("next_probe"):
+        handoff_probe = markdown_scalar(handoff_readiness.get("next_probe") or "")
+        lines.append(f"      - handoff_probe: `{handoff_probe}`")
+
+
 def append_project_asset_todo_quota_markdown(
     lines: list[str],
     project_asset: dict[str, Any],
