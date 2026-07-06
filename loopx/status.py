@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import hashlib
 from pathlib import Path
 import re
@@ -178,6 +177,7 @@ from .control_plane.runtime.public_safety import (
     public_safe_compact_list,
     public_safe_compact_text,
 )
+from .control_plane.runtime.time import parse_timestamp
 from .control_plane.runtime.run_history import (
     build_run_history as _build_run_history_read_model,
     latest_run as _latest_run_read_model,
@@ -6454,18 +6454,6 @@ def merge_global_registry_attention_findings(
         attention_item=attention_item,
         attach_global_registry_shadow_finding=attach_global_registry_shadow_finding,
     )
-
-
-def parse_timestamp(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 def same_path(left: Path, right: Path) -> bool:

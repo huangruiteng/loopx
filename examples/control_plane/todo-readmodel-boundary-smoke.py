@@ -21,9 +21,11 @@ from loopx.control_plane.goals import global_registry_shadow as global_registry_
 from loopx.control_plane.runtime import event_ledger as event_ledger_read_model  # noqa: E402
 from loopx.control_plane.runtime import run_compaction as run_compaction_read_model  # noqa: E402
 from loopx.control_plane.runtime import session_runtime as session_runtime_read_model  # noqa: E402
+from loopx.control_plane.runtime import time as runtime_time_read_model  # noqa: E402
 from loopx.control_plane.quota import usage_summary as usage_summary_read_model  # noqa: E402
 from loopx.control_plane.todos import active_state_todo_parser as active_state_todo_parser_read_model  # noqa: E402
 from loopx.control_plane.todos import active_state_todos as active_state_todos_read_model  # noqa: E402
+from loopx.control_plane.todos import monitor_metadata as monitor_metadata_read_model  # noqa: E402
 from loopx.control_plane.todos import projection as todo_projection_read_model  # noqa: E402
 from loopx.control_plane.todos import todo_summary as todo_read_model  # noqa: E402
 
@@ -99,6 +101,8 @@ def assert_direct_status_aliases() -> None:
     assert status_module.compact_operator_gate is run_compaction_read_model.compact_operator_gate
     assert status_module.compact_operator_gate_resume_contract is run_compaction_read_model.compact_operator_gate_resume_contract
     assert status_module.compact_controller_readiness is run_compaction_read_model.compact_controller_readiness
+    assert status_module.parse_timestamp is runtime_time_read_model.parse_timestamp
+    assert monitor_metadata_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert status_module.quota_spend_slots is usage_summary_read_model.quota_spend_slots
     assert status_module.is_automation_run is usage_summary_read_model.is_automation_run
     assert status_module.is_progress_signal_run is usage_summary_read_model.is_progress_signal_run
@@ -124,6 +128,13 @@ def assert_wrapper_parity() -> None:
         todos,
         role="agent",
     )
+    parsed = status_module.parse_timestamp("2026-01-01T00:00:00")
+    assert parsed is not None
+    assert parsed.tzinfo is not None
+    assert status_module.parse_timestamp("not-a-time") is None
+    assert monitor_metadata_read_model.normalize_monitor_metadata(
+        {"next_due_at": "2026-01-01T00:00:00Z"}
+    ) == {"next_due_at": "2026-01-01T00:00:00Z"}
 
 
 def assert_dependency_blocker_parity() -> None:
