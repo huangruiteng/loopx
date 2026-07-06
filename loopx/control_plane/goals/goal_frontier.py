@@ -5,6 +5,7 @@ from typing import Any
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
 VISION_CONTINUATION_AUDIT_SCHEMA_VERSION = "vision_continuation_audit_v0"
+VISION_GAP_JUDGE_SCHEMA_VERSION = "vision_gap_judge_v0"
 AUTONOMOUS_REPLAN_DECISION_SCHEMA_VERSION = "autonomous_replan_decision_v0"
 AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION = "autonomous_replan_scope_v0"
 AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
@@ -337,6 +338,7 @@ def acceptance_gaps_from_vision_checkpoint(
 
 def build_vision_continuation_audit(
     *,
+    goal_id: str | None = None,
     agent_id: str | None,
     acceptance_gaps: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
@@ -352,6 +354,11 @@ def build_vision_continuation_audit(
     ]
     if not compact_acceptance_gaps:
         return None
+    vision_gap_judge = build_vision_gap_judge(
+        goal_id=goal_id,
+        agent_id=agent_id,
+        acceptance_gaps=compact_acceptance_gaps,
+    )
     acceptance_requirements = [
         text
         for text in (
@@ -369,6 +376,7 @@ def build_vision_continuation_audit(
         "closeout_allowed_without_evidence": False,
         "trigger_count": len(compact_acceptance_gaps),
         "acceptance_gaps": compact_acceptance_gaps[:5],
+        "vision_gap_judge": vision_gap_judge,
         "authoritative_evidence_kinds": [
             "changed_files",
             "public_safe_evidence_records",
@@ -397,6 +405,76 @@ def build_vision_continuation_audit(
     if acceptance_requirements:
         audit["acceptance_requirements"] = acceptance_requirements[:5]
     return audit
+
+
+def build_vision_gap_judge(
+    *,
+    goal_id: str | None = None,
+    agent_id: str | None,
+    acceptance_gaps: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Return the strict done/continue judge for active per-agent vision gaps.
+
+    The read model keeps the prompt essence compact: unless current evidence
+    satisfies, blocks, or supersedes the active vision, the agent should judge
+    the vision as still CONTINUE.
+    """
+
+    compact_acceptance_gaps = [
+        gap for gap in (acceptance_gaps or []) if isinstance(gap, dict)
+    ]
+    first_gap = compact_acceptance_gaps[0] if compact_acceptance_gaps else {}
+    reason = _compact_projection_text(
+        first_gap.get("replan_trigger_summary")
+        or "active per-agent vision still has an open acceptance gap",
+        limit=220,
+    )
+    evidence_command = None
+    if goal_id and agent_id:
+        evidence_command = (
+            f"loopx evidence-log --goal-id {goal_id} "
+            f"--agent-id {agent_id} --thin"
+        )
+    evidence_read_instruction = (
+        "Before judging, read any projected required_reads; then read the "
+        "agent-scoped evidence log"
+    )
+    if evidence_command:
+        evidence_read_instruction = f"{evidence_read_instruction}: `{evidence_command}`."
+    else:
+        evidence_read_instruction = (
+            f"{evidence_read_instruction} when goal_id and agent_id are available."
+        )
+    return {
+        "schema_version": VISION_GAP_JUDGE_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "agent_id": agent_id,
+        "done": False,
+        "decision": "continue",
+        "reason": (
+            reason
+            or "active per-agent vision still has an open acceptance gap"
+        ),
+        "agent_judge_instruction": (
+            "Judge vision closure: compare active vision acceptance_summary "
+            "with projected evidence and agent-scoped evidence-log reads. "
+            "Mark done only when evidence proves completion, a blocker/user "
+            "gate, or superseding/no-follow-up closure; otherwise continue."
+        ),
+        "evidence_read_instruction": evidence_read_instruction,
+        "done_only_when": [
+            "authoritative_evidence_satisfies_acceptance",
+            "final_deliverable_or_eval_output_satisfies_acceptance",
+            "blocker_or_user_gate_is_projected",
+            "superseding_vision_or_no_followup_closes_the_frontier",
+        ],
+        "continue_when": [
+            "evidence_is_missing_weak_or_stale",
+            "todo_lifecycle_or_protocol_status_is_the_only_proof",
+            "acceptance_gap_is_still_projected",
+        ],
+        "otherwise": "continue",
+    }
 
 
 def _open_todo_count(summary: dict[str, Any] | None) -> int:
@@ -981,6 +1059,7 @@ def build_goal_frontier_projection(
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
     vision_continuation_audit = build_vision_continuation_audit(
+        goal_id=goal_id,
         agent_id=agent_id,
         acceptance_gaps=compact_acceptance_gaps,
     )

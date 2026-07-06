@@ -150,6 +150,26 @@ state persists across turns until evidence proves the requested end state. It
 prevents a role from declaring success merely because it consumed the currently
 selected todo, recorded a checkpoint, or observed that another lane is quiet.
 
+The audit also exposes a compact deterministic `vision_gap_judge_v0`
+instruction packet for the agent. It borrows the strict done-judge stance used
+by autonomous goal loops without calling an LLM: the agent is told to compare
+the active vision `acceptance_summary` with projected evidence, using
+projected required reads and an explicit agent-scoped `loopx evidence-log
+--goal-id <goal> --agent-id <agent> --thin` read when available, and default to
+`continue` while a projected acceptance gap exists. `done=true` is only valid
+when the response or state clearly provides one of these outcomes:
+
+- explicit completion with authoritative evidence;
+- final deliverable or evaluation output satisfying the acceptance summary;
+- a projected blocker/user gate that makes the goal unachievable without input;
+- a superseding vision or no-follow-up rationale that explicitly closes the
+  frontier.
+
+Otherwise the judge remains `continue` and quota should keep projecting either
+the runnable successor or the replan trigger. This is intentionally stricter
+than todo lifecycle status: a completed todo is only evidence input, not the
+judge result.
+
 ## State Machine
 
 ```mermaid

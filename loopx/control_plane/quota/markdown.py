@@ -318,6 +318,17 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
                 f"decision={vision_audit.get('decision')} "
                 f"trigger_count={vision_audit.get('trigger_count')}"
             )
+            vision_gap_judge = (
+                vision_audit.get("vision_gap_judge")
+                if isinstance(vision_audit.get("vision_gap_judge"), dict)
+                else {}
+            )
+            if vision_gap_judge:
+                lines.append(
+                    "- vision_gap_judge: "
+                    f"done={vision_gap_judge.get('done')} "
+                    f"decision={vision_gap_judge.get('decision')}"
+                )
     replan_decision = (
         payload.get("autonomous_replan_decision")
         if isinstance(payload.get("autonomous_replan_decision"), dict)

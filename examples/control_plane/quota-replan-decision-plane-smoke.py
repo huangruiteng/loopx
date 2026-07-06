@@ -488,12 +488,45 @@ def assert_agent_vision_gap_derives_replan() -> None:
     ), guard
     assert "public_safe_evidence_records" in audit["authoritative_evidence_kinds"], guard
     assert "Show the next runnable auto-research frontier" in audit["acceptance_requirements"][0], guard
+    judge = audit["vision_gap_judge"]
+    assert judge["schema_version"] == "vision_gap_judge_v0", guard
+    assert judge["goal_id"] == "replan-decision-plane-fixture", guard
+    assert judge["done"] is False, guard
+    assert judge["decision"] == "continue", guard
+    assert "synthetic" in judge["reason"], guard
+    assert "Judge vision closure" in judge["agent_judge_instruction"], guard
+    assert "evidence-log" in judge["agent_judge_instruction"], guard
+    assert (
+        "loopx evidence-log --goal-id replan-decision-plane-fixture "
+        "--agent-id codex-side-bypass --thin"
+    ) in judge["evidence_read_instruction"], guard
+    assert "authoritative_evidence_satisfies_acceptance" in (
+        judge["done_only_when"]
+    ), guard
+    assert "todo_lifecycle_or_protocol_status_is_the_only_proof" in (
+        judge["continue_when"]
+    ), guard
+    assert judge["otherwise"] == "continue", guard
     assert guard["goal_frontier_projection"]["vision_continuation_audit"] == audit, guard
     assert guard["interaction_contract"]["agent_channel"]["vision_continuation_audit"] == audit, guard
     assert guard["interaction_contract"]["cli_channel"]["vision_continuation_audit"]["required"] is True, guard
+    assert guard["interaction_contract"]["cli_channel"]["vision_continuation_audit"][
+        "vision_gap_judge"
+    ]["done"] is False, guard
+    cli_judge = guard["interaction_contract"]["cli_channel"][
+        "vision_continuation_audit"
+    ]["vision_gap_judge"]
+    assert "Judge vision closure" in cli_judge["agent_judge_instruction"], guard
+    assert "loopx evidence-log --goal-id replan-decision-plane-fixture" in (
+        cli_judge["evidence_read_instruction"]
+    ), guard
+    assert "todo_lifecycle_or_protocol_status_is_the_only_proof" in (
+        cli_judge["continue_when"]
+    ), guard
     markdown = render_quota_should_run_markdown(guard)
     assert "deferred_ready=0 acceptance_gaps=1" in markdown, markdown
     assert "vision_continuation_audit: required=True" in markdown, markdown
+    assert "vision_gap_judge: done=False decision=continue" in markdown, markdown
 
 
 def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
@@ -520,6 +553,12 @@ def assert_missing_vision_checkpoint_derives_agent_scoped_replan() -> None:
     assert audit["required"] is True, side_guard
     assert audit["agent_id"] == SIDE_AGENT, side_guard
     assert "Write a bounded agent vision patch" in audit["acceptance_requirements"][0], side_guard
+    judge = audit["vision_gap_judge"]
+    assert judge["schema_version"] == "vision_gap_judge_v0", side_guard
+    assert judge["goal_id"] == "replan-decision-plane-fixture", side_guard
+    assert judge["done"] is False, side_guard
+    assert judge["decision"] == "continue", side_guard
+    assert "material_delivery_outcome" in judge["reason"], side_guard
     assert (
         side_guard["interaction_contract"]["agent_channel"]["vision_continuation_audit"]
         == audit

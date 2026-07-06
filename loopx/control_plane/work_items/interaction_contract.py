@@ -843,12 +843,28 @@ def build_interaction_contract(payload: dict[str, Any]) -> dict[str, Any]:
     )
     if vision_continuation_audit.get("required"):
         contract["agent_channel"]["vision_continuation_audit"] = vision_continuation_audit
+        vision_gap_judge = (
+            vision_continuation_audit.get("vision_gap_judge")
+            if isinstance(vision_continuation_audit.get("vision_gap_judge"), dict)
+            else {}
+        )
         contract["cli_channel"]["vision_continuation_audit"] = {
             "required": True,
             "required_before_closeout": vision_continuation_audit.get("required_before_closeout")
             or [],
             "recommended_action": vision_continuation_audit.get("recommended_action"),
         }
+        if vision_gap_judge:
+            contract["cli_channel"]["vision_continuation_audit"]["vision_gap_judge"] = {
+                "done": vision_gap_judge.get("done"),
+                "decision": vision_gap_judge.get("decision"),
+                "reason": vision_gap_judge.get("reason"),
+                "agent_judge_instruction": vision_gap_judge.get("agent_judge_instruction"),
+                "evidence_read_instruction": vision_gap_judge.get("evidence_read_instruction"),
+                "done_only_when": vision_gap_judge.get("done_only_when") or [],
+                "continue_when": vision_gap_judge.get("continue_when") or [],
+                "otherwise": vision_gap_judge.get("otherwise"),
+            }
     if mode in {
         "user_gate",
         "user_todo_blocker_push",
