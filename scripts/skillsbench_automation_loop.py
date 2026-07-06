@@ -101,6 +101,14 @@ from loopx.benchmark_adapters.skillsbench import (  # noqa: E402
     build_skillsbench_run_permission_policy,
     build_skillsbench_worker_handshake_preflight,
 )
+from loopx.benchmark_adapters.skillsbench_batch import (  # noqa: E402
+    BatchCaseStartPacer,
+    batch_case_args_to_cli as _batch_case_args_to_cli,
+    batch_task_ids as _batch_task_ids,
+    clone_args_for_batch_case as _clone_args_for_batch_case,
+    parallel_batch_requires_subprocess_isolation as _parallel_isolation_required,
+    split_task_ids_arg as _split_task_ids_arg,
+)
 from loopx.benchmark_adapters.skillsbench_verifier_bootstrap import (  # noqa: E402
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
@@ -573,15 +581,6 @@ CODEX_ACP_RUNTIME_LAUNCH_PREFLIGHT_CMD = (
 
 def _now_stamp() -> str:
     return datetime.now().astimezone().strftime("%Y%m%dT%H%M%S%Z")
-
-
-def _split_task_ids_arg(value: str | None) -> list[str]:
-    return [part for part in re.split(r"[,\s]+", value or "") if part]
-
-
-def _safe_batch_suffix(task_id: str, index: int) -> str:
-    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", task_id).strip("-")
-    return f"{index + 1:02d}-{slug or 'task'}"
 
 
 def _json_default(value: Any) -> str:
@@ -15805,6 +15804,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "case behavior."
         ),
     )
+    parser.add_argument(
+        "--batch-case-start-gap-sec",
+        type=float,
+        default=0.0,
+        help=(
+            "Minimum delay between starting consecutive cases in a "
+            "--task-ids batch. This is useful for host-agent routes whose "
+            "backend session startup is rate limited; 0 preserves the "
+            "previous immediate-start behavior."
+        ),
+    )
     parser.add_argument("--dataset", default="skillsbench@1.1")
     parser.add_argument(
         "--route",
@@ -16477,6 +16487,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     if args.parallel_cases < 1:
         parser.error("--parallel-cases must be >= 1")
+    if args.batch_case_start_gap_sec < 0:
+        parser.error("--batch-case-start-gap-sec must be >= 0")
     batch_task_ids = _split_task_ids_arg(args.task_ids)
     if args.task_ids is not None and not batch_task_ids:
         parser.error("--task-ids must contain at least one task id")
@@ -16724,77 +16736,6 @@ async def _async_main_with_observable_handle(
     }
 
 
-def _batch_task_ids(args: argparse.Namespace) -> list[str]:
-    return _split_task_ids_arg(getattr(args, "task_ids", None)) or [
-        str(args.task_id)
-    ]
-
-
-def _clone_args_for_batch_case(
-    args: argparse.Namespace,
-    *,
-    task_id: str,
-    index: int,
-    total: int,
-    run_group_id: str,
-) -> argparse.Namespace:
-    case_args = argparse.Namespace(**vars(args))
-    case_args.task_id = task_id
-    case_args.task_ids = None
-    case_args.run_group_id = run_group_id
-    if total > 1:
-        suffix = _safe_batch_suffix(task_id, index)
-        if args.job_name:
-            case_args.job_name = f"{args.job_name}-{suffix}"
-        if args.rollout_name:
-            case_args.rollout_name = f"{args.rollout_name}-{suffix}"
-    return case_args
-
-
-def _batch_case_args_to_cli(case_args: argparse.Namespace) -> list[str]:
-    cli: list[str] = []
-    for key, value in sorted(vars(case_args).items()):
-        if key == "task_ids":
-            continue
-        if key in BATCH_CASE_INTERNAL_ARG_KEYS:
-            continue
-        if (
-            key == "fail_fast_on_apt_risk"
-            and getattr(case_args, "apt_risk_fail_fast_defaulted", False)
-        ):
-            continue
-        if (
-            key == "fail_fast_on_verifier_bootstrap_risk"
-            and getattr(case_args, "verifier_bootstrap_fail_fast_defaulted", False)
-        ):
-            continue
-        option = "--" + key.replace("_", "-")
-        if key == "parallel_cases":
-            value = 1
-        if value is None:
-            continue
-        if isinstance(value, bool):
-            if value:
-                cli.append(option)
-            continue
-        cli.extend([option, str(value)])
-    return cli
-
-
-def _parallel_batch_requires_subprocess_isolation(parallel_cases: int) -> bool:
-    return parallel_cases > 1
-
-
-BATCH_CASE_INTERNAL_ARG_KEYS = frozenset(
-    {
-        "apt_risk_fail_fast_defaulted",
-        "bootstrap_light_fail_fast_defaulted",
-        "update_current_aggregate",
-        "verifier_bootstrap_fail_fast_defaulted",
-    }
-)
-
-
 def _load_json_object_from_mixed_text(text: str) -> tuple[dict[str, Any], bool]:
     stripped = text.strip()
     if not stripped:
@@ -16913,9 +16854,8 @@ async def async_batch_main(
     )
     parallel_cases = min(max(1, int(args.parallel_cases or 1)), len(selected_task_ids))
     semaphore = asyncio.Semaphore(parallel_cases)
-    isolate_case_processes = _parallel_batch_requires_subprocess_isolation(
-        parallel_cases
-    )
+    isolate_case_processes = _parallel_isolation_required(parallel_cases)
+    case_start_pacer = BatchCaseStartPacer(args.batch_case_start_gap_sec)
 
     async def run_one(index: int, task_id: str) -> dict[str, Any]:
         case_args = _clone_args_for_batch_case(
@@ -16925,14 +16865,18 @@ async def async_batch_main(
             total=len(selected_task_ids),
             run_group_id=run_group_id,
         )
-        case_plan = build_plan(case_args)
         async with semaphore:
+            case_start_wait_sec = await case_start_pacer.wait_for_slot()
+            case_plan = build_plan(case_args)
             try:
                 if isolate_case_processes:
-                    return await _run_batch_case_subprocess(case_args)
+                    return case_start_pacer.annotate_payload(
+                        await _run_batch_case_subprocess(case_args),
+                        case_start_wait_sec,
+                    )
                 payload = await async_main(case_args, plan=case_plan)
                 payload["runner_returncode"] = 0
-                return payload
+                return case_start_pacer.annotate_payload(payload, case_start_wait_sec)
             except Exception as exc:
                 payload, returncode = _build_runner_exception_closeout_payload(
                     case_args,
@@ -16940,7 +16884,7 @@ async def async_batch_main(
                     exc,
                 )
                 payload["runner_returncode"] = returncode
-                return payload
+                return case_start_pacer.annotate_payload(payload, case_start_wait_sec)
 
     results = await asyncio.gather(
         *(run_one(index, task_id) for index, task_id in enumerate(selected_task_ids))
@@ -16952,6 +16896,7 @@ async def async_batch_main(
         "task_count": len(selected_task_ids),
         "parallel_cases": parallel_cases,
         "case_process_isolation": isolate_case_processes,
+        "case_start_gap_sec": case_start_pacer.start_gap_sec,
         "run_group_id": run_group_id,
         "results": results,
         "runner_returncode": returncode,
