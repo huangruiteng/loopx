@@ -1,0 +1,23 @@
+docs/capabilities/content-ops/README.md
+  s_76ee28abb3c3a4::t_564def92fe55fa 27-43
+docs/capabilities/value-connectors/README.md
+  s_76ee28abb3c3a4::t_4e1a8185278e37 76,135-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "b48ee627f2854ff7f5fe664d45d8736eb35c59c4",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
