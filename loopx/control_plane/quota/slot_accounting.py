@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
 from .monitor_poll import QUOTA_MONITOR_POLL_CLASSIFICATION
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
+from ..runtime.time import now_local_iso
 from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
 from ..todos.contract import normalize_todo_claimed_by
 from ..work_items.delivery_outcome import (
@@ -25,7 +25,7 @@ QuotaStatusBuilder = Callable[..., dict[str, Any]]
 
 
 def _now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def _validate_goal_id_path_segment(goal_id: str) -> str:

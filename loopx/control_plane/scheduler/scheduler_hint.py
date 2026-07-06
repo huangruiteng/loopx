@@ -5,9 +5,10 @@ import json
 import math
 import re
 from collections.abc import Collection
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
+from ..runtime.time import now_utc
 from ..work_items.delivery_outcome import DeliveryOutcome
 from .state import (
     CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
@@ -229,7 +230,7 @@ def _monitor_wait_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def _monitor_wait_cadence_progression(payload: dict[str, Any]) -> list[int] | None:
     """Cap monitor quiet backoff so the host does not sleep past monitor due."""
 
-    current_time = datetime.now(timezone.utc)
+    current_time = now_utc()
     caps: list[int] = []
     for item in _monitor_wait_items(payload):
         item_caps: list[int] = []
@@ -238,7 +239,7 @@ def _monitor_wait_cadence_progression(payload: dict[str, Any]) -> list[int] | No
             item_caps.append(cadence_minutes)
         next_due_at = _parse_monitor_timestamp(item.get("next_due_at"))
         if next_due_at is not None:
-            seconds_until_due = (next_due_at.astimezone(timezone.utc) - current_time).total_seconds()
+            seconds_until_due = (next_due_at - current_time).total_seconds()
             item_caps.append(max(1, int(math.ceil(seconds_until_due / 60))))
         if item_caps:
             caps.append(min(item_caps))

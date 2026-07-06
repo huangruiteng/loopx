@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from ...file_lock import exclusive_file_lock
 from ...history import load_registry
 from ...paths import resolve_runtime_root
-from ..runtime.time import parse_timestamp
+from ..runtime.time import now_utc as runtime_now_utc
+from ..runtime.time import parse_timestamp, utc_isoformat
 from ..todos.contract import (
     normalize_required_write_scopes,
     normalize_todo_claimed_by,
@@ -31,11 +32,11 @@ class TaskLeaseError(ValueError):
 
 
 def now_utc() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return runtime_now_utc()
 
 
 def isoformat(value: datetime) -> str:
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return utc_isoformat(value)
 
 
 def normalize_idempotency_key(value: Any) -> str:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
+from ..runtime.time import now_utc
 from ..todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_MONITOR,
@@ -64,7 +65,7 @@ def monitor_next_due_at(
         return None
     checked_at = parse_monitor_timestamp(generated_at)
     if checked_at is None:
-        checked_at = datetime.now(timezone.utc)
+        checked_at = now_utc()
     return (checked_at + delta).astimezone().replace(microsecond=0).isoformat()
 
 
@@ -107,7 +108,7 @@ def monitor_todo_is_expired(item: dict[str, Any], *, now: datetime | None = None
     expires_at = monitor_todo_expires_at(item)
     if expires_at is None:
         return False
-    current_time = now or datetime.now(timezone.utc)
+    current_time = now or now_utc()
     return expires_at <= current_time
 
 
@@ -126,7 +127,7 @@ def monitor_todo_is_due(
     next_due_at = monitor_todo_next_due_at(item)
     if next_due_at is None:
         return False
-    current_time = now or datetime.now(timezone.utc)
+    current_time = now or now_utc()
     return next_due_at <= current_time
 
 

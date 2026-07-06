@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .control_plane.runtime.time import now_utc_iso
 from .presentation.markdown import as_dict as _as_dict
 from .presentation.markdown import as_list as _as_list
 from .presentation.public_safety import public_safe_boundary, redact_public_text
@@ -80,7 +81,7 @@ UI_PREFIXES = (
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return now_utc_iso()
 
 
 def _redact_text(value: object, *, limit: int = 320) -> str:

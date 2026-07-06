@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Any
 
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE, VALID_SLOT_SPEND_SOURCES
+from ..runtime.time import now_local_iso
 from ..runtime.run_artifacts import run_file_stem, unique_run_artifact_paths
 from ..scheduler.monitor_poll_policy import (
     allows_due_monitor_poll,
@@ -24,7 +24,7 @@ QUOTA_MONITOR_POLL_CLASSIFICATION = "quota_monitor_poll"
 
 
 def _now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def build_quota_monitor_poll_event(

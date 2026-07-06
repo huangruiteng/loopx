@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Callable, Iterable, Optional
 
+from .time import now_utc
 
 EVENT_LEDGER_CLASSES = (
     "accounting",
@@ -113,7 +114,7 @@ def build_event_ledger_summary(
     event_classes: tuple[str, ...] = EVENT_LEDGER_CLASSES,
     proxy_note: str = EVENT_LEDGER_PROXY_NOTE,
 ) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = now_utc()
     cutoff_24h = now - timedelta(hours=24)
     cutoff_7d = now - timedelta(days=7)
     totals = {

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import re
 from typing import Any, Callable
 
+from ..runtime.time import now_utc_iso
 
 TASK_GRAPH_PROJECTION_SCHEMA_VERSION = "task_graph_projection_v0"
 TASK_GRAPH_SOURCE_OF_TRUTH = [
@@ -107,7 +107,7 @@ def _task_graph_generated_at(
         generated_at = public_safe_compact_text(run.get("generated_at"), limit=80)
         if generated_at:
             return generated_at
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return now_utc_iso()
 
 
 def _task_graph_active_state_updated_at(

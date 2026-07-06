@@ -3,10 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .control_plane.runtime.time import now_local_iso
 from .control_plane.work_items.delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES, require_delivery_batch_scale
 from .control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES, require_delivery_outcome
 from .feedback import validate_local_control_text, validate_public_safe_text
@@ -68,7 +68,7 @@ VISION_UNCHANGED_REASON_LIMIT = 240
 
 
 def now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def run_file_stem(generated_at: str) -> str:

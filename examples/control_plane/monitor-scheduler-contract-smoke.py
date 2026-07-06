@@ -13,6 +13,7 @@ from loopx.control_plane.testing.quota_fixtures import quota_status_payload  # n
 from loopx.control_plane.scheduler import monitor_todo as monitor_todo_module  # noqa: E402
 from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module  # noqa: E402
 from loopx.control_plane.scheduler import time as scheduler_time  # noqa: E402
+from loopx.control_plane.runtime import time as runtime_time  # noqa: E402
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 
 
@@ -145,6 +146,7 @@ def guard_for(
 
 
 def assert_scheduler_timestamp_parser_is_shared_and_utc_normalized() -> None:
+    assert scheduler_time.parse_timestamp is runtime_time.parse_timestamp
     assert monitor_todo_module.parse_monitor_timestamp is scheduler_time.parse_scheduler_timestamp
     assert scheduler_hint_module._parse_monitor_timestamp("2026-01-01T08:00:00+08:00").isoformat() == (
         "2026-01-01T00:00:00+00:00"

@@ -30,6 +30,7 @@ from loopx.control_plane.runtime import run_compaction as run_compaction_read_mo
 from loopx.control_plane.runtime import session_runtime as session_runtime_read_model  # noqa: E402
 from loopx.control_plane.runtime import status_projection_cache as status_cache_read_model  # noqa: E402
 from loopx.control_plane.runtime import time as runtime_time_read_model  # noqa: E402
+from loopx.control_plane.scheduler import time as scheduler_time_read_model  # noqa: E402
 from loopx.control_plane.quota import usage_summary as usage_summary_read_model  # noqa: E402
 from loopx.control_plane.todos import active_state_todo_parser as active_state_todo_parser_read_model  # noqa: E402
 from loopx.control_plane.todos import active_state_todos as active_state_todos_read_model  # noqa: E402
@@ -114,6 +115,7 @@ def assert_direct_status_aliases() -> None:
     assert status_module.compact_controller_readiness is run_compaction_read_model.compact_controller_readiness
     assert status_module.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert monitor_metadata_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
+    assert scheduler_time_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert status_cache_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert evidence_log_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert management_projection_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp

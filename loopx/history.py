@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
+from .control_plane.runtime.time import now_local_iso
 from .control_plane.runtime.run_index_duplicates import (
     STRUCTURED_INDEX_KEYS,
     classify_index_duplicate_records,
@@ -57,7 +57,7 @@ PER_AGENT_CONTEXT_RUN_FIELDS = (
 
 
 def now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def _normalize_optional_delivery_outcome(value: str | None) -> str | None:

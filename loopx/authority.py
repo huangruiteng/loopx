@@ -5,10 +5,11 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+from .control_plane.runtime.time import now_local_iso
 
 
 AUTHORITY_SOURCE_REGISTRATION_VERSION = "authority_source_registration_v0"
@@ -49,7 +50,7 @@ AUTHORITY_REGISTRY_SUMMARY_FIELDS = (
 
 
 def now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def read_json(path: Path) -> dict[str, Any]:

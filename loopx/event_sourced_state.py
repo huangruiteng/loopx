@@ -4,10 +4,10 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from .control_plane.runtime.time import now_utc_iso as runtime_now_utc_iso
 from .file_lock import exclusive_file_lock
 from .control_plane.todos.contract import (
     TODO_MONITOR_METADATA_FIELDS,
@@ -93,7 +93,7 @@ class StateEventConflictError(StateEventError):
 
 
 def now_utc_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return runtime_now_utc_iso()
 
 
 def compact_text(value: Any) -> str:

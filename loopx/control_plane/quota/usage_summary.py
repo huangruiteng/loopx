@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any, Callable
 
+from ..runtime.time import now_utc
 
 USAGE_PROXY_NOTE = "run-history proxy; excludes token counts and raw thread logs"
 
@@ -59,7 +60,7 @@ def build_usage_summary(
     *,
     parse_timestamp: ParseTimestamp,
 ) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = now_utc()
     cutoff_24h = now - timedelta(hours=24)
     cutoff_7d = now - timedelta(days=7)
     totals = {

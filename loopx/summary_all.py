@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .control_plane.runtime.time import now_utc, now_utc_iso
 from .history import collect_history, load_registry
 from .paths import resolve_runtime_root
 from .presentation.markdown import as_dict as _as_dict
@@ -43,12 +44,12 @@ LANE_PRIORITY = {
 }
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return now_utc_iso()
 
 
 def _parse_time_range(value: str) -> tuple[str, datetime | None]:
     normalized = (value or "24h").strip().lower()
-    now = datetime.now(timezone.utc)
+    now = now_utc()
     if normalized.endswith("h") and normalized[:-1].isdigit():
         return normalized, now - timedelta(hours=int(normalized[:-1]))
     if normalized.endswith("d") and normalized[:-1].isdigit():

@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import re
 import shlex
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .control_plane.runtime.time import now_local_iso
 from .execution_profile import (
     build_execution_profile,
     compact_execution_profile,
@@ -66,7 +66,7 @@ def default_goal_id(project: Path) -> str:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def read_json_if_exists(path: Path) -> dict[str, Any]:

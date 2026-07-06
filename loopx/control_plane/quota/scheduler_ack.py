@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
+from ..runtime.time import now_local_iso
 from ..scheduler.scheduler_hint import (
     build_codex_app_scheduler_ack_event,
     build_scheduler_ack_plan,
@@ -22,7 +22,7 @@ QUOTA_SCHEDULER_ACK_CLASSIFICATION = "quota_scheduler_ack"
 
 
 def _now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def scheduler_ack_failure(

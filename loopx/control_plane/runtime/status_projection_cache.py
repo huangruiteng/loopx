@@ -4,12 +4,14 @@ import hashlib
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ...history import load_registry
 from ...paths import resolve_runtime_root
+from .time import now_utc as runtime_now_utc
+from .time import now_utc_iso as runtime_now_utc_iso
 from .time import parse_timestamp
 
 
@@ -17,11 +19,11 @@ STATUS_PROJECTION_CACHE_SCHEMA_VERSION = "status_projection_cache_v0"
 
 
 def now_utc() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return runtime_now_utc()
 
 
 def now_utc_iso() -> str:
-    return now_utc().isoformat().replace("+00:00", "Z")
+    return runtime_now_utc_iso()
 
 
 def resolve_status_projection_cache_runtime_root(

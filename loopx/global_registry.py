@@ -4,11 +4,11 @@ import copy
 import errno
 import json
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .authority import compact_authority_registry
+from .control_plane.runtime.time import now_local_iso
 from .history import load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from .registry import registry_goals
@@ -27,7 +27,7 @@ ROUTE_FIELDS = ("source_registry", "repo", "state_file")
 
 
 def now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def read_json_if_exists(path: Path) -> dict[str, Any]:

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from ..runtime.public_safety import public_safe_compact_text
-from ..runtime.time import parse_timestamp
+from ..runtime.time import now_utc, now_utc_iso, parse_timestamp
 from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
 
 
@@ -30,7 +29,7 @@ def _compact(value: Any, *, limit: int = 220) -> str | None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return now_utc_iso()
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -254,7 +253,7 @@ def _stale_claim_hint(todo: dict[str, Any] | None, *, agent_id: str) -> dict[str
             "reason": "projected activity timestamp could not be parsed",
             "recommended_operator_action": "inspect status/evidence before considering reassignment",
         }
-    age_hours = (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds() / 3600
+    age_hours = (now_utc() - parsed).total_seconds() / 3600
     if age_hours <= STALE_CLAIM_THRESHOLD_HOURS:
         return None
     return {

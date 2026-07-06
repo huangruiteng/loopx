@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .control_plane.runtime.time import now_local_iso, utc_timestamp
 from .history import load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from .registry import registry_goals
@@ -14,11 +14,11 @@ from .runtime import validate_goal_id_path_segment
 
 
 def _now_local() -> str:
-    return datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+    return now_local_iso()
 
 
 def _timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return utc_timestamp()
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

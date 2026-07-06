@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Callable
 
+from .time import now_utc
 
 DECISION_FRESHNESS_WINDOW_DAYS = 7
 DECISION_FRESHNESS_ITEM_LIMIT = 12
@@ -69,7 +70,7 @@ def build_decision_freshness_summary(
     item_limit: int = DECISION_FRESHNESS_ITEM_LIMIT,
     proxy_note: str = DECISION_FRESHNESS_PROXY_NOTE,
 ) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = now_utc()
     cutoff = now - timedelta(days=window_days)
     runs = [run for run in history.get("runs") or [] if isinstance(run, dict)]
     items: list[dict[str, Any]] = []
