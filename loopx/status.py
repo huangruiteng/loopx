@@ -321,15 +321,13 @@ from .presentation.renderers.status_markdown import (
     append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
-    append_human_reward_markdown as _append_human_reward_markdown,
-    append_operator_gate_resume_contract_markdown as _append_operator_gate_resume_contract_markdown,
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
+    append_run_history_markdown as _append_run_history_markdown,
     append_usage_summary_markdown as _append_usage_summary_markdown,
     attention_queue_goal_todo_scope_suffix as _attention_queue_goal_todo_scope_suffix,
     authority_registry_markdown_summary as _authority_registry_markdown_summary,
     goals_by_id as _goals_by_id,
-    markdown_scalar as _markdown_scalar,
 )
 from .rollout_event_log import load_rollout_events, rollout_event_log_path
 from .state_projection import (
@@ -7310,87 +7308,7 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
         )
 
     run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
-    run_goals = run_history.get("goals") if isinstance(run_history.get("goals"), list) else []
-    lines.extend(
-        [
-            "",
-            "## Run History",
-            "- summary: "
-            f"goals={run_history.get('goal_count')}, "
-            f"runs={run_history.get('run_count')}",
-        ]
-    )
-    if not run_goals:
-        lines.append("- none")
-    for goal in run_goals:
-        if not isinstance(goal, dict):
-            continue
-        lines.append(
-            "- "
-            f"`{goal.get('id')}`: "
-            f"status={goal.get('status')} "
-            f"phase={goal.get('lifecycle_phase')} "
-            f"adapter={goal.get('adapter_kind')}:{goal.get('adapter_status')} "
-            f"records={goal.get('raw_index_records')} "
-            f"unique_runs={goal.get('unique_runs')}"
-        )
-        quota = goal.get("quota") if isinstance(goal.get("quota"), dict) else {}
-        if quota:
-            lines.append(
-                "  - quota: "
-                f"compute={quota.get('compute')} "
-                f"state={quota.get('state')} "
-                f"slots={quota.get('spent_slots')}/{quota.get('allowed_slots')}"
-            )
-        latest_runs = goal.get("latest_runs") if isinstance(goal.get("latest_runs"), list) else []
-        if latest_runs:
-            latest = latest_runs[0]
-            if isinstance(latest, dict):
-                reward = latest.get("human_reward") if isinstance(latest.get("human_reward"), dict) else {}
-                reward_text = (
-                    f" reward={reward.get('decision')}:{reward.get('reward')}"
-                    if reward
-                    else ""
-                )
-                operator_gate = (
-                    latest.get("operator_gate")
-                    if isinstance(latest.get("operator_gate"), dict)
-                    else {}
-                )
-                operator_gate_text = (
-                    f" operator_gate={operator_gate.get('gate')}:{operator_gate.get('decision')}"
-                    if operator_gate
-                    else ""
-                )
-                readiness = (
-                    latest.get("controller_readiness")
-                    if isinstance(latest.get("controller_readiness"), dict)
-                    else {}
-                )
-                readiness_text = (
-                    f" readiness={readiness.get('classification')}"
-                    if readiness
-                    else ""
-                )
-                lines.append(
-                    "  - latest: "
-                    f"{latest.get('generated_at')} "
-                    f"classification={latest.get('classification')} "
-                    f"phase={latest.get('lifecycle_phase')} "
-                    f"artifacts={latest.get('json_exists')}/{latest.get('markdown_exists')}"
-                    f"{reward_text}"
-                    f"{operator_gate_text}"
-                    f"{readiness_text}"
-                )
-                if reward:
-                    _append_human_reward_markdown(lines, goal.get("id"), reward)
-                resume_contract = (
-                    latest.get("operator_gate_resume_contract")
-                    if isinstance(latest.get("operator_gate_resume_contract"), dict)
-                    else {}
-                )
-                if resume_contract:
-                    _append_operator_gate_resume_contract_markdown(lines, resume_contract)
+    _append_run_history_markdown(lines, run_history)
 
     for title, key in (("Errors", "errors"), ("Warnings", "warnings"), ("Checks", "checks")):
         entries = contract.get(key) if isinstance(contract.get(key), list) else []
