@@ -11,6 +11,7 @@ from .authority import authority_registry_summary
 from .control_plane import compact_control_plane_policy, control_plane_policy_summary
 from .execution_profile import compact_execution_profile, execution_profile_summary
 from .orchestration import compact_orchestration_policy, orchestration_policy_summary
+from .presentation.markdown import markdown_code, markdown_table_row, markdown_table_separator
 from .quota import goal_quota_config
 
 
@@ -413,8 +414,22 @@ def render_registry_markdown(payload: dict[str, Any]) -> str:
             f"- common_runtime_root: `{payload.get('common_runtime_root')}`",
             f"- goals: `{payload.get('goal_count')}`",
             "",
-            "| goal | role | parent | domain | status | repo_exists | repo_goals | state_exists | spawn | adapter | next_probe |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            markdown_table_row(
+                [
+                    "goal",
+                    "role",
+                    "parent",
+                    "domain",
+                    "status",
+                    "repo_exists",
+                    "repo_goals",
+                    "state_exists",
+                    "spawn",
+                    "adapter",
+                    "next_probe",
+                ]
+            ),
+            markdown_table_separator(11),
         ]
     )
     for goal in payload.get("goals") or []:
@@ -422,7 +437,6 @@ def render_registry_markdown(payload: dict[str, Any]) -> str:
         spawn = orchestration_policy_summary(
             goal.get("orchestration") if isinstance(goal.get("orchestration"), dict) else None
         )
-        next_probe = str(goal.get("next_probe") or "").replace("|", "\\|")
         authority_suffix = ""
         if goal.get("authority_source_count"):
             authority_suffix = f" authorities={goal.get('authority_source_count')}"
@@ -454,18 +468,21 @@ def render_registry_markdown(payload: dict[str, Any]) -> str:
             else ""
         )
         lines.append(
-            "| "
-            f"`{goal.get('id')}` | "
-            f"{goal.get('role')} | "
-            f"{goal.get('parent_goal_id') or ''} | "
-            f"{goal.get('domain')} | "
-            f"{goal.get('status')} | "
-            f"{goal.get('repo_exists')} | "
-            f"{goal.get('repo_goal_count')} | "
-            f"{goal.get('state_file_exists')} | "
-            f"{spawn} | "
-            f"{adapter}{authority_suffix}{quota_suffix}{execution_suffix}{control_plane_suffix} | "
-            f"{next_probe} |"
+            markdown_table_row(
+                [
+                    markdown_code(goal.get("id")),
+                    goal.get("role"),
+                    goal.get("parent_goal_id") or "",
+                    goal.get("domain"),
+                    goal.get("status"),
+                    goal.get("repo_exists"),
+                    goal.get("repo_goal_count"),
+                    goal.get("state_file_exists"),
+                    spawn,
+                    f"{adapter}{authority_suffix}{quota_suffix}{execution_suffix}{control_plane_suffix}",
+                    goal.get("next_probe"),
+                ]
+            )
         )
 
     problems = payload.get("problems") or []

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .presentation.markdown import markdown_scalar
+from .presentation.markdown import markdown_code, markdown_table_row, markdown_table_separator
 
 
 SCHEMA_VERSION = "loopx_slash_command_catalog_v0"
@@ -212,10 +212,6 @@ def render_onboarding_slash_command_note(commands: list[dict[str, Any]], *, cli_
     )
 
 
-def _markdown_table_cell(value: Any) -> str:
-    return markdown_scalar(value)
-
-
 def render_slash_command_catalog_markdown(payload: dict[str, Any]) -> str:
     if not payload.get("ok"):
         return "# LoopX Slash Commands\n\n- ok: `False`"
@@ -224,8 +220,8 @@ def render_slash_command_catalog_markdown(payload: dict[str, Any]) -> str:
         "",
         str(payload.get("onboarding", {}).get("suggested_user_note") or ""),
         "",
-        "| Command | Scope | Intent | Mutation policy | CLI reference |",
-        "| --- | --- | --- | --- | --- |",
+        markdown_table_row(["Command", "Scope", "Intent", "Mutation policy", "CLI reference"]),
+        markdown_table_separator(5),
     ]
     for item in payload.get("commands") or []:
         if not isinstance(item, dict):
@@ -240,12 +236,15 @@ def render_slash_command_catalog_markdown(payload: dict[str, Any]) -> str:
         if agent_contract.get("host_loop_activation_required_after_todo_writeback"):
             intent += " Agent contract: after todo writeback, activate the host loop or report the concrete host-tool gate."
         lines.append(
-            "| "
-            f"`{_markdown_table_cell(item.get('command'))}` | "
-            f"{_markdown_table_cell(item.get('scope'))} | "
-            f"{_markdown_table_cell(intent)} | "
-            f"{_markdown_table_cell(item.get('mutation_policy'))} | "
-            f"`{_markdown_table_cell(item.get('cli_reference'))}` |"
+            markdown_table_row(
+                [
+                    markdown_code(item.get("command")),
+                    item.get("scope"),
+                    intent,
+                    item.get("mutation_policy"),
+                    markdown_code(item.get("cli_reference")),
+                ]
+            )
         )
     lines.extend(
         [

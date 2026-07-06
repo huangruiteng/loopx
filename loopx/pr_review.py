@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .presentation.markdown import as_dict as _as_dict
+from .presentation.markdown import as_list as _as_list
+
 
 COMMAND = "/loopx-pr-review"
 SCHEMA_VERSION = "loopx_pr_review_command_response_v0"
@@ -106,14 +109,6 @@ def _join_short(items: list[str], *, limit: int = 3, fallback: str = "未提供"
     if not compact:
         return fallback
     return "、".join(compact[:limit])
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _as_list(value: object) -> list[Any]:
-    return value if isinstance(value, list) else []
 
 
 def _run_gh_json(args: list[str], *, cwd: Path | None = None) -> Any:

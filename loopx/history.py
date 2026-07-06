@@ -20,7 +20,12 @@ from .control_plane.work_items.delivery_outcome import require_delivery_outcome
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
 from .execution_profile import compact_execution_profile
 from .paths import resolve_runtime_root
-from .presentation.markdown import markdown_scalar
+from .presentation.markdown import (
+    markdown_code,
+    markdown_scalar,
+    markdown_table_row,
+    markdown_table_separator,
+)
 from .quota import (
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -997,20 +1002,24 @@ def render_index_duplicate_repair_markdown(payload: dict[str, Any]) -> str:
         f"- unrepaired_groups: `{payload.get('unrepaired_group_count')}`",
         f"- truncated: `{payload.get('truncated')}`",
         "",
-        "| goal | generated_at | action | repairable | kept | removed | reason |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        markdown_table_row(
+            ["goal", "generated_at", "action", "repairable", "kept", "removed", "reason"]
+        ),
+        markdown_table_separator(7),
     ]
     for group in payload.get("groups") or []:
-        reason = markdown_scalar(group.get("reason"))
         lines.append(
-            "| "
-            f"`{group.get('goal_id')}` | "
-            f"`{group.get('generated_at')}` | "
-            f"`{group.get('action')}` | "
-            f"`{group.get('repairable')}` | "
-            f"`{group.get('kept_line_numbers')}` | "
-            f"`{group.get('removed_line_numbers')}` | "
-            f"{reason} |"
+            markdown_table_row(
+                [
+                    markdown_code(group.get("goal_id")),
+                    markdown_code(group.get("generated_at")),
+                    markdown_code(group.get("action")),
+                    markdown_code(group.get("repairable")),
+                    markdown_code(group.get("kept_line_numbers")),
+                    markdown_code(group.get("removed_line_numbers")),
+                    group.get("reason"),
+                ]
+            )
         )
     return "\n".join(lines)
 
@@ -1028,18 +1037,20 @@ def render_history_markdown(payload: dict[str, Any]) -> str:
         f"- goals: `{payload.get('goal_count')}`",
         f"- unique_runs: `{payload.get('run_count')}`",
         "",
-        "| generated_at | goal | classification | files | action |",
-        "| --- | --- | --- | --- | --- |",
+        markdown_table_row(["generated_at", "goal", "classification", "files", "action"]),
+        markdown_table_separator(5),
     ]
     for run in payload.get("runs") or []:
-        action = markdown_scalar(run.get("recommended_action"))
         lines.append(
-            "| "
-            f"`{run.get('generated_at')}` | "
-            f"`{run.get('goal_id')}` | "
-            f"`{run.get('classification')}` | "
-            f"{run.get('json_exists')}/{run.get('markdown_exists')} | "
-            f"{action} |"
+            markdown_table_row(
+                [
+                    markdown_code(run.get("generated_at")),
+                    markdown_code(run.get("goal_id")),
+                    markdown_code(run.get("classification")),
+                    f"{run.get('json_exists')}/{run.get('markdown_exists')}",
+                    run.get("recommended_action"),
+                ]
+            )
         )
 
     lines.extend(["", "## Goals"])
@@ -1072,21 +1083,25 @@ def render_index_duplicate_inspection_markdown(payload: dict[str, Any]) -> str:
         f"- duplicate_rows: `{payload.get('duplicate_row_count')}`",
         f"- truncated: `{payload.get('truncated')}`",
         "",
-        "| goal | generated_at | kind | severity | rows | classifications | repair_hint |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        markdown_table_row(
+            ["goal", "generated_at", "kind", "severity", "rows", "classifications", "repair_hint"]
+        ),
+        markdown_table_separator(7),
     ]
     for group in payload.get("groups") or []:
         classifications = ", ".join(str(item) for item in group.get("classifications") or [])
-        hint = markdown_scalar(group.get("repair_hint"))
         lines.append(
-            "| "
-            f"`{group.get('goal_id')}` | "
-            f"`{group.get('generated_at')}` | "
-            f"`{group.get('duplicate_kind')}` | "
-            f"`{group.get('severity')}` | "
-            f"`{group.get('line_numbers')}` | "
-            f"`{classifications}` | "
-            f"{hint} |"
+            markdown_table_row(
+                [
+                    markdown_code(group.get("goal_id")),
+                    markdown_code(group.get("generated_at")),
+                    markdown_code(group.get("duplicate_kind")),
+                    markdown_code(group.get("severity")),
+                    markdown_code(group.get("line_numbers")),
+                    markdown_code(classifications),
+                    group.get("repair_hint"),
+                ]
+            )
         )
     return "\n".join(lines)
 

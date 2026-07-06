@@ -7,6 +7,8 @@ from typing import Any
 
 from .history import collect_history, load_registry
 from .paths import resolve_runtime_root
+from .presentation.markdown import as_dict as _as_dict
+from .presentation.markdown import as_list as _as_list
 from .quota import build_quota_should_run
 from .status import collect_status
 
@@ -87,14 +89,6 @@ def _redact_text(value: object, *, limit: int = 260) -> str:
     if len(text) > limit:
         return text[: max(0, limit - 1)].rstrip() + "…"
     return text
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _as_list(value: object) -> list[Any]:
-    return value if isinstance(value, list) else []
 
 
 def _first_open_todo(quota_payload: dict[str, Any]) -> dict[str, Any] | None:
