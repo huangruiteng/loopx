@@ -47,6 +47,54 @@ def authority_registry_markdown_summary(goal: dict[str, Any] | None) -> str | No
     )
 
 
+def append_global_registry_summary_markdown(
+    lines: list[str],
+    global_registry: dict[str, Any],
+) -> None:
+    global_summary = (
+        global_registry.get("summary")
+        if isinstance(global_registry.get("summary"), dict)
+        else {}
+    )
+    lines.extend(
+        [
+            "- global_registry: "
+            f"available={global_registry.get('available')}, "
+            f"ok={global_registry.get('ok')}, "
+            f"findings={global_summary.get('findings')}, "
+            f"high={global_summary.get('high')}, "
+            f"action={global_summary.get('action')}, "
+            f"info={global_summary.get('info')}",
+        ]
+    )
+
+
+def append_global_registry_findings_markdown(
+    lines: list[str],
+    global_registry: dict[str, Any],
+) -> None:
+    findings = (
+        global_registry.get("findings")
+        if isinstance(global_registry.get("findings"), list)
+        else []
+    )
+    if not findings:
+        return
+    lines.extend(["", "## Global Registry Findings"])
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        lines.append(
+            "- "
+            f"{finding.get('severity')} "
+            f"{finding.get('kind')} "
+            f"goal={finding.get('goal_id') or finding.get('goal_ids') or 'global'}: "
+            f"{finding.get('message')}"
+        )
+        if finding.get("recommended_action"):
+            lines.append(f"  - action: {finding.get('recommended_action')}")
+
+
 def append_human_reward_markdown(lines: list[str], goal_id: Any, reward: dict[str, Any]) -> None:
     headline_parts = []
     for field in ("recorded_at", "decision", "reward"):

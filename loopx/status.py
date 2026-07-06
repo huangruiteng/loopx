@@ -321,6 +321,8 @@ from .presentation.renderers.status_markdown import (
     append_attention_queue_summary_markdown as _append_attention_queue_summary_markdown,
     append_decision_freshness_summary_markdown as _append_decision_freshness_summary_markdown,
     append_event_ledger_summary_markdown as _append_event_ledger_summary_markdown,
+    append_global_registry_findings_markdown as _append_global_registry_findings_markdown,
+    append_global_registry_summary_markdown as _append_global_registry_summary_markdown,
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
     append_run_history_markdown as _append_run_history_markdown,
@@ -7228,22 +7230,7 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             )
 
     global_registry = payload.get("global_registry") if isinstance(payload.get("global_registry"), dict) else {}
-    global_summary = (
-        global_registry.get("summary")
-        if isinstance(global_registry.get("summary"), dict)
-        else {}
-    )
-    lines.extend(
-        [
-            "- global_registry: "
-            f"available={global_registry.get('available')}, "
-            f"ok={global_registry.get('ok')}, "
-            f"findings={global_summary.get('findings')}, "
-            f"high={global_summary.get('high')}, "
-            f"action={global_summary.get('action')}, "
-            f"info={global_summary.get('info')}",
-        ]
-    )
+    _append_global_registry_summary_markdown(lines, global_registry)
 
     event_ledger = (
         payload.get("event_ledger_summary")
@@ -7316,24 +7303,6 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
             lines.extend(["", f"## {title}"])
             lines.extend(f"- {entry}" for entry in entries)
 
-    findings = (
-        global_registry.get("findings")
-        if isinstance(global_registry.get("findings"), list)
-        else []
-    )
-    if findings:
-        lines.extend(["", "## Global Registry Findings"])
-        for finding in findings:
-            if not isinstance(finding, dict):
-                continue
-            lines.append(
-                "- "
-                f"{finding.get('severity')} "
-                f"{finding.get('kind')} "
-                f"goal={finding.get('goal_id') or finding.get('goal_ids') or 'global'}: "
-                f"{finding.get('message')}"
-            )
-            if finding.get("recommended_action"):
-                lines.append(f"  - action: {finding.get('recommended_action')}")
+    _append_global_registry_findings_markdown(lines, global_registry)
 
     return "\n".join(lines)
