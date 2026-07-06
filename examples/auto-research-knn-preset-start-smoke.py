@@ -82,6 +82,14 @@ def main() -> int:
         role["role_id"]: role["role_profile"]["visible_first_steps"]
         for role in supervisor["lanes"]
     }
+    continuation_policies = {
+        role["role_id"]: role["role_profile"]["continuation_policy"]
+        for role in supervisor["lanes"]
+    }
+    for policy in continuation_policies.values():
+        assert policy["successor_source"] == "role_profile.successor_todos", policy
+        assert policy["required_holdout_improvement_count"] == 2, policy
+        assert "no-follow-up" in policy["no_followup_rule"], policy
     assert "role-specific public-safe artifact" in " ".join(
         role_steps["research_curator"]
     ), role_steps

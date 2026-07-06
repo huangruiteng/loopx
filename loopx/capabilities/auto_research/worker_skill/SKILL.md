@@ -50,6 +50,12 @@ real public-safe evidence or notes that satisfy the declared condition. Do not
 invent an extra continuation plan in prose, and do not ask a leader pane to pick
 the next role.
 
+Before completing with no follow-up, compare the evidence summary with
+`role_profile.continuation_policy`. When the target is still unmet and a
+declared successor condition is satisfied, create or link that successor first.
+No-follow-up is only valid after the target is reached, a projected blocker or
+user gate stops the lane, or evidence-backed retirement closes the frontier.
+
 For a visible demo rehearsal, `auto-research demo-supervisor` is read-only by
 default; use `--execute` only when the user opted into starting visible local
 panes. The default rehearsal must not start Codex, write LoopX state, or spend
@@ -213,6 +219,8 @@ Allowed actions:
 - write compact validation notes for the next worker;
 - add only the role-declared successor todo when evidence needs another bounded
   split, using the profile's `todo_command_template`.
+- do not close with no-follow-up while `continuation_policy` still reports an
+  unmet target and a role-declared successor condition is satisfied.
 
 Verification checklist:
 

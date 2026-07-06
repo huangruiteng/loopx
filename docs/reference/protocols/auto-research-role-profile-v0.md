@@ -72,7 +72,14 @@ frontier item, bootstrap prompt, or future kernel API.
       "action_kind": "run_holdout_eval",
       "text": "Run held-out validation for the dev-supported hypothesis."
     }
-  ]
+  ],
+  "continuation_policy": {
+    "schema_version": "auto_research_continuation_policy_v0",
+    "successor_source": "role_profile.successor_todos",
+    "required_holdout_improvement_count": 2,
+    "unmet_target_rule": "when the target is unmet and a successor condition is satisfied, create or link that successor",
+    "no_followup_rule": "no-follow-up is valid only after target reached, projected blocker/gate, or evidence-backed retirement"
+  }
 }
 ```
 
@@ -88,12 +95,15 @@ Required fields:
   instructions after identity is resolved.
 
 Optional fields such as `hypothesis_id`, `agents_overlay`, `handoff_outputs`,
-and `successor_todos` make the profile more ergonomic but do not grant
+`successor_todos`, and `continuation_policy` make the profile more ergonomic but do not grant
 authority. A successor todo declaration is a small role-local handoff rule: when
 the worker completes `after_action` and the `when` condition is satisfied, the
 pane-local tick may write the named LoopX todo for `target_agent_id`. It is not a
 graph-wide planner, and it must still pass quota, todo metadata, and
 public/private boundary checks before another agent can run it.
+`continuation_policy` is the compact acceptance guard for no-follow-up: if the
+target is not met and a role-declared successor condition is satisfied, the
+worker must create or link that successor instead of closing the lane.
 
 ## Resolution Order
 
@@ -189,6 +199,8 @@ An implementation satisfies this contract when:
   as a visible control surface rather than a research role;
 - the role-aware skill says identity comes from the profile and quota/frontier,
   not from the skill itself;
+- the profile and skill make no-follow-up depend on evidence against the
+  continuation target, not on one successful promotion candidate alone;
 - `AGENTS.md` overlays can add stricter local rules but cannot expand a role's
   authority beyond the control-plane profile;
 - validation proves no leader/coordinator pane is required for the demo to be

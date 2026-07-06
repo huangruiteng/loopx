@@ -147,6 +147,9 @@ flowchart TD
 - `quota should-run --agent-id ...` selects only the current agent frontier.
 - Every executable hypothesis remains backed by a `todo_id` and `claimed_by`.
 - Promotion is evidence plus gate policy, not a persuasive summary.
+- A single promoted branch does not close a multi-round target by itself; when
+  the role profile's continuation target is unmet, the last role in the cycle
+  creates or links the next role-declared successor todo.
 - Public narration reads `research_evidence_graph_v0`; it does not
   certify scores or mutate source state.
 - Gate handling is a transition duty; no role can bypass an operator gate.

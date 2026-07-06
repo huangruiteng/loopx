@@ -118,6 +118,8 @@ def main() -> int:
     assert "LoopX Agent Bootstrap Context" in runtime_source
     assert "### Role First Move" in runtime_source
     assert "visible_first_steps" in runtime_source
+    assert "### Continuation Target" in runtime_source
+    assert "before no-follow-up" in runtime_source
     assert "codex-visible-first-prompt.public.txt" in launcher_source
     assert "LOOPX_CODEX_FULL_BOOTSTRAP_ARTIFACT" in launcher_source
     assert "不要把完整 bootstrap 合约当作用户首屏复述" in runtime_source

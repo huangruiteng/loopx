@@ -82,6 +82,8 @@ def main() -> int:
         "auto_research_evidence_packet_v0",
         "research_evidence_graph_v0",
         "quota should-run",
+        "role_profile.continuation_policy",
+        "No-follow-up is only valid",
         "demo-supervisor",
         "--execute",
     ]
@@ -103,8 +105,11 @@ def main() -> int:
         assert term.lower() not in lowered, f"skill drifted into forbidden term {term!r}"
 
     assert "required_skill\": \"loopx-auto-research\"" in role_profile, role_profile
+    assert "continuation_policy" in role_profile, role_profile
+    assert "no-follow-up depend on evidence" in role_profile, role_profile
     assert "worker-local" in role_profile, role_profile
     assert "auto_research_role_profile_v0" in role_state_machine, role_state_machine
+    assert "single promoted branch does not close" in role_state_machine, role_state_machine
     assert "product_narrator" in lane_contract, lane_contract
     assert (
         "`loopx-auto-research` | Running role-scoped auto-research lanes"
