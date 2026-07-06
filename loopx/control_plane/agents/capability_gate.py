@@ -6,7 +6,6 @@ from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     normalize_required_capabilities,
     normalize_target_capabilities,
-    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
 )
 from ..todos.projection import (
@@ -16,6 +15,7 @@ from ..todos.projection import (
     todo_priority_rank,
 )
 from ..todos.summary_item import compact_todo_summary_item
+from .agent_scope import agent_scope_item_blocks_agent, agent_scope_item_claimed_by
 
 
 CAPABILITY_GATE_SCHEMA_VERSION = "capability_gate_v0"
@@ -85,8 +85,8 @@ def _unblock_handoff_rank(
     *,
     agent_id: str | None,
 ) -> int:
-    claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
-    blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
+    claimed_by = agent_scope_item_claimed_by(raw_item)
+    blocks_agent = agent_scope_item_blocks_agent(raw_item)
     return (
         0
         if agent_id
@@ -98,7 +98,7 @@ def _unblock_handoff_rank(
 
 
 def _primary_review_rank(raw_item: dict[str, Any], *, agent_id: str | None) -> int:
-    claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+    claimed_by = agent_scope_item_claimed_by(raw_item)
     action_kind = str(raw_item.get("action_kind") or "").strip()
     return (
         0
@@ -120,7 +120,7 @@ def _agent_lane_candidate_sort_key(
     preferred_todo_ids = preferred_todo_ids or set()
     todo_id = str(raw_item.get("todo_id") or "").strip()
     active_next_rank = 0 if todo_id and todo_id in preferred_todo_ids else 1
-    claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+    claimed_by = agent_scope_item_claimed_by(raw_item)
     claim_rank = 0 if agent_id and claimed_by == agent_id else 1
     repair_rank = 0 if raw_item.get("capability_repair_mode") is True else 1
     return (

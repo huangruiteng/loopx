@@ -106,6 +106,71 @@ def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
     return todo_item_is_actionable_open(item)
 
 
+def agent_scope_item_claimed_by(item: dict[str, Any]) -> str | None:
+    return normalize_todo_claimed_by(item.get("claimed_by"))
+
+
+def agent_scope_item_blocks_agent(item: dict[str, Any]) -> str | None:
+    return normalize_todo_blocks_agent(item.get("blocks_agent"))
+
+
+def agent_scope_item_claimed_by_agent_or_unclaimed(
+    item: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> bool:
+    return todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+
+
+def agent_scope_item_matches_agent_or_unclaimed(
+    item: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> bool:
+    normalized_agent_id = normalize_todo_claimed_by(agent_id)
+    if not normalized_agent_id:
+        return True
+    blocks_agent = agent_scope_item_blocks_agent(item)
+    if blocks_agent:
+        return blocks_agent == normalized_agent_id
+    return agent_scope_item_claimed_by_agent_or_unclaimed(
+        item,
+        agent_id=normalized_agent_id,
+    )
+
+
+def agent_scope_count_advancement_items(
+    items: Any,
+    *,
+    claimed_by: str | None = None,
+) -> int:
+    if not isinstance(items, list):
+        return 0
+    normalized_claimed_by = (
+        "__unclaimed__"
+        if claimed_by == "__unclaimed__"
+        else normalize_todo_claimed_by(claimed_by)
+        if claimed_by is not None
+        else None
+    )
+    count = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not _todo_item_is_actionable_open(item):
+            continue
+        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
+            continue
+        item_claimed_by = agent_scope_item_claimed_by(item)
+        if normalized_claimed_by == "__unclaimed__":
+            if item_claimed_by:
+                continue
+        elif normalized_claimed_by is not None and item_claimed_by != normalized_claimed_by:
+            continue
+        count += 1
+    return count
+
+
 def _protocol_action_text(value: Any, *, limit: int = 220) -> str | None:
     if value is None:
         return None
@@ -169,7 +234,7 @@ def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any
 
 
 def _todo_item_claimed_by_agent_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> bool:
-    return todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
+    return agent_scope_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
 
 
 def _agent_scope_selectable_todo_item(
@@ -182,7 +247,7 @@ def _agent_scope_selectable_todo_item(
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id:
         return True
-    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+    blocks_agent = agent_scope_item_blocks_agent(item)
     if blocks_agent and blocks_agent != agent_id:
         return False
     return _todo_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
@@ -205,14 +270,14 @@ def _agent_scope_filter_user_gate_items(
         if normalize_todo_global_gate(item.get("global_gate")):
             current_agent_items.append(item)
             continue
-        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+        blocks_agent = agent_scope_item_blocks_agent(item)
         if blocks_agent:
             if blocks_agent != agent_id:
                 other_agent_scoped_items.append(item)
                 continue
             current_agent_items.append(item)
             continue
-        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        claimed_by = agent_scope_item_claimed_by(item)
         if claimed_by and claimed_by != agent_id:
             other_agent_scoped_items.append(item)
             continue
@@ -272,7 +337,7 @@ def _scoped_user_gate_fallback(
         executable_items = [
             item
             for item in executable_items
-            if normalize_todo_claimed_by(item.get("claimed_by")) in {"", agent_id}
+            if agent_scope_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
         ]
     blocked_items: list[dict[str, Any]] = []
     selected: dict[str, Any] | None = None
@@ -415,24 +480,7 @@ def _agent_scoped_user_gate_override(
 
 
 def _count_advancement_items(items: Any, *, claimed_by: str | None = None) -> int:
-    if not isinstance(items, list):
-        return 0
-    count = 0
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if not _todo_item_is_actionable_open(item):
-            continue
-        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
-            continue
-        item_claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
-        if claimed_by == "__unclaimed__":
-            if item_claimed_by:
-                continue
-        elif claimed_by is not None and item_claimed_by != claimed_by:
-            continue
-        count += 1
-    return count
+    return agent_scope_count_advancement_items(items, claimed_by=claimed_by)
 
 
 def _agent_scope_frontier_action(value: Any) -> AgentScopeFrontierAction | None:
@@ -675,8 +723,10 @@ def _agent_scope_deferred_resume_candidates(
             for item in value:
                 if not isinstance(item, dict):
                     continue
-                claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
-                if claimed_by and claimed_by != agent_id:
+                if not agent_scope_item_claimed_by_agent_or_unclaimed(
+                    item,
+                    agent_id=agent_id,
+                ):
                     continue
                 candidates.append(item)
 
@@ -753,33 +803,12 @@ def _agent_scope_cleared_without_successor_handoff_gates(
     *,
     agent_id: str,
 ) -> list[dict[str, Any]]:
-    candidates: list[dict[str, Any]] = []
-    for key in (
-        "current_agent_cleared_without_successor_handoff_gates",
-        "handoff_gates",
-    ):
-        value = agent_todo_summary.get(key)
-        if not isinstance(value, list):
-            continue
-        for item in value:
-            if not isinstance(item, dict):
-                continue
-            if normalize_todo_blocks_agent(item.get("blocks_agent")) != agent_id:
-                continue
-            if item.get("gate_state") != HandoffGateState.CLEARED_WITHOUT_SUCCESSOR.value:
-                continue
-            candidates.append(item)
-
-    unique: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in candidates:
-        identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
-        if identity in seen:
-            continue
-        seen.add(identity)
-        compact = dict(item)
-        compact["text"] = str(item.get("text") or "").strip()
-        unique.append(compact)
+    unique = _agent_scope_handoff_gates_by_state(
+        agent_todo_summary,
+        agent_id=agent_id,
+        gate_state=HandoffGateState.CLEARED_WITHOUT_SUCCESSOR.value,
+        preferred_key="current_agent_cleared_without_successor_handoff_gates",
+    )
     return sorted(
         unique,
         key=lambda item: (
@@ -789,12 +818,16 @@ def _agent_scope_cleared_without_successor_handoff_gates(
     )
 
 
-def _agent_scope_blocking_handoff_gates(
+def _agent_scope_handoff_gates_by_state(
     agent_todo_summary: dict[str, Any],
     *,
-    agent_id: str,
+    agent_id: str | None,
+    gate_state: str,
+    preferred_key: str,
 ) -> list[dict[str, Any]]:
-    gates = agent_todo_summary.get("current_agent_handoff_gates")
+    if not agent_id:
+        return []
+    gates = agent_todo_summary.get(preferred_key)
     if not isinstance(gates, list):
         gates = agent_todo_summary.get("handoff_gates")
     if not isinstance(gates, list):
@@ -804,9 +837,9 @@ def _agent_scope_blocking_handoff_gates(
     for item in gates:
         if not isinstance(item, dict):
             continue
-        if normalize_todo_blocks_agent(item.get("blocks_agent")) != agent_id:
+        if agent_scope_item_blocks_agent(item) != agent_id:
             continue
-        if item.get("gate_state") != HandoffGateState.BLOCKING.value:
+        if item.get("gate_state") != gate_state:
             continue
         identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
         if identity in seen:
@@ -815,7 +848,29 @@ def _agent_scope_blocking_handoff_gates(
         compact = dict(item)
         compact["text"] = str(item.get("text") or "").strip()
         selected.append(compact)
+    return selected
+
+
+def agent_scope_blocking_handoff_gates(
+    agent_todo_summary: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> list[dict[str, Any]]:
+    selected = _agent_scope_handoff_gates_by_state(
+        agent_todo_summary,
+        agent_id=agent_id,
+        gate_state=HandoffGateState.BLOCKING.value,
+        preferred_key="current_agent_handoff_gates",
+    )
     return sorted(selected, key=_todo_projection_sort_key)
+
+
+def _agent_scope_blocking_handoff_gates(
+    agent_todo_summary: dict[str, Any],
+    *,
+    agent_id: str,
+) -> list[dict[str, Any]]:
+    return agent_scope_blocking_handoff_gates(agent_todo_summary, agent_id=agent_id)
 
 
 def _route_continuation_candidate_matches_agent(
@@ -823,11 +878,7 @@ def _route_continuation_candidate_matches_agent(
     *,
     agent_id: str,
 ) -> bool:
-    blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
-    if blocks_agent:
-        return blocks_agent == agent_id
-    claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
-    return not claimed_by or claimed_by == agent_id
+    return agent_scope_item_matches_agent_or_unclaimed(item, agent_id=agent_id)
 
 
 def _agent_scope_route_continuation_replan_candidates(
@@ -1065,7 +1116,7 @@ def _agent_scope_no_candidate_frontier(
             {
                 claimed_by
                 for item in blocking_handoff_gates
-                for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
+                for claimed_by in [agent_scope_item_claimed_by(item)]
                 if claimed_by
             }
         )
@@ -1154,26 +1205,26 @@ def _agent_scope_no_candidate_frontier(
         if isinstance(item, dict)
         and _todo_item_is_actionable_open(item)
         and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-        and normalize_todo_claimed_by(item.get("claimed_by")) not in {None, "", agent_id}
+        and agent_scope_item_claimed_by(item) not in {None, "", agent_id}
     ]
     other_claimants = sorted(
         {
             claimed_by
             for item in other_advancement_items
-            for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
+            for claimed_by in [agent_scope_item_claimed_by(item)]
             if claimed_by
         }
     )
     blocking_review_items = [
         item
         for item in other_advancement_items
-        if normalize_todo_blocks_agent(item.get("blocks_agent")) == agent_id
+        if agent_scope_item_blocks_agent(item) == agent_id
     ]
     blocking_review_claimants = sorted(
         {
             claimed_by
             for item in blocking_review_items
-            for claimed_by in [normalize_todo_claimed_by(item.get("claimed_by"))]
+            for claimed_by in [agent_scope_item_claimed_by(item)]
             if claimed_by
         }
     )

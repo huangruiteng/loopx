@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..agents.agent_scope import (
+    agent_scope_blocking_handoff_gates,
+    agent_scope_count_advancement_items,
+    agent_scope_item_claimed_by,
+    agent_scope_item_claimed_by_agent_or_unclaimed,
+)
+
 
 GOAL_FRONTIER_PROJECTION_SCHEMA_VERSION = "goal_frontier_projection_v0"
 VISION_CONTINUATION_AUDIT_SCHEMA_VERSION = "vision_continuation_audit_v0"
@@ -527,24 +534,7 @@ def _todo_task_class(item: dict[str, Any]) -> str:
 
 
 def _count_advancement_items(items: Any, *, claimed_by: str | None = None) -> int:
-    if not isinstance(items, list):
-        return 0
-    count = 0
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        if not _todo_item_is_actionable_open(item):
-            continue
-        if _todo_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
-            continue
-        item_claimed_by = str(item.get("claimed_by") or "").strip()
-        if claimed_by == "__unclaimed__":
-            if item_claimed_by:
-                continue
-        elif claimed_by is not None and item_claimed_by != claimed_by:
-            continue
-        count += 1
-    return count
+    return agent_scope_count_advancement_items(items, claimed_by=claimed_by)
 
 
 def _summary_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
@@ -722,7 +712,7 @@ def _deferred_successors(
     current_agent_ready_items = [
         item
         for item in ready_items
-        if agent_id and str(item.get("claimed_by") or "").strip() == agent_id
+        if agent_id and agent_scope_item_claimed_by(item) == agent_id
     ]
     ready_todo_ids = [
         todo_id for todo_id in (_compact_todo_id(item) for item in ready_items[:5]) if todo_id
@@ -772,20 +762,7 @@ def _blocking_handoff_gate_count(
 ) -> int:
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return 0
-    gates = agent_todo_summary.get("current_agent_handoff_gates")
-    if not isinstance(gates, list):
-        gates = agent_todo_summary.get("handoff_gates")
-    if not isinstance(gates, list):
-        return 0
-    return len(
-        [
-            item
-            for item in gates
-            if isinstance(item, dict)
-            and str(item.get("blocks_agent") or "").strip() == agent_id
-            and str(item.get("gate_state") or "").strip() == "blocking"
-        ]
-    )
+    return len(agent_scope_blocking_handoff_gates(agent_todo_summary, agent_id=agent_id))
 
 
 def _succession_gap_items(
@@ -813,7 +790,7 @@ def _succession_gap_items(
     return [
         item
         for item in items
-        if str(item.get("claimed_by") or "").strip() in {"", agent_id}
+        if agent_scope_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
     ]
 
 

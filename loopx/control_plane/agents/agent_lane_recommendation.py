@@ -5,7 +5,6 @@ from typing import Any, Callable, Optional
 
 from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
-    normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
     normalize_todo_id,
 )
@@ -15,6 +14,9 @@ from ..work_items.work_lane import work_lane_contract_is_due_monitor_attempt
 from .agent_scope import (
     _todo_item_is_actionable_open,
     _todo_task_class,
+    agent_scope_item_blocks_agent,
+    agent_scope_item_claimed_by,
+    agent_scope_item_claimed_by_agent_or_unclaimed,
 )
 from .capability_gate import _agent_lane_candidate_sort_key
 
@@ -217,12 +219,15 @@ def build_agent_lane_next_action(
         selected = scoped_user_gate_fallback.get("selected_executable")
         if isinstance(selected, dict):
             text = protocol_action_text(selected.get("text"), limit=500)
-            claimed_by = normalize_todo_claimed_by(selected.get("claimed_by"))
+            claimed_by = agent_scope_item_claimed_by(selected)
             if (
                 text
                 and _todo_item_is_actionable_open(selected)
                 and _todo_task_class(selected) == TODO_TASK_CLASS_ADVANCEMENT
-                and (not claimed_by or claimed_by == agent_id)
+                and agent_scope_item_claimed_by_agent_or_unclaimed(
+                    selected,
+                    agent_id=agent_id,
+                )
             ):
                 payload = dict(selected)
                 payload.update(
@@ -310,8 +315,10 @@ def build_agent_lane_next_action(
             identity = (str(raw_item.get("todo_id") or ""), text)
             if identity in seen:
                 continue
-            claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
-            if claimed_by and claimed_by != agent_id:
+            if not agent_scope_item_claimed_by_agent_or_unclaimed(
+                raw_item,
+                agent_id=agent_id,
+            ):
                 continue
             seen.add(identity)
             source_candidates.append(raw_item)
@@ -325,7 +332,7 @@ def build_agent_lane_next_action(
             ),
         ):
             text = protocol_action_text(raw_item.get("text"), limit=500)
-            claimed_by = normalize_todo_claimed_by(raw_item.get("claimed_by"))
+            claimed_by = agent_scope_item_claimed_by(raw_item)
             todo_id = str(raw_item.get("todo_id") or "").strip()
             selected_by = (
                 "active_next_action_todo"
@@ -344,7 +351,7 @@ def build_agent_lane_next_action(
                 and normalize_todo_id(todo_id) in active_next_action_todo_ids
             ):
                 lineage_source = "agent_todo_summary.active_next_action_executable_items"
-            blocks_agent = normalize_todo_blocks_agent(raw_item.get("blocks_agent"))
+            blocks_agent = agent_scope_item_blocks_agent(raw_item)
             unblocks_todo_id = normalize_todo_id(raw_item.get("unblocks_todo_id"))
             if blocks_agent:
                 payload["unblock_handoff"] = {"blocks_agent": blocks_agent}

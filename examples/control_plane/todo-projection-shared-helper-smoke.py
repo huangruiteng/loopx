@@ -22,7 +22,13 @@ from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
     quota_todo_summary,
 )
 from loopx.control_plane.agents.agent_scope import (  # noqa: E402
-    _todo_item_claimed_by_agent_or_unclaimed as agent_scope_todo_item_claimed_by_agent_or_unclaimed,
+    agent_scope_blocking_handoff_gates,
+    agent_scope_count_advancement_items,
+    agent_scope_item_claimed_by_agent_or_unclaimed,
+    agent_scope_item_matches_agent_or_unclaimed,
+)
+from loopx.control_plane.goals.goal_frontier import (  # noqa: E402
+    build_goal_frontier_projection_from_summaries,
 )
 from loopx.status import (  # noqa: E402
     claimed_visibility_items as status_claimed_visibility_items,
@@ -208,11 +214,132 @@ def assert_claimed_visibility_parity() -> None:
     unclaimed = items[3]
     for predicate in (
         shared_todo_item_claimed_by_agent_or_unclaimed,
-        agent_scope_todo_item_claimed_by_agent_or_unclaimed,
+        agent_scope_item_claimed_by_agent_or_unclaimed,
     ):
         assert predicate(claimed_by_current, agent_id="agent-a") is True, claimed_by_current
         assert predicate(claimed_by_other, agent_id="agent-a") is False, claimed_by_other
         assert predicate(unclaimed, agent_id="agent-a") is True, unclaimed
+
+
+def assert_agent_scope_frontier_routing_parity() -> None:
+    current = {
+        "todo_id": "todo_current_spaced_claim",
+        "index": 1,
+        "priority": "P1",
+        "text": "[P1] Current agent with whitespace-normalized claim.",
+        "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+        "claimed_by": " agent-a ",
+    }
+    other = {
+        "todo_id": "todo_other",
+        "index": 2,
+        "priority": "P1",
+        "text": "[P1] Other agent work.",
+        "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+        "claimed_by": "agent-b",
+    }
+    unclaimed = {
+        "todo_id": "todo_unclaimed_scope",
+        "index": 3,
+        "priority": "P1",
+        "text": "[P1] Unclaimed shared lane work.",
+        "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+    }
+    blocked_for_current = {
+        "todo_id": "todo_blocks_current",
+        "index": 4,
+        "priority": "P1",
+        "text": "[P1] Handoff work blocking the current agent.",
+        "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+        "claimed_by": "agent-b",
+        "blocks_agent": "agent-a",
+    }
+    blocked_for_other = {
+        "todo_id": "todo_blocks_other",
+        "index": 5,
+        "priority": "P1",
+        "text": "[P1] Handoff work blocking a different agent.",
+        "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+        "claimed_by": "agent-a",
+        "blocks_agent": "agent-b",
+    }
+    assert agent_scope_count_advancement_items(
+        [current, other, unclaimed],
+        claimed_by="agent-a",
+    ) == 1
+    assert agent_scope_count_advancement_items(
+        [current, other, unclaimed],
+        claimed_by="__unclaimed__",
+    ) == 1
+    assert agent_scope_item_matches_agent_or_unclaimed(
+        blocked_for_current,
+        agent_id="agent-a",
+    ) is True
+    assert agent_scope_item_matches_agent_or_unclaimed(
+        blocked_for_other,
+        agent_id="agent-a",
+    ) is False
+
+    agent_summary = {
+        "executable_backlog_items": [current, other, unclaimed],
+        "unclaimed_priority_open_items": [unclaimed],
+        "claim_scope": {"other_agent_claimed_items": [other]},
+        "deferred_resume_candidates": [
+            {
+                "todo_id": "todo_deferred_current",
+                "text": "[P1] Current agent deferred successor.",
+                "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+                "claimed_by": " agent-a ",
+            },
+            {
+                "todo_id": "todo_deferred_other",
+                "text": "[P1] Other agent deferred successor.",
+                "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+                "claimed_by": "agent-b",
+            },
+        ],
+        "handoff_gates": [
+            {
+                "todo_id": "todo_gate_current",
+                "index": 6,
+                "text": "[P1] Current agent blocking handoff.",
+                "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+                "blocks_agent": " agent-a ",
+                "gate_state": "blocking",
+            },
+            {
+                "todo_id": "todo_gate_other",
+                "index": 7,
+                "text": "[P1] Other agent blocking handoff.",
+                "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+                "blocks_agent": "agent-b",
+                "gate_state": "blocking",
+            },
+            {
+                "todo_id": "todo_gate_cleared",
+                "index": 8,
+                "text": "[P1] Current agent cleared handoff.",
+                "task_class": TODO_TASK_CLASS_ADVANCEMENT,
+                "blocks_agent": "agent-a",
+                "gate_state": "cleared_without_successor",
+            },
+        ],
+    }
+    projection = build_goal_frontier_projection_from_summaries(
+        goal_id=GOAL_ID,
+        agent_id="agent-a",
+        user_todo_summary={"open_count": 0},
+        agent_todo_summary=agent_summary,
+        work_lane_contract={"lane": TODO_TASK_CLASS_ADVANCEMENT},
+        replan_obligation=None,
+    )
+    frontier = projection["remaining_advancement_frontier"]
+    assert frontier["current_agent_claimed_advancement_count"] == 1, projection
+    assert frontier["unclaimed_advancement_count"] == 1, projection
+    assert frontier["other_agent_claimed_advancement_count"] == 1, projection
+    assert projection["deferred_successors"]["current_agent_ready_count"] == 1, projection
+    blocking = agent_scope_blocking_handoff_gates(agent_summary, agent_id="agent-a")
+    assert [item["todo_id"] for item in blocking] == ["todo_gate_current"], blocking
 
 
 def assert_deferred_helper_parity() -> None:
@@ -351,6 +478,7 @@ def main() -> int:
     assert_status_summary_lanes(summary)
     assert_shared_ordering_parity(summary)
     assert_claimed_visibility_parity()
+    assert_agent_scope_frontier_routing_parity()
     assert_deferred_helper_parity()
     assert_monitor_item_collection_parity(summary)
     assert_open_task_count_state_machine(summary)
