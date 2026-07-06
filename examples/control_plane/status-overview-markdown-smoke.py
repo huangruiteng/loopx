@@ -98,12 +98,26 @@ def assert_overview(markdown: str) -> None:
     assert "- contract_warnings_truncated: total=3" in markdown, markdown
 
 
+def assert_contract_details(markdown: str) -> None:
+    assert "## Errors" in markdown, markdown
+    assert "- registry goals checked: 2" in markdown, markdown
+    assert "## Warnings" in markdown, markdown
+    assert "- public boundary scan clean: 0 files" in markdown, markdown
+    assert "## Checks" in markdown, markdown
+    assert "- status contract emitted" in markdown, markdown
+
+
 def main() -> int:
     payload = overview_payload()
     lines: list[str] = []
     append_status_overview_markdown(lines, payload)
-    assert_overview("\n".join(lines))
-    assert_overview(render_status_markdown(payload))
+    overview_markdown = "\n".join(lines)
+    assert_overview(overview_markdown)
+    assert "## Errors" not in overview_markdown, overview_markdown
+
+    full_markdown = render_status_markdown(payload)
+    assert_overview(full_markdown)
+    assert_contract_details(full_markdown)
     print("status-overview-markdown-smoke ok")
     return 0
 

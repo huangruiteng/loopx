@@ -326,6 +326,7 @@ from .presentation.renderers.status_markdown import (
     append_promotion_gate_markdown as _append_promotion_gate_markdown,
     append_promotion_readiness_summary_markdown as _append_promotion_readiness_summary_markdown,
     append_run_history_markdown as _append_run_history_markdown,
+    append_status_contract_detail_sections_markdown as _append_status_contract_detail_sections_markdown,
     append_status_overview_markdown as _append_status_overview_markdown,
     append_usage_summary_markdown as _append_usage_summary_markdown,
     attention_queue_goal_todo_scope_suffix as _attention_queue_goal_todo_scope_suffix,
@@ -7247,11 +7248,7 @@ def render_status_markdown(payload: dict[str, Any]) -> str:
     run_history = payload.get("run_history") if isinstance(payload.get("run_history"), dict) else {}
     _append_run_history_markdown(lines, run_history)
 
-    for title, key in (("Errors", "errors"), ("Warnings", "warnings"), ("Checks", "checks")):
-        entries = contract.get(key) if isinstance(contract.get(key), list) else []
-        if entries:
-            lines.extend(["", f"## {title}"])
-            lines.extend(f"- {entry}" for entry in entries)
+    _append_status_contract_detail_sections_markdown(lines, contract)
 
     _append_global_registry_findings_markdown(lines, global_registry)
 

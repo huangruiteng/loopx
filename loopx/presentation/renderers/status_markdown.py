@@ -111,6 +111,17 @@ def append_status_overview_markdown(
             )
 
 
+def append_status_contract_detail_sections_markdown(
+    lines: list[str],
+    contract: dict[str, Any],
+) -> None:
+    for title, key in (("Errors", "errors"), ("Warnings", "warnings"), ("Checks", "checks")):
+        entries = contract.get(key) if isinstance(contract.get(key), list) else []
+        if entries:
+            lines.extend(["", f"## {title}"])
+            lines.extend(f"- {entry}" for entry in entries)
+
+
 def append_global_registry_summary_markdown(
     lines: list[str],
     global_registry: dict[str, Any],
