@@ -295,6 +295,20 @@ def _maybe_add_role_successor_todos(
     )
 
 
+def _executed_successor_todo_ids(successor_todos: dict[str, object]) -> list[str]:
+    successors = successor_todos.get("successors")
+    if not isinstance(successors, list):
+        return []
+    todo_ids: list[str] = []
+    for successor in successors:
+        if not isinstance(successor, dict):
+            continue
+        todo_id = successor.get("todo_id")
+        if isinstance(todo_id, str) and todo_id:
+            todo_ids.append(todo_id)
+    return todo_ids
+
+
 def _generic_handoff_is_satisfied(
     *,
     selected: dict[str, object],
@@ -387,9 +401,11 @@ def _complete_selected_todo(
     agent_id: str,
     action: str,
     execute: bool,
+    successor_todo_ids: list[str] | None = None,
 ) -> dict[str, object]:
     if not execute:
         return {"requested": True, "executed": False}
+    linked_successors = successor_todo_ids or []
     result = complete_goal_todo(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -401,7 +417,8 @@ def _complete_selected_todo(
             f"state-summary agent={agent_id} action={action} wrote public-safe local artifact "
             "and obeyed quota/frontier before completion"
         ),
-        no_followup=True,
+        no_followup=not linked_successors,
+        successor_todo_ids=linked_successors or None,
         side_agent_self_merged=True,
         dry_run=False,
     )
@@ -413,6 +430,7 @@ def _complete_selected_todo(
         "todo_id": result.get("todo_id"),
         "status": "done" if result.get("completed") else None,
         "side_agent_self_merged": bool(result.get("side_agent_self_merged")),
+        "successor_todo_ids": result.get("successor_todo_ids") or linked_successors,
     }
 
 
@@ -609,6 +627,7 @@ def run_auto_research_worker_turn(
             decision_summary=artifact["decision_summary"],
             execute=True,
         )
+        successor_todo_ids = _executed_successor_todo_ids(successor_todos)
         followup = first_successor_followup(successor_todos)
         completion = (
             _complete_selected_todo(
@@ -618,6 +637,7 @@ def run_auto_research_worker_turn(
                 agent_id=agent_id,
                 action=action,
                 execute=True,
+                successor_todo_ids=successor_todo_ids,
             )
             if complete_selected_todo
             else {"requested": False}
