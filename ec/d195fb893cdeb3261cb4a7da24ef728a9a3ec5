@@ -1,0 +1,43 @@
+docs/product/core-control-plane/rule-seam-map.md
+  s_e3f612788718c1::t_8218088ac000b9 28,113
+examples/control_plane/status-collection-readmodel-smoke.py
+  s_32e2a9a204a8e4::t_fdb0a0d5b3285c 1-208
+loopx/control_plane/status_collection.py
+  s_9a5a2bd944fdcb::t_415510b498c6ad 1-123
+loopx/status.py
+  s_9a5a2bd944fdcb::t_877d6d08e73ac6 15-18,6934-6956,6966,6972-6973
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ecd195fb893cdeb3261cb4a7da24ef728a9a3ec5",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
