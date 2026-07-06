@@ -25,7 +25,6 @@ from .control_plane.todos.contract import (
     TODO_MONITOR_METADATA_FIELDS,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
-    TODO_TASK_CLASS_USER_ACTION,
     TODO_TASK_CLASS_USER_GATE,
     TODO_TASK_PATTERN,
     build_todo_id,
@@ -62,6 +61,7 @@ from .control_plane.todos.text import (
     normalize_new_todo,
     todo_priority_prefix,
 )
+from .control_plane.todos.write_policy import require_user_gate_scope, require_user_todo_task_class
 
 
 TODO_SECTION_HEADINGS = {
@@ -102,37 +102,6 @@ TODO_METADATA_FIELDS = (
     "updated_at",
     "superseded_by",
 )
-
-
-USER_TODO_TASK_CLASSES = {
-    TODO_TASK_CLASS_USER_ACTION,
-    TODO_TASK_CLASS_USER_GATE,
-}
-
-
-def require_user_todo_task_class(
-    *,
-    role: str,
-    task_class: str | None,
-    blocks_agent: str | None = None,
-    global_gate: bool | None = None,
-) -> None:
-    if role != "user":
-        if task_class in USER_TODO_TASK_CLASSES:
-            raise ValueError("user_action and user_gate task_class are only valid for --role user")
-        return
-    normalized = str(task_class or "").strip()
-    if normalized not in USER_TODO_TASK_CLASSES:
-        raise ValueError(
-            "user todo requires explicit --task-class user_gate or user_action; "
-            "use user_gate for blocking owner/controller decisions and user_action "
-            "for non-blocking user-visible todos"
-        )
-    if normalized == TODO_TASK_CLASS_USER_ACTION and (blocks_agent or global_gate):
-        raise ValueError(
-            "user_action is non-blocking and cannot set blocks_agent or global_gate; "
-            "use --task-class user_gate for blocking decisions"
-        )
 
 
 def _attach_todo_write_correctness_dry_run_packet(
@@ -1018,35 +987,6 @@ def add_todo_to_lines(
         "expires_at": effective_metadata.get("expires_at"),
         "evidence": effective_metadata.get("evidence") or evidence,
     }
-
-
-def require_user_gate_scope(
-    *,
-    registry_path: Path,
-    goal_id: str,
-    role: str,
-    task_class: str | None,
-    blocks_agent: str | None,
-    global_gate: bool | None,
-) -> None:
-    if role != "user" or task_class != TODO_TASK_CLASS_USER_GATE:
-        return
-    if global_gate and blocks_agent:
-        raise ValueError(
-            "user_gate cannot set both blocks_agent and global_gate=true; "
-            "use blocks_agent for one registered agent or global_gate=true for a goal-wide gate"
-        )
-    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
-    if len(registered_agents) <= 1:
-        return
-    if blocks_agent or global_gate is True:
-        return
-    raise ValueError(
-        "multi-agent user_gate requires an explicit scope: pass --blocks-agent "
-        "<registered-agent> (or --agent-id <registered-agent> for authoring) "
-        "when the gate blocks one lane, or pass --global-gate when it genuinely "
-        "blocks every registered agent"
-    )
 
 
 def add_goal_todo(

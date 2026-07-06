@@ -141,6 +141,42 @@ def main() -> int:
         )
         assert "user todo requires explicit --task-class" in bare_user_error["error"], bare_user_error
 
+        agent_user_gate_error = run_cli_error(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--task-class",
+            "user_gate",
+            "--text",
+            AGENT_TODO,
+            "--dry-run",
+        )
+        assert (
+            "user_action and user_gate task_class are only valid for --role user"
+            in agent_user_gate_error["error"]
+        ), agent_user_gate_error
+
+        user_action_gate_error = run_cli_error(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "user",
+            "--task-class",
+            "user_action",
+            "--global-gate",
+            "--text",
+            USER_TODO,
+            "--dry-run",
+        )
+        assert "user_action is non-blocking" in user_action_gate_error["error"], user_action_gate_error
+
         dry_run = run_cli(
             registry_path,
             "todo",
