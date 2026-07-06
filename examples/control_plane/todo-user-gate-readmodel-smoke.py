@@ -53,7 +53,7 @@ def raw_todos() -> dict:
                 "index": 3,
                 "todo_id": "todo_next",
                 "text": "Continue non-benchmark control-plane refactor.",
-                "task_class": "advancement_task",
+                "task_class": "user_action",
                 "claimed_by": "codex-product-capability",
             },
         ],
@@ -63,9 +63,29 @@ def raw_todos() -> dict:
 def assert_shared_gate_detection() -> None:
     assert is_user_gate_todo_item(
         {
+            "action_kind": "public_claim_review",
+            "text": "Review the public claim.",
+        }
+    )
+    assert not is_user_gate_todo_item(
+        {
             "task_class": "advancement_task",
             "action_kind": "public_claim_review",
             "text": "Review the public claim.",
+        }
+    )
+    assert is_user_gate_todo_item(
+        {
+            "task_class": "user_gate",
+            "action_kind": "public_claim_review",
+            "text": "Review the public claim.",
+        }
+    )
+    assert not is_user_gate_todo_item(
+        {
+            "task_class": "user_action",
+            "action_kind": "approval",
+            "text": "Non-blocking user follow-up.",
         }
     )
     summary = summarize_user_todos_for_quota(
@@ -74,16 +94,17 @@ def assert_shared_gate_detection() -> None:
         filter_user_gate_blocks_agent=True,
     )
     assert summary is not None
-    assert summary["open_count"] == 2, summary
+    assert summary["open_count"] == 1, summary
     assert summary["all_open_count"] == 3, summary
     assert summary["other_agent_scoped_open_count"] == 1, summary
+    assert summary["user_action_open_count"] == 1, summary
 
     with_duplicate = {
         "open_count": "2",
         "gate_open_items": [summary["gate_open_items"][0]],
         "first_open_items": [
             summary["gate_open_items"][0],
-            summary["first_executable_items"][0],
+            summary["user_action_items"][0],
         ],
     }
     gate_items = open_user_gate_todo_items(with_duplicate)
