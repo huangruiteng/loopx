@@ -144,6 +144,7 @@ from .control_plane.todos.contract import (
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_BLOCKER,
+    normalize_required_capabilities,
     normalize_todo_claimed_by,
     normalize_todo_id,
     normalize_required_write_scopes,
@@ -850,6 +851,9 @@ def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> 
         boundary["checkpointed_boundary_authority"] = boundary_authority
     if normalized_write_scope:
         boundary["write_scope"] = normalized_write_scope
+    available_capabilities = _declared_available_capabilities(goal)
+    if available_capabilities:
+        boundary["available_capabilities"] = available_capabilities
     if requires_approval:
         boundary["requires_parent_approval"] = [
             str(value) for value in requires_approval if str(value).strip()
@@ -894,6 +898,50 @@ def _goal_boundary(goal: dict[str, Any], item: dict[str, Any] | None = None) -> 
         boundary["rule"] = "stay_in_scope_or_stop"
         return boundary
     return None
+
+
+def _declared_available_capabilities(source: Any) -> list[str]:
+    if not isinstance(source, dict):
+        return []
+    capabilities: list[str] = []
+
+    def append(raw: Any) -> None:
+        for capability in normalize_required_capabilities(raw):
+            if capability not in capabilities:
+                capabilities.append(capability)
+
+    append(source.get("available_capabilities"))
+    coordination = (
+        source.get("coordination")
+        if isinstance(source.get("coordination"), dict)
+        else {}
+    )
+    append(coordination.get("available_capabilities"))
+    project_asset = (
+        source.get("project_asset")
+        if isinstance(source.get("project_asset"), dict)
+        else {}
+    )
+    append(project_asset.get("available_capabilities"))
+    return capabilities
+
+
+def _effective_available_capabilities(
+    runtime_available_capabilities: Any,
+    *,
+    item: dict[str, Any],
+    project_asset: dict[str, Any],
+) -> list[str]:
+    capabilities: list[str] = []
+    for raw in (
+        _declared_available_capabilities(item),
+        _declared_available_capabilities(project_asset),
+        runtime_available_capabilities,
+    ):
+        for capability in normalize_required_capabilities(raw):
+            if capability not in capabilities:
+                capabilities.append(capability)
+    return capabilities
 
 
 def _automation_prompt_upgrade(
@@ -1669,9 +1717,14 @@ def build_quota_should_run(
             replan_obligation=replan_obligation,
             acceptance_gaps=goal_frontier_acceptance_gaps,
         )
+        effective_available_capabilities = _effective_available_capabilities(
+            available_capabilities,
+            item=item,
+            project_asset=project_asset,
+        )
         capability_gate = build_capability_gate(
             agent_todo_summary,
-            available_capabilities=available_capabilities,
+            available_capabilities=effective_available_capabilities,
             agent_identity=agent_identity,
         )
         capability_repair_allowed = False

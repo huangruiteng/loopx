@@ -46,7 +46,11 @@ def todo(
     return item
 
 
-def status_payload(items: list[dict[str, Any]]) -> dict[str, Any]:
+def status_payload(
+    items: list[dict[str, Any]],
+    *,
+    available_capabilities: list[str] | None = None,
+) -> dict[str, Any]:
     summary = {
         "schema_version": "todo_summary_v0",
         "source_section": "Agent Todo",
@@ -78,6 +82,9 @@ def status_payload(items: list[dict[str, Any]]) -> dict[str, Any]:
                     "waiting_on": "codex",
                     "severity": "info",
                     "source": "project_asset",
+                    "coordination": {
+                        "available_capabilities": available_capabilities or [],
+                    },
                     "quota": quota,
                     "project_asset": {
                         "next_action": items[0]["text"] if items else "",
@@ -91,6 +98,9 @@ def status_payload(items: list[dict[str, Any]]) -> dict[str, Any]:
                 {
                     "id": GOAL_ID,
                     "registry_member": True,
+                    "coordination": {
+                        "available_capabilities": available_capabilities or [],
+                    },
                     "quota": quota,
                     "latest_runs": [],
                 }
@@ -214,6 +224,23 @@ def main() -> int:
         for item in benchmark_ready["capability_gate"]["runnable_candidates"]
     ] == ["todo_capability_1", "todo_capability_2", "todo_capability_5"], benchmark_ready
     assert benchmark_ready["capability_gate"]["blocked_candidates"] == [], benchmark_ready
+
+    benchmark_ready_from_goal = build_quota_should_run(
+        status_payload(
+            [p0_benchmark, p0_validate, p1_docs],
+            available_capabilities=["benchmark_runner"],
+        ),
+        goal_id=GOAL_ID,
+        available_capabilities=["shell", "filesystem_write"],
+    )
+    assert benchmark_ready_from_goal["capability_gate"]["action"] == "run", benchmark_ready_from_goal
+    assert [
+        item["todo_id"]
+        for item in benchmark_ready_from_goal["capability_gate"]["runnable_candidates"]
+    ] == ["todo_capability_1", "todo_capability_2", "todo_capability_5"], benchmark_ready_from_goal
+    assert benchmark_ready_from_goal["goal_boundary"]["available_capabilities"] == [
+        "benchmark_runner"
+    ], benchmark_ready_from_goal
 
     spend_preview = build_quota_slot_preview(
         status_payload([p0_benchmark, p0_validate, p1_docs]),

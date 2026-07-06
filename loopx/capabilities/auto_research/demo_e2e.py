@@ -48,6 +48,7 @@ AUTO_RESEARCH_SEED_PREREQUISITE_ACTION_BY_ACTION = dict(
     zip(AUTO_RESEARCH_SEED_ACTION_CHAIN[1:], AUTO_RESEARCH_SEED_ACTION_CHAIN)
 )
 AUTO_RESEARCH_DEMO_CONTROL_WRITE_SCOPE = ("examples/**", "experiments/**", ".local/**")
+AUTO_RESEARCH_DEMO_AVAILABLE_CAPABILITIES = ("benchmark_runner",)
 
 
 def _prepare_visible_demo_workspace_route(
@@ -190,6 +191,17 @@ def _seed_visible_demo_control_plane(
     registry_payload = json.loads(control_registry.read_text(encoding="utf-8"))
     for goal in registry_payload.get("goals", []):
         if isinstance(goal, dict) and str(goal.get("id")) == goal_id:
+            coordination = goal.setdefault("coordination", {})
+            if isinstance(coordination, dict):
+                capabilities = [
+                    str(value).strip()
+                    for value in coordination.get("available_capabilities", [])
+                    if str(value).strip()
+                ]
+                for capability in AUTO_RESEARCH_DEMO_AVAILABLE_CAPABILITIES:
+                    if capability not in capabilities:
+                        capabilities.append(capability)
+                coordination["available_capabilities"] = capabilities
             goal["workspace_guard_policy"] = {
                 "schema_version": "loopx_workspace_guard_policy_v0",
                 "side_agent_independent_worktree_required": False,

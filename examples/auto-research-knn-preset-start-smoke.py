@@ -114,6 +114,7 @@ def main() -> int:
             if item["id"] == "loopx-auto-research-knn-smoke"
         )
         assert "solution.py" in goal["coordination"]["write_scope"], goal
+        assert "benchmark_runner" in goal["coordination"]["available_capabilities"], goal
 
     markdown_result = subprocess.run(
         [
