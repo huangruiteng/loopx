@@ -1,0 +1,23 @@
+loopx/control_plane/quota/markdown.py
+  s_32e2a9a204a8e4::t_f8b5f7f5c2d653 321-331
+loopx/control_plane/work_items/interaction_contract.py
+  s_32e2a9a204a8e4::t_7bd30f174b1c27 846-850,857-866
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "609f8ff9657dea0d680983a68bc09ce9ff0ee79c",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
