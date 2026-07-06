@@ -326,7 +326,6 @@ def build_autonomous_replan_obligation(
             else ["keep", "split", "add", "retire", "ask_decision"]
         ),
         "todo_actions": todo_actions[:3],
-        "next_validation_command": "python3 examples/autonomous-replan-obligation-smoke.py",
         "stop_condition": (
             "stop if the replan requires private material, credentials, destructive git, "
             "production actions, or owner-only decisions"

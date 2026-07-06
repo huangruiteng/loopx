@@ -602,8 +602,6 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             f"trigger_count={replan_obligation.get('trigger_count')} "
             f"triggers={','.join(trigger_kinds)}"
         )
-        if replan_obligation.get("next_validation_command"):
-            lines.append(f"- autonomous_replan_validation: `{replan_obligation.get('next_validation_command')}`")
     required_reads = payload.get("required_reads") if isinstance(payload.get("required_reads"), list) else []
     for read in required_reads[:3]:
         if not isinstance(read, dict):

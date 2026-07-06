@@ -26,7 +26,6 @@ GLOBAL_REPLAN_OBLIGATION = {
     "stall_threshold": 2,
     "trigger_count": 1,
     "triggers": [{"kind": "periodic_review_due", "source": "fixture"}],
-    "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
     "stop_condition": "stop after one bounded replan slice writes back a concrete frontier delta",
 }
 
@@ -75,11 +74,16 @@ def primary_claimed_advancement() -> dict:
     }
 
 
-def side_agent_claimed_advancement() -> dict:
+def side_agent_claimed_advancement(
+    *,
+    index: int = 2,
+    todo_id: str = "todo_side_canary_refactor",
+    text: str = "[P1] Continue the next non-benchmark canary/refactor batch.",
+) -> dict:
     return {
-        "index": 2,
-        "todo_id": "todo_side_canary_refactor",
-        "text": "[P1] Continue the next non-benchmark canary/refactor batch.",
+        "index": index,
+        "todo_id": todo_id,
+        "text": text,
         "role": "agent",
         "status": "open",
         "priority": "P1",
@@ -484,6 +488,44 @@ def assert_replan_preserves_current_agent_runnable_frontier() -> None:
     assert "agent_lane_next_action: todo_id=todo_side_canary_refactor" in markdown, markdown
 
 
+def assert_long_agent_todo_chain_derives_replan_before_linear_delivery() -> None:
+    long_chain = [
+        side_agent_claimed_advancement(
+            index=index,
+            todo_id=f"todo_side_chain_{index:02d}",
+            text=f"[P1] Continue long-chain fixture slice {index}.",
+        )
+        for index in range(1, 16)
+    ]
+    guard = build_quota_should_run(
+        status_payload(long_chain, replan_obligation=None),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["should_run"] is True, guard
+    assert guard["interaction_contract"]["mode"] == "autonomous_replan", guard
+    obligation = guard["autonomous_replan_obligation"]
+    assert obligation["agent_id"] == SIDE_AGENT, guard
+    assert obligation["triggers"][0]["kind"] == "long_todo_chain", guard
+    assert obligation["stall_threshold"] == 15, guard
+    assert obligation["trigger_count"] == 15, guard
+    assert "run_bounded_public_research_if_local_evidence_is_missing" in (
+        obligation["guidance_actions"]
+    ), guard
+    assert "group/prune" in obligation["recommended_action"], guard
+    frontier = guard["goal_frontier_projection"]["remaining_advancement_frontier"]
+    assert frontier["current_agent_claimed_advancement_count"] == 15, guard
+    assert frontier["unclaimed_advancement_count"] == 0, guard
+    assert guard["goal_frontier_projection"]["replan_required"] is True, guard
+    assert guard["autonomous_replan_decision"]["triggers"] == ["long_todo_chain"], guard
+    required_reads = guard["required_reads"]
+    assert required_reads[0]["kind"] == "agent_scoped_evidence_log", required_reads
+    markdown = render_quota_should_run_markdown(guard)
+    assert "triggers=long_todo_chain" in markdown, markdown
+
+
 def assert_agent_vision_gap_derives_replan() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -515,6 +557,7 @@ def assert_agent_vision_gap_derives_replan() -> None:
         audit["required_before_closeout"]
     ), guard
     assert "public_safe_evidence_records" in audit["authoritative_evidence_kinds"], guard
+    assert "public_web_research_findings" in audit["authoritative_evidence_kinds"], guard
     assert "Show the next runnable auto-research frontier" in audit["acceptance_requirements"][0], guard
     judge = audit["vision_gap_judge"]
     assert judge["schema_version"] == "vision_gap_judge_v0", guard
@@ -524,6 +567,13 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "synthetic" in judge["reason"], guard
     assert "Judge vision closure" in judge["agent_judge_instruction"], guard
     assert "evidence-log" in judge["agent_judge_instruction"], guard
+    assert "public web research" in judge["agent_judge_instruction"], guard
+    assert "primary or authoritative sources" in (
+        judge["external_research_instruction"]
+    ), guard
+    assert "source_url_or_public_reference" in (
+        judge["research_writeback_required_when_used"]
+    ), guard
     assert (
         "loopx evidence-log --goal-id replan-decision-plane-fixture "
         "--agent-id codex-side-bypass --thin"
@@ -834,6 +884,7 @@ def main() -> None:
     assert_ready_deferred_successor_beats_monitor_quiet_skip()
     assert_completed_advancement_without_successor_beats_monitor_quiet_skip()
     assert_replan_preserves_current_agent_runnable_frontier()
+    assert_long_agent_todo_chain_derives_replan_before_linear_delivery()
     assert_agent_vision_gap_derives_replan()
     assert_missing_vision_checkpoint_derives_agent_scoped_replan()
     assert_satisfied_vision_checkpoint_supersedes_older_missing()

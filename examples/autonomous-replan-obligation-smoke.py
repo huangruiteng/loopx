@@ -285,9 +285,6 @@ def assert_replan_obligation_projected() -> None:
             "phase_transition",
         ], obligation
         assert item["autonomous_replan_obligation"] == obligation, item
-        assert obligation["next_validation_command"] == (
-            "python3 examples/autonomous-replan-obligation-smoke.py"
-        ), obligation
         assert obligation["todo_actions"][0]["action"] == "split", obligation
         assert obligation["todo_actions"][1]["action"] == "add", obligation
         assert obligation["todo_actions"][2]["action"] == "retire", obligation

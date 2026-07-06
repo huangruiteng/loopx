@@ -1244,8 +1244,10 @@ monitor/no-progress run records. Historical progress entries and completed
 todos are intentionally not active-state trigger sources. Executors should
 treat the object as a machine-readable planning contract, not prompt advice:
 inspect `triggers`, apply the compact `todo_actions` as split/add/retire
-guidance, run `next_validation_command` after the selected slice, and stop at
-`stop_condition`. The default stall threshold is 2 consecutive stalled turns or
+guidance, write the selected todo/vision/blocker delta, and stop at
+`stop_condition`. Validation remains part of the normal delivery evidence or
+PR review path, not a command projected to the runtime agent. The default stall
+threshold is 2 consecutive stalled turns or
 public run records. A `quota_monitor_poll` record is status-neutral for latest
 dashboard state, but it is still public stalled-run evidence for this specific
 replan detector. For eligible goals,

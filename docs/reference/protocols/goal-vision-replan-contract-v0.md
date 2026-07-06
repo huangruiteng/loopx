@@ -141,10 +141,13 @@ ACK, it must audit the current evidence against the active
 1. Derive the explicit requirements from the active vision, current todo,
    user correction, and protected scope.
 2. Name the authoritative evidence for each requirement: changed files,
-   public-safe evidence records, evaluation outputs, successor state, blocker
-   state, or a superseding vision packet.
+   public-safe evidence records, public web research findings, evaluation
+   outputs, successor state, blocker state, or a superseding vision packet.
 3. Treat weak, indirect, stale, or protocol-only evidence as incomplete.
-4. If any requirement remains unproven, keep the vision active by creating a
+4. If local evidence remains weak and the acceptance question depends on public
+   facts, run bounded public research from primary or authoritative sources and
+   write back the confirmed/refuted finding.
+5. If any requirement remains unproven, keep the vision active by creating a
    successor todo or writing a compact `--vision-replan-trigger`.
 
 Quota/status expose this as `vision_continuation_audit_v0` in the CLI payload
@@ -157,9 +160,10 @@ The audit also exposes a compact deterministic `vision_gap_judge_v0`
 instruction packet for the agent. It borrows the strict done-judge stance used
 by autonomous goal loops without calling an LLM: the agent is told to compare
 the active vision `acceptance_summary` with projected evidence, using
-projected required reads and an explicit agent-scoped `loopx evidence-log
---goal-id <goal> --agent-id <agent> --thin` read when available, and default to
-`continue` while a projected acceptance gap exists. `done=true` is only valid
+projected required reads, an explicit agent-scoped `loopx evidence-log
+--goal-id <goal> --agent-id <agent> --thin` read when available, and bounded
+public web research when local evidence is missing or stale and the gap depends
+on public facts. `done=true` is only valid
 when the response or state clearly provides one of these outcomes:
 
 - explicit completion with authoritative evidence;
@@ -212,6 +216,8 @@ or agent-scope wait decisions:
 - normalized progress shows no remaining advancement frontier;
 - monitor-only lanes have no material transition and acceptance remains open;
 - a cleared handoff has no successor or no-follow-up rationale;
+- the current agent lane has a long selectable todo chain, such as 15 or more
+  advancement todos or roughly 20 open todos with advancement work still present;
 - a periodic autonomous replan obligation is due;
 - the user objective or acceptance contract changed;
 - an approved dreaming proposal requires a delivery route.

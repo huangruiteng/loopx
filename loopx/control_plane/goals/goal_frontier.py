@@ -11,11 +11,14 @@ AUTONOMOUS_REPLAN_SCOPE_SCHEMA_VERSION = "autonomous_replan_scope_v0"
 AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
+LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
 VISION_CHECKPOINT_MISSING_TRIGGER = "vision_checkpoint_missing"
 TODO_SUCCESSION_GAP_TRIGGER = "completed_advancement_without_successor"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
+LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD = 15
+LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
 VISION_CHECKPOINT_SATISFIED_DECISIONS = {
     "patched",
     "retired_or_superseded",
@@ -391,6 +394,7 @@ def build_vision_continuation_audit(
         "authoritative_evidence_kinds": [
             "changed_files",
             "public_safe_evidence_records",
+            "public_web_research_findings",
             "evaluation_outputs",
             "successor_state",
             "blocker_state",
@@ -405,12 +409,14 @@ def build_vision_continuation_audit(
         "required_before_closeout": [
             "derive_requirements_from_active_vision_and_current_todo",
             "name_authoritative_evidence_for_each_requirement",
+            "run_bounded_public_research_when_local_evidence_is_missing",
             "create_successor_or_write_vision_replan_trigger_when_unproven",
         ],
         "recommended_action": (
             "audit active per-agent vision acceptance before todo closeout; "
-            "if evidence is weak or missing, keep the vision active with a "
-            "successor todo or --vision-replan-trigger"
+            "if evidence is weak or missing, use bounded public research when "
+            "the claim depends on public facts, then keep the vision active with "
+            "a successor todo or --vision-replan-trigger"
         ),
     }
     if acceptance_requirements:
@@ -456,6 +462,12 @@ def build_vision_gap_judge(
         evidence_read_instruction = (
             f"{evidence_read_instruction} when goal_id and agent_id are available."
         )
+    public_research_instruction = (
+        "If the evidence log is missing, stale, or too weak and the acceptance "
+        "question depends on public facts, run bounded public web research using "
+        "primary or authoritative sources; record confirmed/refuted findings as "
+        "public-safe evidence or a compact vision replan trigger before judging."
+    )
     return {
         "schema_version": VISION_GAP_JUDGE_SCHEMA_VERSION,
         "goal_id": goal_id,
@@ -469,10 +481,19 @@ def build_vision_gap_judge(
         "agent_judge_instruction": (
             "Judge vision closure: compare active vision acceptance_summary "
             "with projected evidence and agent-scoped evidence-log reads. "
+            "Use bounded public web research when local evidence is insufficient "
+            "and the gap depends on public facts. "
             "Mark done only when evidence proves completion, a blocker/user "
             "gate, or superseding/no-follow-up closure; otherwise continue."
         ),
         "evidence_read_instruction": evidence_read_instruction,
+        "external_research_instruction": public_research_instruction,
+        "research_writeback_required_when_used": [
+            "source_url_or_public_reference",
+            "confirmed_or_refuted_finding",
+            "supports_or_refutes_acceptance_gap",
+            "successor_todo_or_vision_replan_trigger",
+        ],
         "done_only_when": [
             "authoritative_evidence_satisfies_acceptance",
             "final_deliverable_or_eval_output_satisfies_acceptance",
@@ -610,6 +631,59 @@ def _frontier_advancement_counts(
             other_agent_claimed_items
         ),
     }
+
+
+def _long_todo_chain_trigger(
+    *,
+    agent_todo_summary: dict[str, Any] | None,
+    agent_counts: dict[str, int],
+    frontier_counts: dict[str, int],
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    """Return a trigger when one lane is long enough to need vision replan.
+
+    The trigger is scoped to the current agent plus unclaimed selectable work.
+    Other-agent claimed todos stay out of this count so one role cannot replan
+    another role's backlog.
+    """
+
+    current_advancement = frontier_counts.get("current_agent_claimed_advancement_count", 0)
+    unclaimed_advancement = frontier_counts.get("unclaimed_advancement_count", 0)
+    selectable_advancement = current_advancement + unclaimed_advancement
+    if isinstance(agent_todo_summary, dict):
+        current_open = safe_non_negative_int(
+            agent_todo_summary.get("current_agent_claimed_open_count")
+        )
+        unclaimed_open = safe_non_negative_int(agent_todo_summary.get("unclaimed_open_count"))
+        selectable_open = max(current_open + unclaimed_open, selectable_advancement)
+    else:
+        selectable_open = max(agent_counts.get("open", 0), selectable_advancement)
+    if selectable_advancement >= LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD:
+        return {
+            "trigger_count": selectable_advancement,
+            "count_kind": "selectable_advancement_todos",
+            "selectable_open_count": selectable_open,
+            "selectable_advancement_count": selectable_advancement,
+            "current_agent_claimed_advancement_count": current_advancement,
+            "unclaimed_advancement_count": unclaimed_advancement,
+            "threshold": LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD,
+            "agent_id": agent_id,
+        }
+    if (
+        selectable_open >= LONG_TODO_CHAIN_OPEN_THRESHOLD
+        and selectable_advancement > 0
+    ):
+        return {
+            "trigger_count": selectable_open,
+            "count_kind": "selectable_open_todos",
+            "selectable_open_count": selectable_open,
+            "selectable_advancement_count": selectable_advancement,
+            "current_agent_claimed_advancement_count": current_advancement,
+            "unclaimed_advancement_count": unclaimed_advancement,
+            "threshold": LONG_TODO_CHAIN_OPEN_THRESHOLD,
+            "agent_id": agent_id,
+        }
+    return None
 
 
 def _compact_todo_id(item: Any) -> str | None:
@@ -823,7 +897,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     ),
                 }
             ],
-            "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
             "stop_condition": (
                 "stop if the successor decision requires private material, "
                 "credentials, destructive git, production actions, or owner-only decisions"
@@ -872,7 +945,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     ),
                 }
             ],
-            "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
             "stop_condition": (
                 "stop if the gap requires private material, credentials, destructive git, "
                 "production actions, or owner-only decisions"
@@ -881,6 +953,61 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "run a bounded vision-gap replan before another quiet poll: create "
                 "successor work, update the agent vision, record evidence gap, or "
                 "record no-follow-up"
+            ),
+        }
+    long_chain_trigger = _long_todo_chain_trigger(
+        agent_todo_summary=agent_todo_summary,
+        agent_counts=agent_counts,
+        frontier_counts=frontier_counts,
+        agent_id=agent_id,
+    )
+    if long_chain_trigger and not autonomous_replan_ack_has_frontier_delta(
+        latest_replan_ack
+    ):
+        return {
+            "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            "required": True,
+            "agent_id": agent_id,
+            "stall_threshold": long_chain_trigger.get("threshold"),
+            "trigger_count": long_chain_trigger.get("trigger_count"),
+            "triggers": [
+                {
+                    "kind": LONG_TODO_CHAIN_TRIGGER,
+                    "section": "agent_todo_summary",
+                    "text": (
+                        "current agent lane has a long selectable todo chain; "
+                        "run a vision checkpoint/replan before continuing linearly"
+                    ),
+                    **long_chain_trigger,
+                }
+            ],
+            "guidance_actions": [
+                "read_evidence_log",
+                "run_bounded_public_research_if_local_evidence_is_missing",
+                "group_or_prune_todo_chain",
+                "update_agent_vision",
+                "create_successor",
+            ],
+            "todo_actions": [
+                {
+                    "action": "add",
+                    "role": "agent",
+                    "priority": "P1",
+                    "text": (
+                        "run a bounded long-chain vision replan: compare evidence "
+                        "with the active vision, group or prune the todo chain, "
+                        "and select the next high-value runnable slice"
+                    ),
+                }
+            ],
+            "stop_condition": (
+                "stop if pruning or external research requires private material, "
+                "credentials, destructive git, production actions, or owner-only decisions"
+            ),
+            "recommended_action": (
+                "run a bounded long-chain vision replan before continuing a 15+ "
+                "todo lane: read evidence, use public research if local evidence "
+                "is weak, group/prune work, and write a concrete todo or vision delta"
             ),
         }
     if autonomous_replan_ack_has_frontier_delta(latest_replan_ack):
@@ -930,7 +1057,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 ),
             }
         ],
-        "next_validation_command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
         "stop_condition": (
             "stop if the replan requires private material, credentials, destructive git, "
             "production actions, or owner-only decisions"
@@ -988,7 +1114,6 @@ def compact_replan_obligation(replan_obligation: dict[str, Any]) -> dict[str, An
         "stall_threshold": replan_obligation.get("stall_threshold"),
         "trigger_count": replan_obligation.get("trigger_count"),
         "triggers": replan_obligation.get("triggers") or [],
-        "next_validation_command": replan_obligation.get("next_validation_command"),
         "stop_condition": replan_obligation.get("stop_condition"),
     }
 

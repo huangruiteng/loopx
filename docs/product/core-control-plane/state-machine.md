@@ -438,6 +438,13 @@ The same ordering applies when an agent records a bounded
 as a goal-frontier `acceptance_gaps[]` entry. If no advancement frontier remains,
 the gap becomes a replan trigger before the lane can quietly back off.
 
+Long runnable lanes also pass through this machine. When the current agent can
+select about 15 advancement todos, or about 20 open todos with advancement work
+still present, quota should trigger a bounded vision replan before continuing
+linearly. The replan reads the agent-scoped evidence log, uses bounded public
+research when local evidence is insufficient for a public claim, then groups,
+prunes, or reprioritizes the chain into the next high-value runnable slice.
+
 The same ordering also applies to `vision_checkpoint_v0`: if a role records
 material progress but omits both a vision patch and an unchanged/no-follow-up
 decision, quota should project that role's `vision_checkpoint_missing` gap and
